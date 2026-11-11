@@ -1,1 +1,1 @@
-export { Globals as default } from '@zero-admin/schema';
+export { Globals as default } from '@first-admin/schema';

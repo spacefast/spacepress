@@ -29,43 +29,43 @@ impl Span {
 pub enum Code {
     #[serde(rename = "sync_files_too_large")]
     SyncFilesTooLarge,
-    #[serde(rename = "zero_source_needs_local_capture")]
+    #[serde(rename = "first_source_needs_local_capture")]
     SourceNeedsLocalCapture,
-    #[serde(rename = "Z0001")]
+    #[serde(rename = "F0001")]
     General,
-    #[serde(rename = "Z1001")]
+    #[serde(rename = "F1001")]
     Syntax,
-    #[serde(rename = "Z1002")]
+    #[serde(rename = "F1002")]
     Unsupported,
-    #[serde(rename = "Z1003")]
+    #[serde(rename = "F1003")]
     Import,
-    #[serde(rename = "Z1101")]
+    #[serde(rename = "F1101")]
     Classes,
-    #[serde(rename = "Z1102")]
+    #[serde(rename = "F1102")]
     NpmImport,
-    #[serde(rename = "Z2001")]
+    #[serde(rename = "F2001")]
     Evaluation,
-    #[serde(rename = "Z2101")]
+    #[serde(rename = "F2101")]
     BuildTimeClock,
-    #[serde(rename = "Z3001")]
+    #[serde(rename = "F3001")]
     Schema,
-    #[serde(rename = "Z3101")]
+    #[serde(rename = "F3101")]
     FieldUi,
-    #[serde(rename = "Z4001")]
+    #[serde(rename = "F4001")]
     Compile,
-    #[serde(rename = "Z4101")]
+    #[serde(rename = "F4101")]
     AccessQuery,
     /// A plugin package imports the app's modules or another plugin's package.
-    #[serde(rename = "Z1201")]
+    #[serde(rename = "F1201")]
     PluginIsolation,
-    /// App source imports a file outside `zero/` (docs/spec/spec.md §1).
-    #[serde(rename = "Z1210")]
+    /// App source imports a file outside `first/` (docs/spec/spec.md §1).
+    #[serde(rename = "F1210")]
     ImportFence,
     /// Two exports register the same name, or one kind, action or job under two (§1.1).
-    #[serde(rename = "Z1221")]
+    #[serde(rename = "F1221")]
     DuplicateExport,
-    /// A plugin's compiled code uses a capability its `zero/_generated/plugins.lock.json` entry doesn't grant.
-    #[serde(rename = "Z4201")]
+    /// A plugin's compiled code uses a capability its `first/_generated/plugins.lock.json` entry doesn't grant.
+    #[serde(rename = "F4201")]
     PluginCapability,
 }
 
@@ -241,7 +241,7 @@ fn location(span: Span, root: &Path) -> Option<Location> {
     })
 }
 
-/// A span's file (relative to `root`), 1-based line and UTF-16 column, as `zero check --json` reports them.
+/// A span's file (relative to `root`), 1-based line and UTF-16 column, as `first check --json` reports them.
 pub fn position(span: Span, root: &Path) -> Option<(String, usize, usize)> {
     location(span, root).map(|l| (l.file, l.line, l.column))
 }
@@ -315,7 +315,7 @@ pub fn envelope<'a>(diagnostics: &'a [Diag], root: &Path) -> Envelope<'a> {
         });
     }
     Envelope {
-        schema: "zero-diagnostics",
+        schema: "first-diagnostics",
         version: 1,
         compiler_version: env!("CARGO_PKG_VERSION"),
         ok: diagnostics.is_empty(),

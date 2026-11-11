@@ -16,11 +16,11 @@
     "skipLibCheck": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "@spacefast/zero-blocks",
+    "jsxImportSource": "@spacefast/first-blocks",
     "baseUrl": ".",
     "paths": {
-      "@spacefast/zero-blocks": ["./src/index.ts"],
-      "@spacefast/zero-blocks/*": ["./src/*.ts"]
+      "@spacefast/first-blocks": ["./src/index.ts"],
+      "@spacefast/first-blocks/*": ["./src/*.ts"]
     }
   },
   "include": ["src", "scripts", "tests", "bin"]

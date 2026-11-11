@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Algorithm\Signature\RSA;
+namespace First\Identity\Vendor\Cose\Algorithm\Signature\RSA;
 
-use Zero\Identity\Vendor\Cose\Key\RsaKey;
-use Zero\Identity\Vendor\Cose\Key\RsaKeyValidator;
+use First\Identity\Vendor\Cose\Key\RsaKey;
+use First\Identity\Vendor\Cose\Key\RsaKeyValidator;
 use const E_USER_WARNING;
 use InvalidArgumentException;
 use function sprintf;

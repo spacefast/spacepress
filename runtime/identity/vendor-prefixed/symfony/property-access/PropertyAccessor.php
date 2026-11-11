@@ -9,25 +9,25 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\PropertyAccess;
+namespace First\Identity\Vendor\Symfony\Component\PropertyAccess;
 
 use Psr\Cache\CacheItemPoolInterface;
-use Zero\Identity\Vendor\Psr\Log\LoggerInterface;
-use Zero\Identity\Vendor\Psr\Log\NullLogger;
+use First\Identity\Vendor\Psr\Log\LoggerInterface;
+use First\Identity\Vendor\Psr\Log\NullLogger;
 use Symfony\Component\Cache\Adapter\AdapterInterface;
 use Symfony\Component\Cache\Adapter\ApcuAdapter;
 use Symfony\Component\Cache\Adapter\NullAdapter;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\AccessException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidTypeException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchIndexException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchPropertyException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UnexpectedTypeException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
-use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
-use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfo;
-use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfoExtractorInterface;
-use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfo;
-use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfoExtractorInterface;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\AccessException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidTypeException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchIndexException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\NoSuchPropertyException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UnexpectedTypeException;
+use First\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
+use First\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
+use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfo;
+use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfoExtractorInterface;
+use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfo;
+use First\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfoExtractorInterface;
 
 /**
  * Default implementation of {@link PropertyAccessorInterface}.

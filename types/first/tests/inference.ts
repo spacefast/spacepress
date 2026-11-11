@@ -1,0 +1,175 @@
+// Positive checks: inferred types are exactly what the spec says.
+import {
+  action, db, defineConfig, integer, text, job, email,
+  type AccessCtx, type BlockValue, type BeforeHookCtx, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx,
+} from "first";
+import { authors, comments, items, locations, posts, relations, entities, settings, shoppingList } from "./schema";
+
+export type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+export declare function expectType<T extends true>(): void;
+
+type Item = InferSelectModel<typeof items>;
+type Location = InferSelectModel<typeof locations>;
+type ItemInsert = InferInsertModel<typeof items>;
+type RequiredKeys<T> = { [K in keyof T]-?: {} extends Pick<T, K> ? never : K }[keyof T];
+
+// Select types
+expectType<Equal<Item["id"], number>>();
+expectType<Equal<Item["unit"], "pcs" | "g" | "kg">>();
+expectType<Equal<Location["kind"], "fridge" | "freezer" | "pantry">>();
+expectType<Equal<Item["expiresOn"], string | null>>();
+expectType<Equal<Item["createdAt"], string>>();
+expectType<Equal<Item["opened"], boolean>>();
+expectType<Equal<Item["tags"], string[]>>();
+expectType<Equal<Item["meta"], unknown>>();
+expectType<Equal<Item["locationId"], number | null>>();
+expectType<Equal<Item, (typeof items)["$inferSelect"]>>();
+
+// Insert types: only NOT NULL columns without a default are required
+expectType<Equal<RequiredKeys<ItemInsert>, "name">>();
+expectType<Equal<keyof ItemInsert, keyof Item>>();
+
+// v1 builders (design §1.1)
+type Post = InferSelectModel<typeof posts>;
+type Author = InferSelectModel<typeof authors>;
+type Comment = InferSelectModel<typeof comments>;
+expectType<Equal<Author["email"], string>>();
+expectType<Equal<Author["bio"], string | null>>();
+expectType<Equal<Author["avatar"], number | null>>();
+expectType<Equal<Post["slug"], string | null>>();
+expectType<Equal<Post["body"], string | null>>();
+expectType<Equal<Post["photos"], number[] | null>>();
+expectType<Equal<Post["tags"], ("news" | "guide" | "release")[]>>();
+expectType<Equal<Post["kind"], "article" | "note">>();
+expectType<Equal<Post["seo"], { metaTitle: string | null; noindex: boolean } | null>>();
+expectType<Equal<Post["gallery"], { image: number; caption: string | null }[] | null>>();
+expectType<
+  Equal<Post["sections"], ({ layout: "hero"; heading: string; image: number | null } | { layout: "quote"; text: string; cite: string | null })[] | null>
+>();
+type Hero = Extract<BlockValue<{ hero: { heading: ReturnType<typeof text> } }>, { layout: "hero" }>;
+expectType<Equal<Hero, { layout: "hero"; heading: string | null }>>();
+
+// Collections gain status/publishedAt; tables don't.
+expectType<Equal<Post["status"], "draft" | "published" | "scheduled">>();
+expectType<Equal<Post["publishedAt"], string | null>>();
+expectType<Equal<Author["status"], "draft" | "published" | "scheduled">>();
+expectType<Equal<keyof Comment, "id" | "postId" | "body" | "approved">>();
+expectType<Equal<"status" extends keyof Item ? true : false, false>>();
+// title is required; slug({ source }) derives, so it's optional; status defaults to published.
+expectType<Equal<RequiredKeys<InferInsertModel<typeof posts>>, "title">>();
+
+// Globals read every field (defaults applied), update any subset.
+expectType<Equal<(typeof settings)["$inferSelect"], { siteTitle: string; postsPerPage: number; website: string | null; social: { label: string; href: string }[] | null }>>();
+expectType<Equal<(typeof settings)["$inferUpdate"]["postsPerPage"], number | undefined>>();
+
+async function queries() {
+  const withLocation = await db.query.items.findMany({ with: { location: true } });
+  expectType<Equal<(typeof withLocation)[number]["location"], Location | null>>();
+
+  // optional: false -> not nullable
+  const entry = await db.query.shoppingList.findFirst({ with: { item: true } });
+  expectType<Equal<NonNullable<typeof entry>["item"], Item>>();
+
+  // columns pick + nested with
+  const loc = await db.query.locations.findFirst({
+    columns: { name: true },
+    with: { items: { columns: { id: true }, with: { location: true }, limit: 5 } },
+  });
+  expectType<Equal<typeof loc, { name: string; items: { id: number; location: Location | null }[] } | undefined>>();
+
+  // columns omit
+  const lists = await db.query.shoppingList.findMany({
+    columns: { done: false },
+    where: { item: { location: { kind: "fridge" } }, OR: [{ done: true }, { name: { like: "%milk%" } }] },
+    orderBy: { name: "asc" },
+  });
+  expectType<Equal<keyof (typeof lists)[number], "id" | "itemId" | "name">>();
+
+  const inserted = await db.insert(items).values([{ name: "a" }, { name: "b", unit: "kg" }]).returning();
+  expectType<Equal<typeof inserted, Item[]>>();
+  const updated = await db.update(items).set({ quantity: 2 }).where({ id: { in: [1, 2] } }).returning();
+  expectType<Equal<typeof updated, Item[]>>();
+  await db.delete(shoppingList).where({ done: true, itemId: { isNull: true } });
+
+  // `has` on list columns; JSON-valued columns compare whole values; trusted reads see every status.
+  const news = await db.query.posts.findMany({
+    where: { tags: { has: "news" }, photos: { isNull: true }, seo: { isNotNull: true }, status: { in: ["draft", "scheduled"] } },
+    orderBy: { publishedAt: "desc" },
+    with: { author: true },
+  });
+  expectType<Equal<(typeof news)[number]["author"], Author | null>>();
+  await db.update(posts).set({ status: "published", sections: [{ layout: "quote", text: "hi" }] }).where({ tags: { eq: [] } });
+
+  // db.globals is typed from the registered config.
+  const s = await db.globals.settings.get();
+  expectType<Equal<typeof s.postsPerPage, number>>();
+  await db.globals.settings.update({ postsPerPage: 20 });
+}
+
+// Access rule functions see a typed ctx; read/update may return filters (with relation keys).
+type PostAccess = NonNullable<NonNullable<Parameters<typeof import("first").collection>[1]>["access"]>;
+declare const accessCtx: AccessCtx<Partial<InferInsertModel<typeof posts>>>;
+expectType<Equal<typeof accessCtx.user, User | null>>();
+expectType<Equal<typeof accessCtx.op, "read" | "create" | "update" | "delete">>();
+expectType<Equal<NonNullable<typeof accessCtx.data>["status"], "draft" | "published" | "scheduled" | undefined>>();
+void (0 as unknown as PostAccess);
+declare const vctx: ValidateCtx;
+expectType<Equal<typeof vctx.user, User | null>>();
+
+export default defineConfig({
+  jobs: { sendWelcome: job({ input: { email: email().notNull(), name: text().notNull().default("world") }, handler: async (input, ctx) => { expectType<Equal<typeof input.name, string>>(); void [input.email, ctx.attempt, ctx.jobId]; } }) },
+  locales: { default: "en", all: ["en", "de"] },
+  name: "fixture",
+  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
+  relations,
+  globals: { settings },
+  hooks: {
+    posts: {
+      // Hooks get a trailing ctx: who's writing, and where.
+      async beforeCreate(data, ctx) {
+        expectType<Equal<typeof ctx, BeforeHookCtx<typeof data>>>();
+        expectType<Equal<typeof ctx.data, typeof data>>();
+        if (data.authorId == null && ctx.user) {
+          const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
+          if (author) data.authorId = author.id;
+        }
+      },
+      afterUpdate(row, previous, ctx) {
+        expectType<Equal<[typeof row, typeof previous], [Post, Post]>>();
+        if (previous.status !== "published" && row.status === "published") void ctx.user;
+      },
+    },
+    items: {
+      beforeCreate(data) {
+        expectType<Equal<typeof data, ItemInsert>>();
+        data.name = data.name.trim();
+      },
+      async beforeUpdate(patch, existing) {
+        expectType<Equal<typeof patch, Partial<ItemInsert>>>();
+        return { ...patch, name: existing.name };
+      },
+      afterUpdate(row, previous) {
+        expectType<Equal<typeof row | typeof previous, Item>>();
+      },
+    },
+  },
+  actions: {
+    consume: action({
+      input: { itemId: integer().notNull(), amount: integer().default(1), note: text() },
+      handler(input) {
+        expectType<Equal<typeof input, { itemId: number; amount: number | null; note?: string | null }>>();
+        return input.itemId;
+      },
+    }),
+    whoami: action({
+      input: {},
+      access: (ctx) => ctx.user !== null,
+      handler(_input, ctx) {
+        expectType<Equal<typeof ctx, HookCtx>>();
+        return ctx.user?.name ?? "anonymous";
+      },
+    }),
+    publish: action({ input: { id: integer().notNull() }, access: "editor", handler: ({ id }) => id }),
+  },
+});
+void queries;

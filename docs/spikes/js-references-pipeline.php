@@ -5,12 +5,12 @@ declare(strict_types=1);
 // Build js-references-pipeline.config.ts in a disposable directory, then pass its wp-content path.
 require getcwd() . '/tests/php/wp.php';
 $wp = wpSite('refs-pipeline', ['wpContent' => $argv[1] ?? throw new InvalidArgumentException('Pass the built wp-content directory')]);
-$db = \Zero\db();
+$db = \First\db();
 $owner = $db->insert('owners', ['name' => 'Owner'], true)[0];
 $meta = '{"count":7,"tags":["a","b","c"],"detail":{"label":"hello"}}';
 $rows = [];
 for ($i = 0; $i < 200; $i++) {
-    $rows[] = ['name' => 'Row ' . $i, 'ownerId' => $owner['id'], 'meta' => \Zero\Js::decodeJson($meta)];
+    $rows[] = ['name' => 'Row ' . $i, 'ownerId' => $owner['id'], 'meta' => \First\Js::decodeJson($meta)];
 }
 $db->insert('records', $rows);
 $requests = 0;

@@ -2,7 +2,7 @@ import { notFound } from '@wordpress/route';
 import {
 	loadViewConfig,
 	preloadFieldCollections,
-} from '@zero-admin/core-data-next';
+} from '@first-admin/core-data-next';
 import { resolveSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
 

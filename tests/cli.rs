@@ -1,7 +1,7 @@
-//! The `zero` command line: one table, build commands here, site commands through WP-CLI
+//! The `first` command line: one table, build commands here, site commands through WP-CLI
 //! (docs/decisions/2026-11-07-one-cli.md). The fixture tests use a stand-in `wp` on PATH; the
 //! WordPress test serves a real WordPress on SQLite (tests/php/wp.php serve) and checks that
-//! `zero <site cmd> --site @alias` answers exactly what `wp @alias zero <site cmd>` answers.
+//! `first <site cmd> --site @alias` answers exactly what `wp @alias first <site cmd>` answers.
 
 #![cfg(feature = "cli")]
 
@@ -9,8 +9,8 @@ use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 
-fn zero() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_zero"))
+fn first() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_first"))
 }
 
 fn root() -> PathBuf {
@@ -59,8 +59,8 @@ fn run_with_stdin(mut command: Command, stdin: &str) -> Output {
 #[test]
 fn help_lists_build_and_site_commands_from_one_table() {
     let table: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(root().join("runtime/Zero/Cli/commands.json")).unwrap()).unwrap();
-    let out = zero().arg("help").output().unwrap();
+        serde_json::from_slice(&std::fs::read(root().join("runtime/First/Cli/commands.json")).unwrap()).unwrap();
+    let out = first().arg("help").output().unwrap();
     assert!(out.status.success());
     let help = text(&out.stdout);
     let build = help.find("\nBuild").expect("a build group");
@@ -83,24 +83,24 @@ fn help_lists_build_and_site_commands_from_one_table() {
         }
     }
     // No command and an unknown command both print the same help on stderr and exit 2.
-    let bare = zero().output().unwrap();
+    let bare = first().output().unwrap();
     assert_eq!(bare.status.code(), Some(2));
     assert_eq!(text(&bare.stderr), help);
-    let unknown = zero().arg("frobnicate").output().unwrap();
+    let unknown = first().arg("frobnicate").output().unwrap();
     assert_eq!(unknown.status.code(), Some(2));
     assert_eq!(text(&unknown.stderr), format!("no command frobnicate\n{help}"));
-    // `zero help <command>` prints that command's arguments.
-    let jobs = zero().args(["help", "jobs"]).output().unwrap();
+    // `first help <command>` prints that command's arguments.
+    let jobs = first().args(["help", "jobs"]).output().unwrap();
     assert_eq!(
         text(&jobs.stdout),
-        "usage: zero jobs list [--state=s] | run <id> | retry <id> | cancel <id> | maintain\n"
+        "usage: first jobs list [--state=s] | run <id> | retry <id> | cancel <id> | maintain\n"
     );
 }
 
 #[test]
 fn site_commands_forward_arguments_stdin_and_exit_status_to_wp_cli() {
     let wp = fake_wp();
-    let mut command = zero();
+    let mut command = first();
     command.args(["migrate-legacy", "-", "--dry-run", "--site", "@prod", "--space=s1"]);
     with_path(&mut command, wp.path());
     let out = run_with_stdin(command, "<?php return [];");
@@ -108,12 +108,12 @@ fn site_commands_forward_arguments_stdin_and_exit_status_to_wp_cli() {
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         seen["args"],
-        serde_json::json!(["@prod", "zero", "migrate-legacy", "-", "--dry-run", "--space=s1"])
+        serde_json::json!(["@prod", "first", "migrate-legacy", "-", "--dry-run", "--space=s1"])
     );
     assert_eq!(seen["stdin"], "<?php return [];");
 
-    // `zero wp` forwards any WP-CLI command; `--site=@x` works too.
-    let mut command = zero();
+    // `first wp` forwards any WP-CLI command; `--site=@x` works too.
+    let mut command = first();
     command.args(["wp", "--site=@staging", "plugin", "list", "--format=json"]);
     with_path(&mut command, wp.path());
     let out = command.output().unwrap();
@@ -127,16 +127,16 @@ fn site_commands_forward_arguments_stdin_and_exit_status_to_wp_cli() {
 
 #[test]
 fn abilities_pull_runs_here_and_bare_abilities_forwards_to_the_site() {
-    // `abilities pull` reads a site over HTTP from this binary; `abilities` alone is `wp zero abilities`.
+    // `abilities pull` reads a site over HTTP from this binary; `abilities` alone is `wp first abilities`.
     let wp = fake_wp();
-    let mut command = zero();
+    let mut command = first();
     command.args(["abilities", "--site", "@prod"]);
     with_path(&mut command, wp.path());
     let out = command.output().unwrap();
     assert_eq!(out.status.code(), Some(7));
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(seen["args"], serde_json::json!(["@prod", "zero", "abilities"]));
-    let mut command = zero();
+    assert_eq!(seen["args"], serde_json::json!(["@prod", "first", "abilities"]));
+    let mut command = first();
     command.args(["abilities", "pull"]);
     with_path(&mut command, wp.path());
     let out = command.output().unwrap();
@@ -150,48 +150,48 @@ fn abilities_pull_runs_here_and_bare_abilities_forwards_to_the_site() {
 
 #[test]
 fn a_site_url_is_refused_for_wp_cli_commands() {
-    let out = zero()
+    let out = first()
         .args(["jobs", "list", "--site", "https://example.test"])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
     assert!(text(&out.stderr).contains("--site @name"), "{}", text(&out.stderr));
-    let out = zero()
+    let out = first()
         .args(["wp", "--site", "@a", "--site", "@b", "option", "get"])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
     assert!(text(&out.stderr).contains("--site given twice"));
-    let out = zero().arg("wp").output().unwrap();
+    let out = first().arg("wp").output().unwrap();
     assert_eq!(out.status.code(), Some(2));
-    assert!(text(&out.stderr).starts_with("zero wp needs WP-CLI arguments\nusage: zero wp"));
+    assert!(text(&out.stderr).starts_with("first wp needs WP-CLI arguments\nusage: first wp"));
 }
 
 #[test]
 fn build_commands_refuse_options_they_do_not_take() {
-    let out = zero().args(["check", "--port", "9"]).output().unwrap();
+    let out = first().args(["check", "--port", "9"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
-    assert!(text(&out.stderr).starts_with("unknown option --port for zero check\nusage: zero check"));
+    assert!(text(&out.stderr).starts_with("unknown option --port for first check\nusage: first check"));
 }
 
 #[test]
 fn sync_takes_its_credential_from_the_environment_only() {
-    let out = zero()
+    let out = first()
         .args(["sync", "--site", "http://127.0.0.1:9"])
-        .env_remove("ZERO_APP_PASSWORD")
-        .env_remove("ZERO_TOKEN")
+        .env_remove("FIRST_APP_PASSWORD")
+        .env_remove("FIRST_TOKEN")
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(3));
-    assert!(text(&out.stderr).starts_with("zero sync needs a credential in ZERO_APP_PASSWORD or ZERO_TOKEN"));
-    let out = zero()
+    assert!(text(&out.stderr).starts_with("first sync needs a credential in FIRST_APP_PASSWORD or FIRST_TOKEN"));
+    let out = first()
         .args(["sync", "--site", "http://127.0.0.1:9"])
-        .env("ZERO_APP_PASSWORD", "a:b")
-        .env("ZERO_TOKEN", "t")
+        .env("FIRST_APP_PASSWORD", "a:b")
+        .env("FIRST_TOKEN", "t")
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(3));
-    assert!(text(&out.stderr).starts_with("set ZERO_APP_PASSWORD or ZERO_TOKEN, not both"));
+    assert!(text(&out.stderr).starts_with("set FIRST_APP_PASSWORD or FIRST_TOKEN, not both"));
 }
 
 /// The served WordPress, stopped (and its directory removed) on drop.
@@ -204,7 +204,7 @@ impl Drop for Served {
     }
 }
 
-const CONFIG: &str = r#"import { defineConfig, table, id, text, job, jobs, integer } from "zero";
+const CONFIG: &str = r#"import { defineConfig, table, id, text, job, jobs, integer } from "first";
 const notes = table({ id: id(), title: text().notNull() }, { access: { read: "anyone" } });
 export default defineConfig({
   name: "clilane",
@@ -213,23 +213,28 @@ export default defineConfig({
 });
 "#;
 
-/// `zero <site cmd> --site @lane` and `wp @lane zero <site cmd>` on one real WordPress: the same
+/// `first <site cmd> --site @lane` and `wp @lane first <site cmd>` on one real WordPress: the same
 /// stdout, the same exit status. Needs PHP 8.2+ with pdo_sqlite and network for the pinned
 /// downloads (cached in tests/wp/cache), as tests/sync.rs does.
 #[test]
 fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("zero.config.ts"), CONFIG).unwrap();
-    let built = zero().arg("build").arg(project.path()).arg("--quiet").output().unwrap();
+    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    let built = first()
+        .arg("build")
+        .arg(project.path())
+        .arg("--quiet")
+        .output()
+        .unwrap();
     assert!(built.status.success(), "build: {}", text(&built.stderr));
 
     let mut child = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.path().join("zero/dist/wp-content"))
-        .env("ZERO_WP_CLI", "1")
-        .env("ZERO_WP_IDENTITY", "1")
+        .arg(project.path().join("first/dist/wp-content"))
+        .env("FIRST_WP_CLI", "1")
+        .env("FIRST_WP_IDENTITY", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
@@ -278,12 +283,12 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     };
     let direct = |args: &[&str]| {
         let mut command = Command::new(&wp);
-        command.arg("@lane").arg("zero").args(args);
+        command.arg("@lane").arg("first").args(args);
         env(&mut command);
         command.output().unwrap()
     };
     let forwarded = |args: &[&str]| {
-        let mut command = zero();
+        let mut command = first();
         command.args(args).args(["--site", "@lane"]);
         env(&mut command);
         command.output().unwrap()
@@ -293,7 +298,7 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         assert_eq!(
             text(&b.stdout),
             text(&a.stdout),
-            "zero {args:?} vs wp zero {args:?}\n{}",
+            "first {args:?} vs wp first {args:?}\n{}",
             text(&b.stderr)
         );
         assert_eq!(b.status.code(), a.status.code(), "{args:?}");
@@ -304,15 +309,15 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     let empty = same(&["jobs", "list"]);
     assert_eq!(empty, serde_json::json!({"data": []}));
     assert_eq!(same(&["find", "notes"]), serde_json::json!({"data": []}));
-    // A write through `zero`, read back both ways.
-    let inserted = forwarded(&["insert", "notes", r#"{"title":"From zero"}"#]);
+    // A write through `first`, read back both ways.
+    let inserted = forwarded(&["insert", "notes", r#"{"title":"From first"}"#]);
     assert_eq!(inserted.status.code(), Some(0), "{}", text(&inserted.stdout));
     let found = same(&["find", "notes"]);
-    assert_eq!(found["data"][0]["title"], "From zero");
+    assert_eq!(found["data"][0]["title"], "From first");
     // A failing command keeps WP-CLI's exit status and error document.
     let bad = same(&["jobs", "retry", "no-such-job"]);
     assert!(bad["error"]["code"].is_string(), "{bad}");
-    // Identity lives under the one `zero` namespace.
+    // Identity lives under the one `first` namespace.
     let app = same(&[
         "identity",
         "app",
@@ -325,14 +330,14 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     assert_eq!(app["data"]["id"], "app_lane", "{app}");
     let usage = same(&["identity", "frobnicate"]);
     assert_eq!(usage["error"]["code"], "invalid_command");
-    // `zero wp` reaches plain WordPress commands.
-    let mut command = zero();
+    // `first wp` reaches plain WordPress commands.
+    let mut command = first();
     command.args(["wp", "--site", "@lane", "option", "get", "blogname"]);
     env(&mut command);
     let blogname = command.output().unwrap();
     assert_eq!(
         text(&blogname.stdout).trim(),
-        "Zero test site",
+        "First test site",
         "{}",
         text(&blogname.stderr)
     );

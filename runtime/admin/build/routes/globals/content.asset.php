@@ -1,1 +1,1 @@
-<?php return array('name' => 'globals', 'dependencies' => array(), 'moduleDependencies' => array('@zero-admin/schema'), 'version' => '798f91549225bae0c0d0');
+<?php return array('name' => 'globals', 'dependencies' => array(), 'moduleDependencies' => array('@first-admin/schema'), 'version' => '8e17526a6118e7a35281');

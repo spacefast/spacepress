@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\Util;
+namespace First\Identity\Vendor\Webauthn\Util;
 
-use Zero\Identity\Vendor\Webauthn\CredentialRecord;
-use Zero\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use First\Identity\Vendor\Webauthn\CredentialRecord;
+use First\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
 
 /**
  * Utility class to convert between PublicKeyCredentialSource and CredentialRecord.

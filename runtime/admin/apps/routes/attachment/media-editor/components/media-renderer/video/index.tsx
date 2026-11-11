@@ -12,7 +12,7 @@ export default function VideoRenderer({ post }: { post: MediaItem }) {
 
 	return (
 		<video
-			className="zero-admin-media-editor-content__video"
+			className="first-admin-media-editor-content__video"
 			controls={true}
 			// poster={ % use the attachment's featured image % }
 			preload="true"

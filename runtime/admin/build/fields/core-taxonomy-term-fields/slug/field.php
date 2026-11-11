@@ -2,12 +2,12 @@
 /**
  * Slug field definition for core taxonomy term fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Slug', 'zero-admin' ),
+	'label'              => __( 'Slug', 'first-admin' ),
 	'enableGlobalSearch' => true,
 	'filterBy'           => false,
 );

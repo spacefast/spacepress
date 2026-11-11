@@ -3,20 +3,20 @@
 
 $header-height: variables.$header-height;
 
-.zero-admin-site-editor {
+.first-admin-site-editor {
 	height: 100%;
 	width: 100%;
 	position: relative;
 }
 
-.zero-admin-site-editor .interface-interface-skeleton {
+.first-admin-site-editor .interface-interface-skeleton {
 	position: relative;
 	height: 100%;
 	top: 0;
 	left: 0;
 }
 
-.zero-admin-layout__canvas:not( .is-full-canvas )
+.first-admin-layout__canvas:not( .is-full-canvas )
 	.interface-interface-skeleton__header {
 	display: none;
 }
@@ -26,12 +26,12 @@ $header-height: variables.$header-height;
 	margin-top: 0 !important;
 }
 
-.zero-admin-site-editor__hyperlink {
+.first-admin-site-editor__hyperlink {
 	pointer-events: none;
 	position: absolute;
 	inset: calc( 2 * var( --wpds-border-width-focus ) );
 	// In order to use the correct radius, add the distance from the outer border
-	// of the .zero-admin-site-editor (which is var( --wpds-border-width-focus )).
+	// of the .first-admin-site-editor (which is var( --wpds-border-width-focus )).
 	border-radius: calc(
 		var( --wpds-border-radius-sm ) + var( --wpds-border-width-focus )
 	);

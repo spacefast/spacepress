@@ -1,8 +1,8 @@
-// Tagged templates, which live Zero 0.8 apps use (zero#138 census): small `html`/`sql`-style
+// Tagged templates, which live Zero 0.8 apps use (first#138 census): small `html`/`sql`-style
 // tag helpers and String.raw for regex and path text. Every action runs under Node and as
 // compiled PHP; the JSON results must be byte-identical. `tagged-templates-helpers.mjs` runs the
 // same shapes untyped.
-import { action, defineConfig } from "zero";
+import { action, defineConfig } from "first";
 import { taggedUntyped } from "./tagged-templates-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });

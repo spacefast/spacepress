@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\Util;
+namespace First\Identity\Vendor\Webauthn\Util;
 
-use Zero\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ECSignature;
-use Zero\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256;
-use Zero\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256K;
-use Zero\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES384;
-use Zero\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES512;
-use Zero\Identity\Vendor\Cose\Algorithm\Signature\Signature;
+use First\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ECSignature;
+use First\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256;
+use First\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256K;
+use First\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES384;
+use First\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES512;
+use First\Identity\Vendor\Cose\Algorithm\Signature\Signature;
 use function strlen;
 
 /**

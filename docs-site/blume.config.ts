@@ -8,7 +8,7 @@ export default defineConfig({
 	title: "First",
 	description: "First turns one TypeScript file into a WordPress backend: database tables, a REST API, sign-in, an admin and a typed client.",
 	logo: { image: "/logo.svg", text: "First" },
-	github: { owner: "spacefast", repo: "zero", dir: "docs-site" },
+	github: { owner: "spacefast", repo: "first", dir: "docs-site" },
 	theme: { accent: "blue", mode: "system" },
 	navigation: {
 		tabs: [

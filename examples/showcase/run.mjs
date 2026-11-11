@@ -25,7 +25,7 @@ const example = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(example, "../..");
 const state = resolve(
   repo,
-  process.env.ZERO_SHOWCASE_STATE_DIR ?? ".zero/showcase",
+  process.env.FIRST_SHOWCASE_STATE_DIR ?? ".first/showcase",
 );
 const app = join(state, "app");
 const harness = join(state, "harness/wp/harness.sh");
@@ -39,12 +39,12 @@ const known = existsSync(knownFile)
   : null;
 const command = process.argv[2] ?? "up";
 const project =
-  process.env.ZERO_SHOWCASE_PROJECT ??
+  process.env.FIRST_SHOWCASE_PROJECT ??
   known?.project ??
-  `zero-showcase-${createHash("sha256").update(state).digest("hex").slice(0, 8)}`;
-const port = process.env.ZERO_SHOWCASE_PORT ?? known?.port ?? "8860";
+  `first-showcase-${createHash("sha256").update(state).digest("hex").slice(0, 8)}`;
+const port = process.env.FIRST_SHOWCASE_PORT ?? known?.port ?? "8860";
 const publicAddress = new URL(
-  process.env.ZERO_SHOWCASE_URL ??
+  process.env.FIRST_SHOWCASE_URL ??
     known?.publicUrl ??
     `http://127.0.0.1:${port}`,
 );
@@ -57,7 +57,7 @@ if (
   publicAddress.hash
 )
   throw new Error(
-    "ZERO_SHOWCASE_URL must be an HTTP(S) origin without a path or credentials.",
+    "FIRST_SHOWCASE_URL must be an HTTP(S) origin without a path or credentials.",
   );
 const publicUrl = publicAddress.origin;
 if (
@@ -77,13 +77,13 @@ if (known && (known.project !== project || known.port !== port)) {
 }
 const env = {
   ...process.env,
-  ZERO_WP_PROJECT: project,
-  ZERO_WP_PORT: port,
-  ZERO_WP_HARNESS: dirname(harness),
-  ZERO_WP_CONTENT: join(state, "wp-content"),
-  ZERO_WP_S3: "0",
-  ZERO_WP_UID: String(process.getuid()),
-  ZERO_WP_GID: String(process.getgid()),
+  FIRST_WP_PROJECT: project,
+  FIRST_WP_PORT: port,
+  FIRST_WP_HARNESS: dirname(harness),
+  FIRST_WP_CONTENT: join(state, "wp-content"),
+  FIRST_WP_S3: "0",
+  FIRST_WP_UID: String(process.getuid()),
+  FIRST_WP_GID: String(process.getgid()),
 };
 const run = (file, args, options = {}) =>
   execFileSync(file, args, { cwd: repo, env, stdio: "inherit", ...options });
@@ -95,8 +95,8 @@ const wp = (...args) =>
     encoding: "utf8",
   }).trim();
 
-const invocation = process.env.ZERO_SHOWCASE_STATE_DIR
-  ? `ZERO_SHOWCASE_STATE_DIR='${state.replaceAll("'", "'\\''")}' node examples/showcase/run.mjs`
+const invocation = process.env.FIRST_SHOWCASE_STATE_DIR
+  ? `FIRST_SHOWCASE_STATE_DIR='${state.replaceAll("'", "'\\''")}' node examples/showcase/run.mjs`
   : "node examples/showcase/run.mjs";
 
 function prerequisites(mode) {
@@ -155,7 +155,7 @@ function receipt() {
   const saved = JSON.parse(readFileSync(receiptFile, "utf8"));
   if (saved.project !== project || saved.port !== port)
     throw new Error(
-      "Use the same ZERO_SHOWCASE_PROJECT and ZERO_SHOWCASE_PORT as the running showcase.",
+      "Use the same FIRST_SHOWCASE_PROJECT and FIRST_SHOWCASE_PORT as the running showcase.",
     );
   return saved;
 }
@@ -245,7 +245,7 @@ function verifyOwnership() {
   }
   if (foreign.length)
     throw new Error(
-      `Refusing to change a Compose project with unverified resources:\n- ${foreign.join("\n- ")}\nUse a different ZERO_SHOWCASE_PROJECT and state directory. A saved receipt is not proof of Docker ownership; older unlabeled showcases require explicit manual inspection/cleanup.`,
+      `Refusing to change a Compose project with unverified resources:\n- ${foreign.join("\n- ")}\nUse a different FIRST_SHOWCASE_PROJECT and state directory. A saved receipt is not proof of Docker ownership; older unlabeled showcases require explicit manual inspection/cleanup.`,
     );
   return ownsPort;
 }
@@ -259,14 +259,14 @@ async function verifyPort(ownsPort) {
   ).trim();
   if (publishers)
     throw new Error(
-      `Cannot bind showcase port 127.0.0.1:${port}: already published by Docker (${publishers.replaceAll("\n", ", ")}). Choose another ZERO_SHOWCASE_PORT on a new state directory.`,
+      `Cannot bind showcase port 127.0.0.1:${port}: already published by Docker (${publishers.replaceAll("\n", ", ")}). Choose another FIRST_SHOWCASE_PORT on a new state directory.`,
     );
   await new Promise((resolve, reject) => {
     const server = createServer();
     server.once("error", (error) =>
       reject(
         new Error(
-          `Cannot bind showcase port 127.0.0.1:${port}: ${error.message}. Choose another ZERO_SHOWCASE_PORT on a new state directory.`,
+          `Cannot bind showcase port 127.0.0.1:${port}: ${error.message}. Choose another FIRST_SHOWCASE_PORT on a new state directory.`,
         ),
       ),
     );
@@ -283,11 +283,11 @@ async function clients(saved) {
   );
   return {
     publicClient: createClient({
-      url: `${saved.url}/wp-json/zero/v1`,
+      url: `${saved.url}/wp-json/first/v1`,
       fetch: http,
     }),
     editor: createClient({
-      url: `${saved.url}/wp-json/zero/v1`,
+      url: `${saved.url}/wp-json/first/v1`,
       fetch: http,
       headers: {
         authorization: `Basic ${Buffer.from(`editor:${saved.users.editor.appPassword}`).toString("base64")}`,
@@ -308,7 +308,7 @@ async function seedClassic(saved) {
   if (
     wp(
       "eval",
-      "echo get_option('zero_showcase_seeded', false) ? 'yes' : 'no';",
+      "echo get_option('first_showcase_seeded', false) ? 'yes' : 'no';",
     ) === "yes"
   )
     return;
@@ -323,7 +323,7 @@ async function seedClassic(saved) {
   const first = await editor.stories.create({
     title: "Make room for the work that matters",
     status: "published",
-    body: "<p>This is a real WordPress post, created through Zero’s generated client. Open the native editor, change a sentence, and publish it.</p><p>The fields below the editor come from the same TypeScript config as the API.</p>",
+    body: "<p>This is a real WordPress post, created through First’s generated client. Open the native editor, change a sentence, and publish it.</p><p>The fields below the editor come from the same TypeScript config as the API.</p>",
     cover: cover.id,
     details: {
       subtitle:
@@ -331,7 +331,7 @@ async function seedClassic(saved) {
       featured: true,
     },
     links: [
-      { label: "Zero on GitHub", href: "https://github.com/spacefast/zero" },
+      { label: "First on GitHub", href: "https://github.com/spacefast/zero" },
     ],
     sections: [
       {
@@ -372,14 +372,14 @@ async function seedClassic(saved) {
       done,
       editorNote: "Only signed-in editors can read this note.",
     });
-  wp("option", "update", "zero_showcase_seeded", "1");
+  wp("option", "update", "first_showcase_seeded", "1");
 }
 
 async function seedPantry(saved) {
   if (
     wp(
       "eval",
-      "echo get_option('zero_showcase_pantry_seeded', false) ? 'yes' : 'no';",
+      "echo get_option('first_showcase_pantry_seeded', false) ? 'yes' : 'no';",
     ) === "yes"
   )
     return;
@@ -453,7 +453,7 @@ async function seedPantry(saved) {
     locationId: cupboard.id,
   });
   await editor.actions.restock({ itemId: coffee.id, amount: 3 });
-  wp("option", "update", "zero_showcase_pantry_seeded", "1");
+  wp("option", "update", "first_showcase_pantry_seeded", "1");
 }
 
 async function seed(saved) {
@@ -466,7 +466,7 @@ async function seedPantryDetails(saved) {
   if (
     wp(
       "eval",
-      "echo get_option('zero_showcase_details_seeded', false) ? 'yes' : 'no';",
+      "echo get_option('first_showcase_details_seeded', false) ? 'yes' : 'no';",
     ) === "yes"
   )
     return;
@@ -488,7 +488,7 @@ async function seedPantryDetails(saved) {
     links: [
       {
         label: "Edit the pantry",
-        href: `${saved.url}/wp-admin/admin.php?page=zero-showcase-pantry`,
+        href: `${saved.url}/wp-admin/admin.php?page=first-showcase-pantry`,
       },
     ],
     sections: [
@@ -532,7 +532,7 @@ async function seedPantryDetails(saved) {
       locationId: location?.id ?? null,
       storyId: story.id,
     });
-  wp("option", "update", "zero_showcase_details_seeded", "1");
+  wp("option", "update", "first_showcase_details_seeded", "1");
 }
 
 async function checkPantry(publicClient, editor, story) {
@@ -739,8 +739,8 @@ async function checkPantry(publicClient, editor, story) {
 async function check(saved) {
   const { publicClient, editor } = await clients(saved);
   assert.deepEqual(
-    await publicClient.actions.previewHeadline({ title: "  Hello, Zero!  " }),
-    { title: "Hello, Zero!", slug: "hello-zero", characters: 12 },
+    await publicClient.actions.previewHeadline({ title: "  Hello, First!  " }),
+    { title: "Hello, First!", slug: "hello-first", characters: 12 },
   );
   let task, story, cover, anonymousTask, failure;
   try {
@@ -754,7 +754,7 @@ async function check(saved) {
     );
     const png = coverPng();
     cover = await editor.media.upload(new Blob([png], { type: "image/png" }), {
-      filename: "zero-smoke-check.png",
+      filename: "first-smoke-check.png",
       alt: "Temporary showcase smoke check",
     });
     story = await editor.stories.create({
@@ -846,7 +846,7 @@ async function check(saved) {
       "HTTP derivative decodes to the configured dimensions",
     );
     const page = await http(
-      `${saved.url}/wp-content/plugins/zero-app-showcase/public/`,
+      `${saved.url}/wp-content/plugins/first-app-showcase/public/`,
     );
     assert.equal(page.status, 200);
     console.log(
@@ -883,7 +883,7 @@ async function check(saved) {
 
 function show(saved) {
   console.log(
-    `\nShowcase: ${saved.url}/wp-content/plugins/zero-app-showcase/public/\nPantry:   ${saved.url}/wp-content/plugins/zero-app-showcase/public/#pantry\nAdmin:    ${saved.url}/zero-admin/\nWordPress: ${saved.url}/wp-admin/\nPlugins:   ${saved.url}/wp-admin/plugins.php\nSettings:  ${saved.url}/wp-admin/options-general.php\nLogin:     admin / zero-test-admin\nEditor:    editor / zero-test-editor\n\nCheck: ${invocation} check\nStop:  ${invocation} down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
+    `\nShowcase: ${saved.url}/wp-content/plugins/first-app-showcase/public/\nPantry:   ${saved.url}/wp-content/plugins/first-app-showcase/public/#pantry\nAdmin:    ${saved.url}/first-admin/\nWordPress: ${saved.url}/wp-admin/\nPlugins:   ${saved.url}/wp-admin/plugins.php\nSettings:  ${saved.url}/wp-admin/options-general.php\nLogin:     admin / first-test-admin\nEditor:    editor / first-test-editor\n\nCheck: ${invocation} check\nStop:  ${invocation} down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
   );
 }
 
@@ -921,7 +921,7 @@ async function main() {
   mkdirSync(state, { recursive: true, mode: 0o700 });
   await stopControl(state);
   run("cargo", ["build", "--locked", "--quiet"]);
-  const zero = resolve(repo, process.env.CARGO_TARGET_DIR ?? "target", "debug/zero");
+  const first = resolve(repo, process.env.CARGO_TARGET_DIR ?? "target", "debug/first");
   mkdirSync(app, { recursive: true });
   const sourceFiles = readdirSync(example).filter((name) => name.endsWith(".ts"));
   const overridesFile = join(state, "source-overrides.json");
@@ -939,10 +939,10 @@ async function main() {
     cwd: join(example, "code-tools"),
   });
   run("node", [join(example, "code-tools/build.mjs"), join(app, "public")]);
-  copyFileSync(join(repo, "docs-site/public/compiler.wasm"), join(app, "public/zero.wasm"));
+  copyFileSync(join(repo, "docs-site/public/compiler.wasm"), join(app, "public/first.wasm"));
   await buildApp({
     app,
-    zero,
+    first,
     files,
     log: (text) => {
       if (text) console.log(text.trim());
@@ -950,7 +950,7 @@ async function main() {
   });
   const content = join(state, "wp-content");
   mkdirSync(content, { recursive: true });
-  const builtContent = join(app, "zero/dist/wp-content");
+  const builtContent = join(app, "first/dist/wp-content");
   // Refresh generated files without deleting plugins installed through WordPress.
   run("rsync", ["-a", "--exclude=/plugins/", `${builtContent}/`, `${content}/`]);
   const builtPlugins = join(builtContent, "plugins");
@@ -964,11 +964,11 @@ async function main() {
       run("rsync", ["-a", "--delete", `${source}/`, `${destination}/`]);
     } else copyFileSync(source, destination);
   }
-  const classic = join(content, "plugins/zero-showcase-classic-admin");
+  const classic = join(content, "plugins/first-showcase-classic-admin");
   mkdirSync(classic, { recursive: true });
   copyFileSync(
     join(example, "classic-admin.php"),
-    join(classic, "zero-showcase-classic-admin.php"),
+    join(classic, "first-showcase-classic-admin.php"),
   );
   copyFileSync(join(example, "build-control.php"), join(classic, "build-control.php"));
   mkdirSync(join(state, "control"), { recursive: true, mode: 0o700 });
@@ -977,8 +977,8 @@ async function main() {
     "harness.sh",
     "compose.yml",
     "mu-plugins/capture-mail.php",
-    "php/zz-zero-tests.ini",
-    "apache/zz-zero-tests.conf",
+    "php/zz-first-tests.ini",
+    "apache/zz-first-tests.conf",
   ]) {
     const target = join(dirname(harness), file);
     mkdirSync(dirname(target), { recursive: true });
@@ -988,8 +988,8 @@ async function main() {
   writeFileSync(
     compose,
     readFileSync(compose, "utf8").replace(
-      '"${ZERO_WP_PORT:-8790}:80"',
-      '"127.0.0.1:${ZERO_WP_PORT:-8790}:80"',
+      '"${FIRST_WP_PORT:-8790}:80"',
+      '"127.0.0.1:${FIRST_WP_PORT:-8790}:80"',
     ),
   );
   // Resolve the existing harness configuration, then label every resource it creates.
@@ -1008,7 +1008,7 @@ async function main() {
     configuration.services[name].volumes.push({
       type: "bind",
       source: join(state, "control"),
-      target: "/var/run/zero-showcase",
+      target: "/var/run/first-showcase",
       read_only: true,
     });
   writeFileSync(compose, JSON.stringify(configuration, null, 2));
@@ -1031,12 +1031,12 @@ async function main() {
   wp("option", "update", "siteurl", publicUrl);
   writeFileSync(receiptFile, JSON.stringify(saved, null, 2), { mode: 0o600 });
   chmodSync(receiptFile, 0o600);
-  wp("plugin", "activate", "zero-showcase-classic-admin");
-  wp("option", "update", "blogname", "Zero showcase");
+  wp("plugin", "activate", "first-showcase-classic-admin");
+  wp("option", "update", "blogname", "First showcase");
   const controlEnv = Object.fromEntries(
     Object.entries(env).filter(
       ([name]) =>
-        name.startsWith("ZERO_WP_") ||
+        name.startsWith("FIRST_WP_") ||
         [
           "PATH",
           "HOME",
@@ -1053,7 +1053,7 @@ async function main() {
   } finally {
     // Keep the editor available to repair a changed action/hook even when the
     // original demo's smoke expectations no longer match a browser-edited app.
-    await startControl({ state, zero, harness, env: controlEnv });
+    await startControl({ state, first, harness, env: controlEnv });
   }
   show(saved);
 }

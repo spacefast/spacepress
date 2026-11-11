@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\OTPHP;
+namespace First\Identity\Vendor\OTPHP;
 
 use function array_key_exists;
 use function is_string;
-use Zero\Identity\Vendor\OTPHP\Exception\InvalidProvisioningUriException;
+use First\Identity\Vendor\OTPHP\Exception\InvalidProvisioningUriException;
 
 /**
  * @readonly

@@ -1,1 +1,1 @@
-export { MediaLibrary as default } from '@zero-admin/schema';
+export { MediaLibrary as default } from '@first-admin/schema';

@@ -1,1 +1,1 @@
-export { PlainDocument as default } from '@zero-admin/schema';
+export { PlainDocument as default } from '@first-admin/schema';

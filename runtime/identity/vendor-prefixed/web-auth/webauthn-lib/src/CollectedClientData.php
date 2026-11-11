@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn;
+namespace First\Identity\Vendor\Webauthn;
 
 use function array_key_exists;
 use function is_array;
 use function is_string;
 use const JSON_THROW_ON_ERROR;
-use Zero\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
+use First\Identity\Vendor\ParagonIE\ConstantTime\Base64UrlSafe;
 use function sprintf;
-use Zero\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use First\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 class CollectedClientData
 {

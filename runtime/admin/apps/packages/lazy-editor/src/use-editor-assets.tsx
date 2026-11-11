@@ -1,5 +1,5 @@
-import { store as coreDataNextStore } from '@zero-admin/core-data-next';
-import loadAssets from '@zero-admin/load-assets';
+import { store as coreDataNextStore } from '@first-admin/core-data-next';
+import loadAssets from '@first-admin/load-assets';
 import { useState, useEffect } from '@wordpress/element';
 import { resolveSelect, useSelect } from '@wordpress/data';
 

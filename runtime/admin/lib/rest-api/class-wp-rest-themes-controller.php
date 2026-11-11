@@ -1,23 +1,23 @@
 <?php
 /**
- * REST API: Zero_Admin_REST_Themes_Controller class
+ * REST API: First_Admin_REST_Themes_Controller class
  *
- * @package Zero_Admin
+ * @package First_Admin
  * @subpackage REST_API
  */
 
 /**
- * REST API: Zero Admin Themes Controller
+ * REST API: First Admin Themes Controller
  *
  * Handles theme update via the REST API.
  *
  * @TODO: Remove once the update themes endpoint is available on core (see [upstream private reference omitted])
  *
- * @package Zero_Admin
+ * @package First_Admin
  * @since   1.0.0
  * @version 1.0.0
  */
-class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
+class First_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 
 	/**
 	 * Registers the routes for the controller.
@@ -29,7 +29,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 			array(
 				'args'   => array(
 					'stylesheet' => array(
-						'description'       => __( "The theme's stylesheet. This uniquely identifies the theme.", 'zero-admin' ),
+						'description'       => __( "The theme's stylesheet. This uniquely identifies the theme.", 'first-admin' ),
 						'type'              => 'string',
 						'sanitize_callback' => array( $this, '_sanitize_stylesheet_callback' ),
 						'validate_callback' => array( $this, 'validate_theme' ),
@@ -65,7 +65,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 
 		return new WP_Error(
 			'rest_cannot_delete_themes',
-			__( 'Sorry, you are not allowed to delete themes.', 'zero-admin' ),
+			__( 'Sorry, you are not allowed to delete themes.', 'first-admin' ),
 			array( 'status' => rest_authorization_required_code() )
 		);
 	}
@@ -93,7 +93,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 		if ( ! $theme->exists() ) {
 			return new WP_Error(
 				'rest_theme_not_found',
-				__( 'The requested theme does not exist.', 'zero-admin' ),
+				__( 'The requested theme does not exist.', 'first-admin' ),
 				array( 'status' => 404 )
 			);
 		}
@@ -106,7 +106,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 
 		return rest_ensure_response(
 			array(
-				'message' => __( 'Theme deleted successfully.', 'zero-admin' ),
+				'message' => __( 'Theme deleted successfully.', 'first-admin' ),
 			)
 		);
 	}
@@ -123,7 +123,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 			if ( ! current_user_can( 'switch_themes' ) && ! current_user_can( 'manage_network_themes' ) ) {
 				return new WP_Error(
 					'rest_cannot_activate_themes',
-					__( 'Sorry, you are not allowed to activate themes.', 'zero-admin' ),
+					__( 'Sorry, you are not allowed to activate themes.', 'first-admin' ),
 					array( 'status' => rest_authorization_required_code() )
 				);
 			}
@@ -133,7 +133,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 			if ( ! current_user_can( 'update_themes' ) ) {
 				return new WP_Error(
 					'rest_cannot_update_themes',
-					__( 'Sorry, you are not allowed to update themes.', 'zero-admin' ),
+					__( 'Sorry, you are not allowed to update themes.', 'first-admin' ),
 					array( 'status' => rest_authorization_required_code() )
 				);
 			}
@@ -155,7 +155,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 		if ( ! $theme->exists() ) {
 			return new WP_Error(
 				'rest_theme_not_found',
-				__( 'The requested theme does not exist.', 'zero-admin' ),
+				__( 'The requested theme does not exist.', 'first-admin' ),
 				array( 'status' => 404 )
 			);
 		}
@@ -163,7 +163,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 		if ( ! $theme->is_allowed() ) {
 			return new WP_Error(
 				'rest_theme_not_allowed',
-				__( 'The requested theme is not network enabled.', 'zero-admin' ),
+				__( 'The requested theme is not network enabled.', 'first-admin' ),
 				array( 'status' => 400 )
 			);
 		}
@@ -194,7 +194,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 				if ( ! is_wp_version_compatible( $theme->get( 'RequiresWP' ) ) ) {
 					return new WP_Error(
 						'rest_theme_not_compatible',
-						__( 'The requested theme is not compatible with your WordPress version.', 'zero-admin' ),
+						__( 'The requested theme is not compatible with your WordPress version.', 'first-admin' ),
 						array( 'status' => 400 )
 					);
 				}
@@ -202,7 +202,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 				if ( ! is_php_version_compatible( $theme->get( 'RequiresPHP' ) ) ) {
 					return new WP_Error(
 						'rest_theme_not_compatible',
-						__( 'The requested theme is not compatible with your PHP version.', 'zero-admin' ),
+						__( 'The requested theme is not compatible with your PHP version.', 'first-admin' ),
 						array( 'status' => 400 )
 					);
 				}
@@ -297,7 +297,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 				} elseif ( false === $result ) {
 					global $wp_filesystem;
 
-					$error_message = __( 'Unable to connect to the filesystem. Please confirm your credentials.', 'zero-admin' );
+					$error_message = __( 'Unable to connect to the filesystem. Please confirm your credentials.', 'first-admin' );
 
 					// Pass through the error from WP_Filesystem if one was raised.
 					if ( $wp_filesystem instanceof WP_Filesystem_Base && is_wp_error( $wp_filesystem->errors ) && $wp_filesystem->errors->has_errors() ) {
@@ -313,7 +313,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 					// An unhandled error occurred.
 					return new WP_Error(
 						'rest_theme_update_failed',
-						__( 'Theme update failed.', 'zero-admin' ),
+						__( 'Theme update failed.', 'first-admin' ),
 						array( 'status' => 400 )
 					);
 				}
@@ -323,7 +323,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 		// Handle theme auto-updates setting.
 		if ( isset( $request['auto_updates']['enabled'] ) ) {
 			$next_auto_updates_enabled = rest_sanitize_boolean( $request['auto_updates']['enabled'] );
-			$auto_updates_data         = zero_admin_get_theme_auto_updates_data(
+			$auto_updates_data         = first_admin_get_theme_auto_updates_data(
 				array( 'stylesheet' => $stylesheet )
 			);
 
@@ -333,7 +333,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 				if ( ! $auto_updates_data['supported'] ) {
 					return new WP_Error(
 						'rest_theme_not_auto_update_supported',
-						__( 'The requested theme does not support auto-updates.', 'zero-admin' ),
+						__( 'The requested theme does not support auto-updates.', 'first-admin' ),
 						array( 'status' => 400 )
 					);
 				}
@@ -341,7 +341,7 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 				if ( $auto_updates_data['forced'] && false === $next_auto_updates_enabled ) {
 					return new WP_Error(
 						'rest_theme_auto_update_forced',
-						__( 'Auto-updates are forced for this theme and cannot be disabled.', 'zero-admin' ),
+						__( 'Auto-updates are forced for this theme and cannot be disabled.', 'first-admin' ),
 						array( 'status' => 400 )
 					);
 				}
@@ -388,6 +388,6 @@ class Zero_Admin_REST_Themes_Controller extends WP_REST_Themes_Controller {
 add_action(
 	'rest_api_init',
 	function () {
-		( new Zero_Admin_REST_Themes_Controller() )->register_routes();
+		( new First_Admin_REST_Themes_Controller() )->register_routes();
 	}
 );

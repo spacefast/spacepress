@@ -14,7 +14,7 @@ function run(argv: string[]) {
 }
 
 function withDir<T>(use: (dir: string) => Promise<T>): Promise<T> {
-  const dir = mkdtempSync(path.join(tmpdir(), "zero-blocks-cli-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "first-blocks-cli-"));
   return use(dir).finally(() => rmSync(dir, { recursive: true, force: true }));
 }
 

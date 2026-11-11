@@ -6,7 +6,7 @@
  * during classic page loads, but which do not fire in a JavaScript SPA context or organically.
  * These ensure parity when actions are performed via REST or other async flows.
  *
- * @package Zero_Admin
+ * @package First_Admin
  * @since 1.0.0
  */
 
@@ -25,7 +25,7 @@
  *                              This parameter is only meaningful on Multisite.
  * @return void
  */
-function zero_admin_handle_activated_plugin( $plugin, $network_wide ) {
+function first_admin_handle_activated_plugin( $plugin, $network_wide ) {
 	// When a plugin is activated, remove it from the recently_activated list.
 	if ( is_multisite() && $network_wide ) {
 		$recent = (array) get_site_option( 'recently_activated' );
@@ -37,7 +37,7 @@ function zero_admin_handle_activated_plugin( $plugin, $network_wide ) {
 		update_option( 'recently_activated', $recent, false );
 	}
 }
-add_action( 'activated_plugin', 'zero_admin_handle_activated_plugin', 10, 2 );
+add_action( 'activated_plugin', 'first_admin_handle_activated_plugin', 10, 2 );
 
 /**
  * Handles the deactivated_plugin action to maintain the recently_activated option.
@@ -54,7 +54,7 @@ add_action( 'activated_plugin', 'zero_admin_handle_activated_plugin', 10, 2 );
  *                                       This parameter is only meaningful on Multisite.
  * @return void
  */
-function zero_admin_handle_deactivated_plugin( $plugin, $network_deactivating ) {
+function first_admin_handle_deactivated_plugin( $plugin, $network_deactivating ) {
 	// When a plugin is deactivated, add/update its timestamp in recently_activated.
 	if ( is_multisite() && $network_deactivating ) {
 		update_site_option( 'recently_activated', array( $plugin => time() ) + (array) get_site_option( 'recently_activated' ) );
@@ -62,4 +62,4 @@ function zero_admin_handle_deactivated_plugin( $plugin, $network_deactivating ) 
 		update_option( 'recently_activated', array( $plugin => time() ) + (array) get_option( 'recently_activated' ), false );
 	}
 }
-add_action( 'deactivated_plugin', 'zero_admin_handle_deactivated_plugin', 10, 2 );
+add_action( 'deactivated_plugin', 'first_admin_handle_deactivated_plugin', 10, 2 );

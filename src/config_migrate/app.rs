@@ -58,7 +58,7 @@ pub struct Report {
 }
 
 #[cfg(feature = "cli")]
-const USAGE: &str = "usage: zero migrate app --from zero-0.8 [--manifest <finalize.json>] [<capsule-dir>] --out <new-dir> [--space <space-id> | --fresh] [--users] [--dry-run] [--json]";
+const USAGE: &str = "usage: first migrate app --from zero-0.8 [--manifest <finalize.json>] [<capsule-dir>] --out <new-dir> [--space <space-id> | --fresh] [--users] [--dry-run] [--json]";
 
 #[cfg(feature = "cli")]
 struct Args {
@@ -382,7 +382,7 @@ fn convert(
         }
         None => BTreeMap::new(),
     };
-    if sources.contains_key(Path::new("zero.config.ts"))
+    if sources.contains_key(Path::new("first.config.ts"))
         || sources.contains_key(Path::new("server/__z08-content.ts"))
         || sources.keys().any(|p| p.starts_with(crate::layout::ROOT))
     {
@@ -412,8 +412,8 @@ fn convert(
         })
         .collect();
     sources.insert(
-        PathBuf::from("zero.config.ts"),
-        "export { default } from \"./zero/server/index\";\n".into(),
+        PathBuf::from("first.config.ts"),
+        "export { default } from \"./first/server/index\";\n".into(),
     );
     let page_files: BTreeMap<String, String> = converted
         .into_iter()
@@ -500,7 +500,7 @@ fn convert(
             .map(|(path, text)| (checked_root.join(path), text.clone()))
             .collect(),
     );
-    let program = loader::load_from(Rc::new(memory), &checked_root.join("zero.config.ts"))
+    let program = loader::load_from(Rc::new(memory), &checked_root.join("first.config.ts"))
         .map_err(|d| fail("", diag::render(&d[0], &checked_root)).spanned(d[0].span, &checked_root))?;
     let built = pipeline::build(&checked_root, &program, || Ok(pipeline::Previous::none()), |_| None).map_err(|d| {
         fail(
@@ -837,7 +837,7 @@ fn convert_pages(
                     &at,
                     "mapped",
                     format!(
-                        "static page becomes {}; run zero-pages build and commit zero/pages.json before publishing",
+                        "static page becomes {}; run first-pages build and commit first/pages.json before publishing",
                         page.file
                     ),
                 ));

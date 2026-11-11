@@ -1,5 +1,5 @@
 ---
-// A file from a committed pages render artifact (examples/<name>/zero/pages.json): the block markup,
+// A file from a committed pages render artifact (examples/<name>/first/pages.json): the block markup,
 // stylesheets and island bundles `first-pages build` wrote. The artifact stores each file base64;
 // this decodes it when the site is built. CI fails when the artifact is older than the TSX, so the
 // page shows what the pages compiler writes today.
@@ -24,7 +24,7 @@ interface Props {
 	name?: string;
 }
 const { example, route, file, name } = Astro.props;
-const artifact = JSON.parse(readFileSync(path.join(repo, "examples", example, "zero/pages.json"), "utf8")) as {
+const artifact = JSON.parse(readFileSync(path.join(repo, "examples", example, "first/pages.json"), "utf8")) as {
 	manifest: string;
 	files: Record<string, string>;
 };
@@ -32,7 +32,7 @@ const manifest = JSON.parse(artifact.manifest) as { routes: { source: string; te
 let key: string | undefined;
 if (route) key = [...manifest.routes, manifest.notFound].find((r) => r.source === route)?.template;
 else if (file) key = Object.keys(artifact.files).find((f) => f === file || f.startsWith(file));
-if (!key || !(key in artifact.files)) throw new Error(`examples/${example}/zero/pages.json has no ${route ?? file}`);
+if (!key || !(key in artifact.files)) throw new Error(`examples/${example}/first/pages.json has no ${route ?? file}`);
 const text = Buffer.from(artifact.files[key]!, "base64").toString("utf8").replace(/\u{E000}([a-z][a-z0-9]*)\u{E001}/gu, "⟨$1⟩");
 const shown = name ?? `first/pages.json → ${key}`;
 ---

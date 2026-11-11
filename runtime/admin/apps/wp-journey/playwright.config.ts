@@ -11,8 +11,8 @@ export default defineConfig({
 	expect: { timeout: 20000 },
 	reporter: 'list',
 	outputDir:
-		process.env.ZERO_ADMIN_BROWSER_OUTPUT ??
-		join(tmpdir(), 'zero-admin-browser'),
+		process.env.FIRST_ADMIN_BROWSER_OUTPUT ??
+		join(tmpdir(), 'first-admin-browser'),
 	use: {
 		browserName: 'chromium',
 		headless: true,

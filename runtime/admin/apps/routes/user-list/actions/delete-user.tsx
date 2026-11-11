@@ -1,6 +1,6 @@
-import { useViewConfig } from '@zero-admin/views';
-import { useTrackedModal } from '@zero-admin/telemetry';
-import type { Action, RenderModalProps } from '@zero-admin/dataviews';
+import { useViewConfig } from '@first-admin/views';
+import { useTrackedModal } from '@first-admin/telemetry';
+import type { Action, RenderModalProps } from '@first-admin/dataviews';
 import type { User } from '@wordpress/core-data';
 import { store as coreStore } from '@wordpress/core-data';
 import { useSelect } from '@wordpress/data';
@@ -69,15 +69,15 @@ export const useDeleteUserAction = (): Action< User > | null => {
 
 		return {
 			id: 'delete-user',
-			label: __( 'Delete', 'zero-admin' ),
+			label: __( 'Delete', 'first-admin' ),
 			isDestructive: true,
 			isPrimary: false,
 			icon: trash,
 			supportsBulk: true,
 			modalHeader: ( items: User[] ) =>
 				items.length === 1
-					? __( 'Delete user?', 'zero-admin' )
-					: __( 'Delete users?', 'zero-admin' ),
+					? __( 'Delete user?', 'first-admin' )
+					: __( 'Delete users?', 'first-admin' ),
 			RenderModal: DeleteUsersModalWrapper,
 			isEligible: ( item: User ) => {
 				// Cannot delete yourself, the store owner, or without proper permissions

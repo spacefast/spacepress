@@ -122,7 +122,7 @@ export async function injectResolvedTemplate(
 			}
 		}
 
-		// Mark plural query resolutions as finished (even if zero records —
+		// Mark plural query resolutions as finished (even if first records —
 		// prevents resolvers from re-fetching an empty result set).
 		for ( const query of queries ) {
 			if ( records.length === 0 ) {

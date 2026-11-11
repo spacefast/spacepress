@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity;
+namespace First\Identity;
 
-use Zero\Identity\Vendor\Firebase\JWT\ExpiredException;
-use Zero\Identity\Vendor\Firebase\JWT\JWT;
-use Zero\Identity\Vendor\Firebase\JWT\Key;
+use First\Identity\Vendor\Firebase\JWT\ExpiredException;
+use First\Identity\Vendor\Firebase\JWT\JWT;
+use First\Identity\Vendor\Firebase\JWT\Key;
 
 /** RS256 signing keys: sealed private keys in an option, ten-minute overlap after rotation. */
 final class Keys
 {
-    private const OPTION = "zero_identity_signing_keys";
+    private const OPTION = "first_identity_signing_keys";
 
     public static function rotate(): void
     {

@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react';
 import { IconButton } from '@wordpress/ui';
-// eslint-disable-next-line @zero-admin/design-system/use-new-components
-import { Stack } from '@zero-admin/design-system';
+// eslint-disable-next-line @first-admin/design-system/use-new-components
+import { Stack } from '@first-admin/design-system';
 import { __ } from '@wordpress/i18n';
 import { useSelect } from '@wordpress/data';
 import { help } from '@wordpress/icons';
-import { store as zeroAdminStore } from '../../store';
+import { store as firstAdminStore } from '../../store';
 import SidebarNavigationItem from '../sidebar-navigation-item';
 import SidebarDrilldownItem from '../sidebar-drilldown-item';
 import SidebarDropdownItem from '../sidebar-dropdown-item';
@@ -22,7 +22,7 @@ import MetaMenu from '../meta-menu';
 
 function Sidebar() {
 	const nudge = useSelect(
-		( select ) => select( zeroAdminStore ).getCurrentNudge(),
+		( select ) => select( firstAdminStore ).getCurrentNudge(),
 		[]
 	);
 	const [ animationDirection, setAnimationDirection ] = useState<
@@ -31,7 +31,7 @@ function Sidebar() {
 	const [ parentId, setParentId, parentDropdownId, setParentDropdownId ] =
 		useSidebarParent();
 	const menuItems = useSelect(
-		( select ) => select( zeroAdminStore ).getMenuItems(),
+		( select ) => select( firstAdminStore ).getMenuItems(),
 		[]
 	);
 
@@ -81,9 +81,9 @@ function Sidebar() {
 
 	return (
 		<>
-			<div className="zero-admin-sidebar__scrollable">
+			<div className="first-admin-sidebar__scrollable">
 				<SiteHub />
-				<div className="zero-admin-sidebar__content">
+				<div className="first-admin-sidebar__content">
 					<SidebarNavigationScreen
 						isRoot={ ! parent }
 						title={ parent ? parent.label : '' }
@@ -99,7 +99,7 @@ function Sidebar() {
 											<SidebarDropdownItem
 												key={ item.id }
 												id={ item.id }
-												className="zero-admin-sidebar-navigation-item"
+												className="first-admin-sidebar-navigation-item"
 												icon={ item.icon }
 												badge={ item.badge }
 												shouldShowPlaceholder={
@@ -148,7 +148,7 @@ function Sidebar() {
 													hasRealIcons
 												}
 												onNavigate={ handleNavigate }
-												className="zero-admin-sidebar-navigation-item"
+												className="first-admin-sidebar-navigation-item"
 											>
 												{ item.label }
 											</SidebarSubmenuItem>
@@ -183,7 +183,7 @@ function Sidebar() {
 				<Stack
 					direction="column"
 					gap={ 1 }
-					className="zero-admin-sidebar__footer"
+					className="first-admin-sidebar__footer"
 				>
 					<Stack
 						direction="row"
@@ -200,7 +200,7 @@ function Sidebar() {
 							<MetaMenu
 								parent="wp-logo"
 								icon={ help }
-								label={ __( 'Help', 'zero-admin' ) }
+								label={ __( 'Help', 'first-admin' ) }
 							/>
 						</Stack>
 					</Stack>

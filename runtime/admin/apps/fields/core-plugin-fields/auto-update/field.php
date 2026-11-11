@@ -2,13 +2,13 @@
 /**
  * Auto update field definition for core plugins fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 // TODO: Add the field to core-data types, and re-implement this field spec.
 return array(
 	'type'         => 'boolean',
-	'label'        => __( 'Auto-Updates', 'zero-admin' ),
+	'label'        => __( 'Auto-Updates', 'first-admin' ),
 	'enableHiding' => true,
 	'filterBy'     => array(
 		'operators' => array( 'is', 'isNot' ),
@@ -16,11 +16,11 @@ return array(
 	'elements'     => array(
 		array(
 			'value' => true,
-			'label' => __( 'Enabled', 'zero-admin' ),
+			'label' => __( 'Enabled', 'first-admin' ),
 		),
 		array(
 			'value' => false,
-			'label' => __( 'Disabled', 'zero-admin' ),
+			'label' => __( 'Disabled', 'first-admin' ),
 		),
 	),
 );

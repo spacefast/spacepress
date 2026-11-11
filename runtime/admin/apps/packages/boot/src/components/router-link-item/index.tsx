@@ -2,7 +2,7 @@ import { privateApis as routePrivateApis } from '@wordpress/route';
 import type { ComponentProps, ForwardedRef, ComponentType } from 'react';
 import { forwardRef } from 'react';
 import { __experimentalItem as Item } from '@wordpress/components';
-import { unlock } from '@zero-admin/admin-toolkit';
+import { unlock } from '@first-admin/admin-toolkit';
 
 const { createLink } = unlock( routePrivateApis );
 

@@ -2,12 +2,12 @@
 /**
  * Description field definition for core plugins fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'         => 'boolean',
-	'label'        => __( 'Update Available', 'zero-admin' ),
+	'label'        => __( 'Update Available', 'first-admin' ),
 	'enableHiding' => true,
 	'filterBy'     => array(
 		'operators' => array( 'is', 'isNot' ),
@@ -15,11 +15,11 @@ return array(
 	'elements'     => array(
 		array(
 			'value' => true,
-			'label' => __( 'Yes', 'zero-admin' ),
+			'label' => __( 'Yes', 'first-admin' ),
 		),
 		array(
 			'value' => false,
-			'label' => __( 'No', 'zero-admin' ),
+			'label' => __( 'No', 'first-admin' ),
 		),
 	),
 );

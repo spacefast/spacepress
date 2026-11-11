@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\CBOR;
+namespace First\Identity\Vendor\CBOR;
 
 use function array_is_list;
-use Zero\Identity\Vendor\CBOR\OtherObject\DoublePrecisionFloatObject;
-use Zero\Identity\Vendor\CBOR\OtherObject\FalseObject;
-use Zero\Identity\Vendor\CBOR\OtherObject\NullObject;
-use Zero\Identity\Vendor\CBOR\OtherObject\SinglePrecisionFloatObject;
-use Zero\Identity\Vendor\CBOR\OtherObject\TrueObject;
+use First\Identity\Vendor\CBOR\OtherObject\DoublePrecisionFloatObject;
+use First\Identity\Vendor\CBOR\OtherObject\FalseObject;
+use First\Identity\Vendor\CBOR\OtherObject\NullObject;
+use First\Identity\Vendor\CBOR\OtherObject\SinglePrecisionFloatObject;
+use First\Identity\Vendor\CBOR\OtherObject\TrueObject;
 use InvalidArgumentException;
 use function is_array;
 use function is_float;

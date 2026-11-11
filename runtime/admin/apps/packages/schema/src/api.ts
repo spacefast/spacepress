@@ -14,11 +14,11 @@ import {
 } from './model';
 declare global {
 	interface Window {
-		zeroAdmin?: unknown;
+		firstAdmin?: unknown;
 	}
 }
 export function bootstrap() {
-	const b = object(window.zeroAdmin);
+	const b = object(window.firstAdmin);
 	const native = Object.fromEntries(
 		Object.entries(map(b.native)).map(([name, raw]) => {
 			const n = object(raw),
@@ -28,7 +28,7 @@ export function bootstrap() {
 				throw new Error('Missing native collection transport.');
 			return [
 				name,
-				{ path, postType, metaPrefix: text(n.metaPrefix) ?? 'zero_' },
+				{ path, postType, metaPrefix: text(n.metaPrefix) ?? 'first_' },
 			];
 		})
 	);
@@ -43,7 +43,7 @@ export function native(collection: string) {
 }
 export function endpoint(collection: string) {
 	return (
-		native(collection)?.path ?? `/zero/v1/${encodeURIComponent(collection)}`
+		native(collection)?.path ?? `/first/v1/${encodeURIComponent(collection)}`
 	);
 }
 export function unwrap(value: unknown): unknown {
@@ -51,7 +51,7 @@ export function unwrap(value: unknown): unknown {
 	return 'data' in r ? r.data : r;
 }
 export async function schema() {
-	return parseSchema(unwrap(await apiFetch({ path: '/zero/v1/_schema' })));
+	return parseSchema(unwrap(await apiFetch({ path: '/first/v1/_schema' })));
 }
 export async function collectionSpec(name: string) {
 	const c = (await schema()).collections[name];
@@ -328,7 +328,7 @@ export async function list(
 	};
 }
 
-/** Resolve editor navigation through the active Zero adapter or the native WordPress routes. */
+/** Resolve editor navigation through the active First adapter or the native WordPress routes. */
 export function entityEditorPath(postType: string, postId: string): string {
     const collection = Object.entries(bootstrap().native).find(([, value]) => value.postType === postType)?.[0];
     return collection

@@ -1,11 +1,11 @@
-import { useFieldCollections } from '@zero-admin/core-data-next';
-import { useViewConfig } from '@zero-admin/views';
-import { Page, unlock } from '@zero-admin/admin-toolkit';
+import { useFieldCollections } from '@first-admin/core-data-next';
+import { useViewConfig } from '@first-admin/views';
+import { Page, unlock } from '@first-admin/admin-toolkit';
 import { useParams, useNavigate } from '@wordpress/route';
 import { Button, Icon } from '@wordpress/ui';
 import { decodeEntities } from '@wordpress/html-entities';
 import { __, sprintf } from '@wordpress/i18n';
-import { store as zeroAdminStore, type StoreSelectors } from '@zero-admin/boot';
+import { store as firstAdminStore, type StoreSelectors } from '@first-admin/boot';
 import { select, useSelect, useDispatch } from '@wordpress/data';
 import {
 	__experimentalGrid as Grid,
@@ -19,8 +19,8 @@ import type { User } from '@wordpress/core-data';
 import { store as noticesStore } from '@wordpress/notices';
 import { useMemo, useState, useCallback, useRef } from '@wordpress/element';
 import { moreVertical, arrowUpRight } from '@wordpress/icons';
-import { DataForm } from '@zero-admin/dataviews';
-import { useTrack } from '@zero-admin/telemetry';
+import { DataForm } from '@first-admin/dataviews';
+import { useTrack } from '@first-admin/telemetry';
 import {
 	isInviteUser,
 	isPendingInvite,
@@ -60,10 +60,10 @@ export function UserProfileBreadcrumbs( {
 		<HStack spacing={ 2 } justify="flex-start">
 			<Page.Breadcrumbs items={ breadcrumbItems } />
 			{ showBadges && showPendingInviteBadge && (
-				<Badge>{ __( 'Pending invite', 'zero-admin' ) }</Badge>
+				<Badge>{ __( 'Pending invite', 'first-admin' ) }</Badge>
 			) }
 			{ showBadges && showStoreOwnerBadge && isInviteMode && (
-				<Badge>{ __( 'Store owner', 'zero-admin' ) }</Badge>
+				<Badge>{ __( 'Store owner', 'first-admin' ) }</Badge>
 			) }
 		</HStack>
 	);
@@ -117,7 +117,7 @@ export function UserEditContent( {
 			return {
 				currentUser: getCurrentUser(),
 				partnerContext: (
-					select( zeroAdminStore ) as StoreSelectors
+					select( firstAdminStore ) as StoreSelectors
 				 ).getDashboardContext().partner,
 			};
 		},
@@ -198,7 +198,7 @@ export function UserEditContent( {
 				void createSuccessNotice(
 					sprintf(
 						/* translators: %s: user name or email */
-						__( '%s updated.', 'zero-admin' ),
+						__( '%s updated.', 'first-admin' ),
 						dataRef.current
 							? getUserDisplayName( dataRef.current )
 							: ''
@@ -219,7 +219,7 @@ export function UserEditContent( {
 					'message' in error &&
 					typeof error.message === 'string'
 						? decodeEntities( error.message )
-						: __( 'Could not update user.', 'zero-admin' );
+						: __( 'Could not update user.', 'first-admin' );
 				void createErrorNotice( message, {
 					type: 'snackbar',
 					id: 'update-user-error',
@@ -250,11 +250,11 @@ export function UserEditContent( {
 	// Determine breadcrumb items
 	const breadcrumbItems = breadcrumbs || [
 		{
-			label: __( 'Users', 'zero-admin' ),
+			label: __( 'Users', 'first-admin' ),
 			to: '/users/list/all',
 		},
 		{
-			label: data.email || __( 'User', 'zero-admin' ),
+			label: data.email || __( 'User', 'first-admin' ),
 		},
 	];
 
@@ -291,7 +291,7 @@ export function UserEditContent( {
 						>
 							{ sprintf(
 								/* translators: %s: partner dashboard name (e.g. "Woo Store") */
-								__( 'Manage profile in %s', 'zero-admin' ),
+								__( 'Manage profile in %s', 'first-admin' ),
 								partnerContext.dashboard_name
 							) }
 							<Icon icon={ arrowUpRight } size={ 16 } />
@@ -304,7 +304,7 @@ export function UserEditContent( {
 									<TriggerButton
 										icon={ moreVertical }
 										size="compact"
-										label={ __( 'Actions', 'zero-admin' ) }
+										label={ __( 'Actions', 'first-admin' ) }
 									/>
 								}
 							/>
@@ -315,7 +315,7 @@ export function UserEditContent( {
 									} }
 								>
 									<Menu.ItemLabel>
-										{ __( 'Delete', 'zero-admin' ) }
+										{ __( 'Delete', 'first-admin' ) }
 									</Menu.ItemLabel>
 								</Menu.Item>
 							</Menu.Popover>

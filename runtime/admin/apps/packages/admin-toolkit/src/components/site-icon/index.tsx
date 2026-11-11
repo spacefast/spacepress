@@ -25,17 +25,17 @@ function SiteIcon( { className }: { className?: string } ) {
 	let icon = null;
 
 	if ( isRequestingSite && ! siteIconUrl ) {
-		icon = <div className="zero-admin-site-icon__image" />;
+		icon = <div className="first-admin-site-icon__image" />;
 	} else {
 		icon = siteIconUrl ? (
 			<img
-				className="zero-admin-site-icon__image"
-				alt={ __( 'Site Icon', 'zero-admin' ) }
+				className="first-admin-site-icon__image"
+				alt={ __( 'Site Icon', 'first-admin' ) }
 				src={ siteIconUrl }
 			/>
 		) : (
 			<Icon
-				className="zero-admin-site-icon__icon"
+				className="first-admin-site-icon__icon"
 				icon={ wordpress }
 				size={ 48 }
 			/>
@@ -43,7 +43,7 @@ function SiteIcon( { className }: { className?: string } ) {
 	}
 
 	return (
-		<div className={ clsx( className, 'zero-admin-site-icon' ) }>
+		<div className={ clsx( className, 'first-admin-site-icon' ) }>
 			{ icon }
 		</div>
 	);

@@ -1,5 +1,5 @@
 /**
- * Main entry point for @zero-admin/wp-build package
+ * Main entry point for @first-admin/wp-build package
  */
 
 export { buildAll } from './build.js';

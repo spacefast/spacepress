@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { unlock } from '@zero-admin/admin-toolkit';
+import { unlock } from '@first-admin/admin-toolkit';
 import { privateApis as routePrivateApis } from '@wordpress/route';
 import './style.scss';
 

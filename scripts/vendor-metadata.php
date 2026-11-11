@@ -1,10 +1,10 @@
 <?php
 declare(strict_types=1);
 $root = $argv[1];
-// Each bundle gets its own loader class and files registry, so two Zero bundles never share one.
-$bundle = ($argv[2] ?? 'runtime') === 'identity' ? ['ZeroIdentity', '__zero_identity_vendor_autoload_files'] : ['ZeroRuntime', '__zero_runtime_vendor_autoload_files'];
+// Each bundle gets its own loader class and files registry, so two First bundles never share one.
+$bundle = ($argv[2] ?? 'runtime') === 'identity' ? ['FirstIdentity', '__first_identity_vendor_autoload_files'] : ['FirstRuntime', '__first_runtime_vendor_autoload_files'];
 $lock = json_decode(file_get_contents($root . '/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
-if ($bundle[0] === 'ZeroRuntime') {
+if ($bundle[0] === 'FirstRuntime') {
     // Unused terminal diagnostics invoke tput; only the merger's library classes ship.
     unlink($root . '/vendor-prefixed/wp-php-toolkit/merge/functions.php');
     // rowbot/url percent-encodes a byte in the encode set with rawurlencode(), which leaves `~`

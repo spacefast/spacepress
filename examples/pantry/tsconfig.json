@@ -8,8 +8,8 @@
     "noEmit": true,
     "types": [],
     "paths": {
-      "zero": ["../../types/zero/index.d.ts"]
+      "first": ["../../types/first/index.d.ts"]
     }
   },
-  "include": ["zero.config.ts", "zero/_generated/db.d.ts", "zero/lib/**/*.ts"]
+  "include": ["first.config.ts", "first/_generated/db.d.ts", "first/lib/**/*.ts"]
 }

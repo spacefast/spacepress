@@ -9,7 +9,7 @@ import {
 import { isRTL, __ } from '@wordpress/i18n';
 import { Icon, chevronLeft, chevronRight } from '@wordpress/icons';
 import { useMemo } from '@wordpress/element';
-import type { Color } from '@zero-admin/global-styles-engine';
+import type { Color } from '@first-admin/global-styles-engine';
 import { Subtitle } from './subtitle';
 import { NavigationButtonAsItem } from './navigation-button';
 import ColorIndicatorWrapper from './color-indicator-wrapper';
@@ -57,7 +57,7 @@ function Palette( { name }: PaletteProps ) {
 
 	return (
 		<VStack spacing={ 3 }>
-			<Subtitle level={ 3 }>{ __( 'Palette', 'zero-admin' ) }</Subtitle>
+			<Subtitle level={ 3 }>{ __( 'Palette', 'first-admin' ) }</Subtitle>
 			<ItemGroup isBordered isSeparated>
 				<NavigationButtonAsItem path={ screenPath }>
 					<HStack direction="row">
@@ -77,12 +77,12 @@ function Palette( { name }: PaletteProps ) {
 										) ) }
 								</ZStack>
 								<FlexItem isBlock>
-									{ __( 'Edit palette', 'zero-admin' ) }
+									{ __( 'Edit palette', 'first-admin' ) }
 								</FlexItem>
 							</>
 						) : (
 							<FlexItem>
-								{ __( 'Add colors', 'zero-admin' ) }
+								{ __( 'Add colors', 'first-admin' ) }
 							</FlexItem>
 						) }
 						<Icon icon={ isRTL() ? chevronLeft : chevronRight } />

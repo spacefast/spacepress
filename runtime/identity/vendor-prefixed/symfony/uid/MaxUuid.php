@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Uid;
+namespace First\Identity\Vendor\Symfony\Component\Uid;
 
 class MaxUuid extends Uuid
 {

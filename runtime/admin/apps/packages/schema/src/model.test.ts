@@ -46,12 +46,12 @@ test('schema metadata describes labels, help, explicit kind and defaults indepen
 	});
 });
 test('native mapping retains only returned fields and round-trips SCF values without core-field duplication', () => {
-	window.zeroAdmin = {
+	window.firstAdmin = {
 		native: {
 			posts: {
-				path: '/wp/v2/zero_posts',
-				postType: 'zero_posts',
-				metaPrefix: 'zero_',
+				path: '/wp/v2/first_posts',
+				postType: 'first_posts',
+				metaPrefix: 'first_',
 			},
 		},
 		readable: ['posts'],
@@ -81,10 +81,10 @@ test('native mapping retains only returned fields and round-trips SCF values wit
 		title: { raw: 'Title' },
 		content: { raw: '<p>Body</p>' },
 		acf: {
-			_source: { zero_excerpt: 'field_zero_excerpt' },
+			_source: { first_excerpt: 'field_first_excerpt' },
 			unrelated: 'Not a schema field',
-			zero_excerpt: 'Visible',
-			zero_sections: [{ acf_fc_layout: 'hero', heading: 'Welcome' }],
+			first_excerpt: 'Visible',
+			first_sections: [{ acf_fc_layout: 'hero', heading: 'Welcome' }],
 		},
 	});
 	expect(nativeEditor(c, row, true)).toBe(true);
@@ -99,20 +99,20 @@ test('native mapping retains only returned fields and round-trips SCF values wit
 	});
 	expect(toNative(c, { headline: 'Changed', sections: row.sections })).toEqual({
 		title: 'Changed',
-		acf: { zero_sections: [{ acf_fc_layout: 'hero', heading: 'Welcome' }] },
+		acf: { first_sections: [{ acf_fc_layout: 'hero', heading: 'Welcome' }] },
 	});
 	// Captured SCF textarea representation of an absent/saved-null JSON scalar.
-	const nullRow = fromNative(c, { acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: '' }] } });
+	const nullRow = fromNative(c, { acf: { first_sections: [{ acf_fc_layout: 'hero', configuration: '' }] } });
 	expect(nullRow.sections).toEqual([{ layout: 'hero', configuration: null }]);
-	expect(toNative(c, { sections: nullRow.sections })).toEqual({ acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: null }] } });
-	const emptyString = fromNative(c, { acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
+	expect(toNative(c, { sections: nullRow.sections })).toEqual({ acf: { first_sections: [{ acf_fc_layout: 'hero', configuration: null }] } });
+	const emptyString = fromNative(c, { acf: { first_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
 	expect(emptyString.sections).toEqual([{ layout: 'hero', configuration: '' }]);
-	expect(toNative(c, { sections: emptyString.sections })).toEqual({ acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
-	const falseRow = fromNative(c, { acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: 'false' }] } });
+	expect(toNative(c, { sections: emptyString.sections })).toEqual({ acf: { first_sections: [{ acf_fc_layout: 'hero', configuration: '\"\"' }] } });
+	const falseRow = fromNative(c, { acf: { first_sections: [{ acf_fc_layout: 'hero', configuration: 'false' }] } });
 	expect(falseRow.sections).toEqual([{ layout: 'hero', configuration: false }]);
-	expect(toNative(c, { sections: falseRow.sections })).toEqual({ acf: { zero_sections: [{ acf_fc_layout: 'hero', configuration: 'false' }] } });
+	expect(toNative(c, { sections: falseRow.sections })).toEqual({ acf: { first_sections: [{ acf_fc_layout: 'hero', configuration: 'false' }] } });
 	// Incoming SCF false still denotes an empty structured/platform field.
-	expect(fromNative(c, { acf: { zero_sections: false } }).sections).toBe(false);
+	expect(fromNative(c, { acf: { first_sections: false } }).sections).toBe(false);
 });
 test('conditional fields evaluate sibling values and grouped conditions', () => {
 	const condition = {

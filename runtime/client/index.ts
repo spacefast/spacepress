@@ -1,5 +1,5 @@
-// Zero typed client runtime. `zero build` copies this file next to the generated `types.ts`
-// (interfaces) and `schema.ts` (the SCHEMA descriptor) in `zero/_generated/client/`. Do not edit the copy.
+// First typed client runtime. `first build` copies this file next to the generated `types.ts`
+// (interfaces) and `schema.ts` (the SCHEMA descriptor) in `first/_generated/client/`. Do not edit the copy.
 //
 // No dependencies; `fetch`-based; erasable TypeScript only, so Node (type stripping), Bun, Deno and
 // bundlers run it as-is. Wire format: design §4.8 / §7.
@@ -96,7 +96,7 @@ export interface CollectionClient<K extends CollectionKey> {
   watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
     q: ListQuery<K, ExactWith<K, W>> | undefined,
     onRows: (rows: RowWith<K, W>[]) => void,
-    onError?: (error: ZeroError) => void,
+    onError?: (error: FirstError) => void,
   ): () => void;
   revisions: {
     /** Newest first. Needs `update` access on the row. */
@@ -182,7 +182,7 @@ export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
   schema(): Promise<unknown>;
 };
 
-/** One committed transaction's changes, as the runtime's `zero_realtime_changes` hook sends them. */
+/** One committed transaction's changes, as the runtime's `first_realtime_changes` hook sends them. */
 export interface ChangeNotice {
   id: string;
   at: string;
@@ -191,7 +191,7 @@ export interface ChangeNotice {
 }
 
 /**
- * Delivers change notices from the host (Cast, a WebSocket relay, Pusher, ...). Zero ships none.
+ * Delivers change notices from the host (Cast, a WebSocket relay, Pusher, ...). First ships none.
  * `connect` starts delivery and returns a stop function; call `status("live")` once notices flow
  * and `status("down")` when they stop, so the client polls meanwhile.
  */
@@ -220,8 +220,8 @@ interface Registry {
   waiters: Set<() => void>;
 }
 function registry(): Registry {
-  const g = globalThis as { __zeroRealtime?: Registry };
-  return (g.__zeroRealtime ??= { waiters: new Set() });
+  const g = globalThis as { __firstRealtime?: Registry };
+  return (g.__firstRealtime ??= { waiters: new Set() });
 }
 
 /** For host scripts: every client on this page, created before or after, uses this transport by default. */
@@ -232,7 +232,7 @@ export function registerRealtimeTransport(transport: RealtimeTransport): void {
 }
 
 export interface ClientOptions {
-  /** Base URL including the REST prefix: "https://x.test/wp-json/zero/v1". Default: `/wp-json/zero/v1` on the page's origin. */
+  /** Base URL including the REST prefix: "https://x.test/wp-json/first/v1". Default: `/wp-json/first/v1` on the page's origin. */
   url?: string;
   /** WordPress cookie auth: the REST nonce; sent as `X-WP-Nonce` with `credentials: "same-origin"`. */
   nonce?: string;
@@ -246,13 +246,13 @@ export interface ClientOptions {
 }
 
 export interface AuthOptions {
-  /** The zero-identity OIDC issuer (`https://x.test/identity`). Default: `issuer` from `GET /auth/config`. */
+  /** The first-identity OIDC issuer (`https://x.test/identity`). Default: `issuer` from `GET /auth/config`. */
   issuer?: string;
   /** The registered application's client id. */
   clientId?: string;
   /** Where the issuer sends the browser back (the page that calls `handleCallback()`). */
   redirectUri?: string;
-  /** Where tokens live: in memory (default) or `sessionStorage` under `zero.auth:<base url>`. */
+  /** Where tokens live: in memory (default) or `sessionStorage` under `first.auth:<base url>`. */
   storage?: "memory" | "session";
   /** A write rejected as unauthenticated while signed out starts a guest session and is retried once. */
   guests?: boolean;
@@ -273,7 +273,7 @@ export interface Problem {
 }
 
 /** Thrown for every non-2xx response; the fields are the problem document. Network failures: status 0, code "network". */
-export class ZeroError extends Error {
+export class FirstError extends Error {
   readonly status: number;
   readonly code: string;
   readonly detail: string;
@@ -283,7 +283,7 @@ export class ZeroError extends Error {
 
   constructor(problem: Problem) {
     super(problem.detail);
-    this.name = "ZeroError";
+    this.name = "FirstError";
     this.status = problem.status;
     this.code = problem.code;
     this.detail = problem.detail;
@@ -293,8 +293,8 @@ export class ZeroError extends Error {
   }
 }
 
-function networkError(detail: string): ZeroError {
-  return new ZeroError({ type: "about:blank", title: "Network error", status: 0, code: "network", detail });
+function networkError(detail: string): FirstError {
+  return new FirstError({ type: "about:blank", title: "Network error", status: 0, code: "network", detail });
 }
 
 // ---------------------------------------------------------------------------
@@ -380,7 +380,7 @@ interface Send {
   anonymous?: boolean;
 }
 
-/** What `auth.session()` exposes, plus what refresh and sign-out need. Stored as JSON under `zero.auth:<base>`. */
+/** What `auth.session()` exposes, plus what refresh and sign-out need. Stored as JSON under `first.auth:<base>`. */
 interface Held extends Session {
   clientId?: string;
   idToken?: string;
@@ -388,7 +388,7 @@ interface Held extends Session {
   sid?: string;
 }
 
-/** Zero's guest token response (`/auth/guest`). */
+/** First's guest token response (`/auth/guest`). */
 interface Issued {
   accessToken: string;
   refreshToken: string;
@@ -413,7 +413,7 @@ interface BrowserGlobals {
 
 const browser = () => globalThis as unknown as BrowserGlobals;
 
-const PKCE_KEY = "zero.auth.pkce";
+const PKCE_KEY = "first.auth.pkce";
 
 function base64url(bytes: Uint8Array): string {
   let bin = "";
@@ -429,22 +429,22 @@ async function s256(verifier: string): Promise<string> {
   return base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
 }
 
-function authError(status: number, code: string, detail: string): ZeroError {
-  return new ZeroError({ type: "about:blank", title: code, status, code, detail });
+function authError(status: number, code: string, detail: string): FirstError {
+  return new FirstError({ type: "about:blank", title: code, status, code, detail });
 }
 
 /** In-flight refreshes of sessionStorage-backed sessions, by storage key (shared by clients in this tab). */
 const refreshes = new Map<string, Promise<boolean>>();
 
 export function createClient(options: ClientOptions = {}): Client {
-  const base = (options.url ?? "/wp-json/zero/v1").replace(/\/+$/, "");
+  const base = (options.url ?? "/wp-json/first/v1").replace(/\/+$/, "");
   const authOpts = options.auth ?? {};
   const doFetch = (input: string, init: RequestInit) => (options.fetch ?? globalThis.fetch)(input, init);
 
   // Token storage: memory by default, sessionStorage on request. The record always exists once
   // written: signed out, it keeps only a `sid`, so every sign-in and sign-out (including from the
   // anonymous state) is a distinct generation that late results can be checked against.
-  const storageKey = `zero.auth:${base}`;
+  const storageKey = `first.auth:${base}`;
   let memory: Stored = {};
   type Stored = Partial<Held> & { sid?: string };
   function stored(): Stored {
@@ -585,7 +585,7 @@ export function createClient(options: ClientOptions = {}): Client {
       });
     } catch (e) {
       // A refused refresh signs this session out: a new generation, like any sign-out.
-      if (!(e instanceof ZeroError) || e.status !== 0) switchTo(null, started);
+      if (!(e instanceof FirstError) || e.status !== 0) switchTo(null, started);
       return false;
     }
   }
@@ -748,7 +748,7 @@ export function createClient(options: ClientOptions = {}): Client {
         await issuerPost("/revoke", { token: current.refreshToken, client_id: current.clientId ?? authOpts.clientId ?? "" });
       } catch (e) {
         // A session the server already ended is signed out; anything else is the caller's to see.
-        if (!(e instanceof ZeroError && e.status === 401)) throw e;
+        if (!(e instanceof FirstError && e.status === 401)) throw e;
       } finally {
         switchTo(null, from); // only the session this sign-out began with
       }
@@ -846,7 +846,7 @@ export function createClient(options: ClientOptions = {}): Client {
     const list = (q?: Json) => request("GET", path, { query: listParams(q) });
     return {
       list,
-      watch: (q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: ZeroError) => void) =>
+      watch: (q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: FirstError) => void) =>
         watchWith(realtime, dependencies(key, q?.with), () => list(q), onRows, onError),
       get: (id: string | number, q?: Json) => request("GET", one(id), { query: listParams(q ? { with: q.with, locale: q.locale } : undefined) }),
       create: (data: unknown) => request("POST", path, { json: data }),
@@ -921,7 +921,7 @@ export function watch<T>(
   collections: readonly CollectionKey[],
   read: () => Promise<T>,
   onResult: (value: T) => void,
-  onError?: (error: ZeroError) => void,
+  onError?: (error: FirstError) => void,
 ): () => void {
   const hub = hubs.get(client) ?? (() => {
     throw new TypeError("watch() needs a client from createClient()");
@@ -929,7 +929,7 @@ export function watch<T>(
   return watchWith(hub, collections, read, onResult, onError);
 }
 
-function watchWith<T>(hub: Hub, collections: readonly string[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: ZeroError) => void): () => void {
+function watchWith<T>(hub: Hub, collections: readonly string[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: FirstError) => void): () => void {
   // Coalesced: one read in flight; changes during it schedule exactly one more.
   let stopped = false;
   let running = false;
@@ -947,7 +947,7 @@ function watchWith<T>(hub: Hub, collections: readonly string[], read: () => Prom
           const value = await read();
           if (!stopped) onResult(value);
         } catch (e) {
-          if (!stopped) onError?.(e instanceof ZeroError ? e : networkError(String(e)));
+          if (!stopped) onError?.(e instanceof FirstError ? e : networkError(String(e)));
         }
       } while (again && !stopped);
     } finally {
@@ -977,10 +977,10 @@ function dependencies(key: string, w: unknown, seen = new Set<string>()): string
 }
 
 /** Problem documents map field by field; WordPress core errors (`{ code, message, data: { status } }`) are mapped onto the same shape. */
-function toError(res: Response, body: unknown): ZeroError {
+function toError(res: Response, body: unknown): FirstError {
   if (isObject(body) && typeof body.code === "string") {
     const detail = typeof body.detail === "string" ? body.detail : typeof body.message === "string" ? body.message : res.statusText;
-    return new ZeroError({
+    return new FirstError({
       type: typeof body.type === "string" ? body.type : "about:blank",
       title: typeof body.title === "string" ? body.title : res.statusText || `HTTP ${res.status}`,
       status: typeof body.status === "number" ? body.status : res.status,
@@ -989,7 +989,7 @@ function toError(res: Response, body: unknown): ZeroError {
       ...(typeof body.pointer === "string" ? { pointer: body.pointer } : {}),
     });
   }
-  return new ZeroError({
+  return new FirstError({
     type: "about:blank",
     title: res.statusText || `HTTP ${res.status}`,
     status: res.status,

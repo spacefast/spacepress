@@ -4,7 +4,7 @@ export const fieldExtensions = {
 	elements: [
 		{
 			value: 'en_US',
-			label: __( 'English', 'zero-admin' ),
+			label: __( 'English', 'first-admin' ),
 		},
 	],
 };

@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Identity\Vendor\Firebase\JWT;
+namespace First\Identity\Vendor\Firebase\JWT;
 
 use DomainException;
 use InvalidArgumentException;
@@ -311,7 +311,7 @@ class JWK
 
     /**
      * Encodes a value into a DER object.
-     * Also defined in Zero\Identity\Vendor\Firebase\JWT\JWT
+     * Also defined in First\Identity\Vendor\Firebase\JWT\JWT
      *
      * @param   int     $type DER tag
      * @param   string  $value the value to encode

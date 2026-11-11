@@ -9,7 +9,10 @@ fn check(checks: &mut Vec<Value>, name: &str, ok: bool, detail: impl Into<String
 
 pub(super) fn run(args: &Args) -> ExitCode {
     let project = args.project.canonicalize().unwrap_or(args.project.clone());
-    let out = args.out.clone().unwrap_or_else(|| project.join("zero/dist/wp-content"));
+    let out = args
+        .out
+        .clone()
+        .unwrap_or_else(|| project.join("first/dist/wp-content"));
     let mut checks = Vec::new();
     let mut manifest = Value::Null;
     check(
@@ -19,7 +22,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
         platform::SERIES,
     );
     {
-        match std::fs::read(out.join("zero-manifest.json"))
+        match std::fs::read(out.join("first-manifest.json"))
             .and_then(|bytes| serde_json::from_slice(&bytes).map_err(std::io::Error::other))
         {
             Ok(value) => {
@@ -27,8 +30,8 @@ pub(super) fn run(args: &Args) -> ExitCode {
                 let series = manifest["runtime"].as_str().unwrap_or("missing");
                 check(&mut checks, "built runtime series", series == platform::SERIES, series);
                 for slug in [
-                    "zero-runtime".to_string(),
-                    format!("zero-app-{}", manifest["app"].as_str().unwrap_or("")),
+                    "first-runtime".to_string(),
+                    format!("first-app-{}", manifest["app"].as_str().unwrap_or("")),
                 ] {
                     check(
                         &mut checks,
@@ -40,7 +43,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
                 check(
                     &mut checks,
                     "identity bundle",
-                    out.join("plugins/zero-identity/zero-identity.php").is_file(),
+                    out.join("plugins/first-identity/first-identity.php").is_file(),
                     "optional identity plugin; runtime availability is reported by the site",
                 );
             }
@@ -48,7 +51,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
                 &mut checks,
                 "wp-content artifact",
                 false,
-                format!("{error}; run zero build"),
+                format!("{error}; run first build"),
             ),
         }
     }
@@ -60,8 +63,8 @@ pub(super) fn run(args: &Args) -> ExitCode {
     if let Some(site) = &args.site
         && project.join(crate::wordpress::abilities::LOCK).is_file()
     {
-        // Abilities are listed with the application password `zero abilities pull` uses.
-        let credential = std::env::var("ZERO_APP_PASSWORD").ok().filter(|s| !s.is_empty());
+        // Abilities are listed with the application password `first abilities pull` uses.
+        let credential = std::env::var("FIRST_APP_PASSWORD").ok().filter(|s| !s.is_empty());
         match super::abilities::list(site, credential.as_deref())
             .and_then(|listed| super::abilities::drift(&project, &listed))
         {
@@ -99,7 +102,7 @@ pub(super) fn run(args: &Args) -> ExitCode {
 
 /// A bearer token for the site's schema, from the environment (never a flag value).
 fn token() -> Option<String> {
-    std::env::var("ZERO_TOKEN").ok().filter(|t| !t.is_empty())
+    std::env::var("FIRST_TOKEN").ok().filter(|t| !t.is_empty())
 }
 
 fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Value>) -> Result<(), String> {
@@ -123,10 +126,10 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
             .append_pair("rest_route", &format!("{}/_schema", route.trim_end_matches('/')));
     } else {
         let path = url.path().trim_end_matches('/');
-        let path = if path.ends_with("/wp-json/zero/v1") {
+        let path = if path.ends_with("/wp-json/first/v1") {
             format!("{path}/_schema")
         } else {
-            format!("{path}/wp-json/zero/v1/_schema")
+            format!("{path}/wp-json/first/v1/_schema")
         };
         url.set_path(&path);
     }
@@ -163,7 +166,7 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
             if identity == Some(true) {
                 "compatible identity active"
             } else if identity_required {
-                "configured authentication requires a compatible Zero Identity"
+                "configured authentication requires a compatible First Identity"
             } else {
                 "optional identity inactive"
             },

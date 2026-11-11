@@ -16,52 +16,52 @@
 }
 
 @media not ( prefers-reduced-motion: reduce ) {
-	.zero-admin-layout__canvas .interface-interface-skeleton__header {
-		view-transition-name: zero-admin--canvas-header;
+	.first-admin-layout__canvas .interface-interface-skeleton__header {
+		view-transition-name: first-admin--canvas-header;
 	}
 
-	.zero-admin-layout__canvas .interface-interface-skeleton__sidebar {
-		view-transition-name: zero-admin--canvas-sidebar;
+	.first-admin-layout__canvas .interface-interface-skeleton__sidebar {
+		view-transition-name: first-admin--canvas-sidebar;
 	}
 
-	.zero-admin-layout.has-full-canvas
-		.zero-admin-layout__canvas
-		.zero-admin-site-icon-link,
-	.zero-admin-layout:not( .has-full-canvas )
-		.zero-admin-site-hub
-		.zero-admin-site-icon-link {
-		view-transition-name: zero-admin--site-icon-link;
+	.first-admin-layout.has-full-canvas
+		.first-admin-layout__canvas
+		.first-admin-site-icon-link,
+	.first-admin-layout:not( .has-full-canvas )
+		.first-admin-site-hub
+		.first-admin-site-icon-link {
+		view-transition-name: first-admin--site-icon-link;
 	}
 
 	html:not( .is-safari ) {
-		.zero-admin-layout__surface.is-stage {
-			view-transition-name: zero-admin--stage;
+		.first-admin-layout__surface.is-stage {
+			view-transition-name: first-admin--stage;
 		}
 
-		.zero-admin-layout__surface.is-inspector {
-			view-transition-name: zero-admin--inspector;
+		.first-admin-layout__surface.is-inspector {
+			view-transition-name: first-admin--inspector;
 		}
 
-		.zero-admin-layout__canvas:not( .is-full-canvas ),
-		.zero-admin-layout__canvas.is-full-canvas
+		.first-admin-layout__canvas:not( .is-full-canvas ),
+		.first-admin-layout__canvas.is-full-canvas
 			.interface-interface-skeleton__content {
-			view-transition-name: zero-admin--canvas;
+			view-transition-name: first-admin--canvas;
 		}
 	}
 
 	html.is-safari {
-		.zero-admin-layout__surface.is-stage {
-			view-transition-name: zero-admin-safari--stage;
+		.first-admin-layout__surface.is-stage {
+			view-transition-name: first-admin-safari--stage;
 		}
 
-		.zero-admin-layout__surface.is-inspector {
-			view-transition-name: zero-admin-safari--inspector;
+		.first-admin-layout__surface.is-inspector {
+			view-transition-name: first-admin-safari--inspector;
 		}
 
-		.zero-admin-layout__canvas:not( .is-full-canvas ),
-		.zero-admin-layout__canvas.is-full-canvas
+		.first-admin-layout__canvas:not( .is-full-canvas ),
+		.first-admin-layout__canvas.is-full-canvas
 			.interface-interface-skeleton__content {
-			view-transition-name: zero-admin-safari--canvas;
+			view-transition-name: first-admin-safari--canvas;
 		}
 	}
 
@@ -70,43 +70,43 @@
 	// Not an ideal solution, ideally we use navigate({viewTransition: false}),
 	// but it doesn't seem to work.
 	.components-popover:first-of-type {
-		view-transition-name: zero-admin--components-popover;
+		view-transition-name: first-admin--components-popover;
 	}
 }
 
-::view-transition-group( zero-admin--canvas-header ),
-::view-transition-group( zero-admin--canvas-sidebar ),
-::view-transition-group( zero-admin-safari--canvas ),
-::view-transition-group( zero-admin--canvas ) {
+::view-transition-group( first-admin--canvas-header ),
+::view-transition-group( first-admin--canvas-sidebar ),
+::view-transition-group( first-admin-safari--canvas ),
+::view-transition-group( first-admin--canvas ) {
 	z-index: 1;
 }
 
-::view-transition-group( zero-admin--site-icon-link ) {
+::view-transition-group( first-admin--site-icon-link ) {
 	z-index: 2;
 }
 
-::view-transition-new( zero-admin--site-icon-link ),
-::view-transition-old( zero-admin--site-icon-link ) {
+::view-transition-new( first-admin--site-icon-link ),
+::view-transition-old( first-admin--site-icon-link ) {
 	animation: none;
 }
 
-::view-transition-new( zero-admin-safari--canvas ),
-::view-transition-old( zero-admin-safari--canvas ),
-::view-transition-new( zero-admin-safari--stage ),
-::view-transition-old( zero-admin-safari--stage ),
-::view-transition-old( zero-admin-safari--inspector ),
-::view-transition-old( zero-admin-safari--inspector ) {
+::view-transition-new( first-admin-safari--canvas ),
+::view-transition-old( first-admin-safari--canvas ),
+::view-transition-new( first-admin-safari--stage ),
+::view-transition-old( first-admin-safari--stage ),
+::view-transition-old( first-admin-safari--inspector ),
+::view-transition-old( first-admin-safari--inspector ) {
 	width: auto;
 }
 
 // Safari trips up with using object fit on the pseudo images and filling out
 // background.
-::view-transition-new( zero-admin--canvas ),
-::view-transition-old( zero-admin--canvas ),
-::view-transition-new( zero-admin--stage ),
-::view-transition-old( zero-admin--stage ),
-::view-transition-new( zero-admin--inspector ),
-::view-transition-old( zero-admin--inspector ) {
+::view-transition-new( first-admin--canvas ),
+::view-transition-old( first-admin--canvas ),
+::view-transition-new( first-admin--stage ),
+::view-transition-old( first-admin--stage ),
+::view-transition-new( first-admin--inspector ),
+::view-transition-old( first-admin--inspector ) {
 	background: colors.$white;
 	border-radius: 8px;
 	width: 100%;
@@ -116,23 +116,23 @@
 	overflow: hidden;
 }
 
-::view-transition-new( zero-admin--canvas ),
-::view-transition-old( zero-admin--canvas ) {
+::view-transition-new( first-admin--canvas ),
+::view-transition-old( first-admin--canvas ) {
 	object-position: center top;
 }
 
-::view-transition-old( zero-admin-safari--inspector ):only-child,
-::view-transition-old( zero-admin--inspector ):only-child,
-::view-transition-old( zero-admin-safari--stage ):only-child,
-::view-transition-old( zero-admin--stage ):only-child {
+::view-transition-old( first-admin-safari--inspector ):only-child,
+::view-transition-old( first-admin--inspector ):only-child,
+::view-transition-old( first-admin-safari--stage ):only-child,
+::view-transition-old( first-admin--stage ):only-child {
 	animation-name: zoomOut;
 	will-change: transform, opacity;
 }
 
-::view-transition-new( zero-admin-safari--inspector ):only-child,
-::view-transition-new( zero-admin--inspector ):only-child,
-::view-transition-new( zero-admin-safari--stage ):only-child,
-::view-transition-new( zero-admin--stage ):only-child {
+::view-transition-new( first-admin-safari--inspector ):only-child,
+::view-transition-new( first-admin--inspector ):only-child,
+::view-transition-new( first-admin-safari--stage ):only-child,
+::view-transition-new( first-admin--stage ):only-child {
 	animation-name: zoomIn;
 	will-change: transform, opacity;
 }
@@ -161,14 +161,14 @@
 	}
 }
 
-::view-transition-new( zero-admin-safari--canvas ):only-child,
-::view-transition-new( zero-admin--canvas ):only-child {
+::view-transition-new( first-admin-safari--canvas ):only-child,
+::view-transition-new( first-admin--canvas ):only-child {
 	animation-name: slideFromRight;
 	will-change: transform;
 }
 
-::view-transition-old( zero-admin-safari--canvas ):only-child,
-::view-transition-old( zero-admin--canvas ):only-child {
+::view-transition-old( first-admin-safari--canvas ):only-child,
+::view-transition-old( first-admin--canvas ):only-child {
 	animation-name: slideToRight;
 	will-change: transform;
 }
@@ -196,12 +196,12 @@
 	}
 }
 
-::view-transition-new( zero-admin--canvas-header ):only-child {
+::view-transition-new( first-admin--canvas-header ):only-child {
 	animation-name: slideHeaderFromTop;
 	will-change: transform;
 }
 
-::view-transition-old( zero-admin--canvas-header ):only-child {
+::view-transition-old( first-admin--canvas-header ):only-child {
 	animation-name: slideHeaderToTop;
 	will-change: transform;
 }
@@ -218,12 +218,12 @@
 	}
 }
 
-::view-transition-new( zero-admin--canvas-sidebar ):only-child {
+::view-transition-new( first-admin--canvas-sidebar ):only-child {
 	animation-name: slideSidebarFromRight;
 	will-change: transform;
 }
 
-::view-transition-old( zero-admin--canvas-sidebar ):only-child {
+::view-transition-old( first-admin--canvas-sidebar ):only-child {
 	animation-name: slideSidebarToRight;
 	will-change: transform;
 }

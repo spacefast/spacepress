@@ -46,8 +46,8 @@ function sourcesOf(dir: string, rel = ""): string[] {
   const found: string[] = [];
   for (const name of readdirSync(path.join(dir, rel))) {
     const sub = rel ? `${rel}/${name}` : name;
-    // Build output: `first build` writes zero/_generated/ and zero/dist/. App code under zero/ counts.
-    if ([".zero", "node_modules", "zero/_generated", "zero/dist"].includes(sub)) continue;
+    // Build output: `first build` writes first/_generated/ and first/dist/. App code under first/ counts.
+    if ([".first", "node_modules", "first/_generated", "first/dist"].includes(sub)) continue;
     if (lstatSync(path.join(dir, sub)).isDirectory()) found.push(...sourcesOf(dir, sub));
     else found.push(sub);
   }

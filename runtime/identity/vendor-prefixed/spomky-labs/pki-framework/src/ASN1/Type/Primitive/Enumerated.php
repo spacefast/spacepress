@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
 
-use Zero\Identity\Vendor\Brick\Math\BigInteger;
+use First\Identity\Vendor\Brick\Math\BigInteger;
 
 /**
  * Implements *ENUMERATED* type.

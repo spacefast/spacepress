@@ -21,10 +21,10 @@ export function DashboardNotice( {
 		<Notice
 			status={ status }
 			isDismissible={ false }
-			className="zero-admin-dashboard-notice"
+			className="first-admin-dashboard-notice"
 		>
 			<Stack direction="column" gap="md">
-				<p className="zero-admin-dashboard-notice__message">
+				<p className="first-admin-dashboard-notice__message">
 					{ message }
 				</p>
 				{ actions && actions.length > 0 && (
@@ -65,7 +65,7 @@ export default function DashboardNotices() {
 		<Stack
 			direction="column"
 			gap="md"
-			className="zero-admin-dashboard-notices"
+			className="first-admin-dashboard-notices"
 		>
 			{ notices.map( ( notice ) => (
 				<DashboardNotice

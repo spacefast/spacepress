@@ -9,8 +9,8 @@ import {
 import { __ } from '@wordpress/i18n';
 // @ts-expect-error - WordPress private APIs
 import { privateApis as blockEditorPrivateApis } from '@wordpress/block-editor';
-import type { GlobalStylesSettings } from '@zero-admin/global-styles-engine';
-import { unlock } from '@zero-admin/admin-toolkit';
+import type { GlobalStylesSettings } from '@first-admin/global-styles-engine';
+import { unlock } from '@first-admin/admin-toolkit';
 import { NavigationButtonAsItem } from './navigation-button';
 import { useSetting } from './hooks';
 
@@ -45,31 +45,31 @@ function RootMenu() {
 						icon={ typography }
 						path="/typography"
 					>
-						{ __( 'Typography', 'zero-admin' ) }
+						{ __( 'Typography', 'first-admin' ) }
 					</NavigationButtonAsItem>
 				) }
 				{ hasColorPanel && (
 					<NavigationButtonAsItem icon={ color } path="/colors">
-						{ __( 'Colors', 'zero-admin' ) }
+						{ __( 'Colors', 'first-admin' ) }
 					</NavigationButtonAsItem>
 				) }
 				{ hasBackgroundPanel && (
 					<NavigationButtonAsItem
 						icon={ background }
 						path="/background"
-						aria-label={ __( 'Background styles', 'zero-admin' ) }
+						aria-label={ __( 'Background styles', 'first-admin' ) }
 					>
-						{ __( 'Background', 'zero-admin' ) }
+						{ __( 'Background', 'first-admin' ) }
 					</NavigationButtonAsItem>
 				) }
 				{ hasShadowPanel && (
 					<NavigationButtonAsItem icon={ shadowIcon } path="/shadows">
-						{ __( 'Shadows', 'zero-admin' ) }
+						{ __( 'Shadows', 'first-admin' ) }
 					</NavigationButtonAsItem>
 				) }
 				{ hasLayoutPanel && (
 					<NavigationButtonAsItem icon={ layout } path="/layout">
-						{ __( 'Layout', 'zero-admin' ) }
+						{ __( 'Layout', 'first-admin' ) }
 					</NavigationButtonAsItem>
 				) }
 			</ItemGroup>

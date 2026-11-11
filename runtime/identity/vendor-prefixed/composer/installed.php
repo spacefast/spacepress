@@ -1,7 +1,7 @@
 <?php return array (
   'root' => 
   array (
-    'name' => 'spacefast/zero-identity',
+    'name' => 'spacefast/first-identity',
     'pretty_version' => '1.0.0+no-version-set',
     'version' => '1.0.0.0',
     'reference' => NULL,

@@ -1,11 +1,11 @@
 {
-  "name": "@spacefast/zero-cli",
+  "name": "@spacefast/first-cli",
   "version": "0.3.0",
-  "description": "The Zero compiler and local WordPress development command, without a Rust toolchain",
+  "description": "The First compiler and local WordPress development command, without a Rust toolchain",
   "license": "MIT",
   "type": "module",
   "engines": { "node": ">=22" },
-  "bin": { "zero": "bin/zero.mjs" },
+  "bin": { "first": "bin/first.mjs" },
   "files": ["bin", "lib", "types", "LICENSE", "README.md"],
   "scripts": {
     "prepack": "node scripts/prepare.mjs",

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cleanup, command, makeProject, repository, start, wp } from './local.mjs';
 
-const evidence = await mkdtemp(join(tmpdir(), 'zero-emdash-publishing-evidence-'));
+const evidence = await mkdtemp(join(tmpdir(), 'first-emdash-publishing-evidence-'));
 const results = [];
 console.log(`Evidence: ${evidence}`);
 
@@ -26,7 +26,7 @@ test('official publishing counterparts run on native Studio with owned cleanup',
     });
     const receipt = await start(project, mode);
     await save(`${mode}-receipt.json`, receipt);
-    await cp(join(project, '.zero/dev/owner.json'), join(evidence, `${mode}-owner.json`));
+    await cp(join(project, '.first/dev/owner.json'), join(evidence, `${mode}-owner.json`));
     const { base } = receipt;
     const password = await wp(project, 'user', 'application-password', 'create', 'admin', 'publication-acceptance', '--porcelain');
     const authorization = `Basic ${Buffer.from(`admin:${password}`).toString('base64')}`;
@@ -46,7 +46,7 @@ test('official publishing counterparts run on native Studio with owned cleanup',
       assert.equal(response.status, status, path);
       return response.text();
     }
-    const schema = await json('/wp-json/zero/v1/_schema');
+    const schema = await json('/wp-json/first/v1/_schema');
     assert.equal(schema.runtime.wp.database.kind, 'sqlite');
     const front = await html('/');
     await save(`${mode}-home.html`, front);
@@ -56,11 +56,11 @@ test('official publishing counterparts run on native Studio with owned cleanup',
     const nativeSettings = await json('/wp-json/wp/v2/settings');
     assert.equal(typeof nativeSettings.title, 'string');
     const plugins = JSON.parse(await wp(project, 'plugin', 'list', '--status=active', '--format=json'));
-    assert.equal(plugins.some((plugin) => plugin.name === 'zero-admin'), false);
+    assert.equal(plugins.some((plugin) => plugin.name === 'first-admin'), false);
     assert.equal(plugins.some((plugin) => plugin.name === 'secure-custom-fields'), true);
 
     if (mode === 'blank') {
-      assert.match(front, /Welcome to Zero/);
+      assert.match(front, /Welcome to First/);
       const page = await json('/wp-json/wp/v2/pages', { method: 'POST', body: {
         title: 'A native blank page', slug: 'native-blank-page', status: 'publish',
         content: '<!-- wp:paragraph --><p>Blank native editor proof.</p><!-- /wp:paragraph -->',
@@ -82,18 +82,18 @@ test('official publishing counterparts run on native Studio with owned cleanup',
       return;
     }
 
-    const post = await json('/wp-json/wp/v2/zero_posts', { method: 'POST', body: {
+    const post = await json('/wp-json/wp/v2/first_posts', { method: 'POST', body: {
       title: `${mode} native first draft`, slug: `${mode}-acceptance`, status: 'publish',
       content: '<!-- wp:paragraph --><p>Original blocks.</p><!-- /wp:paragraph -->',
-      acf: { zero_excerpt: 'Original SCF excerpt.' },
+      acf: { first_excerpt: 'Original SCF excerpt.' },
     } });
     const marker = `${mode} observatory ${Date.now()}`;
-    await json(`/wp-json/wp/v2/zero_posts/${post.id}`, { method: 'POST', body: {
+    await json(`/wp-json/wp/v2/first_posts/${post.id}`, { method: 'POST', body: {
       title: marker,
       content: '<!-- wp:paragraph --><p>Native REST blocks reach the public theme.</p><!-- /wp:paragraph -->',
-      acf: { zero_excerpt: 'SCF changes appear on archive cards.', zero_seoTitle: 'A saved SEO title', zero_seoDescription: 'A saved description.' },
+      acf: { first_excerpt: 'SCF changes appear on archive cards.', first_seoTitle: 'A saved SEO title', first_seoDescription: 'A saved description.' },
     } });
-    const records = await json('/wp-json/zero/v1/posts');
+    const records = await json('/wp-json/first/v1/posts');
     const record = records.find((row) => row.id === post.id);
     assert.equal(record.title, marker);
     assert.equal(record.excerpt, 'SCF changes appear on archive cards.');
@@ -104,29 +104,29 @@ test('official publishing counterparts run on native Studio with owned cleanup',
     assert.ok((await html('/posts')).includes(marker));
     assert.match(await html('/posts'), /SCF changes appear on archive cards\./);
     await save(`${mode}-native-save.html`, single);
-    const draft = await json('/wp-json/wp/v2/zero_posts', { method: 'POST', body: {
+    const draft = await json('/wp-json/wp/v2/first_posts', { method: 'POST', body: {
       title: 'Private editorial draft', slug: `${mode}-private`, status: 'draft', content: 'Unpublished draft body.',
     } });
-    const anonymous = await json('/wp-json/zero/v1/posts', { auth: false });
+    const anonymous = await json('/wp-json/first/v1/posts', { auth: false });
     assert.equal(anonymous.some((row) => row.id === draft.id), false);
     assert.equal((await html('/posts')).includes('Private editorial draft'), false);
     await html(`/posts/${mode}-private`, 404);
-    await json(`/wp-json/wp/v2/zero_posts/${draft.id}`, { method: 'POST', body: {
-      status: 'publish', password: 'disposable-reader-password', acf: { zero_excerpt: 'Protected excerpt marker', zero_seoDescription: 'Protected metadata marker' },
+    await json(`/wp-json/wp/v2/first_posts/${draft.id}`, { method: 'POST', body: {
+      status: 'publish', password: 'disposable-reader-password', acf: { first_excerpt: 'Protected excerpt marker', first_seoDescription: 'Protected metadata marker' },
     } });
     const protectedPage = await html(`/posts/${mode}-private`);
     assert.match(protectedPage, /post-password-form/);
     assert.doesNotMatch(protectedPage, /Unpublished draft body\.|Protected excerpt marker|Protected metadata marker|wp-comments-post\.php/);
     assert.doesNotMatch(await html('/posts'), /Private editorial draft|Protected excerpt marker/);
-    await json('/wp-json/wp/v2/zero_posts', { method: 'POST', auth: false, expected: 401, body: { title: 'Anonymous write', status: 'publish' } });
+    await json('/wp-json/wp/v2/first_posts', { method: 'POST', auth: false, expected: 401, body: { title: 'Anonymous write', status: 'publish' } });
     const pagePath = mode === 'blog' ? '/pages/about' : '/about';
-    const pages = await json('/wp-json/wp/v2/zero_pages?slug=about');
+    const pages = await json('/wp-json/wp/v2/first_pages?slug=about');
     assert.equal(pages.length, 1);
-    await json(`/wp-json/wp/v2/zero_pages/${pages[0].id}`, { method: 'POST', body: {
+    await json(`/wp-json/wp/v2/first_pages/${pages[0].id}`, { method: 'POST', body: {
       content: '<!-- wp:paragraph --><p>About was saved in native WordPress.</p><!-- /wp:paragraph -->',
     } });
     assert.match(await html(pagePath), /About was saved in native WordPress\./);
-    const revisions = await json(`/wp-json/wp/v2/zero_posts/${post.id}/revisions`);
+    const revisions = await json(`/wp-json/wp/v2/first_posts/${post.id}/revisions`);
     assert.ok(revisions.length >= 1, 'Native editing retains a revision.');
     const search = await html(`/search?q=${encodeURIComponent(marker)}`);
     assert.ok(search.includes(`/posts/${mode}-acceptance`), 'Saved title is searchable through WordPress.');
@@ -135,7 +135,7 @@ test('official publishing counterparts run on native Studio with owned cleanup',
     if (mode === 'blog') {
       const category = await json('/wp-json/wp/v2/categories', { method: 'POST', body: { name: 'Observations', slug: 'observations' } });
       const tag = await json('/wp-json/wp/v2/tags', { method: 'POST', body: { name: 'Native saves', slug: 'native-saves' } });
-      await json(`/wp-json/wp/v2/zero_posts/${post.id}`, { method: 'POST', body: { categories: [category.id], tags: [tag.id] } });
+      await json(`/wp-json/wp/v2/first_posts/${post.id}`, { method: 'POST', body: { categories: [category.id], tags: [tag.id] } });
       for (const path of ['/category/observations', '/tag/native-saves']) {
         const archive = await html(path);
         assert.ok(archive.includes(marker), `Saved taxonomy drives ${path}`);
@@ -146,10 +146,10 @@ test('official publishing counterparts run on native Studio with owned cleanup',
       }, body: bytes, signal: AbortSignal.timeout(30000) });
       const media = await uploaded.json();
       assert.equal(uploaded.status, 201, JSON.stringify(media));
-      await json(`/wp-json/wp/v2/zero_posts/${post.id}`, { method: 'POST', body: { acf: { zero_cover: media.id } } });
+      await json(`/wp-json/wp/v2/first_posts/${post.id}`, { method: 'POST', body: { acf: { first_cover: media.id } } });
       assert.ok((await html(`/posts/${mode}-acceptance`)).includes('publication-proof.png'));
       assert.deepEqual(Buffer.from(await (await fetch(media.source_url)).arrayBuffer()), bytes);
-      await wp(project, 'eval', 'for($i=0;$i<14;$i++){wp_insert_post(["post_type"=>"zero_posts","post_status"=>"publish","post_title"=>"Archive boundary ".$i,"post_name"=>"archive-boundary-".$i,"post_date"=>"2001-01-01 00:00:00"]);}');
+      await wp(project, 'eval', 'for($i=0;$i<14;$i++){wp_insert_post(["post_type"=>"first_posts","post_status"=>"publish","post_title"=>"Archive boundary ".$i,"post_name"=>"archive-boundary-".$i,"post_date"=>"2001-01-01 00:00:00"]);}');
       const first = await html('/posts');
       const next = first.match(/rel="next" href="([^"]+)"/);
       assert.ok(next, 'More than twenty stored posts produces a next page.');
@@ -165,7 +165,7 @@ test('official publishing counterparts run on native Studio with owned cleanup',
       assert.ok(feed.includes(marker), 'RSS includes the native saved title.');
       assert.equal(feed.includes('Private editorial draft'), false);
       await save('blog-rss.xml', feed);
-      await json(`/wp-json/wp/v2/zero_posts/${post.id}`, { method: 'POST', body: { comment_status: 'open' } });
+      await json(`/wp-json/wp/v2/first_posts/${post.id}`, { method: 'POST', body: { comment_status: 'open' } });
       const commentText = 'A real reader submitted this observation.';
       const submitted = await fetch(`${base}/wp-comments-post.php`, {
         method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -180,7 +180,7 @@ test('official publishing counterparts run on native Studio with owned cleanup',
       const conversation = await html(`/posts/${mode}-acceptance`);
       assert.ok(conversation.includes(commentText), 'Native REST approval publishes the real form submission.');
       assert.match(conversation, /wp-comments-post\.php/);
-      await wp(project, 'theme', 'mod', 'set', 'zero_footer', 'Saved appearance from native WordPress.');
+      await wp(project, 'theme', 'mod', 'set', 'first_footer', 'Saved appearance from native WordPress.');
       assert.match(await html('/'), /Saved appearance from native WordPress\./);
       await wp(project, 'option', 'update', 'blogname', 'Renamed native publication');
       assert.match(await html('/'), /Renamed native publication/);

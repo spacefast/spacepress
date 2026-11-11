@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Attribute;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralName;
 
 /**
  * Implements value for 'Access Identity' attribute.

@@ -19,23 +19,23 @@ export async function freePort() {
 }
 export async function makeProject(mode) {
   if (!['blank','starter','blog'].includes(mode)) throw new Error('Unknown official source template.');
-  const project = await mkdtemp(join(tmpdir(), `zero-official-${mode}-`));
-  await cp(join(root, ...(mode === 'blank' ? ['blank','zero.config.ts'] : ['zero.config.ts'])), join(project, 'zero.config.ts'));
+  const project = await mkdtemp(join(tmpdir(), `first-official-${mode}-`));
+  await cp(join(root, ...(mode === 'blank' ? ['blank','first.config.ts'] : ['first.config.ts'])), join(project, 'first.config.ts'));
   if (mode !== 'blank') await cp(join(root, 'backend'), join(project, 'backend'), { recursive: true });
-  await writeFile(join(project, 'official-owner.json'), JSON.stringify({ project, mode, kind: 'zero-official-source' }));
+  await writeFile(join(project, 'official-owner.json'), JSON.stringify({ project, mode, kind: 'first-official-source' }));
   return project;
 }
 export async function start(project, mode, { onProcess = () => {} } = {}) {
   const owned = JSON.parse(await readFile(join(project, 'official-owner.json'), 'utf8'));
-  if (owned.project !== await realpath(project) || owned.mode !== mode || owned.kind !== 'zero-official-source') throw new Error('Not an owned official-source project.');
+  if (owned.project !== await realpath(project) || owned.mode !== mode || owned.kind !== 'first-official-source') throw new Error('Not an owned official-source project.');
   await command(['dev', project, '--port', String(await freePort()), '--no-watch']);
-  const owner = JSON.parse(await readFile(join(project, '.zero/dev/owner.json'), 'utf8'));
-  const site = join(project, '.zero/dev/wordpress');
+  const owner = JSON.parse(await readFile(join(project, '.first/dev/owner.json'), 'utf8'));
+  const site = join(project, '.first/dev/wordpress');
   if (owner.project !== project || owner.site !== site) throw new Error('Native Studio ownership mismatch.');
   let entries = [];
   if (mode !== 'blank') {
     await mkdir(join(site, 'wp-content/mu-plugins'), { recursive: true });
-    await cp(join(root, 'bridge.php'), join(site, 'wp-content/mu-plugins/zero-official.php'));
+    await cp(join(root, 'bridge.php'), join(site, 'wp-content/mu-plugins/first-official.php'));
     const seeded = await wp(project, 'eval-file', join(root, 'seed.php'), mode, join(root, mode, 'seed/seed.json'), site);
     entries = JSON.parse(seeded);
   }
@@ -61,11 +61,11 @@ export async function start(project, mode, { onProcess = () => {} } = {}) {
   const backend = status.siteUrl.replace(/\/$/, '');
   const port = await freePort();
   const frontend = `http://${new URL(backend).hostname}:${port}`;
-  await wp(project, 'option', 'update', 'zero_official_frontend', frontend);
+  await wp(project, 'option', 'update', 'first_official_frontend', frontend);
   const { openSync, closeSync } = await import('node:fs');
   const out = openSync(join(project, 'frontend.log'), 'a');
   const child = spawn(process.execPath, [join(root, mode, 'dist/server/entry.mjs')], { cwd: join(root, mode),
-    env: { ...process.env, ZERO_BACKEND_URL: backend, HOST: '127.0.0.1', PORT: String(port) }, stdio: ['ignore', out, out] });
+    env: { ...process.env, FIRST_BACKEND_URL: backend, HOST: '127.0.0.1', PORT: String(port) }, stdio: ['ignore', out, out] });
   onProcess(child);
   await new Promise((done, fail) => { child.once('spawn', done); child.once('error', fail); });
   closeSync(out);
@@ -87,7 +87,7 @@ export async function start(project, mode, { onProcess = () => {} } = {}) {
 }
 export async function cleanup(project) {
   const owned = JSON.parse(await readFile(join(project, 'official-owner.json'), 'utf8'));
-  if (owned.project !== await realpath(project) || owned.kind !== 'zero-official-source') throw new Error('Refusing cleanup of another project.');
+  if (owned.project !== await realpath(project) || owned.kind !== 'first-official-source') throw new Error('Refusing cleanup of another project.');
   let receipt;
   try { receipt = JSON.parse(await readFile(join(project, 'official-site.json'), 'utf8')); }
   catch(error) { if (error.code !== 'ENOENT') throw error; }
@@ -100,7 +100,7 @@ export async function cleanup(project) {
       process.kill(receipt.pid, 'SIGTERM');
     } else if (cmdline) throw new Error('Frontend PID now belongs to another process.');
   }
-  try { await readFile(join(project, '.zero/dev/owner.json')); }
+  try { await readFile(join(project, '.first/dev/owner.json')); }
   catch(error) { if (error.code !== 'ENOENT') throw error; await rm(project, {recursive:true}); return { project, startupAbortedBeforeNativeOwnership: true }; }
   const native = await cleanupBackend(project);
   if (receipt) {
@@ -119,7 +119,7 @@ export async function launch() {
   const owned = await makeProject(mode);
   try {
     const receipt = await start(owned, mode, { onProcess(child) { child.unref(); } });
-    console.log(JSON.stringify({ ...receipt, admin: `${receipt.backend}/wp-admin/`, initialLogin: 'admin / zero-test-admin (disposable native site only)', cleanup: `node examples/emdash/official-sites/run.mjs ${mode} cleanup ${owned}` },null,2));
+    console.log(JSON.stringify({ ...receipt, admin: `${receipt.backend}/wp-admin/`, initialLogin: 'admin / first-test-admin (disposable native site only)', cleanup: `node examples/emdash/official-sites/run.mjs ${mode} cleanup ${owned}` },null,2));
   } catch(error) { await cleanup(owned); throw error; }
 }
 export { command, wp };

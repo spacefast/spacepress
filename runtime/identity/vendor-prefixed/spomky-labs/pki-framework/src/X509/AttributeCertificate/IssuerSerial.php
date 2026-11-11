@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
 
 use LogicException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\UniqueIdentifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\DirectoryName;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\Integer;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\UniqueIdentifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\DirectoryName;
+use First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName\GeneralNames;
 
 /**
  * Implements *IssuerSerial* ASN.1 type.

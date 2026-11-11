@@ -1,1 +1,1 @@
-export { GlobalDocument as default } from '@zero-admin/schema';
+export { GlobalDocument as default } from '@first-admin/schema';

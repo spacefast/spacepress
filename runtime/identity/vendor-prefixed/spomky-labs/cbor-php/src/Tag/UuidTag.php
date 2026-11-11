@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\CBOR\Tag;
+namespace First\Identity\Vendor\CBOR\Tag;
 
 use function bin2hex;
-use Zero\Identity\Vendor\CBOR\ByteStringObject;
-use Zero\Identity\Vendor\CBOR\CBORObject;
-use Zero\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use Zero\Identity\Vendor\CBOR\Normalizable;
-use Zero\Identity\Vendor\CBOR\Tag;
+use First\Identity\Vendor\CBOR\ByteStringObject;
+use First\Identity\Vendor\CBOR\CBORObject;
+use First\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use First\Identity\Vendor\CBOR\Normalizable;
+use First\Identity\Vendor\CBOR\Tag;
 use function hex2bin;
 use InvalidArgumentException;
 use function preg_match;

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Exception;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Exception;
 
 /**
  * UnexpectedPropertyException.

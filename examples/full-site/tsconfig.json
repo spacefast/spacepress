@@ -11,21 +11,21 @@
     "noEmit": true,
     "types": [],
     "jsx": "react-jsx",
-    "jsxImportSource": "@spacefast/zero-pages",
+    "jsxImportSource": "@spacefast/first-pages",
     "paths": {
-      "zero": [
-        "../../types/zero/index.d.ts"
+      "first": [
+        "../../types/first/index.d.ts"
       ],
-      "@spacefast/zero-pages": [
+      "@spacefast/first-pages": [
         "../../packages/pages/src/index.ts"
       ],
-      "@spacefast/zero-pages/*": [
+      "@spacefast/first-pages/*": [
         "../../packages/pages/src/*.ts"
       ],
-      "@spacefast/zero-blocks": [
+      "@spacefast/first-blocks": [
         "../../packages/blocks/src/index.ts"
       ],
-      "@spacefast/zero-blocks/*": [
+      "@spacefast/first-blocks/*": [
         "../../packages/blocks/src/*.ts"
       ],
       "@wordpress/interactivity": [
@@ -36,8 +36,8 @@
     "skipLibCheck": true
   },
   "include": [
-    "zero.config.ts",
-    "zero/_generated/db.d.ts",
+    "first.config.ts",
+    "first/_generated/db.d.ts",
     "pages",
     "components",
     "islands",

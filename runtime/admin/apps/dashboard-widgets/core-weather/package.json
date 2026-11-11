@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"dependencies": {
-		"@zero-admin/dashboard": "workspace:*",
+		"@first-admin/dashboard": "workspace:*",
 		"@wordpress/i18n": "catalog:"
 	}
 }

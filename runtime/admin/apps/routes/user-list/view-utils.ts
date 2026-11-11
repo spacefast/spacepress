@@ -1,7 +1,7 @@
-import { loadView } from '@zero-admin/views';
-import { loadViewConfig } from '@zero-admin/core-data-next';
-import type { ViewConfig } from '@zero-admin/core-data-next';
-import type { View, Filter } from '@zero-admin/dataviews';
+import { loadView } from '@first-admin/views';
+import { loadViewConfig } from '@first-admin/core-data-next';
+import type { ViewConfig } from '@first-admin/core-data-next';
+import type { View, Filter } from '@first-admin/dataviews';
 
 /**
  * Maps view field names to REST API orderby values.

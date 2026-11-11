@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 const harness = JSON.parse(
 	readFileSync(
-		process.env.ZERO_WP_HARNESS ??
+		process.env.FIRST_WP_HARNESS ??
 			fileURLToPath(
 				new URL('../../../../tests/wp/.harness.json', import.meta.url)
 			),
@@ -13,14 +13,14 @@ const harness = JSON.parse(
 const site: string = harness.url;
 const subdir = new URL(site).pathname !== '/';
 async function login(page: Page, role: 'admin' | 'editor' | 'subscriber') {
-	await page.goto(`${site}/zero-admin/`);
+	await page.goto(`${site}/first-admin/`);
 	await expect(page.locator('#user_login')).toBeVisible();
 	// WordPress focuses this field after its login page has loaded.
 	await expect(page.locator('#user_login')).toBeFocused();
 	await page.locator('#user_login').fill(role);
-	await page.locator('#user_pass').fill(`zero-test-${role}`);
+	await page.locator('#user_pass').fill(`first-test-${role}`);
 	await page.locator('#wp-submit').click();
-	await expect(page).toHaveURL(`${site}/zero-admin/`);
+	await expect(page).toHaveURL(`${site}/first-admin/`);
 	await expect(
 		page.getByRole('heading', { name: 'Collections', exact: true })
 	).toBeVisible();
@@ -38,15 +38,15 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 		path: test.info().outputPath('collections.png'),
 		animations: 'disabled',
 	});
-	const cookies = await page.context().cookies(`${site}/zero-admin/`);
+	const cookies = await page.context().cookies(`${site}/first-admin/`);
 	expect(cookies.some((c) => /^wordpress_logged_in_/.test(c.name))).toBe(true);
 	expect(
 		cookies.filter((c) => /^wordpress_(?:sec_)?[a-f0-9]+$/.test(c.name))
 	).toEqual([]);
-	const sidebar = page.locator('.zero-admin-sidebar__content');
+	const sidebar = page.locator('.first-admin-sidebar__content');
 	await expect(sidebar.getByRole('link', { name: 'All collections', exact: true })).toBeVisible();
 	await sidebar.getByRole('link', { name: 'Posts', exact: true }).click();
-	await expect(page).toHaveURL(`${site}/zero-admin/collections/posts`);
+	await expect(page).toHaveURL(`${site}/first-admin/collections/posts`);
 	await expect(
 		page.getByRole('heading', { name: 'Posts', exact: true })
 	).toBeVisible();
@@ -67,10 +67,10 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await expect(page.locator('#wpadminbar')).toBeVisible();
 	await expect(wordpressMenu.getByRole('link', { name: 'Dashboard', exact: true })).toBeVisible();
 	await page.screenshot({ path: test.info().outputPath('classic-admin.png'), animations: 'disabled' });
-	await wordpressMenu.getByRole('link', { name: 'Zero', exact: true }).click();
-	await expect(page).toHaveURL(`${site}/zero-admin/`);
+	await wordpressMenu.getByRole('link', { name: 'First', exact: true }).click();
+	await expect(page).toHaveURL(`${site}/first-admin/`);
 	await sidebar.getByRole('link', { name: 'Posts', exact: true }).click();
-	await expect(page).toHaveURL(`${site}/zero-admin/collections/posts`);
+	await expect(page).toHaveURL(`${site}/first-admin/collections/posts`);
 	await expect(page.getByRole('heading', { name: 'Posts', exact: true })).toBeVisible();
 	await sidebar.getByRole('link', { name: 'All collections', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Collections', exact: true })).toBeVisible();
@@ -80,7 +80,7 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await expect(page).toHaveURL(`${site}/wp-admin/`);
 	await expect(page.locator('#adminmenu')).toBeVisible();
 	if (subdir) {
-		await page.goto(`${site}/zero-admin/types/post/list/all`);
+		await page.goto(`${site}/first-admin/types/post/list/all`);
 		await expect(page.getByRole('table')).toBeVisible();
 	}
 	expect(errors).toEqual([]);
@@ -99,7 +99,7 @@ if (!subdir) {
 			Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}`,
 		};
 		const authorName = `Browser author ${Date.now()}`;
-		const author = await request.post(`${site}/wp-json/zero/v1/authors`, {
+		const author = await request.post(`${site}/wp-json/first/v1/authors`, {
 			headers: adminHeaders,
 			data: { name: authorName, email: `browser-${Date.now()}@example.com` },
 		});
@@ -112,7 +112,7 @@ if (!subdir) {
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill(title);
 		await page
 			.getByRole('textbox', { name: 'Excerpt', exact: true })
-			.fill('Created in Zero Admin');
+			.fill('Created in First Admin');
 		await page
 			.getByRole('button', { name: 'Create record', exact: true })
 			.click();
@@ -169,7 +169,7 @@ if (!subdir) {
 		await expect(save).toBeEnabled();
 		const saved = page.waitForResponse(
 			(r) =>
-				new URL(r.url()).pathname.endsWith(`/wp/v2/zero_posts/${id}`) &&
+				new URL(r.url()).pathname.endsWith(`/wp/v2/first_posts/${id}`) &&
 				['POST', 'PUT'].includes(r.request().method())
 		);
 		await save.click();
@@ -190,7 +190,7 @@ if (!subdir) {
 		const headers = {
 			Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}`,
 		};
-		const persisted = await request.get(`${site}/wp-json/zero/v1/posts/${id}`, {
+		const persisted = await request.get(`${site}/wp-json/first/v1/posts/${id}`, {
 			headers,
 		});
 		expect(persisted.status()).toBe(200);
@@ -202,18 +202,18 @@ if (!subdir) {
 		});
 		// Publish the native editor draft, then read the same SCF values anonymously.
 		const published = page.waitForResponse(r =>
-			new URL(r.url()).pathname.endsWith(`/wp/v2/zero_posts/${id}`) &&
+			new URL(r.url()).pathname.endsWith(`/wp/v2/first_posts/${id}`) &&
 			['POST', 'PUT'].includes(r.request().method()));
 		await page.getByRole('button', { name: 'Publish', exact: true }).click();
 		expect((await published).status()).toBe(200);
-		const publicRecord = await request.get(`${site}/wp-json/zero/v1/posts/${id}`);
+		const publicRecord = await request.get(`${site}/wp-json/first/v1/posts/${id}`);
 		expect(publicRecord.status()).toBe(200);
 		expect((await publicRecord.json()).data).toMatchObject({
 			status: 'published', excerpt: 'Edited in native Fields',
 			sections: [{ layout: 'hero', heading: 'Native structured fields' }],
 		});
-		// The table uses the Zero endpoint and a readable cross-kind relation picker.
-		await page.goto(`${site}/zero-admin/collections/comments`);
+		// The table uses the First endpoint and a readable cross-kind relation picker.
+		await page.goto(`${site}/first-admin/collections/comments`);
 		await page
 			.getByRole('button', { name: 'New comments', exact: false })
 			.click();
@@ -257,7 +257,7 @@ if (!subdir) {
 		).toHaveValue(`${title} edited`);
 		await page.screenshot({ path: test.info().outputPath('table-edit.png') });
 		const comment = await request.get(
-			`${site}/wp-json/zero/v1/comments/${commentId}`,
+			`${site}/wp-json/first/v1/comments/${commentId}`,
 			{ headers }
 		);
 		expect(comment.status()).toBe(200);
@@ -270,30 +270,30 @@ if (!subdir) {
 		await page.getByRole('link', { name: 'Back to Comments', exact: true }).click();
 		const leave = page.getByRole('dialog');
 		const refused = page.waitForResponse((r) =>
-			new URL(r.url()).pathname.endsWith(`/zero/v1/comments/${commentId}`) &&
+			new URL(r.url()).pathname.endsWith(`/first/v1/comments/${commentId}`) &&
 			['POST', 'PATCH'].includes(r.request().method()));
 		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
 		expect((await refused).status()).toBe(422);
 		await expect(leave.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled();
-		await expect(page).toHaveURL(`${site}/zero-admin/collections/comments/${commentId}`);
+		await expect(page).toHaveURL(`${site}/first-admin/collections/comments/${commentId}`);
 		await leave.getByRole('button', { name: 'Close', exact: true }).click();
 		await expect(page.getByRole('textbox', { name: 'Body', exact: true })).toHaveValue('http://rejected.example');
 		await page.getByRole('textbox', { name: 'Body', exact: true }).fill('Corrected table record');
 		await page.getByRole('link', { name: 'Back to Comments', exact: true }).click();
 		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
-		await expect(page).toHaveURL(`${site}/zero-admin/collections/comments`);
-		const corrected = await request.get(`${site}/wp-json/zero/v1/comments/${commentId}`, { headers });
+		await expect(page).toHaveURL(`${site}/first-admin/collections/comments`);
+		const corrected = await request.get(`${site}/wp-json/first/v1/comments/${commentId}`, { headers });
 		expect((await corrected.json()).data.body).toBe('Corrected table record');
 		// A reference may name a unique column instead of the target's primary key.
 		const code = Date.now();
-		const root = await request.post(`${site}/wp-json/zero/v1/key_roots`, {
+		const root = await request.post(`${site}/wp-json/first/v1/key_roots`, {
 			headers: adminHeaders, data: { code },
 		});
 		expect(root.status(), await root.text()).toBe(201);
 		const rootId = (await root.json()).data.id;
 		await page.context().clearCookies();
 		await login(page, 'admin');
-		await page.goto(`${site}/zero-admin/collections/key_links/-/new`);
+		await page.goto(`${site}/first-admin/collections/key_links/-/new`);
 		await page.getByRole('combobox', { name: 'Root Code', exact: true }).click();
 		await page.getByRole('option', { name: `#${rootId}`, exact: true }).click();
 		await page.getByRole('button', { name: 'Create record', exact: true }).click();
@@ -302,7 +302,7 @@ if (!subdir) {
 		await page.reload();
 		await expect(page.getByRole('combobox', { name: 'Root Code', exact: true }))
 			.toHaveValue(`#${rootId}`);
-		const link = await request.get(`${site}/wp-json/zero/v1/key_links/${linkId}`, {
+		const link = await request.get(`${site}/wp-json/first/v1/key_links/${linkId}`, {
 			headers: adminHeaders,
 		});
 		expect(link.status()).toBe(200);
@@ -320,16 +320,16 @@ if (!subdir) {
 		};
 		await login(page, 'admin');
 		// Invalid JSON is an unsaved draft even when core-data has no edits.
-		const event = await request.post(`${site}/wp-json/zero/v1/dossier`, {
+		const event = await request.post(`${site}/wp-json/first/v1/dossier`, {
 			headers: adminHeaders, data: { title: 'JSON browser draft', payload: { committed: true }, entries: [], sections: [{ layout: 'first', configuration: { initial: true } }] },
 		});
 		expect(event.status(), await event.text()).toBe(201);
 		const eventId = (await event.json()).data.id;
-		await page.goto(`${site}/zero-admin/collections/dossier/${eventId}`);
+		await page.goto(`${site}/first-admin/collections/dossier/${eventId}`);
 		const jsonFields = page.getByRole('button', { name: 'Fields', exact: true });
 		await expect(jsonFields).toBeVisible();
 		if ((await jsonFields.getAttribute('aria-expanded')) !== 'true') await jsonFields.click();
-		const payload = page.locator('.zero-schema-json').filter({ hasText: 'Payload' }).locator('textarea');
+		const payload = page.locator('.first-schema-json').filter({ hasText: 'Payload' }).locator('textarea');
 		await expect(payload).toHaveValue(JSON.stringify({ committed: true }, null, 2));
 		await payload.fill('unfinished');
 		await expect(page.getByRole('alert').filter({ hasText: 'Enter valid JSON' })).toBeVisible();
@@ -354,11 +354,11 @@ if (!subdir) {
 		await expect(configuration).toHaveAttribute('aria-invalid', 'false');
 		await expect(eventSave).toBeEnabled();
 		const jsonSaved = page.waitForResponse((r) =>
-			new URL(r.url()).pathname.endsWith(`/wp/v2/zero_dossier/${eventId}`) &&
+			new URL(r.url()).pathname.endsWith(`/wp/v2/first_dossier/${eventId}`) &&
 			['POST', 'PUT'].includes(r.request().method()));
 		await eventSave.click();
 		expect((await jsonSaved).status()).toBe(200);
-		const eventRead = await request.get(`${site}/wp-json/zero/v1/dossier/${eventId}`, { headers: adminHeaders });
+		const eventRead = await request.get(`${site}/wp-json/first/v1/dossier/${eventId}`, { headers: adminHeaders });
 		const savedEvent = (await eventRead.json()).data;
 		expect(savedEvent.payload).toBe(false);
 		expect(savedEvent.sections).toEqual([{ layout: 'second', configuration: null }]);
@@ -371,11 +371,11 @@ if (!subdir) {
 		await expect(sections.locator('textarea').first()).toHaveValue('null');
 		await page.getByRole('button', { name: 'Add Sections', exact: true }).click();
 		const siblingSaved = page.waitForResponse((r) =>
-			new URL(r.url()).pathname.endsWith(`/wp/v2/zero_dossier/${eventId}`) &&
+			new URL(r.url()).pathname.endsWith(`/wp/v2/first_dossier/${eventId}`) &&
 			['POST', 'PUT'].includes(r.request().method()));
 		await eventSave.click();
 		expect((await siblingSaved).status()).toBe(200);
-		const siblingRead = await request.get(`${site}/wp-json/zero/v1/dossier/${eventId}`, { headers: adminHeaders });
+		const siblingRead = await request.get(`${site}/wp-json/first/v1/dossier/${eventId}`, { headers: adminHeaders });
 		expect((await siblingRead.json()).data).toMatchObject({
 			payload: savedEvent.payload,
 			sections: [{ layout: 'second', configuration: null }, { layout: 'first', configuration: null }],
@@ -392,13 +392,13 @@ if (!subdir) {
 		await expect(page.getByRole('group', { name: 'Entries', exact: true }).locator('textarea')).toHaveCount(0);
 		await page.screenshot({ path: test.info().outputPath('retired-json-drafts.png'), animations: 'disabled' });
 		// Plain forms use the same document-level leave flow, including invalid-only drafts.
-		const plain = await request.post(`${site}/wp-json/zero/v1/events`, {
+		const plain = await request.post(`${site}/wp-json/first/v1/events`, {
 			headers: adminHeaders, data: { title: 'Plain saved title', extra: { saved: true } },
 		});
 		expect(plain.status(), await plain.text()).toBe(201);
 		const plainId = (await plain.json()).data.id;
-		await page.goto(`${site}/zero-admin/collections/events/${plainId}`);
-		const extra = page.locator('.zero-schema-json').filter({ hasText: 'Extra' }).locator('textarea');
+		await page.goto(`${site}/first-admin/collections/events/${plainId}`);
+		const extra = page.locator('.first-schema-json').filter({ hasText: 'Extra' }).locator('textarea');
 		await extra.fill('plain invalid-only draft');
 		await expect(extra).toHaveAttribute('aria-invalid', 'true');
 		const leaving = page.waitForEvent('dialog');
@@ -407,7 +407,7 @@ if (!subdir) {
 		expect(warning.type()).toBe('beforeunload');
 		await warning.dismiss();
 		await classicClick;
-		await expect(page).toHaveURL(`${site}/zero-admin/collections/events/${plainId}`);
+		await expect(page).toHaveURL(`${site}/first-admin/collections/events/${plainId}`);
 		await expect(extra).toHaveValue('plain invalid-only draft');
 		await page.getByRole('link', { name: 'Back to Events', exact: true }).click();
 		await expect(page.getByRole('dialog')).toContainText('Fix errors before leaving?');
@@ -415,25 +415,25 @@ if (!subdir) {
 		await expect(extra).toHaveValue('plain invalid-only draft');
 		await page.getByRole('link', { name: 'Back to Events', exact: true }).click();
 		await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
-		await expect(page).toHaveURL(`${site}/zero-admin/collections/events`);
+		await expect(page).toHaveURL(`${site}/first-admin/collections/events`);
 		await expect(page.getByRole('heading', { name: 'Events', exact: true })).toBeVisible();
 		await expect.poll(() => page.evaluate(() => {
 			const event = new Event('beforeunload', { cancelable: true });
 			window.dispatchEvent(event);
 			return event.defaultPrevented;
 		})).toBe(false);
-		await page.goto(`${site}/zero-admin/collections/events/${plainId}`);
+		await page.goto(`${site}/first-admin/collections/events/${plainId}`);
 		await expect(extra).toHaveValue(JSON.stringify({ saved: true }, null, 2));
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Plain saved on leave');
 		await page.getByRole('link', { name: 'Back to Events', exact: true }).click();
 		await expect(page.getByRole('dialog')).toContainText('Save changes before leaving?');
 		const plainSaved = page.waitForResponse((r) =>
-			new URL(r.url()).pathname.endsWith(`/wp/v2/zero_events/${plainId}`) &&
+			new URL(r.url()).pathname.endsWith(`/wp/v2/first_events/${plainId}`) &&
 			r.request().method() === 'POST');
 		await page.getByRole('dialog').getByRole('button', { name: 'Save changes', exact: true }).click();
 		expect((await plainSaved).status()).toBe(200);
-		await expect(page).toHaveURL(`${site}/zero-admin/collections/events`);
-		const plainRead = await request.get(`${site}/wp-json/zero/v1/events/${plainId}`, { headers: adminHeaders });
+		await expect(page).toHaveURL(`${site}/first-admin/collections/events`);
+		const plainRead = await request.get(`${site}/wp-json/first/v1/events/${plainId}`, { headers: adminHeaders });
 		expect((await plainRead.json()).data).toMatchObject({ title: 'Plain saved on leave', extra: { saved: true } });
 		expect(errors).toEqual([]);
 	});
@@ -442,7 +442,7 @@ if (!subdir) {
 		request,
 	}) => {
 		const postTitle = `Read-only browser ${Date.now()}`;
-		const seeded = await request.post(`${site}/wp-json/zero/v1/posts`, {
+		const seeded = await request.post(`${site}/wp-json/first/v1/posts`, {
 			headers: {
 				Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}`,
 			},
@@ -451,7 +451,7 @@ if (!subdir) {
 		expect(seeded.status(), await seeded.text()).toBe(201);
 		const { id } = (await seeded.json()).data;
 		const title = `Readable dossier ${Date.now()}`;
-		const dossier = await request.post(`${site}/wp-json/zero/v1/dossier`, {
+		const dossier = await request.post(`${site}/wp-json/first/v1/dossier`, {
 			headers: {
 				Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}`,
 			},
@@ -460,7 +460,7 @@ if (!subdir) {
 		expect(dossier.status(), await dossier.text()).toBe(201);
 		const dossierId = (await dossier.json()).data.id;
 		const claimTitle = `Readable foreign claim ${Date.now()}`;
-		const claim = await request.post(`${site}/wp-json/zero/v1/claims`, {
+		const claim = await request.post(`${site}/wp-json/first/v1/claims`, {
 			headers: { Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}` },
 			data: { title: claimTitle, ownerId: harness.users.admin.id, meta: {} },
 		});
@@ -470,17 +470,17 @@ if (!subdir) {
 		await expect(
 			page.getByRole('link', { name: 'signups', exact: true })
 		).toHaveCount(0);
-		await page.goto(`${site}/zero-admin/collections/signups`);
+		await page.goto(`${site}/first-admin/collections/signups`);
 		await expect(page.getByRole('alert')).toContainText(
 			/access|permission|forbidden/i
 		);
 		await expect(
 			page.getByRole('button', { name: /New signups/i })
 		).toHaveCount(0);
-		await page.goto(`${site}/zero-admin/collections/posts/${id}`);
+		await page.goto(`${site}/first-admin/collections/posts/${id}`);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(postTitle);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toBeDisabled();
-		await page.goto(`${site}/zero-admin/collections/dossier/${dossierId}`);
+		await page.goto(`${site}/first-admin/collections/dossier/${dossierId}`);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true }))
 			.toHaveValue(title);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true }))
@@ -492,32 +492,32 @@ if (!subdir) {
 		).toHaveCount(0);
 		await page.context().clearCookies();
 		await login(page, 'editor');
-		await page.goto(`${site}/zero-admin/collections/dossier/${dossierId}`);
+		await page.goto(`${site}/first-admin/collections/dossier/${dossierId}`);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toBeEnabled();
 		await expect(page.getByRole('textbox', { name: 'Body', exact: true })).toHaveCount(0);
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill(`${title} edited`);
 		await page.getByRole('button', { name: 'Save changes', exact: true }).click();
 		await expect(page.locator('.components-notice__content').getByText('Saved.', { exact: true })).toBeVisible();
-		const readback = await request.get(`${site}/wp-json/zero/v1/dossier/${dossierId}`, {
+		const readback = await request.get(`${site}/wp-json/first/v1/dossier/${dossierId}`, {
 			headers: { Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}` },
 		});
 		expect((await readback.json()).data).toMatchObject({ title: `${title} edited`, body: '<p>Private original body</p>' });
-		await page.goto(`${site}/zero-admin/collections/claims`);
+		await page.goto(`${site}/first-admin/collections/claims`);
 		await page.getByRole('link', { name: claimTitle, exact: true }).first().click();
-		await expect(page).toHaveURL(`${site}/zero-admin/collections/claims/${claimId}`);
+		await expect(page).toHaveURL(`${site}/first-admin/collections/claims/${claimId}`);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(claimTitle);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toBeDisabled();
 		await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toBeDisabled();
 		await page.reload();
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(claimTitle);
 		await page.screenshot({ path: test.info().outputPath('readable-rule-record.png'), animations: 'disabled' });
-		const denied = await request.patch(`${site}/wp-json/zero/v1/claims/${claimId}`, {
+		const denied = await request.patch(`${site}/wp-json/first/v1/claims/${claimId}`, {
 			headers: { Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}` },
 			data: { title: 'Forbidden update' },
 		});
 		// Row-filtered updates conceal rows outside the caller's update scope.
 		expect(denied.status()).toBe(404);
-		const claimReadback = await request.get(`${site}/wp-json/zero/v1/claims/${claimId}`, {
+		const claimReadback = await request.get(`${site}/wp-json/first/v1/claims/${claimId}`, {
 			headers: { Authorization: `Basic ${Buffer.from(`editor:${harness.users.editor.appPassword}`).toString('base64')}` },
 		});
 		expect(claimReadback.status()).toBe(200);
@@ -551,7 +551,7 @@ if (!subdir) {
 			page.getByRole('textbox', { name: 'Tagline', exact: true })
 		).toHaveValue(/Saved from the browser/);
 		const global = await request.get(
-			`${site}/wp-json/zero/v1/globals/settings`,
+			`${site}/wp-json/first/v1/globals/settings`,
 			{ headers }
 		);
 		expect((await global.json()).data.tagline).toMatch(
@@ -561,7 +561,7 @@ if (!subdir) {
 		const name = `browser-${Date.now()}`;
 		const uploaded = page.waitForResponse(
 				(r) =>
-					r.url().includes('/zero/v1/media') && r.request().method() === 'POST' && r.status() === 201
+					r.url().includes('/first/v1/media') && r.request().method() === 'POST' && r.status() === 201
 		);
 		const chooser = page.waitForEvent('filechooser');
 		await page
@@ -586,7 +586,7 @@ if (!subdir) {
 		await expect(page.locator('.components-notice.is-error'))
 			.toContainText(/not allowed|invalid|file type|mime|upload/i);
 		await page.getByRole('link', { name, exact: true }).click();
-		await expect(page).toHaveURL(`${site}/zero-admin/media/${mediaId}`);
+		await expect(page).toHaveURL(`${site}/first-admin/media/${mediaId}`);
 		await page
 			.getByRole('textbox', { name: 'Alt text', exact: true })
 			.fill('Browser image description');
@@ -601,7 +601,7 @@ if (!subdir) {
 			page.getByRole('textbox', { name: 'Alt text', exact: true })
 		).toHaveValue('Browser image description');
 		const media = await request.get(
-			`${site}/wp-json/zero/v1/media/${mediaId}`,
+			`${site}/wp-json/first/v1/media/${mediaId}`,
 			{ headers }
 		);
 		expect((await media.json()).data.alt).toBe('Browser image description');
@@ -616,7 +616,7 @@ if (!subdir) {
 			window.dispatchEvent(event);
 			return event.defaultPrevented;
 		})).toBe(true);
-		// Send a genuinely invalid native payload: WordPress rejects it after Zero saves.
+		// Send a genuinely invalid native payload: WordPress rejects it after First saves.
 		const captionUrl = (url: URL) => url.pathname.endsWith(`/wp/v2/media/${mediaId}`);
 		await page.route(captionUrl, async (route) => {
 			if (route.request().method() !== 'POST') return route.continue();
@@ -630,10 +630,10 @@ if (!subdir) {
 		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
 		expect((await failedCaption).status()).toBe(400);
 		await expect(leave.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled();
-		await expect(page).toHaveURL(`${site}/zero-admin/media/${mediaId}`);
+		await expect(page).toHaveURL(`${site}/first-admin/media/${mediaId}`);
 		await leave.getByRole('button', { name: 'Close', exact: true }).click();
 		await expect(caption).toHaveValue('Saved caption on leave');
-		const partial = await request.get(`${site}/wp-json/zero/v1/media/${mediaId}`, { headers });
+		const partial = await request.get(`${site}/wp-json/first/v1/media/${mediaId}`, { headers });
 		expect((await partial.json()).data.alt).toBe('Saved on media leave');
 		await page.unroute(captionUrl);
 		await caption.fill(originalCaption);
@@ -645,7 +645,7 @@ if (!subdir) {
 		await caption.fill('Saved caption on leave');
 		await page.getByRole('link', { name: 'Back to Media', exact: true }).click();
 		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
-		await expect(page).toHaveURL(`${site}/zero-admin/media`);
+		await expect(page).toHaveURL(`${site}/first-admin/media`);
 		const coreMedia = await request.get(`${site}/wp-json/wp/v2/media/${mediaId}?context=edit`, { headers });
 		expect((await coreMedia.json()).caption.raw).toBe('Saved caption on leave');
 		await expect.poll(() => page.evaluate(() => {
@@ -658,13 +658,13 @@ if (!subdir) {
 		await alt.fill('Discard this media draft');
 		await page.getByRole('link', { name: 'Back to Media', exact: true }).click();
 		await leave.getByRole('button', { name: 'Discard changes', exact: true }).click();
-		await expect(page).toHaveURL(`${site}/zero-admin/media`);
+		await expect(page).toHaveURL(`${site}/first-admin/media`);
 		await page.getByRole('link', { name, exact: true }).click();
 		await expect(alt).toHaveValue('Saved on media leave');
 		await page.screenshot({ path: test.info().outputPath('media-details.png') });
-        // The complete native image editor remains available beside Zero details.
+        // The complete native image editor remains available beside First details.
         await page.getByRole('link', { name: 'Edit image', exact: true }).click();
-        await expect(page).toHaveURL(`${site}/zero-admin/types/attachment/edit/${mediaId}`);
+        await expect(page).toHaveURL(`${site}/first-admin/types/attachment/edit/${mediaId}`);
         await page.reload();
         await page.getByRole('tab', { name: 'Edit', exact: true }).click();
         await page.getByRole('button', { name: 'Rotate 90° right', exact: true }).click();
@@ -677,9 +677,9 @@ if (!subdir) {
         const editedImage = await rotatedResponse.json();
         expect(editedImage.id).not.toBe(mediaId);
         expect(editedImage.media_details).toMatchObject({ width: 8, height: 16 });
-        await expect(page).toHaveURL(`${site}/zero-admin/types/attachment/edit/${editedImage.id}`);
+        await expect(page).toHaveURL(`${site}/first-admin/types/attachment/edit/${editedImage.id}`);
         expect((await request.get(editedImage.source_url)).status()).toBe(200);
-        await page.goto(`${site}/zero-admin/media/${mediaId}`);
+        await page.goto(`${site}/first-admin/media/${mediaId}`);
 		// Confirmed deletion retires even dirty drafts without a second leave prompt.
 		await alt.fill('Deleted media draft');
 		await page
@@ -688,11 +688,11 @@ if (!subdir) {
 		await page
 			.getByRole('button', { name: 'Confirm delete', exact: true })
 			.click();
-		await expect(page).toHaveURL(`${site}/zero-admin/media`);
+		await expect(page).toHaveURL(`${site}/first-admin/media`);
 		// The rotated copy retains the title; deletion targets the original ID.
-		await expect(page.locator(`a[href$="/zero-admin/media/${mediaId}"]`)).toHaveCount(0);
-		expect((await request.get(`${site}/wp-json/zero/v1/media/${mediaId}`, { headers })).status()).toBe(404);
-		expect((await request.get(`${site}/wp-json/zero/v1/media/${editedImage.id}`, { headers })).status()).toBe(200);
+		await expect(page.locator(`a[href$="/first-admin/media/${mediaId}"]`)).toHaveCount(0);
+		expect((await request.get(`${site}/wp-json/first/v1/media/${mediaId}`, { headers })).status()).toBe(404);
+		expect((await request.get(`${site}/wp-json/first/v1/media/${editedImage.id}`, { headers })).status()).toBe(200);
 	});
 
 test('restored native WordPress routes persist settings and published content and keep classic admin reachable', async ({ page, request }) => {
@@ -714,16 +714,16 @@ test('restored native WordPress routes persist settings and published content an
         quick_edit_form: { layout: { type: 'panel' } },
     });
     await login(page, 'admin');
-    await page.goto(`${site}/zero-admin/types/post/list/all`);
+    await page.goto(`${site}/first-admin/types/post/list/all`);
     await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('native-post-list.png') });
-    await page.goto(`${site}/zero-admin/dashboard`);
+    await page.goto(`${site}/first-admin/dashboard`);
     await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Add widgets', exact: true }).click();
     await expect(page.getByRole('dialog').getByText('Quick Stats (example data)', { exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('native-dashboard-widgets.png') });
     await page.keyboard.press('Escape');
-    await page.goto(`${site}/zero-admin/settings/general`);
+    await page.goto(`${site}/first-admin/settings/general`);
     const description = `Saved through native settings ${Date.now()}`;
     await page.getByRole('textbox', { name: 'Site description', exact: true }).fill(description);
     const savedSettings = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/wp/v2/settings') && response.request().method() === 'POST');
@@ -735,23 +735,23 @@ test('restored native WordPress routes persist settings and published content an
     expect((await settings.json()).description).toBe(description);
     await page.screenshot({ path: test.info().outputPath('native-settings.png') });
 
-    await page.goto(`${site}/zero-admin/users`);
+    await page.goto(`${site}/first-admin/users`);
     await expect(page.getByRole('table').getByText('admin@example.test', { exact: true })).toBeVisible();
-    await page.goto(`${site}/zero-admin/users/add`);
+    await page.goto(`${site}/first-admin/users/add`);
     await expect(page.getByRole('textbox', { name: 'Username', exact: true })).toBeVisible();
-    await page.goto(`${site}/zero-admin/plugins/list/all`);
-    await expect(page.getByRole('row').filter({ hasText: 'Zero Admin' })).toBeVisible();
+    await page.goto(`${site}/first-admin/plugins/list/all`);
+    await expect(page.getByRole('row').filter({ hasText: 'First Admin' })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('native-plugins.png') });
-    await page.goto(`${site}/zero-admin/design/themes`);
+    await page.goto(`${site}/first-admin/design/themes`);
     await expect(page.getByText('Twenty Twenty-Five', { exact: true }).first()).toBeVisible();
-    await page.goto(`${site}/zero-admin/design/styles`);
+    await page.goto(`${site}/first-admin/design/styles`);
     await expect(page.getByRole('button', { name: 'Typography', exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('native-design.png') });
-    await page.goto(`${site}/zero-admin/design/navigation`);
+    await page.goto(`${site}/first-admin/design/navigation`);
     await expect(page.getByRole('region', { name: 'Editor content', exact: true })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Template Part', exact: true })).toHaveAttribute('aria-selected', 'true');
 
-    await page.goto(`${site}/zero-admin/types/post/edit/${post.id}`);
+    await page.goto(`${site}/first-admin/types/post/edit/${post.id}`);
     const canvas = page.frameLocator('iframe[name="editor-canvas"]');
     await canvas.getByRole('textbox', { name: 'Add title', exact: true }).fill(`${title} saved`);
     const savedPost = page.waitForResponse(response => new URL(response.url()).pathname.endsWith(`/wp/v2/posts/${post.id}`) && ['POST', 'PUT'].includes(response.request().method()));
@@ -764,7 +764,7 @@ test('restored native WordPress routes persist settings and published content an
     expect(await publicPage.text()).toContain(`${title} saved`);
     await page.screenshot({ path: test.info().outputPath('native-wordpress-editor.png') });
 
-    await page.goto(`${site}/zero-admin/`);
+    await page.goto(`${site}/first-admin/`);
     await page.getByRole('link', { name: 'Classic admin', exact: true }).click();
     await expect(page.locator('#adminmenu')).toBeVisible();
     await page.goto(`${site}/wp-admin/options-general.php`);

@@ -90,7 +90,7 @@ pub(super) fn layout(text: &str, at: &str) -> Result<Option<String>, Failure> {
         .replace("export function Layout(", "export default function Layout(")
         .replace(
             "import type { ComponentChildren } from \"preact\";",
-            "import type { LayoutProps } from \"@spacefast/zero-pages\";",
+            "import type { LayoutProps } from \"@spacefast/first-pages\";",
         )
         .replace(
             "{ children }: { children: ComponentChildren }",
@@ -260,7 +260,7 @@ fn relocate(text: &str, extra: usize) -> String {
 }
 
 /// Points a converted page's imports of the app's own modules (`../shared/plans`) into the Zero
-/// root, where the candidate moves them (`../zero/shared/plans`). `file` is the page's path in the
+/// root, where the candidate moves them (`../first/shared/plans`). `file` is the page's path in the
 /// candidate (`pages/pricing/page.tsx`); an import that resolves inside `pages/` is unchanged.
 pub(super) fn into_zero_root(file: &str, text: &str) -> String {
     // Directories between the candidate root and the page, so `ups` reaching it leaves `pages/`.

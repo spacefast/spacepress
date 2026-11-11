@@ -11,10 +11,10 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
 
-use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
+use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Formatter;
 
 use function trim;
 

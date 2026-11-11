@@ -19,7 +19,7 @@ or compiler patch is committed.
 | `logCharge({ subscriptionId })` | Store the current amount on the scheduled renewal date, then advance by one cycle. Calendar months and years clamp to the last valid day. This records a charge; it does not charge a payment provider. Inactive subscriptions are rejected. |
 | `cancel({ subscriptionId })` | Mark the subscription cancelled and return its cancellation URL. The user must still cancel with the vendor. |
 | `remindRenewal` | One stock Action Scheduler job. Enqueue on active subscription writes, delayed until three days before renewal or immediately if already due. Stamp `remindedAt`. Stale jobs for another renewal date or an inactive subscription do nothing. No email or custom cron. |
-| React SPA | Overview with monthly spending and category totals, upcoming renewals, a filtered list, an add/edit sheet, and detail with charge history. Uses zero-identity and the generated typed client. |
+| React SPA | Overview with monthly spending and category totals, upcoming renewals, a filtered list, an add/edit sheet, and detail with charge history. Uses first-identity and the generated typed client. |
 
 The charge action uses `once()` per subscription and observed renewal date to
 serialize concurrent attempts, plus `idempotent: true` for request retries.
@@ -30,23 +30,23 @@ Payment methods are labels, never card numbers or payment credentials.
 ## Run locally
 
 These commands require the compiler gap below to be resolved. Use a compiler
-built from this repository. `zero build` and `zero dev` manage the required
+built from this repository. `first build` and `first dev` manage the required
 plugins and their activation.
 
 ```sh
 cargo build --locked
-./target/debug/zero build examples/subscriptions
+./target/debug/first build examples/subscriptions
 npm --prefix examples/subscriptions/web ci
 npm --prefix examples/subscriptions/web run build
-./target/debug/zero build examples/subscriptions
-./target/debug/zero dev examples/subscriptions --no-watch --port 8794
-./target/debug/zero identity --site examples/subscriptions app add \
+./target/debug/first build examples/subscriptions
+./target/debug/first dev examples/subscriptions --no-watch --port 8794
+./target/debug/first identity --site examples/subscriptions app add \
   --name=Subscriptions --id=app_subscriptions \
-  --redirect=http://localhost:8794/wp-content/plugins/zero-app-subscriptions/public/index.html \
+  --redirect=http://localhost:8794/wp-content/plugins/first-app-subscriptions/public/index.html \
   --origin=http://localhost:8794
 ```
 
-Open `http://localhost:8794/wp-content/plugins/zero-app-subscriptions/public/index.html`.
+Open `http://localhost:8794/wp-content/plugins/first-app-subscriptions/public/index.html`.
 Use the URL and port Studio actually prints. The explicit `index.html` path
 also works on Studio hosts that do not serve plugin directory indexes.
 The sign-in button calls `auth.signIn()`; the callback calls `handleCallback()`.
@@ -55,15 +55,15 @@ The frontend stores no application password.
 For the Vite loop, register its origin and callback, then start Vite:
 
 ```sh
-./target/debug/zero identity --site examples/subscriptions app add \
+./target/debug/first identity --site examples/subscriptions app add \
   --name=Subscriptions --id=app_subscriptions_vite \
   --redirect=http://127.0.0.1:5173/ --origin=http://127.0.0.1:5173
 VITE_ZERO_APP_ID=app_subscriptions_vite npm --prefix examples/subscriptions/web run dev
 ```
 
-Keep `zero dev examples/subscriptions --port 8794` running in another terminal
+Keep `first dev examples/subscriptions --port 8794` running in another terminal
 without `--no-watch` to rebuild backend changes. Vite proxies `/wp-json` to
-`http://localhost:8794`; set `ZERO_DEV_URL` if Studio uses another address. Vite
+`http://localhost:8794`; set `FIRST_DEV_URL` if Studio uses another address. Vite
 builds into `../public/` with relative asset URLs for plugin and Space hosting.
 React, React DOM, Vite, and the TypeScript editor dependencies have exact pins
 and an npm lockfile.
@@ -71,32 +71,32 @@ and an npm lockfile.
 `public/` is ignored. The [deploy guide](../../docs/spacefast-deploy.md) says
 static files are published as they are, and does not require committing Vite
 output. Run `npm --prefix web ci && npm --prefix web run build` from this
-example before publishing. A successful Zero build must also commit
-`zero/_generated/client/`, `zero/_generated/migrations/`, `zero/_generated/db.d.ts`, and `zero/_generated/wp-plugins.lock.json`.
+example before publishing. A successful First build must also commit
+`first/_generated/client/`, `first/_generated/migrations/`, `first/_generated/db.d.ts`, and `first/_generated/wp-plugins.lock.json`.
 They cannot be generated from this config while the diagnostic remains.
 
 ## Known gaps on main (ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1)
 
-`./target/debug/zero check examples/subscriptions --json` exits 1. The error
+`./target/debug/first check examples/subscriptions --json` exits 1. The error
 count is `diagnostics.filter(d => d.severity === "error").length = 1` in
 [`verification/compiler.json`](verification/compiler.json). The diagnostic is
 verbatim:
 
 ```text
 can't insert { currency: string; amount: number; categories: { category: string; amount: number }[] } | undefined into an array of { currency: string; amount: number; categories: { category: string; amount: number }[] }
-  --> zero.config.ts:143:13
+  --> first.config.ts:143:13
 143 |             currencies.push(total);
 ```
 
 The source first assigns a new group inside `if (!total)`, then pushes it.
-TypeScript accepts this control flow. Main's Zero compiler retains the old
+TypeScript accepts this control flow. Main's First compiler retains the old
 `undefined` alternative. The aggregation is preserved to expose the gap.
-`zero dev examples/subscriptions --no-watch --port 8795` stops at the same
-build diagnostic with `zero dev: Failed (1): build`.
+`first dev examples/subscriptions --no-watch --port 8795` stops at the same
+build diagnostic with `first dev: Failed (1): build`.
 
 The disposable site also returns this runtime diagnostic on the owned
 subscription delete path. It is triggered by the `charges.subscriptionId`
-reference and owner-filtered table access in `zero.config.ts`:
+reference and owner-filtered table access in `first.config.ts`:
 
 ```json
 {"type":"about:blank","title":"Reference violation","status":409,"code":"reference_violation","detail":"Rows in charges may reference this row"}
@@ -111,16 +111,16 @@ longer occur in the final source, which uses contextual table access callbacks
 and captures `ctx.user` before mutating hook data:
 
 ```text
-zero.config.ts:11:10
+first.config.ts:11:10
 read: (ctx: { user: { id: number } | null }) => ...
 this parameter is declared as { user: { id: number } | null }, but it receives { user: { id: number; name: string; role: "guest" | "subscriber" | "author" | "editor" | "admin" } | null; op: string; data?: Record<string, unknown> | null }
 help: accept the supplied argument type, or change the values supplied to the function
 
-zero.config.ts:11:15
+first.config.ts:11:15
 read: (ctx: AccessCtx) => ...
 unknown type `AccessCtx`
 
-zero.config.ts:103:114
+first.config.ts:103:114
 const subscription = await db.query.subscriptions.findFirst({ where: { id: data.subscriptionId, ownerId: ctx.user.id } });
 can't read `id`: this might be null ({ id: number; name: string; role: "guest" | "subscriber" | "author" | "editor" | "admin" } | null)
 help: check it first, or use `?.`
@@ -132,7 +132,7 @@ The installed `spacefast/0.8.0` CLI also refuses the deploy guide's preflight:
 {
   "error": {
     "code": "validation_error",
-    "message": "Unknown command `sf zero check examples/subscriptions`. Did you mean `sf zero ls`? Run `sf help zero` for available commands.",
+    "message": "Unknown command `sf first check examples/subscriptions`. Did you mean `sf zero ls`? Run `sf help zero` for available commands.",
     "type": "https://spacefast.com/docs/errors/validation_error",
     "retryable": false,
     "recovery": "Adjust the request, then retry"
@@ -140,9 +140,9 @@ The installed `spacefast/0.8.0` CLI also refuses the deploy guide's preflight:
 }
 ```
 
-That CLI treated `zero.config.ts` as ordinary source files and reported a
+That CLI treated `first.config.ts` as ordinary source files and reported a
 file-mode upload, rather than compiling a backend. A publish receipt marked
-`ready` does not establish a running Zero app.
+`ready` does not establish a running First app.
 
 ## Verification
 
@@ -150,8 +150,8 @@ file-mode upload, rather than compiling a backend. A publish receipt marked
 |---|---|
 | Main compiler | Blocked by the diagnostic above. |
 | Final app startup and generated-file freshness | Blocked by compilation. |
-| Calendar and normalization tests | `node --test examples/subscriptions/zero/lib/calendar.test.mjs` passes. Covers month ends, leap years, year boundaries, and fractional cents. |
-| Agent protocol | A real, unchanged pantry `zero dev` site listed tools and executed a list tool. Exact output is in [the agent guide](../../docs/agents.md#verify-with-a-real-site). |
+| Calendar and normalization tests | `node --test examples/subscriptions/first/lib/calendar.test.mjs` passes. Covers month ends, leap years, year boundaries, and fractional cents. |
+| Agent protocol | A real, unchanged pantry `first dev` site listed tools and executed a list tool. Exact output is in [the agent guide](../../docs/agents.md#verify-with-a-real-site). |
 | Frontend and other runtime paths | See the disposable contract proof below. It does not establish that the final app compiles. |
 
 A rerunnable HTTP proof is `scripts/verify.mjs`. Against a disposable account,
@@ -159,7 +159,7 @@ it creates fixtures, checks CRUD and every action, checks charge history,
 request retries, and invalid writes, then deletes its fixtures:
 
 ```sh
-ZERO_SITE=http://localhost:8794 ZERO_APP_PASSWORD="$AUTH" \
+FIRST_SITE=http://localhost:8794 FIRST_APP_PASSWORD="$AUTH" \
   node examples/subscriptions/scripts/verify.mjs
 ```
 
@@ -170,7 +170,7 @@ a stub or skip a failing check. Do not use an account holding real data.
 
 To test the independent paths despite the build failure, a disposable copy of
 this config replaced only `monthlyBurn` with `{ currencies: [] }`, retaining the
-same declared output type. `zero build` generated its types and plugins. Its
+same declared output type. `first build` generated its types and plugins. Its
 WordPress Studio site ran on `http://localhost:8795`, built with compiler/runtime
 `de46201a` before the rebase. The current-main compiler check and pantry MCP proof
 were repeated at `ef0a42e3`. Nothing from that generated
@@ -178,7 +178,7 @@ fixture is committed as this app's client or migrations.
 
 The complete source passes `tsc` with that fixture's generated schema types.
 The frontend's TypeScript and Vite build also pass against those contracts.
-This is contract validation, not a successful Zero build of the committed app.
+This is contract validation, not a successful First build of the committed app.
 
 Exact HTTP and job outputs are in
 [`verification/contract-http.jsonl`](verification/contract-http.jsonl). The probe
@@ -225,9 +225,9 @@ DELETE /categories/<id>                      200
 
 ## Use it from your agent
 
-The app-specific MCP endpoint is `/wp-json/mcp/zero-subscriptions`. Authenticate
+The app-specific MCP endpoint is `/wp-json/mcp/first-subscriptions`. Authenticate
 with a WordPress application password for your user. It applies the same owner
-rules as REST. [Use your Zero app from an agent](../../docs/agents.md) has exact
+rules as REST. [Use your First app from an agent](../../docs/agents.md) has exact
 Claude Code, Claude Desktop, and Codex configuration, plus a real MCP transcript.
 These subscription ability names follow the shipped runtime registration; they
 are not claimed as live-verified while this example cannot build.
@@ -240,7 +240,7 @@ are not claimed as live-verified while this example cannot build.
 
 ## Publish and live status
 
-After resolving the compiler and CLI gaps, build the frontend, run `sf zero
+After resolving the compiler and CLI gaps, build the frontend, run `sf first
 check` from this directory, and publish to a new team-only Space with an explicit
 resolved team ID:
 
@@ -264,8 +264,8 @@ This credential can read this space but does not allow spaces:transfer. Use a cr
 ```
 
 Live HTTP probes returned `403` and the Space access page for
-`GET /wp-json/zero/v1/subscriptions`,
-`POST /wp-json/zero/v1/actions/monthlyBurn` with `{}`, and
-`GET /wp-json/zero/v1/auth/config`. This verifies the access gate only.
-Subscription CRUD, actions, and zero-identity sign-in are **not verified live**.
+`GET /wp-json/first/v1/subscriptions`,
+`POST /wp-json/first/v1/actions/monthlyBurn` with `{}`, and
+`GET /wp-json/first/v1/auth/config`. This verifies the access gate only.
+Subscription CRUD, actions, and first-identity sign-in are **not verified live**.
 No staging or production infrastructure was changed by hand.

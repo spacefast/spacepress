@@ -1,6 +1,6 @@
 <?php
 
-namespace Zero\Identity\Vendor\Psr\Clock;
+namespace First\Identity\Vendor\Psr\Clock;
 
 use DateTimeImmutable;
 

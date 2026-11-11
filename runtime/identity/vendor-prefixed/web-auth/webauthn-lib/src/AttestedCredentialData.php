@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn;
+namespace First\Identity\Vendor\Webauthn;
 
-use Zero\Identity\Vendor\Symfony\Component\Uid\Uuid;
+use First\Identity\Vendor\Symfony\Component\Uid\Uuid;
 
 /**
  * @see https://www.w3.org/TR/webauthn/#sec-attested-credential-data

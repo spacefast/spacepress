@@ -1,15 +1,15 @@
 # App services on WordPress
 
-Zero's native services module adds validated contact forms, queued mail, publication search and Stripe-hosted checkout. WordPress remains the authority for users, publication and content permissions. The existing Zero transaction, receipt, outbox and Action Scheduler implementations own atomic writes, request replay and delivery retries.
+First's native services module adds validated contact forms, queued mail, publication search and Stripe-hosted checkout. WordPress remains the authority for users, publication and content permissions. The existing First transaction, receipt, outbox and Action Scheduler implementations own atomic writes, request replay and delivery retries.
 
-Author services in `zero.config.ts` or a trusted WordPress plugin. Both configure the same native runtime. TypeScript pages call the HTTP endpoints with `fetch`; no JavaScript service runtime is needed.
+Author services in `first.config.ts` or a trusted WordPress plugin. Both configure the same native runtime. TypeScript pages call the HTTP endpoints with `fetch`; no JavaScript service runtime is needed.
 
 ## Enable and configure
 
-The runtime registers the services module, its built-in jobs and its system tables automatically. The [TypeScript example](../examples/app-services-ts/zero.config.ts) configures the services at build time:
+The runtime registers the services module, its built-in jobs and its system tables automatically. The [TypeScript example](../examples/app-services-ts/first.config.ts) configures the services at build time:
 
 ```ts
-import { collection, defineConfig, env, text } from "zero";
+import { collection, defineConfig, env, text } from "first";
 
 const posts = collection({ title: text().notNull(), excerpt: text() }, {
   title: "title", drafts: true, access: { read: "anyone" },
@@ -36,7 +36,7 @@ export default defineConfig({
 });
 ```
 
-`recipient` and `sender` require `env("NAME")`. The compiler emits variable names into a private `zero_services_config` filter in the app's `functions.php`; it never reads their build-machine values. WordPress resolves them when the mail job runs. Services are excluded from `schema.php`, migration snapshots, generated client descriptors and the public schema. The provider and rate-limit variables below retain their native runtime names; they are deployment settings, not additional `services` options.
+`recipient` and `sender` require `env("NAME")`. The compiler emits variable names into a private `first_services_config` filter in the app's `functions.php`; it never reads their build-machine values. WordPress resolves them when the mail job runs. Services are excluded from `schema.php`, migration snapshots, generated client descriptors and the public schema. The provider and rate-limit variables below retain their native runtime names; they are deployment settings, not additional `services` options.
 
 The compiler rejects unknown options, duplicate declarations and invalid definitions at their source property. Form fields support `text`, `email`, `integer` and `boolean`, optional `notNull`, and integer `rules.min`/`rules.max` for text length or integer bounds. Boolean fields have no bounds. Omit unused sections; a supplied registry or form field map must be nonempty. Form and product ids are lowercase slugs of at most 80 characters. Products require a nonempty name of at most 160 UTF-8 bytes, an integer amount from 50 to 99,999,999 and three lowercase currency letters. Configure `products` and an absolute HTTP(S) `checkoutReturnUrl` together.
 
@@ -44,31 +44,31 @@ Search keys name authored collections; the compiler binds them to the stored col
 
 Classic PHP plugins remain supported. The generated filter runs at priority 10 and merges `forms`, `search` and `products` by entry name. An authored entry replaces the whole same-name entry supplied by an earlier filter; unrelated entries and native options survive. A trusted filter at priority 20 can deliberately extend or override the result. Native plugins can use the runtime's broader schema validation features; the TypeScript bridge accepts only the documented subset.
 
-For PHP authoring, a trusted WordPress plugin supplies private configuration through `zero_services_config`. The complete working example is [zero-app-services.php](../examples/app-services/wordpress/zero-app-services.php). It defines:
+For PHP authoring, a trusted WordPress plugin supplies private configuration through `first_services_config`. The complete working example is [first-app-services.php](../examples/app-services/wordpress/first-app-services.php). It defines:
 
 - Form `contact`, with the existing schema column definitions for email and message validation.
 - Searchable `posts` fields `title` and `excerpt`.
 - Product `workshop`, priced at 1900 USD minor units on the server.
 - An application-owned checkout return URL.
 
-Recipients, senders and provider secrets are environment-variable names in this plugin. Values are resolved at runtime through `Zero\Env`, which also supports wp-config constants. They never enter generated schema, client JavaScript, catalog descriptions or responses.
+Recipients, senders and provider secrets are environment-variable names in this plugin. Values are resolved at runtime through `First\Env`, which also supports wp-config constants. They never enter generated schema, client JavaScript, catalog descriptions or responses.
 
 | Variable | Purpose |
 | --- | --- |
-| `ZERO_SERVICES_RATE_SECRET` | Random deployment secret used to hash client addresses for rate counters |
-| `ZERO_SERVICES_MAIL_TO`, `ZERO_SERVICES_MAIL_FROM` | One valid recipient and sender address each, as referenced by the example form |
-| `ZERO_SERVICES_SMTP_HOST` | Optional native SMTP transport; omit to use the existing WordPress mail integration |
-| `ZERO_SERVICES_SMTP_PORT` | SMTP port, default 587 |
-| `ZERO_SERVICES_SMTP_ENCRYPTION` | PHPMailer encryption, default `tls`; empty only for a local sink |
-| `ZERO_SERVICES_SMTP_USER`, `ZERO_SERVICES_SMTP_PASSWORD` | Optional SMTP authentication |
-| `ZERO_SERVICES_STRIPE_SECRET` | Stripe API secret, supplied only on the server |
-| `ZERO_SERVICES_STRIPE_WEBHOOK_SECRET` | Signing secret for this endpoint's Stripe events |
+| `FIRST_SERVICES_RATE_SECRET` | Random deployment secret used to hash client addresses for rate counters |
+| `FIRST_SERVICES_MAIL_TO`, `FIRST_SERVICES_MAIL_FROM` | One valid recipient and sender address each, as referenced by the example form |
+| `FIRST_SERVICES_SMTP_HOST` | Optional native SMTP transport; omit to use the existing WordPress mail integration |
+| `FIRST_SERVICES_SMTP_PORT` | SMTP port, default 587 |
+| `FIRST_SERVICES_SMTP_ENCRYPTION` | PHPMailer encryption, default `tls`; empty only for a local sink |
+| `FIRST_SERVICES_SMTP_USER`, `FIRST_SERVICES_SMTP_PASSWORD` | Optional SMTP authentication |
+| `FIRST_SERVICES_STRIPE_SECRET` | Stripe API secret, supplied only on the server |
+| `FIRST_SERVICES_STRIPE_WEBHOOK_SECRET` | Signing secret for this endpoint's Stripe events |
 
 Keep prices, currency, product names and the return URL in trusted server configuration. Use HTTPS for the deployed site and return URL. Configure a real WP-Cron or WP-CLI cron runner for Action Scheduler on deployed WordPress.
 
 ## HTTP contract
 
-Paths below follow `/wp-json/zero/v1`. Successes use `{ "data": ... }`; failures use the existing problem-document envelope. Both POST entry points require an `Idempotency-Key` header of 1–64 bytes. Retry the same intent with the same body and key; use a new key after editing the input.
+Paths below follow `/wp-json/first/v1`. Successes use `{ "data": ... }`; failures use the existing problem-document envelope. Both POST entry points require an `Idempotency-Key` header of 1–64 bytes. Retry the same intent with the same body and key; use a new key after editing the input.
 
 | Method and path | Input / result |
 | --- | --- |
@@ -95,7 +95,7 @@ Job states distinguish `pending`, `running`, `failed`, `dead` and `done`. A mail
 
 Search uses viewer-bound `db()->findMany`, with an explicit `published` filter and a fixed list of text fields. Existing row and field access rules run before SQL; an unreadable search field is rejected rather than used to infer membership. An editor's draft privileges do not make draft content searchable here.
 
-Results come from current content, without a second index. Editing, unpublishing, republishing or deleting through WordPress takes effect on the next query. Search is bounded lexical matching, not semantic search, fuzzy ranking, an external search provider or a full-text index. It supports publication-enabled Zero collections with text columns.
+Results come from current content, without a second index. Editing, unpublishing, republishing or deleting through WordPress takes effect on the next query. Search is bounded lexical matching, not semantic search, fuzzy ranking, an external search provider or a full-text index. It supports publication-enabled First collections with text columns.
 
 ## Hosted checkout and webhook recovery
 

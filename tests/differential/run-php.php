@@ -1,16 +1,16 @@
 <?php
 
 // Usage: php run-php.php <runtime plugin dir> <app plugin dir> <case> <args-json>
-// Calls one compiled function from <app>/zero/app/functions.php the way the runtime does
+// Calls one compiled function from <app>/first/app/functions.php the way the runtime does
 // (§2 calling conventions) and prints {"data": ...} or {"error": message}, like run-node.mjs.
 // Pure PHP: the runtime's bootstrap and the compiled functions, no WordPress and no store.
 
 declare(strict_types=1);
 
 [, $runtime, $root, $case, $argsJson] = $argv;
-require $runtime . '/zero/bootstrap.php';
-$schema = require $root . '/zero/app/schema.php';
-require_once $root . '/zero/app/functions.php';
+require $runtime . '/first/bootstrap.php';
+$schema = require $root . '/first/app/schema.php';
+require_once $root . '/first/app/functions.php';
 $args = json_decode($argsJson, true, 512, JSON_THROW_ON_ERROR);
 $parts = explode(':', $case);
 try {
@@ -18,16 +18,16 @@ try {
         'access' => (function () use ($schema, $parts, $args) {
             $ctx = $args['ctx'] + ['data' => null];
             $ctx['op'] = $parts[2];
-            $fn = '\\ZeroApp\\' . $schema['collections'][$parts[1]]['access'][$parts[2]]['fn'];
+            $fn = '\\FirstApp\\' . $schema['collections'][$parts[1]]['access'][$parts[2]]['fn'];
 
-            return $fn(\Zero\Seam::ctx($ctx, $schema['collections'][$parts[1]]['columns']));
+            return $fn(\First\Seam::ctx($ctx, $schema['collections'][$parts[1]]['columns']));
         })(),
         'field' => (function () use ($schema, $parts, $args) {
             $ctx = $args['ctx'];
             $ctx['op'] = $parts[3];
-            $fn = '\\ZeroApp\\' . $schema['collections'][$parts[1]]['columns'][$parts[2]]['access'][$parts[3]]['fn'];
+            $fn = '\\FirstApp\\' . $schema['collections'][$parts[1]]['columns'][$parts[2]]['access'][$parts[3]]['fn'];
 
-            return $fn(\Zero\Seam::ctx($ctx, $schema['collections'][$parts[1]]['columns']));
+            return $fn(\First\Seam::ctx($ctx, $schema['collections'][$parts[1]]['columns']));
         })(),
         'validate' => (function () use ($schema, $parts, $args) {
             $columns = $schema['collections'][$parts[1]]['columns'];
@@ -44,20 +44,20 @@ try {
                 $path[] = $key;
                 $col = $fields[$key];
             }
-            $fn = '\\ZeroApp\\' . $col['rules']['validate'];
+            $fn = '\\FirstApp\\' . $col['rules']['validate'];
             $ctx = $args['ctx'];
             $container = &$ctx['data'];
             foreach (array_slice($path, 0, -1) as $key) { $container = &$container[$key]; }
             $container[$path[array_key_last($path)]] = $args['value'];
             unset($container);
-            $ctx = \Zero\Seam::ctx($ctx, $columns);
+            $ctx = \First\Seam::ctx($ctx, $columns);
             $value = $ctx->p['data'];
-            foreach ($path as $key) { $value = \Zero\Seam::container($value)[$key]; }
+            foreach ($path as $key) { $value = \First\Seam::container($value)[$key]; }
             return $fn($value, $ctx);
         })(),
         default => throw new \LogicException("unknown case $case"),
     };
-    echo \Zero\Response::json($data)->http()[2], "\n";
+    echo \First\Response::json($data)->http()[2], "\n";
 } catch (\Throwable $e) {
-    echo \Zero\Js::jsonStringify(['error' => $e->getMessage()]), "\n";
+    echo \First\Js::jsonStringify(['error' => $e->getMessage()]), "\n";
 }

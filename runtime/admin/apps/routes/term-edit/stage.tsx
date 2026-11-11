@@ -1,14 +1,14 @@
 import { useParams, useNavigate } from '@wordpress/route';
-import { Page, type PageActionConfig } from '@zero-admin/admin-toolkit';
-import { useViewConfig } from '@zero-admin/views';
-import { useTaxonomyTermFields } from '@zero-admin/fields-next';
+import { Page, type PageActionConfig } from '@first-admin/admin-toolkit';
+import { useViewConfig } from '@first-admin/views';
+import { useTaxonomyTermFields } from '@first-admin/fields-next';
 import {
 	DataForm,
 	useFormValidity,
 	type ActionModal,
 	type Field,
 	type Form,
-} from '@zero-admin/dataviews';
+} from '@first-admin/dataviews';
 import { useMemo, useCallback } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
 import {
@@ -20,7 +20,7 @@ import {
 import { decodeEntities } from '@wordpress/html-entities';
 import { __, sprintf } from '@wordpress/i18n';
 import { store as noticesStore } from '@wordpress/notices';
-import { useTrack } from '@zero-admin/telemetry';
+import { useTrack } from '@first-admin/telemetry';
 import { viewTermAction } from '../term-list/actions/view-term';
 import { useDeleteTermAction } from '../term-list/actions/delete-term';
 
@@ -111,7 +111,7 @@ export default function TermEditStage() {
 		createSuccessNotice(
 			sprintf(
 				// translators: %s is the name of the updated term.
-				__( '"%s" updated successfully.', 'zero-admin' ),
+				__( '"%s" updated successfully.', 'first-admin' ),
 				mergedRecord.name
 			),
 			{
@@ -130,7 +130,7 @@ export default function TermEditStage() {
 				'message' in error &&
 				typeof error.message === 'string'
 					? decodeEntities( error.message )
-					: __( 'Could not save term.', 'zero-admin' );
+					: __( 'Could not save term.', 'first-admin' );
 
 			createErrorNotice( message, {
 				type: 'snackbar',

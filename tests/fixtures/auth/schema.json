@@ -178,7 +178,7 @@
                 "delete": true
             },
             "wp": null,
-            "table": "zero_members"
+            "table": "first_members"
         },
         "notes": {
             "key": "notes",
@@ -248,7 +248,7 @@
                 "delete": true
             },
             "wp": null,
-            "table": "zero_notes"
+            "table": "first_notes"
         }
     },
     "globals": [],

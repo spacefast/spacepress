@@ -1,1 +1,1 @@
-export { lock, unlock } from '@zero-admin/admin-toolkit';
+export { lock, unlock } from '@first-admin/admin-toolkit';

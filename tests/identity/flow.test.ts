@@ -40,7 +40,7 @@ async function codeFor(to: string): Promise<string> {
 }
 
 async function identity(op: string, body: unknown, cookie = ""): Promise<{ status: number; json: any; cookie: string }> {
-  const res = await fetch(`${site}/wp-json/zero-identity/v1/${op}`, {
+  const res = await fetch(`${site}/wp-json/first-identity/v1/${op}`, {
     method: "POST",
     headers: { "content-type": "application/json", origin: site, cookie },
     body: JSON.stringify(body),
@@ -112,10 +112,10 @@ test("PKCE sign-in, Bearer, refresh rotation, reuse and suspension over HTTP", a
   assert.deepEqual([revoked.status, (await revoked.json()).code], [401, "invalid_token"], "reuse revoked the family");
 
   const again = await authorize(await signIn(email));
-  wp("zero", "identity", "suspend", String(profile.id));
+  wp("first", "identity", "suspend", String(profile.id));
   const suspended = await me(again.json.access_token);
   assert.deepEqual([suspended.status, (await suspended.json()).code], [403, "suspended"]);
-  wp("zero", "identity", "restore", String(profile.id));
+  wp("first", "identity", "restore", String(profile.id));
 });
 
 test("CORS: preflight for a registered origin only", async () => {
@@ -186,7 +186,7 @@ test("suspension also ends application-password access to core REST", async () =
   const password = wp("user", "application-password", "create", id, "flow", "--porcelain");
   const basic = { authorization: "Basic " + btoa(`${login}:${password}`) };
   assert.equal((await fetch(`${site}/wp-json/wp/v2/users/me`, { headers: basic })).status, 200);
-  wp("zero", "identity", "suspend", id);
+  wp("first", "identity", "suspend", id);
   assert.equal((await fetch(`${site}/wp-json/wp/v2/users/me`, { headers: basic })).status, 401, "a suspended account's application password no longer authenticates");
-  wp("zero", "identity", "restore", id);
+  wp("first", "identity", "restore", id);
 });

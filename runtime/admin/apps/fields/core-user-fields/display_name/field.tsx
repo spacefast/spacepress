@@ -1,7 +1,7 @@
-import { SelectControl } from '@zero-admin/design-system';
+import { SelectControl } from '@first-admin/design-system';
 import { __ } from '@wordpress/i18n';
 import type { User } from '@wordpress/core-data';
-import type { Field } from '@zero-admin/dataviews';
+import type { Field } from '@first-admin/dataviews';
 
 export const getDisplayNameItems = ( item: User ) => {
 	const items = [ item.nickname, item.username, item.name ];

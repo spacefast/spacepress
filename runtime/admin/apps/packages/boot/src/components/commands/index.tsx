@@ -5,14 +5,14 @@ import { useMemo } from '@wordpress/element';
 import { __, _x, sprintf } from '@wordpress/i18n';
 import { useSelect } from '@wordpress/data';
 import { wrapIcon } from '../items';
-import { store as zeroAdminStore } from '../../store';
+import { store as firstAdminStore } from '../../store';
 
 type CommandCallbackArgs = { close: () => void };
 
 function useNavigateLoader() {
 	const navigate = useNavigate();
 	const items = useSelect(
-		( select ) => select( zeroAdminStore ).getMenuItems(),
+		( select ) => select( firstAdminStore ).getMenuItems(),
 		[]
 	);
 	// Include all items in the command palette.
@@ -55,16 +55,16 @@ function useNavigateLoader() {
 					const parentLabels = getParentLabels( item );
 
 					return {
-						name: `zero-admin/navigate-${ item.id }`,
+						name: `first-admin/navigate-${ item.id }`,
 						label: sprintf(
 							/* translators: %s: Name of the navigation item with hierarchical path */
-							__( 'Go to %s', 'zero-admin' ),
+							__( 'Go to %s', 'first-admin' ),
 							parentLabels.join(
 								' ' +
 									_x(
 										'›',
 										'Hierarchical separator for navigation items',
-										'zero-admin'
+										'first-admin'
 									) +
 									' '
 							)
@@ -96,7 +96,7 @@ function useNavigateLoader() {
 
 export function useCommands() {
 	useCommandLoader( {
-		name: 'zero-admin/navigate',
+		name: 'first-admin/navigate',
 		hook: useNavigateLoader,
 	} );
 	return null;

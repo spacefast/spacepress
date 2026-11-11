@@ -1,4 +1,4 @@
-import { unlock } from '@zero-admin/private-apis';
+import { unlock } from '@first-admin/private-apis';
 import { privateApis, ThemeProvider as UpstreamThemeProvider } from '@wordpress/theme';
 import { createElement, type ReactNode } from 'react';
 

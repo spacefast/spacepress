@@ -15,7 +15,7 @@ import {
 	moreVertical,
 } from '@wordpress/icons';
 import { useState } from '@wordpress/element';
-import { unlock } from '@zero-admin/admin-toolkit';
+import { unlock } from '@first-admin/admin-toolkit';
 import { Subtitle } from './subtitle';
 import { NavigationButtonAsItem } from './navigation-button';
 import { ScreenHeader } from './screen-header';
@@ -53,42 +53,42 @@ export default function ShadowsPanel() {
 				<ConfirmResetShadowDialog
 					text={ __(
 						'Are you sure you want to remove all custom shadows?',
-						'zero-admin'
+						'first-admin'
 					) }
-					confirmButtonText={ __( 'Remove', 'zero-admin' ) }
+					confirmButtonText={ __( 'Remove', 'first-admin' ) }
 					isOpen={ isResetDialogOpen }
 					toggleOpen={ toggleResetDialog }
 					onConfirm={ handleResetShadows }
 				/>
 			) }
 			<ScreenHeader
-				title={ __( 'Shadows', 'zero-admin' ) }
+				title={ __( 'Shadows', 'first-admin' ) }
 				description={ __(
 					'Manage and create shadow styles for use across the site.',
-					'zero-admin'
+					'first-admin'
 				) }
 			/>
-			<div className="zero-admin-global-styles-screen">
+			<div className="first-admin-global-styles-screen">
 				<VStack
-					className="zero-admin-global-styles__shadows-panel"
+					className="first-admin-global-styles__shadows-panel"
 					spacing={ 7 }
 				>
 					{ defaultShadowsEnabled && (
 						<ShadowList
-							label={ __( 'Default', 'zero-admin' ) }
+							label={ __( 'Default', 'first-admin' ) }
 							shadows={ defaultShadows || [] }
 							category="default"
 						/>
 					) }
 					{ themeShadows && themeShadows.length > 0 && (
 						<ShadowList
-							label={ __( 'Theme', 'zero-admin' ) }
+							label={ __( 'Theme', 'first-admin' ) }
 							shadows={ themeShadows || [] }
 							category="theme"
 						/>
 					) }
 					<ShadowList
-						label={ __( 'Custom', 'zero-admin' ) }
+						label={ __( 'Custom', 'first-admin' ) }
 						shadows={ customShadows || [] }
 						category="custom"
 						canCreate
@@ -123,7 +123,7 @@ function ShadowList( {
 		onCreate?.( {
 			name: sprintf(
 				/* translators: %d: is an index for a preset */
-				__( 'Shadow %d', 'zero-admin' ),
+				__( 'Shadow %d', 'first-admin' ),
 				newIndex
 			),
 			shadow: defaultShadow,
@@ -135,12 +135,12 @@ function ShadowList( {
 		<VStack spacing={ 2 }>
 			<HStack justify="space-between">
 				<Subtitle level={ 3 }>{ label }</Subtitle>
-				<FlexItem className="zero-admin-global-styles__shadows-panel__options-container">
+				<FlexItem className="first-admin-global-styles__shadows-panel__options-container">
 					{ canCreate && (
 						<Button
 							size="small"
 							icon={ plus }
-							label={ __( 'Add shadow', 'zero-admin' ) }
+							label={ __( 'Add shadow', 'first-admin' ) }
 							onClick={ () => {
 								handleAddShadow();
 							} }
@@ -155,7 +155,7 @@ function ShadowList( {
 										icon={ moreVertical }
 										label={ __(
 											'Shadow options',
-											'zero-admin'
+											'first-admin'
 										) }
 									/>
 								}
@@ -165,7 +165,7 @@ function ShadowList( {
 									<Menu.ItemLabel>
 										{ __(
 											'Remove all custom shadows',
-											'zero-admin'
+											'first-admin'
 										) }
 									</Menu.ItemLabel>
 								</Menu.Item>

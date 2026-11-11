@@ -1,4 +1,4 @@
-import type { Metadata, PageContext, PageProps } from "@spacefast/zero-pages";
+import type { Metadata, PageContext, PageProps } from "@spacefast/first-pages";
 import { NoteCard } from "../../../components/NoteCard";
 
 // A static page beside /notes/[slug]: it always wins, and no note can take the slug "featured".

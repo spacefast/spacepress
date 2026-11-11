@@ -1,7 +1,7 @@
 import { Select as _Select } from '@base-ui/react/select';
 import clsx from 'clsx';
 import { forwardRef } from 'react';
-import { ThemeProvider } from '@zero-admin/theme';
+import { ThemeProvider } from '@first-admin/theme';
 import itemPopupStyles from '../../../utils/css/item-popup.module.css';
 import resetStyles from '../../../utils/css/resets.module.css';
 import styles from './style.module.css';

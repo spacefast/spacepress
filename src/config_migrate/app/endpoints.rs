@@ -8,7 +8,7 @@ use super::super::{Failure, fail, pointer};
 use crate::diag::Span;
 use crate::ir::{FnBody, Func, Pat, Stmt};
 
-/// First path segments WordPress or Zero owns; v2 refuses routes under them (#129).
+/// First path segments WordPress or First owns; v2 refuses routes under them (#129).
 pub(super) const RESERVED: &[&str] = &[
     "wp-admin",
     "wp-json",
@@ -30,7 +30,7 @@ pub(super) const RESERVED: &[&str] = &[
     "trackback",
     "robots.txt",
     "favicon.ico",
-    "zero-admin",
+    "first-admin",
     "auth",
     ".well-known",
     "__spacefast",
@@ -100,7 +100,7 @@ pub(super) fn route(method: &str, path: &str, read_only: Option<bool>, at: &str)
         return Err(fail(
             &pointer(at, "path"),
             format!(
-                "/{} belongs to WordPress or Zero on v2; move the endpoint and its callers",
+                "/{} belongs to WordPress or First on v2; move the endpoint and its callers",
                 segments[0]
             ),
         ));

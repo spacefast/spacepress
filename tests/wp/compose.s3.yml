@@ -12,33 +12,33 @@ services:
       retries: 60
   wordpress:
     environment: &uploads
-      ZERO_TEST_UPLOAD_KEY: GK111111111111111111111111
-      ZERO_TEST_UPLOAD_SECRET: "1111111111111111111111111111111111111111111111111111111111111111"
-      ZERO_TEST_UPLOAD_ENDPOINT: http://garage:3900
+      FIRST_TEST_UPLOAD_KEY: GK111111111111111111111111
+      FIRST_TEST_UPLOAD_SECRET: "1111111111111111111111111111111111111111111111111111111111111111"
+      FIRST_TEST_UPLOAD_ENDPOINT: http://garage:3900
   cli:
     environment: *uploads
   replica:
     image: wordpress:7.1-php8.5-apache
     environment:
       <<: *uploads
-      APACHE_RUN_USER: "#${ZERO_WP_UID:-1000}"
-      APACHE_RUN_GROUP: "#${ZERO_WP_GID:-1000}"
+      APACHE_RUN_USER: "#${FIRST_WP_UID:-1000}"
+      APACHE_RUN_GROUP: "#${FIRST_WP_GID:-1000}"
       WORDPRESS_DB_HOST: db
       WORDPRESS_DB_USER: wordpress
-      WORDPRESS_DB_PASSWORD: zero-test-db
+      WORDPRESS_DB_PASSWORD: first-test-db
       WORDPRESS_DB_NAME: wordpress
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_ENVIRONMENT_TYPE', 'local');
         define('DISABLE_WP_CRON', true);
-        define('ZERO_IDENTITY_DEV_HTTP', true);
+        define('FIRST_IDENTITY_DEV_HTTP', true);
     profiles: [replica]
     ports:
-      - "${ZERO_WP_REPLICA_PORT:-8791}:80"
+      - "${FIRST_WP_REPLICA_PORT:-8791}:80"
     volumes:
       - replica:/var/www/html
-      - ./php/zz-zero-tests.ini:/usr/local/etc/php/conf.d/zz-zero-tests.ini:ro
-      - ./apache/zz-zero-tests.conf:/etc/apache2/conf-enabled/zz-zero-tests.conf:ro
-      - ${ZERO_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
+      - ./php/zz-first-tests.ini:/usr/local/etc/php/conf.d/zz-first-tests.ini:ro
+      - ./apache/zz-first-tests.conf:/etc/apache2/conf-enabled/zz-first-tests.conf:ro
+      - ${FIRST_WP_CONTENT:-./empty-wp-content}/plugins:/var/www/html/wp-content/plugins
 volumes:
   garage:
   replica:

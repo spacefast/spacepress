@@ -1,6 +1,6 @@
 import type { Post } from '@wordpress/core-data';
 import { __ } from '@wordpress/i18n';
-import type { Field } from '@zero-admin/dataviews';
+import type { Field } from '@first-admin/dataviews';
 import { FeaturedImageView } from './view';
 import { FeaturedImageEdit } from './edit';
 

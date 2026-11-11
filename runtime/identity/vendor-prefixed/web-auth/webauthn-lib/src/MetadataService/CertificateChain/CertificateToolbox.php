@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn\MetadataService\CertificateChain;
+namespace First\Identity\Vendor\Webauthn\MetadataService\CertificateChain;
 
 use const PHP_EOL;
 

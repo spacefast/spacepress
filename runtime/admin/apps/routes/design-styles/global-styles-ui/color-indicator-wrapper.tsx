@@ -14,7 +14,7 @@ function ColorIndicatorWrapper( {
 	return (
 		<Flex
 			className={ clsx(
-				'zero-admin-global-styles__color-indicator-wrapper',
+				'first-admin-global-styles__color-indicator-wrapper',
 				className
 			) }
 			{ ...props }

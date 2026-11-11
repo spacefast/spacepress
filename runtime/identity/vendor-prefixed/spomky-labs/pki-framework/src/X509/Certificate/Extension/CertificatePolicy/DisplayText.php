@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\CertificatePolicy;
 
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BMPString;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\IA5String;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UTF8String;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\VisibleString;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\StringType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BMPString;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\IA5String;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\UTF8String;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\VisibleString;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\StringType;
 use Stringable;
 use UnexpectedValueException;
 

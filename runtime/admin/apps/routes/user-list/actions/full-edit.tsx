@@ -1,6 +1,6 @@
 import { useNavigate } from '@wordpress/route';
-import { useViewConfig } from '@zero-admin/views';
-import type { Action } from '@zero-admin/dataviews';
+import { useViewConfig } from '@first-admin/views';
+import type { Action } from '@first-admin/dataviews';
 import { useMemo } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { pencil } from '@wordpress/icons';
@@ -23,7 +23,7 @@ export const useFullEditAction = (): Action< User > | null => {
 
 		return {
 			id: 'full-edit-user',
-			label: __( 'View', 'zero-admin' ),
+			label: __( 'View', 'first-admin' ),
 			isPrimary: true,
 			icon: pencil,
 			supportsBulk: false,

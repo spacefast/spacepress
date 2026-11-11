@@ -1,5 +1,5 @@
 <?php
-namespace Zero\Identity\Vendor\Firebase\JWT;
+namespace First\Identity\Vendor\Firebase\JWT;
 
 interface JWTExceptionWithPayloadInterface
 {

@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-use Zero\Identity\{Plugin, Providers, Sessions};
+use First\Identity\{Plugin, Providers, Sessions};
 global $wpdb;
 $target = 'sfz_' . substr(hash('sha256', 'imported-space'), 0, 24) . '_';
 function proof(bool $ok, string $message): void {
@@ -74,7 +74,7 @@ if ($phase === 'seed') {
     wp_set_object_terms($post, [$child], 'category');
     add_term_meta($child, 'fixture', 'retained');
     foreach (['accounts','emails','providers','sessions'] as $name) {
-        $wpdb->query("CREATE TABLE wp_sfi_$name LIKE wp_zero_identity_$name");
+        $wpdb->query("CREATE TABLE wp_sfi_$name LIKE wp_first_identity_$name");
     }
     $now = time(); $email = 101;
     $wpdb->insert('wp_sfi_accounts', ['wp_user_id'=>$uid,'status'=>'active','primary_email_id'=>$email,'created_at'=>$now]);
@@ -87,7 +87,7 @@ if ($phase === 'seed') {
     // An initialized but empty scoped WordPress, including independently owned identity tables.
     $tables = $wpdb->get_col("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND LEFT(TABLE_NAME,3)='wp_'");
     foreach ($tables as $table) {
-        if (str_starts_with($table, 'wp_sfi_') || (str_starts_with($table, 'wp_zero_') && !str_starts_with($table, 'wp_zero_identity_'))) { continue; }
+        if (str_starts_with($table, 'wp_sfi_') || (str_starts_with($table, 'wp_first_') && !str_starts_with($table, 'wp_first_identity_'))) { continue; }
         $wpdb->query("CREATE TABLE `" . $target . substr($table,3) . "` LIKE `$table`");
     }
     $wpdb->query("INSERT INTO `{$target}options` SELECT * FROM wp_options");
@@ -100,12 +100,12 @@ $f = json_decode(file_get_contents('/tmp/spacefast-fixture.json'), true);
 extract($f, EXTR_SKIP);
 proof(wp_salt('auth') === $salt, 'auth salt retained across prefix bind');
 if ($phase === 'nested') {
-    $plugin = \Zero\Wp\Runtime::plugin();
+    $plugin = \First\Wp\Runtime::plugin();
     $db = $plugin->connection();
     $db->transaction(function () use ($db, $plugin, $target): void {
         foreach ([false, true] as $dry) {
             try {
-                (new \Zero\Wp\Legacy\Spacefast($db, $plugin->schema))->run('imported-space', 'wp_', $target, $dry);
+                (new \First\Wp\Legacy\Spacefast($db, $plugin->schema))->run('imported-space', 'wp_', $target, $dry);
                 throw new RuntimeException('Nested copier accepted');
             } catch (LogicException $e) {
                 proof($e->getMessage() === 'Spacefast migration requires its own per-group transactions', 'copier refuses a joined transaction before writes');
@@ -115,47 +115,47 @@ if ($phase === 'nested') {
     });
     proof(!$db->inTransaction(), 'refusing nested copy does not poison the owner transaction');
 } elseif ($phase === 'password-rollback') {
-    if (is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])) {
-        $profiles = get_option('zero_identity_password_profiles');
+    if (is_callable([\First\Identity\Accounts::class, 'rememberPasswordHash'])) {
+        $profiles = get_option('first_identity_password_profiles');
         foreach ($passwordUsers as $encoding => $fixture) {
             proof(!isset($profiles[$fixture['profile']]), "$encoding profile is absent before copy");
         }
         $warmed = false;
         $observe = static function ($sql) use (&$warmed) {
-            if (!$warmed && str_starts_with($sql, 'UPDATE ') && str_contains($sql, "'zero_identity_password_profiles'")) {
-                $warmed = isset(get_option('zero_identity_password_profiles')['md5']);
+            if (!$warmed && str_starts_with($sql, 'UPDATE ') && str_contains($sql, "'first_identity_password_profiles'")) {
+                $warmed = isset(get_option('first_identity_password_profiles')['md5']);
             }
             return $sql;
         };
         add_filter('query', $observe);
         try {
-            $plugin = \Zero\Wp\Runtime::plugin();
-            $report = (new \Zero\Wp\Legacy\Spacefast($plugin->connection(), $plugin->schema))->run('imported-space', 'wp_', $target, true);
+            $plugin = \First\Wp\Runtime::plugin();
+            $report = (new \First\Wp\Legacy\Spacefast($plugin->connection(), $plugin->schema))->run('imported-space', 'wp_', $target, true);
         } finally {
             remove_filter('query', $observe);
         }
         proof($report['groups']['users']['status'] === 'dry-run' && $warmed, 'dry run registers imported hashes and warms the uncommitted profile cache');
-        proof(get_option('zero_identity_password_profiles') === $profiles, 'dry rollback discards uncommitted password profiles from the option cache');
-        proof(maybe_unserialize($wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$target}options WHERE option_name=%s", 'zero_identity_password_profiles'))) === $profiles, 'dry rollback restores stored password profiles');
+        proof(get_option('first_identity_password_profiles') === $profiles, 'dry rollback discards uncommitted password profiles from the option cache');
+        proof(maybe_unserialize($wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$target}options WHERE option_name=%s", 'first_identity_password_profiles'))) === $profiles, 'dry rollback restores stored password profiles');
         proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}users") === 0, 'dry rollback removes every imported user');
     }
 } elseif ($phase === 'storage-failure') {
     // The pending security release makes failed reads distinct from an absent session.
-    if (is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])) {
+    if (is_callable([\First\Identity\Accounts::class, 'rememberPasswordHash'])) {
         $suppress = $wpdb->suppress_errors(true);
         try {
             foreach (['sessions' => 'secret_hash', 'legacy_sessions' => 'pending'] as $name => $column) {
-                $table = $target . 'zero_identity_' . $name;
+                $table = $target . 'first_identity_' . $name;
                 proof($wpdb->query("ALTER TABLE $table RENAME COLUMN $column TO unavailable") !== false, 'identity lookup column made unreadable');
                 try {
                     try {
                         Plugin::$sessions->find('old-token');
                         throw new RuntimeException('Failed read became an absent session');
-                    } catch (\Zero\Identity\Failure $e) {
+                    } catch (\First\Identity\Failure $e) {
                         proof($e->kind === 'storage_unavailable' && $e->status === 503 && !str_contains($e->getMessage(), $table), 'canonical and legacy reads propagate sanitized storage failures');
                     }
                     $_COOKIE['__Host-sfi_session'] = 'old-token';
-                    $GLOBALS['wp']->query_vars['rest_route'] = '/zero/v1/me';
+                    $GLOBALS['wp']->query_vars['rest_route'] = '/first/v1/me';
                     $_SERVER['REQUEST_METHOD'] = 'GET';
                     wp_set_current_user(0);
                     $error = apply_filters('rest_authentication_errors', null);
@@ -171,47 +171,47 @@ if ($phase === 'nested') {
         }
     }
 } elseif ($phase === 'upgrade-failure') {
-    $table = $target . 'zero_identity_sessions';
-    proof($wpdb->query("CREATE TRIGGER zero_upgrade_failure BEFORE UPDATE ON $table FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='disposable upgrade failure'") !== false, 'upgrade failure trigger installed');
+    $table = $target . 'first_identity_sessions';
+    proof($wpdb->query("CREATE TRIGGER first_upgrade_failure BEFORE UPDATE ON $table FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='disposable upgrade failure'") !== false, 'upgrade failure trigger installed');
     $suppress = $wpdb->suppress_errors(true);
     try {
         try {
             Plugin::$sessions->find('old-token');
             throw new RuntimeException('Failed upgrade accepted');
-        } catch (\Zero\Identity\Failure $e) {
+        } catch (\First\Identity\Failure $e) {
             proof($e->kind === 'storage_conflict' && $e->status === 409, 'upgrade write failure propagates');
         }
         $_COOKIE['__Host-sfi_session'] = 'old-token';
-        $GLOBALS['wp']->query_vars['rest_route'] = '/zero/v1/me';
+        $GLOBALS['wp']->query_vars['rest_route'] = '/first/v1/me';
         $_SERVER['REQUEST_METHOD'] = 'GET';
         wp_set_current_user(0);
         $error = apply_filters('rest_authentication_errors', null);
         proof(is_wp_error($error) && $error->get_error_code() === 'storage_conflict' && $error->get_error_data()['status'] === 409, 'REST alias refuses an upgrade failure instead of authenticating or serving a guest');
     } finally {
-        $wpdb->query('DROP TRIGGER zero_upgrade_failure');
+        $wpdb->query('DROP TRIGGER first_upgrade_failure');
         $wpdb->suppress_errors($suppress);
         unset($_COOKIE['__Host-sfi_session']);
     }
     $hash = $wpdb->get_var($wpdb->prepare("SELECT secret_hash FROM $table WHERE id=%s", str_repeat('a',32)));
-    proof(hash_equals(hash_hmac('sha256','old-token',wp_salt('auth')), $hash) && (int)$wpdb->get_var($wpdb->prepare("SELECT pending FROM {$target}zero_identity_legacy_sessions WHERE session_id=%s",str_repeat('a',32)))===1, 'failed upgrade changes neither legacy hash nor pending flag');
+    proof(hash_equals(hash_hmac('sha256','old-token',wp_salt('auth')), $hash) && (int)$wpdb->get_var($wpdb->prepare("SELECT pending FROM {$target}first_identity_legacy_sessions WHERE session_id=%s",str_repeat('a',32)))===1, 'failed upgrade changes neither legacy hash nor pending flag');
 } elseif ($phase === 'comments') {
     $wpdb->insert('wp_comments', ['comment_post_ID' => $post, 'comment_content' => 'Unsupported comment']);
 } elseif ($phase === 'clear-comments') {
     $wpdb->delete('wp_comments', ['comment_post_ID' => $post]);
 } elseif ($phase === 'content-drift') {
-    $plugin = \Zero\Wp\Runtime::plugin();
+    $plugin = \First\Wp\Runtime::plugin();
     $db = $plugin->connection();
-    $copier = new \Zero\Wp\Legacy\Spacefast($db, $plugin->schema);
+    $copier = new \First\Wp\Legacy\Spacefast($db, $plugin->schema);
     $verify = static function () use ($copier, $target): array {
         try {
             return $copier->run('imported-space', 'wp_', $target, false, true)['groups'];
-        } catch (\Zero\Wp\Legacy\SpacefastDrift $drift) {
+        } catch (\First\Wp\Legacy\SpacefastDrift $drift) {
             return $drift->groups;
         }
     };
     $statuses = static fn (array $groups): array => array_map(static fn ($g) => $g['status'], $groups);
     $all = ['posts' => 'verified', 'users' => 'verified', 'sessions' => 'verified'];
-    proof($statuses($verify()) === $all && (int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}zero_spacefast_migrations WHERE fingerprint LIKE 'v2:%'") === 3, 'content receipts verify an unchanged source');
+    proof($statuses($verify()) === $all && (int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}first_spacefast_migrations WHERE fingerprint LIKE 'v2:%'") === 3, 'content receipts verify an unchanged source');
     $session = str_repeat('c', 32);
     // Each edit keeps every COUNT/MAX the pre-content receipts hashed, so only row contents reveal it.
     $edits = [
@@ -238,10 +238,10 @@ if ($phase === 'nested') {
     proof($seen === array_replace($all, ['users' => 'incomplete']), 'a changed source subject reports the users group incomplete: ' . json_encode($seen));
     // The subject is also part of the users fingerprint: with the target updated to match, the
     // receipt written for the old subject drifts.
-    update_user_meta($uid, 'zero_spacefastSubject', 'usr_' . str_repeat('ef', 32));
+    update_user_meta($uid, 'first_spacefastSubject', 'usr_' . str_repeat('ef', 32));
     proof($statuses($verify()) === array_replace($all, ['users' => 'drifted']), 'a subject change the receipt never saw drifts the users group');
     proof($setSubject($subject) === 1, 'source subject restored');
-    update_user_meta($uid, 'zero_spacefastSubject', $subject);
+    update_user_meta($uid, 'first_spacefastSubject', $subject);
     proof($statuses($verify()) === $all, 'the restored subject verifies again');
     // Receipts written before content fingerprints hashed aggregate counters (formula pinned here).
     $scope = (new ReflectionMethod($copier, 'scope'))->invoke($copier, 'imported-space', 'wp_');
@@ -264,7 +264,7 @@ if ($phase === 'nested') {
         return hash('sha256', json_encode($values, JSON_THROW_ON_ERROR));
     };
     foreach (array_keys($all) as $group) {
-        $wpdb->update($target . 'zero_spacefast_migrations', ['fingerprint' => $legacy($group)], ['space_id' => 'imported-space', 'table_group' => $group]);
+        $wpdb->update($target . 'first_spacefast_migrations', ['fingerprint' => $legacy($group)], ['space_id' => 'imported-space', 'table_group' => $group]);
     }
     $groups = $verify();
     proof($statuses($groups) === $all && array_filter($groups, static fn ($g) => !preg_match('/\A[0-9a-f]{64}\z/', $g['stored']) || $g['current'] !== $g['stored']) === [], 'receipts written before content fingerprints still verify an unchanged source');
@@ -272,31 +272,31 @@ if ($phase === 'nested') {
     $wpdb->update('wp_posts', ['post_modified_gmt' => '2099-01-01 00:00:00'], ['ID' => $post]);
 } elseif ($phase === 'dry') {
     proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}posts")===0 && (int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}users")===0, 'dry run leaves data empty');
-    proof(!$wpdb->get_var($wpdb->prepare('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s',$target.'zero_spacefast_migrations')), 'dry run creates no receipt table');
+    proof(!$wpdb->get_var($wpdb->prepare('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s',$target.'first_spacefast_migrations')), 'dry run creates no receipt table');
 } elseif ($phase === 'conflict') {
     $wpdb->query($wpdb->prepare("INSERT INTO {$target}posts SELECT * FROM wp_posts WHERE ID=%d", $post));
     $wpdb->update($target.'posts', ['post_title'=>'Conflicting target'], ['ID'=>$post]);
 } elseif ($phase === 'rollback') {
     proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}terms")===0, 'post conflict rolls back term writes');
-    proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}zero_spacefast_migrations")===0, 'failed group has no receipt');
+    proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}first_spacefast_migrations")===0, 'failed group has no receipt');
     $wpdb->delete($target.'posts', ['ID'=>$post]);
 } elseif ($phase === 'copied') {
-    proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}zero_spacefast_migrations WHERE fingerprint REGEXP '^v2:[0-9a-f]{64}$'")===3, 'each group receipt stores a versioned source content fingerprint');
+    proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}first_spacefast_migrations WHERE fingerprint REGEXP '^v2:[0-9a-f]{64}$'")===3, 'each group receipt stores a versioned source content fingerprint');
     proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}posts")===5, 'only fenced native and collection posts, revisions and attachment copied');
     $p = get_post($post);
-    proof($p->post_type==='zero_posts' && $p->post_content==='<p>Preserved body</p>' && (int)$p->post_author===$uid, 'post ID, body and author retained with candidate type');
+    proof($p->post_type==='first_posts' && $p->post_content==='<p>Preserved body</p>' && (int)$p->post_author===$uid, 'post ID, body and author retained with candidate type');
     proof(get_post($revision)->post_type==='revision' && (int)get_post($attachment)->post_parent===$post && get_post_meta($attachment,'_wp_attached_file',true)==='2026/11/imported.png', 'revision and attachment IDs and metadata retained');
     proof(!get_post($other) && !get_userdata($foreign), 'foreign Space posts and users absent');
-    proof(get_user_meta($uid, 'zero_spacefastSubject', true) === $subject && count(get_user_meta($uid, 'zero_spacefastSubject')) === 1, 'Space Users subject copied once to the hidden member column');
-    $member = \Zero\Wp\Runtime::plugin()->db()->findFirst('members', ['where' => ['id' => $uid], 'columns' => ['spacefastSubject' => true]]);
+    proof(get_user_meta($uid, 'first_spacefastSubject', true) === $subject && count(get_user_meta($uid, 'first_spacefastSubject')) === 1, 'Space Users subject copied once to the hidden member column');
+    $member = \First\Wp\Runtime::plugin()->db()->findFirst('members', ['where' => ['id' => $uid], 'columns' => ['spacefastSubject' => true]]);
     proof(($member['spacefastSubject'] ?? null) === $subject, 'trusted member reads return the 0.8 subject');
-    $mask = rest_do_request(new WP_REST_Request('GET', '/zero/v1/members/' . $uid));
+    $mask = rest_do_request(new WP_REST_Request('GET', '/first/v1/members/' . $uid));
     proof(!array_key_exists('spacefastSubject', (array) ($mask->get_data()['data'] ?? [])), 'REST never exposes the migrated subject');
     proof((int)get_term($child)->parent===$parent && get_term_meta($child,'fixture',true)==='retained' && wp_get_object_terms($post,'category',['fields'=>'ids'])===[$child], 'taxonomy hierarchy, metadata and relationships retained');
-    proof(get_post($project)->post_type==='zero_projects' && get_post_meta($project,'zero_budget',true)==='42.5' && get_post_meta($project,'zero_active',true)==='1', 'collection tag maps to candidate type and typed metadata');
-    proof(get_post_meta($projectRevision,'zero_budget',true)==='12.5' && get_post_meta($projectRevision,'zero_active',true)==='0', 'collection revision fields use parent mapping');
-    if (is_callable([\Zero\Identity\Accounts::class, 'rememberPasswordHash'])) {
-        $profiles = get_option('zero_identity_password_profiles');
+    proof(get_post($project)->post_type==='first_projects' && get_post_meta($project,'first_budget',true)==='42.5' && get_post_meta($project,'first_active',true)==='1', 'collection tag maps to candidate type and typed metadata');
+    proof(get_post_meta($projectRevision,'first_budget',true)==='12.5' && get_post_meta($projectRevision,'first_active',true)==='0', 'collection revision fields use parent mapping');
+    if (is_callable([\First\Identity\Accounts::class, 'rememberPasswordHash'])) {
+        $profiles = get_option('first_identity_password_profiles');
         foreach ($passwordUsers as $encoding => $fixture) {
             proof(isset($profiles[$fixture['profile']]) && is_string($profiles[$fixture['profile']]) && $profiles[$fixture['profile']] !== $fixture['hash'], "$encoding copier profile registered before any imported sign-in");
         }
@@ -305,29 +305,29 @@ if ($phase === 'nested') {
             try {
                 Plugin::$accounts->password($overCeilingUser['login'], 'disposable-member-password');
                 throw new RuntimeException('Over-ceiling imported password accepted');
-            } catch (\Zero\Identity\Failure $e) {
+            } catch (\First\Identity\Failure $e) {
                 proof($e->kind === 'invalid_credentials' && $e->status === 401, "over-ceiling bcrypt $2y$16$ fails closed $stage");
             }
-            proof(!isset(get_option('zero_identity_password_profiles')[$overCeilingUser['profile']]), "over-ceiling bcrypt $2y$16$ never enters the profile schedule $stage");
+            proof(!isset(get_option('first_identity_password_profiles')[$overCeilingUser['profile']]), "over-ceiling bcrypt $2y$16$ never enters the profile schedule $stage");
         };
-        if (is_callable([\Zero\Identity\Accounts::class, 'inventoryPasswordHashes'])) {
-            proof(get_option('zero_identity_password_inventory')['complete'] === false, 'background inventory is incomplete before imported sign-in');
+        if (is_callable([\First\Identity\Accounts::class, 'inventoryPasswordHashes'])) {
+            proof(get_option('first_identity_password_inventory')['complete'] === false, 'background inventory is incomplete before imported sign-in');
             foreach ($passwordUsers as $encoding => $fixture) {
                 proof(Plugin::$accounts->password($fixture['login'], 'disposable-member-password') === $fixture['id'], "$encoding authenticates after migration before inventory completes");
             }
             $refuseOverCeiling('before inventory completes');
-            for ($page = 0; $page < 10 && !get_option('zero_identity_password_inventory')['complete']; $page++) {
-                do_action('zero_identity_password_inventory');
+            for ($page = 0; $page < 10 && !get_option('first_identity_password_inventory')['complete']; $page++) {
+                do_action('first_identity_password_inventory');
             }
-            proof(get_option('zero_identity_password_inventory')['complete'] === true, 'cron inventory completes before fixed-profile schedule comparison');
+            proof(get_option('first_identity_password_inventory')['complete'] === true, 'cron inventory completes before fixed-profile schedule comparison');
         }
         $refuseOverCeiling('after inventory completes');
-        $request = new \WP_REST_Request('POST', '/zero-identity/v1/sign-in/password');
+        $request = new \WP_REST_Request('POST', '/first-identity/v1/sign-in/password');
         $request->set_header('origin', home_url());
         $request->set_body_params(['operation' => 'sign-in/password', 'login' => $overCeilingUser['login'], 'password' => 'disposable-member-password']);
         $response = Plugin::$api->dispatch($request);
         proof($response->get_status() === 401 && $response->get_data()['error']['code'] === 'invalid_credentials', 'Identity password API refuses the copied over-ceiling user');
-        proof((int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$target}zero_identity_sessions WHERE wp_user_id=%d", $overCeilingUser['id'])) === 0, 'over-ceiling sign-in issues no session');
+        proof((int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$target}first_identity_sessions WHERE wp_user_id=%d", $overCeilingUser['id'])) === 0, 'over-ceiling sign-in issues no session');
         proof($wpdb->get_var($wpdb->prepare('SELECT user_pass FROM wp_users WHERE ID=%d', $overCeilingUser['id'])) === $overCeilingUser['hash'], 'over-ceiling refusal leaves the source hash unchanged');
         $schedules = [];
         foreach (['missing-imported-member', 'imported-member'] as $login) {
@@ -341,7 +341,7 @@ if ($phase === 'nested') {
             try {
                 Plugin::$accounts->password($login, 'incorrect-password');
                 throw new RuntimeException('Incorrect imported password accepted');
-            } catch (\Zero\Identity\Failure $e) {
+            } catch (\First\Identity\Failure $e) {
                 proof($e->kind === 'invalid_credentials', 'imported and absent accounts use the generic password refusal');
             } finally {
                 remove_filter('check_password', $observe);
@@ -360,18 +360,18 @@ if ($phase === 'nested') {
     }
     $u = get_userdata($uid);
     proof($u->user_email==='verified@example.test' && wp_check_password('disposable-member-password',$u->user_pass,$uid) && $u->roles===['subscriber'], 'user ID, verified email, password and scoped role retained');
-    proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}zero_identity_legacy_sessions WHERE pending=1")===4, 'only imported sessions marked for upgrade');
+    proof((int)$wpdb->get_var("SELECT COUNT(*) FROM {$target}first_identity_legacy_sessions WHERE pending=1")===4, 'only imported sessions marked for upgrade');
     $config = Providers::config()['google'];
-    proof($config['issuer']==='https://accounts.google.com' && $config['client_id']===ZERO_IDENTITY_GOOGLE_CLIENT_ID, 'Google built-in provider receives host configuration');
+    proof($config['issuer']==='https://accounts.google.com' && $config['client_id']===FIRST_IDENTITY_GOOGLE_CLIENT_ID, 'Google built-in provider receives host configuration');
     proof(Plugin::$accounts->provider($config['issuer'],'imported-subject','verified@example.test','Imported Member')===$uid, 'Google provider subject resolves to original imported user ID');
     // Native rows never receive the compatibility hash lookup, even if the stored digest is HMAC.
-    $wpdb->insert($target.'zero_identity_sessions', ['id'=>str_repeat('e',32),'wp_user_id'=>$uid,'secret_hash'=>hash_hmac('sha256','native-legacy-shaped',wp_salt('auth')),'csrf'=>str_repeat('e',64),'created_at'=>$now,'expires_at'=>$now+3600,'verified_at'=>$now,'label'=>'Unmarked row']);
+    $wpdb->insert($target.'first_identity_sessions', ['id'=>str_repeat('e',32),'wp_user_id'=>$uid,'secret_hash'=>hash_hmac('sha256','native-legacy-shaped',wp_salt('auth')),'csrf'=>str_repeat('e',64),'created_at'=>$now,'expires_at'=>$now+3600,'verified_at'=>$now,'label'=>'Unmarked row']);
     Plugin::$sessions->revoke($uid,str_repeat('c',32));
     proof(Plugin::$sessions->find('revoke-token')===null, 'revocation rejects a never-upgraded imported session');
 } elseif ($phase === 'drop-subject') {
-    proof(delete_user_meta($uid, 'zero_spacefastSubject'), 'copied subject removed after the users receipt');
+    proof(delete_user_meta($uid, 'first_spacefastSubject'), 'copied subject removed after the users receipt');
 } elseif ($phase === 'restore-subject') {
-    proof(add_user_meta($uid, 'zero_spacefastSubject', $subject, true) !== false, 'copied subject restored');
+    proof(add_user_meta($uid, 'first_spacefastSubject', $subject, true) !== false, 'copied subject restored');
 } elseif ($phase === 'snapshot-users') {
     // The operator's backup before the users copy: the target's users and usermeta as they were.
     foreach (['users', 'usermeta'] as $table) {
@@ -383,12 +383,12 @@ if ($phase === 'nested') {
     foreach (['users', 'usermeta'] as $table) {
         proof($wpdb->query("DELETE FROM {$target}{$table}") !== false && $wpdb->query("INSERT INTO {$target}{$table} SELECT * FROM {$target}{$table}_backup") !== false, "target $table restored from the backup");
     }
-    proof($wpdb->delete($target . 'zero_spacefast_migrations', ['space_id' => 'imported-space', 'table_group' => 'users']) === 1, 'stale users receipt deleted');
+    proof($wpdb->delete($target . 'first_spacefast_migrations', ['space_id' => 'imported-space', 'table_group' => 'users']) === 1, 'stale users receipt deleted');
 } elseif ($phase === 'authenticated') {
-    $s = $wpdb->get_row("SELECT * FROM {$target}zero_identity_sessions WHERE id='".str_repeat('a',32)."'", ARRAY_A);
+    $s = $wpdb->get_row("SELECT * FROM {$target}first_identity_sessions WHERE id='".str_repeat('a',32)."'", ARRAY_A);
     proof(hash_equals(Sessions::digest('old-token'),$s['secret_hash']) && (int)$s['expires_at']===$now+3600, 'old cookie upgraded to v2 hash without extending expiry');
-    proof((int)$wpdb->get_var("SELECT pending FROM {$target}zero_identity_legacy_sessions WHERE session_id='".str_repeat('a',32)."'")===0, 'upgrade clears imported flag');
-    proof((int)$wpdb->get_var("SELECT revoked_at FROM {$target}zero_identity_sessions WHERE id='".str_repeat('b',32)."'")>0 && Plugin::$sessions->find('logout-token')===null, 'logout revokes previously unupgraded session');
+    proof((int)$wpdb->get_var("SELECT pending FROM {$target}first_identity_legacy_sessions WHERE session_id='".str_repeat('a',32)."'")===0, 'upgrade clears imported flag');
+    proof((int)$wpdb->get_var("SELECT revoked_at FROM {$target}first_identity_sessions WHERE id='".str_repeat('b',32)."'")>0 && Plugin::$sessions->find('logout-token')===null, 'logout revokes previously unupgraded session');
     proof(Plugin::$sessions->find('native-legacy-shaped')===null, 'native row never accepts a legacy-shaped digest');
     proof(Plugin::$sessions->find('expired-token')===null, 'expired imported session stays expired');
     proof((int)$wpdb->get_var("SELECT COUNT(*) FROM wp_sfi_sessions WHERE revoked_at IS NULL")===4, 'migration and lazy upgrade leave source rows unchanged');

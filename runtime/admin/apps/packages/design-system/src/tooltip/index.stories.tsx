@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { ThemeProvider } from '@zero-admin/theme';
+import { ThemeProvider } from '@first-admin/theme';
 import { Button } from '@wordpress/ui';
 import { Tooltip } from '..';
 

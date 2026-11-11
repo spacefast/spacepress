@@ -195,7 +195,7 @@ export function withBlockApi<T>(use: (api: BlockApi) => T | Promise<T>): Promise
  * character no author can write in JSX props or attrs objects by accident
  * (a colon), and authored attrs are checked against it anyway.
  */
-const PASSTHROUGH_INNER_ATTRIBUTE = "zero-blocks:inner-html";
+const PASSTHROUGH_INNER_ATTRIBUTE = "first-blocks:inner-html";
 
 /** Blocks we registered ourselves, and the attribute names each has. */
 const passthroughBlocks = new Map<string, Set<string>>();

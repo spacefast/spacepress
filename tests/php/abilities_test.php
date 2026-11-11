@@ -3,14 +3,14 @@
 declare(strict_types=1);
 
 /*
- * abilities.call from "php/wordpress" (Zero\Wp\Abilities\Call) on an in-process WordPress: another
+ * abilities.call from "php/wordpress" (First\Wp\Abilities\Call) on an in-process WordPress: another
  * plugin's ability runs through core's execute() for the current user, with core's input and
  * permission checks, and its WP_Errors become HttpErrors; the app's own abilities are callable too.
  */
 
-use Zero\HttpError;
-use Zero\JsObject;
-use Zero\Wp\Abilities\Call;
+use First\HttpError;
+use First\JsObject;
+use First\Wp\Abilities\Call;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -63,8 +63,8 @@ eq('and for a visitor: 401 unauthenticated', $problem(static fn () => Call::run(
 
 $wp->actAs('editor');
 $created = Call::run('blog/posts-create', new JsObject(['title' => 'Through an ability', 'body' => 'b', 'status' => 'draft']));
-eq('the app\'s own ability runs Zero\'s pipeline', [$created->p['title'] ?? null, is_int($created->p['id'] ?? null)], ['Through an ability', true]);
+eq('the app\'s own ability runs First\'s pipeline', [$created->p['title'] ?? null, is_int($created->p['id'] ?? null)], ['Through an ability', true]);
 $wp->actAs(null);
-eq('and its own errors come back as Zero problems', $problem(static fn () => Call::run('blog/posts-create', new JsObject(['title' => 'x']))), '401 unauthenticated');
+eq('and its own errors come back as First problems', $problem(static fn () => Call::run('blog/posts-create', new JsObject(['title' => 'x']))), '401 unauthenticated');
 
 finish('abilities');

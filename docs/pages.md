@@ -1,9 +1,9 @@
 # Pages (optional)
 
-`@spacefast/zero-pages` adds TSX pages to a Zero app. Pages compile once, at
+`@spacefast/first-pages` adds TSX pages to a First app. Pages compile once, at
 build time, to Gutenberg block markup. WordPress renders that markup on every
 request, with the visitor's own data. It is an add-on: an app without `pages/`
-builds and runs exactly as before. Zero core never loads this package or Blocks.
+builds and runs exactly as before. First core never loads this package or Blocks.
 
 This is the first implementation of the optional pages contract in
 [the pages design](design-pages-and-agents.md). It covers static pages,
@@ -14,7 +14,7 @@ Interactivity API island. Its limits are listed under [Not in this release](#not
 
 ```text
 site/
-├── zero.config.ts            # collections, access rules, actions: unchanged
+├── first.config.ts            # collections, access rules, actions: unchanged
 ├── pages/
 │   ├── layout.tsx            # wraps every page
 │   ├── page.tsx              # /
@@ -33,7 +33,7 @@ site/
 
 ```tsx
 // pages/notes/[slug]/page.tsx
-import { Island, RichText, Show, collectionPage, orElse, type CollectionPageContext, type CollectionPageProps, type Metadata } from "@spacefast/zero-pages";
+import { Island, RichText, Show, collectionPage, orElse, type CollectionPageContext, type CollectionPageProps, type Metadata } from "@spacefast/first-pages";
 import styles from "./note.module.css";
 
 export const route = { id: "notes.show" };
@@ -68,16 +68,16 @@ export default function NotePage({ item, cheers }: Props) {
 ## Build and install
 
 ```sh
-zero build site                     # the backend, and the compiled schema pages read
-zero-pages build site               # writes site/zero/dist/wp-content/plugins/zero-pages-<app>/
+first build site                     # the backend, and the compiled schema pages read
+first-pages build site               # writes site/first/dist/wp-content/plugins/first-pages-<app>/
 ```
 
-`zero-pages build [project] [--out <wp-content>] [--json]` exits `0` when it
+`first-pages build [project] [--out <wp-content>] [--json]` exits `0` when it
 built (or there is no `pages/`), `1` with diagnostics, `2` on usage errors.
-Install the `zero-pages-<app>` plugin beside the app plugin and activate it.
+Install the `first-pages-<app>` plugin beside the app plugin and activate it.
 On a build error nothing is written, and the previous plugin stays in place.
 
-The build also writes `zero/pages.json`, the render artifact. It holds the
+The build also writes `first/pages.json`, the render artifact. It holds the
 plugin's manifest, every template, body and asset, the compiled schema the
 pages were rendered against, and a SHA-256 of each authored input (routes,
 layouts, components, islands, CSS, imported SVGs). It holds no PHP. Commit it
@@ -86,29 +86,29 @@ with the pages.
 ## Publish on Spacefast
 
 A Spacefast box compiles your app without Node, so it cannot run page modules.
-Run `zero build` and `zero-pages build` locally, then `sf publish`. Capture
-(`zero sources`, or the CLI's WebAssembly compiler) checks `zero/pages.json`
+Run `first build` and `first-pages build` locally, then `sf publish`. Capture
+(`first sources`, or the CLI's WebAssembly compiler) checks `first/pages.json`
 and bundles it with its inputs. The host's `compile-sources` checks it again
-and writes `zero-pages-<app>` next to the app plugin. The plugin is byte for
-byte what `zero-pages build` installs: the artifact's files plus the pages
+and writes `first-pages-<app>` next to the app plugin. The plugin is byte for
+byte what `first-pages build` installs: the artifact's files plus the pages
 runtime the compiler embeds. The compiled manifest names it under `pages`.
 
-Capture refuses with `zero_source_needs_local_capture`, before anything is
+Capture refuses with `first_source_needs_local_capture`, before anything is
 uploaded, when:
 
-- `pages/` exists and there is no `zero/pages.json`;
+- `pages/` exists and there is no `first/pages.json`;
 - a page, layout, component, island or stylesheet changed after the render;
 - a `page.tsx`, `layout.tsx` or `not-found.tsx` was added after the render;
-- `zero.config.ts` now compiles to a different schema than the pages saw.
+- `first.config.ts` now compiles to a different schema than the pages saw.
 
-Run `zero build` and `zero-pages build` again, then publish. The host also
+Run `first build` and `first-pages build` again, then publish. The host also
 refuses an artifact that names a non-asset file, PHP, an unknown island or
 action, or a route WordPress owns. An uploaded artifact can only carry markup
 and static assets, never server code.
 
-Pages read the app's schema from `zero build` output (`zero/_generated/client/schema.ts`,
-`zero/_generated/migrations/snapshot.json`). They never execute `zero.config.ts`, and a
-page cannot import runtime values from `"zero"`; use type imports and name
+Pages read the app's schema from `first build` output (`first/_generated/client/schema.ts`,
+`first/_generated/migrations/snapshot.json`). They never execute `first.config.ts`, and a
+page cannot import runtime values from `"first"`; use type imports and name
 collections as strings.
 
 ## Files and routes
@@ -125,7 +125,7 @@ collections as strings.
 Two pages with one URL shape are an error, across groups and parameter
 names. A static page beside an item route (`notes/featured` next to
 `notes/[slug]`) always wins: matching is static first, and the collection
-refuses the slug `featured` (Zero's API answers `409 reserved_slug`; core
+refuses the slug `featured` (First's API answers `409 reserved_slug`; core
 REST and wp-admin store a suffixed slug instead). Paths WordPress owns
 (`/wp-admin`, `/wp-json`, `/feed`, ...) cannot be claimed.
 
@@ -135,7 +135,7 @@ the file. Generated file names use a SHA-256 key of the app and route ID.
 
 ## WordPress identity
 
-- Each static page is a **hidden, code-owned WordPress Page**. Zero creates it,
+- Each static page is a **hidden, code-owned WordPress Page**. First creates it,
   stores the compiled body in `post_content`, sets `/` as the front page, and
   keeps one Page per route ID across rebuilds. Menus, SEO plugins and
   `get_permalink()` see a normal published Page whose link is the route URL.
@@ -148,11 +148,11 @@ the file. Generated file names use a SHA-256 key of the app and route ID.
   ownership until it is moved or removed.
 
 A temporary ownership conflict keeps the managed Page and its ID in place;
-Zero resumes serving it when the conflict clears. A managed Page write failure
+First resumes serving it when the conflict clears. A managed Page write failure
 keeps the last successful route mapping and digest. WordPress continues
-serving requests, an administrator sees a separate error notice, and Zero
+serving requests, an administrator sees a separate error notice, and First
 retries reconciliation on the next request. Page publication, ownership metadata,
-route mappings and front-page settings commit in one Zero transaction, under
+route mappings and front-page settings commit in one First transaction, under
 the existing connection-owned database lock. An interrupted transaction rolls
 back rather than leaving a published Page outside its ownership map.
 Lock contention skips without changing any existing error notice. A failure
@@ -176,7 +176,7 @@ as the visitor:
 | `link("/notes")` | That page's URL under the site's home URL |
 | `content.query.<name>.findMany/findFirst({ where, orderBy, limit, offset })` | One query, run as the visitor |
 
-Every read goes through Zero's own read pipeline with the visitor's `Viewer`:
+Every read goes through First's own read pipeline with the visitor's `Viewer`:
 read rules, draft visibility and field access apply exactly as on the REST
 API. An anonymous visitor never sees a draft or a staff-only field, and no
 page reads with the trusted viewer. A missing, draft, unreadable or
@@ -202,11 +202,11 @@ page runs:
 | `rows.length`, `String(item.title).length`, computed property introspection | `dynamic_operator` | `count(rows)` for query counts; render fields directly |
 | a request value in `className`, `id`, `style`, `on*`, `data-wp-*` | `dynamic_attribute` | branch with `<Show>` |
 | `item.titel` | `unknown_field` (with a suggestion) | the schema's field name |
-| `import { db } from "zero"` | `trusted_db` | `load({ content })` |
+| `import { db } from "first"` | `trusted_db` | `load({ content })` |
 | async components, `Date.now()`, `new Date()`, `Math.random()`, browser globals | `async_component`, `dynamic_call`, `browser_global` | `load()`, stored fields, an island |
 | catch-all, parallel and intercepting routes, `template.tsx`, `page.md` | `route_shape` | supported files |
 
-Markup errors come from Zero Blocks' own mapper and serializer (for example
+Markup errors come from First Blocks' own mapper and serializer (for example
 `style_prop_unsupported`, `unmappable_element`); pages reuse it unchanged.
 `orElse()` composes with `<Show>`, query values, metadata and island context;
 empty strings and zero are retained. `<RichText>` takes the stored field
@@ -217,7 +217,7 @@ directly; render fallback text separately with `<Show not>`.
 `metadata` or `generateMetadata(props)` (not both) sets `title`,
 `description`, `canonical` and `robots`. A layout's
 `title: { default, template }` applies once to the page title. Canonical
-defaults to the route URL under `home_url()`. Zero emits the only `<title>`
+defaults to the route URL under `home_url()`. First emits the only `<title>`
 and canonical link on its routes; `robots` goes through `wp_robots`.
 
 `import "./x.css"` is a global stylesheet; `import styles from "./x.module.css"`
@@ -250,12 +250,12 @@ never produce markup, block delimiters or another placeholder.
 
 ## Not in this release
 
-- Content-owned pages (`page.md`, `page.blocks.html`) and `zero sync` for pages.
+- Content-owned pages (`page.md`, `page.blocks.html`) and `first sync` for pages.
 - Emitted block themes (`theme.config.ts`); layouts render in the plugin canvas.
 - Native post passwords on routed items (such items are not served).
-- React builds of shared components (`@spacefast/zero-blocks/universal`).
+- React builds of shared components (`@spacefast/first-blocks/universal`).
 - SEO-provider adapters, sitemaps of item routes, redirects for moved routes.
-- A `zero build` integration: run `zero-pages build` after `zero build`, locally,
+- A `first build` integration: run `first-pages build` after `first build`, locally,
   before publishing.
 - Full-page HTML caching; managed routes bypass shared caches.
 - Arbitrary TSX/React semantics: only the subset above compiles.

@@ -2,7 +2,7 @@
 /**
  * Core media fields collection - applies to attachment post type
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(

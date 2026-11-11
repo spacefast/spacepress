@@ -1,4 +1,4 @@
-import { allowed, bootstrap, collectionSpec, native, nativeEditor, read } from '@zero-admin/schema';
+import { allowed, bootstrap, collectionSpec, native, nativeEditor, read } from '@first-admin/schema';
 export const route = {
 	canvas: async ({
 		params,

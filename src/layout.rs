@@ -1,70 +1,70 @@
 //! Where a project's files live (docs/spec/spec.md §1). Paths are relative to the directory that
-//! holds `zero.config.ts`; every reader and writer takes them from here.
+//! holds `first.config.ts`; every reader and writer takes them from here.
 //!
-//! - `zero/_generated/` is written by Zero and committed: the migration ledger, the type
+//! - `first/_generated/` is written by First and committed: the migration ledger, the type
 //!   declarations, the typed client and the locks.
-//! - `zero/dist/` is written by `zero build` and ignored by git: the deployable output.
+//! - `first/dist/` is written by `first build` and ignored by git: the deployable output.
 
 /// The config at the project root.
-pub const CONFIG: &str = "zero.config.ts";
-/// The Zero root.
-pub const ROOT: &str = "zero";
-/// Written by Zero, committed.
-pub const GENERATED: &str = "zero/_generated";
+pub const CONFIG: &str = "first.config.ts";
+/// The First root.
+pub const ROOT: &str = "first";
+/// Written by First, committed.
+pub const GENERATED: &str = "first/_generated";
 /// The migration ledger lives at [`crate::pipeline::LEDGER`], beside these.
-/// The type declarations that register the app's schema with `"zero"`.
-pub const DB_TYPES: &str = "zero/_generated/db.d.ts";
+/// The type declarations that register the app's schema with `"first"`.
+pub const DB_TYPES: &str = "first/_generated/db.d.ts";
 /// The typed client.
-pub const CLIENT: &str = "zero/_generated/client";
-/// The pinned WordPress plugin dependencies `zero build` installs.
-pub const WP_PLUGINS_LOCK: &str = "zero/_generated/wp-plugins.lock.json";
-/// Written by `zero build`, ignored by git.
-pub const DIST: &str = "zero/dist";
-/// `zero build`'s default output: a `wp-content` directory.
-pub const WP_CONTENT: &str = "zero/dist/wp-content";
+pub const CLIENT: &str = "first/_generated/client";
+/// The pinned WordPress plugin dependencies `first build` installs.
+pub const WP_PLUGINS_LOCK: &str = "first/_generated/wp-plugins.lock.json";
+/// Written by `first build`, ignored by git.
+pub const DIST: &str = "first/dist";
+/// `first build`'s default output: a `wp-content` directory.
+pub const WP_CONTENT: &str = "first/dist/wp-content";
 
-/// Committed inputs that moved (into `zero/_generated/`, or app code into `zero/`): (old, new). A source bundle
+/// Committed inputs that moved (into `first/_generated/`, or app code into `first/`): (old, new). A source bundle
 /// captured before the move names the old paths, and a host recompiles stored bundles, so the
 /// hosted compile reads them through [`current`]. (The hosted compile reads the ledger's old path
 /// itself; see `bundle::compile_tree`.)
 const MOVED: &[(&str, &str)] = &[
-    ("zero/abilities.json", "zero/_generated/abilities.json"),
-    ("zero/plugins.lock.json", "zero/_generated/plugins.lock.json"),
-    ("wp-hooks/", "zero/wp-hooks/"),
+    ("first/abilities.json", "first/_generated/abilities.json"),
+    ("first/plugins.lock.json", "first/_generated/plugins.lock.json"),
+    ("wp-hooks/", "first/wp-hooks/"),
 ];
 
-/// Committed files a live checkout may still have at their place before `zero/_generated/`: (old,
+/// Committed files a live checkout may still have at their place before `first/_generated/`: (old,
 /// new, what goes wrong if it is left there). A stored source bundle is frozen data and reads its
 /// old paths through [`current`]; a checkout is refused, so nothing is silently ignored or loaded.
 const OLD_IN_CHECKOUT: &[(&str, &str, &str)] = &[
     (
-        "zero/plugins.lock.json",
-        "zero/_generated/plugins.lock.json",
+        "first/plugins.lock.json",
+        "first/_generated/plugins.lock.json",
         "its grants would be ignored and a new lock written that grants everything the plugins use",
     ),
     (
-        "zero/wp-plugins.lock.json",
-        "zero/_generated/wp-plugins.lock.json",
+        "first/wp-plugins.lock.json",
+        "first/_generated/wp-plugins.lock.json",
         "the plugins it pins would be resolved again",
     ),
     (
-        "zero/abilities.json",
-        "zero/_generated/abilities.json",
+        "first/abilities.json",
+        "first/_generated/abilities.json",
         "the abilities it locks would be unknown",
     ),
     (
-        "zero/client",
-        "zero/_generated/client",
-        "its files would load as app code from zero/",
+        "first/client",
+        "first/_generated/client",
+        "its files would load as app code from first/",
     ),
     (
-        "zero.gen.ts",
-        "zero/_generated/db.d.ts",
+        "first.gen.ts",
+        "first/_generated/db.d.ts",
         "editors would read the old registration",
     ),
 ];
 
-/// Every committed file a checkout still keeps at its place from before `zero/_generated/`, in one
+/// Every committed file a checkout still keeps at its place from before `first/_generated/`, in one
 /// (message, help): the message names each file and what goes wrong if it stays, and the help is
 /// one command that moves them all. Callers refuse to build: see [`OLD_IN_CHECKOUT`].
 pub fn old_in_checkout(
@@ -85,7 +85,7 @@ pub fn old_in_checkout(
     let message = match lines.as_slice() {
         [one] => one.clone(),
         many => format!(
-            "{} files are from before zero/_generated/:\n  - {}",
+            "{} files are from before first/_generated/:\n  - {}",
             many.len(),
             many.join("\n  - ")
         ),
@@ -95,7 +95,7 @@ pub fn old_in_checkout(
         .map(|(_, new, _)| {
             std::path::Path::new(new)
                 .parent()
-                .expect("under zero/_generated")
+                .expect("under first/_generated")
                 .display()
                 .to_string()
         })
@@ -114,7 +114,7 @@ pub fn old_in_checkout(
     Some((message, help))
 }
 
-/// A captured project path on this layout: an input that moved into `zero/_generated/` is renamed,
+/// A captured project path on this layout: an input that moved into `first/_generated/` is renamed,
 /// everything else is unchanged.
 pub fn current(path: &str) -> String {
     for (old, new) in MOVED {
@@ -130,15 +130,15 @@ mod tests {
     #[test]
     fn captured_paths_from_before_generated_read_on_this_layout() {
         for (old, new) in [
-            ("zero/abilities.json", "zero/_generated/abilities.json"),
-            ("zero/plugins.lock.json", "zero/_generated/plugins.lock.json"),
-            ("wp-hooks/save_post.ts", "zero/wp-hooks/save_post.ts"),
-            ("wp-hooks/the_content/a.ts", "zero/wp-hooks/the_content/a.ts"),
+            ("first/abilities.json", "first/_generated/abilities.json"),
+            ("first/plugins.lock.json", "first/_generated/plugins.lock.json"),
+            ("wp-hooks/save_post.ts", "first/wp-hooks/save_post.ts"),
+            ("wp-hooks/the_content/a.ts", "first/wp-hooks/the_content/a.ts"),
             // Already current, and unrelated paths, are unchanged.
-            ("zero/_generated/abilities.json", "zero/_generated/abilities.json"),
-            ("zero/lib/fields.ts", "zero/lib/fields.ts"),
-            ("zero/migrations-notes.md", "zero/migrations-notes.md"),
-            ("zero.config.ts", "zero.config.ts"),
+            ("first/_generated/abilities.json", "first/_generated/abilities.json"),
+            ("first/lib/fields.ts", "first/lib/fields.ts"),
+            ("first/migrations-notes.md", "first/migrations-notes.md"),
+            ("first.config.ts", "first.config.ts"),
         ] {
             assert_eq!(super::current(old), new, "{old}");
         }

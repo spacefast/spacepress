@@ -1,8 +1,8 @@
-// The `in` operator, which live Zero 0.8 apps use (zero#138 census): own and inherited
+// The `in` operator, which live Zero 0.8 apps use (first#138 census): own and inherited
 // properties, arrays, arguments, class instances and statics, built-in values, union narrowing,
 // and the TypeError for a primitive right side. Every action runs under Node and as compiled PHP;
 // the JSON results must be byte-identical. `in-helpers.mjs` runs the same checks untyped.
-import { action, defineConfig } from "zero";
+import { action, defineConfig } from "first";
 import { inUntyped } from "./in-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });

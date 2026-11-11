@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\CBOR\Tag\TypedArray;
+namespace First\Identity\Vendor\CBOR\Tag\TypedArray;
 
 /**
  * Tag 83: an array of IEEE 754 binary128 values, big endian.

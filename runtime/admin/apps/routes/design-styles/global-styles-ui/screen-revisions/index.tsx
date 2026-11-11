@@ -23,7 +23,7 @@ interface ScreenRevisionsProps {
 function ScreenRevisions( { onClose }: ScreenRevisionsProps = {} ) {
 	const { user: currentEditorGlobalStyles, onChange: setUserConfig } =
 		useContext( GlobalStylesContext );
-	// Local state instead of zero-admin store dependencies
+	// Local state instead of first-admin store dependencies
 	const [ _, setViewMode ] = useState< 'revisions' | 'style-book' >(
 		'revisions'
 	);
@@ -106,19 +106,19 @@ function ScreenRevisions( { onClose }: ScreenRevisionsProps = {} ) {
 					revisionsCount
 						? sprintf(
 								// translators: %d: number of revisions.
-								__( 'Revisions (%d)', 'zero-admin' ),
+								__( 'Revisions (%d)', 'first-admin' ),
 								revisionsCount
 						  )
-						: __( 'Revisions', 'zero-admin' )
+						: __( 'Revisions', 'first-admin' )
 				}
 				description={ __(
 					'Click on previously saved styles to preview them. To restore a selected version to the editor, hit "Apply." When you\'re ready, use the Save button to save your changes.',
-					'zero-admin'
+					'first-admin'
 				) }
 				onBack={ onCloseRevisions }
 			/>
 			{ ! hasRevisions && (
-				<Spinner className="zero-admin-global-styles-screen-revisions__loading" />
+				<Spinner className="first-admin-global-styles-screen-revisions__loading" />
 			) }
 			{ 'todo: handle revisions properly' }
 			<RevisionsButtons
@@ -133,22 +133,22 @@ function ScreenRevisions( { onClose }: ScreenRevisionsProps = {} ) {
 				}
 			/>
 			{ numPages > 1 && (
-				<div className="zero-admin-global-styles-screen-revisions__footer">
+				<div className="first-admin-global-styles-screen-revisions__footer">
 					<Pagination
-						className="zero-admin-global-styles-screen-revisions__pagination"
+						className="first-admin-global-styles-screen-revisions__pagination"
 						currentPage={ currentPage }
 						numPages={ numPages }
 						changePage={ setCurrentPage }
 						totalItems={ revisionsCount }
 						disabled={ isLoading }
-						label={ __( 'Global Styles pagination', 'zero-admin' ) }
+						label={ __( 'Global Styles pagination', 'first-admin' ) }
 					/>
 				</div>
 			) }
 			{ isLoadingRevisionWithUnsavedChanges && (
 				<ConfirmDialog
 					isOpen={ isLoadingRevisionWithUnsavedChanges }
-					confirmButtonText={ __( 'Apply', 'zero-admin' ) }
+					confirmButtonText={ __( 'Apply', 'first-admin' ) }
 					onConfirm={ () =>
 						restoreRevision( currentlySelectedRevision )
 					}
@@ -159,7 +159,7 @@ function ScreenRevisions( { onClose }: ScreenRevisionsProps = {} ) {
 				>
 					{ __(
 						'Are you sure you want to apply this revision? Any unsaved changes will be lost.',
-						'zero-admin'
+						'first-admin'
 					) }
 				</ConfirmDialog>
 			) }

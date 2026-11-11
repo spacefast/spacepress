@@ -5,8 +5,8 @@ import { privateApis as blockEditorPrivateApis } from '@wordpress/block-editor';
 import type {
 	GlobalStylesStyles,
 	GlobalStylesSettings,
-} from '@zero-admin/global-styles-engine';
-import { unlock } from '@zero-admin/admin-toolkit';
+} from '@first-admin/global-styles-engine';
+import { unlock } from '@first-admin/admin-toolkit';
 import { ScreenHeader } from './screen-header';
 import Palette from './palette';
 import { useStyle, useSetting } from './hooks';
@@ -37,13 +37,13 @@ function ScreenColors() {
 	return (
 		<>
 			<ScreenHeader
-				title={ __( 'Colors', 'zero-admin' ) }
+				title={ __( 'Colors', 'first-admin' ) }
 				description={ __(
 					'Palette colors and the application of those colors on site elements.',
-					'zero-admin'
+					'first-admin'
 				) }
 			/>
-			<div className="zero-admin-global-styles-screen">
+			<div className="first-admin-global-styles-screen">
 				<VStack spacing={ 7 }>
 					<Palette />
 					<StylesColorPanel

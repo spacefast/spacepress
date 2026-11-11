@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Uid\Factory;
+namespace First\Identity\Vendor\Symfony\Component\Uid\Factory;
 
-use Zero\Identity\Vendor\Symfony\Component\Uid\UuidV4;
+use First\Identity\Vendor\Symfony\Component\Uid\UuidV4;
 
 class RandomBasedUuidFactory
 {

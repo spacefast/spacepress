@@ -1,5 +1,5 @@
 public/
-.zero/
+.first/
 web/node_modules/
 web/*.tsbuildinfo
 .spacefast/

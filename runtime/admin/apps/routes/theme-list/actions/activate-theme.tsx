@@ -11,7 +11,7 @@ import { useState } from '@wordpress/element';
 import { decodeEntities } from '@wordpress/html-entities';
 import { __, sprintf } from '@wordpress/i18n';
 import { store as noticesStore } from '@wordpress/notices';
-import type { Action, RenderModalProps } from '@zero-admin/dataviews';
+import type { Action, RenderModalProps } from '@first-admin/dataviews';
 import { setImmutably } from '../../design-styles/global-styles-ui/font-library-modal/utils/set-immutably';
 
 const ActivateThemeModal = ( {
@@ -51,7 +51,7 @@ const ActivateThemeModal = ( {
 			createSuccessNotice(
 				sprintf(
 					/* translators: %(name)s is the theme name */
-					__( 'Theme %(name)s activated.', 'zero-admin' ),
+					__( 'Theme %(name)s activated.', 'first-admin' ),
 					{ name }
 				),
 				{
@@ -59,7 +59,7 @@ const ActivateThemeModal = ( {
 					id: 'activate-theme-success-notice',
 					actions: [
 						{
-							label: __( 'Visit site', 'zero-admin' ),
+							label: __( 'Visit site', 'first-admin' ),
 							url: homeUrl,
 							// @ts-expect-error variant is not a valid property for the actions object
 							variant: 'link',
@@ -74,14 +74,14 @@ const ActivateThemeModal = ( {
 				'message' in error &&
 				typeof error.message === 'string'
 					? error.message
-					: __( 'Unknown error occurred', 'zero-admin' );
+					: __( 'Unknown error occurred', 'first-admin' );
 
 			createErrorNotice(
 				sprintf(
 					/* translators: name: The theme name. errorMessage: The error message. */
 					__(
 						'Theme %(name)s activation failed: %(errorMessage)s',
-						'zero-admin'
+						'first-admin'
 					),
 					{ name, errorMessage }
 				),
@@ -100,7 +100,7 @@ const ActivateThemeModal = ( {
 					/* translators: %(name)s is the theme name */
 					__(
 						'Do you want to activate the %(name)s theme?',
-						'zero-admin'
+						'first-admin'
 					),
 					{ name }
 				) }
@@ -113,7 +113,7 @@ const ActivateThemeModal = ( {
 					disabled={ isBusy }
 					accessibleWhenDisabled
 				>
-					{ __( 'Cancel', 'zero-admin' ) }
+					{ __( 'Cancel', 'first-admin' ) }
 				</Button>
 				<Button
 					__next40pxDefaultSize
@@ -123,7 +123,7 @@ const ActivateThemeModal = ( {
 					disabled={ isBusy }
 					accessibleWhenDisabled
 				>
-					{ __( 'Activate', 'zero-admin' ) }
+					{ __( 'Activate', 'first-admin' ) }
 				</Button>
 			</HStack>
 		</VStack>
@@ -132,7 +132,7 @@ const ActivateThemeModal = ( {
 
 const activateTheme: Action< Theme > = {
 	id: 'activate-theme',
-	label: __( 'Activate', 'zero-admin' ),
+	label: __( 'Activate', 'first-admin' ),
 	isPrimary: false, // TODO: should be true but that mandates icon yet and I haven't looked for one
 	RenderModal: ActivateThemeModal,
 	isEligible: ( item: Theme ) => {

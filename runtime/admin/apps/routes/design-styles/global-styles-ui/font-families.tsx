@@ -62,11 +62,11 @@ function FontFamiliesInner() {
 			<VStack spacing={ 2 }>
 				<HStack justify="space-between">
 					<Subtitle level={ 3 }>
-						{ __( 'Fonts', 'zero-admin' ) }
+						{ __( 'Fonts', 'first-admin' ) }
 					</Subtitle>
 					<Button
 						onClick={ () => setModalTabOpen?.( 'installed-fonts' ) }
-						label={ __( 'Manage fonts', 'zero-admin' ) }
+						label={ __( 'Manage fonts', 'first-admin' ) }
 						icon={ settings }
 						size="small"
 					/>
@@ -87,11 +87,11 @@ function FontFamiliesInner() {
 					<>
 						<Text as="p">
 							{ hasInstalledFonts
-								? __( 'No fonts activated.', 'zero-admin' )
-								: __( 'No fonts installed.', 'zero-admin' ) }
+								? __( 'No fonts activated.', 'first-admin' )
+								: __( 'No fonts installed.', 'first-admin' ) }
 						</Text>
 						<Button
-							className="zero-admin-global-styles-font-families__manage-fonts"
+							className="first-admin-global-styles-font-families__manage-fonts"
 							variant="secondary"
 							__next40pxDefaultSize
 							onClick={ () => {
@@ -103,8 +103,8 @@ function FontFamiliesInner() {
 							} }
 						>
 							{ hasInstalledFonts
-								? __( 'Manage fonts', 'zero-admin' )
-								: __( 'Add fonts', 'zero-admin' ) }
+								? __( 'Manage fonts', 'first-admin' )
+								: __( 'Add fonts', 'first-admin' ) }
 						</Button>
 					</>
 				) }

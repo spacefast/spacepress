@@ -1,1 +1,1 @@
-<?php return array('name' => 'settings-experiments', 'dependencies' => array('react', 'wp-components', 'wp-i18n'), 'moduleDependencies' => array('@zero-admin/admin-toolkit'), 'version' => 'b1787f001d5afef6cf1b');
+<?php return array('name' => 'settings-experiments', 'dependencies' => array('react', 'wp-components', 'wp-i18n'), 'moduleDependencies' => array('@first-admin/admin-toolkit'), 'version' => 'fa8ec3d86a46ae027df9');

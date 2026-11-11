@@ -1,7 +1,7 @@
 import {
   Island, RichText, Show, collectionPage, link, orElse,
   type CollectionPageContext, type CollectionPageProps, type Metadata,
-} from "@spacefast/zero-pages";
+} from "@spacefast/first-pages";
 import styles from "./note.module.css";
 
 export const route = { id: "notes.show" };

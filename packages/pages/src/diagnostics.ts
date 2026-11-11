@@ -1,4 +1,4 @@
-import type { Diagnostic as BlocksDiagnostic, SourceLocation } from "@spacefast/zero-blocks";
+import type { Diagnostic as BlocksDiagnostic, SourceLocation } from "@spacefast/first-blocks";
 
 /**
  * Everything the pages build can refuse, by code. Errors mean nothing is

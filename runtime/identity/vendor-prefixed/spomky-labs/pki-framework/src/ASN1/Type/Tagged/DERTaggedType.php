@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged;
 
 use function mb_strlen;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
 
 /**
  * Intermediate class to store tagged DER data.

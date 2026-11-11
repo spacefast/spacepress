@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/post-list-redirect",
+	"name": "@first-admin/post-list-redirect",
 	"version": "1.0.0",
 	"private": true,
 	"route": {

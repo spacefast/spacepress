@@ -1,10 +1,10 @@
 <?php declare(strict_types = 1);
 
-namespace Zero\Identity\Vendor\PHPStan\PhpDocParser\Parser;
+namespace First\Identity\Vendor\PHPStan\PhpDocParser\Parser;
 
 use LogicException;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Comment;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Comment;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
 use function array_pop;
 use function assert;
 use function count;

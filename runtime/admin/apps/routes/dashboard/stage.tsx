@@ -1,13 +1,13 @@
 /**
  * External dependencies
  */
-import { Dashboard, useWidgetTypes } from '@zero-admin/dashboard';
-import { Page } from '@zero-admin/admin-toolkit';
+import { Dashboard, useWidgetTypes } from '@first-admin/dashboard';
+import { Page } from '@first-admin/admin-toolkit';
 import {
-	store as zeroAdminStore,
+	store as firstAdminStore,
 	type StoreSelectors,
 	type EntityDependency,
-} from '@zero-admin/boot';
+} from '@first-admin/boot';
 import { store as coreDataStore } from '@wordpress/core-data';
 import { useSelect } from '@wordpress/data';
 import { useState, useCallback, useMemo } from '@wordpress/element';
@@ -17,8 +17,8 @@ import {
 	recordTracksEvent,
 	usePageView,
 	useDashboardTracking,
-} from '@zero-admin/telemetry';
-import type { DashboardWidget } from '@zero-admin/dashboard';
+} from '@first-admin/telemetry';
+import type { DashboardWidget } from '@first-admin/dashboard';
 import { MoreActionsDropdown, RestoreDefaultsModal } from './components';
 import { useDashboardLayout } from './hooks';
 
@@ -100,7 +100,7 @@ export default function DashboardRoute() {
 	const [ layout, onChange, resetLayout ] = useDashboardLayout();
 
 	const registeredWidgetTypes = useSelect(
-		( select ) => select( zeroAdminStore ).getDashboardWidgetTypes(),
+		( select ) => select( firstAdminStore ).getDashboardWidgetTypes(),
 		[]
 	);
 
@@ -134,7 +134,7 @@ export default function DashboardRoute() {
 	const noticeConfigs = useSelect(
 		( select ) =>
 			(
-				select( zeroAdminStore ) as StoreSelectors
+				select( firstAdminStore ) as StoreSelectors
 			 ).getDashboardNotices(),
 		[]
 	);
@@ -210,7 +210,7 @@ export default function DashboardRoute() {
 			key={ resetKey }
 			layout={ layout }
 			onChange={ ( newLayout, context ) => {
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- @zero-admin/telemetry is untyped cross-plugin
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- @first-admin/telemetry is untyped cross-plugin
 				trackLayoutChange( newLayout, context );
 				trackWidgetAttributeChanges( layout, newLayout );
 				onChange( newLayout );
@@ -220,7 +220,7 @@ export default function DashboardRoute() {
 			onNoticeAction={ handleNoticeAction }
 		>
 			<Page
-				title={ __( 'Dashboard', 'zero-admin' ) }
+				title={ __( 'Dashboard', 'first-admin' ) }
 				actions={
 					<>
 						<Dashboard.Actions />
@@ -229,7 +229,7 @@ export default function DashboardRoute() {
 								{
 									label: __(
 										'Restore default widgets',
-										'zero-admin'
+										'first-admin'
 									),
 									onClick: () =>
 										setIsRestoreModalOpen( true ),

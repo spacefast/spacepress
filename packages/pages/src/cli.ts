@@ -3,7 +3,7 @@ import path from "node:path";
 import { buildPages } from "./build.ts";
 import { format } from "./diagnostics.ts";
 
-const USAGE = "usage: zero-pages build [project-dir] [--out <wp-content-dir>] [--json]";
+const USAGE = "usage: first-pages build [project-dir] [--out <wp-content-dir>] [--json]";
 
 /** Exit codes: 0 built (or nothing to build), 1 diagnostics, 2 usage. */
 export async function main(argv: readonly string[]): Promise<number> {
@@ -32,7 +32,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     } else project = arg;
   }
   const root = path.resolve(project);
-  const result = await buildPages({ project: root, out: out ?? path.join(root, "zero/dist/wp-content") });
+  const result = await buildPages({ project: root, out: out ?? path.join(root, "first/dist/wp-content") });
   if (json) {
     console.log(JSON.stringify({ ok: result.ok, pages: result.pages, plugin: result.plugin ?? null, diagnostics: result.diagnostics }));
   } else {

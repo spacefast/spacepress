@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Brick\Math\Exception;
+namespace First\Identity\Vendor\Brick\Math\Exception;
 
-use Zero\Identity\Vendor\Brick\Math\BigInteger;
+use First\Identity\Vendor\Brick\Math\BigInteger;
 use RuntimeException;
 
 use function sprintf;

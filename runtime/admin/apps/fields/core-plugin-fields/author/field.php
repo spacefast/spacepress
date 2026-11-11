@@ -2,12 +2,12 @@
 /**
  * Author field definition for core plugins fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'         => 'text',
-	'label'        => __( 'Author', 'zero-admin' ),
+	'label'        => __( 'Author', 'first-admin' ),
 	'enableHiding' => true,
 	'filterBy'     => array(
 		'operators' => array( 'contains', 'startsWith', 'is', 'isNot' ),

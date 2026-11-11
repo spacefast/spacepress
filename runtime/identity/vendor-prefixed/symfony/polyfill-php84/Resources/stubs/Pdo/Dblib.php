@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Pdo;
+namespace First\Identity\Vendor\Pdo;
 
 if (\PHP_VERSION_ID < 80400 && \extension_loaded('pdo_dblib')) {
     class Dblib extends \PDO

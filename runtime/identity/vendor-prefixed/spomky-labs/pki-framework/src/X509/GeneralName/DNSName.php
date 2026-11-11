@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName;
+namespace First\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName;
 
 use function mb_strlen;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\IA5String;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
-use Zero\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\IA5String;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Tagged\ImplicitlyTaggedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\TaggedType;
+use First\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UnspecifiedType;
 use function sprintf;
 use UnexpectedValueException;
 

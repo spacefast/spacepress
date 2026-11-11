@@ -1,16 +1,16 @@
 <?php
 
 declare(strict_types=1);
-namespace Zero\Identity\Legacy;
+namespace First\Identity\Legacy;
 
-use Zero\Identity\{DB, Security, Sessions};
+use First\Identity\{DB, Security, Sessions};
 
 /** Remove after every imported session's original expires_at has elapsed. */
 final class SessionUpgrade
 {
     public static function find(DB $db, string $secret): ?array
     {
-        if ($secret === '' || strlen($secret) > 512 || apply_filters('zero_identity_session_cookie_aliases', []) === []) { return null; }
+        if ($secret === '' || strlen($secret) > 512 || apply_filters('first_identity_session_cookie_aliases', []) === []) { return null; }
         $legacy = $db->prefix . 'legacy_sessions';
         if (!$db->row('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s', $legacy)) { return null; }
         $hash = Security::hash($secret);

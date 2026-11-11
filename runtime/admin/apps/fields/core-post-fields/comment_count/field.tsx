@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import { __ } from '@wordpress/i18n';
 import { comment } from '@wordpress/icons';
-import type { Field } from '@zero-admin/dataviews';
+import type { Field } from '@first-admin/dataviews';
 import type { Post } from '@wordpress/core-data';
 import { Icon } from '@wordpress/ui';
 import './style.scss';
@@ -22,7 +22,7 @@ const renderCommentsField = ( { item }: { item: Post } ) => {
 			<span key="comments-count" className="comments-field__count">
 				{ commentCount === 0
 					? /* translators: Em dash displayed when there are no comments */
-					  __( '—', 'zero-admin' )
+					  __( '—', 'first-admin' )
 					: commentCount }
 			</span>
 		</div>

@@ -16,12 +16,12 @@ $wp = wpSite('pages', ['schema' => $schema, 'functions' => file_get_contents(dir
 require_once dirname(__DIR__, 2) . '/runtime/pages/Request.php';
 require_once dirname(__DIR__, 2) . '/runtime/pages/Renderer.php';
 
-$renderer = (new ReflectionClass(\Zero\Pages\Renderer::class))->newInstanceWithoutConstructor();
-$raw = new ReflectionMethod(\Zero\Pages\Renderer::class, 'richText');
+$renderer = (new ReflectionClass(\First\Pages\Renderer::class))->newInstanceWithoutConstructor();
+$raw = new ReflectionMethod(\First\Pages\Renderer::class, 'richText');
 $issue = static function (string $html) use ($renderer): string {
     // What richText() leaves in the output for HTML it rendered: a placeholder naming its own chunk.
-    $chunks = new ReflectionProperty(\Zero\Pages\Renderer::class, 'raw');
-    $nonce = new ReflectionProperty(\Zero\Pages\Renderer::class, 'rawNonce');
+    $chunks = new ReflectionProperty(\First\Pages\Renderer::class, 'raw');
+    $nonce = new ReflectionProperty(\First\Pages\Renderer::class, 'rawNonce');
     $nonce->setValue($renderer, $nonce->getValue($renderer) ?? bin2hex(random_bytes(16)));
     $list = $chunks->getValue($renderer);
     $key = $nonce->getValue($renderer) . '-' . count($list);

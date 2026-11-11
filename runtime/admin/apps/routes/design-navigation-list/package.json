@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/design-navigation-list",
+	"name": "@first-admin/design-navigation-list",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -12,12 +12,12 @@
 		}
 	},
 	"dependencies": {
-		"@zero-admin/admin-toolkit": "workspace:*",
-		"@zero-admin/design-system": "workspace:*",
-		"@zero-admin/fields-next": "workspace:*",
-		"@zero-admin/views": "workspace:*",
-		"@zero-admin/telemetry": "workspace:*",
-		"@zero-admin/dataviews": "workspace:*",
+		"@first-admin/admin-toolkit": "workspace:*",
+		"@first-admin/design-system": "workspace:*",
+		"@first-admin/fields-next": "workspace:*",
+		"@first-admin/views": "workspace:*",
+		"@first-admin/telemetry": "workspace:*",
+		"@first-admin/dataviews": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",

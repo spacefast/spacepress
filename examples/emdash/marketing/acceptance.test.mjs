@@ -42,7 +42,7 @@ async function saveNativeSiteTitle(base, title) {
     redirect: "manual",
     body: new URLSearchParams({
       log: "admin",
-      pwd: "zero-test-admin",
+      pwd: "first-test-admin",
       "wp-submit": "Log In",
       redirect_to: base + "/wp-admin/",
     }),
@@ -52,7 +52,7 @@ async function saveNativeSiteTitle(base, title) {
     .getSetCookie()
     .map((item) => item.split(";")[0])
     .join("; ");
-  const screen = "/wp-admin/admin.php?page=zero-global-site";
+  const screen = "/wp-admin/admin.php?page=first-global-site";
   const response = await fetch(base + screen, { headers: { cookie } });
   assert.equal(response.status, 200);
   const html = await response.text();
@@ -96,7 +96,7 @@ async function saveNativeSiteTitle(base, title) {
   }
   const body = new URLSearchParams(controls);
   const titleControl = [...body.keys()].find((name) =>
-    name.endsWith("[field_zero_global_site_identity_title]"),
+    name.endsWith("[field_first_global_site_identity_title]"),
   );
   assert.ok(titleControl, "SCF group title control exists");
   body.set(titleControl, title);
@@ -131,11 +131,11 @@ test(
   "official marketing sections survive native SCF edits, render publicly, enforce access and persist across Studio rebuilds",
   { timeout: 900000 },
   async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "zero-emdash-marketing-"));
+    const root = await mkdtemp(join(tmpdir(), "first-emdash-marketing-"));
     const project = join(root, "marketing");
-    const site = join(project, ".zero/dev/wordpress");
+    const site = join(project, ".first/dev/wordpress");
     await mkdir(project);
-    for (const file of ["zero.config.ts", "seed.json"])
+    for (const file of ["first.config.ts", "seed.json"])
       await cp(join(here, file), join(project, file));
     const evidence = join(root, "evidence");
     await mkdir(evidence);
@@ -270,12 +270,12 @@ test(
     // Move logos before the hero. Stored order, including repeat layouts, drives the next public reload.
     const logosIndex = edited.findIndex((s) => s.layout === "logos");
     edited.unshift(...edited.splice(logosIndex, 1));
-    await request(`/wp-json/wp/v2/zero_pages/${home.id}`, {
+    await request(`/wp-json/wp/v2/first_pages/${home.id}`, {
       method: "POST",
       body: {
         acf: {
-          zero_sections: acfSections(edited),
-          zero_seo: {
+          first_sections: acfSections(edited),
+          first_seo: {
             title: "Native marketing SEO",
             description: "Editable native description",
             noindex: false,
@@ -307,9 +307,9 @@ test(
     priceSections.find((s) => s.layout === "pricing").plans[1].price = "$179";
     priceSections.find((s) => s.layout === "pricing").plans[1].highlighted =
       false;
-    await request(`/wp-json/wp/v2/zero_pages/${pricing.id}`, {
+    await request(`/wp-json/wp/v2/first_pages/${pricing.id}`, {
       method: "POST",
-      body: { acf: { zero_sections: acfSections(priceSections) } },
+      body: { acf: { first_sections: acfSections(priceSections) } },
     });
     assert.ok((await publicHtml("/pricing")).includes("$179"));
     assert.equal(
@@ -321,18 +321,18 @@ test(
     const contactSections = structuredClone(contact.sections);
     contactSections.find((s) => s.layout === "contact").options[0].link_url =
       "mailto:edited@halden.example";
-    await request(`/wp-json/wp/v2/zero_pages/${contact.id}`, {
+    await request(`/wp-json/wp/v2/first_pages/${contact.id}`, {
       method: "POST",
-      body: { acf: { zero_sections: acfSections(contactSections) } },
+      body: { acf: { first_sections: acfSections(contactSections) } },
     });
     assert.ok(
       (await publicHtml("/contact")).includes("mailto:edited@halden.example"),
     );
-    await request(`/wp-json/wp/v2/zero_pages/${about.id}`, {
+    await request(`/wp-json/wp/v2/first_pages/${about.id}`, {
       method: "POST",
       body: {
         acf: {
-          zero_sections: [
+          first_sections: [
             {
               acf_fc_layout: "text",
               headline: "Our native story",
@@ -373,10 +373,10 @@ test(
     // Representative invalid nested input is refused before changing persisted/public content.
     const invalid = structuredClone(edited);
     invalid.find((s) => s.layout === "features").features = [];
-    await request(`/wp-json/wp/v2/zero_pages/${home.id}`, {
+    await request(`/wp-json/wp/v2/first_pages/${home.id}`, {
       method: "POST",
       expected: 400,
-      body: { acf: { zero_sections: acfSections(invalid) } },
+      body: { acf: { first_sections: acfSections(invalid) } },
     });
     assert.deepEqual((await api(`/pages/${home.id}`)).sections, edited);
     await api(`/pages/${home.id}`, {
@@ -416,7 +416,7 @@ test(
       "marketing-acceptance",
       "--porcelain",
     );
-    await request(`/wp-json/wp/v2/zero_pages/${home.id}`, {
+    await request(`/wp-json/wp/v2/first_pages/${home.id}`, {
       method: "POST",
       expected: 403,
       headers: {
@@ -492,7 +492,7 @@ test(
       await wp(project, "plugin", "list", "--status=active", "--format=json"),
     );
     assert.ok(active.some((p) => p.name === "marketing-acceptance-extra"));
-    assert.ok(active.some((p) => p.name === "zero-marketing-frontend"));
+    assert.ok(active.some((p) => p.name === "first-marketing-frontend"));
     assert.ok(
       (await publicHtml("/")).includes("Every building, edited in WordPress."),
     );

@@ -5,8 +5,8 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import type { Actions, Collections, User } from "../../zero/_generated/client/types.ts";
-import { logRenewal, zero } from "./client";
+import type { Actions, Collections, User } from "../../first/_generated/client/types.ts";
+import { logRenewal, first } from "./client";
 
 type Subscription = Collections["subscriptions"]["row"];
 type Charge = Collections["charges"]["row"];
@@ -168,20 +168,20 @@ export function App() {
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    const user = await zero.auth.me();
+    const user = await first.auth.me();
     if (!user) {
       setSession({ kind: "signedOut" });
       return;
     }
     const [subscriptions, categories, burn, soon] = await Promise.all([
       allRows<Subscription>((query) =>
-        zero.subscriptions.list({ ...query, orderBy: { nextRenewal: "asc" } }),
+        first.subscriptions.list({ ...query, orderBy: { nextRenewal: "asc" } }),
       ),
       allRows<Category>((query) =>
-        zero.categories.list({ ...query, orderBy: { name: "asc" } }),
+        first.categories.list({ ...query, orderBy: { name: "asc" } }),
       ),
-      zero.actions.monthlyBurn({}),
-      zero.actions.renewingSoon({ days: 7 }),
+      first.actions.monthlyBurn({}),
+      first.actions.renewingSoon({ days: 7 }),
     ]);
     setSession({
       kind: "ready",
@@ -197,7 +197,7 @@ export function App() {
         const params = new URLSearchParams(location.search);
         if (params.has("code") || params.has("error")) {
           try {
-            await zero.auth.handleCallback();
+            await first.auth.handleCallback();
           } finally {
             history.replaceState(null, "", location.pathname + location.hash);
           }
@@ -227,14 +227,14 @@ export function App() {
   async function save(input: Collections["subscriptions"]["insert"]) {
     if (session.kind !== "ready" || !sheet) return;
     const categoryName = input.category ?? "Other";
-    const existing = await zero.categories.list({
+    const existing = await first.categories.list({
       where: { name: categoryName },
       limit: 1,
     });
-    if (!existing.length) await zero.categories.create({ name: categoryName });
+    if (!existing.length) await first.categories.create({ name: categoryName });
     if (sheet.kind === "edit")
-      await zero.subscriptions.update(sheet.subscription.id, input);
-    else await zero.subscriptions.create(input);
+      await first.subscriptions.update(sheet.subscription.id, input);
+    else await first.subscriptions.create(input);
     setSheet(null);
     setNotice(sheet.kind === "edit" ? "Changes saved" : "Subscription added");
     try {
@@ -266,7 +266,7 @@ export function App() {
             disabled={busy}
             onClick={() =>
               void run(async () => {
-                await zero.auth.signOut({
+                await first.auth.signOut({
                   returnTo: new URL(import.meta.env.BASE_URL, location.href)
                     .href,
                 });
@@ -332,7 +332,7 @@ export function App() {
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  await zero.auth.signIn({
+                  await first.auth.signIn({
                     returnTo: new URL(
                       location.pathname + location.hash,
                       location.origin,
@@ -374,7 +374,7 @@ export function App() {
               }
               onCancel={() =>
                 void run(async () => {
-                  const result = await zero.actions.cancel({
+                  const result = await first.actions.cancel({
                     subscriptionId: subscription.id,
                   });
                   await load();
@@ -737,7 +737,7 @@ function Detail({
     let current = true;
     setLoading(true);
     void allRows<Charge>((query) =>
-      zero.charges.list({
+      first.charges.list({
         ...query,
         where: { subscriptionId: subscription.id },
         orderBy: { chargedOn: "desc" },

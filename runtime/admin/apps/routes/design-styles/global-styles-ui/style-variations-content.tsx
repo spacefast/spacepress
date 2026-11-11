@@ -10,15 +10,15 @@ export function StyleVariationsContent() {
 	return (
 		<VStack
 			spacing={ 10 }
-			className="zero-admin-global-styles-variation-container"
+			className="first-admin-global-styles-variation-container"
 		>
 			<StyleVariationsContainer gap={ gap } />
 			<ColorVariations
-				title={ __( 'Color Variations', 'zero-admin' ) }
+				title={ __( 'Color Variations', 'first-admin' ) }
 				gap={ gap }
 			/>
 			<TypographyVariations
-				title={ __( 'Typography', 'zero-admin' ) }
+				title={ __( 'Typography', 'first-admin' ) }
 				gap={ gap }
 			/>
 		</VStack>

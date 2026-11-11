@@ -1,4 +1,4 @@
-import type { PresetOrigin } from '@zero-admin/global-styles-engine';
+import type { PresetOrigin } from '@first-admin/global-styles-engine';
 
 /**
  * StyleBook color group configuration

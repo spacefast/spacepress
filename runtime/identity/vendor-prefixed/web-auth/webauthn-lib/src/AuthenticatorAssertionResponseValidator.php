@@ -2,22 +2,22 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Webauthn;
+namespace First\Identity\Vendor\Webauthn;
 
-use Zero\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use Zero\Identity\Vendor\Psr\Log\LoggerInterface;
-use Zero\Identity\Vendor\Psr\Log\NullLogger;
+use First\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use First\Identity\Vendor\Psr\Log\LoggerInterface;
+use First\Identity\Vendor\Psr\Log\NullLogger;
 use Throwable;
-use function zero_identity_vendor_trigger_deprecation as trigger_deprecation;
-use Zero\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManager;
-use Zero\Identity\Vendor\Webauthn\Event\AuthenticatorAssertionResponseValidationFailedEvent;
-use Zero\Identity\Vendor\Webauthn\Event\AuthenticatorAssertionResponseValidationSucceededEvent;
-use Zero\Identity\Vendor\Webauthn\Event\BackupEligibilityChangedEvent;
-use Zero\Identity\Vendor\Webauthn\Event\BackupStatusChangedEvent;
-use Zero\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use Zero\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use Zero\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
-use Zero\Identity\Vendor\Webauthn\MetadataService\CanLogData;
+use function first_identity_vendor_trigger_deprecation as trigger_deprecation;
+use First\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManager;
+use First\Identity\Vendor\Webauthn\Event\AuthenticatorAssertionResponseValidationFailedEvent;
+use First\Identity\Vendor\Webauthn\Event\AuthenticatorAssertionResponseValidationSucceededEvent;
+use First\Identity\Vendor\Webauthn\Event\BackupEligibilityChangedEvent;
+use First\Identity\Vendor\Webauthn\Event\BackupStatusChangedEvent;
+use First\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use First\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use First\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use First\Identity\Vendor\Webauthn\MetadataService\CanLogData;
 
 class AuthenticatorAssertionResponseValidator implements CanLogData, CanDispatchEvents
 {
@@ -48,7 +48,7 @@ class AuthenticatorAssertionResponseValidator implements CanLogData, CanDispatch
         ?string $userHandle,
     ): CredentialRecord {
         if ($credentialRecord instanceof PublicKeyCredentialSource) {
-            zero_identity_vendor_trigger_deprecation(
+            first_identity_vendor_trigger_deprecation(
                 'web-auth/webauthn-lib',
                 '5.3',
                 'Passing a PublicKeyCredentialSource to "%s::check()" is deprecated, pass a CredentialRecord instead.',

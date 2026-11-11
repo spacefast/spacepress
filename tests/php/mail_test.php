@@ -3,14 +3,14 @@
 declare(strict_types=1);
 
 /*
- * mail.send from "zero" on an in-process WordPress (tests/php/wp.php): the original EmailMessage
+ * mail.send from "first" on an in-process WordPress (tests/php/wp.php): the original EmailMessage
  * normalization, header and address safety, the transactional queue, wp_mail hand-off arguments,
  * the host transport filter and retries. Delivery is drained through Action Scheduler.
  */
 
-use Zero\HttpError;
-use Zero\JsObject;
-use Zero\Mail;
+use First\HttpError;
+use First\JsObject;
+use First\Mail;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -20,11 +20,11 @@ $schema['actions']['notify'] = ['input' => ['to' => ['type' => 'text', 'notNull'
     'handler' => 'action__notify', 'access' => ['role' => 'anyone'], 'agents' => false, 'idempotent' => false, 'signature' => null];
 $functions = file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
 
-    function action__notify(\Zero\JsObject $input, $ctx)
+    function action__notify(\First\JsObject $input, $ctx)
     {
-        $queued = \Zero\Mail::send(new \Zero\JsObject(['to' => $input->p['to'], 'subject' => 'Hello', 'text' => 'plain', 'html' => '<p>rich</p>']));
+        $queued = \First\Mail::send(new \First\JsObject(['to' => $input->p['to'], 'subject' => 'Hello', 'text' => 'plain', 'html' => '<p>rich</p>']));
         if (($input->p['fail'] ?? false) === true) {
-            throw new \Zero\HttpError(409, 'rolled_back', 'after queueing');
+            throw new \First\HttpError(409, 'rolled_back', 'after queueing');
         }
         return $queued->p['id'];
     }
@@ -32,9 +32,9 @@ $functions = file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php'
 
 $wp = wpSite('mail', ['schema' => $schema, 'functions' => $functions]);
 // The in-process site answers on a dotless host, which is no sending domain; name one.
-\Zero\Env::isolate(['ZERO_MAIL_SENDER_DOMAIN' => 'Example.Test']);
-$jobs = static fn () => $wp->sql("SELECT `id`, `state`, `attempts`, `lastError` FROM {prefix}zero__jobs WHERE `job` = 'zero.mail' ORDER BY `createdAt`, `id`");
-$drain = static fn () => ActionScheduler_QueueRunner::instance()->run('Zero tests');
+\First\Env::isolate(['FIRST_MAIL_SENDER_DOMAIN' => 'Example.Test']);
+$jobs = static fn () => $wp->sql("SELECT `id`, `state`, `attempts`, `lastError` FROM {prefix}first__jobs WHERE `job` = 'first.mail' ORDER BY `createdAt`, `id`");
+$drain = static fn () => ActionScheduler_QueueRunner::instance()->run('First tests');
 $refusal = static function (mixed $message): string {
     try {
         Mail::payload($message);
@@ -72,11 +72,11 @@ eq('bad messages are refused at send, with a pointer',
         '/headers/X-Ok Header X-Ok must be a single-line string.', '/to A message may have at most 50 recipients.',
         '/attachments Unknown message field attachments.']);
 eq('wp_mail arguments: encoded display names, html with a text alternative, custom headers last',
-    Mail::wpMailArguments(Mail::payload(['from' => ['email' => 'app@example.test', 'name' => 'Zero, Inc.'], 'to' => ['a@example.test'],
-        'subject' => 'S', 'text' => 'alt', 'html' => '<p>h</p>', 'bcc' => ['b@example.test'], 'headers' => ['X-App' => 'zero']])),
+    Mail::wpMailArguments(Mail::payload(['from' => ['email' => 'app@example.test', 'name' => 'First, Inc.'], 'to' => ['a@example.test'],
+        'subject' => 'S', 'text' => 'alt', 'html' => '<p>h</p>', 'bcc' => ['b@example.test'], 'headers' => ['X-App' => 'first']])),
     ['to' => ['a@example.test'], 'subject' => 'S', 'message' => '<p>h</p>',
-        'headers' => ['From: =?UTF-8?B?' . base64_encode('Zero, Inc.') . '?= <app@example.test>', 'Reply-To: =?UTF-8?B?' . base64_encode('Zero, Inc.') . '?= <app@example.test>',
-            'Bcc: b@example.test', 'Content-Type: text/html; charset=UTF-8', 'X-App: zero'],
+        'headers' => ['From: =?UTF-8?B?' . base64_encode('First, Inc.') . '?= <app@example.test>', 'Reply-To: =?UTF-8?B?' . base64_encode('First, Inc.') . '?= <app@example.test>',
+            'Bcc: b@example.test', 'Content-Type: text/html; charset=UTF-8', 'X-App: first'],
         'alt' => 'alt']);
 eq('from defaults to noreply@ the sending domain', Mail::payload(['to' => 'a@example.test', 'subject' => 'S', 'text' => 'x'])['from'],
     ['email' => 'noreply@example.test']);
@@ -127,20 +127,20 @@ add_filter('pre_wp_mail', static function ($short, array $atts) use (&$sent) {
 }, 10, 2);
 
 // ---- a host transport at priority 0 is still the transport (has_filter() answers 0)
-$zero = [];
-add_filter('zero_mail_transport', static function ($accepted, array $payload) use (&$zero) {
-    $zero[] = $payload['to'][0]['email'];
+$first = [];
+add_filter('first_mail_transport', static function ($accepted, array $payload) use (&$first) {
+    $first[] = $payload['to'][0]['email'];
     return true;
 }, 0, 2);
 $sent = [];
-Mail::deliver($plain('zero@example.test'), []);
-eq('a priority-0 transport receives the message and wp_mail is not used', [$zero, $sent], [['zero@example.test'], []]);
-remove_all_filters('zero_mail_transport');
+Mail::deliver($plain('first@example.test'), []);
+eq('a priority-0 transport receives the message and wp_mail is not used', [$first, $sent], [['first@example.test'], []]);
+remove_all_filters('first_mail_transport');
 
 // ---- the host transport replaces wp_mail and a refusal is retried
 $offered = [];
 $accept = false;
-add_filter('zero_mail_transport', static function ($accepted, array $payload) use (&$offered, &$accept) {
+add_filter('first_mail_transport', static function ($accepted, array $payload) use (&$offered, &$accept) {
     $offered[] = $payload;
     return $accept;
 }, 10, 2);
@@ -152,8 +152,8 @@ eq('a refusing host transport fails the attempt for a retry, and wp_mail is neve
     [count($offered), $offered[0]['to'], $row['state'], (int) $row['attempts'], str_contains((string) $row['lastError'], 'did not accept'), $sent],
     [1, [['email' => 'host@example.test']], 'failed', 1, true, []]);
 $accept = true;
-$wp->sql("UPDATE {prefix}zero__jobs SET `runAt` = '2000-01-01T00:00:00.000Z' WHERE `id` = ?", [$row['id']]);
-\Zero\Jobs\Runner::run($row['id']);
-eq('the retry reaches the host transport and completes', [count($offered), $wp->sql("SELECT `state` FROM {prefix}zero__jobs WHERE `id` = ?", [$row['id']])[0]['state']], [2, 'done']);
+$wp->sql("UPDATE {prefix}first__jobs SET `runAt` = '2000-01-01T00:00:00.000Z' WHERE `id` = ?", [$row['id']]);
+\First\Jobs\Runner::run($row['id']);
+eq('the retry reaches the host transport and completes', [count($offered), $wp->sql("SELECT `state` FROM {prefix}first__jobs WHERE `id` = ?", [$row['id']])[0]['state']], [2, 'done']);
 
 finish('mail');

@@ -314,7 +314,7 @@ fn physical(space: &str, name: &str) -> String {
 }
 
 /// Every v2 user projects as a member whose hidden `spacefastSubject` holds the 0.8 Space
-/// subject (`usr_<64 hex>` for Space Users) copied by `wp zero migrate-spacefast`. Users created
+/// subject (`usr_<64 hex>` for Space Users) copied by `wp first migrate-spacefast`. Users created
 /// after the migration answer `wp:<id>`, which no 0.8 subject can equal.
 const IDENTITY: &str = r#"const __z08Members = __z08Users({email: __z08Email().notNull().unique().max(191), name: __z08Text().notNull(), spacefastSubject: __z08Text().max(191).access({ read: false, create: false, update: false })});
 type __z08User = { id: number; name: string; role: "guest" | "subscriber" | "author" | "editor" | "admin" };
@@ -615,12 +615,12 @@ pub(super) fn app(
             match (key.as_str(), literal(e).ok()) {
                 ("requireSignIn", Some(Value::Bool(b))) => {
                     signed_in = b;
-                    entries.push(entry("/auth/requireSignIn","mapped","carry requireSignIn to generated action gates using zero-identity; existing sessions and principal IDs require a separate identity migration"));
+                    entries.push(entry("/auth/requireSignIn","mapped","carry requireSignIn to generated action gates using first-identity; existing sessions and principal IDs require a separate identity migration"));
                 }
                 _ => errors.push(
                     fail(
                         &pointer("/auth", &key),
-                        "identity callbacks/providers need an explicit zero-identity migration",
+                        "identity callbacks/providers need an explicit first-identity migration",
                     )
                     .spanned(e.span, Path::new("")),
                 ),
@@ -1050,11 +1050,11 @@ pub(super) fn app(
         entries.push(entry(
             "",
             "review",
-            "ctx.email.send becomes mail.send from \"zero\": the message is queued in the handler's transaction and handed to the site's transport after commit. It resolves true once queued, where 0.8 resolved on transport acceptance; check the job queue for refusals. On Spacefast, from must stay on the Space's sending domain",
+            "ctx.email.send becomes mail.send from \"first\": the message is queued in the handler's transaction and handed to the site's transport after commit. It resolves true once queued, where 0.8 resolved on transport acceptance; check the job queue for refusals. On Spacefast, from must stay on the Space's sending domain",
         ));
     }
     let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"zero\";\n",
+        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"first\";\n",
     );
     if uses_crypto {
         config.push_str(CRYPTO_PRELUDE);
@@ -3002,7 +3002,7 @@ impl Rewrite<'_> {
                 // Uppercase on both sides.
                 "method" => Ok(true),
                 // 0.8's URL: https, the normalized host and the URI with share-link secrets
-                // redacted, which v2 builds the same way (Zero\Wp\HttpRoutes::url).
+                // redacted, which v2 builds the same way (First\Wp\HttpRoutes::url).
                 "url" => Ok(true),
                 other => refuse(other),
             };

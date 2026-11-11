@@ -1,4 +1,4 @@
-# Editable portfolio on Zero and WordPress
+# Editable portfolio on First and WordPress
 
 A complete adaptation of the official EmDash **portfolio** and
 **portfolio-cloudflare** templates at
@@ -10,14 +10,14 @@ in [LICENSE-UPSTREAM](./LICENSE-UPSTREAM).
 
 ## Run the real site
 
-From the repository root, with the native Zero development prerequisites installed:
+From the repository root, with the native First development prerequisites installed:
 
 ```sh
 node examples/emdash/portfolio/dev.mjs
 ```
 
 This creates a **new disposable project** in `/tmp`, chooses a free port, starts
-native `zero dev` / WordPress Studio, activates the generated portfolio model and
+native `first dev` / WordPress Studio, activates the generated portfolio model and
 [frontend plugin](./frontend/portfolio.php), and imports the sample content. It
 fetches the original photographs from their URLs in [seed.json](./seed.json),
 uploads each to WordPress, and compares the original bytes with the public upload
@@ -27,9 +27,9 @@ are downloaded at run time, not redistributed in this repository.
 
 The command prints the public URL, native WordPress admin URL, project path, and
 an exact cleanup command. Initial **disposable-site-only** credentials are shown
-by native Zero in the evidence directory's `start.log`. No existing site, account,
+by native First in the evidence directory's `start.log`. No existing site, account,
 data directory, plugin, or Studio registration is reused. Studio's full admin,
-Plugins, Settings, media library, native editor, and Zero Admin remain available.
+Plugins, Settings, media library, native editor, and First Admin remain available.
 
 Open `/`, `/work`, `/work?tag=digital`, `/work/hotel-wilde`, `/about`, `/contact`,
 and `/rss.xml`. `/home` redirects permanently to `/` and preserves its query.
@@ -37,7 +37,7 @@ and `/rss.xml`. `/home` redirects permanently to `/` and preserves its query.
 Stop and delete only the site whose receipt the command printed:
 
 ```sh
-node examples/emdash/portfolio/cleanup.mjs /tmp/zero-portfolio-evidence-EXAMPLE/studio.json
+node examples/emdash/portfolio/cleanup.mjs /tmp/first-portfolio-evidence-EXAMPLE/studio.json
 ```
 
 The script checks the receipt's disposable path, stops that exact project,
@@ -45,17 +45,17 @@ checks it is offline, deletes that exact Studio registration, removes its files,
 and preserves `cleanup.txt` and the receipt with `state: "deleted"`. It never
 runs a global Studio stop or delete.
 
-`ZERO_BIN=/absolute/path/to/zero` selects another existing Zero binary.
-`ZERO_PORTFOLIO_EVIDENCE=/tmp/a-unique-evidence-directory` chooses where receipts,
+`FIRST_BIN=/absolute/path/to/first` selects another existing First binary.
+`FIRST_PORTFOLIO_EVIDENCE=/tmp/a-unique-evidence-directory` chooses where receipts,
 logs, and per-upload hashes are saved. Use a fresh evidence directory per run.
 
 ## Edit the portfolio
 
-Projects are native WordPress posts with Zero/SCF fields. In WordPress admin,
+Projects are native WordPress posts with First/SCF fields. In WordPress admin,
 open **Projects**, edit a title or body, change its cover, disciplines, client,
 year, website, gallery, summary, featured flag, or SEO group, then save. These
-are the same stored records returned by `/wp-json/zero/v1/projects`; the public
-pages read through Zero's database pipeline with an anonymous Viewer, so a
+are the same stored records returned by `/wp-json/first/v1/projects`; the public
+pages read through First's database pipeline with an anonymous Viewer, so a
 signed-in editor does not accidentally publish drafts to ordinary visitors.
 Authenticated WordPress preview links show the stored draft with a preview
 notice and `noindex`; anonymous requests cannot see that draft. Native revisions
@@ -75,7 +75,7 @@ The public shell has Light, Dark, and System controls. The choice persists in
 a SameSite cookie and is applied during server rendering.
 
 The generated API and WordPress Abilities remain available to agents. For
-example, `portfolio/projects-update` takes `{ id, patch }`, writes through Zero's
+example, `portfolio/projects-update` takes `{ id, patch }`, writes through First's
 normal permission/validation pipeline, and changes the same public case study.
 This example does not implement an EmDash sandboxed Worker or AI provider.
 
@@ -100,7 +100,7 @@ studies and three pages, and checks:
   and a native SCF settings change reflected in the feed and public shell.
 - Native core REST title/body/SCF/gallery/SEO edits, native SCF flexible layouts,
   native SCF options, native revisions, draft privacy, authenticated preview,
-  and a real WordPress Ability mutation reflected in Zero and public HTML.
+  and a real WordPress Ability mutation reflected in First and public HTML.
 - Authenticated native editor, Plugins and Settings access; preservation of the
   existing active plugins and an unrelated plugin added by the test.
 
@@ -111,8 +111,8 @@ import path, also with actual uploads and byte comparisons. `uploads.json`
 records each successfully verified upload's byte length and SHA-256.
 
 The test always cleans up its own site. For an explicit browser inspection,
-set `ZERO_PORTFOLIO_KEEP=1`; then run its printed exact cleanup command yourself.
-Evidence includes the `.zero/dev` ownership receipt, served HTML/XML, stored
+set `FIRST_PORTFOLIO_KEEP=1`; then run its printed exact cleanup command yourself.
+Evidence includes the `.first/dev` ownership receipt, served HTML/XML, stored
 seeded records, native edit results, upload hashes, Ability result, and cleanup
 proof. Credentials and evidence stay outside the tracked example.
 
@@ -124,9 +124,9 @@ layout, image loading and the working theme controls.
 
 ## Pinned behavior mapping and boundaries
 
-| Pinned upstream owner | Zero implementation |
+| Pinned upstream owner | First implementation |
 | --- | --- |
-| [`seed/seed.json`](https://github.com/emdash-cms/emdash/blob/1824902c0c383c052b623528799427b8a5ff75d0/templates/portfolio/seed/seed.json) | `zero.config.ts`, adapted `seed.json`, `seed.mjs`: six complete projects, galleries, three pages, four page layouts, menus and settings. |
+| [`seed/seed.json`](https://github.com/emdash-cms/emdash/blob/1824902c0c383c052b623528799427b8a5ff75d0/templates/portfolio/seed/seed.json) | `first.config.ts`, adapted `seed.json`, `seed.mjs`: six complete projects, galleries, three pages, four page layouts, menus and settings. |
 | [`src/utils/selected-work.ts`](https://github.com/emdash-cms/emdash/blob/1824902c0c383c052b623528799427b8a5ff75d0/templates/portfolio/src/utils/selected-work.ts) | Up to twelve featured published projects, newest first; six newest when none are featured. |
 | [`src/pages/work/index.astro`](https://github.com/emdash-cms/emdash/blob/1824902c0c383c052b623528799427b8a5ff75d0/templates/portfolio/src/pages/work/index.astro) | Public index, database `tags.has` filter, empty states, native images, twelve-row offset pagination. Fixed native SCF discipline choices replace EmDash taxonomy administration. Offset pagination replaces EmDash's opaque cursors; it is not stable under concurrent publication. |
 | [`src/pages/work/[slug].astro`](https://github.com/emdash-cms/emdash/blob/1824902c0c383c052b623528799427b8a5ff75d0/templates/portfolio/src/pages/work/%5Bslug%5D.astro) | Case-study title, summary, client/year/disciplines, safe website link, cover, block body, numbered gallery with full/half/half rhythm, next-older link, SEO/canonical/OG. |
@@ -136,8 +136,8 @@ layout, image loading and the working theme controls.
 | [`src/pages/rss.xml.ts`](https://github.com/emdash-cms/emdash/blob/1824902c0c383c052b623528799427b8a5ff75d0/templates/portfolio/src/pages/rss.xml.ts) | Twenty newest dated published projects, XML escaping, absolute permalinks, Atom self link, RSS MIME type. Revalidation keeps native edits immediately visible. |
 | [`portfolio-cloudflare`](https://github.com/emdash-cms/emdash/tree/1824902c0c383c052b623528799427b8a5ff75d0/templates/portfolio-cloudflare) | The same content/rendering contract on native WordPress SQLite. No claim of D1/R2/Cloudflare cache/Worker deployment parity. |
 
-The public renderer is an ordinary WordPress frontend plugin because Zero's
-compiler does not currently expose custom HTML/XML page routes. It uses Zero's
+The public renderer is an ordinary WordPress frontend plugin because First's
+compiler does not currently expose custom HTML/XML page routes. It uses First's
 real database pipeline, not duplicated JSON fixtures or substitute API responses.
 No compiler/runtime files are changed. EmDash inline visual editing, portable
 content storage, cache invalidation and its infrastructure are not reproduced;

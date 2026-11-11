@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity;
+namespace First\Identity;
 
 final class Security
 {
@@ -54,14 +54,14 @@ final class Security
             "detail" => wp_json_encode($detail),
             "created_at" => time(),
         ]);
-        foreach (get_option("zero_identity_webhooks", []) as $endpoint) {
+        foreach (get_option("first_identity_webhooks", []) as $endpoint) {
             $this->db->insert("deliveries", [
                 "event_id" => $id,
                 "endpoint_id" => $endpoint["id"],
                 "next_at" => time(),
             ]);
         }
-        do_action("zero_identity_session_event", $type, $uid, $id);
+        do_action("first_identity_session_event", $type, $uid, $id);
     }
     public function limit(
         string $bucket,
@@ -169,7 +169,7 @@ final class Security
     ): void {
         $ok = wp_mail(
             $email,
-            sprintf(__("Your %s code", "zero-identity"), get_bloginfo("name")),
+            sprintf(__("Your %s code", "first-identity"), get_bloginfo("name")),
             sprintf(
                 "Your code is %s.\n\nIt expires in five minutes. Request: %s.\nIf you did not request it, ignore this message.",
                 $code,

@@ -23,11 +23,11 @@ test("the ability's own permission check answers for everyone else", async () =>
 });
 
 test("wp-hooks/the_content filters change the rendered post, in file-name order", async () => {
-  const response = await fetch(`${harness.url}/?p=${process.env.ZERO_HOOKS_POST}`);
+  const response = await fetch(`${harness.url}/?p=${process.env.FIRST_HOOKS_POST}`);
   const html = await response.text();
   assert.equal(response.status, 200);
   // a-note appends inside the content, then b-frame wraps both.
-  assert.match(html, /<div class="zero-frame"><p>Lane body<\/p>\n<p class="zero-lane">first<\/p><\/div>/);
+  assert.match(html, /<div class="first-frame"><p>Lane body<\/p>\n<p class="first-lane">first<\/p><\/div>/);
 });
 
 test("core functions run as the signed-in user and return typed views", async () => {

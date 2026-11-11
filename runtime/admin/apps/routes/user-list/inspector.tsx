@@ -1,6 +1,6 @@
 import { Link, useSearch } from '@wordpress/route';
-import { store as coreDataNextStore } from '@zero-admin/core-data-next';
-import { Page } from '@zero-admin/admin-toolkit';
+import { store as coreDataNextStore } from '@first-admin/core-data-next';
+import { Page } from '@first-admin/admin-toolkit';
 import { __ } from '@wordpress/i18n';
 import { IconButton } from '@wordpress/ui';
 import { close } from '@wordpress/icons';
@@ -36,12 +36,12 @@ export default function Inspector() {
 
 	return (
 		<Page
-			title={ __( 'Quick Edit', 'zero-admin' ) }
+			title={ __( 'Quick Edit', 'first-admin' ) }
 			actions={
 				<IconButton
 					variant="minimal"
 					tone="neutral"
-					label={ __( 'Close inspector', 'zero-admin' ) }
+					label={ __( 'Close inspector', 'first-admin' ) }
 					icon={ close }
 					size="compact"
 					render={

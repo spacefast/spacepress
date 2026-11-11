@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\Serializer\Encoder;
+namespace First\Identity\Vendor\Symfony\Component\Serializer\Encoder;
 
-use Zero\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedValueException;
+use First\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedValueException;
 
 /**
  * @author Jordi Boggiano <j.boggiano@seld.be>

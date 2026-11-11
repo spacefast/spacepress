@@ -1,7 +1,7 @@
 // @ts-expect-error - WordPress private APIs
 import { privateApis as blockEditorPrivateApis } from '@wordpress/block-editor';
 import { useMemo } from '@wordpress/element';
-import { unlock } from '@zero-admin/admin-toolkit';
+import { unlock } from '@first-admin/admin-toolkit';
 import { useStyle, useSetting } from './hooks';
 
 const { useSettingsForBlockElement, DimensionsPanel: StylesDimensionsPanel } =

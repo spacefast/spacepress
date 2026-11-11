@@ -2,7 +2,7 @@
 @use "@wordpress/base-styles/colors";
 @use "@wordpress/base-styles/mixins";
 
-.zero-admin-global-styles-preview {
+.first-admin-global-styles-preview {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -10,13 +10,13 @@
 	cursor: pointer;
 }
 
-.zero-admin-global-styles-preview__wrapper {
+.first-admin-global-styles-preview__wrapper {
 	max-width: 100%;
 	display: block;
 	width: 100%;
 }
 
-.zero-admin-typography-preview {
+.first-admin-typography-preview {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -27,22 +27,22 @@
 	overflow: hidden;
 }
 
-.zero-admin-font-size__item {
+.first-admin-font-size__item {
 	white-space: nowrap;
 	text-overflow: ellipsis;
 	overflow: hidden;
 	line-break: anywhere;
 }
 
-.zero-admin-font-size__item-value {
+.first-admin-font-size__item-value {
 	color: #757575;
 }
 
-.zero-admin-global-styles-screen {
+.first-admin-global-styles-screen {
 	margin: 12px 16px 16px;
 }
 
-.zero-admin-global-styles-screen-typography__indicator {
+.first-admin-global-styles-screen-typography__indicator {
 	height: 24px;
 	width: 24px;
 	font-size: 14px;
@@ -52,20 +52,20 @@
 	border-radius: 2px;
 }
 
-.zero-admin-block-types-search {
+.first-admin-block-types-search {
 	margin-bottom: 10px;
 	padding: 0 20px;
 }
 
-.zero-admin-global-styles-screen-typography__font-variants-count {
+.first-admin-global-styles-screen-typography__font-variants-count {
 	color: var( --wpds-color-fg-content-neutral-weak );
 }
 
-.zero-admin-global-styles-font-families__manage-fonts {
+.first-admin-global-styles-font-families__manage-fonts {
 	justify-content: center;
 }
 
-.zero-admin-global-styles-screen .color-block-support-panel {
+.first-admin-global-styles-screen .color-block-support-panel {
 	padding-left: 0;
 	padding-right: 0;
 	padding-top: 0;
@@ -73,21 +73,21 @@
 	row-gap: calc( 4px * 3 );
 }
 
-.zero-admin-global-styles-header__description {
+.first-admin-global-styles-header__description {
 	padding: 0 16px;
 }
 
-.zero-admin-block-types-search {
+.first-admin-block-types-search {
 	margin-bottom: 8px;
 	padding: 0 16px;
 }
 
-.zero-admin-global-styles-header {
+.first-admin-global-styles-header {
 	// Need to override the too specific bottom margin for complementary areas.
 	margin-bottom: 0 !important;
 }
 
-.zero-admin-global-styles-subtitle {
+.first-admin-global-styles-subtitle {
 	// Need to override the too specific styles for complementary areas.
 	margin-bottom: 0 !important;
 	text-transform: uppercase;
@@ -95,7 +95,7 @@
 	font-size: 11px !important;
 }
 
-.zero-admin-global-styles-section-title {
+.first-admin-global-styles-section-title {
 	color: var( --wpds-color-fg-content-neutral );
 	font-weight: 600;
 	line-height: 1.2;
@@ -103,22 +103,22 @@
 	margin: 0;
 }
 
-.zero-admin-global-styles-icon-with-current-color {
+.first-admin-global-styles-icon-with-current-color {
 	fill: currentColor;
 }
 
-.zero-admin-global-styles__color-indicator-wrapper {
+.first-admin-global-styles__color-indicator-wrapper {
 	// Match the height of the rest of the icons (24px).
 	height: variables.$grid-unit * 3;
 	flex-shrink: 0;
 }
 
-.zero-admin-global-styles__shadows-panel__options-container,
-.zero-admin-global-styles__typography-panel__options-container {
+.first-admin-global-styles__shadows-panel__options-container,
+.first-admin-global-styles__typography-panel__options-container {
 	height: variables.$grid-unit * 3;
 }
 
-.zero-admin-global-styles__block-preview-panel {
+.first-admin-global-styles__block-preview-panel {
 	position: relative;
 	width: 100%;
 	border: #ddd 1px solid;
@@ -126,7 +126,7 @@
 	overflow: hidden;
 }
 
-.zero-admin-global-styles__shadow-preview-panel {
+.first-admin-global-styles__shadow-preview-panel {
 	height: 144px;
 	border: #ddd 1px solid;
 	border-radius: 2px;
@@ -152,7 +152,7 @@
 		8px 8px;
 	background-size: 16px 16px;
 
-	.zero-admin-global-styles__shadow-preview-block {
+	.first-admin-global-styles__shadow-preview-block {
 		border: #ddd 1px solid;
 		border-radius: 2px;
 		background-color: #fff;
@@ -161,21 +161,21 @@
 	}
 }
 
-.zero-admin-global-styles__shadow-editor__dropdown-content {
+.first-admin-global-styles__shadow-editor__dropdown-content {
 	width: 280px;
 }
 
-.zero-admin-global-styles__shadow-editor-panel {
+.first-admin-global-styles__shadow-editor-panel {
 	// because tooltip of the range control is too close to the edge and creates overflow
 	margin-bottom: 4px;
 }
 
-.zero-admin-global-styles__shadow-editor__dropdown {
+.first-admin-global-styles__shadow-editor__dropdown {
 	width: 100%;
 	position: relative;
 }
 
-.zero-admin-global-styles__shadow-editor__dropdown-toggle {
+.first-admin-global-styles__shadow-editor__dropdown-toggle {
 	width: 100%;
 	height: auto;
 	padding-top: 8px;
@@ -189,17 +189,17 @@
 	}
 }
 
-.zero-admin-global-styles__shadow-editor__remove-button {
+.first-admin-global-styles__shadow-editor__remove-button {
 	position: absolute;
 	right: 8px;
 	top: 8px;
 	opacity: 0;
 
-	&.zero-admin-global-styles__shadow-editor__remove-button {
+	&.first-admin-global-styles__shadow-editor__remove-button {
 		border: none;
 	}
 
-	.zero-admin-global-styles__shadow-editor__dropdown-toggle:hover + &,
+	.first-admin-global-styles__shadow-editor__dropdown-toggle:hover + &,
 	&:focus,
 	&:hover {
 		opacity: 1;
@@ -211,7 +211,7 @@
 	}
 }
 
-.zero-admin-global-styles-screen-css {
+.first-admin-global-styles-screen-css {
 	flex: 1 1 auto;
 	display: flex;
 	flex-direction: column;
@@ -242,12 +242,12 @@
 	}
 }
 
-.zero-admin-global-styles-screen-css-help-link {
+.first-admin-global-styles-screen-css-help-link {
 	display: inline-block;
 	margin-top: 8px;
 }
 
-.zero-admin-global-styles-screen-variations {
+.first-admin-global-styles-screen-variations {
 	margin-top: 16px;
 	border-top: 1px solid #ddd;
 
@@ -256,41 +256,41 @@
 	}
 }
 
-.zero-admin-global-styles-sidebar__navigator-provider {
+.first-admin-global-styles-sidebar__navigator-provider {
 	height: 100%;
 }
 
-.zero-admin-global-styles-sidebar__navigator-screen {
+.first-admin-global-styles-sidebar__navigator-screen {
 	display: flex;
 	flex-direction: column;
 	height: 100%;
 }
 
-.zero-admin-global-styles-sidebar__navigator-screen .single-column {
+.first-admin-global-styles-sidebar__navigator-screen .single-column {
 	grid-column: span 1;
 }
 
-.zero-admin-global-styles-screen-root.zero-admin-global-styles-screen-root,
-.zero-admin-global-styles-screen-style-variations.zero-admin-global-styles-screen-style-variations {
+.first-admin-global-styles-screen-root.first-admin-global-styles-screen-root,
+.first-admin-global-styles-screen-style-variations.first-admin-global-styles-screen-style-variations {
 	background: unset;
 	color: inherit;
 }
 
-.zero-admin-global-styles-sidebar__panel .block-editor-block-icon svg {
+.first-admin-global-styles-sidebar__panel .block-editor-block-icon svg {
 	fill: currentColor;
 }
 
-.zero-admin-global-styles-screen-root__active-style-tile {
+.first-admin-global-styles-screen-root__active-style-tile {
 	// Todo: revisit use of Card component and/or remove override
 	// The &#{&} is a workaround for the specificity of the Card component.
 	&#{&},
-	&#{&} .zero-admin-global-styles-screen-root__active-style-tile-preview {
+	&#{&} .first-admin-global-styles-screen-root__active-style-tile-preview {
 		border-radius: 2px;
 	}
 }
 
-.zero-admin-global-styles-color-palette-panel,
-.zero-admin-global-styles-gradient-palette-panel {
+.first-admin-global-styles-color-palette-panel,
+.first-admin-global-styles-gradient-palette-panel {
 	padding: variables.$grid-unit-20;
 }
 

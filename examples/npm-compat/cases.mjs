@@ -1,4 +1,4 @@
-// Calls stay in source form so both Node and Zero execute the same expressions.
+// Calls stay in source form so both Node and First execute the same expressions.
 export const probes = [
   {
     name: "url-join",
@@ -14,7 +14,7 @@ export const probes = [
     entry: "index.mjs",
     binding: "template",
     format: "esm",
-    body: `return {nested: template("Hello {{user.name}} ({{count}})", {user: {name: "Ada"}, count: 2}), repeated: template("{{name}}/{{name}}", {name: "tea"}), falsy: template("{{zero}}/{{no}}/{{empty}}/{{missing}}", {zero: 0, no: false, empty: ""}), unicode: template("{{name}}!", {name: "école 你好"}), plain: template("Hello", {})};`,
+    body: `return {nested: template("Hello {{user.name}} ({{count}})", {user: {name: "Ada"}, count: 2}), repeated: template("{{name}}/{{name}}", {name: "tea"}), falsy: template("{{first}}/{{no}}/{{empty}}/{{missing}}", {first: 0, no: false, empty: ""}), unicode: template("{{name}}!", {name: "école 你好"}), plain: template("Hello", {})};`,
   },
   {
     name: "clsx",
@@ -38,7 +38,7 @@ export const probes = [
     entry: "index.js",
     binding: "ms",
     format: "cjs-anonymous-function",
-    body: `return { parse: ms("2 days"), negative: ms("-1.5h"), invalid: ms("nonsense") ?? null, short: ms(5400000), long: ms(5400000, {long: true}), zero: ms(0) };`,
+    body: `return { parse: ms("2 days"), negative: ms("-1.5h"), invalid: ms("nonsense") ?? null, short: ms(5400000), long: ms(5400000, {long: true}), first: ms(0) };`,
   },
   {
     name: "just-clone",
@@ -83,7 +83,7 @@ export const probes = [
     named: true,
     specifier: "@thi.ng/math/safe-div",
     typedAdapter: "number-pair",
-    body: `return {fraction: safeDiv(7, 2), zero: safeDiv(7, 0), negativeZero: safeDiv(7, -0), negative: safeDiv(-7, 2)};`,
+    body: `return {fraction: safeDiv(7, 2), first: safeDiv(7, 0), negativeZero: safeDiv(7, -0), negative: safeDiv(-7, 2)};`,
   },
   {
     name: "@thi.ng/strings",
@@ -107,7 +107,7 @@ export const popularCombined = {
 export const combined = {
   name: "combined",
   libraries: ["@thi.ng/math", "@thi.ng/strings"],
-  body: `return {label: upper("price"), ratio: safeDiv(7, 2), zero: safeDiv(7, 0), unicode: upper("école Straße"), empty: upper("")};`,
+  body: `return {label: upper("price"), ratio: safeDiv(7, 2), first: safeDiv(7, 0), unicode: upper("école Straße"), empty: upper("")};`,
 };
 
 export const applicationCombined = {

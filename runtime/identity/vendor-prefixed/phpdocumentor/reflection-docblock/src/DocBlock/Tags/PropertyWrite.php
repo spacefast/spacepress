@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
+namespace First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags;
 
-use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
-use Zero\Identity\Vendor\phpDocumentor\Reflection\Type;
-use Zero\Identity\Vendor\Webmozart\Assert\Assert;
+use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Description;
+use First\Identity\Vendor\phpDocumentor\Reflection\Type;
+use First\Identity\Vendor\Webmozart\Assert\Assert;
 
 /**
  * Reflection class for a {@}property-write tag in a Docblock.

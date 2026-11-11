@@ -1,12 +1,12 @@
 <?php declare(strict_types = 1);
 
-namespace Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast;
+namespace First\Identity\Vendor\PHPStan\PhpDocParser\Ast;
 
 use LogicException;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprNode;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocChildNode;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagValueNode;
-use Zero\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\TypeNode;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprNode;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocChildNode;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagValueNode;
+use First\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type\TypeNode;
 use function array_keys;
 use function array_pop;
 use function array_splice;

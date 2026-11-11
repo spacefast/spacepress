@@ -44,16 +44,16 @@ function walk(root: string, rel = ""): string[] {
 // Files of WordPress.org plugins are shown as their authors wrote them. Everything First wrote reads
 // with First names, as the code will after the rename.
 // WordPress.org plugins are copied as published: the platform's pinned ones, and the ones an app's
-// lock adds (tests/fixtures/platform.json, zero/_generated/wp-plugins.lock.json). Only files First
+// lock adds (tests/fixtures/platform.json, first/_generated/wp-plugins.lock.json). Only files First
 // wrote get First names.
 const platformPlugins = Object.keys((JSON.parse(readFileSync(path.join(repo, "tests/fixtures/platform.json"), "utf8")) as { plugins: Record<string, unknown> }).plugins);
 const thirdParty = (lock: string[]) => new Set([...platformPlugins, ...lock]);
 const firstWrote = (file: string, published: Set<string>) => {
-	const plugin = /^zero\/dist\/wp-content\/plugins\/([^/.]+)[/.]/.exec(file)?.[1];
+	const plugin = /^first\/dist\/wp-content\/plugins\/([^/.]+)[/.]/.exec(file)?.[1];
 	return plugin === undefined || !published.has(plugin);
 };
 
-const binary = path.join(target, "release", "zero");
+const binary = path.join(target, "release", "first");
 if (!existsSync(binary)) run("cargo", ["build", "--locked", "--release"], repo);
 
 rmSync(showcaseRoot, { recursive: true, force: true });
@@ -64,15 +64,15 @@ const written = new Set<string>();
 for (const { name, landing, seed } of siteExamples) {
 	const from = path.join(repo, "examples", name);
 	const to = path.join(showcaseRoot, name);
-	cpSync(from, to, { recursive: true, filter: (file) => !/[/\\](node_modules|\.zero|dist)$/.test(file) });
+	cpSync(from, to, { recursive: true, filter: (file) => !/[/\\](node_modules|\.first|dist)$/.test(file) });
 	if (existsSync(path.join(to, "package-lock.json"))) run("npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], to);
 	run(binary, ["build", to, "--quiet"], repo);
 
-	const locked = (JSON.parse(readFileSync(path.join(to, "zero/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string }[] }).plugins.map((p) => p.slug);
+	const locked = (JSON.parse(readFileSync(path.join(to, "first/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string }[] }).plugins.map((p) => p.slug);
 	const published = thirdParty(locked);
 	const manifest: Manifest = { app: "", files: [] };
-	manifest.app = (JSON.parse(readFileSync(path.join(to, "zero/dist/wp-content/zero-manifest.json"), "utf8")) as { app: string }).app;
-	for (const file of walk(to).filter((file) => !file.startsWith("node_modules/") && !file.startsWith(".zero/"))) {
+	manifest.app = (JSON.parse(readFileSync(path.join(to, "first/dist/wp-content/first-manifest.json"), "utf8")) as { app: string }).app;
+	for (const file of walk(to).filter((file) => !file.startsWith("node_modules/") && !file.startsWith(".first/"))) {
 		const bytes = readFileSync(path.join(to, file));
 		const text = new TextDecoder("utf-8", { fatal: true });
 		let contents: string | null = null;
@@ -96,12 +96,12 @@ for (const { name, landing, seed } of siteExamples) {
 
 	// The Playground blueprint: the plugin zips this build wrote, and the WordPress.org plugins at
 	// the versions in the app's lock.
-	const plugins = path.join(to, "zero/dist/wp-content/plugins");
+	const plugins = path.join(to, "first/dist/wp-content/plugins");
 	const generated = readdirSync(plugins).filter((file) => file.endsWith(".zip")).map((file) => file.slice(0, -4)).filter((slug) => !published.has(slug)).sort();
 	mkdirSync(path.join(filesRoot, "plugins", name), { recursive: true });
 	// Copied as built: the folder inside each zip is the plugin's name, so the zip keeps it.
 	for (const slug of generated) cpSync(path.join(plugins, `${slug}.zip`), path.join(filesRoot, "plugins", name, `${slug}.zip`));
-	const lock = JSON.parse(readFileSync(path.join(to, "zero/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
+	const lock = JSON.parse(readFileSync(path.join(to, "first/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
 	const zipBase = `${process.env.SITE_URL ?? "https://first-docs.space.fast"}/files/plugins/${name}/`;
 	const print = blueprint({ zipBase, firstPlugins: generated, wordpressPlugins: lock.plugins, landingPage: landing, seed });
 	writeFileSync(path.join(filesRoot, `${name}.blueprint.json`), `${JSON.stringify(print, null, "\t")}\n`);

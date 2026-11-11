@@ -1,5 +1,5 @@
 {
-	"name": "@zero-admin/load-assets",
+	"name": "@first-admin/load-assets",
 	"version": "1.0.0",
 	"description": "A small package used to lazy-load editor settings",
 	"type": "module",

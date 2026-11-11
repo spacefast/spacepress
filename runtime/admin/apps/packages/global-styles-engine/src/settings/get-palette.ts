@@ -78,7 +78,7 @@ export default function getPalettes(
 			name: _x(
 				'Theme',
 				'Indicates this palette comes from the theme.',
-				'zero-admin'
+				'first-admin'
 			),
 			slug: 'theme',
 			colors: themeColors as Color[],
@@ -93,7 +93,7 @@ export default function getPalettes(
 			name: _x(
 				'Default',
 				'Indicates this palette comes from WordPress.',
-				'zero-admin'
+				'first-admin'
 			),
 			slug: 'default',
 			colors: defaultColors as Color[],
@@ -104,7 +104,7 @@ export default function getPalettes(
 			name: _x(
 				'Custom',
 				'Indicates this palette is created by the user.',
-				'zero-admin'
+				'first-admin'
 			),
 			slug: 'custom',
 			colors: customColors as Color[],
@@ -116,7 +116,7 @@ export default function getPalettes(
 			name: _x(
 				'Theme',
 				'Indicates this palette comes from the theme.',
-				'zero-admin'
+				'first-admin'
 			),
 			slug: 'theme',
 			gradients: themeGradients as Gradient[],
@@ -131,7 +131,7 @@ export default function getPalettes(
 			name: _x(
 				'Default',
 				'Indicates this palette comes from WordPress.',
-				'zero-admin'
+				'first-admin'
 			),
 			slug: 'default',
 			gradients: defaultGradients as Gradient[],
@@ -142,7 +142,7 @@ export default function getPalettes(
 			name: _x(
 				'Custom',
 				'Indicates this palette is created by the user.',
-				'zero-admin'
+				'first-admin'
 			),
 			slug: 'custom',
 			gradients: customGradients as Gradient[],
@@ -154,7 +154,7 @@ export default function getPalettes(
 			name: _x(
 				'Theme',
 				'Indicates these duotone filters come from the theme.',
-				'zero-admin'
+				'first-admin'
 			),
 			slug: 'theme',
 			duotones: themeDuotones as Duotone[],
@@ -170,7 +170,7 @@ export default function getPalettes(
 			name: _x(
 				'Default',
 				'Indicates these duotone filters come from WordPress.',
-				'zero-admin'
+				'first-admin'
 			),
 			slug: 'default',
 			duotones: defaultDuotones as Duotone[],
@@ -181,7 +181,7 @@ export default function getPalettes(
 			name: _x(
 				'Custom',
 				'Indicates these doutone filters are created by the user.',
-				'zero-admin'
+				'first-admin'
 			),
 			slug: 'custom',
 			duotones: customDuotones as Duotone[],

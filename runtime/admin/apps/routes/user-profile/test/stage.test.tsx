@@ -5,18 +5,18 @@ import Content from '../stage';
 const mockRecordTracksEvent = jest.fn();
 const mockButtonClick = jest.fn();
 
-jest.mock( '@zero-admin/core-data-next', () => ( {
+jest.mock( '@first-admin/core-data-next', () => ( {
 	useFieldCollections: () => [ { id: 'email', label: 'Email' } ],
 } ) );
 
-jest.mock( '@zero-admin/views', () => ( {
+jest.mock( '@first-admin/views', () => ( {
 	useViewConfig: () => ( {
 		editForm: {},
 		viewConfig: {},
 	} ),
 } ) );
 
-jest.mock( '@zero-admin/admin-toolkit', () => {
+jest.mock( '@first-admin/admin-toolkit', () => {
 	function Menu( { children }: { children: React.ReactNode } ) {
 		return <div>{ children }</div>;
 	}
@@ -100,8 +100,8 @@ jest.mock( '@wordpress/i18n', () => ( {
 	sprintf: ( value: string ) => value,
 } ) );
 
-jest.mock( '@zero-admin/boot', () => ( {
-	store: 'zero-admin-store',
+jest.mock( '@first-admin/boot', () => ( {
+	store: 'first-admin-store',
 } ) );
 
 jest.mock( '@wordpress/data', () => ( {
@@ -196,11 +196,11 @@ jest.mock( '@wordpress/icons', () => ( {
 	arrowUpRight: {},
 } ) );
 
-jest.mock( '@zero-admin/dataviews', () => ( {
+jest.mock( '@first-admin/dataviews', () => ( {
 	DataForm: () => <div>DataForm</div>,
 } ) );
 
-jest.mock( '@zero-admin/telemetry', () => ( {
+jest.mock( '@first-admin/telemetry', () => ( {
 	useTrack: () => ( {
 		buttonClick: mockButtonClick,
 		buttonError: jest.fn(),

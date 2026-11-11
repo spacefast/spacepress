@@ -9,12 +9,12 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\String;
+namespace First\Identity\Vendor\Symfony\Component\String;
 
 use Random\Randomizer;
-use Zero\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
-use Zero\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
-use Zero\Identity\Vendor\Symfony\Component\String\Exception\RuntimeException;
+use First\Identity\Vendor\Symfony\Component\String\Exception\ExceptionInterface;
+use First\Identity\Vendor\Symfony\Component\String\Exception\InvalidArgumentException;
+use First\Identity\Vendor\Symfony\Component\String\Exception\RuntimeException;
 
 /**
  * Represents a binary-safe string of bytes.

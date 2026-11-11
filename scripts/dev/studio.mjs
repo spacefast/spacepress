@@ -39,7 +39,7 @@ async function studioBinary() {
     const pkg = await json(packagePath);
     if (pkg.name === 'wp-studio' && pkg.version === STUDIO_VERSION) return main;
   }
-  throw new Error(`Cannot find wp-studio@${STUDIO_VERSION}. Run zero dev with Node.js 22+ and npm installed.`);
+  throw new Error(`Cannot find wp-studio@${STUDIO_VERSION}. Run first dev with Node.js 22+ and npm installed.`);
 }
 
 function execute(file, args, { capture = false, timeout = 180000, env = process.env, input = 'ignore' } = {}) {
@@ -64,10 +64,10 @@ async function plainDirectory(path) {
 }
 
 export async function ownedState(project, create) {
-  const zero = join(project, '.zero');
-  if (await exists(zero)) await plainDirectory(zero);
-  else if (create) await mkdir(zero);
-  const state = join(zero, 'dev');
+  const first = join(project, '.first');
+  if (await exists(first)) await plainDirectory(first);
+  else if (create) await mkdir(first);
+  const state = join(first, 'dev');
   const marker = join(state, 'owner.json');
   if (await exists(state)) {
     await plainDirectory(state);
@@ -79,7 +79,7 @@ export async function ownedState(project, create) {
     if (await exists(owner.site)) await plainDirectory(owner.site);
     return { state, marker, owner };
   }
-  if (!create) throw new Error('No local development site. Run zero dev first.');
+  if (!create) throw new Error('No local development site. Run first dev first.');
   await mkdir(state, { mode: 0o700 });
   const owner = { version: 1, project, site: join(state, 'wordpress'), generated: [], created: false };
   await atomicJson(marker, owner);
@@ -92,16 +92,16 @@ export async function lock(state) {
   try { await mkdir(gate); }
   catch (error) {
     if (error.code !== 'EEXIST') throw error;
-    throw new Error('Another command is acquiring the development site. If it was interrupted, inspect .zero/dev/session-claim.');
+    throw new Error('Another command is acquiring the development site. If it was interrupted, inspect .first/dev/session-claim.');
   }
   try {
     if (await exists(path)) {
       const session = await json(path).catch(() => null);
-      if (!Number.isSafeInteger(session?.pid) || session.pid <= 0) throw new Error('Development lock is incomplete; inspect .zero/dev/session.json before removing it.');
+      if (!Number.isSafeInteger(session?.pid) || session.pid <= 0) throw new Error('Development lock is incomplete; inspect .first/dev/session.json before removing it.');
       let active = true;
       try { process.kill(session.pid, 0); }
       catch (error) { if (error.code !== 'ESRCH') throw error; active = false; }
-      if (active) throw new Error('Another zero dev command owns this project. Use zero dev stop first.');
+      if (active) throw new Error('Another first dev command owns this project. Use first dev stop first.');
       await rm(path);
     }
     const file = await open(path, 'wx', 0o600);
@@ -114,7 +114,7 @@ export async function lock(state) {
 }
 
 async function migrationHistory(project) {
-  const directory = join(project, 'zero/_generated/migrations');
+  const directory = join(project, 'first/_generated/migrations');
   if (!await exists(directory)) return {};
   const history = {};
   for (const name of (await readdir(directory)).filter((name) => name.endsWith('.sql')).sort()) {
@@ -132,7 +132,7 @@ async function availablePort(port) {
 }
 
 export async function publishPlugins(content, managed) {
-  const manifest = await json(join(content, 'zero-manifest.json'));
+  const manifest = await json(join(content, 'first-manifest.json'));
   if (managed.owner.app && managed.owner.app !== manifest.app) {
     throw new Error('Changing the application name needs a separate local site; the existing app and data were preserved.');
   }
@@ -145,12 +145,12 @@ export async function publishPlugins(content, managed) {
     const destination = join(target, slug);
     if (await exists(destination)) {
       await plainDirectory(destination);
-      if (!managed.owner.generated.includes(slug)) throw new Error(`Plugin ${slug} already exists and is not managed by Zero. Move or rename it before continuing.`);
+      if (!managed.owner.generated.includes(slug)) throw new Error(`Plugin ${slug} already exists and is not managed by First. Move or rename it before continuing.`);
     }
   }
   for (const slug of plugins) {
     const destination = join(target, slug);
-    const stage = join(target, `.zero-${slug}-${randomUUID()}`);
+    const stage = join(target, `.first-${slug}-${randomUUID()}`);
     const backup = `${stage}.previous`;
     await cp(join(content, 'plugins', slug), stage, { recursive: true, dereference: true });
     const previous = await exists(destination);
@@ -169,8 +169,8 @@ export async function publishPlugins(content, managed) {
       await atomicJson(managed.marker, managed.owner);
     }
   }
-  const activate = [...manifest.dependencies.map((d) => d.slug), 'zero-runtime'];
-  for (const slug of ['zero-identity', `zero-app-${manifest.app}`, 'zero-admin']) {
+  const activate = [...manifest.dependencies.map((d) => d.slug), 'first-runtime'];
+  for (const slug of ['first-identity', `first-app-${manifest.app}`, 'first-admin']) {
     if (plugins.includes(slug)) activate.push(slug);
   }
   const spec = {
@@ -183,9 +183,9 @@ export async function publishPlugins(content, managed) {
   return { manifest, activate };
 }
 
-// Directory names never watched anywhere, and the project paths Zero writes itself.
-const IGNORED_NAMES = new Set(['.zero', '.git', 'node_modules']);
-const GENERATED = new Set(['zero/_generated', 'zero/dist']);
+// Directory names never watched anywhere, and the project paths First writes itself.
+const IGNORED_NAMES = new Set(['.first', '.git', 'node_modules']);
+const GENERATED = new Set(['first/_generated', 'first/dist']);
 const ignoredPath = (name) => IGNORED_NAMES.has(name.split('/').at(-1)) || GENERATED.has(name);
 
 export async function sourceDigest(project) {
@@ -277,15 +277,15 @@ export async function watchSources(project, onChange, onError) {
 }
 
 async function main() {
-  if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('zero dev requires Node.js 22 or newer.');
-  const [mode, directory, zero, output, requestedPort = '8787', ...flags] = process.argv.slice(2);
+  if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('first dev requires Node.js 22 or newer.');
+  const [mode, directory, first, output, requestedPort = '8787', ...flags] = process.argv.slice(2);
   const noWatch = flags.includes('--no-watch');
   const project = await realpath(directory);
   const managed = await ownedState(project, mode === 'start');
   const studio = await studioBinary();
   const runStudio = (args, options) => execute(process.execPath, [studio, ...args, '--path', managed.owner.site], options);
   if (mode === 'wp') {
-    // `zero wp` and the site commands: WP-CLI's own stdio and exit status, untouched.
+    // `first wp` and the site commands: WP-CLI's own stdio and exit status, untouched.
     const child = spawn(process.execPath, [studio, 'wp', ...process.argv.slice(4), '--path', managed.owner.site], { stdio: 'inherit' });
     const [code, signal] = await once(child, 'exit');
     process.exitCode = code ?? (signal === 'SIGINT' ? 130 : 1);
@@ -324,7 +324,7 @@ async function main() {
   }
   if (mode !== 'start') throw new Error(`Unknown dev command: ${mode}`);
   const content = resolve(output);
-  if (inside(content, managed.state) || inside(managed.state, content)) throw new Error('--out must not overlap .zero/dev.');
+  if (inside(content, managed.state) || inside(managed.state, content)) throw new Error('--out must not overlap .first/dev.');
   const release = await lock(managed.state);
   await rm(join(managed.state, 'stop'), { force: true });
   let watcher, timer, stopTimer, stopping = false, running = false, dirty = false, siteStarted = false, siteUrl;
@@ -339,8 +339,8 @@ async function main() {
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
   const build = async (allowDestructive = false) => {
     // Before the history check, which would read a moved ledger as changed and point at --allow-destructive.
-    if (await exists(join(project, 'zero/migrations'))) {
-      throw new Error('zero/migrations/ moved to zero/_generated/migrations/; move it with `mkdir -p zero/_generated && rmdir zero/_generated/migrations 2>/dev/null; git mv zero/migrations zero/_generated/migrations`, then start again.');
+    if (await exists(join(project, 'first/migrations'))) {
+      throw new Error('first/migrations/ moved to first/_generated/migrations/; move it with `mkdir -p first/_generated && rmdir first/_generated/migrations 2>/dev/null; git mv first/migrations first/_generated/migrations`, then start again.');
     }
     const args = ['build', project, '--out', content];
     if (managed.owner.snapshot && !allowDestructive) {
@@ -348,35 +348,35 @@ async function main() {
       // snapshot looks unchanged. Only the dev-owned build may extend the accepted history.
       const history = JSON.stringify(await migrationHistory(project));
       if (history !== JSON.stringify(managed.owner.migrations) && history !== JSON.stringify(managed.owner.pending?.migrations)) {
-        throw new Error('Migration history changed outside zero dev. Inspect it, then restart once with --allow-destructive to apply deliberately.');
+        throw new Error('Migration history changed outside first dev. Inspect it, then restart once with --allow-destructive to apply deliberately.');
       }
       const snapshot = join(managed.state, 'preserve.json');
       await atomicJson(snapshot, managed.owner.pending?.snapshot ?? managed.owner.snapshot);
       args.push('--preserve-data', snapshot);
     }
-    await execute(zero, args, { timeout: 300000 });
+    await execute(first, args, { timeout: 300000 });
     managed.owner.pending = {
       migrations: await migrationHistory(project),
-      snapshot: await json(join(project, 'zero/_generated/migrations/snapshot.json')),
+      snapshot: await json(join(project, 'first/_generated/migrations/snapshot.json')),
     };
     await atomicJson(managed.marker, managed.owner);
   };
-  // `wp zero migrate`, checked against live rows (spec §2.9). With --allow-destructive, a refused
+  // `wp first migrate`, checked against live rows (spec §2.9). With --allow-destructive, a refused
   // drop is confirmed at the counts the refusal reports; anything else (a required field rows lack)
   // stays an error to fix in the schema.
   const migrate = async (allowDestructive) => {
     try {
-      await runStudio(['wp', 'zero', 'migrate'], { capture: true });
+      await runStudio(['wp', 'first', 'migrate'], { capture: true });
     } catch (error) {
       const refusal = /\{"error":.*\}/.exec(error.stdout ?? '')?.[0];
       const problem = refusal ? JSON.parse(refusal).error : null;
       if (!allowDestructive || problem?.code !== 'schema_refused' || problem.drop.length !== problem.refusals.length) throw error;
-      await runStudio(['wp', 'zero', 'migrate', `--drop=${problem.drop.join(',')}`]);
+      await runStudio(['wp', 'first', 'migrate', `--drop=${problem.drop.join(',')}`]);
     }
   };
   const configure = async (allowDestructive = false) => {
-    const snapshot = await json(join(project, 'zero/_generated/migrations/snapshot.json'));
-    const manifest = await json(join(content, 'zero-manifest.json'));
+    const snapshot = await json(join(project, 'first/_generated/migrations/snapshot.json'));
+    const manifest = await json(join(content, 'first-manifest.json'));
     const retired = managed.owner.generated.filter((slug) => !(slug in manifest.plugins));
     for (const slug of retired) await plainDirectory(join(managed.owner.site, 'wp-content/plugins', slug));
     if (retired.length) await runStudio(['wp', 'plugin', 'deactivate', ...retired]);
@@ -388,7 +388,7 @@ async function main() {
     }
     await runStudio(['wp', 'eval-file', join(here, 'setup.php'), join(managed.state, 'setup.json'), '--use-include']);
     await migrate(allowDestructive);
-    await runStudio(['wp', 'zero', 'identity', 'app', 'add', '--name=Zero development', '--id=app_zero_dev',
+    await runStudio(['wp', 'first', 'identity', 'app', 'add', '--name=First development', '--id=app_zero_dev',
       `--redirect=${siteUrl}/auth/callback`, `--origin=${siteUrl}`]);
     for (const slug of retired) await rm(join(managed.owner.site, 'wp-content/plugins', slug), { recursive: true });
     managed.owner.generated = Object.keys(manifest.plugins);
@@ -399,16 +399,16 @@ async function main() {
   };
   try {
     running = true;
-    if (!await exists(join(project, 'zero.config.ts'))) throw new Error(`No zero.config.ts in ${project}`);
+    if (!await exists(join(project, 'first.config.ts'))) throw new Error(`No first.config.ts in ${project}`);
     let digest = await sourceDigest(project);
     await build(flags.includes('--allow-destructive'));
     if (!managed.owner.created) {
       await availablePort(Number(requestedPort));
       if (await exists(managed.owner.site) && (await readdir(managed.owner.site)).length) {
-        throw new Error('A previous Studio creation was interrupted. Inspect .zero/dev/wordpress; Zero will not adopt or delete it automatically.');
+        throw new Error('A previous Studio creation was interrupted. Inspect .first/dev/wordpress; First will not adopt or delete it automatically.');
       }
-      await runStudio(['create', '--name', `Zero ${project.split(sep).at(-1)}`, '--wp', WORDPRESS_VERSION, '--php', '8.4',
-        '--admin-username', 'admin', '--admin-password', 'zero-test-admin', '--skip-browser', '--skip-log-details'],
+      await runStudio(['create', '--name', `First ${project.split(sep).at(-1)}`, '--wp', WORDPRESS_VERSION, '--php', '8.4',
+        '--admin-username', 'admin', '--admin-password', 'first-test-admin', '--skip-browser', '--skip-log-details'],
         { timeout: 600000, env: { ...process.env, STUDIO_BASE_PORT: requestedPort } });
       managed.owner.created = true;
       await atomicJson(managed.marker, managed.owner);
@@ -419,19 +419,19 @@ async function main() {
     const status = JSON.parse(await runStudio(['status', '--format', 'json'], { capture: true }));
     const url = status.siteUrl.replace(/\/$/, '');
     siteUrl = url;
-    const mu = join(managed.owner.site, 'wp-content/mu-plugins/zero-dev-runtime.php');
-    if (!managed.owner.devMu && await exists(mu)) throw new Error('zero-dev-runtime.php already exists and is not managed by Zero.');
-    await writeFile(mu, "<?php\n// Local development only: allow identity callbacks on the site's HTTP origin.\nif (!defined('ZERO_IDENTITY_DEV_HTTP')) define('ZERO_IDENTITY_DEV_HTTP', true);\n");
+    const mu = join(managed.owner.site, 'wp-content/mu-plugins/first-dev-runtime.php');
+    if (!managed.owner.devMu && await exists(mu)) throw new Error('first-dev-runtime.php already exists and is not managed by First.');
+    await writeFile(mu, "<?php\n// Local development only: allow identity callbacks on the site's HTTP origin.\nif (!defined('FIRST_IDENTITY_DEV_HTTP')) define('FIRST_IDENTITY_DEV_HTTP', true);\n");
     managed.owner.devMu = true;
     await atomicJson(managed.marker, managed.owner);
     await configure(flags.includes('--allow-destructive'));
-    const response = await fetch(`${url}/wp-json/zero/v1/_schema`, { signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw new Error(`Zero application is not ready: HTTP ${response.status}. Run zero doctor --site ${url}`);
+    const response = await fetch(`${url}/wp-json/first/v1/_schema`, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error(`First application is not ready: HTTP ${response.status}. Run first doctor --site ${url}`);
     console.log(`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`);
-    if (await exists(join(project, 'public/index.html'))) console.log(`App:       ${url}/wp-content/plugins/zero-app-${encodeURIComponent(managed.owner.app)}/public/index.html`);
-    if (managed.owner.generated.includes('zero-admin')) console.log(`Zero Admin: ${url}/zero-admin/`);
-    console.log('Initial login: admin / zero-test-admin (local development only; unchanged if you edited it)\n');
-    console.log(`Data persists in ${managed.owner.site}\nStop: zero dev stop ${JSON.stringify(project)}`);
+    if (await exists(join(project, 'public/index.html'))) console.log(`App:       ${url}/wp-content/plugins/first-app-${encodeURIComponent(managed.owner.app)}/public/index.html`);
+    if (managed.owner.generated.includes('first-admin')) console.log(`First Admin: ${url}/first-admin/`);
+    console.log('Initial login: admin / first-test-admin (local development only; unchanged if you edited it)\n');
+    console.log(`Data persists in ${managed.owner.site}\nStop: first dev stop ${JSON.stringify(project)}`);
     running = false;
     if (await exists(join(managed.state, 'stop'))) stopping = true;
     if (noWatch) return;
@@ -473,5 +473,5 @@ async function main() {
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
-  main().catch((error) => { console.error(`zero dev: ${error.message}`); process.exitCode = 1; });
+  main().catch((error) => { console.error(`first dev: ${error.message}`); process.exitCode = 1; });
 }

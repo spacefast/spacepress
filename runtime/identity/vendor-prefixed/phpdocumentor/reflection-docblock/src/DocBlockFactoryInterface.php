@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\phpDocumentor\Reflection;
+namespace First\Identity\Vendor\phpDocumentor\Reflection;
 
-use Zero\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
+use First\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tag;
 
 // phpcs:ignore SlevomatCodingStandard.Classes.SuperfluousInterfaceNaming.SuperfluousSuffix
 interface DocBlockFactoryInterface

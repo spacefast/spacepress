@@ -1,24 +1,24 @@
 {
-	"name": "@zero-admin/boot",
+	"name": "@first-admin/boot",
 	"version": "1.0.0",
-	"description": "Main Zero Admin application",
+	"description": "Main First Admin application",
 	"type": "module",
 	"wpModule": true,
 	"exports": {
 		".": "./src/index.tsx"
 	},
 	"dependencies": {
-		"@zero-admin/admin-toolkit": "workspace:*",
-		"@zero-admin/ai-agent": "workspace:*",
-		"@zero-admin/attachment-importer": "workspace:*",
-		"@zero-admin/core-data-next": "workspace:*",
-		"@zero-admin/dashboard": "workspace:*",
-		"@zero-admin/design-system": "workspace:*",
-		"@zero-admin/fields-next": "workspace:*",
-		"@zero-admin/global-styles-engine": "workspace:*",
-		"@zero-admin/lazy-editor": "workspace:*",
-		"@zero-admin/theme": "workspace:*",
-		"@zero-admin/dataviews": "workspace:*",
+		"@first-admin/admin-toolkit": "workspace:*",
+		"@first-admin/ai-agent": "workspace:*",
+		"@first-admin/attachment-importer": "workspace:*",
+		"@first-admin/core-data-next": "workspace:*",
+		"@first-admin/dashboard": "workspace:*",
+		"@first-admin/design-system": "workspace:*",
+		"@first-admin/fields-next": "workspace:*",
+		"@first-admin/global-styles-engine": "workspace:*",
+		"@first-admin/lazy-editor": "workspace:*",
+		"@first-admin/theme": "workspace:*",
+		"@first-admin/dataviews": "workspace:*",
 		"@tanstack/history": "^1.120.17",
 		"@wordpress/a11y": "catalog:",
 		"@wordpress/admin-ui": "catalog:",
@@ -55,7 +55,7 @@
 		"fast-deep-equal": "^3.1.3",
 		"react": "catalog:",
 		"react-dom": "catalog:",
-		"@zero-admin/schema": "workspace:*"
+		"@first-admin/schema": "workspace:*"
 	},
 	"license": "GPL-2.0-or-later"
 }

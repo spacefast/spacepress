@@ -1,7 +1,7 @@
-// eslint-disable-next-line @zero-admin/design-system/use-new-components -- See: ARC-1359
-import { SelectControl, Field } from '@zero-admin/design-system';
+// eslint-disable-next-line @first-admin/design-system/use-new-components -- See: ARC-1359
+import { SelectControl, Field } from '@first-admin/design-system';
 import type { User } from '@wordpress/core-data';
-import type { Field as DataViewField } from '@zero-admin/dataviews';
+import type { Field as DataViewField } from '@first-admin/dataviews';
 import { useMemo } from '@wordpress/element';
 import { sanitizeHtml } from '../../../routes/plugin-list/components/plugin-detail-modal/plugin-detail-utils';
 import './style.scss';

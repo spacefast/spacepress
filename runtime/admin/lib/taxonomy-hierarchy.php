@@ -6,7 +6,7 @@
  * taxonomy terms, enabling tree-ordered responses with level metadata for
  * DataViews em-dash indentation.
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 /**
@@ -15,7 +15,7 @@
  * @param array $terms Array of term objects with term_id and parent properties.
  * @return array{term_ids: int[], levels: array<int, int>} Sorted IDs and level map.
  */
-function zero_admin_sort_terms_hierarchically( array $terms ): array {
+function first_admin_sort_terms_hierarchically( array $terms ): array {
 	$top_level = array();
 	$children  = array();
 
@@ -29,7 +29,7 @@ function zero_admin_sort_terms_hierarchically( array $terms ): array {
 
 	$ids    = array();
 	$levels = array();
-	zero_admin_add_hierarchical_term_ids( $ids, $levels, 0, $top_level, $children );
+	first_admin_add_hierarchical_term_ids( $ids, $levels, 0, $top_level, $children );
 
 	// Process orphans whose parents weren't in the initial set.
 	if ( ! empty( $children ) ) {
@@ -41,7 +41,7 @@ function zero_admin_sort_terms_hierarchically( array $terms ): array {
 				$parent_term = get_term( $ancestor );
 				$ancestor    = ( $parent_term && ! is_wp_error( $parent_term ) ) ? (int) $parent_term->parent : 0;
 			}
-			zero_admin_add_hierarchical_term_ids( $ids, $levels, $level, $child_ids, $children );
+			first_admin_add_hierarchical_term_ids( $ids, $levels, $level, $child_ids, $children );
 		}
 	}
 
@@ -60,7 +60,7 @@ function zero_admin_sort_terms_hierarchically( array $terms ): array {
  * @param int[]             $to_process IDs to process at this level.
  * @param array<int, int[]> $children  Children map (by reference, entries removed after processing).
  */
-function zero_admin_add_hierarchical_term_ids( array &$ids, array &$levels, int $level, array $to_process, array &$children ): void {
+function first_admin_add_hierarchical_term_ids( array &$ids, array &$levels, int $level, array $to_process, array &$children ): void {
 	foreach ( $to_process as $id ) {
 		if ( in_array( $id, $ids, true ) ) {
 			continue;
@@ -69,7 +69,7 @@ function zero_admin_add_hierarchical_term_ids( array &$ids, array &$levels, int 
 		$levels[ $id ] = $level;
 
 		if ( isset( $children[ $id ] ) ) {
-			zero_admin_add_hierarchical_term_ids( $ids, $levels, $level + 1, $children[ $id ], $children );
+			first_admin_add_hierarchical_term_ids( $ids, $levels, $level + 1, $children[ $id ], $children );
 			unset( $children[ $id ] );
 		}
 	}
@@ -78,20 +78,20 @@ function zero_admin_add_hierarchical_term_ids( array &$ids, array &$levels, int 
 /**
  * Register orderby_hierarchy support for all hierarchical taxonomies.
  */
-function zero_admin_register_taxonomy_hierarchy_support(): void {
+function first_admin_register_taxonomy_hierarchy_support(): void {
 	$taxonomies = get_taxonomies( array( 'hierarchical' => true ), 'names' );
 
 	foreach ( $taxonomies as $taxonomy ) {
 		// Register the query param.
 		add_filter(
 			"rest_{$taxonomy}_collection_params",
-			'zero_admin_add_orderby_hierarchy_param'
+			'first_admin_add_orderby_hierarchy_param'
 		);
 
 		// Intercept the term query to sort hierarchically.
 		add_filter(
 			"rest_{$taxonomy}_query",
-			'zero_admin_intercept_hierarchy_query',
+			'first_admin_intercept_hierarchy_query',
 			10,
 			2
 		);
@@ -99,13 +99,13 @@ function zero_admin_register_taxonomy_hierarchy_support(): void {
 		// Add level to each term in the response.
 		add_filter(
 			"rest_prepare_{$taxonomy}",
-			'zero_admin_add_term_level_to_response',
+			'first_admin_add_term_level_to_response',
 			10,
 			3
 		);
 	}
 }
-add_action( 'rest_api_init', 'zero_admin_register_taxonomy_hierarchy_support' );
+add_action( 'rest_api_init', 'first_admin_register_taxonomy_hierarchy_support' );
 
 /**
  * Add orderby_hierarchy boolean param to taxonomy collection params.
@@ -113,9 +113,9 @@ add_action( 'rest_api_init', 'zero_admin_register_taxonomy_hierarchy_support' );
  * @param array $params Existing collection params.
  * @return array Modified params.
  */
-function zero_admin_add_orderby_hierarchy_param( array $params ): array {
+function first_admin_add_orderby_hierarchy_param( array $params ): array {
 	$params['orderby_hierarchy'] = array(
-		'description' => __( 'Sort terms by hierarchy.', 'zero-admin' ),
+		'description' => __( 'Sort terms by hierarchy.', 'first-admin' ),
 		'type'        => 'boolean',
 		'default'     => false,
 	);
@@ -127,8 +127,8 @@ function zero_admin_add_orderby_hierarchy_param( array $params ): array {
  *
  * @var array<string, array{term_ids: int[], levels: array<int, int>}>
  */
-global $zero_admin_taxonomy_hierarchy;
-$zero_admin_taxonomy_hierarchy = array();
+global $first_admin_taxonomy_hierarchy;
+$first_admin_taxonomy_hierarchy = array();
 
 /**
  * Intercept term query when orderby_hierarchy is requested.
@@ -140,12 +140,12 @@ $zero_admin_taxonomy_hierarchy = array();
  * @param WP_REST_Request $request The REST request.
  * @return array Modified args.
  */
-function zero_admin_intercept_hierarchy_query( array $args, WP_REST_Request $request ): array {
+function first_admin_intercept_hierarchy_query( array $args, WP_REST_Request $request ): array {
 	if ( empty( $request['orderby_hierarchy'] ) ) {
 		return $args;
 	}
 
-	global $zero_admin_taxonomy_hierarchy;
+	global $first_admin_taxonomy_hierarchy;
 
 	$taxonomy = $args['taxonomy'] ?? '';
 	if ( empty( $taxonomy ) ) {
@@ -166,10 +166,10 @@ function zero_admin_intercept_hierarchy_query( array $args, WP_REST_Request $req
 		return $args;
 	}
 
-	$result = zero_admin_sort_terms_hierarchically( $all_terms );
+	$result = first_admin_sort_terms_hierarchically( $all_terms );
 
 	// Store for later use in response filter.
-	$zero_admin_taxonomy_hierarchy[ $taxonomy ] = $result;
+	$first_admin_taxonomy_hierarchy[ $taxonomy ] = $result;
 
 	if ( empty( $result['term_ids'] ) ) {
 		return $args;
@@ -190,15 +190,15 @@ function zero_admin_intercept_hierarchy_query( array $args, WP_REST_Request $req
  * @param WP_REST_Request  $request  The request object.
  * @return WP_REST_Response Modified response.
  */
-function zero_admin_add_term_level_to_response( WP_REST_Response $response, WP_Term $term, WP_REST_Request $request ): WP_REST_Response {
+function first_admin_add_term_level_to_response( WP_REST_Response $response, WP_Term $term, WP_REST_Request $request ): WP_REST_Response {
 	if ( empty( $request['orderby_hierarchy'] ) ) {
 		return $response;
 	}
 
-	global $zero_admin_taxonomy_hierarchy;
+	global $first_admin_taxonomy_hierarchy;
 
 	$taxonomy = $term->taxonomy;
-	$levels   = $zero_admin_taxonomy_hierarchy[ $taxonomy ]['levels'] ?? array();
+	$levels   = $first_admin_taxonomy_hierarchy[ $taxonomy ]['levels'] ?? array();
 
 	$response->data['level'] = $levels[ $term->term_id ] ?? 0;
 

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Button, IconButton, Stack } from '@wordpress/ui';
 import { Modal } from '@wordpress/components';
-import { DataForm, type Form } from '@zero-admin/dataviews';
+import { DataForm, type Form } from '@first-admin/dataviews';
 import { __, sprintf } from '@wordpress/i18n';
 import { settings } from '@wordpress/icons';
 import type { DashboardWidgetType, DashboardWidget } from '../../types';
@@ -56,17 +56,17 @@ export default function DashboardWidgetSettings( {
 	const settingsTitle = widgetType.title
 		? sprintf(
 				/* translators: %s: Widget title */
-				__( '%s settings', 'zero-admin' ),
+				__( '%s settings', 'first-admin' ),
 				widgetType.title
 		  )
-		: __( 'Settings', 'zero-admin' );
+		: __( 'Settings', 'first-admin' );
 
 	return (
 		<Stack
 			direction="row"
 			gap="sm"
 			align="center"
-			className="zero-admin-dashboard-widget__settings"
+			className="first-admin-dashboard-widget__settings"
 		>
 			<IconButton
 				icon={ settings }
@@ -96,10 +96,10 @@ export default function DashboardWidgetSettings( {
 								variant="minimal"
 								onClick={ () => setIsEditMode( false ) }
 							>
-								{ __( 'Cancel', 'zero-admin' ) }
+								{ __( 'Cancel', 'first-admin' ) }
 							</Button>
 							<Button variant="solid" onClick={ handleSave }>
-								{ __( 'Save', 'zero-admin' ) }
+								{ __( 'Save', 'first-admin' ) }
 							</Button>
 						</Stack>
 					</Stack>

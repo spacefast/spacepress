@@ -1,20 +1,20 @@
-# @zero-admin/core-data-next
+# @first-admin/core-data-next
 
-Extended core data functionality for Zero Admin, providing access to field collections via the WordPress REST API.
+Extended core data functionality for First Admin, providing access to field collections via the WordPress REST API.
 
 Ideally, this package shouldn't exist and its functionality should be merged into `@wordpress/core-data`. However, due to the experimental nature of some of the features (like field collections), it's currently maintained as a separate package until later core merge.
 
 ## Installation
 
 > [!NOTE]
-> Currently, this package is intended for use within the Zero Admin plugin context. You do not need to install it from the public NPM registry. Instead, import it directly as a workspace dependency in zero-admin and it will be consumed as a module in WordPress.
+> Currently, this package is intended for use within the First Admin plugin context. You do not need to install it from the public NPM registry. Instead, import it directly as a workspace dependency in first-admin and it will be consumed as a module in WordPress.
 
 To use this package in your workspace, add it to your `package.json` dependencies:
 
 ```json
 {
 	"dependencies": {
-		"@zero-admin/core-data-next": "workspace:*"
+		"@first-admin/core-data-next": "workspace:*"
 	}
 }
 ```

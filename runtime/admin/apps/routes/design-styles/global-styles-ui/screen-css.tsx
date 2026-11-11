@@ -2,7 +2,7 @@ import { __ } from '@wordpress/i18n';
 import { Link } from '@wordpress/ui';
 // @ts-expect-error - WordPress private APIs
 import { privateApis as blockEditorPrivateApis } from '@wordpress/block-editor';
-import { unlock } from '@zero-admin/admin-toolkit';
+import { unlock } from '@first-admin/admin-toolkit';
 import { ScreenHeader } from './screen-header';
 import { useStyle } from './hooks';
 
@@ -13,7 +13,7 @@ const { AdvancedPanel: StylesAdvancedPanel } = unlock( blockEditorPrivateApis );
 function ScreenCSS() {
 	const description = __(
 		'Add your own CSS to customize the appearance and layout of your site.',
-		'zero-admin'
+		'first-admin'
 	);
 
 	// Get user-only styles (should not decode/encode to preserve raw CSS)
@@ -34,19 +34,19 @@ function ScreenCSS() {
 	return (
 		<>
 			<ScreenHeader
-				title={ __( 'CSS', 'zero-admin' ) }
+				title={ __( 'CSS', 'first-admin' ) }
 				description={ description }
 			/>
-			<div className="zero-admin-global-styles-screen-css">
+			<div className="first-admin-global-styles-screen-css">
 				<Link
 					href={ __(
 						'https://developer.wordpress.org/advanced-administration/wordpress/css/',
-						'zero-admin'
+						'first-admin'
 					) }
 					openInNewTab
-					className="zero-admin-global-styles-screen-css-help-link"
+					className="first-admin-global-styles-screen-css-help-link"
 				>
-					{ __( 'Learn more about CSS', 'zero-admin' ) }
+					{ __( 'Learn more about CSS', 'first-admin' ) }
 				</Link>
 				<StylesAdvancedPanel
 					value={ style }

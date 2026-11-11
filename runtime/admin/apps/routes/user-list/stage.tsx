@@ -5,10 +5,10 @@ import {
 	useParams,
 	useInvalidate,
 } from '@wordpress/route';
-import { DataViews, useView, useViewConfig } from '@zero-admin/views';
-import { useFieldCollections } from '@zero-admin/core-data-next';
-import { Page, RouterLink, unlock } from '@zero-admin/admin-toolkit';
-import type { Action, View } from '@zero-admin/dataviews';
+import { DataViews, useView, useViewConfig } from '@first-admin/views';
+import { useFieldCollections } from '@first-admin/core-data-next';
+import { Page, RouterLink, unlock } from '@first-admin/admin-toolkit';
+import type { Action, View } from '@first-admin/dataviews';
 import {
 	store as coreStore,
 	privateApis as coreDataPrivateApis,
@@ -22,7 +22,7 @@ import {
 	usePageView,
 	useTrack,
 	useTrackedDataView,
-} from '@zero-admin/telemetry';
+} from '@first-admin/telemetry';
 import { useFullEditAction } from './actions/full-edit';
 import { useQuickEditAction } from './actions/quick-edit';
 import { useDeleteUserAction } from './actions/delete-user';

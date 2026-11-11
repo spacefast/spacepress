@@ -1,4 +1,4 @@
-import type { View } from '@zero-admin/dataviews';
+import type { View } from '@first-admin/dataviews';
 /**
  * Removes tab-specific filters from a view before persisting preferences.
  *

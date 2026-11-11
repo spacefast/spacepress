@@ -15,7 +15,7 @@ import type { WidgetErrorConfig } from '../../types';
 export function WidgetError( {
 	message = __(
 		"We're having trouble loading data. Please try again soon.",
-		'zero-admin'
+		'first-admin'
 	),
 	icon,
 	action,
@@ -29,10 +29,10 @@ export function WidgetError( {
 			gap="lg"
 			align="center"
 			justify="center"
-			className="zero-admin-dashboard-widget-error"
+			className="first-admin-dashboard-widget-error"
 		>
 			<Icon icon={ iconElement } size={ 40 } />
-			<p className="zero-admin-dashboard-widget-error__message">
+			<p className="first-admin-dashboard-widget-error__message">
 				{ message }
 			</p>
 			{ action && (

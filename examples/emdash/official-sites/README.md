@@ -1,13 +1,13 @@
-# Official EmDash source on Zero
+# Official EmDash source on First
 
-Run the **actual official `blank`, `starter` and `blog` Astro frontends**, with their original pages, components, styles, TypeScript algorithms, and seed content. Their CMS backend is a compiled Zero project running in native WordPress Studio.
+Run the **actual official `blank`, `starter` and `blog` Astro frontends**, with their original pages, components, styles, TypeScript algorithms, and seed content. Their CMS backend is a compiled First project running in native WordPress Studio.
 
 Upstream: [emdash-cms/emdash](https://github.com/emdash-cms/emdash/tree/1824902c0c383c052b623528799427b8a5ff75d0/templates), commit `1824902c0c383c052b623528799427b8a5ff75d0`. The [MIT notice](LICENSE.upstream) applies to the copied template files. [`upstream.json`](upstream.json) records every original file and its SHA-256; every build verifies those bytes. The CMS-specific `src/live.config.ts` loader is replaced by the typed adapter.
 
-Use Node.js 22.23.4 or newer on Linux; the launcher verifies process ownership through `/proc`. From the repository root, with Zero's native development dependencies installed:
+Use Node.js 22.23.4 or newer on Linux; the launcher verifies process ownership through `/proc`. From the repository root, with First's native development dependencies installed:
 
 ```sh
-cargo build --bin zero
+cargo build --bin first
 npm ci --prefix examples/emdash/official-sites
 node examples/emdash/official-sites/build.mjs
 node examples/emdash/official-sites/run.mjs blank
@@ -16,22 +16,22 @@ node examples/emdash/official-sites/run.mjs starter
 node examples/emdash/official-sites/run.mjs blog
 ```
 
-Each command creates a unique disposable project and prints the frontend URL, native WordPress admin URL, exact ownership receipt, and cleanup command. The initial login, `admin / zero-test-admin`, belongs only to that disposable local site. The launcher downloads the blog seed's original photographs and imports them into the native media library. No upstream checkout is needed at runtime.
+Each command creates a unique disposable project and prints the frontend URL, native WordPress admin URL, exact ownership receipt, and cleanup command. The initial login, `admin / first-test-admin`, belongs only to that disposable local site. The launcher downloads the blog seed's original photographs and imports them into the native media library. No upstream checkout is needed at runtime.
 
 Clean up using the exact path in the receipt:
 
 ```sh
-node examples/emdash/official-sites/run.mjs blog cleanup /tmp/zero-official-blog-EXACT-SUFFIX
+node examples/emdash/official-sites/run.mjs blog cleanup /tmp/first-official-blog-EXACT-SUFFIX
 ```
 
-The cleanup checks ownership, stops that frontend and native site, removes its Studio registration, and deletes that project. `ZERO_BIN=/absolute/path/to/zero` selects an independently built compiler.
+The cleanup checks ownership, stops that frontend and native site, removes its Studio registration, and deletes that project. `FIRST_BIN=/absolute/path/to/first` selects an independently built compiler.
 
 ## What compiles where
 
 | Source | Compiler and runtime |
 | --- | --- |
 | Original `.astro` pages, components, styles, and frontend TypeScript | Astro 7.4.5 → Node SSR and browser JavaScript |
-| `zero.config.ts`, native collections, access controls, and the `readingTime` action | Zero → PHP in native WordPress Studio |
+| `first.config.ts`, native collections, access controls, and the `readingTime` action | First → PHP in native WordPress Studio |
 | `backend/reading-time.ts` | The original official reading-time algorithm → PHP; only its imported host type changes |
 | `shared/client.ts` and UI adapters | Type-checked Astro adapters; all native JSON is parsed with Zod 4.6.7 |
 | `bridge.php` | Native WordPress reads, signed draft previews, menus, comments, and Appearance settings |
@@ -57,7 +57,7 @@ EmDash's inline editor, plugin page-contribution hooks, unsaved collaborative pr
 
 ```sh
 node examples/emdash/official-sites/check.mjs
-ZERO_BIN="$PWD/target/debug/zero" node --test examples/emdash/official-sites/acceptance.test.mjs
+FIRST_BIN="$PWD/target/debug/first" node --test examples/emdash/official-sites/acceptance.test.mjs
 ```
 
 One suite owns the new full-application seam. It builds all three original frontends, creates real native backends, proves blank’s original admin-link navigation, edits through core WordPress/SCF, and checks original public routes, media bytes, privacy, signed previews, live search, and the compiled reading-time action. Blog coverage also checks pagination, parsed RSS, moderated threaded comments and native widget saves. Chromium proves native Quick Edit → original public page, live-result navigation, table of contents, theme persistence and mobile layout. Every run prints an evidence directory with HTML, screenshots, receipts and cleanup audits.

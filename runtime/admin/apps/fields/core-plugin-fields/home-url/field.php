@@ -2,12 +2,12 @@
 /**
  * Home URL field definition for core plugins fields collection
  *
- * @package Zero_Admin
+ * @package First_Admin
  */
 
 return array(
 	'type'         => 'text',
-	'label'        => __( 'Plugin homepage', 'zero-admin' ),
+	'label'        => __( 'Plugin homepage', 'first-admin' ),
 	'enableHiding' => true,
 	'filterBy'     => false,
 );

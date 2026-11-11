@@ -8,7 +8,7 @@ type DesignSystemIcon = React.ComponentProps< typeof Icon >[ 'icon' ];
 
 /**
  * Type guard for verifying whether a given element
- * is a valid SVG element for the `Icon` @zero-admin/design-system component.
+ * is a valid SVG element for the `Icon` @first-admin/design-system component.
  * @param element
  */
 function isSvg( element: unknown ): element is DesignSystemIcon {

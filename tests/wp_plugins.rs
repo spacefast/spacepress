@@ -1,6 +1,6 @@
 //! Module-owned artifact tests: real HTTP ZIP acquisition through the real CLI.
 
-// Runs the `zero` binary: only with the cli feature (the browser build of the core has none).
+// Runs the `first` binary: only with the cli feature (the browser build of the core has none).
 #![cfg(feature = "cli")]
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -126,7 +126,7 @@ impl Project {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("app");
         std::fs::create_dir(&root).unwrap();
-        let out = root.join("zero/dist/wp-content");
+        let out = root.join("first/dist/wp-content");
         Self { _temp: temp, root, out }
     }
     fn config(&self, plugins: &[Value]) {
@@ -143,14 +143,14 @@ impl Project {
             })
             .collect();
         let body = format!(
-            "import {{ defineConfig }} from 'zero';\nexport default defineConfig({{ name: 'fixtures', collections: {{}}, plugins: {}{extra} }});\n",
+            "import {{ defineConfig }} from 'first';\nexport default defineConfig({{ name: 'fixtures', collections: {{}}, plugins: {}{extra} }});\n",
             serde_json::to_string(&plugins).unwrap()
         );
-        std::fs::write(self.root.join("zero.config.ts"), body).unwrap();
+        std::fs::write(self.root.join("first.config.ts"), body).unwrap();
     }
     fn run(&self, command: &str, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_zero"))
-            .env_remove("ZERO_WP_PLUGIN_CACHE")
+        Command::new(env!("CARGO_BIN_EXE_first"))
+            .env_remove("FIRST_WP_PLUGIN_CACHE")
             .arg(command)
             .arg(&self.root)
             .args(args)
@@ -245,9 +245,13 @@ fn acquired_plugins_are_built_locked_and_repeatable_without_running_php() {
         std::fs::read(p.out.join("plugins/feature/assets/data.txt")).unwrap(),
         b"artifact bytes"
     );
-    assert!(p.out.join("plugins/zero-app-fixtures/zero-app-fixtures.php").is_file());
-    assert!(p.out.join("plugins/zero-app-fixtures.zip").is_file());
-    let lock_path = p.root.join("zero/_generated/wp-plugins.lock.json");
+    assert!(
+        p.out
+            .join("plugins/first-app-fixtures/first-app-fixtures.php")
+            .is_file()
+    );
+    assert!(p.out.join("plugins/first-app-fixtures.zip").is_file());
+    let lock_path = p.root.join("first/_generated/wp-plugins.lock.json");
     let locked = std::fs::read(&lock_path).unwrap();
     let lock: Value = serde_json::from_slice(&locked).unwrap();
     let entries = lock["plugins"].as_array().unwrap();
@@ -267,16 +271,16 @@ fn acquired_plugins_are_built_locked_and_repeatable_without_running_php() {
     // The canonical assembler emits deterministic ZIPs as well as stable trees.
     assert_eq!(before, tree(&p.out));
     assert_eq!(locked, std::fs::read(lock_path).unwrap());
-    let custom = Command::new(env!("CARGO_BIN_EXE_zero"))
-        .args(["build", ".", "--out", ".zero/wp/custom-content"])
+    let custom = Command::new(env!("CARGO_BIN_EXE_first"))
+        .args(["build", ".", "--out", ".first/wp/custom-content"])
         .current_dir(&p.root)
-        .env_remove("ZERO_WP_PLUGIN_CACHE")
+        .env_remove("FIRST_WP_PLUGIN_CACHE")
         .output()
         .unwrap();
     assert!(custom.status.success(), "{}", String::from_utf8_lossy(&custom.stderr));
     assert!(
         p.root
-            .join(".zero/wp/custom-content/plugins/feature/feature.php")
+            .join(".first/wp/custom-content/plugins/feature/feature.php")
             .is_file()
     );
 }
@@ -340,7 +344,7 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
     plugins.push(declared(&server, "good", "1.0", &routes["/good.zip"], &[]));
     p.config(&plugins);
     p.build();
-    let lock = std::fs::read(p.root.join("zero/_generated/wp-plugins.lock.json")).unwrap();
+    let lock = std::fs::read(p.root.join("first/_generated/wp-plugins.lock.json")).unwrap();
     for (name, error) in [
         ("duplicate", "duplicate archive paths"),
         ("header-mismatch", "header inconsistency"),
@@ -361,7 +365,7 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
         assert_eq!(before, tree(&p.out));
         assert_eq!(
             lock,
-            std::fs::read(p.root.join("zero/_generated/wp-plugins.lock.json")).unwrap()
+            std::fs::read(p.root.join("first/_generated/wp-plugins.lock.json")).unwrap()
         );
     }
     let before = tree(&p.out);
@@ -377,7 +381,7 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
     p.rejects("build", "sha256 mismatch");
     assert_eq!(before, tree(&p.out));
     // An ergonomic repeat of the same platform source/version must retain the required checksum.
-    let lock_path = p.root.join("zero/_generated/wp-plugins.lock.json");
+    let lock_path = p.root.join("first/_generated/wp-plugins.lock.json");
     let mut substituted: Value = serde_json::from_slice(&lock).unwrap();
     let scf = substituted["plugins"]
         .as_array_mut()
@@ -413,16 +417,16 @@ fn invalid_download_archive_and_output_collisions_preserve_previous_build() {
     assert_eq!(before, tree(&p.out));
     assert!(!p.root.join("escape.php").exists());
     // The project's build lock never lives inside a replaceable output root: with `--out
-    // zero/dist`, publication renames that directory, which would drop a lock held inside it.
+    // first/dist`, publication renames that directory, which would drop a lock held inside it.
     std::fs::remove_file(p.out.join("plugins/good/local.txt")).unwrap();
-    let dist = p.root.join("zero/dist");
-    let held = p.root.join("zero/.wp-plugins.build.lock");
+    let dist = p.root.join("first/dist");
+    let held = p.root.join("first/.wp-plugins.build.lock");
     std::fs::write(&held, "").unwrap();
     let out = p.run("build", &["--out", dist.to_str().unwrap()]);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("cannot acquire build lock") && stderr.contains("zero/.wp-plugins.build.lock"),
+        stderr.contains("cannot acquire build lock") && stderr.contains("first/.wp-plugins.build.lock"),
         "{stderr}"
     );
     std::fs::remove_file(&held).unwrap();
@@ -444,8 +448,8 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
     p.config(&[a, b]);
     p.rejects("check", "dependency cycle");
     std::fs::write(
-        p.root.join("zero.config.ts"),
-        "import {defineConfig} from 'zero'; export default defineConfig({collections:{},plugins:[]});",
+        p.root.join("first.config.ts"),
+        "import {defineConfig} from 'first'; export default defineConfig({collections:{},plugins:[]});",
     )
     .unwrap();
     p.rejects("check", "plugins must be a package map");
@@ -458,26 +462,26 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
         "const plugins = {alpha:'1.0'}; plugins.alpha = '2.0';",
         "const plugins = Object.fromEntries([['alpha','1.0'],['alpha','2.0']]);",
     ] {
-        std::fs::write(p.root.join("zero.config.ts"), format!(
-            "import {{defineConfig}} from 'zero'; {declarations} export default defineConfig({{collections:{{}},plugins}});"
+        std::fs::write(p.root.join("first.config.ts"), format!(
+            "import {{defineConfig}} from 'first'; {declarations} export default defineConfig({{collections:{{}},plugins}});"
         )).unwrap();
         p.rejects("check", "duplicate plugin declaration/property");
     }
-    std::fs::write(p.root.join("zero.config.ts"),
-        "import {defineConfig} from 'zero'; export default defineConfig({collections:{},plugins:{alpha:'1.0'},plugins:{alpha:'2.0'}});"
+    std::fs::write(p.root.join("first.config.ts"),
+        "import {defineConfig} from 'first'; export default defineConfig({collections:{},plugins:{alpha:'1.0'},plugins:{alpha:'2.0'}});"
     ).unwrap();
     p.rejects("check", "duplicate plugins declaration");
-    std::fs::write(p.root.join("zero.config.ts"),
-        "import {defineConfig} from 'zero'; const plugins = {}; plugins.alpha = plugins; export default defineConfig({collections:{},plugins});"
+    std::fs::write(p.root.join("first.config.ts"),
+        "import {defineConfig} from 'first'; const plugins = {}; plugins.alpha = plugins; export default defineConfig({collections:{},plugins});"
     ).unwrap();
     p.rejects("check", "acyclic declarative data");
     // Overwrites in other build-time data retain ordinary JavaScript semantics.
-    std::fs::write(p.root.join("zero.config.ts"),
-        "import {defineConfig} from 'zero'; const other = {value:'old',value:'new'}; export default defineConfig({collections:{},plugins:{alpha:'1.0'}});"
+    std::fs::write(p.root.join("first.config.ts"),
+        "import {defineConfig} from 'first'; const other = {value:'old',value:'new'}; export default defineConfig({collections:{},plugins:{alpha:'1.0'}});"
     ).unwrap();
     assert!(p.run("check", &[]).status.success());
 
-    p.config(&[org("zero-runtime")]);
+    p.config(&[org("first-runtime")]);
     p.rejects("check", "reserved plugin slug");
     p.config(&[org("../escape")]);
     p.rejects("check", "invalid or reserved");
@@ -505,11 +509,11 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(out.status.success(), "{stderr}");
     assert!(
-        stderr.contains("warning: plugin alpha 1.0 is not supported by the Zero team.")
+        stderr.contains("warning: plugin alpha 1.0 is not supported by the First team.")
             && stderr.contains("https://github.com/spacefast/zero/issues"),
         "{stderr}"
     );
-    assert!(!p.root.join(".zero").exists());
+    assert!(!p.root.join(".first").exists());
     let mut supported = org("classic-editor");
     supported["version"] = json!("1.6.7");
     p.config(&[supported]);
@@ -526,21 +530,21 @@ fn admin_opt_in_emits_the_admin_plugin_and_opting_out_removes_it() {
     let p = Project::new();
     let plugins = platform(&server, &routes);
     let manifest =
-        || -> Value { serde_json::from_slice(&std::fs::read(p.out.join("zero-manifest.json")).unwrap()).unwrap() };
-    let admin = p.out.join("plugins/zero-admin");
+        || -> Value { serde_json::from_slice(&std::fs::read(p.out.join("first-manifest.json")).unwrap()).unwrap() };
+    let admin = p.out.join("plugins/first-admin");
 
     p.config(&plugins);
     p.build();
     assert!(!admin.exists(), "no admin without the opt-in");
-    assert!(!p.out.join("plugins/zero-admin.zip").exists());
-    assert!(manifest()["plugins"].get("zero-admin").is_none());
+    assert!(!p.out.join("plugins/first-admin.zip").exists());
+    assert!(manifest()["plugins"].get("first-admin").is_none());
 
     p.config_with(&plugins, ", admin: true");
     p.build();
     let version = env!("CARGO_PKG_VERSION");
-    let header = std::fs::read_to_string(admin.join("zero-admin.php")).unwrap();
+    let header = std::fs::read_to_string(admin.join("first-admin.php")).unwrap();
     assert!(header.contains(&format!("Version: {version}")), "{header}");
-    assert!(header.contains("Requires Plugins: zero-runtime"), "{header}");
+    assert!(header.contains("Requires Plugins: first-runtime"), "{header}");
     assert!(!header.contains("{{"), "every placeholder is substituted:\n{header}");
     for rel in [
         "lib/load-libs.php",
@@ -551,18 +555,18 @@ fn admin_opt_in_emits_the_admin_plugin_and_opting_out_removes_it() {
         "NOTICE",
         "build/THIRD-PARTY-LICENSES.txt",
     ] {
-        assert!(admin.join(rel).is_file(), "zero-admin is missing {rel}");
+        assert!(admin.join(rel).is_file(), "first-admin is missing {rel}");
     }
     assert!(!admin.join("apps").exists(), "the JS workspace never ships");
-    let archive = std::fs::File::open(p.out.join("plugins/zero-admin.zip")).unwrap();
+    let archive = std::fs::File::open(p.out.join("plugins/first-admin.zip")).unwrap();
     let mut archive = zip::ZipArchive::new(archive).unwrap();
-    assert!(archive.by_name("zero-admin/zero-admin.php").is_ok());
-    assert!(archive.by_name("zero-admin/build/index.php").is_ok());
-    assert_eq!(manifest()["plugins"]["zero-admin"], version);
+    assert!(archive.by_name("first-admin/first-admin.php").is_ok());
+    assert!(archive.by_name("first-admin/build/index.php").is_ok());
+    assert_eq!(manifest()["plugins"]["first-admin"], version);
     // schema.php records the flag as a value, read back by PHP like the runtime reads it.
     let schema = Command::new("php")
         .args(["-r", "echo json_encode(require $argv[1]);"])
-        .arg(p.out.join("plugins/zero-app-fixtures/zero/app/schema.php"))
+        .arg(p.out.join("plugins/first-app-fixtures/first/app/schema.php"))
         .output()
         .unwrap();
     assert!(schema.status.success(), "{}", String::from_utf8_lossy(&schema.stderr));
@@ -575,8 +579,8 @@ fn admin_opt_in_emits_the_admin_plugin_and_opting_out_removes_it() {
     p.config(&plugins);
     p.build();
     assert!(!admin.exists(), "opting out removes the admin plugin");
-    assert!(!p.out.join("plugins/zero-admin.zip").exists());
-    assert!(manifest()["plugins"].get("zero-admin").is_none());
+    assert!(!p.out.join("plugins/first-admin.zip").exists());
+    assert!(manifest()["plugins"].get("first-admin").is_none());
 }
 
 /// The flag is a boolean; anything else is refused before any output exists.
@@ -585,5 +589,5 @@ fn admin_must_be_a_boolean() {
     let p = Project::new();
     p.config_with(&[], ", admin: 'yes'");
     p.rejects("check", "admin must be true or false");
-    assert!(!p.root.join(".zero").exists());
+    assert!(!p.root.join(".first").exists());
 }

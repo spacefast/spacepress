@@ -2,7 +2,7 @@ import {
 	ImageCropper as ImageCropperComponent,
 	type MediaSize,
 	useImageCropper,
-} from '@zero-admin/image-cropper';
+} from '@first-admin/image-cropper';
 import {
 	useState,
 	useRef,
@@ -145,7 +145,7 @@ export default function ImageCropper( { src }: { src: string } ) {
 
 	return (
 		<div
-			className="zero-admin-media-editor-content__cropper"
+			className="first-admin-media-editor-content__cropper"
 			ref={ containerRef }
 			style={ containerStyle || DEFAULT_CONTAINER_STYLE }
 		>

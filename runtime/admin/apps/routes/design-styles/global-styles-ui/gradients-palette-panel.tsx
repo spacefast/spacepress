@@ -6,7 +6,7 @@ import {
 	DuotonePicker,
 } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
-import type { Gradient } from '@zero-admin/global-styles-engine';
+import type { Gradient } from '@first-admin/global-styles-engine';
 import { Subtitle } from './subtitle';
 import { useSetting } from './hooks';
 
@@ -65,7 +65,7 @@ export default function GradientPalettePanel( {
 
 	return (
 		<VStack
-			className="zero-admin-global-styles-gradient-palette-panel"
+			className="first-admin-global-styles-gradient-palette-panel"
 			spacing={ 8 }
 		>
 			{ !! themeGradients && !! themeGradients.length && (
@@ -74,7 +74,7 @@ export default function GradientPalettePanel( {
 					canOnlyChangeValues
 					gradients={ themeGradients }
 					onChange={ setThemeGradients }
-					paletteLabel={ __( 'Theme', 'zero-admin' ) }
+					paletteLabel={ __( 'Theme', 'first-admin' ) }
 					paletteLabelHeadingLevel={ 3 }
 					popoverProps={ popoverProps }
 				/>
@@ -87,7 +87,7 @@ export default function GradientPalettePanel( {
 						canOnlyChangeValues
 						gradients={ defaultGradients }
 						onChange={ setDefaultGradients }
-						paletteLabel={ __( 'Default', 'zero-admin' ) }
+						paletteLabel={ __( 'Default', 'first-admin' ) }
 						paletteLabelHeadingLevel={ 3 }
 						popoverProps={ popoverProps }
 					/>
@@ -95,7 +95,7 @@ export default function GradientPalettePanel( {
 			<PaletteEdit
 				gradients={ customGradients }
 				onChange={ setCustomGradients }
-				paletteLabel={ __( 'Custom', 'zero-admin' ) }
+				paletteLabel={ __( 'Custom', 'first-admin' ) }
 				paletteLabelHeadingLevel={ 3 }
 				slugPrefix="custom-"
 				popoverProps={ popoverProps }
@@ -103,7 +103,7 @@ export default function GradientPalettePanel( {
 			{ !! duotonePalette && !! duotonePalette.length && (
 				<div>
 					<Subtitle level={ 3 }>
-						{ __( 'Duotone', 'zero-admin' ) }
+						{ __( 'Duotone', 'first-admin' ) }
 					</Subtitle>
 					<Spacer margin={ 3 } />
 					<DuotonePicker

@@ -15,9 +15,9 @@ import {
 	unlock,
 	EntityValidityProvider,
 	DEFAULT_SITE_NAME,
-} from '@zero-admin/admin-toolkit';
+} from '@first-admin/admin-toolkit';
 import { IconButton } from '@wordpress/ui';
-import { ThemeProvider } from '@zero-admin/theme';
+import { ThemeProvider } from '@first-admin/theme';
 import { menu } from '@wordpress/icons';
 import {
 	__unstableMotion as motion,
@@ -48,13 +48,13 @@ import Sidebar from '../sidebar';
 import { useCommands } from '../commands';
 import './style.scss';
 import { ErrorBoundary } from '../error-boundary';
-import { store as agentContextStore } from '@zero-admin/ai-agent';
+import { store as agentContextStore } from '@first-admin/ai-agent';
 import { buildSitemapData, preloadSitemapData } from '../../utils/sitemap-context';
 import { store as rootStore } from '../../store';
 import UnsavedChangesWarning from '../unsaved-changes-warning';
 import { findClosestMenuItem } from '../sidebar/path-matching';
 import NavigationProgressBar from '../navigation-progress-bar';
-const AIAgent = lazy(() => import('@zero-admin/ai-agent'));
+const AIAgent = lazy(() => import('@first-admin/ai-agent'));
 const Canvas = lazy( () => import('../canvas') );
 import UnsavedChangesModal from '../unsaved-changes-modal';
 
@@ -175,7 +175,7 @@ function Root() {
 				/* translators: %s: plugin name */
 				__(
 					'The "%s" plugin has encountered an error and cannot be rendered.',
-					'zero-admin'
+					'first-admin'
 				),
 				name
 			)
@@ -234,7 +234,7 @@ function Root() {
 									onClick={ () =>
 										setIsMobileSidebarOpen( true )
 									}
-									label={ __( 'Open sidebar', 'zero-admin' ) }
+									label={ __( 'Open sidebar', 'first-admin' ) }
 									size="compact"
 								/>
 							</Page.SidebarToggleFill>
@@ -242,13 +242,13 @@ function Root() {
 						<UnsavedChangesWarning />
 						<UnsavedChangesModal />
 						<CommandMenu />
-						<SnackbarNotices className="zero-admin-notices__snackbar" />
+						<SnackbarNotices className="first-admin-notices__snackbar" />
 						{ /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */ }
 						<div
 							{ ...navigateRegionsProps }
 							ref={ navigateRegionsProps.ref }
 							className={ clsx(
-								'zero-admin-layout',
+								'first-admin-layout',
 								navigateRegionsProps.className,
 								{
 									'has-full-canvas':
@@ -258,7 +258,7 @@ function Root() {
 								}
 							) }
 						>
-							<div className="zero-admin-layout__content">
+							<div className="first-admin-layout__content">
 								<AnimatePresence>
 									{ isMobileViewport &&
 										isMobileSidebarOpen && (
@@ -275,7 +275,7 @@ function Root() {
 												} }
 												role="button"
 												tabIndex={ -1 }
-												className="zero-admin-layout__sidebar-backdrop"
+												className="first-admin-layout__sidebar-backdrop"
 												onClick={ () =>
 													setIsMobileSidebarOpen(
 														false
@@ -307,7 +307,7 @@ function Root() {
 														: ANIMATION_DURATION,
 													ease: 'easeOut',
 												} }
-												className="zero-admin-layout__sidebar is-mobile"
+												className="first-admin-layout__sidebar is-mobile"
 											>
 												<Sidebar />
 											</motion.div>
@@ -317,11 +317,11 @@ function Root() {
 									<NavigableRegion
 										ariaLabel={ __(
 											'Navigation',
-											'zero-admin'
+											'first-admin'
 										) }
-										className="zero-admin-layout__sidebar-region"
+										className="first-admin-layout__sidebar-region"
 									>
-										<div className="zero-admin-layout__sidebar">
+										<div className="first-admin-layout__sidebar">
 											<Sidebar />
 										</div>
 									</NavigableRegion>
@@ -342,10 +342,10 @@ function Root() {
 									<ThemeProvider
 										color={ themeColorSettings.app }
 									>
-										<div className="zero-admin-layout__canvas-container">
+										<div className="first-admin-layout__canvas-container">
 											{ canvas.isPreview &&
 												isMobileViewport && (
-													<div className="zero-admin-layout__mobile-sidebar-drawer">
+													<div className="first-admin-layout__mobile-sidebar-drawer">
 														<IconButton
 															variant="minimal"
 															tone="neutral"
@@ -357,7 +357,7 @@ function Root() {
 															}
 															label={ __(
 																'Open sidebar',
-																'zero-admin'
+																'first-admin'
 															) }
 															size="compact"
 														/>
@@ -365,7 +365,7 @@ function Root() {
 												) }
 											<div
 												className={ clsx(
-													'zero-admin-layout__canvas',
+													'first-admin-layout__canvas',
 													{
 														'is-full-canvas':
 															! canvas.isPreview,

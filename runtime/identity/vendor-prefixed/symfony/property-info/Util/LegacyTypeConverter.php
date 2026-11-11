@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Util;
+namespace First\Identity\Vendor\Symfony\Component\PropertyInfo\Util;
 
-use Zero\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use Zero\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use First\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use First\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
 /**
  * @internal

@@ -1,9 +1,9 @@
-import { entityEditorPath } from '@zero-admin/schema';
+import { entityEditorPath } from '@first-admin/schema';
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLinkProps } from '@wordpress/route';
-import { unlock, SiteIconBackButton } from '@zero-admin/admin-toolkit';
-import { withEditor, withStylesId } from '@zero-admin/lazy-editor';
+import { unlock, SiteIconBackButton } from '@first-admin/admin-toolkit';
+import { withEditor, withStylesId } from '@first-admin/lazy-editor';
 import { privateApis as editorPrivateApis } from '@wordpress/editor';
 import { __ } from '@wordpress/i18n';
 import { useMergeRefs, useRefEffect, usePrevious } from '@wordpress/compose';
@@ -94,7 +94,7 @@ function SiteEditor( {
 		return null;
 	}
 	return (
-		<div className="zero-admin-site-editor">
+		<div className="first-admin-site-editor">
 			<Editor
 				postType={ postType }
 				postId={ postId }
@@ -119,10 +119,10 @@ function SiteEditor( {
 				<a
 					{ ...linkProps }
 					className={ clsx(
-						'zero-admin-site-editor__hyperlink',
+						'first-admin-site-editor__hyperlink',
 						linkProps.className
 					) }
-					aria-label={ __( 'Edit', 'zero-admin' ) }
+					aria-label={ __( 'Edit', 'first-admin' ) }
 					ref={ linkRef }
 				/>
 			) }

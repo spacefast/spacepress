@@ -16,7 +16,7 @@ export {
 	lock,
 	type PrivateApiToken,
 	unlock,
-} from '@zero-admin/private-apis';
+} from '@first-admin/private-apis';
 export {
 	default as useColorPreference,
 	setHostThemeColorSettings,

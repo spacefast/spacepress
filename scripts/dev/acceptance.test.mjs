@@ -10,10 +10,10 @@ import { createServer } from 'node:net';
 import { get } from 'node:http';
 
 const exec = promisify(execFile);
-const zero = resolve(process.env.ZERO_BIN ?? 'target/debug/zero');
-const command = async (args, env = process.env) => (await exec(zero, args, { env, timeout: 600000, maxBuffer: 4 * 1024 * 1024 })).stdout.trim();
+const first = resolve(process.env.FIRST_BIN ?? 'target/debug/first');
+const command = async (args, env = process.env) => (await exec(first, args, { env, timeout: 600000, maxBuffer: 4 * 1024 * 1024 })).stdout.trim();
 const config = (version, extra = '', admin = true) => `
-import { defineConfig, table, collection, text, boolean, integer, json, richText, action, job, jobs, db } from 'zero';
+import { defineConfig, table, collection, text, boolean, integer, json, richText, action, job, jobs, db } from 'first';
 const items = table({ name: text().notNull(), processed: boolean().notNull().default(false), ${extra} });
 const stories = collection({ title: text().notNull().max(160), body: richText(), details: json() }, { title: 'title', content: 'body', access: { read: 'anyone', create: 'editor', update: 'editor', delete: 'editor' } });
 export default defineConfig({
@@ -35,7 +35,7 @@ async function freePort() {
 }
 
 function foreground(args, env) {
-  const child = spawn(zero, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(first, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
   const events = new EventEmitter();
   let output = '';
   for (const stream of [child.stdout, child.stderr]) stream.on('data', (data) => { output += data; events.emit('output'); });
@@ -54,7 +54,7 @@ function foreground(args, env) {
 }
 
 test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recovery and persistent restarts', { timeout: 600000 }, async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'zero-studio-acceptance-'));
+  const root = await mkdtemp(join(tmpdir(), 'first-studio-acceptance-'));
   const project = join(root, 'app');
   const tools = join(root, 'tools');
   await mkdir(project); await mkdir(tools); await mkdir(join(project, 'public'));
@@ -66,10 +66,10 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
     }
   }
   const env = { ...process.env, PATH: tools };
-  await writeFile(join(project, 'zero.config.ts'), config('first'));
-  await writeFile(join(project, 'public/index.html'), '<h1>Native Zero dev</h1>');
+  await writeFile(join(project, 'first.config.ts'), config('first'));
+  await writeFile(join(project, 'public/index.html'), '<h1>Native First dev</h1>');
   let session;
-  const site = join(project, '.zero/dev/wordpress');
+  const site = join(project, '.first/dev/wordpress');
   t.after(async () => {
     const failures = [];
     const studio = async (...args) => (await exec('npx', ['--yes', '--package', 'wp-studio@2.1.1', '--', 'studio', ...args], { timeout: 60000, maxBuffer: 4 * 1024 * 1024 })).stdout;
@@ -99,7 +99,7 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   assert.equal(status.isOnline, true);
   const base = status.siteUrl.replace(/\/$/, '');
   const wp = (...args) => command(['wp', '--site', project, ...args], env);
-  const password = await wp('user', 'application-password', 'create', 'admin', 'zero-acceptance', '--porcelain');
+  const password = await wp('user', 'application-password', 'create', 'admin', 'first-acceptance', '--porcelain');
   const authorization = `Basic ${Buffer.from(`admin:${password}`).toString('base64')}`;
   async function request(path, { method = 'GET', body, headers = {} } = {}) {
     let response;
@@ -112,7 +112,7 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
       console.error('Native request failed:', method, path, error.cause ?? error);
       // Diagnose a fresh read-only connection without replaying the failed operation.
       const health = await new Promise((done) => {
-        const probe = get(`${base}/wp-json/zero/v1/_schema`, { agent: false, signal: AbortSignal.timeout(3000) }, (response) => {
+        const probe = get(`${base}/wp-json/first/v1/_schema`, { agent: false, signal: AbortSignal.timeout(3000) }, (response) => {
           response.resume();
           response.on('end', () => done({ status: response.statusCode }));
           response.on('error', (failure) => done({ error: failure.message, code: failure.code }));
@@ -131,26 +131,26 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
     assert.ok(response.ok, `${method} ${path}: ${response.status} ${JSON.stringify(result)}`);
     return result.data ?? result;
   }
-  const api = (path, options) => request(`/wp-json/zero/v1${path}`, options);
+  const api = (path, options) => request(`/wp-json/first/v1${path}`, options);
   const schema = await api('/_schema');
   assert.equal(schema.runtime.wp.database.kind, 'sqlite');
   assert.equal(schema.runtime.identity, true);
   assert.deepEqual(schema.runtime.pendingMigrations, []);
   const item = await api('/items', { method: 'POST', body: { name: 'Chickpeas' } });
-  await wp('action-scheduler', 'run', '--hooks=zero_job');
+  await wp('action-scheduler', 'run', '--hooks=first_job');
   const rows = await api('/items');
   assert.equal(rows.find((row) => row.id === item.id).processed, true);
   const story = await api('/stories', { method: 'POST', body: { title: 'Pantry story', body: '<!-- wp:paragraph --><p>Original</p><!-- /wp:paragraph -->', details: { count: 1 } } });
-  await request(`/wp-json/wp/v2/zero_stories/${story.id}`, { method: 'POST', body: { title: 'Edited in WordPress', acf: { zero_details: '{"count":2}' } } });
+  await request(`/wp-json/wp/v2/first_stories/${story.id}`, { method: 'POST', body: { title: 'Edited in WordPress', acf: { first_details: '{"count":2}' } } });
   const stories = await api('/stories');
   assert.equal(stories.find((row) => row.id === story.id).title, 'Edited in WordPress');
   assert.deepEqual(stories.find((row) => row.id === story.id).details, { count: 2 });
-  const identity = await request('/wp-json/zero-identity/v1/sign-in/password', { method: 'POST', body: { login: 'admin', password: 'zero-test-admin' }, headers: { origin: base } });
+  const identity = await request('/wp-json/first-identity/v1/sign-in/password', { method: 'POST', body: { login: 'admin', password: 'first-test-admin' }, headers: { origin: base } });
   assert.equal(identity.kind, 'signed_in');
   // Create real image bytes with Studio's own PHP, then upload through native WordPress REST.
   const image = Buffer.from(await wp('eval', '$i=imagecreatetruecolor(12,8); ob_start(); imagepng($i); echo base64_encode(ob_get_clean());'), 'base64');
   const uploadResponse = await fetch(`${base}/wp-json/wp/v2/media`, { method: 'POST', headers: {
-    authorization, 'content-type': 'image/png', 'content-disposition': 'attachment; filename="zero-local.png"',
+    authorization, 'content-type': 'image/png', 'content-disposition': 'attachment; filename="first-local.png"',
   }, body: image, signal: AbortSignal.timeout(20000) });
   const upload = await uploadResponse.json();
   assert.equal(uploadResponse.status, 201, JSON.stringify(upload));
@@ -166,7 +166,7 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   let cursor = await session.wait('Watching config');
   assert.equal(JSON.parse(await command(['dev', 'status', project], env)).siteUrl, status.siteUrl);
   assert.equal((await api('/items')).find((row) => row.id === item.id).name, 'Chickpeas');
-  await writeFile(join(project, 'zero.config.ts'), 'export default { broken: ;');
+  await writeFile(join(project, 'first.config.ts'), 'export default { broken: ;');
   cursor = await session.wait('Fix the error and save to retry.', cursor);
   assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'first');
   const failurePlugin = join(site, 'wp-content/mu-plugins/acceptance-migrate-failure.php');
@@ -175,10 +175,10 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
 if (defined('WP_CLI') && WP_CLI) {
   WP_CLI::error('Acceptance configuration interruption');
 }`);
-  await writeFile(join(project, 'zero.config.ts'), config('second', 'shelf: text(),'));
+  await writeFile(join(project, 'first.config.ts'), config('second', 'shelf: text(),'));
   cursor = await session.wait('Acceptance configuration interruption', cursor);
   cursor = await session.wait('Fix the error and save to retry.', cursor);
-  const interrupted = JSON.parse(await readFile(join(project, '.zero/dev/owner.json'), 'utf8'));
+  const interrupted = JSON.parse(await readFile(join(project, '.first/dev/owner.json'), 'utf8'));
   assert.notDeepEqual(interrupted.pending.migrations, interrupted.migrations);
   const interruptedExit = once(session.child, 'exit');
   await command(['dev', 'stop', project], env);
@@ -186,32 +186,32 @@ if (defined('WP_CLI') && WP_CLI) {
   await rm(failurePlugin);
   session = foreground(['dev', project], env);
   cursor = await session.wait('Watching config');
-  const recovered = JSON.parse(await readFile(join(project, '.zero/dev/owner.json'), 'utf8'));
+  const recovered = JSON.parse(await readFile(join(project, '.first/dev/owner.json'), 'utf8'));
   assert.equal(recovered.pending, undefined);
   assert.deepEqual(recovered.migrations, interrupted.pending.migrations);
   assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'second');
   await api(`/items/${item.id}`, { method: 'PATCH', body: { shelf: 'A2' } });
   assert.equal((await api('/items')).find((row) => row.id === item.id).shelf, 'A2');
-  await writeFile(join(project, 'zero.config.ts'), config('would-drop-shelf'));
+  await writeFile(join(project, 'first.config.ts'), config('would-drop-shelf'));
   cursor = await session.wait('Local data was preserved.', cursor);
   assert.equal((await api('/items')).find((row) => row.id === item.id).shelf, 'A2');
   // Restoring the config must not replay a hidden DROP migration from the rejected save.
-  await writeFile(join(project, 'zero.config.ts'), config('third', 'shelf: text(),', false));
+  await writeFile(join(project, 'first.config.ts'), config('third', 'shelf: text(),', false));
   cursor = await session.wait('Updated. Refresh', cursor);
   assert.equal((await api('/items')).find((row) => row.id === item.id).shelf, 'A2');
   const plugins = JSON.parse(await wp('plugin', 'list', '--status=active', '--format=json'));
   assert.equal(plugins.some((plugin) => plugin.name === 'acceptance-extra'), true);
-  assert.equal(plugins.some((plugin) => plugin.name === 'zero-admin'), false);
-  const pluginPage = await fetch(`${base}/wp-content/plugins/zero-app-app/public/index.html`);
-  assert.equal(await pluginPage.text(), '<h1>Native Zero dev</h1>');
+  assert.equal(plugins.some((plugin) => plugin.name === 'first-admin'), false);
+  const pluginPage = await fetch(`${base}/wp-content/plugins/first-app-app/public/index.html`);
+  assert.equal(await pluginPage.text(), '<h1>Native First dev</h1>');
   await writeFile(join(project, 'public/index.html'), '<h1>Updated public file</h1>');
   await session.wait('Updated. Refresh', cursor);
-  assert.equal(await (await fetch(`${base}/wp-content/plugins/zero-app-app/public/index.html`)).text(), '<h1>Updated public file</h1>');
+  assert.equal(await (await fetch(`${base}/wp-content/plugins/first-app-app/public/index.html`)).text(), '<h1>Updated public file</h1>');
   const exit = once(session.child, 'exit');
   await command(['dev', 'stop', project], env);
   assert.deepEqual(await exit, [0, null]);
   assert.equal(JSON.parse(await command(['dev', 'status', project], env)).isOnline, false);
-  await writeFile(join(project, 'zero.config.ts'), config('deliberate', '', false));
+  await writeFile(join(project, 'first.config.ts'), config('deliberate', '', false));
   await command(['dev', project, '--no-watch', '--allow-destructive'], env);
   assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'deliberate');
   assert.equal((await api('/items')).find((row) => row.id === item.id).name, 'Chickpeas');

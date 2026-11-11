@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Zero\Identity\Vendor\Cose\Algorithm\Signature\RSA;
+namespace First\Identity\Vendor\Cose\Algorithm\Signature\RSA;
 
-use Zero\Identity\Vendor\Cose\Hash;
-use Zero\Identity\Vendor\Cose\Key\RsaKeyValidator;
+use First\Identity\Vendor\Cose\Hash;
+use First\Identity\Vendor\Cose\Key\RsaKeyValidator;
 
 final class PS512 extends PSSRSA
 {

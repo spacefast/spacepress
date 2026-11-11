@@ -1,7 +1,7 @@
 @use "@wordpress/base-styles/variables";
 @use "@wordpress/base-styles/mixins";
 
-.zero-admin-global-styles-screen-revisions__revisions-list {
+.first-admin-global-styles-screen-revisions__revisions-list {
 	list-style: none;
 	margin: 0 variables.$grid-unit-20 variables.$grid-unit-20
 		variables.$grid-unit-20;
@@ -14,7 +14,7 @@
 }
 
 // Could this use a `tertiary` `Button` and remove most of the custom styles?
-.zero-admin-global-styles-screen-revisions__revision-item {
+.first-admin-global-styles-screen-revisions__revision-item {
 	position: relative;
 	cursor: pointer;
 	display: flex;
@@ -28,7 +28,7 @@
 	&:hover {
 		background: var( --wpds-color-bg-interactive-neutral-weak-active );
 
-		.zero-admin-global-styles-screen-revisions__date {
+		.first-admin-global-styles-screen-revisions__date {
 			color: var( --wpds-color-fg-interactive-neutral-active );
 		}
 	}
@@ -64,7 +64,7 @@
 		color: var( --wpds-color-fg-interactive-neutral-active );
 		background: var( --wpds-color-bg-interactive-neutral-weak-active );
 
-		.zero-admin-global-styles-screen-revisions__date {
+		.first-admin-global-styles-screen-revisions__date {
 			color: var( --wpds-color-fg-interactive-neutral-active );
 		}
 
@@ -72,9 +72,9 @@
 			background: var( --wpds-color-bg-interactive-brand-strong );
 		}
 
-		.zero-admin-global-styles-screen-revisions__changes > li,
-		.zero-admin-global-styles-screen-revisions__meta,
-		.zero-admin-global-styles-screen-revisions__applied-text {
+		.first-admin-global-styles-screen-revisions__changes > li,
+		.first-admin-global-styles-screen-revisions__meta,
+		.first-admin-global-styles-screen-revisions__applied-text {
 			color: var( --wpds-color-fg-content-neutral );
 		}
 	}
@@ -96,41 +96,41 @@
 	}
 }
 
-.zero-admin-global-styles-screen-revisions__revision-item-wrapper {
+.first-admin-global-styles-screen-revisions__revision-item-wrapper {
 	display: block;
 	padding: variables.$grid-unit-15 variables.$grid-unit-15
 		variables.$grid-unit-05 variables.$grid-unit-50;
 }
 
-.zero-admin-global-styles-screen-revisions__apply-button.is-primary,
-.zero-admin-global-styles-screen-revisions__applied-text {
+.first-admin-global-styles-screen-revisions__apply-button.is-primary,
+.first-admin-global-styles-screen-revisions__applied-text {
 	align-self: flex-start;
-	// Left margin = left padding of .zero-admin-global-styles-screen-revisions__revision-item-wrapper.
+	// Left margin = left padding of .first-admin-global-styles-screen-revisions__revision-item-wrapper.
 	margin: variables.$grid-unit-05 variables.$grid-unit-15
 		variables.$grid-unit-15 variables.$grid-unit-50;
 }
 
-.zero-admin-global-styles-screen-revisions__changes,
-.zero-admin-global-styles-screen-revisions__meta,
-.zero-admin-global-styles-screen-revisions__applied-text {
+.first-admin-global-styles-screen-revisions__changes,
+.first-admin-global-styles-screen-revisions__meta,
+.first-admin-global-styles-screen-revisions__applied-text {
 	color: var( --wpds-color-fg-content-neutral-weak );
 	font-size: 12px;
 }
 
-.zero-admin-global-styles-screen-revisions__description {
+.first-admin-global-styles-screen-revisions__description {
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
 	gap: variables.$grid-unit-10;
 
-	.zero-admin-global-styles-screen-revisions__date {
+	.first-admin-global-styles-screen-revisions__date {
 		text-transform: uppercase;
 		font-weight: 600;
 		font-size: 12px;
 	}
 }
 
-.zero-admin-global-styles-screen-revisions__meta {
+.first-admin-global-styles-screen-revisions__meta {
 	display: flex;
 	justify-content: start;
 	width: 100%;
@@ -146,11 +146,11 @@
 	}
 }
 
-.zero-admin-global-styles-screen-revisions__loading {
+.first-admin-global-styles-screen-revisions__loading {
 	margin: variables.$grid-unit-30 auto !important;
 }
 
-.zero-admin-global-styles-screen-revisions__changes {
+.first-admin-global-styles-screen-revisions__changes {
 	text-align: left;
 	line-height: variables.$default-line-height;
 	margin-left: variables.$grid-unit-15;
@@ -161,11 +161,11 @@
 	}
 }
 
-.zero-admin-global-styles-screen-revisions__pagination.zero-admin-global-styles-screen-revisions__pagination {
+.first-admin-global-styles-screen-revisions__pagination.first-admin-global-styles-screen-revisions__pagination {
 	justify-content: space-between;
 	gap: 2px;
 
-	.zero-admin-pagination__total {
+	.first-admin-pagination__total {
 		position: absolute;
 		left: -1000px;
 		height: 1px;
@@ -190,7 +190,7 @@
 	}
 }
 
-.zero-admin-global-styles-screen-revisions__footer {
+.first-admin-global-styles-screen-revisions__footer {
 	height: variables.$grid-unit-70;
 	z-index: 1;
 	position: sticky;

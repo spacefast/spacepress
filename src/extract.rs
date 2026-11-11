@@ -363,7 +363,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             );
         }
     }
-    let mut url_shapes: Vec<(String, String, Span)> = Vec::new();
+    let mut url_shapes: Vec<(String, Vec<crate::kind_url::Segment>, Span)> = Vec::new();
     for c in out.collections.clone() {
         let owner = Owner::Collection(c.table().to_string());
         let mut columns = IndexMap::new();
@@ -411,9 +411,9 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.agents = opts.agents;
         let key = coll.key.clone();
         if let Some((pattern, shape, span)) = opts.url {
-            if let Some((other, ..)) = url_shapes.iter().find(|(_, s, _)| *s == shape) {
+            if let Some((other, ..)) = url_shapes.iter().find(|(_, s, _)| crate::kind_url::overlaps(s, &shape)) {
                 return Err(
-                    Diag::new(span, format!("\"{pattern}\" matches the same URLs as {other}'s url"))
+                    Diag::new(span, format!("\"{pattern}\" can match the same URLs as {other}'s url"))
                         .help("give one of them a different literal segment, e.g. \"/blog/:slug\" and \"/docs/:slug\""),
                 );
             }
@@ -809,8 +809,8 @@ struct CollOpts {
     sync: Option<Json>,
     auth: bool,
     agents: bool,
-    /// The pattern, its shape (`kind_url::check`) and where it was written.
-    url: Option<(String, String, Span)>,
+    /// The pattern, its segments (`kind_url::check`) and where it was written.
+    url: Option<(String, Vec<crate::kind_url::Segment>, Span)>,
 }
 
 fn collection_options(
@@ -1090,10 +1090,16 @@ fn collection_options(
     let url = match o.get("url") {
         None | Some(Value::Undef) => None,
         Some(Value::Str(pattern)) if editor => {
+            let has_slug = |table: &str| {
+                out.collections
+                    .iter()
+                    .any(|c| c.table() == table && c.kind == StorageKind::Collection)
+            };
             let kind = crate::kind_url::UrlKind {
                 columns,
                 dated: drafts,
                 hierarchical: false,
+                has_slug: &has_slug,
             };
             let shape =
                 crate::kind_url::check(pattern, &kind).map_err(|e| Diag::new(span("url"), e.message).help(e.help))?;

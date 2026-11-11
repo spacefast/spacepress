@@ -60,7 +60,7 @@ first/app/
 
 ```tsx
 // first/app/blog/[year]/[slug]/page.tsx
-import { likes } from "zero:db";
+import { likes } from "first:db";
 import { Content, Comments, Link, type PageProps } from "first/app";
 import LikeButton from "../../../../components/LikeButton";
 

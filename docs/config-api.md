@@ -40,7 +40,7 @@ First loads every `.ts` file under `first/`, except `app/`, `components/`,
 export const notes = table({ id: id(), title: text().notNull() });
 
 // first/server/likes.ts (any file name)
-import { notes } from "zero:db";
+import { notes } from "first:db";
 export const like = action({ input: { id: integer().notNull() }, async handler({ id }) { /* … */ } });
 ```
 
@@ -53,7 +53,7 @@ export const like = action({ input: { id: integer().notNull() }, async handler({
   runner.
 - A value both exported and listed in a `defineConfig` registry is one
   registration.
-- `import { notes } from "zero:db"` gives a registered kind by name, from any
+- `import { notes } from "first:db"` gives a registered kind by name, from any
   module (including `first/wp-hooks/` files) and in any load order. It can't
   be re-exported, and plugin packages can't import it: a plugin takes the
   app's kinds as options. An unknown name is refused at the import with

@@ -93,7 +93,7 @@ same rows.
 | `settings` | core options | `title`, `tagline`, `timezone`, `locale`, `icon`, `logo`, `frontPage` |
 
 Every kind, built-in or yours, is imported from one place:
-`import { posts, users, comments } from "zero:db"`. The types live in
+`import { posts, users, comments } from "first:db"`. The types live in
 `_generated/db.d.ts`. Inside `schema.ts`, the base built-ins are on `wp`:
 
 ```ts
@@ -374,7 +374,7 @@ check, so a public action runs anonymously.
 ```ts
 // first/server/posts.ts (any file under first/ works) → first.feature(), notifySubscribers.enqueue(...)
 import { action, job } from "first";
-import { posts } from "zero:db";
+import { posts } from "first:db";
 
 export const feature = action({ access: "editor" }, async ({ id }: { id: number }) => posts.update(id, { sticky: true }));
 export const notifySubscribers = job(async ({ postId }: { postId: number }) => { /* … */ }, { retries: 3 });

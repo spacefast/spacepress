@@ -64,7 +64,7 @@ const written = new Set<string>();
 for (const { name, landing, seed } of siteExamples) {
 	const from = path.join(repo, "examples", name);
 	const to = path.join(showcaseRoot, name);
-	cpSync(from, to, { recursive: true, filter: (file) => !/[/\\](node_modules|\.zero|dist)$/.test(file) });
+	cpSync(from, to, { recursive: true, filter: (file) => !/[/\\](node_modules|\.first|dist)$/.test(file) });
 	if (existsSync(path.join(to, "package-lock.json"))) run("npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], to);
 	run(binary, ["build", to, "--quiet"], repo);
 

@@ -7,7 +7,7 @@ const packageTypes = new URL('../types/', import.meta.url);
 await rm(packageTypes, { recursive: true, force: true });
 await mkdir(packageTypes, { recursive: true });
 for (const entry of await readdir(sourceTypes, { withFileTypes: true })) {
-  if (entry.isFile() && entry.name.endsWith('.d.ts')) {
+  if (entry.isFile() && /\.d\.c?ts$/.test(entry.name)) {
     await copyFile(new URL(entry.name, sourceTypes), new URL(entry.name, packageTypes));
   }
 }

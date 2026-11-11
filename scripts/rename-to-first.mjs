@@ -188,6 +188,7 @@ const CODE_RULES = [
   [/(?<=`)zero(?=[`\s])/g, 'first'],
   [/(?<=\[)zero(?=\])/g, 'first'],
   [/(\\?["'])zero\1/g, '$1first$1'],
+  [/\bzero:db\b/g, 'first:db'], // the app's kinds module
   [/\bZERO\b/g, 'FIRST'],
   // Shell defaults (`${FIRST_WP_PROJECT:-zero-wp-test}`), crate paths, and the binary in commands.
   [/(?<=:-)zero-(?=[\w$])/g, 'first-'],

@@ -612,7 +612,7 @@ A plugin package imports its own modules, "first" and ordinary npm packages, com
 
 Status: **refused**. Diagnostic: `F1201`.
 
-A plugin can't import "zero:db": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it.
+A plugin can't import "first:db": the app's kinds are app values, which a plugin receives only through its options, so its lock grant names exactly what the app handed it.
 
 [Evidence](../tests/fixtures/reject-plugin-db)
 

@@ -1,4 +1,4 @@
-/// <reference path="./db.d.ts" />
+/// <reference path="./db.d.cts" />
 import type { ServicesConfig } from "./services";
 export type { ServicesConfig, ServiceForm, ServiceFormField, ServiceProduct } from "./services";
 

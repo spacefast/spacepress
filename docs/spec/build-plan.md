@@ -57,7 +57,7 @@ registries, `defineRelations`, the `hooks` key, the config evaluator in Rust
 - `.on()` hooks plus `afterPublish`; the implicit `author`; `"author"` / `"org"` access values.
 - Inferred title, content and labels.
 - Index inference from compiled queries, with `first check --json` reasons.
-- `_generated/db.d.ts` and the `zero:db` import.
+- `_generated/db.d.ts` and the `first:db` import.
 - One query API (`list`, `paginate`, `get`, `count`, `create`, `update`,
   `delete`, `.system`) replacing `db.query`/`db.insert`.
 - `action()` input types from the handler signature; `job()` with `every`/`cron`.

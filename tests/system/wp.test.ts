@@ -373,7 +373,7 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   // Something else grants this app's capability to a role of its own, plus its own capabilities,
   // including one for a post type whose name merely ends like the app's.
   wp("role", "create", "desk", "Desk");
-  wp("cap", "add", "desk", "edit_first_posts", "unrelated_cap", "edit_acme_zero_posts");
+  wp("cap", "add", "desk", "edit_first_posts", "unrelated_cap", "edit_acme_first_posts");
   // Capabilities of the app's post types come from its access rules (map_meta_cap), not from roles:
   // activation grants none, and the editor's edit rights are the posts rules' answer.
   assert.deepEqual(caps().editor, [], "activation grants no role a capability");
@@ -399,8 +399,8 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   // The harness's own must-use helpers aren't First's plugins; only regular plugins can be deleted.
   assert.deepEqual(JSON.parse(wp("plugin", "list", "--status=active,inactive", "--field=name", "--format=json")).filter((n: string) => n.startsWith("first-")), []);
   const left = caps();
-  assert.deepEqual(Object.values(left).flat().filter((c) => !["unrelated_cap", "edit_acme_zero_posts"].includes(c)), [], "no role keeps a capability for the app's post types, whoever granted it");
-  assert.deepEqual(left.desk.sort(), ["edit_acme_zero_posts", "unrelated_cap"], "capabilities that aren't the app's stay");
+  assert.deepEqual(Object.values(left).flat().filter((c) => !["unrelated_cap", "edit_acme_first_posts"].includes(c)), [], "no role keeps a capability for the app's post types, whoever granted it");
+  assert.deepEqual(left.desk.sort(), ["edit_acme_first_posts", "unrelated_cap"], "capabilities that aren't the app's stay");
   // The runtime's own maintenance action is canceled (Action Scheduler inactive, so in its tables);
   // the app's queued delivery is its content and stays; a stranger's action is untouched.
   assert.deepEqual([status(maintain), status(seeded[0])], ["canceled", "pending"]);

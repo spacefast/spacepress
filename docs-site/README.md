@@ -8,8 +8,10 @@ pnpm install
 rustup target add wasm32-unknown-unknown  # once
 pnpm dev       # the compiler for the browser, the generated pages, then the dev server
 pnpm build     # the same, to dist/
-pnpm check     # generated pages current, unit tests, links, browser tests
+pnpm check     # generated pages current, unit tests, links, browser tests, Playground boots
 ```
+
+`pnpm test:playground` boots every example's blueprint in WordPress Playground (`@wp-playground/cli`) and checks that First's plugins are active, that each collection answers on the REST API and has its wp-admin list and editor, and that the example's landing page opens. It needs network access for WordPress and the WordPress.org plugins.
 
 ## Where each page comes from
 

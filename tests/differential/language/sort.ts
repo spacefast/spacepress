@@ -130,7 +130,13 @@ function mutation(): unknown[] {
   const original = [3, 1, 2];
   const copy = original.toSorted();
   const sorted = original.sort((a, b) => b - a);
-  return [copy, original, sorted === original, copy === original];
+  // A comparator that grows the array: sort writes the sorted snapshot over the first
+  // slots and keeps what was appended; toSorted leaves the receiver alone.
+  const grown = [3, 1, 2];
+  grown.sort((a, b) => { if (grown.length < 5) grown.push(9); return a - b; });
+  const source = [3, 1, 2];
+  const fresh = source.toSorted((a, b) => { if (source.length < 5) source.push(9); return a - b; });
+  return [copy, original, sorted === original, copy === original, grown, source, fresh];
 }
 
 const BUILD_TIME_SORT = { defaults: defaults(), comparators: comparators(), calls: calls(), sequences: sequences(), stability: stability(), mutation: mutation(), untyped: sortUntyped(), untypedSequences: sortUntypedSequences() };

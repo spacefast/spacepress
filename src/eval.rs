@@ -3185,10 +3185,14 @@ impl<'p> Evaluator<'p> {
                 Value::Num(a.borrow().len() as f64)
             }
             "sort" | "toSorted" => {
-                let sorted = self.sorted(items, &f, span)?;
+                let length = items.len();
+                let mut sorted = self.sorted(items, &f, span)?;
                 if m == "toSorted" {
                     return Ok(Value::array(sorted));
                 }
+                // As in V8, the sorted elements overwrite the first `length` slots of the array
+                // as the comparator left it; anything it appended stays after them.
+                sorted.extend(a.borrow().iter().skip(length).cloned());
                 *a.borrow_mut() = sorted;
                 Value::Array(a.clone())
             }

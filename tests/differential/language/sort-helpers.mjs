@@ -61,8 +61,11 @@ export function sortObjects() {
   const valued = [3, 1, 2].sort((a, b) => (a < b ? { valueOf: () => -1 } : { valueOf: () => 1 }));
   const store = new Map([["dir/b", 1], ["dir/a", 2], ["other", 3], ["dir/é", 4], ["dir/B", 5], ["dir/🙂", 6], ["dir/\uffff", 7]]);
   const attempt = (f) => { try { return f(); } catch (error) { return error.name; } };
+  // A comparator that shrinks the array: sort still writes back every sorted element.
+  const shrunk = [3, 1, 2, 4];
+  shrunk.sort((a, b) => { if (shrunk.length > 2) shrunk.pop(); return a - b; });
   return {
-    ordered, counted, conversions, valued,
+    ordered, counted, conversions, valued, shrunk,
     json: stableJson({ z: 1, a: [{ y: 2, b: 1 }], m: { k: null, c: "x" }, "🙂": 1, "\ue000": 2 }),
     list: list(store, "dir/"),
     plainObjects: [{ k: 1 }, [2], { k: 0 }].sort().map((x) => JSON.stringify(x)),

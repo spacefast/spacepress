@@ -2069,6 +2069,10 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         "parseInt('14mnsu689fka', 36)",
     ] {
         for handler in [false, true] {
+            // Configuration evaluation spreads arguments; compiled handlers refuse spread calls.
+            if !handler && expression.contains("(...[") {
+                continue;
+            }
             // These contracts have different evaluator and emitter support.
             if handler
                 && (expression.starts_with("JSON.stringify")

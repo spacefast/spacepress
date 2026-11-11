@@ -556,6 +556,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "name the method",
                 );
             }
+            // Other well-known symbols change built-in protocols (iteration, string tags) that
+            // First's runtime doesn't route through class members.
+            if let SymbolVal::WellKnown(name) = &**key
+                && !(*name == "hasInstance" && method.is_static)
+            {
+                return err_help(
+                    method.func.span,
+                    format!(
+                        "class methods keyed by `Symbol.{name}` aren't supported; only `static [Symbol.hasInstance]` is"
+                    ),
+                    "name the method and call it explicitly",
+                );
+            }
             let helper = self.unique_name(&format!("{}_symbol_method", c.name));
             let closure = Rc::new(Closure::new(method.func.clone(), env.clone()));
             let params = vec![Ty::Dynamic; method.func.params.len()];
@@ -838,7 +851,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .class
                     .methods
                     .iter()
-                    .any(|(_, is_static, f)| *is_static && f.span == self.fx().function);
+                    .map(|(_, is_static, f)| (*is_static, f.span))
+                    .chain(class.class.symbol_methods.iter().map(|m| (m.is_static, m.func.span)))
+                    .any(|(is_static, f)| is_static && f == self.fx().function);
         if self.classes[&id].javascript {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
@@ -1015,6 +1030,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .iter()
                 .map(|(_, s, f)| (*s, f.span))
                 .chain(class.class.accessors.iter().map(|a| (a.is_static, a.func.span)))
+                .chain(class.class.symbol_methods.iter().map(|m| (m.is_static, m.func.span)))
                 .any(|(s, f)| s && f == self.fx().function);
         let info = self.classes[&id].clone();
         let ty = match info.accessors.get(&(is_static, member.to_string())) {

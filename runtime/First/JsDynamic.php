@@ -377,6 +377,7 @@ trait JsDynamic
     public static function dynamicKeys(mixed $value): JsArray
     {
         if (self::isNullish($value)) { return new JsArray(); }
+        if ($value instanceof JsPrototype) { throw new JsError('Enumerating a class prototype is not supported', 'TypeError'); }
         if ($value instanceof JsObject) { return new JsArray(array_map('strval', self::ownKeys($value->p))); }
         // A class's enumerable own properties are its static fields (methods are non-enumerable).
         if ($value instanceof JsClass) { return new JsArray(array_map('strval', self::ownKeys($value->statics->p))); }
@@ -936,6 +937,7 @@ trait JsDynamic
                 return new JsArray(array_map(static fn ($key) => $method === 'values' ? self::dynamicGet($source, $key) : new JsArray([$key, self::dynamicGet($source, $key)]), $keys->a));
             }
             if ($method === 'defineProperty') { return self::dynamicDefineProperty($source, $get(1), $get(2)); }
+            if ($method === 'hasOwn' && $source instanceof JsPrototype) { throw new JsError('Object.hasOwn on a class prototype is not supported', 'TypeError'); }
             if ($method === 'hasOwn' && $get(1) instanceof JsSymbol) {
                 self::requirePresent($source);
                 if ($source instanceof JsObject) { return $source->hasSymbol($get(1)); }

@@ -109,6 +109,7 @@ final class JsClass
     /** Object.defineProperty(C.prototype, symbol, { value, ... }) with a data descriptor. */
     public function defineSymbol(JsSymbol $key, mixed $value, bool $enumerable, bool $writable, bool $configurable): void
     {
+        if ($key->isWellKnown) { throw new JsError('Defining well-known symbols on a class prototype is not supported', 'TypeError'); }
         $id = spl_object_id($key);
         $existing = $this->prototypeSymbols[$id] ?? null;
         if ($existing !== null && $existing[0] === 'd' && !$existing[5]) {

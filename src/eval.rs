@@ -671,6 +671,13 @@ impl<'p> Evaluator<'p> {
         });
         // Dependencies first, like ESM. A CommonJS module loads its `require` targets lazily.
         for stmt in &module.body {
+            // A type-only import is erased, as TypeScript does: it never runs its target, so a
+            // `import type { X } from "../index.js"` back edge is not an evaluation cycle.
+            if let Stmt::Import { specs, type_only, .. } = stmt
+                && (*type_only || (!specs.is_empty() && specs.iter().all(|s| s.type_only)))
+            {
+                continue;
+            }
             if let Stmt::Import { source, .. }
             | Stmt::ExportNames { from: Some(source), .. }
             | Stmt::ExportAll { from: source, .. } = stmt
@@ -4042,8 +4049,19 @@ const ARRAY_PROTOTYPE: &[&str] = &[
 fn define_prototype_symbol(class: &Rc<ClassValue>, args: &[Value], span: Span) -> R<Value> {
     let help = "brand the prototype with a symbol key and a data descriptor, as in Object.defineProperty(C.prototype, Symbol.for(\"brand\"), { value: true })";
     let Some(Value::Symbol(key)) = args.get(1) else {
-        return err_help(span, "Object.defineProperty on a class prototype needs a symbol key", help);
+        return err_help(
+            span,
+            "Object.defineProperty on a class prototype needs a symbol key",
+            help,
+        );
     };
+    if let SymbolVal::WellKnown(name) = &**key {
+        return err_help(
+            span,
+            format!("defining `Symbol.{name}` on a class prototype isn't supported"),
+            help,
+        );
+    }
     let Some(Value::Object(descriptor)) = args.get(2) else {
         return err_help(span, "Object.defineProperty needs a descriptor object", help);
     };
@@ -4066,11 +4084,20 @@ fn define_prototype_symbol(class: &Rc<ClassValue>, args: &[Value], span: Span) -
     let mut symbols = class.prototype_symbols.borrow_mut();
     if let Some(existing) = symbols.iter().position(|(k, ..)| *k == *key) {
         if !symbols[existing].4 {
-            return err(span, format!("Cannot redefine property: {}", Value::Symbol(key.clone()).describe()));
+            return err(
+                span,
+                format!("Cannot redefine property: {}", Value::Symbol(key.clone()).describe()),
+            );
         }
         symbols.remove(existing);
     }
-    symbols.push((key.clone(), value, flag("enumerable"), flag("writable"), flag("configurable")));
+    symbols.push((
+        key.clone(),
+        value,
+        flag("enumerable"),
+        flag("writable"),
+        flag("configurable"),
+    ));
     Ok(Value::Prototype(class.clone()))
 }
 

@@ -1253,7 +1253,7 @@ final class Js
         }
         if ($object instanceof JsClass) { return $object->symbolGet($key, true); }
         if ($object instanceof JsPrototype) { return $object->class->symbolGet($key, false); }
-        if ($key->isWellKnown) { throw new JsError('Well-known symbols are only supported on plain objects and classes', 'TypeError'); }
+        if ($key->isWellKnown) { throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError'); }
         return JsClass::absent();
     }
 
@@ -1901,6 +1901,10 @@ final class Js
             return $value;
         }
         if ($value instanceof RegExp && !$structured) { return $value; }
+        if ($value instanceof JsPrototype) {
+            if ($structured) { throw new JsError('Cloning a class prototype is not supported', 'TypeError'); }
+            return $value;
+        }
         if ($value instanceof JsArguments && $structured) { throw new JsError('Arguments could not be cloned', 'DataCloneError'); }
         if ($value instanceof JsSymbol || $value instanceof JsWeakMap || $value instanceof JsWeakSet) {
             if ($structured) { throw new JsError(($value instanceof JsSymbol ? $value->descriptiveString() : self::dynamicObjectTag($value)) . ' could not be cloned', 'DataCloneError'); }
@@ -1985,6 +1989,7 @@ final class Js
         }
         if ($value === JsUndefined::Value) { return null; }
         if ($value instanceof JsBigInt) { throw new JsError('Do not know how to serialize a BigInt', 'TypeError'); }
+        if ($value instanceof JsPrototype) { throw new JsError('Serializing a class prototype is not supported', 'TypeError'); }
         if ($value instanceof JsDate) { return is_finite((float) $value->milliseconds) ? self::iso($value->milliseconds) : null; }
         if ($value instanceof JsUrl) { return $value->toJSON(); }
         if ($value instanceof JsUrlSearchParams) { return new \stdClass(); }

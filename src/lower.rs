@@ -764,7 +764,12 @@ impl Lowerer {
                                 "use explicitly typed ordinary parameters",
                             );
                         }
-                        if m.value.params.items.iter().any(|p| p.accessibility.is_some() || p.readonly) {
+                        if m.value
+                            .params
+                            .items
+                            .iter()
+                            .any(|p| p.accessibility.is_some() || p.readonly)
+                        {
                             return self.unsupported(
                                 m.span,
                                 "parameter properties outside constructors",

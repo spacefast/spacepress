@@ -37,6 +37,8 @@ final class Js
             $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace, $v instanceof JsWeakMap, $v instanceof JsWeakSet, $v instanceof JsAbortSignal, $v instanceof JsAbortController => self::dynamicObjectTag($v),
             $v instanceof JsSymbol => throw new JsError('Cannot convert a Symbol value to a string', 'TypeError'),
             $v instanceof JsUrl, $v instanceof JsUrlSearchParams => $v->toString(),
+            $v instanceof JsTypedArray => $v->call('join', []),
+            JsBinary::is($v) => self::dynamicObjectTag($v),
             $v instanceof JsDate => throw new JsError('Date string coercion is not supported', 'TypeError'),
             $v instanceof JsError => $v->jsName . ($v->getMessage() === '' ? '' : ': ' . $v->getMessage()),
             $v instanceof RegExp => (string) $v,
@@ -134,6 +136,7 @@ final class Js
         if ($v instanceof JsSymbol) { throw new JsError('Cannot convert a Symbol value to a number', 'TypeError'); }
         if ($v instanceof JsBigInt) { throw new JsError('Cannot convert a BigInt value to a number', 'TypeError'); }
         if ($v instanceof JsObject || $v instanceof JsArray || $v instanceof JsArguments) { return self::toNumber(self::dynamicPrimitive($v, 'number')); }
+        if (JsBinary::is($v)) { return self::toNumber(self::str($v)); }
         if (is_int($v)) {
             return self::n($v);
         }
@@ -521,7 +524,7 @@ final class Js
             is_int($v), is_float($v) => 'number',
             is_bool($v) => 'boolean',
             $v instanceof JsBigInt => 'bigint',
-            $v instanceof \Closure, $v instanceof JsClass => 'function',
+            $v instanceof \Closure, $v instanceof JsClass, $v instanceof JsConstructor => 'function',
             $v instanceof JsSymbol => 'symbol',
             default => 'object',
         };
@@ -1895,6 +1898,7 @@ final class Js
         }
         if ($value instanceof RegExp && !$structured) { return $value; }
         if ($value instanceof JsArguments && $structured) { throw new JsError('Arguments could not be cloned', 'DataCloneError'); }
+        if (JsBinary::is($value)) { return $structured ? JsBinary::copy($value, $seen) : $value; }
         if ($value instanceof JsSymbol || $value instanceof JsWeakMap || $value instanceof JsWeakSet) {
             if ($structured) { throw new JsError(($value instanceof JsSymbol ? $value->descriptiveString() : self::dynamicObjectTag($value)) . ' could not be cloned', 'DataCloneError'); }
             return $value;
@@ -1981,6 +1985,7 @@ final class Js
         if ($value instanceof JsDate) { return is_finite((float) $value->milliseconds) ? self::iso($value->milliseconds) : null; }
         if ($value instanceof JsUrl) { return $value->toJSON(); }
         if ($value instanceof JsUrlSearchParams) { return new \stdClass(); }
+        if (JsBinary::is($value)) { return JsBinary::json($value); }
         if ($value instanceof JsSet || $value instanceof JsMap || $value instanceof JsNamespace || $value instanceof JsError || $value instanceof JsWeakMap || $value instanceof JsWeakSet || $value instanceof JsAbortSignal || $value instanceof JsAbortController) { return new \stdClass(); }
         if ($value instanceof JsSymbol) { return null; }
         if (is_float($value)) { return !is_finite($value) ? null : ($value == 0.0 ? 0 : $value); }

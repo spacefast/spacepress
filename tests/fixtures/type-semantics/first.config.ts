@@ -18,6 +18,7 @@ type State = Exclude<Choice, "published">;
 type Values<T> = T[keyof T];
 type Box<T> = { value: T };
 const NUMBER_IS_FINITE = Number.isFinite;
+const TRUTH = Boolean;
 const FINITE_VALUES = [NaN, Infinity, "3", null, [], [3], [false]];
 const PURE_FINITE = FINITE_VALUES.map(value => [Number.isFinite(value), isFinite(Number(value))]);
 type Candidate = { kind: string; label?: string };
@@ -45,6 +46,8 @@ type Report = {
   finiteIdentity: boolean;
   finiteCaptured: boolean;
   pureFinite: boolean[][];
+  truthChecks: boolean[];
+  truthIdentity: boolean;
   scalarTypes: string[];
   scalarFalseBranches: string[];
   guardedLabels: string[];
@@ -104,6 +107,7 @@ export default defineConfig({
       input: { entry: json().$type<Projection<Draft>>().notNull() },
       handler: (input): Report => {
         const finite = Number.isFinite;
+        const truth = Boolean;
         const candidates: Candidate[] = [{ kind: "other" }, { kind: "named", label: "found" }];
         const guard = isNamed;
         const networks: ReadonlyArray<["left" | "right", string]> = [["left", "Left"], ["right", "Right"]];
@@ -122,6 +126,8 @@ export default defineConfig({
           finiteIdentity: finite === Number.isFinite,
           finiteCaptured: NUMBER_IS_FINITE(3),
           pureFinite: PURE_FINITE,
+          truthChecks: FINITE_VALUES.map(truth).concat(FINITE_VALUES.filter(TRUTH).map(Boolean)),
+          truthIdentity: truth === Boolean && TRUTH === truth,
           scalarTypes: [7, "Hello", true, false, null].map(scalarLabel),
           scalarFalseBranches: [7, "Hello", null].map(scalarRemainder),
           guardedLabels: guarded,

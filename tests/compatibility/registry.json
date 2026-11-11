@@ -134,10 +134,10 @@
     {
       "id": "primitive-wrapper-objects",
       "status": "refused",
-      "code": "Z4001",
+      "code": "F4001",
       "fixture": "tests/fixtures/reject-new-boolean",
       "message": "creates a wrapper object",
-      "guidance": "`new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects, which are always truthy and compare by identity; First has primitives only. Call `Boolean(x)`, `String(x)` or `Number(x)` without `new`. Configuration evaluation refuses them with the same message (Z2001)."
+      "guidance": "`new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects, which are always truthy and compare by identity; First has primitives only. Call `Boolean(x)`, `String(x)` or `Number(x)` without `new`. Configuration evaluation refuses them with the same message (F2001)."
     },
     {
       "id": "prototype-literal-object",

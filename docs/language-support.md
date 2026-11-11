@@ -154,9 +154,9 @@ The global `Boolean` compiles as a call and as a function value in typed code, i
 
 ## primitive-wrapper-objects
 
-Status: **refused**. Diagnostic: `Z4001`.
+Status: **refused**. Diagnostic: `F4001`.
 
-`new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects, which are always truthy and compare by identity; First has primitives only. Call `Boolean(x)`, `String(x)` or `Number(x)` without `new`. Configuration evaluation refuses them with the same message (Z2001).
+`new Boolean(x)`, `new String(x)` and `new Number(x)` create wrapper objects, which are always truthy and compare by identity; First has primitives only. Call `Boolean(x)`, `String(x)` or `Number(x)` without `new`. Configuration evaluation refuses them with the same message (F2001).
 
 [Evidence](../tests/fixtures/reject-new-boolean)
 

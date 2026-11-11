@@ -9,7 +9,7 @@
     { "name": "sync", "args": "[status | resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--json]", "summary": "content files <-> site records (FIRST_APP_PASSWORD or FIRST_TOKEN)" },
     { "name": "abilities pull", "args": "[dir] --site url [--only vendor/*]", "summary": "lock a site's abilities into first/_generated/abilities.json (FIRST_APP_PASSWORD)" },
     { "name": "migrate app", "args": "--from zero-0.8 <capsule-dir> --out <new-dir> [--space id] [--dry-run] [--json]", "summary": "convert a Zero 0.8 app" },
-    { "name": "migrate config", "args": "--from emdash|payload|sanity|first <input> --out <new/first.config.ts>", "summary": "import another CMS's schema" },
+    { "name": "migrate config", "args": "--from emdash|payload|sanity|zero <input> --out <new/first.config.ts>", "summary": "import another CMS's schema" },
     { "name": "deploy", "args": "<inspect|publish|init|status|backup|restore> <options>", "summary": "artifact preflight and offline workspaces (docs/deployment.md)" }
   ],
   "site": [

@@ -151,7 +151,7 @@ test("installing the artifact: activation order, platform requirements, doctor",
   assert.deepEqual(readdirSync(join(artifact, "plugins")).filter((n) => !n.endsWith(".zip")).sort(), [...ORDER].sort());
   install(artifact);
   // Requires Plugins refuses to activate a plugin before its dependencies, so order matters.
-  assert.match(wpFails("plugin", "activate", "first-app-site"), /requires 6 plugins.*Action Scheduler, MCP Adapter, Polylang, Secure Custom Fields, Two Factor, First Runtime/s);
+  assert.match(wpFails("plugin", "activate", "first-app-site"), /requires 6 plugins.*Action Scheduler, First Runtime, MCP Adapter, Polylang, Secure Custom Fields, Two Factor/s);
   assert.match(wpFails("plugin", "activate", "first-runtime"), /requires 4 plugins.*Action Scheduler, MCP Adapter, Secure Custom Fields, Two Factor/s);
   assert.deepEqual(active(), []);
   // This site sits behind a published port its own container can't reach, so the owner routes the

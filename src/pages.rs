@@ -1,7 +1,7 @@
 //! Hosted TSX pages: the `first/pages.json` render artifact.
 //!
 //! `first-pages build` (Node) runs page modules once and serializes them with WordPress's own block
-//! code; a hosting box has no JavaScript, so that render cannot happen there. The build therefore
+//! code; the Spacefast runtime has no JavaScript, so that render cannot happen there. The build therefore
 //! writes its result as data, `first/pages.json`: the plugin manifest, every template, body and
 //! asset, the compiled schema the pages were rendered against, and a SHA-256 of each authored text
 //! input. It holds no PHP.

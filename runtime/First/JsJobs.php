@@ -54,7 +54,10 @@ final class JsJobs
                 $promise->reject(Js::thrownValue($error));
             }
         });
-        self::step($fiber, static fn () => $fiber->start());
+        // The body keeps its viewer across every await: the one it started under, or the one an
+        // asViewer() inside it had bound when it suspended, whoever resumes it.
+        $viewer = new \ArrayObject([Seam::viewer()]);
+        self::step($fiber, static fn () => $fiber->start(), $viewer);
         return $promise;
     }
 
@@ -87,21 +90,29 @@ final class JsJobs
         return static fn (mixed ...$args): JsPromise => self::async($body, $args);
     }
 
-    /** Resumes a fiber and lets the value it suspended with (a promise) schedule the next resume. */
-    private static function step(\Fiber $fiber, \Closure $resume): void
+    /**
+     * Resumes a fiber and lets the value it suspended with (a promise) schedule the next resume.
+     *
+     * @param \ArrayObject<int, ?Viewer> $viewer the body's viewer, updated at each suspension
+     */
+    private static function step(\Fiber $fiber, \Closure $resume, \ArrayObject $viewer): void
     {
-        $awaited = $resume();
+        $awaited = Seam::asViewer($viewer[0], static function () use ($resume, $viewer): mixed {
+            $awaited = $resume();
+            $viewer[0] = Seam::viewer();
+            return $awaited;
+        });
         if ($fiber->isTerminated()) { return; }
         if (!$awaited instanceof JsPromise) {
             throw new \LogicException('An async body suspended without a promise');
         }
         $awaited->then(
-            static function ($value) use ($fiber): JsUndefined {
-                self::step($fiber, static fn () => $fiber->resume([false, $value]));
+            static function ($value) use ($fiber, $viewer): JsUndefined {
+                self::step($fiber, static fn () => $fiber->resume([false, $value]), $viewer);
                 return JsUndefined::Value;
             },
-            static function ($reason) use ($fiber): JsUndefined {
-                self::step($fiber, static fn () => $fiber->resume([true, $reason]));
+            static function ($reason) use ($fiber, $viewer): JsUndefined {
+                self::step($fiber, static fn () => $fiber->resume([true, $reason]), $viewer);
                 return JsUndefined::Value;
             },
             false,

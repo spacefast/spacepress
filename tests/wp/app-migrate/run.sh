@@ -32,7 +32,7 @@ sed -e 's/\.unique()//' -e 's/\.references(() => contacts.id, { onDelete: "set n
 "$first" build "$work/indexes" --quiet >/dev/null
 docker compose -p "$FIRST_WP_PROJECT" cp "$work/indexes/first/dist/wp-content/plugins/first-app-adoption-indexes" cli:/tmp/first-app-migrate-indexes >/dev/null 2>&1
 docker compose -p "$FIRST_WP_PROJECT" cp "$here/indexes.php" cli:/tmp/first-app-migrate-indexes.php >/dev/null 2>&1
-docker compose -p "$FIRST_WP_PROJECT" exec -T db mariadb -uroot -pzero-test-root -e \
+docker compose -p "$FIRST_WP_PROJECT" exec -T db mariadb -uroot -pfirst-test-root -e \
   "CREATE DATABASE first_adopt_other; GRANT ALL ON first_adopt_other.* TO 'wordpress'@'%';"
 "$wp/harness.sh" wp eval-file /tmp/first-app-migrate-indexes.php
 # A separate source candidate proves the portable first-identity gate on a fresh site. The fixture's

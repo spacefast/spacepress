@@ -35,7 +35,7 @@ let client: (role: "anonymous" | "editor") => { projects: Collection; tasks: Col
 before(async () => {
   rmSync(project, { recursive: true, force: true });
   // Step 1: the capsule becomes a first.config.ts.
-  first("migrate", "config", "--from", "first", join(legacy, "capsule.ts"), "--out", join(project, "first.config.ts"));
+  first("migrate", "config", "--from", "zero", join(legacy, "capsule.ts"), "--out", join(project, "first.config.ts"));
   // Step 2: the importer denies every write; the owner opens them to editors.
   const config = join(project, "first.config.ts");
   writeFileSync(config, readFileSync(config, "utf8").replaceAll(`"create":false,"update":false,"delete":false`, `"create":"editor","update":"editor","delete":"editor"`));

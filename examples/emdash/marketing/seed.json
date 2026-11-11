@@ -290,7 +290,7 @@
             },
             {
               "question": "Is our data secure?",
-              "answer": "Halden is audited every year against SOC 2 Type II and certified to ISO 27001. You choose EU or US hosting, and your meter data is encrypted in transit and at rest."
+              "answer": "Halden is audited every year against SOC 2 Type II and certified to ISO 27001. You choose EU or US data residency, and your meter data is encrypted in transit and at rest."
             },
             {
               "question": "Can Halden change settings on its own?",

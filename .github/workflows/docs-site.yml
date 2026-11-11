@@ -72,6 +72,8 @@ jobs:
         if: github.event_name == 'push'
         with:
           path: docs-site/dist
+          # dist/.well-known/ holds the agent discovery files the pages link to.
+          include-hidden-files: true
 
   deploy:
     needs: docs-site

@@ -1070,6 +1070,12 @@ trait JsDynamic
         }
         if ($constructor === 'URL') { return JsUrl::construct($a[0] ?? JsUndefined::Value, $a[1] ?? JsUndefined::Value); }
         if ($constructor === 'URLSearchParams') { return JsUrlSearchParams::construct($a[0] ?? JsUndefined::Value); }
+        // `Boolean` reached through a stored reference (`const o = { B: Boolean }; new o.B(x)`)
+        // escapes the build-time refusal. A wrapper object is truthy even around `false`, so a
+        // primitive here would diverge silently; throw the build-time message instead.
+        if ($constructor === self::booleanFunction()) {
+            throw new JsError("`new Boolean(...)` creates a wrapper object, which isn't supported; call `Boolean(value)` without `new` for a primitive boolean", 'TypeError');
+        }
         throw new JsError('Value is not a supported constructor', 'TypeError');
     }
 

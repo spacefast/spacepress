@@ -182,7 +182,7 @@ function authError(status, code, detail) {
 /** In-flight refreshes of sessionStorage-backed sessions, by storage key (shared by clients in this tab). */
 const refreshes = new Map();
 export function createClient(options = {}) {
-	const base = (options.url ?? "/wp-json/first/v1").replace(/\/+$/, "");
+	const base = (options.url ?? "/__first/api/v1").replace(/\/+$/, "");
 	const authOpts = options.auth ?? {};
 	const doFetch = (input, init) => (options.fetch ?? globalThis.fetch)(input, init);
 	// Token storage: memory by default, sessionStorage on request. The record always exists once
@@ -276,7 +276,10 @@ export function createClient(options = {}) {
 		const { res, parsed } = await call(base + path + (qs ? `?${qs}` : ""), init, `${method} ${path}`);
 		if (res.ok) {
 			if (!isObject(parsed) || !("data" in parsed)) throw networkError(`${method} ${path}: response has no data`);
-			return parsed.data;
+			return send.envelope ? {
+				rows: parsed.data,
+				cursor: parsed.cursor ?? null
+			} : parsed.data;
 		}
 		const error = toError(res, parsed);
 		if (error.status === 401 && error.code === "unauthenticated" && !send.anonymous && !retried) {
@@ -607,8 +610,17 @@ export function createClient(options = {}) {
 		const path = `/${seg(desc.path)}`;
 		const one = (id) => `${path}/${seg(id)}`;
 		const list = (q) => request("GET", path, { query: listParams(q) });
+		const paginate = (q) => {
+			const query = listParams(q);
+			if (typeof q?.cursor === "string") query.set("cursor", q.cursor);
+			return request("GET", path, {
+				query,
+				envelope: true
+			});
+		};
 		return {
 			list,
+			paginate,
 			watch: (q, onRows, onError) => watchWith(realtime, dependencies(key, q?.with), () => list(q), onRows, onError),
 			get: (id, q) => request("GET", one(id), { query: listParams(q ? {
 				with: q.with,
@@ -649,11 +661,11 @@ export function createClient(options = {}) {
 		}])),
 		actions: Object.fromEntries(SCHEMA.actions.map((name) => [name, (input) => request("POST", `/actions/${seg(name)}`, { json: input ?? {} })])),
 		globals: Object.fromEntries(SCHEMA.globals.map((name) => [name, {
-			get: () => request("GET", `/globals/${seg(name)}`),
-			update: (patch) => request("PATCH", `/globals/${seg(name)}`, { json: patch })
+			get: () => request("GET", `/${seg(name)}`),
+			update: (patch) => request("PATCH", `/${seg(name)}`, { json: patch })
 		}])),
 		auth,
-		schema: () => request("GET", "/_schema")
+		schema: () => request("GET", "")
 	};
 	for (const key of Object.keys(SCHEMA.collections)) client[key] = collection(key);
 	hubs.set(client, realtime);

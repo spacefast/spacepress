@@ -415,6 +415,13 @@ export type ListQuery<
 } & StatusQuery<K> & LocaleQuery<K>;
 export interface CollectionClient<K extends CollectionKey> {
 	list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
+	/** One page and the `cursor` of the next (null on the last page): pass it back as `cursor`. */
+	paginate<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>> & {
+		cursor?: string | null;
+	}): Promise<{
+		rows: RowWith<K, W>[];
+		cursor: string | null;
+	}>;
 	/** With `locale`, the row of `id`'s translation group in that locale (or its fallback). */
 	get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: {
 		with?: ExactWith<K, W>;
@@ -508,7 +515,7 @@ export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
 	readonly actions: ActionsClient;
 	readonly globals: GlobalsClient;
 	readonly auth: AuthClient;
-	/** `GET /_schema`: the app's public schema description. */
+	/** `GET /__first/api/v1`: the app's schema (kinds, fields, globals, actions), as `first pull` reads it. */
 	schema(): Promise<unknown>;
 };
 /** One committed transaction's changes, as the runtime's `first_realtime_changes` hook sends them. */
@@ -544,7 +551,7 @@ export interface RealtimeOptions {
 /** For host scripts: every client on this page, created before or after, uses this transport by default. */
 export declare function registerRealtimeTransport(transport: RealtimeTransport): void;
 export interface ClientOptions {
-	/** Base URL including the REST prefix: "https://x.test/wp-json/first/v1". Default: `/wp-json/first/v1` on the page's origin. */
+	/** Base URL including the API prefix: "https://x.test/__first/api/v1". Default: `/__first/api/v1` on the page's origin. */
 	url?: string;
 	/** WordPress cookie auth: the REST nonce; sent as `X-WP-Nonce` with `credentials: "same-origin"`. */
 	nonce?: string;

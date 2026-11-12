@@ -704,8 +704,8 @@ test("hidden columns never leave the runtime: list, get, with, write results, ab
   const get = await call("GET", `/members/${ed.id}`, asSelf);
   const update = await call("PATCH", `/members/${ed.id}`, { ...asSelf, body: { points: 1 } });
   await call("POST", "/guestbook", { ...asSelf, body: { message: "mine", memberId: ed.id } });
-  const withMember = await call("GET", "/guestbook", { ...asSelf, query: { with: "member" } });
-  assert.ok(withMember.json.data.some((e: any) => e.member?.id === ed.id));
+  const withMember = await call("GET", "/guestbook", { ...asSelf, query: { with: "memberId" } });
+  assert.ok(withMember.json.data.some((e: any) => e.memberId?.id === ed.id));
   const ability = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/members-get/run?input[id]=${ed.id}`, { headers: { authorization: `Bearer ${self.json.access_token}` } });
   const abilityText = await ability.text();
   assert.equal(ability.status, 200, abilityText);

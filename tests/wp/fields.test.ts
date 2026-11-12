@@ -35,11 +35,11 @@ test("reads remove the columns a viewer may not read, per row and in with rows",
   assert.deepEqual([editor.email, editor.salary], ["other@example.test", 20]);
 
   const editorClient = createClient({ url: api, headers: auth("editor") });
-  const withTeam = await editorClient.fieldStaff.get(mine.id, { with: { team: true } });
-  assert.deepEqual([withTeam.team?.name, "budget" in (withTeam.team ?? {})], [`Core ${run}`, false], "a with-loaded parent is stripped");
-  const withMembers = await createClient({ url: api }).fieldTeams.get(team.id, { with: { members: true } });
-  assert.deepEqual(withMembers.members.map((m) => ["email" in m, "salary" in m]), [[false, false], [false, false]], "with-loaded children are stripped");
-  assert.equal((await ok("GET", `/field_staff/${mine.id}?with=team`, { as: "admin" })).team.budget, 1000);
+  const withTeam = await editorClient.fieldStaff.get(mine.id, { with: { teamId: true } });
+  assert.deepEqual([withTeam.teamId?.name, "budget" in (withTeam.teamId ?? {})], [`Core ${run}`, false], "a with-loaded parent is stripped");
+  const withMembers = await createClient({ url: api }).fieldTeams.get(team.id, { with: { fieldStaff: true } });
+  assert.deepEqual(withMembers.fieldStaff.map((m) => ["email" in m, "salary" in m]), [[false, false], [false, false]], "with-loaded children are stripped");
+  assert.equal((await ok("GET", `/field_staff/${mine.id}?with=teamId`, { as: "admin" })).teamId.budget, 1000);
   assert.equal(first("find", "field_staff", JSON.stringify({ where: { id: mine.id } }))[0].notes.private, "secret", "trusted reads see everything");
 });
 

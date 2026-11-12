@@ -29,8 +29,8 @@ test("table relations use the generated client, SQL joins and the target's acces
   const anonymous = createClient({ url: api });
   const team = await editor.fieldTeams.create({ name: `Relational ${run}`, budget: 250 });
   const signup = await editor.signups.create({ email: `relation-${run}@example.test`, teamId: team.id });
-  const matches = await editor.signups.list({ where: { team: { name: team.name } }, with: { team: true } });
-  assert.deepEqual(matches.map(row => [row.id, row.team?.id, row.team?.budget]), [[signup.id, team.id, undefined]]);
+  const matches = await editor.signups.list({ where: { teamId: { name: team.name } }, with: { teamId: true } });
+  assert.deepEqual(matches.map(row => [row.id, row.teamId?.id, row.teamId?.budget]), [[signup.id, team.id, undefined]]);
   const reverse = await editor.fieldTeams.get(team.id, { with: { signups: { where: { email: signup.email } } } });
   assert.deepEqual(reverse.signups.map(row => row.id), [signup.id]);
   await assert.rejects(anonymous.fieldTeams.get(team.id, { with: { signups: true } }), (error: unknown) => {
@@ -281,8 +281,8 @@ test("/wp/v2/<table> lists, reads, writes and deletes table rows in core's shape
   // Core's `_fields`, nested paths included, on First rows and their relations.
   const signup = await http("POST", `${core}/first_signups`, { as: "editor", body: { email: `fields-${run}@example.test`, teamId: id } });
   assert.equal(signup.status, 201, JSON.stringify(signup.json));
-  const fielded = await http("GET", `${core}/first_signups/${signup.json.id}?` + new URLSearchParams({ with: "team", _fields: "email,team.name" }), { as: "editor" });
-  assert.deepEqual(fielded.json, { email: `fields-${run}@example.test`, team: { name: `Core team ${run}` } }, JSON.stringify(fielded.json));
+  const fielded = await http("GET", `${core}/first_signups/${signup.json.id}?` + new URLSearchParams({ with: "teamId", _fields: "email,teamId.name" }), { as: "editor" });
+  assert.deepEqual(fielded.json, { email: `fields-${run}@example.test`, teamId: { name: `Core team ${run}` } }, JSON.stringify(fielded.json));
   assert.ok("_links" in (await http("GET", `${base}/${id}`, { as: "editor" })).json, "links without _fields, as core gives them");
   // A form-encoded body is read as WordPress parses it, not as JSON.
   const form = await fetch(base, { method: "POST", headers: { ...auth("editor"), "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ name: `Form team ${run}` }) });

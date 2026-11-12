@@ -110,29 +110,13 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
     if !matches!(url.scheme(), "http" | "https") || !url.username().is_empty() || url.password().is_some() {
         return Err("site must be an HTTP(S) URL without credentials".into());
     }
-    let rest_route = url
-        .query_pairs()
-        .find(|(key, _)| key == "rest_route")
-        .map(|(_, value)| value.into_owned());
-    if let Some(route) = rest_route {
-        let pairs: Vec<_> = url
-            .query_pairs()
-            .filter(|(key, _)| key != "rest_route")
-            .map(|(key, value)| (key.into_owned(), value.into_owned()))
-            .collect();
-        url.query_pairs_mut()
-            .clear()
-            .extend_pairs(pairs)
-            .append_pair("rest_route", &format!("{}/_schema", route.trim_end_matches('/')));
-    } else {
-        let path = url.path().trim_end_matches('/');
-        let path = if path.ends_with("/wp-json/first/v1") {
-            format!("{path}/_schema")
-        } else {
-            format!("{path}/wp-json/first/v1/_schema")
-        };
-        url.set_path(&path);
+    if url.query().is_some() {
+        return Err("site must be the site's URL without a query (https://example.test or https://example.test/blog)".into());
     }
+    // The facade's schema (spec §3a): `GET /__first/api/v1`, below the site's path.
+    let path = url.path().trim_end_matches('/').to_string();
+    let api = crate::sync::client::API;
+    url.set_path(&if path.ends_with(api) { path } else { format!("{path}{api}") });
     url.set_fragment(None);
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(15)))

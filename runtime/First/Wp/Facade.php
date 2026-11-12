@@ -115,6 +115,8 @@ final class Facade
         if ($name === null) {
             \First\App::allow($method, ['GET', 'HEAD']);
 
+            $plugin->app(); // the running app describes itself fully (its site id, for sync)
+
             return self::json(200, ['data' => Kinds::describe($plugin)]);
         }
         if ($name === 'me' && count($segments) === 1) {

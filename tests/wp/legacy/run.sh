@@ -21,14 +21,14 @@ trap 'rm -rf "$app"' EXIT
 # project titles unique (something the original app didn't enforce), so the suite proves the
 # migration honours the new app's rules.
 sed -i 's/"create":false,"update":false,"delete":false/"create":"editor","update":"editor","delete":"editor"/g' "$app/first.config.ts"
-sed -i 's/  "title": text().notNull().max(120.0),/  "title": text().notNull().max(120.0).unique(),/' "$app/first.config.ts"
+sed -i 's/  "title": text().max(120.0),/  "title": text().max(120.0).unique(),/' "$app/first.config.ts"
 # A column the original app never had, with a default the migration fills (a timezone-bearing
 # timestamp, normalized to UTC), and project covers restricted to images.
-sed -i 's|  "kickoff": timestamp(),|&\n  "reviewedAt": timestamp().default("2026-03-01T12:00:00+02:00"),|' "$app/first.config.ts"
-sed -i 's|  "cover": media(),|  "cover": media({ accept: "image" }),|' "$app/first.config.ts"
+sed -i 's|  "kickoff": timestamp().optional(),|&\n  "reviewedAt": timestamp().default("2026-03-01T12:00:00+02:00").optional(),|' "$app/first.config.ts"
+sed -i 's|  "cover": media().optional(),|  "cover": media({ accept: "image" }).optional(),|' "$app/first.config.ts"
 # A compiled validator on a migrated field that reads the rest of the row: published task notes
 # must not shout (drafts may).
-sed -i 's|  "notes": text({ multiline: true }),|  "notes": text({ multiline: true }).validate((value, ctx) => value === null \|\| ctx.data.status !== "published" \|\| value !== value.toUpperCase() \|\| "Don'"'"'t shout"),|' "$app/first.config.ts"
+sed -i 's|  "notes": text({ multiline: true }).optional(),|  "notes": text({ multiline: true }).optional().validate((value, ctx) => value === null \|\| ctx.data.status !== "published" \|\| value !== value.toUpperCase() \|\| "Don'"'"'t shout"),|' "$app/first.config.ts"
 "$first" build "$app" --quiet >/dev/null
 mkdir -p "$wp/.wp-content-legacy"
 rsync -a --delete "$app/first/dist/wp-content/" "$wp/.wp-content-legacy/"

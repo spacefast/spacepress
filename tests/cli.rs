@@ -204,12 +204,12 @@ impl Drop for Served {
     }
 }
 
-const CONFIG: &str = r#"import { defineConfig, table, id, text, job, jobs, integer } from "first";
-const notes = table({ id: id(), title: text().notNull() }, { access: { read: "anyone" } });
+const CONFIG: &str = r#"import { defineConfig, table, text, job, jobs, integer } from "first";
+const notes = table({ title: text() }, { access: { read: "anyone" } });
 export default defineConfig({
   name: "clilane",
   tables: { notes },
-  jobs: { stamp: job({ input: { n: integer() }, handler: async () => {} }) },
+  jobs: { stamp: job({ input: { n: integer().optional() }, handler: async () => {} }) },
 });
 "#;
 

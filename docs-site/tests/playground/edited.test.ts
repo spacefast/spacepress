@@ -58,7 +58,7 @@ before(async () => {
 	// The editor holds First names; the page hands the compiler the names it reads.
 	const shown = firstFiles(sources(path.join(repo, "examples/pantry")));
 	const config = shown["first.config.ts"]!;
-	const edited = config.replace("  opened: boolean().notNull().default(false),", "  opened: boolean().notNull().default(false),\n  note: text(),");
+	const edited = config.replace("  opened: boolean().default(false),", "  opened: boolean().default(false),\n  note: text().optional(),");
 	assert.notEqual(edited, config, "the edit did not apply; examples/pantry changed");
 	const run = await exampleRun("pantry");
 	const { check, output } = (await loadCompiler()).compile(runRequest("pantry", compilerFiles({ ...shown, "first.config.ts": edited }), run.ledger));

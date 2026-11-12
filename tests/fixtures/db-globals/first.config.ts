@@ -1,8 +1,8 @@
-import { collection, id, text, integer, json, global, defineConfig, action, db, table } from "first";
-const n = table({ id: id(), meta: json() });
+import { collection, text, integer, json, global, defineConfig, action, db, table } from "first";
+const n = table({ meta: json().optional() });
 const settings = global("settings", {
-  title: text().notNull().default("Hi"),
-  stats: json().$type<{ visits: number }>(),
+  title: text().default("Hi"),
+  stats: json<{ visits: number }>().optional(),
 });
 export default defineConfig({
   tables: { n },

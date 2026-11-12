@@ -1,11 +1,10 @@
-import { boolean, defineConfig, id, integer, table, text } from "first";
+import { boolean, defineConfig, integer, table, text } from "first";
 
 const contacts = table({
-  id: id(),
-  email: text().max(191).unique(),
-  active: boolean().default(false),
-  parentId: integer().references(() => contacts.id, { onDelete: "set null" }),
+  email: text().max(191).unique().optional(),
+  active: boolean().default(false).optional(),
+  parentId: integer().references(() => contacts.id, { onDelete: "set null" }).optional(),
 }, { existingTable: "sf_migrate_index_contacts" });
-const bookmarks = table({ id: id(), contactId: integer().references(() => contacts.id, { onDelete: "set null" }) });
+const bookmarks = table({ contactId: integer().references(() => contacts.id, { onDelete: "set null" }).optional() });
 
 export default defineConfig({ name: "adoption-indexes", tables: { bookmarks, contacts } });

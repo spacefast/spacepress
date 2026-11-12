@@ -14,7 +14,7 @@ const refsSaved: { f?: () => number } = {};
 export const actions = {
   /** Annotated from its options (spec §3a): reads only, so core runs it over GET. */
   refsCount: action({
-    input: { body: text().notNull() },
+    input: { body: text() },
     access: "anyone",
     readonly: true,
     async handler({ body }) {
@@ -24,7 +24,7 @@ export const actions = {
   }),
   /** Destructive and idempotent: core runs it over DELETE. */
   refsPurge: action({
-    input: { body: text().notNull() },
+    input: { body: text() },
     access: "editor",
     destructive: true,
     idempotent: true,
@@ -35,7 +35,7 @@ export const actions = {
   }),
   /** Computed numbers that can't be finite (NaN, Infinity, 2^70): null on the wire; 1e20 literal kept. */
   refsRatio: action({
-    input: { n: integer().notNull() },
+    input: { n: integer() },
     access: "anyone",
     readonly: true,
     handler({ n }): { ratio: number; big: 1e20; huge: number } {
@@ -45,7 +45,7 @@ export const actions = {
   refsEmpty: action({ input: {}, access: "editor", handler: () => ({}) }),
   refsWire: action({ input: {}, access: "editor", handler: () => ({ f: refsHelper, a: [refsHelper, NaN] }) }),
   refsEcho: action({
-    input: { meta: json(), info: group({ fields: { tag: text() } }), items: repeater({ fields: { tag: text() } }) },
+    input: { meta: json().optional(), info: group({ tag: text().optional() }).optional(), items: repeater({ tag: text().optional() }).optional() },
     access: (ctx) => { refsSaved.f = refsHelper; return ctx.user?.role === "editor" || ctx.user?.role === "admin"; },
     handler: (input) => {
       if (refsSaved.f && refsSaved.f !== refsHelper) throw new Error("named function identity changed across callbacks");
@@ -54,7 +54,7 @@ export const actions = {
   }),
   /** Kept from agents (§7.1): an ability for PHP and `wp first run`, absent from core REST and MCP. */
   agentNote: action({
-    input: { note: text().notNull().max(200) },
+    input: { note: text().max(200) },
     access: "editor",
     agents: false,
     async handler({ note }) {

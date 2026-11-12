@@ -337,6 +337,9 @@ impl Fs for CapturedFs {
     fn module_alias(&self) -> Option<&'static str> {
         self.module_alias
     }
+    fn legacy_fields(&self) -> bool {
+        self.module_alias.is_some()
+    }
     fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
         let prefix = self
             .key(path)

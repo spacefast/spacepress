@@ -7,7 +7,7 @@ export default defineConfig({
   name: "abilities-lane",
   actions: {
     count: action({
-      input: { text: text().notNull() },
+      input: { text: text() },
       access: "anyone",
       async handler(input) {
         const result = await abilities.call("acme/word-count", { text: input.text, unit: "words" });
@@ -15,7 +15,7 @@ export default defineConfig({
       },
     }),
     draft: action({
-      input: { title: text().notNull() },
+      input: { title: text() },
       access: "authenticated",
       handler(input) {
         const id = wp_insert_post({ post_title: input.title, post_status: "draft" });

@@ -1,47 +1,44 @@
 import {
   action, collection, date, db, defineConfig, defineRelations, HttpError,
   integer, job, jobs, json, media, table, text, timestamp,
-  type InferSelectModel,
+  type InferSelectModel, select,
 } from "first";
 import { actorId, ownerId, personalAccess } from "./first/lib/ownership";
 
 const bins = collection({
-  name: text().notNull().min(1),
-  location: text().notNull().min(1).ui({ help: "For example: hallway cupboard, top shelf." }),
-  photo: media({ accept: "image" }),
+  name: text().min(1),
+  location: text().min(1).ui({ help: "For example: hallway cupboard, top shelf." }),
+  photo: media({ accept: "image" }).optional(),
   ownerId,
 }, { title: "name", label: "Bins", access: personalAccess });
 
 const things = collection({
-  name: text().notNull().min(1),
-  kind: text({ enum: ["cable", "adapter", "charger", "tool", "book", "other"] }).notNull().default("other"),
-  connectorA: text().ui({ label: "Connector A", placeholder: "USB-C" }),
-  connectorB: text().ui({ label: "Connector B", placeholder: "Lightning" }),
-  lengthCm: integer().min(0).ui({ label: "Length in cm" }),
-  wattage: integer().min(0).ui({ label: "Power in watts" }),
-  binId: integer().references(() => bins.id, { onDelete: "set null" }),
-  quantity: integer().notNull().min(1).default(1).ui({ help: "Total owned, including copies lent out. Each loan is one copy." }),
-  photo: media({ accept: "image" }),
-  tags: json().$type<string[]>().notNull().$default(() => [])
-    .validate((tags) => (Array.isArray(tags) && tags.every((tag) => typeof tag === "string")) || "Tags must be a JSON list of strings.")
-    .ui({ help: 'A JSON list, for example ["travel", "iphone"].' }),
+  name: text().min(1),
+  kind: select(["cable", "adapter", "charger", "tool", "book", "other"]).default("other"),
+  connectorA: text().ui({ label: "Connector A", placeholder: "USB-C" }).optional(),
+  connectorB: text().ui({ label: "Connector B", placeholder: "Lightning" }).optional(),
+  lengthCm: integer().min(0).ui({ label: "Length in cm" }).optional(),
+  wattage: integer().min(0).ui({ label: "Power in watts" }).optional(),
+  binId: integer().references(() => bins.id, { onDelete: "set null" }).optional(),
+  quantity: integer().min(1).default(1).ui({ help: "Total owned, including copies lent out. Each loan is one copy." }),
+  photo: media({ accept: "image" }).optional(),
+  tags: json<string[]>().$default(() => []).validate((tags) => (Array.isArray(tags) && tags.every((tag) => typeof tag === "string")) || "Tags must be a JSON list of strings.").ui({ help: 'A JSON list, for example ["travel", "iphone"].' }),
   ownerId,
 }, { title: "name", label: "Things", access: personalAccess });
 
 const people = collection({
-  name: text().notNull().min(1),
-  contact: text().ui({ help: "Email, phone number, or another way to reach them." }),
+  name: text().min(1),
+  contact: text().ui({ help: "Email, phone number, or another way to reach them." }).optional(),
   ownerId,
 }, { title: "name", label: "People", access: personalAccess });
 
 const loans = table({
-  thingId: integer().notNull().references(() => things.id, { onDelete: "restrict" }),
-  personId: integer().notNull().references(() => people.id, { onDelete: "restrict" }),
-  lentOn: date().notNull().defaultNow(),
-  dueOn: date().notNull(),
-  returnedOn: date(),
-  overdueAt: timestamp().access({ create: false, update: false })
-    .ui({ help: "First overdue check by Action Scheduler. Kept after return as history." }),
+  thingId: integer().references(() => things.id, { onDelete: "restrict" }),
+  personId: integer().references(() => people.id, { onDelete: "restrict" }),
+  lentOn: date().defaultNow(),
+  dueOn: date(),
+  returnedOn: date().optional(),
+  overdueAt: timestamp().access({ create: false, update: false }).ui({ help: "First overdue check by Action Scheduler. Kept after return as history." }).optional(),
   ownerId,
 }, { label: "Lending log", access: personalAccess });
 
@@ -139,7 +136,7 @@ export default defineConfig({
   },
   jobs: {
     markOverdue: job({
-      input: { loanId: integer().notNull(), ownerId: integer().notNull() },
+      input: { loanId: integer(), ownerId: integer() },
       retries: 3,
       async handler({ loanId, ownerId }) {
         const today = new Date().toISOString().slice(0, 10);
@@ -152,7 +149,7 @@ export default defineConfig({
   },
   actions: {
     find: action({
-      input: { query: text().notNull().min(1) }, access: "authenticated",
+      input: { query: text().min(1) }, access: "authenticated",
       async handler({ query }, ctx) {
         const owner = actorId(ctx);
         const words = query.toLowerCase().trim().split(/\s+/);
@@ -169,7 +166,7 @@ export default defineConfig({
       },
     }),
     lend: action({
-      input: { thingId: integer().notNull(), personId: integer().notNull(), dueOn: date().notNull(), lentOn: date().notNull().defaultNow() },
+      input: { thingId: integer(), personId: integer(), dueOn: date(), lentOn: date().defaultNow() },
       access: "authenticated", idempotent: true,
       async handler(input, ctx) {
         const [loan] = await db.insert(loans).values({ ...input, ownerId: actorId(ctx) }).returning();
@@ -177,7 +174,7 @@ export default defineConfig({
       },
     }),
     giveBack: action({
-      input: { loanId: integer().notNull(), returnedOn: date().notNull().defaultNow() }, access: "authenticated",
+      input: { loanId: integer(), returnedOn: date().defaultNow() }, access: "authenticated",
       async handler({ loanId, returnedOn }, ctx) {
         const owner = actorId(ctx);
         const loan = await db.query.loans.findFirst({ where: { id: loanId, ownerId: owner } });
@@ -198,7 +195,7 @@ export default defineConfig({
       },
     }),
     whoHas: action({
-      input: { personId: integer().notNull() }, access: "authenticated",
+      input: { personId: integer() }, access: "authenticated",
       async handler({ personId }, ctx) {
         const owner = actorId(ctx);
         const person = await db.query.people.findFirst({ where: { id: personId, ownerId: owner } });

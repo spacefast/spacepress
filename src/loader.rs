@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 pub const FIRST_MODULE: &str = "first";
+/// Page and layout helpers for `first/app/` and components (docs/spec/rendering.md §2–§4).
+pub const APP_MODULE: &str = "first/app";
 /// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
 pub const WORDPRESS_MODULE: &str = "php/wordpress";
 /// The app's kinds, by registered name (docs/spec/spec.md §2.1); typed by `first/_generated/db.d.ts`.
@@ -20,7 +22,11 @@ pub const DB_MODULE: &str = "first:db";
 /// Modules the compiler provides itself; nothing is loaded for them. Node built-ins come from the
 /// one lookup, `builtins::module`.
 pub fn builtin_module(spec: &str) -> bool {
-    spec == FIRST_MODULE || spec == WORDPRESS_MODULE || spec == DB_MODULE || crate::builtins::module(spec).is_some()
+    spec == FIRST_MODULE
+        || spec == WORDPRESS_MODULE
+        || spec == DB_MODULE
+        || spec == APP_MODULE
+        || crate::builtins::module(spec).is_some()
 }
 
 /// Where sources come from: the project directory for the CLI, memory for the browser build. Paths
@@ -91,6 +97,9 @@ pub struct Program {
     pub app_modules: Vec<usize>,
     /// `first/components/**/*.tsx` beside the entry: (path relative to `first/`, module), sorted.
     pub components: Vec<(String, usize)>,
+    /// `first/app/`: the route table, and each route file's module by its path relative to `first/`.
+    pub app: crate::app::Table,
+    pub app_files: Vec<(String, usize)>,
 }
 
 /// One `first/wp-hooks/` file: `first/wp-hooks/<hook>.ts`, or `first/wp-hooks/<hook>/<file>.ts`.
@@ -123,6 +132,8 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         wp_hooks: Vec::new(),
         app_modules: Vec::new(),
         components: Vec::new(),
+        app: crate::app::Table::default(),
+        app_files: Vec::new(),
     };
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
     let mut diagnostics = Vec::new();
@@ -190,6 +201,18 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
             }
         }
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    }
+    match crate::app::discover(&*fs, &first_dir) {
+        Ok(table) => {
+            for (relative, path) in crate::app::route_paths(&first_dir, &table) {
+                match load_module(&*fs, &path, &mut program, &mut by_path, &mut diagnostics) {
+                    Ok(module) => program.app_files.push((relative, module)),
+                    Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+                }
+            }
+            program.app = table;
+        }
+        Err(d) => diagnostics.extend(d.into_iter().map(|d| d.phase(diag::Code::Import))),
     }
     if diagnostics.is_empty() {
         diagnostics.extend(jsx_reachability(&program));

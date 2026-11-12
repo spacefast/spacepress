@@ -615,7 +615,10 @@ impl Compiler<'_, '_> {
             .body
             .iter()
             .find_map(|stmt| match stmt {
-                Stmt::Import { source, specs, .. } if source == crate::loader::FIRST_MODULE => {
+                // "first/app" re-exports the request and response types for route files.
+                Stmt::Import { source, specs, .. }
+                    if source == crate::loader::FIRST_MODULE || source == crate::loader::APP_MODULE =>
+                {
                     specs.iter().find_map(|spec| match &spec.imported {
                         ImportName::Named(imported) if spec.local == name => Some(imported.clone()),
                         _ => None,

@@ -46,6 +46,11 @@ semantics are proven by `tests/differential/language`.
 API: it converts to a GET route that writes. A writing GET that reads `ctx.auth` stays refused
 (`Z08_ENDPOINT_WRITING_GET`).
 
+`gravatar` calls `ctx.gravatar.avatarUrl` and `ctx.gravatar.profile`. `expected.json` holds what
+0.8's own client returns for its calls: `makeGravatar` from `RUNTIME_SERVICE_CLIENT_SOURCE` in
+`spacefast/monorepo` `packages/common/src/contracts/runtime-services.ts` (main `384d463fa4`), run
+in Node with that file's constants substituted.
+
 `client-app-styles/zero.css` is the stylesheet Zero 0.8 generates for `client-app`:
 `compileZeroUtilityStylesheet` from `spacefast/monorepo`
 `legacy/zero-0.8/packages/zero-compile/src/tailwind-core.ts` (main `384d463fa4`), unchanged, with

@@ -1,6 +1,6 @@
 import { defineConfig, action, route, text, table, db, type HookCtx, type User, type Role, type RouteRequest, type RouteResponse } from "first";
 
-const notes = table({ body: text().notNull(), author: text().notNull() });
+const notes = table({ body: text(), author: text() });
 
 // A handler's context and request are values: helpers take them, return them, and read static keys.
 function caller(ctx: HookCtx): User | null {
@@ -34,7 +34,7 @@ export default defineConfig({
       access: "anyone",
       handler: async (_input, ctx) => ({ label: label(caller(same(ctx))), role: role(ctx), anonymous: read(ctx, "user"), viaIndex: ctx["user"] === null }),
     }),
-    note: action({ input: { body: text().notNull() }, access: "anyone", handler: async (input, ctx) => await write(ctx, input.body) }),
+    note: action({ input: { body: text() }, access: "anyone", handler: async (input, ctx) => await write(ctx, input.body) }),
   },
   routes: {
     echo: route({ method: "POST", path: "/echo", access: "anyone", handler: async (req, ctx) => echo(req, ctx) }),

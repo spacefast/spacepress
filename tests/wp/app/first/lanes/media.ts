@@ -1,19 +1,18 @@
 // Lane fragment for the WP test app; only this lane edits this file. ../compose.ts merges every
 // export into the app and fails the build if a key collides with the shared app or another lane.
-import { collection, file, files, group, id, text, table, media } from "first";
+import { collection, file, files, group, text, table, media } from "first";
 
 /** A post-backed collection holding a private file, for `file({ bucket })` on WordPress. */
 export const talks = collection({
-  id: id(),
-  title: text().notNull(),
-  deck: file({ bucket: "decks" }),
-  image: media(),
-  extras: group({ fields: { handout: file({ bucket: "decks" }) } }),
+  title: text(),
+  deck: file({ bucket: "decks" }).optional(),
+  image: media().optional(),
+  extras: group({ handout: file({ bucket: "decks" }).optional() }).optional(),
 }, { access: { read: "anyone", create: "author", update: "author", delete: "editor" } });
 
 export const collections = { talks };
 export const uploadRecords = table({
-  deck: file({ bucket: "decks" }), image: media(),
+  deck: file({ bucket: "decks" }).optional(), image: media().optional(),
 }, { access: { read: "anyone", create: "author", update: "author", delete: "editor" } });
 export const tables = { uploadRecords };
 export const users = {  };

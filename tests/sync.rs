@@ -11,50 +11,44 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 
-const CONFIG: &str = r#"import { collection, id, integer, richText, select, slug, text, defineConfig , table} from "first";
+const CONFIG: &str = r#"import { collection, integer, richText, select, slug, text, defineConfig , table} from "first";
 
 const people = table({
-  id: id(),
-  name: text().notNull(),
+  name: text(),
 }, { uid: true, access: { read: "anyone" } });
 
 const notes = table({
-  id: id(),
-  title: text().notNull(),
-  slug: slug({ source: "title" }),
-  body: richText(),
-  level: select({ options: ["intro", "advanced"] }),
-  authorId: integer().references(() => people.id, { onDelete: "set null" }),
+  title: text(),
+  slug: slug({ source: "title" }).optional(),
+  body: richText().optional(),
+  level: select(["intro", "advanced"]).optional(),
+  authorId: integer().references(() => people.id, { onDelete: "set null" }).optional(),
 }, { title: "title", content: "body", sync: "content/notes/*.md", access: { read: "anyone" } });
 
 // A JSON collection without a content column: `body` is an ordinary field.
 const snippets = table({
-  id: id(),
-  name: text().notNull(),
-  key: integer().unique(),
-  body: text(),
+  name: text(),
+  key: integer().unique().optional(),
+  body: text().optional(),
 }, { sync: "content/snippets/*.json", access: { read: "anyone" } });
 
 // Two collections that reference each other.
 const teams = table({
-  id: id(),
-  name: text().notNull(),
-  leadId: integer().references((): any => players.id, { onDelete: "set null" }),
-  ownerId: integer().notNull().references(() => people.id),
+  name: text(),
+  leadId: integer().references((): any => players.id, { onDelete: "set null" }).optional(),
+  ownerId: integer().references(() => people.id),
 }, { sync: "content/teams/*.json", access: { read: "anyone" } });
 const players = table({
-  id: id(),
-  name: text().notNull(),
-  teamId: integer().references(() => teams.id, { onDelete: "set null" }),
+  name: text(),
+  teamId: integer().references(() => teams.id, { onDelete: "set null" }).optional(),
 }, { sync: "content/players/*.json", access: { read: "anyone" } });
 
 // A chain of required references inside one collection, and a required cycle between two.
 const steps = table({
-  id: id(),
-  name: text().notNull(),
+  name: text(),
   // Required: a step can't be created before the one it follows, so a chain needs a pass per link.
-  prevId: integer().notNull().references(() => people.id),
-  afterId: integer().references((): any => steps.id),
+  prevId: integer().references(() => people.id),
+  afterId: integer().references((): any => steps.id).optional(),
 }, { sync: "content/steps/*.json", access: { read: "anyone" } });
 // A chain of required references across records of one collection.
 // A chain across three collections that must be created in order. Each requires (NOT NULL) a record
@@ -62,59 +56,49 @@ const steps = table({
 // reference makes one wait for another: the references go "backwards", against that order), so the
 // run meets the chain from its far end and needs a pass per link.
 const tops = table({
-  id: id(),
-  midId: integer().notNull().references((): any => mids.id),
-  loopId: integer().references((): any => bottoms.id),
+  midId: integer().references((): any => mids.id),
+  loopId: integer().references((): any => bottoms.id).optional(),
 }, { sync: "content/tops/*.json", access: { read: "anyone" } });
 const mids = table({
-  id: id(),
-  bottomId: integer().notNull().references((): any => bottoms.id),
-  loopId: integer().references(() => tops.id),
+  bottomId: integer().references((): any => bottoms.id),
+  loopId: integer().references(() => tops.id).optional(),
 }, { sync: "content/mids/*.json", access: { read: "anyone" } });
 const bottoms = table({
-  id: id(),
-  personId: integer().notNull().references(() => people.id),
-  loopId: integer().references(() => mids.id),
+  personId: integer().references(() => people.id),
+  loopId: integer().references(() => mids.id).optional(),
 }, { sync: "content/bottoms/*.json", access: { read: "anyone" } });
 const eggs = table({
-  id: id(),
-  chickenId: integer().notNull().references((): any => chickens.id),
+  chickenId: integer().references((): any => chickens.id),
 }, { sync: "content/eggs/*.json", access: { read: "anyone" } });
 const chickens = table({
-  id: id(),
-  eggId: integer().notNull().references(() => eggs.id),
+  eggId: integer().references(() => eggs.id),
 }, { sync: "content/chickens/*.json", access: { read: "anyone" } });
 // A head requires a rung; a rung requires the next rung and may name its head. The last rung of a
 // ladder points at a rung already on the site. Heads and rungs reference each other, so neither
 // collection is ordered first.
 const heads = table({
-  id: id(),
-  rungId: integer().notNull().references((): any => rungs.id),
+  rungId: integer().references((): any => rungs.id),
 }, { sync: "content/heads/*.json", access: { read: "anyone" } });
 const rungs = table({
-  id: id(),
-  nextId: integer().notNull().references((): any => rungs.id),
-  headId: integer().references(() => heads.id),
+  nextId: integer().references((): any => rungs.id),
+  headId: integer().references(() => heads.id).optional(),
 }, { sync: "content/rungs/*.json", access: { read: "anyone" } });
 // Content only admins may read (field access): editors sync these without a body.
 const dossiers = table({
-  id: id(),
-  title: text().notNull(),
-  slug: slug({ source: "title" }),
-  body: richText().access({ read: "admin" }),
+  title: text(),
+  slug: slug({ source: "title" }).optional(),
+  body: richText().access({ read: "admin" }).optional(),
 }, { title: "title", content: "body", sync: "content/dossiers/*.md", access: { read: "anyone" } });
 // A required reference to a target the syncing editor may not list (admins only), on a record whose
 // identity is pushed first because of an optional reference to a record not on the site yet.
 const safes = table({
-  id: id(),
-  vaultId: integer().notNull().references(() => vaults.id),
-  keeperId: integer().references(() => people.id),
-  snippetKey: integer().references(() => snippets.key).access({ read: "admin" }),
+  vaultId: integer().references(() => vaults.id),
+  keeperId: integer().references(() => people.id).optional(),
+  snippetKey: integer().references(() => snippets.key).access({ read: "admin" }).optional(),
 }, { sync: "content/safes/*.json", access: { read: "anyone" } });
 // A reference target the syncing editor may not read (admins only): knowing its UID grants no access.
 const vaults = table({
-  id: id(),
-  name: text().notNull(),
+  name: text(),
 }, { uid: true, access: { read: "admin" } });
 
 export default defineConfig({ name: "notes", tables: { people, notes, snippets, teams, players, steps, tops, mids, bottoms, eggs, chickens, vaults, safes, heads, rungs, dossiers } });

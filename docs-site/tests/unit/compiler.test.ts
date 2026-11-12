@@ -95,7 +95,7 @@ test("the previous snapshot and migration files drive the next migration like th
   const unchanged = compiler.compile({ name: "pantry", files: sources(dir), previous, migrationFiles });
   assert.deepEqual(unchanged.output?.migrations, []);
   const files = sources(dir);
-  files["first.config.ts"] = files["first.config.ts"]!.replace("expiresOn: date(),", "expiresOn: date(),\n  note: text(),");
+  files["first.config.ts"] = files["first.config.ts"]!.replace("expiresOn: date().optional(),", "expiresOn: date().optional(),\n  note: text().optional(),");
   const changed = compiler.compile({ name: "pantry", files, previous, migrationFiles });
   assert.deepEqual(
     changed.output?.migrations.map(([name, sql]) => [name, /ALTER TABLE/.test(sql)]),
@@ -199,21 +199,21 @@ test("finite type algebra preserves native outputs and strict client boundaries 
     assert.equal(client.status, 0, client.stdout + client.stderr);
 
     // Backend queries and wire types retain the authored null/undefined domains.
-    const storedSource = `import { table, group, json, text, slug, email, userProjection, defineConfig, action, db, type InferSelectModel, type InferInsertModel } from "first";
+    const storedSource = `import { table, group, json, text, select, slug, email, userProjection, defineConfig, action, db, type InferSelectModel, type InferInsertModel } from "first";
 type Domain = { title: string; note?: string | null; state: "draft" | "published"; items?: { label?: string }[] };
 type Payload = Required<Pick<Domain, "title">> & Partial<Omit<Domain, "title">>;
 class View { constructor(public payload: Payload) {} read(): string { return this.payload.title; } }
-const source = table({ body: json().$type<Payload>().notNull().localized(), label: text({ enum: ["first", "second"] }).notNull(), slug: slug({ source: "label" }).notNull(), details: group({ fields: { nullable: text(), defaulted: text().notNull().default("source") } }) }, { uid: true });
+const source = table({ body: json<Payload>().localized(), label: select(["first", "second"]), slug: slug({ source: "label" }), details: group({ nullable: text().optional(), defaulted: text().default("source") }).optional() }, { uid: true });
 type Selected = InferSelectModel<typeof source>;
 type Inserted = InferInsertModel<typeof source>;
-const members = userProjection({ email: email().notNull().unique().max(191), name: text().notNull() });
+const members = userProjection({ email: email().unique().max(191), name: text() });
 type Member = InferSelectModel<typeof members>;
 class MemberView { constructor(public row: Member) {} read(): string { return this.row.name; } }
 class SelectedView { constructor(public payload: Selected) {} read(): string { return this.payload.body.title; } }
 type WithoutLocale = Omit<Inserted, "locale">;
 class InsertedView { constructor(public payload: Inserted) {} read(): string { return this.payload.body.title; } }
 class TranslationView { constructor(public payload: WithoutLocale) {} read(): string { return this.payload.body.title; } }
-const documents = table({ payload: json().$type<Payload>().notNull(), metadata: group({ fields: { payload: json().$type<Payload>().notNull() } }).notNull(), selected: json().$type<Selected>().notNull(), inserted: json().$type<Inserted>().notNull(), translation: json().$type<WithoutLocale>().notNull() });
+const documents = table({ payload: json<Payload>(), metadata: group({ payload: json<Payload>() }), selected: json<Selected>(), inserted: json<Inserted>(), translation: json<WithoutLocale>() });
 export default defineConfig({ tables: { documents, source }, users: { members }, locales: { default: "en", all: ["en", "de"] }, actions: { read: action({ input: {}, handler: async () => {
   const inserted: Inserted = { body: { title: "fresh" }, label: "first" };
   const translated: Inserted = { body: { title: "translated" }, translationOf: 1 };
@@ -247,7 +247,7 @@ void selected; void inserted; void invalidWire;`);
 
     const recursiveModel = `import { table, json, defineConfig, type InferSelectModel } from "first";
 type Payload = InferSelectModel<typeof source>;
-const source = table({ body: json().$type<Payload>() });
+const source = table({ body: json<Payload>().optional() });
 export default defineConfig({ tables: { source } });`;
     writeFileSync(path.join(dir, "first.config.ts"), recursiveModel);
     const recursive = browserCheck({ name, files: { "first.config.ts": recursiveModel } });
@@ -256,7 +256,7 @@ export default defineConfig({ tables: { source } });`;
     assert.match(recursive.check.diagnostics[0]?.message ?? "", /recursive JSON model annotations/);
     assert.equal(recursive.check.diagnostics[0]?.location?.file, "first.config.ts");
 
-    const modelTables = Array.from({ length: 15 }, (_, i) => `const model${i} = table({ left: json().$type<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>().notNull(), right: json().$type<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>().notNull() });`).join("\n");
+    const modelTables = Array.from({ length: 15 }, (_, i) => `const model${i} = table({ left: json<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>(), right: json<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>() });`).join("\n");
     const modelExpansion = `import { table, json, defineConfig, type InferSelectModel } from "first";
 ${modelTables}
 export default defineConfig({ tables: { ${Array.from({ length: 15 }, (_, i) => `model${i}`).reverse().join(", ")} } });`;

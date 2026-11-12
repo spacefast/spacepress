@@ -6374,7 +6374,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return err_help(
                     span,
                     format!("can't read `{prop}` of a value with unknown shape"),
-                    "give it a type, e.g. `json().$type<{ ... }>()`",
+                    "give it a type, e.g. `json<{ ... }>()`",
                 );
             }
             _ => return err(prop_span, format!("{} has no property `{prop}`", base.describe())),
@@ -10076,7 +10076,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             format!("globals.{name}"),
             m_span,
         );
-        // Typed like collection rows: `json().$type<T>()` fields read and write as T.
+        // Typed like collection rows: `json<T>()` fields read and write as T.
         let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
             ("get", []) => format!("\\First\\Seam::globalGet({})", php_str(name)),

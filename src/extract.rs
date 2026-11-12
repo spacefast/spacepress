@@ -400,18 +400,6 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             }
             columns.insert(name.clone(), col);
         }
-        let pks: Vec<&Column> = columns.values().filter(|c| c.primary_key).collect();
-        if pks.is_empty() {
-            return Err(
-                Diag::new(c.span, format!("collection \"{}\" has no primary key", c.table())).help("add `id: id()`"),
-            );
-        }
-        if pks.len() > 1 {
-            return Err(Diag::new(
-                c.span,
-                format!("collection \"{}\" has more than one primary key", c.table()),
-            ));
-        }
         let opts = collection_options(&c, &columns, ev, &mut out)?;
         let coll = out.schema.collections.get_mut(c.table()).expect("collection");
         coll.columns = columns;
@@ -980,19 +968,6 @@ fn collection_options(
             c.table()
         )));
     }
-    if editor
-        && let Some(pk) = columns.values().find(|c| c.primary_key)
-        && !(pk.name == "id" && pk.ty == ColType::Integer && pk.auto_increment)
-    {
-        return Err(Diag::new(
-            c.columns[&pk.name].span,
-            format!(
-                "\"{}\" is an editor collection, so its primary key is the WordPress post ID",
-                c.table()
-            ),
-        )
-        .help("use `id: id()`, or use table() for SQL data"));
-    }
 
     let sync = match o.get("sync") {
         None | Some(Value::Undef) => None,
@@ -1031,18 +1006,18 @@ fn collection_options(
                 return Err(Diag::new(
                     sp,
                     format!(
-                        "the title column `{t}` must be a notNull text(), but it's {}",
+                        "the title column `{t}` must be a required text(), but it's {}",
                         describe_col(col)
                     ),
                 )
-                .help(format!("declare it as `{t}: text().notNull()`")));
+                .help(format!("declare it as `{t}: text()`, without `.optional()`")));
             }
             _ => {}
         }
     } else if editor {
         return Err(
             Diag::new(c.span, format!("editor collection \"{}\" has no title", c.table()))
-                .help("add a `title: text().notNull()` column or `title:` option, or use table() for SQL data"),
+                .help("add a `title: text()` field or the `title:` option, or use table() for SQL data"),
         );
     }
 
@@ -1254,7 +1229,7 @@ fn no_column(table: &str, name: &str, columns: &IndexMap<String, Column>, span: 
 fn describe_col(c: &Column) -> String {
     let mut s = kind_phrase(c.ty);
     if !c.not_null && c.ty == ColType::Text {
-        s = format!("a nullable {}", &s[2..]);
+        s = format!("an optional {}", &s[2..]);
     }
     s
 }
@@ -1346,9 +1321,9 @@ fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mu
         if col.not_null && col.default.is_none() {
             return Err(Diag::new(
                 b.span,
-                format!("global fields that are notNull need a default (`{name}`)"),
+                format!("a global field is required unless it has a default (`{name}`)"),
             )
-            .help("add `.default(...)`, or drop `.notNull()`"));
+            .help("add `.default(...)`, or make it `.optional()`"));
         }
         fields.insert(name.clone(), col);
     }
@@ -1495,7 +1470,7 @@ fn column(
     if b.primary_key && (b.access.is_some() || b.show_if.is_some()) {
         return Err(Diag::new(
             b.span_of(if b.access.is_some() { "access" } else { "showIf" }),
-            "access/showIf is not allowed on id() or system columns",
+            "access/showIf is not allowed on `id` or system columns",
         )
         .help("remove the modifier"));
     }
@@ -1670,11 +1645,12 @@ fn column(
                     ),
                 ));
             }
-            if *on_delete == Some(RefAction::SetNull) && b.not_null {
+            if *on_delete == Some(RefAction::SetNull) && !b.optional {
                 return Err(Diag::new(
                     *span,
-                    format!("`{name}` is notNull(), so `onDelete: \"set null\"` can't work"),
-                ));
+                    format!("`{name}` is required, so `onDelete: \"set null\"` can't work"),
+                )
+                .help("make it `.optional()`, or use `onDelete: \"cascade\"` or `\"restrict\"`"));
             }
             Some(Reference {
                 collection: r.collection.table().to_string(),
@@ -1759,7 +1735,7 @@ fn column(
     Ok(Column {
         name: name.to_string(),
         ty: b.ty,
-        not_null: b.not_null,
+        not_null: !b.optional,
         primary_key: b.primary_key,
         auto_increment: b.auto_increment,
         unique: b.unique,
@@ -1862,8 +1838,8 @@ fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
         ))
     };
     if matches!(v, Value::Null | Value::Undef) {
-        if b.not_null {
-            return bad("notNull()");
+        if !b.optional {
+            return bad("required (add `.optional()` to allow null)");
         }
         return Ok(Json::Null);
     }
@@ -2808,19 +2784,13 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
                     Diag::new(b.span, "at most one userProjection() is allowed").help("keep one members collection")
                 );
             }
-            if c.primary_key()
-                .is_none_or(|pk| pk.name != "id" || pk.ty != ColType::Integer)
-            {
-                return Err(Diag::new(b.span, "userProjection() needs the primary key id: id()")
-                    .help("members are users: their row id is the user id"));
-            }
             if !c
                 .columns
                 .get("email")
                 .is_some_and(|c| c.ty == ColType::Email && c.not_null && c.unique)
             {
                 return Err(
-                    Diag::new(b.span, "userProjection() needs email: email().notNull().unique()")
+                    Diag::new(b.span, "userProjection() needs `email: email().unique().max(191)`")
                         .help("add the required unique email column with .max(191)"),
                 );
             }
@@ -2893,16 +2863,6 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
         field_conditions(&out.schema.collections[b.table()].columns, &b.columns, false)?;
     }
     for c in out.schema.collections.values().filter(|c| c.sync.is_some()) {
-        // Sync pages records by an increasing integer key and creates rows without one (§5.3).
-        if let Some(pk) = c.primary_key()
-            && !(pk.name == "id" && pk.ty == ColType::Integer && pk.auto_increment)
-        {
-            return Err(Diag::new(
-                out.collections.iter().find(|b| b.table() == c.table).unwrap().columns[&pk.name].span,
-                format!("\"{}\" syncs with files, so its primary key must be id()", c.table),
-            )
-            .help("use `id: id()`; the uid is the record's identity across sites and files"));
-        }
         for col in c.columns.values() {
             if let Some(r) = &col.references
                 && !out.schema.collections[&r.collection].uid

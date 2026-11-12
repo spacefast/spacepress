@@ -5,7 +5,7 @@ export default defineConfig({
   actions: {
     // Calls core functions as the signed-in user; an empty title makes wp_insert_post fail.
     note: action({
-      input: { title: text().notNull() },
+      input: { title: text() },
       access: "anyone",
       handler(input) {
         if (!current_user_can("edit_posts")) return { allowed: false };

@@ -1,3 +1,3 @@
-import { collection, id, text, email, integer, boolean, richText, slug, group, repeater, json, media, file, files, job, jobs, once, env, global, action, defineConfig, db, table } from "first";
-const notes = table({ id: id(), x: text() }, { access: { read: "owner" } });
+import { collection, text, email, integer, boolean, richText, slug, group, repeater, json, media, file, files, job, jobs, once, env, global, action, defineConfig, db, table } from "first";
+const notes = table({ x: text().optional() }, { access: { read: "owner" } });
 export default defineConfig({ tables: { notes },  });

@@ -1,41 +1,39 @@
 // The phase-1 blog, frozen: tests/fixtures/blog/schema.php is what `first build` emits for it, and the
 // PHP suites (tests/php/blog_app.php) run against that schema. examples/blog grows; this file does not.
 import {
-  collection, global, id, text, integer, boolean, timestamp, richText, media, slug, select,
+  collection, global, text, integer, boolean, timestamp, richText, media, slug, select,
   repeater, group, blocks, email, url, defineRelations, defineConfig, action, db, HttpError,
   table,
 } from "first";
 
 export const authors = collection({
-  id: id(),
-  name: text().notNull().max(80),
-  email: email().notNull().unique().max(191),
-  bio: text({ multiline: true }).max(500),
-  avatar: media({ accept: "image" }),
-  userId: integer(),                       // the User.id that owns this author profile
+  name: text().max(80),
+  email: email().unique().max(191),
+  bio: text({ multiline: true }).max(500).optional(),
+  avatar: media({ accept: "image" }).optional(),
+  userId: integer().optional(),                       // the User.id that owns this author profile
 }, { label: "Authors", title: "name", access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
 export const posts = collection({
-  id: id(),
-  title: text().notNull().min(1).max(120),
-  slug: slug({ source: "title" }),
-  body: richText(),
-  excerpt: text({ multiline: true }).max(300),
-  cover: media({ accept: "image" }),
-  tags: select({ options: ["news", "guide", "release"], multiple: true }).notNull().default([]),
-  authorId: integer().references(() => authors.id, { onDelete: "set null" }),
-  seo: group({ fields: {
-    metaTitle: text().max(70),
-    metaDescription: text().max(160),
-    noindex: boolean().notNull().default(false),
-  } }),
-  gallery: repeater({ fields: { image: media({ accept: "image" }).notNull(), caption: text().max(120) } }).max(12),
-  sections: blocks({ layouts: {
-    hero: { heading: text().notNull().max(80), image: media({ accept: "image" }) },
-    quote: { text: text({ multiline: true }).notNull(), cite: text().max(80) },
-  } }),
-  createdAt: timestamp().notNull().defaultNow(),
-  updatedAt: timestamp().notNull().defaultNow().$onUpdate(() => new Date()),
+  title: text().min(1).max(120),
+  slug: slug({ source: "title" }).optional(),
+  body: richText().optional(),
+  excerpt: text({ multiline: true }).max(300).optional(),
+  cover: media({ accept: "image" }).optional(),
+  tags: select(["news", "guide", "release"]).many().default([]),
+  authorId: integer().references(() => authors.id, { onDelete: "set null" }).optional(),
+  seo: group({
+    metaTitle: text().max(70).optional(),
+    metaDescription: text().max(160).optional(),
+    noindex: boolean().default(false),
+  }).optional(),
+  gallery: repeater({ image: media({ accept: "image" }), caption: text().max(120).optional() }).max(12).optional(),
+  sections: blocks({
+    hero: { heading: text().max(80), image: media({ accept: "image" }).optional() },
+    quote: { text: text({ multiline: true }), cite: text().max(80).optional() },
+  }).optional(),
+  createdAt: timestamp().defaultNow(),
+  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()),
 }, {
   label: "Posts",
   title: "title",
@@ -49,12 +47,11 @@ export const posts = collection({
 });
 
 export const comments = table({
-  id: id(),
-  postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
-  name: text().notNull().max(60),
-  body: text({ multiline: true }).notNull().min(1).max(2000).validate((v) => v.includes("http://") ? "No links in comments" : true),
-  approved: boolean().notNull().default(false),
-  createdAt: timestamp().notNull().defaultNow(),
+  postId: integer().references(() => posts.id, { onDelete: "cascade" }),
+  name: text().max(60),
+  body: text({ multiline: true }).min(1).max(2000).validate((v) => v.includes("http://") ? "No links in comments" : true),
+  approved: boolean().default(false),
+  createdAt: timestamp().defaultNow(),
 }, {
   access: { read: (ctx) => ctx.user ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
 });
@@ -71,10 +68,10 @@ export const relations = defineRelations(entities, (r) => ({
 }));
 
 export const settings = global("settings", {
-  siteTitle: text().notNull().default("My blog").max(80),
-  tagline: text().max(160),
-  postsPerPage: integer().notNull().default(10).min(1).max(50),
-  social: repeater({ fields: { label: text().notNull().max(40), href: url().notNull() } }),
+  siteTitle: text().default("My blog").max(80),
+  tagline: text().max(160).optional(),
+  postsPerPage: integer().default(10).min(1).max(50),
+  social: repeater({ label: text().max(40), href: url() }).optional(),
 }, { label: "Site settings" });
 
 export default defineConfig({
@@ -101,7 +98,7 @@ export default defineConfig({
   },
   actions: {
     approveComment: action({
-      input: { id: integer().notNull() },
+      input: { id: integer() },
       access: "editor",
       async handler({ id }) {
         const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();

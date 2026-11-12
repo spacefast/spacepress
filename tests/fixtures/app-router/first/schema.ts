@@ -1,7 +1,7 @@
 import { collection, text, slug } from "first";
 
 export const notes = collection({
-  title: text().notNull(),
-  slug: slug({ source: "title" }),
-  secret: text().access({ read: "editor" }),
+  title: text(),
+  slug: slug({ source: "title" }).optional(),
+  secret: text().access({ read: "editor" }).optional(),
 }, { title: "title" });

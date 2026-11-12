@@ -2,56 +2,53 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 // Lane E (§6.2): members are WordPress users, plus a collection any signed-in viewer (guests
 // included) may write and one that subscribers and up may write, for the guest role ladder.
-import { blocks, boolean, collection, date, db, email, group, HttpError, id, integer, repeater, select, text, timestamp, type Hooks, userProjection, table } from "first";
+import { blocks, boolean, collection, date, db, email, group, HttpError, integer, repeater, select, text, timestamp, type Hooks, userProjection, table } from "first";
 
 export const members = userProjection({
-  id: id(),
-  email: email().notNull().unique().max(191),
-  name: text().notNull().max(80),
-  plan: select({ options: ["free", "pro"] }).notNull().default("free"),
-  points: integer().notNull().default(0),
-  tags: select({ options: ["early", "beta"], multiple: true }).notNull().default([]),
-  handle: text().unique().max(40),
-  joined: date().unique(),
+  email: email().unique().max(191),
+  name: text().max(80),
+  plan: select(["free", "pro"]).default("free"),
+  points: integer().default(0),
+  tags: select(["early", "beta"]).many().default([]),
+  handle: text().unique().max(40).optional(),
+  joined: date().unique().optional(),
   // Shown only to pro members: a live rule on the plan field, settled on the saved row's name too.
-  perk: text().showIf({ plan: "pro" }),
-  badge: text().showIf({ name: "Cy Edited" }),
+  perk: text().showIf({ plan: "pro" }).optional(),
+  badge: text().showIf({ name: "Cy Edited" }).optional(),
   // A reference isn't a profile field: a rule on it is settled against the saved member.
-  sponsorId: integer().references(() => guestbook.id),
-  sponsored: text().showIf({ sponsorId: { isNotNull: true } }),
+  sponsorId: integer().references(() => guestbook.id).optional(),
+  sponsored: text().showIf({ sponsorId: { isNotNull: true } }).optional(),
   // Structured fields on the profile form (lane K2), written through First: a sub-field only admins
   // may set, a validated sub-field, a showIf on a scalar sibling, a timestamp in a repeater row.
-  address: group({ fields: {
-    city: text().max(40),
-    source: text().notNull().default("signup").access({ update: "admin" }),
-    defaults: group({ fields: { clock: group({ fields: { at: timestamp() } }) } }).default({ clock: { at: "2026-10-25T00:30:00.123Z" } }).access({ update: "admin" }),
-    channel: text().notNull().$default(() => "member").access({ update: "admin" }),
-    since: timestamp().notNull().default("2026-10-25T00:30:00.123Z").access({ update: "admin" }),
-    verified: boolean().notNull().default(false).access({ update: "admin" }),
-    optional: boolean().default(true).access({ update: "admin" }),
-    prefs: group({ fields: { bio: text() } }).access({ update: "admin" }),
+  address: group({
+    city: text().max(40).optional(),
+    source: text().default("signup").access({ update: "admin" }),
+    defaults: group({ clock: group({ at: timestamp().optional() }).optional() }).default({ clock: { at: "2026-10-25T00:30:00.123Z" } }).access({ update: "admin" }).optional(),
+    channel: text().$default(() => "member").access({ update: "admin" }),
+    since: timestamp().default("2026-10-25T00:30:00.123Z").access({ update: "admin" }),
+    verified: boolean().default(false).access({ update: "admin" }),
+    optional: boolean().default(true).access({ update: "admin" }).optional(),
+    prefs: group({ bio: text().optional() }).access({ update: "admin" }).optional(),
     // Hidden (and so not posted by SCF) unless the city is Oslo.
-    district: text().showIf({ city: "Oslo" }),
-  } }),
-  links: repeater({ fields: { label: text().notNull(), at: timestamp(), detail: text().notNull().showIf({ label: "visible" }), metadata: group({ fields: { bio: text() } }).notNull() } }).max(3),
-  sections: blocks({ layouts: { bio: { body: text().notNull() }, quote: { text: text(), cite: text().showIf({ text: "visible" }) } } }).showIf({ plan: "pro" }),
-  notes: group({ fields: { private: text().access({ read: "admin", update: "admin" }) } }),
-  addressBy: integer(),
+    district: text().showIf({ city: "Oslo" }).optional(),
+  }).optional(),
+  links: repeater({ label: text(), at: timestamp().optional(), detail: text().showIf({ label: "visible" }), metadata: group({ bio: text().optional() }) }).max(3).optional(),
+  sections: blocks({ bio: { body: text() }, quote: { text: text().optional(), cite: text().showIf({ text: "visible" }).optional() } }).showIf({ plan: "pro" }).optional(),
+  notes: group({ private: text().access({ read: "admin", update: "admin" }).optional() }).optional(),
+  addressBy: integer().optional(),
 }, { access: { read: "self", update: (ctx) => ctx.data?.address?.city === "Gated" ? { id: ctx.user?.id ?? -1, name: "Unlocked" } : { id: ctx.user?.id ?? -1 }, create: "admin", delete: "admin" } });
 
 export const guestbook = table({
-  id: id(),
-  message: text().notNull(),
-  memberId: integer().references(() => members.id),
+  message: text(),
+  memberId: integer().references(() => members.id).optional(),
 }, { access: { read: "anyone", create: "authenticated" } });
 
 export const reviews = table({
-  id: id(),
-  body: text().notNull(),
+  body: text(),
 }, { access: { read: "anyone", create: "subscriber" } });
 
 export const memberUpdates = table({
-  id: id(), memberId: integer().notNull(), name: text().notNull(), city: text(),
+  memberId: integer(), name: text(), city: text().optional(),
 });
 
 export const collections = {  };

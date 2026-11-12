@@ -1,3 +1,3 @@
 import { action, defineConfig, text } from "first";
-export default defineConfig({ actions: { a: action({ input: { name: text().notNull() }, access: "anyone",
+export default defineConfig({ actions: { a: action({ input: { name: text() }, access: "anyone",
   handler(i) { return process.env[i.name] ?? null; } }) } });

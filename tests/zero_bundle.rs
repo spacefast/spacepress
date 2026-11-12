@@ -42,23 +42,12 @@ fn tree(root: &Path) -> BTreeMap<String, Vec<u8>> {
     out
 }
 
-/// The fixture app ported to First by hand, as its owner would: First names, the same code.
+/// The fixture app ported to First by hand, as its owner would: First names, `first/`, and the
+/// current field forms (tests/fixtures/zero-0.3/ported/), with the 0.3.0 ledger.
 fn ported(work: &Path) -> PathBuf {
     let app = work.join("ported");
+    copy_dir(&Path::new(FIXTURE).join("ported"), &app);
     fs::create_dir_all(app.join("first/_generated/migrations")).unwrap();
-    // First loads app code only from first/, so the helper moves there (a stored capture keeps its
-    // old place: it is frozen data).
-    fs::create_dir_all(app.join("first/lib")).unwrap();
-    let config = fs::read_to_string(Path::new(FIXTURE).join("app/zero.config.ts")).unwrap();
-    let config = config
-        .replace("from \"zero\"", "from \"first\"")
-        .replace("\"./lib/fields\"", "\"./first/lib/fields\"");
-    fs::write(app.join("first.config.ts"), config).unwrap();
-    fs::copy(
-        Path::new(FIXTURE).join("app/lib/fields.ts"),
-        app.join("first/lib/fields.ts"),
-    )
-    .unwrap();
     for name in ["0001_init.sql", "snapshot.json"] {
         fs::copy(
             Path::new(FIXTURE).join("app/zero/migrations").join(name),
@@ -127,6 +116,36 @@ fn recompiling_a_zero_bundle_on_its_0_3_output_adds_no_migration() {
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&fs::read(output.join("snapshot.json")).unwrap()).unwrap(),
         serde_json::from_slice::<serde_json::Value>(&fs::read(previous.join("snapshot.json")).unwrap()).unwrap()
+    );
+}
+
+/// The 0.3.0 field reading belongs to the 0.3.0 capture format: the same source in a live First
+/// project is refused at the first old form, naming its replacement.
+#[test]
+fn the_0_3_field_forms_are_read_only_from_a_zero_bundle() {
+    let work = tempfile::tempdir().unwrap();
+    let app = work.path().join("live");
+    copy_dir(&Path::new(FIXTURE).join("app"), &app);
+    let config = fs::read_to_string(app.join("zero.config.ts")).unwrap();
+    fs::write(
+        app.join("first.config.ts"),
+        config
+            .replace("from \"zero\"", "from \"first\"")
+            .replace("\"./lib/fields\"", "\"./first/lib/fields\""),
+    )
+    .unwrap();
+    fs::remove_file(app.join("zero.config.ts")).unwrap();
+    fs::create_dir_all(app.join("first/lib")).unwrap();
+    fs::rename(app.join("lib/fields.ts"), app.join("first/lib/fields.ts")).unwrap();
+    let Err(error) = first::bundle::sources(&app, &work.path().join("captured")) else {
+        panic!("0.3.0 field forms in a First project compiled")
+    };
+    assert!(
+        error
+            .message
+            .contains("`.notNull()` is gone: fields are required by default"),
+        "{}",
+        error.message
     );
 }
 

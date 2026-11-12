@@ -1,10 +1,10 @@
 import { action, boolean, collection, db, defineConfig, global, HttpError, integer, job, richText, table, text } from "first";
 
 export const articles = collection({
-  title: text().notNull().min(1).max(120),
-  body: richText(),
-  internalNote: text().access({ read: "editor", create: "editor", update: "editor" }),
-  reviewed: boolean().notNull().default(false),
+  title: text().min(1).max(120),
+  body: richText().optional(),
+  internalNote: text().access({ read: "editor", create: "editor", update: "editor" }).optional(),
+  reviewed: boolean().default(false),
 }, {
   title: "title",
   content: "body",
@@ -14,18 +14,18 @@ export const articles = collection({
   },
 });
 
-export const privateNotes = table({ note: text().notNull() }, {
+export const privateNotes = table({ note: text() }, {
   agents: false,
   access: { read: "admin", create: "admin", update: "admin", delete: "admin" },
 });
 
 export const settings = global("settings", {
-  heading: text().notNull().default("The agent notebook"),
-  description: text().notNull().default("Written by people and their tools. Published only when ready."),
+  heading: text().default("The agent notebook"),
+  description: text().default("Written by people and their tools. Published only when ready."),
 });
 
 export const privateSettings = global("privateSettings", {
-  note: text().notNull().default("Operator notes"),
+  note: text().default("Operator notes"),
 }, { agents: false, access: { read: "admin", update: "admin" } });
 
 export default defineConfig({
@@ -37,12 +37,12 @@ export default defineConfig({
   actions: {
     // Adapted from EmDash's MIT-licensed mcp-smoke example; see UPSTREAM.md and LICENSE.emdash.
     echo: action({
-      input: { message: text().notNull().min(1).max(200) },
+      input: { message: text().min(1).max(200) },
       access: "subscriber",
       handler: ({ message }) => ({ message, length: message.length }),
     }),
     publishArticle: action({
-      input: { id: integer().notNull() },
+      input: { id: integer() },
       access: "editor",
       async handler({ id }) {
         const [article] = await db.update(articles).set({ status: "published" }).where({ id }).returning();
@@ -51,7 +51,7 @@ export default defineConfig({
       },
     }),
     operatorNote: action({
-      input: { note: text().notNull() },
+      input: { note: text() },
       agents: false,
       access: "admin",
       handler: ({ note }) => ({ note }),
@@ -59,7 +59,7 @@ export default defineConfig({
   },
   jobs: {
     review: job({
-      input: { articleId: integer().notNull() },
+      input: { articleId: integer() },
       agents: true,
       async handler({ articleId }) {
         await db.update(articles).set({ reviewed: true }).where({ id: articleId });

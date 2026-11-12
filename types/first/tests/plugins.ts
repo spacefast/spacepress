@@ -1,6 +1,6 @@
-import { action, collection, defineConfig, definePlugin, id, text, type Plugin } from "first";
+import { action, collection, defineConfig, definePlugin, text, type Plugin } from "first";
 
-const posts = collection({ id: id(), title: text().notNull(), summary: text() }, { title: "title" });
+const posts = collection({ title: text(), summary: text().optional() }, { title: "title" });
 
 // A package's export: options in, a plugin out. No capability list.
 function seo(options: { suffix: string }): Plugin {

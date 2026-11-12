@@ -1,6 +1,6 @@
 // Negative checks: each @ts-expect-error must be consumed by a real mistake.
 import {
-  action, blocks, boolean, collection, db, defineConfig, global, HttpError, id, integer, media, repeater, richText, select, text, url,
+  action, blocks, boolean, collection, db, defineConfig, global, HttpError, integer, media, repeater, richText, select, text, url,
   table,
 } from "first";
 import { authors, comments, items, locations, posts, entities, relations, settings, shoppingList, UNITS } from "./schema";
@@ -65,7 +65,7 @@ async function relationsNotLoaded() {
 
 // Enum default outside the union
 // @ts-expect-error "attic" is not a location kind
-text({ enum: ["fridge", "pantry"] }).default("attic");
+select(["fridge", "pantry"]).default("attic").optional();
 
 // Enum value on a select row
 declare const unit: (typeof items)["$inferSelect"]["unit"];
@@ -74,11 +74,11 @@ if (unit === "tons") void UNITS;
 
 // references() must point at a column of the same type
 // @ts-expect-error locations.name is text, not integer
-integer().references(() => locations.name);
+integer().references(() => locations.name).optional();
 
 // defaultNow() only exists on timestamp/date
 // @ts-expect-error integer columns have no `now`
-integer().defaultNow();
+integer().defaultNow().optional();
 
 // Hook mistakes: one defineConfig per mistake, since tsc reports only the
 // first assignability failure inside a single argument.
@@ -121,7 +121,7 @@ defineConfig({
   collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
   actions: {
     consume: action({
-      input: { itemId: integer().notNull() },
+      input: { itemId: integer() },
       handler({ itemId }) {
         // @ts-expect-error itemId is a number
         const s: string = itemId;
@@ -137,30 +137,30 @@ defineConfig({
 
 // Per-kind modifiers (§1.2)
 // @ts-expect-error `.max()` isn't valid on a boolean column
-boolean().max(1);
+boolean().max(1).optional();
 // @ts-expect-error `.pattern()` is for plain strings; richText isn't one
-richText().pattern(/x/);
+richText().pattern(/x/).optional();
 // @ts-expect-error media columns have no default
-media().default(1);
+media().default(1).optional();
 // @ts-expect-error `.validate` gets the non-null value: a string here, not a number
-text().validate((v) => (v > 3 ? true : "short"));
+text().validate((v) => (v > 3 ? true : "short")).optional();
 
 // Access (§1.6)
-collection({ id: id(), title: text().notNull() }, {
+collection({ title: text() }, {
   // @ts-expect-error "moderator" is not a role
   access: { read: "moderator" },
 });
-table({ id: id(), body: text().notNull() }, {
+table({ body: text() }, {
   // @ts-expect-error create access rules return booleans
   access: { create: (ctx) => ({ body: ctx.user?.name ?? "" }) },
 });
-table({ id: id(), body: text().notNull() }, {
+table({ body: text() }, {
   // @ts-expect-error filter values must match the field
   access: { update: () => ({ body: 1 }) },
 });
 // @ts-expect-error drafts can't be turned off for editor collections
-collection({ id: id(), body: text().notNull() }, { drafts: false });
-collection({ id: id(), body: text() }, {
+collection({ body: text() }, { drafts: false });
+collection({ body: text().optional() }, {
   // @ts-expect-error the title column must be a NOT NULL text column
   title: "body",
 });
@@ -211,7 +211,7 @@ defineConfig({
   collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
   actions: {
     publish: action({
-      input: { id: integer().notNull() },
+      input: { id: integer() },
       // @ts-expect-error action access is a gate: no filters
       access: () => ({ id: 1 }),
       handler: ({ id }, ctx) => ctx.user?.role === "admin" && id,
@@ -233,15 +233,15 @@ defineConfig({
 
 // Globals (§1.5)
 // @ts-expect-error global field defaults are typed: postsPerPage is an integer
-global("site", { postsPerPage: integer().notNull().default("ten") });
+global("site", { postsPerPage: integer().default("ten") });
 // @ts-expect-error repeater sub-fields keep their kinds: href is a url (string)
-global("links", { items: repeater({ fields: { href: url().notNull() } }).default([{ href: 1 }]) });
+global("links", { items: repeater({ href: url() }).default([{ href: 1 }]).optional() });
 
 // Structured fields (§1.1)
 // @ts-expect-error blocks layout items are typed: `heading` is text
-blocks({ layouts: { hero: { heading: text().notNull() } } }).default([{ layout: "hero", heading: 1 }]);
+blocks({ hero: { heading: text() } }).default([{ layout: "hero", heading: 1 }]).optional();
 // @ts-expect-error select(multiple) defaults are lists of options
-select({ options: ["a", "b"], multiple: true }).default(["c"]);
+select(["a", "b"]).many().default(["c"]).optional();
 
 void v1Queries; void authors; void comments; void settings;
 

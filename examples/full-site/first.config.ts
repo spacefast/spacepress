@@ -6,13 +6,13 @@ import { collection, table, text, integer, richText, slug, timestamp, defineConf
 const STAFF = ["author", "editor", "admin"];
 
 export const notes = collection({
-  title: text().notNull().min(1).max(120),
-  slug: slug({ source: "title" }),
-  dek: text({ multiline: true }).max(240),
-  body: richText(),
+  title: text().min(1).max(120),
+  slug: slug({ source: "title" }).optional(),
+  dek: text({ multiline: true }).max(240).optional(),
+  body: richText().optional(),
   // Staff-only desk notes: anonymous rows never carry the value.
-  deskNotes: text({ multiline: true }).max(500).access({ read: "author", create: "editor", update: "editor" }),
-  updatedAt: timestamp().notNull().defaultNow().$onUpdate(() => new Date()),
+  deskNotes: text({ multiline: true }).max(500).access({ read: "author", create: "editor", update: "editor" }).optional(),
+  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()),
 }, {
   label: "Notes",
   title: "title",
@@ -27,8 +27,8 @@ export const notes = collection({
 
 // Reader applause per note. Anyone may read counts; only the cheer action writes them.
 export const cheers = table({
-  noteId: integer().notNull().unique().references(() => notes.id, { onDelete: "cascade" }),
-  count: integer().notNull().default(0),
+  noteId: integer().unique().references(() => notes.id, { onDelete: "cascade" }),
+  count: integer().default(0),
 }, { access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
 export const relations = defineRelations({ notes, cheers }, (r) => ({
@@ -44,7 +44,7 @@ export default defineConfig({
   actions: {
     // The page's one interactive action: a published note gets one more cheer.
     cheer: action({
-      input: { noteId: integer().notNull() },
+      input: { noteId: integer() },
       access: "anyone",
       async handler({ noteId }) {
         const note = await db.query.notes.findFirst({ where: { id: noteId, status: "published" } });

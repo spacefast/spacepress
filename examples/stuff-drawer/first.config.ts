@@ -1,7 +1,7 @@
 import {
-  action, collection, date, db, defineConfig, defineRelations, HttpError,
+  action, collection, date, db, defineConfig, HttpError,
   integer, job, jobs, json, media, table, text, timestamp,
-  type InferSelectModel, select,
+  type InferSelectModel, select, ref,
 } from "first";
 import { actorId, ownerId, personalAccess } from "./first/lib/ownership";
 
@@ -19,7 +19,7 @@ const things = collection({
   connectorB: text().ui({ label: "Connector B", placeholder: "Lightning" }).optional(),
   lengthCm: integer().min(0).ui({ label: "Length in cm" }).optional(),
   wattage: integer().min(0).ui({ label: "Power in watts" }).optional(),
-  binId: integer().references(() => bins.id, { onDelete: "set null" }).optional(),
+  binId: ref(bins).optional(),
   quantity: integer().min(1).default(1).ui({ help: "Total owned, including copies lent out. Each loan is one copy." }),
   photo: media({ accept: "image" }).optional(),
   tags: json<string[]>().$default(() => []).validate((tags) => (Array.isArray(tags) && tags.every((tag) => typeof tag === "string")) || "Tags must be a JSON list of strings.").ui({ help: 'A JSON list, for example ["travel", "iphone"].' }),
@@ -33,8 +33,8 @@ const people = collection({
 }, { title: "name", label: "People", access: personalAccess });
 
 const loans = table({
-  thingId: integer().references(() => things.id, { onDelete: "restrict" }),
-  personId: integer().references(() => people.id, { onDelete: "restrict" }),
+  thingId: ref(things),
+  personId: ref(people),
   lentOn: date().defaultNow(),
   dueOn: date(),
   returnedOn: date().optional(),
@@ -44,15 +44,6 @@ const loans = table({
 
 const collections = { bins, things, people };
 const tables = { loans };
-const relations = defineRelations({ ...collections, ...tables }, (r) => ({
-  things: { bin: r.one.bins({ from: r.things.binId, to: r.bins.id }), loans: r.many.loans() },
-  bins: { things: r.many.things() },
-  people: { loans: r.many.loans() },
-  loans: {
-    thing: r.one.things({ from: r.loans.thingId, to: r.things.id }),
-    person: r.one.people({ from: r.loans.personId, to: r.people.id }),
-  },
-}));
 
 type Loan = InferSelectModel<typeof loans>;
 
@@ -103,8 +94,7 @@ async function describeLoans(owner: number, entries: Loan[]) {
 export default defineConfig({
   name: "stuff-drawer",
   admin: true,
-  collections, tables, relations,
-  hooks: {
+  collections, tables, hooks: {
     bins: { beforeCreate(data, ctx) { data.ownerId = actorId(ctx); } },
     people: { beforeCreate(data, ctx) { data.ownerId = actorId(ctx); } },
     things: {

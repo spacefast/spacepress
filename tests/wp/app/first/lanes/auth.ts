@@ -2,7 +2,7 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 // Lane E (§6.2): members are WordPress users, plus a collection any signed-in viewer (guests
 // included) may write and one that subscribers and up may write, for the guest role ladder.
-import { blocks, boolean, collection, date, db, email, group, HttpError, integer, repeater, select, text, timestamp, type Hooks, userProjection, table } from "first";
+import { blocks, boolean, collection, date, db, email, group, HttpError, integer, repeater, select, text, timestamp, type Hooks, userProjection, table, ref } from "first";
 
 export const members = userProjection({
   email: email().unique().max(191),
@@ -16,7 +16,7 @@ export const members = userProjection({
   perk: text().showIf({ plan: "pro" }).optional(),
   badge: text().showIf({ name: "Cy Edited" }).optional(),
   // A reference isn't a profile field: a rule on it is settled against the saved member.
-  sponsorId: integer().references(() => guestbook.id).optional(),
+  sponsorId: ref(() => guestbook).optional().onDelete("restrict"),
   sponsored: text().showIf({ sponsorId: { isNotNull: true } }).optional(),
   // Structured fields on the profile form (lane K2), written through First: a sub-field only admins
   // may set, a validated sub-field, a showIf on a scalar sibling, a timestamp in a repeater row.
@@ -40,7 +40,7 @@ export const members = userProjection({
 
 export const guestbook = table({
   message: text(),
-  memberId: integer().references(() => members.id).optional(),
+  memberId: ref(members).optional().onDelete("restrict"),
 }, { access: { read: "anyone", create: "authenticated" } });
 
 export const reviews = table({

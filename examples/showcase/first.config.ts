@@ -2,11 +2,10 @@ import {
   action,
   boolean,
   defineConfig,
-  defineRelations,
   global,
   integer,
   table,
-  text,
+  text, ref,
 } from "first";
 import {
   consume,
@@ -24,7 +23,7 @@ export const tasks = table(
   {
     title: text().min(1).max(120),
     done: boolean().default(false),
-    storyId: integer().references(() => stories.id, { onDelete: "set null" }).optional(),
+    storyId: ref(() => stories).optional(),
     editorNote: text().access({ read: "editor" }).optional(),
   },
   {
@@ -35,31 +34,6 @@ export const tasks = table(
       delete: "editor",
     },
   },
-);
-
-export const relations = defineRelations(
-  { stories, tasks, items, locations, shoppingList },
-  (r) => ({
-    stories: { tasks: r.many.tasks(), pantryItems: r.many.items() },
-    tasks: {
-      story: r.one.stories({ from: r.tasks.storyId, to: r.stories.id }),
-    },
-    items: {
-      story: r.one.stories({ from: r.items.storyId, to: r.stories.id }),
-      location: r.one.locations({
-        from: r.items.locationId,
-        to: r.locations.id,
-      }),
-      shoppingEntry: r.one.shoppingList({
-        from: r.items.id,
-        to: r.shoppingList.itemId,
-      }),
-    },
-    locations: { items: r.many.items() },
-    shoppingList: {
-      item: r.one.items({ from: r.shoppingList.itemId, to: r.items.id }),
-    },
-  }),
 );
 
 class Headline {
@@ -82,7 +56,6 @@ export default defineConfig({
   admin: true,
   collections: { stories },
   tables: { tasks, locations, items, shoppingList },
-  relations,
   globals: {
     settings: global(
       "settings",

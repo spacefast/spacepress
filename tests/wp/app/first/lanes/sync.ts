@@ -4,7 +4,7 @@
 // Content sync (design §5): `guides` is a post-backed collection synced with Markdown files, and
 // `writers` gives it a uid'd reference target, so tests/wp/sync.test.ts covers bodies, references,
 // drafts and trash against real WordPress.
-import { collection, integer, richText, select, slug, text, HttpError } from "first";
+import { collection, integer, richText, select, slug, text, HttpError, ref } from "first";
 
 export const writers = collection({
   name: text().max(80),
@@ -16,7 +16,7 @@ export const guides = collection({
   body: richText().optional(),
   summary: text({ multiline: true }).optional(),
   level: select(["intro", "advanced"]).optional(),
-  writerId: integer().references(() => writers.id, { onDelete: "set null" }).optional(),
+  writerId: ref(writers).optional(),
   // Field access (lane B) applies to sync: editors never see `internal`, and may read but not change `review`.
   internal: text().access({ read: "admin", update: "admin" }).optional(),
   review: text().access({ update: "admin" }).optional(),

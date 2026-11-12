@@ -169,13 +169,9 @@ export const roundTrips = collection({
   create: "admin", update: "editor", delete: "admin",
 } });
 
-export const keyRoots = table({ code: integer().unique().optional() },
-  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
-export const keyLinks = table({ rootCode: integer().optional() },
-  { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
 
 export const collections = { vault, ledger, payroll, gated, dossier, claims, fuses, oracleRows, oracleRefs, oracleSync, oraclePeers, oracleParents, oracleKids, oracleGrand: oracleGrandchildren, oracleDefault, nullParents, nullChildren, hookParents, hookChildren, secretParents, secretLinks, refDefaults, defaultOnly, deepRoots, deepNodes, derivedRefs, roundTrips };
-export const tables = { fuseLog, keyRoots, keyLinks };
+export const tables = { fuseLog };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
 export const actions = {};

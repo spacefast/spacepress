@@ -166,6 +166,47 @@ fn successful_json_check_and_the_reusable_recipe_write_nothing() {
     assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 2);
 }
 
+/// `first check --json` lists each SQL index the deploy keeps and why it exists (spec §2.9).
+#[test]
+fn json_check_lists_each_index_with_its_reason() {
+    let tmp = tempfile::tempdir().unwrap();
+    copy_app(
+        root().join("examples/pantry/first.config.ts"),
+        tmp.path().join("first.config.ts"),
+    )
+    .unwrap();
+    copy_app(
+        root().join("examples/pantry/first/lib/fields.ts"),
+        tmp.path().join("first/lib/fields.ts"),
+    )
+    .unwrap();
+    let (out, report) = checked(tmp.path());
+    assert!(out.status.success(), "{report}");
+    let indexes = report["indexes"].as_array().expect("an indexes list");
+    let find = |table: &str, name: &str| {
+        indexes
+            .iter()
+            .find(|i| i["table"] == table && i["name"] == name)
+            .unwrap_or_else(|| panic!("no index {table}.{name} in {indexes:?}"))
+            .clone()
+    };
+    assert_eq!(find("items", "PRIMARY")["reason"], "primary key");
+    assert_eq!(
+        find("items", "slug_unique"),
+        json!({ "table": "items", "name": "slug_unique", "unique": true, "columns": ["slug"], "reason": "`slug` is .unique()" })
+    );
+    assert_eq!(
+        find("items", "first_items_locationId_fk")["reason"],
+        "`locationId` references locations: MySQL indexes a foreign key"
+    );
+    assert!(
+        indexes
+            .iter()
+            .all(|i| i["reason"].as_str().is_some_and(|r| !r.is_empty())),
+        "{indexes:?}"
+    );
+}
+
 #[test]
 fn nested_presentation_reaches_scf_and_public_schema_without_storage_migrations() {
     let tmp = tempfile::tempdir().unwrap();

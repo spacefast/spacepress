@@ -95,7 +95,7 @@ test("the previous snapshot and migration files drive the next migration like th
   const unchanged = compiler.compile({ name: "pantry", files: sources(dir), previous, migrationFiles });
   assert.deepEqual(unchanged.output?.migrations, []);
   const files = sources(dir);
-  files["first.config.ts"] = files["first.config.ts"]!.replace("expiresOn: date(),", "expiresOn: date(),\n  note: text(),");
+  files["first.config.ts"] = files["first.config.ts"]!.replace("expiresOn: date().optional(),", "expiresOn: date().optional(),\n  note: text().optional(),");
   const changed = compiler.compile({ name: "pantry", files, previous, migrationFiles });
   assert.deepEqual(
     changed.output?.migrations.map(([name, sql]) => [name, /ALTER TABLE/.test(sql)]),

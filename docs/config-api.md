@@ -37,11 +37,11 @@ First loads every `.ts` file under `first/`, except `app/`, `components/`,
 
 ```ts
 // first/schema.ts
-export const notes = table({ title: text().optional() });
+export const notes = table({ title: text() });
 
 // first/server/likes.ts (any file name)
 import { notes } from "first:db";
-export const like = action({ input: { id: integer().optional() }, async handler({ id }) { /* … */ } });
+export const like = action({ input: { id: integer() }, async handler({ id }) { /* … */ } });
 ```
 
 - Other exports are ignored, so helper modules need no special place.
@@ -107,11 +107,11 @@ import {
 } from "first";
 
 // Native WordPress content with an editor and the integer id every kind has.
-const posts = collection({ title: text().optional() });
+const posts = collection({ title: text() });
 // App data in SQL, with a reference to the content.
 const stock = table({
   postId: integer().references(() => posts.id, { onDelete: "cascade" }).optional(),
-  quantity: integer().default(0).optional(),
+  quantity: integer().default(0),
 });
 const collections = { posts };
 const tables = { stock };
@@ -226,7 +226,7 @@ storage. Register each definition in its matching namespace:
 
 ```ts
 const posts = collection({ title: text() });
-const stock = table({ postId: integer().references(() => posts.id) });
+const stock = table({ postId: integer().references(() => posts.id).optional() });
 export default defineConfig({ collections: { posts }, tables: { stock } });
 ```
 
@@ -734,7 +734,7 @@ import { action, defineConfig, HttpError, text } from "first";
 export default defineConfig({
   actions: {
     weather: action({
-      input: { city: text().optional() },
+      input: { city: text() },
       access: "anyone",
       async handler({ city }) {
         const query = new URLSearchParams({ q: city });
@@ -825,7 +825,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export default defineConfig({
   actions: {
     verify: action({
-      input: { body: text().optional(), signature: text().optional() },
+      input: { body: text(), signature: text() },
       access: "anyone",
       handler({ body, signature }) {
         const expected = createHmac("sha256", process.env.WEBHOOK_SECRET!).update(body).digest("hex");
@@ -870,7 +870,7 @@ import { action, defineConfig, email, mail, text } from "first";
 export default defineConfig({
   actions: {
     invite: action({
-      input: { to: email().optional(), name: text().optional() },
+      input: { to: email(), name: text().optional() },
       access: "editor",
       async handler({ to, name }) {
         const queued = await mail.send({
@@ -918,7 +918,7 @@ import { abilities } from "php/wordpress";
 export default defineConfig({
   actions: {
     count: action({
-      input: { text: text().optional() },
+      input: { text: text() },
       access: "authenticated",
       async handler(input) {
         const result = await abilities.call("acme/word-count", { text: input.text });

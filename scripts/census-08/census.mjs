@@ -180,15 +180,17 @@ function run(bin, input, out, users) {
 export function outcome({ verified, report, census, missing: unrecorded = [] }) {
   const errors = (report?.errors ?? []).map(classify);
   const refusals = [...new Set([...census, ...errors.filter((e) => e.kind === "refusal").map((e) => e.label)])].sort();
+  // The converter's own stable codes (Z08_*), whatever their kind; a report without codes adds none.
+  const codes = [...new Set((report?.errors ?? []).map((e) => e.code).filter(Boolean))].sort();
   const missing = [...new Set(errors.filter((e) => e.kind === "source").map((e) => e.label))].sort();
-  if (verified && report?.status === "dry-run" && census.length === 0) return { outcome: "accepted", refusals, missing };
-  if (refusals.length > 0) return { outcome: "refused", refusals, missing };
+  if (verified && report?.status === "dry-run" && census.length === 0) return { outcome: "accepted", refusals, missing, codes };
+  if (refusals.length > 0) return { outcome: "refused", refusals, missing, codes };
   if (!verified) {
     const all = [...new Set([...missing, ...unrecorded])].sort();
-    return { outcome: "not recoverable", refusals, missing: all.length ? all : ["stored payload only"] };
+    return { outcome: "not recoverable", refusals, missing: all.length ? all : ["stored payload only"], codes };
   }
   // Verified source whose only errors are source-kind still did not convert.
-  return { outcome: "refused", refusals: ["converter error on recovered source"], missing };
+  return { outcome: "refused", refusals: ["converter error on recovered source"], missing, codes };
 }
 
 async function pool(items, jobs, fn) {
@@ -215,10 +217,12 @@ export function summarize(label, perSpace) {
   const total = perSpace.length;
   const count = (o) => perSpace.filter((s) => s.outcome === o).length;
   const refusedBy = {};
+  const codedBy = {};
   const missingBy = {};
   let onlyRefusal = {};
   for (const s of perSpace) {
     for (const r of s.refusals) refusedBy[r] = (refusedBy[r] ?? 0) + 1;
+    for (const c of s.codes ?? []) codedBy[c] = (codedBy[c] ?? 0) + 1;
     if (s.refusals.length === 1) onlyRefusal[s.refusals[0]] = (onlyRefusal[s.refusals[0]] ?? 0) + 1;
     if (s.outcome === "not recoverable") for (const m of s.missing) missingBy[m] = (missingBy[m] ?? 0) + 1;
   }
@@ -234,6 +238,8 @@ export function summarize(label, perSpace) {
     notRecoverable,
     share: { accepted: share(accepted), refused: share(refused), notRecoverable: share(notRecoverable) },
     refusedBy: rank(refusedBy),
+    // Spaces whose converter report carries each code (a Space counts once per code).
+    codes: rank(codedBy).map(({ reason, spaces }) => ({ code: reason, spaces })),
     soleRefusal: rank(onlyRefusal),
     notRecoverableBy: rank(missingBy),
   };
@@ -309,6 +315,8 @@ function print(result) {
     console.log(`  not recoverable ${b.notRecoverable} (${b.share.notRecoverable}%)`);
     console.log("  refusal reasons (spaces):");
     for (const r of b.refusedBy) console.log(`    ${String(r.spaces).padStart(4)}  ${r.reason}`);
+    console.log("  converter codes (spaces):");
+    for (const c of b.codes) console.log(`    ${String(c.spaces).padStart(4)}  ${c.code}`);
     console.log("  not recoverable, still missing (spaces):");
     for (const r of b.notRecoverableBy) console.log(`    ${String(r.spaces).padStart(4)}  ${r.reason}`);
   }

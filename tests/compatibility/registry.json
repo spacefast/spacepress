@@ -1062,6 +1062,10 @@
       "feature": "symbolic link in the project"
     },
     {
+      "code": "Z08_OMITTED_CRON",
+      "feature": "sf.jsonc cron whose path the candidate doesn't serve with GET"
+    },
+    {
       "code": "Z08_OMITTED_CONFIG",
       "feature": "0.8 Space setting (an sf.jsonc key such as theme, meta, cache, firewall, crons or sell, or theme.json)"
     },
@@ -1142,6 +1146,10 @@
       "feature": "client app with its own public/ directory"
     },
     {
+      "code": "Z08_CLIENT_STYLES",
+      "feature": "client app styled by 0.8's generated zero.css"
+    },
+    {
       "code": "Z08_CLIENT_UNREADABLE",
       "feature": "client module that cannot be read"
     },
@@ -1175,7 +1183,7 @@
     },
     {
       "code": "Z08_ENDPOINT_WRITING_GET",
-      "feature": "writing GET endpoint"
+      "feature": "writing GET endpoint that reads the visitor"
     },
     {
       "code": "Z08_ENDPOINT_RESERVED_PATH",

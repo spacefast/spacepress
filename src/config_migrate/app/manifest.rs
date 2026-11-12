@@ -19,6 +19,7 @@ pub(super) const NOT_RECOVERABLE: &str = "source not recoverable";
 pub(super) struct Manifest {
     artifact: Map<String, Value>,
     endpoint_sources: Vec<Value>,
+    static_files: Vec<Value>,
 }
 
 pub(super) fn parse(text: &str) -> Result<Manifest, Failure> {
@@ -26,6 +27,10 @@ pub(super) fn parse(text: &str) -> Result<Manifest, Failure> {
         serde_json::from_str(text).map_err(|e| fail("", format!("finalize manifest is not JSON: {e}")))?;
     let Value::Object(mut root) = value else {
         return Err(fail("", "finalize manifest must be an object"));
+    };
+    let static_files = match root.get("staticFiles") {
+        Some(Value::Array(files)) => files.clone(),
+        _ => vec![],
     };
     let (artifact, endpoint_sources) = match root.remove("artifact") {
         Some(Value::Object(artifact)) => (
@@ -47,10 +52,22 @@ pub(super) fn parse(text: &str) -> Result<Manifest, Failure> {
     Ok(Manifest {
         artifact,
         endpoint_sources,
+        static_files,
     })
 }
 
 impl Manifest {
+    /// The `zero.css` the publish generated, when the payload kept its bytes (`staticFiles[]`
+    /// entries carry `contentBase64` on older publishes, path and size only on newer ones).
+    pub(super) fn zero_css(&self) -> Option<String> {
+        let file = self
+            .static_files
+            .iter()
+            .find(|f| f.get("path").and_then(Value::as_str) == Some(super::client::ZERO_CSS))?;
+        let bytes = crate::pages::base64_decode(file.get("contentBase64")?.as_str()?)?;
+        String::from_utf8(bytes).ok()
+    }
+
     fn server(&self) -> Option<&Map<String, Value>> {
         self.artifact.get("server").and_then(Value::as_object)
     }

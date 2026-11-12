@@ -19,8 +19,38 @@ pub type Arr = Rc<RefCell<Vec<Value>>>;
 /// This mirrors `JsObject::$nullPrototype` in the PHP runtime.
 #[derive(Debug, Default)]
 pub struct ObjCell {
+    /// Own string-keyed properties in creation order. An accessor property holds
+    /// `Value::Accessor`; every other value is a data property.
     map: RefCell<IndexMap<String, Value>>,
     null_prototype: bool,
+    /// Attributes of own properties that aren't ordinary (writable, enumerable, configurable),
+    /// set by `Object.defineProperty`. An accessor property's value in `map` is
+    /// `Value::Accessor`; its `writable` here is unused.
+    attrs: RefCell<HashMap<String, Attrs>>,
+}
+
+/// Property attributes, as `Object.defineProperty` sets them. An absent entry is an ordinary
+/// property: writable, enumerable and configurable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Attrs {
+    pub enumerable: bool,
+    pub writable: bool,
+    pub configurable: bool,
+}
+
+impl Attrs {
+    pub const ORDINARY: Attrs = Attrs {
+        enumerable: true,
+        writable: true,
+        configurable: true,
+    };
+}
+
+/// An accessor property: `get`/`set` are functions or `undefined`.
+#[derive(Debug, Clone)]
+pub struct AccessorVal {
+    pub get: Value,
+    pub set: Value,
 }
 
 impl ObjCell {
@@ -34,6 +64,49 @@ impl ObjCell {
 
     pub fn null_prototype(&self) -> bool {
         self.null_prototype
+    }
+
+    pub fn attrs(&self, key: &str) -> Attrs {
+        self.attrs.borrow().get(key).copied().unwrap_or(Attrs::ORDINARY)
+    }
+
+    pub fn set_attrs(&self, key: &str, attrs: Attrs) {
+        if attrs == Attrs::ORDINARY {
+            self.attrs.borrow_mut().remove(key);
+        } else {
+            self.attrs.borrow_mut().insert(key.to_string(), attrs);
+        }
+    }
+
+    /// Removes an own property and its attributes.
+    pub fn remove(&self, key: &str) {
+        self.map.borrow_mut().shift_remove(key);
+        self.attrs.borrow_mut().remove(key);
+    }
+
+    /// Whether some own property is non-enumerable, read-only, non-configurable or an accessor.
+    pub fn has_attributes(&self) -> bool {
+        !self.attrs.borrow().is_empty() || self.has_accessors()
+    }
+
+    pub fn has_accessors(&self) -> bool {
+        self.map.borrow().values().any(|v| matches!(v, Value::Accessor(_)))
+    }
+
+    /// Own string keys in insertion order, enumerable or not (callers order integer keys).
+    pub fn all_keys(&self) -> Vec<String> {
+        self.map.borrow().keys().cloned().collect()
+    }
+
+    /// Own enumerable string keys in insertion order (callers order integer keys).
+    pub fn enumerable_keys(&self) -> Vec<String> {
+        let attrs = self.attrs.borrow();
+        self.map
+            .borrow()
+            .keys()
+            .filter(|k| attrs.get(*k).is_none_or(|a| a.enumerable))
+            .cloned()
+            .collect()
     }
 }
 #[derive(Clone, Debug)]
@@ -74,6 +147,9 @@ pub enum Value {
     Coll(Rc<CollVal>),
     /// A JavaScript symbol created while the config is evaluated.
     Symbol(Rc<SymbolVal>),
+    /// The slot of an accessor property inside an object's map (see `ObjCell`). Property reads
+    /// call its getter; it is never a value of its own.
+    Accessor(Rc<AccessorVal>),
     /// An empty `WeakMap` (`set == false`) or `WeakSet` created at module level.
     /// Each request gets its own; entries can only be added in compiled code.
     Weak(Rc<WeakVal>),
@@ -145,9 +221,10 @@ pub type PrototypeSymbol = (Rc<SymbolVal>, Value, bool, bool, bool);
 pub struct Closure {
     pub func: Rc<Func>,
     pub env: Rc<Scope>,
-    /// Own properties written at build time (`f.x = 1`, `Object.assign(f, ...)`).
-    /// Compiled code reads them through static member chains; PHP closures can't carry them.
-    pub props: RefCell<IndexMap<String, Value>>,
+    /// Own properties written at build time (`f.x = 1`, `Object.assign(f, ...)`,
+    /// `Object.defineProperty(f, ...)`), with their attributes. Compiled code reads them through
+    /// static member chains; PHP closures can't carry them.
+    pub props: ObjCell,
 }
 
 impl Closure {
@@ -155,7 +232,7 @@ impl Closure {
         Closure {
             func,
             env,
-            props: RefCell::default(),
+            props: ObjCell::default(),
         }
     }
 
@@ -163,6 +240,10 @@ impl Closure {
         !self.props.borrow().is_empty()
     }
 }
+
+/// The `Object.prototype` methods First models: read as `Object.prototype.<name>` (a function
+/// value, `Builtin::ObjectPrototypeMethod`) and called through `.call`/`.apply`.
+pub const OBJECT_PROTOTYPE_METHODS: &[&str] = &["hasOwnProperty", "propertyIsEnumerable", "toString"];
 
 /// Function properties First doesn't model: built-in own properties and `Function.prototype`.
 pub const FUNCTION_BUILTIN_PROPERTIES: &[&str] = &[
@@ -218,6 +299,12 @@ pub enum Builtin {
     Static(&'static str, Rc<str>),
     /// `require` in the CommonJS module with this id; it only runs while the config is built.
     Require(usize),
+    /// `Object.prototype`, as an object value: compared, passed to `Object.create`, and read for
+    /// its modeled methods.
+    ObjectPrototype,
+    /// `Object.prototype.<name>` for a name in `OBJECT_PROTOTYPE_METHODS`: a function value
+    /// called through `.call`/`.apply` with its receiver.
+    ObjectPrototypeMethod(&'static str),
     // "first/app": page helpers, compiled by the app router; never run while the config builds.
     /// `notFound()`, `redirect(url, status?)`, `<Content>`, `<Html>`, `<Link>`: by export name.
     App(&'static str),
@@ -421,6 +508,7 @@ impl Value {
         Value::Object(Rc::new(ObjCell {
             map: RefCell::new(map),
             null_prototype: false,
+            attrs: RefCell::default(),
         }))
     }
 
@@ -429,6 +517,7 @@ impl Value {
         Value::Object(Rc::new(ObjCell {
             map: RefCell::new(map),
             null_prototype: true,
+            attrs: RefCell::default(),
         }))
     }
 
@@ -454,7 +543,10 @@ impl Value {
             Value::Num(_) => "number",
             Value::Str(_) => "string",
             Value::Builtin(
-                Builtin::Db | Builtin::Jobs | Builtin::Global("Math" | "JSON" | "console" | "globalThis"),
+                Builtin::Db
+                | Builtin::Jobs
+                | Builtin::Global("Math" | "JSON" | "console" | "globalThis")
+                | Builtin::ObjectPrototype,
             ) => "object",
             Value::Symbol(_) => "symbol",
             Value::Class(_) | Value::Closure(_) | Value::Builtin(_) | Value::Bound(..) => "function",
@@ -492,6 +584,7 @@ impl Value {
             Value::Coll(c) => (if c.set { "a Set" } else { "a Map" }).into(),
             Value::Symbol(s) => format!("Symbol({})", s.description().unwrap_or_default()),
             Value::Weak(w) => if w.set { "a WeakSet" } else { "a WeakMap" }.into(),
+            Value::Accessor(_) => "an accessor property".into(),
             Value::Native(n) => format!("a {}", n.constructor),
         }
     }

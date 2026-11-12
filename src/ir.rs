@@ -88,7 +88,17 @@ pub struct Class {
     pub constructor: Option<Rc<Func>>,
     /// `get`/`set` members in declaration order; they live on the prototype, never as own fields.
     pub accessors: Vec<ClassAccessor>,
+    /// `[key](...) {}` methods with a computed key, in declaration order. The evaluator
+    /// requires each key to be a symbol; imported JavaScript only.
+    pub symbol_methods: Vec<SymbolMethod>,
     pub span: Span,
+}
+
+#[derive(Debug)]
+pub struct SymbolMethod {
+    pub key: Expr,
+    pub is_static: bool,
+    pub func: Rc<Func>,
 }
 
 #[derive(Debug)]

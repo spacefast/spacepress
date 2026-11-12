@@ -96,6 +96,8 @@ fn is_env_name(s: &str) -> bool {
         && chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
 }
 
+const ATTRIBUTE_HELP: &str = "PHP objects carry only ordinary properties; read the value inside a function instead, or assign the property normally while the module runs";
+
 fn validate_captured_data(v: &Value, span: Span, seen: &mut HashSet<usize>) -> Result<()> {
     match v {
         Value::Array(a) => {
@@ -113,6 +115,13 @@ fn validate_captured_data(v: &Value, span: Span, seen: &mut HashSet<usize>) -> R
             Ok(())
         }
         Value::Object(o) => {
+            if o.has_attributes() {
+                return err_help(
+                    span,
+                    "captured data contains an object with a getter, setter, or non-enumerable, read-only or non-configurable property (from Object.defineProperty), which compiled code doesn't support yet",
+                    ATTRIBUTE_HELP,
+                );
+            }
             if !seen.insert(Rc::as_ptr(o) as usize) {
                 return err_help(
                     span,
@@ -4447,6 +4456,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ))
             }
             data => {
+                // Plain data whose only obstacle is a property attribute gets the attribute error,
+                // not the namespace one.
+                if let Value::Object(o) = data
+                    && o.has_attributes()
+                    && o.borrow().values().all(|v| {
+                        matches!(v, Value::Accessor(_)) || validate_captured_data(v, span, &mut HashSet::new()).is_ok()
+                    })
+                {
+                    return Err(Diag::new(
+                        span,
+                        format!("First code doesn't support using `{n}` as a value: it has a getter, setter, or non-enumerable, read-only or non-configurable property defined with Object.defineProperty"),
+                    )
+                    .code(crate::diag::Code::Unsupported)
+                    .help(ATTRIBUTE_HELP));
+                }
                 if is_static_namespace(data) {
                     return err_help(
                         span,
@@ -4503,6 +4527,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => unreachable!("static namespaces are objects or functions"),
         };
         let value = match own {
+            Some(Value::Accessor(_)) => {
+                return Err(Diag::new(
+                    prop_span,
+                    format!("First code doesn't support reading `{path}`, a getter defined while the module was evaluated"),
+                )
+                .code(crate::diag::Code::Unsupported)
+                .help("compiled code reads build-time objects as constants, and a getter must run on every read; assign the value as a plain property instead"));
+            }
             Some(value) => value,
             None if function && crate::value::FUNCTION_BUILTIN_PROPERTIES.contains(&prop) => {
                 return err_help(
@@ -4677,6 +4709,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
             .help(
                 "JavaScript binds the frozen namespace object as `this`, which PHP can't build; export an object that holds the function (`export const api = { f }`) and call `api.f()`, or stop reading `this` in the function",
             ));
+        }
+        if o.has_attributes() {
+            return Err(Diag::new(
+                span,
+                format!("First code doesn't support `{path}` as a method receiver: it has properties defined with Object.defineProperty"),
+            )
+            .code(crate::diag::Code::Unsupported)
+            .help(ATTRIBUTE_HELP));
         }
         let key = (self.owner(), 7, Rc::as_ptr(o) as usize);
         if let Some(name) = self.data_helpers.get(&key) {

@@ -129,6 +129,17 @@ final class Schema
         return $this->raw['components'] ?? [];
     }
 
+    /**
+     * Compiled `"use client"` components: namespace => the store module under the app plugin's
+     * `first/app/client/` and the server actions it calls.
+     *
+     * @return array<string, array{file: string, actions: list<string>}>
+     */
+    public function islands(): array
+    {
+        return $this->raw['islands'] ?? [];
+    }
+
     /** `frontend` (spec §5): null (WordPress or first/app/ renders), false (backend only) or the external site's URL. */
     public function frontend(): string|false|null
     {

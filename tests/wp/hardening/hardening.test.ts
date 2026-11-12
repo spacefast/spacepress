@@ -127,6 +127,20 @@ test("pings: pingbacks and trackbacks are closed, and none go out", () => {
   assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${id}), get_option('default_ping_status'), get_option('default_pingback_flag'), has_action('do_pings', 'do_all_pings')]);`), [false, "closed", "0", false]);
 });
 
+test("the facade's built-in settings: public fields for everyone, writes for admins, as core decides", async () => {
+  const settings = `${site}/__first/api/v1/settings`;
+  const patch = (who: "editor" | "admin", body: unknown) =>
+    fetch(settings, { method: "PATCH", headers: { "content-type": "application/json", ...auth(who) }, body: JSON.stringify(body) });
+  const anon = await (await fetch(settings)).json();
+  assert.deepEqual(Object.keys(anon.data).sort(), ["frontPage", "icon", "locale", "logo", "tagline", "timezone", "title"]);
+  const tagline = `Facade tagline ${randomBytes(4).toString("hex")}`;
+  assert.equal((await patch("editor", { tagline })).status, 403);
+  const set = await patch("admin", { tagline });
+  assert.deepEqual([set.status, (await set.json()).data.tagline], [200, tagline]);
+  assert.equal((await (await fetch(settings)).json()).data.tagline, tagline);
+  assert.equal((await (await patch("admin", { nope: 1 })).json()).pointer, "/nope");
+});
+
 test("emoji: no detection script or styles on the front end or in wp-admin", async () => {
   assert.doesNotMatch(await (await page("/")).text(), /wp-emoji|_wpemojiSettings/);
   const cookie = await loginCookie(site, "admin", `${site}/wp-admin/`);

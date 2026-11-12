@@ -193,7 +193,7 @@ final class Builtins
         'generator.next' => [0, 1],
         'generator.return' => [0, 1],
         'generator.throw' => [0, 1],
-        'number.toString' => [0, 0],
+        'number.toString' => [0, 1],
         'array.map' => [1, 1],
         'array.filter' => [1, 1],
         'array.find' => [1, 1],

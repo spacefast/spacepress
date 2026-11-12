@@ -1,6 +1,6 @@
 // Usage: node browser.mjs <url>
 // Loads a page with compiled client components in Chromium (playwright-core, pinned by
-// packages/pages). It checks that hydration changes nothing in the server HTML (a MutationObserver
+// tests/differential/client/package.json). It checks that hydration changes nothing in the server HTML (a MutationObserver
 // registered before any module runs), that the Interactivity runtime logs no warnings (SCRIPT_DEBUG
 // serves its development build), and that clicks run the compiled stores. Prints JSON.
 import { createRequire } from "node:module";
@@ -8,7 +8,7 @@ import { readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const { chromium } = createRequire(new URL("../../../packages/pages/package.json", import.meta.url))("playwright-core");
+const { chromium } = createRequire(import.meta.url)("playwright-core");
 const cache = join(homedir(), ".cache/ms-playwright");
 const shell = readdirSync(cache).filter((n) => n.startsWith("chromium_headless_shell-")).sort().reverse()[0];
 const executablePath = join(cache, shell, "chrome-headless-shell-linux64/chrome-headless-shell");

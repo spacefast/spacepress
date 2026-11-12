@@ -59,6 +59,33 @@ export const like = action({ input: { id: integer() }, async handler({ id }) { /
   app's kinds as options. An unknown name is refused at the import with
   the closest one. Types come from `first/_generated/db.d.ts`.
 
+### Querying a kind
+
+A kind from `"first:db"` reads and writes as the visitor: the caller of the
+action or route, or the reader of the page. Its access rules, draft
+visibility and field masks apply, as on the API.
+
+```ts
+import { posts } from "first:db";
+
+await posts.list({ where: { status: "published" }, orderBy: { publishedAt: "desc" }, limit: 10, with: { author: true } });
+await posts.paginate({ limit: 20, cursor });   // { rows, cursor }; cursor is null on the last page
+await posts.get(42);  await posts.get({ slug: "hello" });   // the row, or null
+await posts.count({ where, search: "first" });
+await posts.create({ title: "Hi" });  await posts.update(42, { title: "Hello" });  await posts.delete(42);
+await posts.system.list();   // trusted: no access rules, every draft
+```
+
+- `search` matches the title, content and text fields the visitor may read.
+- `paginate` takes `limit` (20 by default, at most 100) and the `cursor` the
+  previous page returned.
+- A kind the visitor may not read at all throws the API's 401 or 403. A row
+  they can't read or change is `null` from `get`, and a 404 from `update` and
+  `delete`.
+- Jobs and signed webhooks have no visitor and run as the system.
+  `<kind>.system.*` makes the same calls trusted anywhere.
+- `db.query` and `db.insert/update/delete` stay trusted.
+
 ## WordPress plugins
 
 Use a top-level package map in `defineConfig`:
@@ -343,6 +370,12 @@ an ambiguous replacement, even when both names are snake_case. Declare `was`
 on the new table to rename it, or remove the old one in its own deploy.
 
 ### Schema changes at deploy
+
+`first check --json` lists each SQL index the deploy keeps, and why it exists,
+under `indexes`: `{ table, name, unique, columns, reason }`. The reasons are
+the primary key, `.unique()`, a reference (MySQL indexes a foreign key),
+drafts (status and publish date) and locales (one row per locale in a
+translation group). Post-backed kinds use WordPress's own indexes.
 
 `first build` writes the SQL for each schema change to `first/_generated/migrations/`.
 You don't edit or review it. The deploy (`wp first migrate`, the first request after

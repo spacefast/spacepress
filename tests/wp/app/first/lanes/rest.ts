@@ -3,7 +3,8 @@
 //
 // Lane R (core `/wp/v2` under First's rules): an admin-only collection, one whose read rule is a
 // per-owner filter, and one with an admin-only field.
-import { blocks, collection, db, group, HttpError, integer, json, repeater, richText, slug, text, table } from "first";
+import { action, blocks, collection, db, group, HttpError, integer, json, repeater, richText, slug, text, table } from "first";
+import { jottings, vault as vaultKind } from "first:db";
 
 export const vault = collection({ title: text(), code: text().optional() },
   { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
@@ -71,6 +72,19 @@ export const gated = collection({
     create: (ctx) => ctx.user !== null && ctx.data != null && (ctx.data.level !== "locked" || ctx.user.role === "admin"),
     update: (ctx) => ctx.user !== null && (ctx.data == null || ctx.data.level !== "locked" || ctx.user.role === "admin"),
     delete: "admin",
+  },
+});
+
+// The query API (spec §3): `jottings.list/paginate/get/count/create/update/delete` from "first:db" run as
+// the visitor; `jottings.system.*` is trusted. Editors read every memo, others only published ones and
+// their own drafts.
+export const jottings = collection({ title: text(), note: text().optional(), ownerId: integer().optional() }, {
+  drafts: true,
+  access: {
+    read: (ctx) => ctx.user?.role === "editor" || ctx.user?.role === "admin" ? true : { OR: [{ status: "published" }, { ownerId: ctx.user?.id ?? -1 }] },
+    create: "authenticated",
+    update: (ctx) => ctx.user?.role === "editor" || ctx.user?.role === "admin" ? true : { ownerId: ctx.user?.id ?? -1 },
+    delete: "editor",
   },
 });
 
@@ -174,13 +188,60 @@ export const keyRoots = table({ code: integer().unique().optional() },
 export const keyLinks = table({ rootCode: integer().references(() => keyRoots.code).optional() },
   { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
 
-export const collections = { vault, ledger, payroll, gated, dossier, claims, fuses, oracleRows, oracleRefs, oracleSync, oraclePeers, oracleParents, oracleKids, oracleGrand: oracleGrandchildren, oracleDefault, nullParents, nullChildren, hookParents, hookChildren, secretParents, secretLinks, refDefaults, defaultOnly, deepRoots, deepNodes, derivedRefs, roundTrips };
+export const collections = { jottings, vault, ledger, payroll, gated, dossier, claims, fuses, oracleRows, oracleRefs, oracleSync, oraclePeers, oracleParents, oracleKids, oracleGrand: oracleGrandchildren, oracleDefault, nullParents, nullChildren, hookParents, hookChildren, secretParents, secretLinks, refDefaults, defaultOnly, deepRoots, deepNodes, derivedRefs, roundTrips };
 export const tables = { fuseLog, keyRoots, keyLinks };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
-export const actions = {};
+export const actions = {
+  jotQuery: action({
+    input: { tag: text() },
+    access: "anyone",
+    readonly: true,
+    async handler({ tag }) {
+      const where = { title: { like: `${tag}%` } };
+      const rows = await jottings.list({ where, orderBy: { title: "asc" }, columns: { title: true, status: true } });
+      const page1 = await jottings.paginate({ where, orderBy: { title: "asc" }, limit: 2 });
+      const page2 = page1.cursor === null ? null : await jottings.paginate({ where, orderBy: { title: "asc" }, limit: 2, cursor: page1.cursor });
+      const head = rows[0];
+      const first = head === undefined ? null : await jottings.get({ title: head.title });
+      const byId = first === null ? null : await jottings.get(first.id);
+      return {
+        titles: rows.map((r) => r.title),
+        statuses: rows.map((r) => r.status),
+        pages: [page1.rows.map((r) => r.title), page2 === null ? null : page2.rows.map((r) => r.title), page2 === null ? null : page2.cursor],
+        total: await jottings.count({ where }),
+        searched: await jottings.count({ where, search: "needle" }),
+        get: byId === null ? null : byId.title,
+        trusted: (await jottings.system.list({ where, columns: { title: true } })).length,
+        trustedCount: await jottings.system.count({ where }),
+      };
+    },
+  }),
+  jotWrite: action({
+    input: { tag: text(), step: text() },
+    access: "anyone",
+    async handler({ tag, step }) {
+      if (step === "create") return (await jottings.create({ title: `${tag} written`, note: "first" })).title;
+      const row = await jottings.system.get({ title: `${tag} written` });
+      if (row === null) return "missing";
+      if (step === "update") return (await jottings.update(row.id, { note: "second" })).note ?? "none";
+      if (step === "delete") return (await jottings.delete(row.id)).title;
+      return "unknown step";
+    },
+  }),
+  vaultPeek: action({
+    input: { title: text() },
+    access: "anyone",
+    readonly: true,
+    async handler({ title }) {
+      const asVisitor = await vaultKind.get({ title });
+      const trusted = await vaultKind.system.get({ title });
+      return { visitor: asVisitor === null ? null : asVisitor.title, system: trusted === null ? null : trusted.title, count: await vaultKind.count({ where: { title } }) };
+    },
+  }),
+};
 export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */
 export const hooks = {

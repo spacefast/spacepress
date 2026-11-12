@@ -29,4 +29,6 @@ rm -rf "$here/fixture" && mkdir -p "$here/fixture/uploads"
 "$harness" compose exec -T db mariadb-dump -uroot -pzero-test-root --skip-dump-date --skip-extended-insert --order-by-primary wordpress > "$here/fixture/site.sql"
 "$harness" compose exec -T wordpress tar -C /var/www/html/wp-content/uploads -cf - zero-private | tar -C "$here/fixture/uploads" -xf -
 cp "$work/seeded.json" "$here/fixture/seeded.json"
+# The ledger the 0.3.0 build committed: the port in first.config.ts builds on it (run.sh).
+mkdir -p "$here/fixture/migrations" && cp "$work/app/zero/migrations/"* "$here/fixture/migrations/"
 echo "staged $here/fixture"

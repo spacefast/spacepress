@@ -22,10 +22,12 @@ trap cleanup EXIT
 cargo build -q
 first="${CARGO_TARGET_DIR:-target}/debug/first"
 [[ $first == /* ]] || first="$repo/$first"
-# The same app, ported as its owner would: First's config name and module, the committed ledger.
+# The same app, ported as its owner would (first.config.ts), on the ledger the 0.3.0 build left.
 mkdir -p "$work/app/first/_generated/migrations"
-sed 's/from "zero"/from "first"/' "$here/zero.config.ts" > "$work/app/first.config.ts"
+cp "$here/first.config.ts" "$work/app/first.config.ts"
+cp "$here/fixture/migrations/"* "$work/app/first/_generated/migrations/"
 "$first" build "$work/app" --quiet >/dev/null
+[[ $(ls "$work/app/first/_generated/migrations" | tr '\n' ' ') == "0001_init.sql snapshot.json " ]] || { echo "the port plans a new migration" >&2; exit 1; }
 "$wp/harness.sh" down >/dev/null
 "$wp/harness.sh" up --wp-content "$work/app/first/dist/wp-content" --bare > "$work/harness.json"
 url=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["url"])' "$work/harness.json")

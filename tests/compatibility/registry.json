@@ -1062,6 +1062,10 @@
       "feature": "symbolic link in the project"
     },
     {
+      "code": "Z08_OMITTED_CRON",
+      "feature": "sf.jsonc cron whose path the candidate doesn't serve with GET"
+    },
+    {
       "code": "Z08_OMITTED_CONFIG",
       "feature": "0.8 Space setting (an sf.jsonc key such as theme, meta, cache, firewall, crons or sell, or theme.json)"
     },

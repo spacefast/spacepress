@@ -73,7 +73,11 @@ fn app_router_serves_pages_on_wordpress() {
         "{body}"
     );
     assert_eq!(seen["home description"], true);
-    assert_eq!(seen["home cache"][0], "private, no-store, max-age=0");
+    // An anonymous visitor's page is cacheable (rendering.md §6.1; app_pages_cache_and_purge_by_what_they_read).
+    assert_eq!(
+        seen["home cache"][0],
+        "public, s-maxage=300, max-age=0, must-revalidate"
+    );
     // `<Link>` to a path on the site is the router region's navigation, loaded on the page.
     assert!(body.contains(r#"/notes" data-wp-interactive="first/router" data-wp-on--click="actions.navigate" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
     assert_eq!(seen["router module"], true);
@@ -512,6 +516,16 @@ fn frontend_modes_on_wordpress() {
         serde_json::json!([301, "/journal/2026/day-one/"])
     );
     assert_eq!(theme["renamed"], serde_json::json!([301, "/notes/renamed-note/"]));
+    // A kind URL's item purges like a post: its old and new URLs and their twins.
+    assert_eq!(
+        theme["renamed purges"],
+        serde_json::json!([
+            "/notes/hello-note/",
+            "/notes/hello-note.md",
+            "/notes/renamed-note/",
+            "/notes/renamed-note.md"
+        ])
+    );
     assert_eq!(theme["new url"], 200);
     assert_eq!(theme["about"][0], 404);
     assert_eq!(theme["home"], 200);
@@ -777,5 +791,60 @@ fn client_components_hydrate_in_the_browser() {
             &serde_json::json!("2"),
             &serde_json::json!("40")
         )
+    );
+}
+
+/// rendering.md §6.1 and §6.2 for `first/app/` pages, on WordPress with a stand-in host listening
+/// on `first_purge_urls`: an anonymous visitor's page is cacheable at the edge, a signed-in,
+/// guarded or missing one is private; each cacheable render records what it read; an edit to one
+/// row purges exactly the URLs that read it or listed its kind, with their `.md` twins.
+#[test]
+fn app_pages_cache_and_purge_by_what_they_read() {
+    let project = fixture("app-router", "cache");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_cache.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let shared = "public, s-maxage=300, max-age=0, must-revalidate";
+    let private = "private, no-store, max-age=0";
+    for key in ["home", "note", "other note", "about"] {
+        assert_eq!(
+            seen[key],
+            serde_json::json!({ "status": 200, "cache": shared }),
+            "{key}"
+        );
+    }
+    assert_eq!(seen["as editor"]["cache"], private);
+    assert_eq!(seen["guarded"]["cache"], private);
+    assert_eq!(seen["missing"], serde_json::json!({ "status": 404, "cache": private }));
+    // The index: `/` listed notes (and read both), each note page read its own row, /about nothing.
+    let index: Vec<String> = seen["index"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    assert!(index.contains(&"notes * /".to_string()), "{index:?}");
+    assert_eq!(
+        index.iter().filter(|r| r.ends_with(" /notes/hello")).count(),
+        1,
+        "{index:?}"
+    );
+    assert!(!index.iter().any(|r| r.ends_with(" /about")), "{index:?}");
+    assert_eq!(
+        seen["purged"],
+        serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])
     );
 }

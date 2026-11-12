@@ -167,7 +167,9 @@ final class Purges
             return [];
         }
         $type = get_post_type_object($post->post_type);
-        if (!$type instanceof \WP_Post_Type || !$type->public || (!$wasPublic && !is_post_publicly_viewable($post))) {
+        // A First kind with a `url` is publicly queryable without being `public` (it stays out of
+        // core's public lists), and its items still have public URLs to purge.
+        if (!$type instanceof \WP_Post_Type || !($type->public || $type->publicly_queryable) || (!$wasPublic && !is_post_publicly_viewable($post))) {
             return [];
         }
         $urls = [self::permalink($post), home_url('/'), get_feed_link()];

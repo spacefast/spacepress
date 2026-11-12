@@ -106,6 +106,7 @@ final class Plugin
         Facade::register($this);
         HttpRoutes::register($this);
         AppRouter::register($this);
+        KindUrls::register($this);
         MarkdownTwins::register();
         Purges::register($this);
         Hooks::register($this);
@@ -459,6 +460,9 @@ final class Plugin
                 'has_archive' => false,
                 'rewrite' => false,
                 'query_var' => false,
+                // A kind with a `url` has public items: WordPress resolves its URLs (KindUrls) and the
+                // theme renders them; access rules still decide who reads which item.
+                'publicly_queryable' => is_string($spec['url'] ?? null),
             ]);
             PostMeta::register($spec);
         }

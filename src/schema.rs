@@ -634,6 +634,9 @@ pub struct AppRoute {
     pub handler: Option<String>,
     pub layouts: Vec<String>,
     pub error: Option<String>,
+    /// The kind whose `url` this page serves (spec §2.7), with each pattern placeholder's folder
+    /// parameter: the page receives that kind's `item`, and a missing one is a 404.
+    pub kind: Option<(String, Vec<(String, String)>)>,
 }
 
 #[derive(Debug, Clone, Default)]

@@ -82,10 +82,10 @@ final class JsReadableStream
         ]), new JsObject(['highWaterMark' => 0]));
     }
 
-    /** Bytes as a Uint8Array once binary data is available (feat/binary-data), a string until then. */
-    private static function chunk(string $bytes): mixed
+    /** A chunk read from a resource is a Uint8Array, as in Node's web streams. */
+    private static function chunk(string $bytes): JsTypedArray
     {
-        return class_exists(JsUint8Array::class) ? JsUint8Array::fromBytes($bytes) : $bytes;
+        return JsTypedArray::fromBytes($bytes);
     }
 
     /** Reads the whole stream into a PHP resource (php://temp), chunk by chunk, driving the job queue. */
@@ -97,7 +97,12 @@ final class JsReadableStream
             $result = JsJobs::await(Js::dynamicCallMethod($reader, 'read', new JsArray()));
             if (Js::truthy(Js::dynamicGet($result, 'done'))) { break; }
             $value = Js::dynamicGet($result, 'value');
-            fwrite($out, is_string($value) ? $value : (method_exists($value, 'bytes') ? $value->bytes() : Js::str($value)));
+            fwrite($out, match (true) {
+                is_string($value) => $value,
+                $value instanceof JsArrayBuffer => $value->bytes,
+                $value instanceof JsTypedArray, $value instanceof JsDataView => $value->bytes(),
+                default => Js::str($value),
+            });
         }
         rewind($out);
         return $out;

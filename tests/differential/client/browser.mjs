@@ -48,6 +48,8 @@ try {
   const after = await page.textContent("[data-wp-interactive='clients/LikeButton']");
   await page.click("text=add");
   await page.click("text=add");
+  // The effect (`data-wp-watch`) runs after the state change that triggers it, not with it.
+  await page.waitForFunction(() => document.querySelector("i").textContent === String(Number(document.querySelector("output").textContent) * 10), null, { timeout: 15000 });
   const output = await page.textContent("output");
   const items = await page.textContent("u");
   const seen = await page.textContent("i");

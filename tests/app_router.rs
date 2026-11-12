@@ -716,7 +716,7 @@ fn client_components_hydrate_in_the_browser() {
         (
             &serde_json::json!("4"),
             &serde_json::json!("2"),
-            &serde_json::json!("20")
+            &serde_json::json!("40")
         )
     );
 }

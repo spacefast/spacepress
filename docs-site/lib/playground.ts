@@ -5,7 +5,7 @@ import { highlightHtml, languageOf } from "./highlight.ts";
 import { toFirst } from "./names.ts";
 
 const dark = () => document.documentElement.dataset.theme === "dark";
-import { compilerFiles, playgroundExamples, wordpressFiles } from "./playground-catalog.ts";
+import { compilerFiles, wordpressFiles } from "./playground-catalog.ts";
 
 function readFiles(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid source files");
@@ -172,9 +172,7 @@ const loadExample = () => {
   if (!original) throw new Error(`Unknown example: ${example.value}`);
   files = drafts.get(example.value) ?? { ...original };
   drafts.set(example.value, files);
-  exampleDescription.textContent = playgroundExamples.find(({ name }) => name === example.value)?.description ?? "";
-  // Every site example has a Playground blueprint; the blog, which only the tour uses, doesn't.
-  runWordPress.hidden = example.value === "blog";
+  exampleDescription.textContent = example.selectedOptions[0]?.dataset.description ?? "";
   wordpress.hidden = true;
   frame.removeAttribute("src");
   // Installed npm packages go to the compiler with the rest but aren't listed for editing.

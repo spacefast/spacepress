@@ -145,6 +145,8 @@ trait JsDynamic
             if ($value->class !== null && ($inherited = $value->class->readInherited($value, $key, false)) !== JsClass::absent()) { return $inherited; }
             return self::dynamicMethodValue($value, $key);
         }
+        if ($value instanceof JsPrototype) { return self::prototypeGet($value, $key); }
+        if ($value instanceof JsClass && $key === 'prototype') { return $value->prototype(); }
         if ($value instanceof JsClass) { return $value->has($key) || !$value->hasStaticMethod($key) ? $value->get($key) ?? JsUndefined::Value : self::dynamicMethodValue($value, $key); }
         if (JsBinary::is($value)) { return JsBinary::get($value, $key); }
         if ($value instanceof JsConstructor) { return JsBinary::constructorGet($value, $key); }
@@ -222,8 +224,13 @@ trait JsDynamic
             return $value;
         }
         if (self::isNullish($target)) { throw new JsError('Cannot set properties of null or undefined', 'TypeError'); }
+        if ($target instanceof JsPrototype) { throw new JsError('Assigning to a class prototype is not supported; use Object.defineProperty with a symbol key', 'TypeError'); }
         if ($key instanceof JsSymbol) {
             if (!$target instanceof JsObject) { throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError'); }
+            // An inherited read-only data property blocks the write (strict mode: TypeError).
+            if (!$target->hasSymbol($key) && ($target->class?->symbolReadOnly($key) ?? false)) {
+                throw new JsError('Cannot assign to read only property ' . $key->descriptiveString(), 'TypeError');
+            }
             return $target->setSymbol($key, $value);
         }
         $key = self::key($key);
@@ -266,10 +273,22 @@ trait JsDynamic
     /** Reading a symbol key: undefined when absent, unless an unmodeled inherited symbol could answer. */
     private static function symbolGet(mixed $value, JsSymbol $key): mixed
     {
-        if (!self::symbolAbsentInherited($value, $key)) {
-            throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError');
+        $found = self::symbolLookup($value, $key);
+        return $found === JsClass::absent() ? JsUndefined::Value : $found;
+    }
+
+    /** `C.prototype[key]` for a string key: methods, `constructor` and built-in prototype data. */
+    private static function prototypeGet(JsPrototype $prototype, string $key): mixed
+    {
+        $class = $prototype->class;
+        if ($key === 'constructor') { return $class; }
+        if ($class->accessor($key, false) !== null) {
+            throw new JsError('Reading a class accessor through its prototype is not supported', 'TypeError');
         }
-        return $value instanceof JsObject ? $value->getSymbol($key) : JsUndefined::Value;
+        $inherited = $class->readInherited($prototype, $key, false);
+        if ($inherited !== JsClass::absent()) { return $inherited; }
+        if (Builtins::has('object', $key)) { throw new JsError('Unsupported inherited method ' . $key, 'TypeError'); }
+        return JsUndefined::Value;
     }
 
     /**
@@ -344,9 +363,14 @@ trait JsDynamic
         foreach (['get', 'set'] as $accessor) {
             if (array_key_exists($accessor, $descriptor->p)) { throw new JsError('Accessor property descriptors are not supported', 'TypeError'); }
         }
-        if (!$target instanceof JsObject) { throw new JsError('Object.defineProperty is only supported on plain objects', 'TypeError'); }
         $flag = static fn (string $name): bool => array_key_exists($name, $descriptor->p) && self::truthy($descriptor->p[$name]);
         $value = array_key_exists('value', $descriptor->p) ? $descriptor->p['value'] : JsUndefined::Value;
+        // A class prototype takes symbol-keyed data (brands); its string members are its methods.
+        if ($target instanceof JsPrototype && $key instanceof JsSymbol) {
+            $target->class->defineSymbol($key, $value, $flag('enumerable'), $flag('writable'), $flag('configurable'));
+            return $target;
+        }
+        if (!$target instanceof JsObject) { throw new JsError('Object.defineProperty is only supported on plain objects', 'TypeError'); }
         if ($key instanceof JsSymbol) {
             $id = spl_object_id($key);
             $existing = $target->symbols[$id] ?? null;
@@ -364,6 +388,7 @@ trait JsDynamic
     public static function dynamicKeys(mixed $value): JsArray
     {
         if (self::isNullish($value)) { return new JsArray(); }
+        if ($value instanceof JsPrototype) { throw new JsError('Enumerating a class prototype is not supported', 'TypeError'); }
         if ($value instanceof JsObject) { return new JsArray(array_map('strval', self::ownKeys($value->p))); }
         // A class's enumerable own properties are its static fields (methods are non-enumerable).
         if ($value instanceof JsClass) { return new JsArray(array_map('strval', self::ownKeys($value->statics->p))); }
@@ -515,7 +540,7 @@ trait JsDynamic
     /** `value instanceof constructor` where the constructor is only known at run time. */
     public static function dynamicInstanceof(mixed $value, mixed $constructor): bool
     {
-        if ($constructor instanceof JsClass) { return JsClass::isInstance($value, $constructor); }
+        if ($constructor instanceof JsClass) { return JsClass::instanceOf($value, $constructor); }
         if ($constructor instanceof JsConstructor) { return JsBinary::instanceOf($value, $constructor->name); }
         if (in_array($constructor, Builtins::ERROR_CONSTRUCTORS, true)) { return self::isError($value, $constructor); }
         if ($constructor instanceof \Closure) { throw new JsError('instanceof with plain functions is not supported', 'TypeError'); }
@@ -942,6 +967,7 @@ trait JsDynamic
                 return new JsArray(array_map(static fn ($key) => $method === 'values' ? self::dynamicGet($source, $key) : new JsArray([$key, self::dynamicGet($source, $key)]), $keys->a));
             }
             if ($method === 'defineProperty') { return self::dynamicDefineProperty($source, $get(1), $get(2)); }
+            if ($method === 'hasOwn' && $source instanceof JsPrototype) { throw new JsError('Object.hasOwn on a class prototype is not supported', 'TypeError'); }
             if ($method === 'hasOwn' && $get(1) instanceof JsSymbol) {
                 self::requirePresent($source);
                 if ($source instanceof JsObject) { return $source->hasSymbol($get(1)); }

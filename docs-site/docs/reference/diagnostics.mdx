@@ -50,6 +50,7 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F1102` | package is not installed in node_modules | [`reject-uninstalled-package`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-uninstalled-package) |
 | `F1201` | plugin "reach" can't import "first:db": the app's kinds belong to the app | [`reject-plugin-db`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-plugin-db) |
 | `F1201` | plugin "b" can't import "first-plugin-a": it belongs to plugin "a" | [`reject-plugin-isolation`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-plugin-isolation) |
+| `F2001` | computed class method keys must be symbols | [`reject-class-computed-string-key`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-class-computed-string-key) |
 | `F2001` | "first" has no export named `fetch` | [`reject-first-fetch-import`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-first-fetch-import) |
 | `F2001` | "node:crypto" has no `createCipheriv` in First code | [`reject-node-crypto-member`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-node-crypto-member) |
 | `F2001` | "php/wordpress" has no export named `the_title` | [`reject-wp-function-unknown`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-wp-function-unknown) |
@@ -58,6 +59,7 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F3001` | `the_contnet` is not a WordPress hook First types | [`reject-wp-hook-unknown`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-wp-hook-unknown) |
 | `F3101` | width must be an integer from 1 to 100 | [`reject-field-ui`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-field-ui) |
 | `F4001` | conditional structural matching | [`reject-type-structural-predicate`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-structural-predicate) |
+| `F4001` | only `static [Symbol.hasInstance]` is | [`reject-class-well-known-symbol-method`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-class-well-known-symbol-method) |
 | `F4001` | conditional check expressions need | [`reject-type-conditional-alias`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-conditional-alias) |
 | `F4001` | would leave a hole | [`reject-delete-array-element`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-delete-array-element) |
 | `F4001` | the type requires it | [`reject-delete-required`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-delete-required) |
@@ -110,6 +112,7 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F4001` | `SharedArrayBuffer` isn't supported | [`reject-shared-array-buffer`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-shared-array-buffer) |
 | `F4001` | timingSafeEqual() compares Buffers made from text | [`reject-timing-safe-equal`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-timing-safe-equal) |
 | `F4001` | type declaration merging | [`reject-type-merging`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-merging) |
+| `F4001` | symbol-keyed class methods only work in imported JavaScript | [`reject-typescript-class-symbol-method`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-typescript-class-symbol-method) |
 | `F4001` | symbols aren't supported in TypeScript code yet | [`reject-typescript-symbol`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-typescript-symbol) |
 | `F4001` | `crypto.getRandomValues` needs typed arrays | [`reject-crypto-random-values`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-crypto-random-values) |
 | `F4001` | `crypto.subtle` isn't available in First code | [`reject-crypto-subtle`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-crypto-subtle) |

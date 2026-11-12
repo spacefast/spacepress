@@ -11,7 +11,9 @@ pnpm build     # the same, to dist/
 pnpm check     # generated pages current, unit tests, links, browser tests, Playground boots
 ```
 
-`pnpm test:playground` boots every example's blueprint in WordPress Playground (`@wp-playground/cli`) and checks that First's plugins are active, that each collection answers on the REST API and has its wp-admin list and editor, and that the example's landing page opens. It needs network access for WordPress and the WordPress.org plugins.
+`pnpm test:playground` boots every example's blueprint in WordPress Playground (`@wp-playground/cli`) and checks that First's plugins are active, that each collection answers on the REST API and has its wp-admin list and editor, that the example's landing page opens, and that its sample data shows what the app does with it (for full-site, the TSX pages a signed-out visitor reads). It needs network access for WordPress and the WordPress.org plugins.
+
+The examples the site features are listed in `lib/site-examples.ts`. Each one says how the site shows it in its own directory: `playground.json` (title, summary, the page Playground opens) and, if it has sample data, `playground-seed.php`. `pnpm showcase` also runs `first-pages build` for an example with `pages/`, and puts the rows of a synced collection's content files into its blueprint.
 
 ## Where each page comes from
 

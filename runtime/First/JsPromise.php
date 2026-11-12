@@ -117,10 +117,10 @@ final class JsPromise
 
     private function enqueueReaction(array $reaction): void
     {
-        [$onFulfilled, $onRejected, $derived] = $reaction;
+        [$onFulfilled, $onRejected, $derived, $viewer] = $reaction;
         $state = $this->state;
         $value = $this->result;
-        JsJobs::enqueue(static function () use ($state, $value, $onFulfilled, $onRejected, $derived): void {
+        JsJobs::enqueue(static function () use ($state, $value, $onFulfilled, $onRejected, $derived, $viewer): void {
             $handler = $state === self::FULFILLED ? $onFulfilled : $onRejected;
             if ($handler === null) {
                 if ($derived === null) { return; }
@@ -128,7 +128,8 @@ final class JsPromise
                 return;
             }
             try {
-                $result = $handler($value);
+                // A reaction reads as the viewer bound where it was registered, whenever it runs.
+                $result = Seam::asViewer($viewer, static fn () => $handler($value));
             } catch (JsError $error) {
                 $derived?->reject(Js::thrownValue($error));
                 return;
@@ -141,7 +142,7 @@ final class JsPromise
     public function then(?\Closure $onFulfilled = null, ?\Closure $onRejected = null, bool $derive = true): ?self
     {
         $derived = $derive ? new self() : null;
-        $reaction = [$onFulfilled, $onRejected, $derived];
+        $reaction = [$onFulfilled, $onRejected, $derived, Seam::viewer()];
         if ($this->state === self::REJECTED && !$this->handled) {
             JsJobs::untrackRejection($this);
         }

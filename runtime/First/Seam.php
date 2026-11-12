@@ -207,17 +207,23 @@ final class Seam
     /**
      * Runs $fn with compiled reads bound to $viewer (null: trusted), then restores the viewer that
      * was bound before, also when $fn throws. A page render binds the visitor here, so drafts and
-     * hidden fields never reach its HTML. An async body started inside keeps the viewer across its
-     * awaits (JsJobs::async). Only reads are bound: writes from code a render calls stay trusted.
+     * hidden fields never reach its HTML. Async bodies, promise reactions and timers keep the viewer
+     * bound where they were started or registered (JsJobs::async, JsPromise::then, Timers::set).
+     * Only reads are bound: writes from code a render calls stay trusted.
      */
     public static function asViewer(?Viewer $viewer, callable $fn): mixed
     {
         $previous = self::$viewer;
+        $fiber = \Fiber::getCurrent();
         self::$viewer = $viewer;
         try {
             return $fn();
         } finally {
-            self::$viewer = $previous;
+            // A suspended fiber destroyed later runs this from elsewhere; it must not reset the
+            // viewer of whatever is running then.
+            if (\Fiber::getCurrent() === $fiber) {
+                self::$viewer = $previous;
+            }
         }
     }
 

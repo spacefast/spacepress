@@ -896,6 +896,26 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
         [],
     )), [['open'], ['open'], ['price=42', 'open'], ['open']]);
     eq('nothing stays bound after the render', \First\Seam::viewer(), null);
+    // Promise reactions and timers read as the viewer bound where they were registered, even when
+    // the queue drains after asViewer has returned.
+    $seen = [];
+    $db->current(static function () use ($anon, $titles, &$seen): void { \First\JsJobs::run(static function () use ($anon, $titles, &$seen): \First\JsPromise {
+        return \First\Seam::asViewer($anon, static function () use ($titles, &$seen): \First\JsPromise {
+            $done = new \First\JsPromise();
+            \First\JsPromise::from(1)->then(static function () use ($titles, &$seen) { $seen['then'] = $titles(); return 1; });
+            \First\Timers::set(static function () use ($titles, &$seen, $done): void { $seen['timer'] = $titles(); $done->resolve(1); }, 1);
+            return $done;
+        });
+    }, []); });
+    eq('a reaction and a timer registered under a visitor read as that visitor', $seen, ['then' => ['open'], 'timer' => ['open']]);
+    $trusted = [];
+    $db->current(static function () use ($titles, &$trusted): void { \First\JsJobs::run(static function () use ($titles, &$trusted): \First\JsPromise {
+        $done = new \First\JsPromise();
+        \First\JsPromise::from(1)->then(static function () use ($titles, &$trusted) { $trusted[] = $titles(); return 1; });
+        \First\Timers::set(static function () use ($titles, &$trusted, $done): void { $trusted[] = $titles(); $done->resolve(1); }, 1);
+        return $done;
+    }, []); });
+    eq('… and registered outside any render they stay trusted', $trusted, [['price=42', 'open'], ['price=42', 'open']]);
     problem('a viewer\'s update selector is denied the unreadable target', fn () => $db->update('comments', ['ownerId' => 1], $key, true, $anon), 401, 'unauthenticated');
     eq('… and a viewer\'s delete selector matches no draft target', $db->delete('comments', ['article' => ['secret' => ['like' => 'price=4%']]], true, $anon), []);
 })();

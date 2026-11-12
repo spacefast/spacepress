@@ -1806,10 +1806,7 @@ fn rejects_phase2_static_contracts() {
             "`.primaryKey()` is gone: every kind has an integer `id`",
         ),
         ("reject-sync-reference", "sync references need uid: true on a"),
-        (
-            "reject-job-reference",
-            "`ref()` isn't allowed on an action input",
-        ),
+        ("reject-job-reference", "`ref()` isn't allowed on an action input"),
         ("reject-job-unique", "`.unique()` isn't allowed on an action input"),
         ("reject-job-retries", "job retries must be a whole number from 0 to 20"),
         ("reject-once-key", "once key must be a string"),

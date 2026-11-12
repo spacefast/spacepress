@@ -20,10 +20,6 @@ pub const RESERVED_PATHS: &[(&str, &str)] = &[
         "First's HTTP API (`/__first/api/v1/*`): kinds, globals, actions, files, `/me`; served before the theme, outside `/wp-json`. Route it to WordPress and never cache it: every answer is `Cache-Control: private, no-store` with `Vary: Cookie, Authorization`, except file streams",
     ),
     (
-        "/wp-json/first/v1/*",
-        "the app's REST API under WordPress's REST prefix, until its routes move to `/__first/api/v1`",
-    ),
-    (
         "/identity/*",
         "First Identity's issuer and pages, when the app mounts identity",
     ),

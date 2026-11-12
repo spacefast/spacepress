@@ -368,6 +368,9 @@ pub(super) struct Transformed {
     /// The capsule declared `collections.posts` itself, so 0.8 built no posts from content/posts/
     /// (zero-compile skips its structural default for a declared collection).
     pub declares_posts: bool,
+    /// The 0.8 path of each GET endpoint the candidate serves as a route at the same path: what an
+    /// sf.jsonc cron can keep calling.
+    pub get_paths: BTreeSet<String>,
 }
 
 /// The v2 input names `handler` gives a 0.8 handler's parameters after the context, in order.
@@ -802,6 +805,7 @@ pub(super) fn app(
     let mut prefixes: Vec<(String, String, String, String)> = Vec::new();
     // Writing GET endpoints, by index in `routes`: refused if they turn out to read the visitor.
     let mut writing_gets: Vec<(usize, String, Span)> = Vec::new();
+    let mut get_paths: BTreeSet<String> = BTreeSet::new();
     let mut seen = BTreeSet::new();
     if let Some(group) = root.get("endpoints") {
         for (name, e) in obj(group, "/endpoints")? {
@@ -861,10 +865,13 @@ pub(super) fn app(
                         functions: &functions,
                     },
                 )
-                .map(|h| (h, route))
+                .map(|h| (h, route, path))
             })();
             match result {
-                Ok(((code, generated, ctx_calls), route)) => {
+                Ok(((code, generated, ctx_calls), route, path)) => {
+                    if route.method == "GET" {
+                        get_paths.insert(path);
+                    }
                     calls.extend(ctx_calls);
                     let (prefixed, generated): (Vec<_>, Vec<_>) =
                         generated.into_iter().partition(|g| g.starts_with(PREFIX_MARK));
@@ -1180,6 +1187,7 @@ pub(super) fn app(
         connector_roles: Value::Object(connector_roles),
         handlers: client_handlers,
         declares_posts,
+        get_paths,
     })
 }
 

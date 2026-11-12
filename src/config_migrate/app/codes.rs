@@ -278,14 +278,6 @@ pub static RULES: &[Rule] = &[
         example: ("/client/index.tsx", "client source the browser build cannot compile: x"),
     },
     Rule {
-        code: "Z08_CLIENT_NATIVE",
-        feature: "client app converted by the browser compiler",
-        v2: "first migrate app from the native CLI",
-        fix: "Run first migrate app --from zero-0.8 with the native CLI; it compiles the client into public/.",
-        test: |_, r| r.starts_with(client::TAG_NATIVE),
-        example: ("/client/index.tsx", "client app conversion outside the native CLI: x"),
-    },
-    Rule {
         code: "Z08_CLIENT_PUBLIC",
         feature: "client app with its own public/ directory",
         v2: "public/, which holds the converted client",

@@ -88,7 +88,6 @@ pub(super) const TAG_IMPORT: &str = "client import outside the capsule";
 pub(super) const TAG_DYNAMIC: &str = "dynamic import in the client";
 pub(super) const TAG_ASSET: &str = "client import of a non-script file";
 pub(super) const TAG_SYNTAX: &str = "client source the browser build cannot compile";
-pub(super) const TAG_NATIVE: &str = "client app conversion outside the native CLI";
 pub(super) const TAG_PUBLIC: &str = "client app over an existing public/";
 pub(super) const TAG_UNREADABLE: &str = "client module that cannot be read";
 
@@ -328,9 +327,7 @@ impl Walk<'_> {
 }
 
 /// The browser module for a rewritten program: TypeScript stripped, JSX on Preact's automatic
-/// runtime. Needs the oxc transformer, which only the native build carries (`host`): its target
-/// table reaches for JavaScript globals on wasm32, which the browser compiler cannot import.
-#[cfg(feature = "host")]
+/// runtime. The native CLI and the browser build run the same transform.
 fn emit<'a>(
     arena: &'a Allocator,
     relative: &Path,
@@ -360,17 +357,6 @@ fn emit<'a>(
         "from \"preact/jsx-runtime\"",
         &format!("from \"{up}first/preact/jsx-runtime.js\""),
     ))
-}
-
-/// Without the transformer, every module still gets its coded refusals; the emit is the native CLI's.
-#[cfg(not(feature = "host"))]
-fn emit<'a>(
-    _arena: &'a Allocator,
-    _relative: &Path,
-    _program: &mut oxc_ast::ast::Program<'a>,
-    _up: &str,
-) -> Result<String, (u32, String)> {
-    Ok(String::new())
 }
 
 /// Each `url(...)` in a stylesheet that names a file next to it: `(byte offset, url)`. Data URIs,
@@ -499,16 +485,6 @@ pub(super) fn convert(
         seen: BTreeSet::new(),
     };
     let module = walk.module(entry_file);
-    #[cfg(not(feature = "host"))]
-    if walk.errors.is_empty() {
-        walk.errors.push(
-            fail(
-                &super::pages::at(entry_file),
-                format!("{TAG_NATIVE}: this build has no TypeScript-to-browser compiler"),
-            )
-            .located(entry_file.to_string_lossy().replace('\\', "/"), 1, 1),
-        );
-    }
     let main = format!(
         "// Mounts the converted 0.8 client app as 0.8 did: its App (or default export) in #root.\nimport {{ h, render }} from \"./preact/preact.js\";\nimport * as Client from \"../{module}\";\n\nconst App = Client.App ?? Client.default;\nif (!App) throw new Error(\"The client entry must export App.\");\nrender(h(App, {{}}), document.getElementById(\"root\"));\n"
     );

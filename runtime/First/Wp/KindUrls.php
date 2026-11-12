@@ -1,0 +1,287 @@
+<?php
+
+declare(strict_types=1);
+
+namespace First\Wp;
+
+/**
+ * A kind's `url` pattern on WordPress (docs/spec/spec.md §2.7) and the front-end modes (§5).
+ *
+ * One pattern parses incoming URLs and builds outgoing links, so the two never disagree:
+ * - a rewrite rule per pattern, so WordPress itself resolves `/notes/hello` to the item, and its
+ *   template hierarchy renders it with the theme when no `first/app/` page serves the URL;
+ * - `post_type_link` builds every link core makes (`get_permalink`, canonical, feeds, sitemaps,
+ *   REST `link`) from the same pattern;
+ * - a slug change records the old URL (core's `_wp_old_slug`), and a request for it 301s to the
+ *   item's current URL.
+ *
+ * Front-end modes, on `template_redirect` at priority -1, before the app router (1):
+ * - default: WordPress renders with its theme (no `first/app/`), or the app router serves
+ *   (with `first/app/`);
+ * - `frontend: false`: backend only. Every public HTML URL is a 404; wp-admin, login, REST,
+ *   feeds of nothing and First's own paths keep working;
+ * - `frontend: "https://…"`: an external site renders. Front-end URLs redirect there with their
+ *   path, and every link core builds points there.
+ */
+final class KindUrls
+{
+    /** @var array<string, array{type: string, pattern: string, segments: list<string>, slug: ?string}> */
+    private array $kinds = [];
+    private static ?self $instance = null;
+
+    public static function instance(): ?self
+    {
+        return self::$instance;
+    }
+
+    public static function register(Plugin $plugin): void
+    {
+        $self = self::$instance = new self($plugin);
+        if ($self->kinds !== []) {
+            add_action('init', [$self, 'rewrites'], 1);
+            add_filter('post_type_link', [$self, 'link'], 10, 2);
+            add_action('template_redirect', [$self, 'oldSlug'], 0);
+            add_filter('request', [$self, 'request']);
+        }
+        $frontend = $plugin->schema->frontend();
+        if ($frontend === false) {
+            add_action('template_redirect', [self::class, 'backendOnly'], -1);
+        } elseif (is_string($frontend)) {
+            add_action('template_redirect', static fn () => self::external($frontend), -1);
+            foreach (['post_link', 'page_link', 'post_type_link', 'term_link', 'attachment_link'] as $filter) {
+                add_filter($filter, static fn (string $url): string => self::rebase($url, $frontend), PHP_INT_MAX);
+            }
+            add_filter('preview_post_link', static fn (string $url): string => self::rebase($url, $frontend), PHP_INT_MAX);
+        }
+    }
+
+    private function __construct(private readonly Plugin $plugin)
+    {
+        foreach ($plugin->schema->collections() as $name => $spec) {
+            if (!is_string($spec['url'] ?? null) || !isset($spec['wp']['postType'])) {
+                continue;
+            }
+            $this->kinds[$name] = [
+                'type' => (string) $spec['wp']['postType'],
+                'pattern' => $spec['url'],
+                'segments' => explode('/', trim($spec['url'], '/')),
+                'slug' => $spec['slug'] ?? null,
+            ];
+        }
+    }
+
+    /** One rewrite rule per kind: literals as written, each placeholder one segment, `:path` the rest. */
+    public function rewrites(): void
+    {
+        foreach ($this->kinds as $name => $kind) {
+            $regex = '';
+            $query = [];
+            $n = 0;
+            foreach ($kind['segments'] as $segment) {
+                $regex .= ($regex === '' ? '' : '/');
+                if (!str_starts_with($segment, ':')) {
+                    $regex .= preg_quote($segment, '#');
+                    continue;
+                }
+                $n++;
+                $field = substr($segment, 1);
+                $regex .= $field === 'path' ? '(.+?)' : '([^/]+)';
+                $query[$field] = '$matches[' . $n . ']';
+            }
+            $vars = ['post_type=' . $kind['type'], 'first_kind=' . $name];
+            foreach ($query as $field => $match) {
+                $vars[] = match ($field) {
+                    'slug', 'path' => 'name=' . $match,
+                    'id' => 'p=' . $match,
+                    'year' => 'year=' . $match,
+                    'month' => 'monthnum=' . $match,
+                    'day' => 'day=' . $match,
+                    default => 'first_url_' . $field . '=' . $match,
+                };
+            }
+            add_rewrite_rule('^' . $regex . '/?$', 'index.php?' . implode('&', $vars), 'top');
+        }
+        add_rewrite_tag('%first_kind%', '([^&]+)');
+        // The rules come from the build: flush once whenever the set of patterns changes.
+        $digest = md5((string) json_encode(array_column($this->kinds, 'pattern')));
+        if (get_option('first_kind_urls') !== $digest) {
+            flush_rewrite_rules(false);
+            update_option('first_kind_urls', $digest, true);
+        }
+    }
+
+    /**
+     * A matched kind URL queries that kind's items only, so `/notes/hello` never resolves a post
+     * named `hello` of another type; the remaining placeholders (`:year`, fields) must agree with
+     * the item, or the URL is a 404.
+     *
+     * @param array<string, mixed> $vars
+     * @return array<string, mixed>
+     */
+    public function request(array $vars): array
+    {
+        $name = $vars['first_kind'] ?? null;
+        if (!is_string($name) || !isset($this->kinds[$name])) {
+            return $vars;
+        }
+        unset($vars['first_kind']);
+        $vars['post_type'] = $this->kinds[$name]['type'];
+        // Fields other than slug/id/date are checked once the item is known (oldSlug runs then).
+        return $vars;
+    }
+
+    /** `post_type_link`: the item's URL from its kind's pattern. */
+    public function link(string $link, \WP_Post $post): string
+    {
+        foreach ($this->kinds as $name => $kind) {
+            if ($kind['type'] !== $post->post_type) {
+                continue;
+            }
+            $url = $this->build($name, $post);
+            return $url ?? $link;
+        }
+        return $link;
+    }
+
+    /** The path a pattern gives an item, or null while a placeholder it needs is empty (a draft's slug). */
+    public function path(string $name, \WP_Post $post): ?string
+    {
+        $parts = [];
+        $date = strtotime($post->post_date_gmt !== '0000-00-00 00:00:00' ? $post->post_date_gmt . ' UTC' : $post->post_date);
+        foreach ($this->kinds[$name]['segments'] as $segment) {
+            if (!str_starts_with($segment, ':')) {
+                $parts[] = $segment;
+                continue;
+            }
+            $field = substr($segment, 1);
+            $value = match ($field) {
+                'slug', 'path' => $post->post_name,
+                'id' => (string) $post->ID,
+                'year' => gmdate('Y', (int) $date),
+                'month' => gmdate('m', (int) $date),
+                'day' => gmdate('d', (int) $date),
+                default => self::field($name, $post, $field),
+            };
+            if ($value === null || $value === '') {
+                return null;
+            }
+            $parts[] = $field === 'path' ? implode('/', array_map('rawurlencode', explode('/', get_page_uri($post) ?: $value))) : rawurlencode($value);
+        }
+        return '/' . implode('/', $parts);
+    }
+
+    private function build(string $name, \WP_Post $post): ?string
+    {
+        $path = $this->path($name, $post);
+        return $path === null ? null : user_trailingslashit(home_url($path));
+    }
+
+    /** A scalar field's value for a placeholder, or a referenced item's slug (`:author.slug`). */
+    private static function field(string $kind, \WP_Post $post, string $field): ?string
+    {
+        [$column, $through] = array_pad(explode('.', $field, 2), 2, null);
+        $value = get_post_meta($post->ID, 'first_' . $column, true);
+        if ($through === 'slug' && is_numeric($value)) {
+            $target = get_post((int) $value);
+            return $target instanceof \WP_Post && $target->post_status === 'publish' ? $target->post_name : null;
+        }
+        return is_scalar($value) ? (string) $value : null;
+    }
+
+    /**
+     * After a slug change the old URL 301s to the current one (core keeps `_wp_old_slug`). And a
+     * kind URL that resolved to an item whose pattern gives another URL (a wrong year, a stale
+     * field) redirects to the canonical one, so every item has exactly one URL.
+     */
+    public function oldSlug(): void
+    {
+        $name = get_query_var('name');
+        $type = get_query_var('post_type');
+        $kind = null;
+        foreach ($this->kinds as $n => $k) {
+            if ($k['type'] === $type) {
+                $kind = $n;
+            }
+        }
+        if ($kind === null) {
+            return;
+        }
+        if (is_404() && is_string($name) && $name !== '') {
+            // The published item with this slug now (the URL's other placeholders were stale, like
+            // a wrong year), or the one that had it before a rename (core's `_wp_old_slug`).
+            global $wpdb;
+            $type = $this->kinds[$kind]['type'];
+            $id = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_status = 'publish' AND post_name = %s LIMIT 1",
+                $type, $name,
+            ));
+            $id = $id ?: (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT p.ID FROM {$wpdb->posts} p JOIN {$wpdb->postmeta} m ON m.post_id = p.ID AND m.meta_key = '_wp_old_slug'
+                 WHERE p.post_type = %s AND p.post_status = 'publish' AND m.meta_value = %s ORDER BY p.ID DESC LIMIT 1",
+                $type, $name,
+            ));
+            $post = $id > 0 ? get_post($id) : null;
+            if ($post instanceof \WP_Post && ($url = $this->build($kind, $post)) !== null) {
+                wp_safe_redirect($url, 301);
+                exit;
+            }
+            return;
+        }
+        $post = get_queried_object();
+        if (!is_singular() || !$post instanceof \WP_Post || $post->post_type !== $this->kinds[$kind]['type']) {
+            return;
+        }
+        $want = $this->path($kind, $post);
+        $have = '/' . trim((string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH), '/');
+        $home = rtrim((string) wp_parse_url(home_url('/'), PHP_URL_PATH), '/');
+        if ($home !== '' && str_starts_with($have, $home)) {
+            $have = substr($have, strlen($home)) ?: '/';
+        }
+        if ($want !== null && rawurldecode($have) !== rawurldecode($want)) {
+            wp_safe_redirect((string) $this->build($kind, $post), 301);
+            exit;
+        }
+    }
+
+    /** `frontend: false`: no public HTML at all. */
+    public static function backendOnly(): void
+    {
+        if (is_admin() || is_feed() || is_robots() || (defined('REST_REQUEST') && REST_REQUEST)) {
+            return;
+        }
+        global $wp_query;
+        $wp_query->set_404();
+        status_header(404);
+        nocache_headers();
+        header('Content-Type: text/plain; charset=utf-8');
+        header('X-Robots-Tag: noindex');
+        echo "This site has no public pages.\n";
+        exit;
+    }
+
+    /** `frontend: "https://…"`: the external site renders; front-end URLs go there with their path. */
+    private static function external(string $frontend): void
+    {
+        if (is_admin() || is_feed() || is_robots() || (defined('REST_REQUEST') && REST_REQUEST) || is_preview()) {
+            return;
+        }
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+        $home = rtrim((string) wp_parse_url(home_url('/'), PHP_URL_PATH), '/');
+        if ($home !== '' && str_starts_with($uri, $home)) {
+            $uri = substr($uri, strlen($home)) ?: '/';
+        }
+        nocache_headers();
+        wp_redirect(rtrim($frontend, '/') . '/' . ltrim($uri, '/'), 308);
+        exit;
+    }
+
+    /** A link WordPress built for this site, moved to the external front end with the same path. */
+    public static function rebase(string $url, string $frontend): string
+    {
+        $home = untrailingslashit(home_url());
+        if (!str_starts_with($url, $home)) {
+            return $url;
+        }
+        return rtrim($frontend, '/') . '/' . ltrim(substr($url, strlen($home)), '/');
+    }
+}

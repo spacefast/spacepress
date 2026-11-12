@@ -2541,10 +2541,22 @@ impl Rewrite<'_> {
             return Ok(());
         }
         if let Some(service) = self.service_of(e) {
-            return Err(fail(
-                &pointer(&pointer(self.at, "ctx"), service),
-                "unsupported context service; port its authority and behavior explicitly",
-            ));
+            let why = match service {
+                "spam" => {
+                    "unsupported context service; ctx.spam has no First counterpart yet (spam checks on First use the Akismet a site has through Jetpack, and mapping ctx.spam onto it waits on an owner ruling). Remove the check, or call Akismet's REST API with fetch and a key from process.env"
+                }
+                "jwt" => {
+                    "unsupported context service; ctx.jwt.sign has no First counterpart yet (First's node:crypto has hashes and HMAC, no Ed25519 signing, and adding it waits on an owner ruling). Sign the token in a service you call with fetch, or keep the app on 0.8"
+                }
+                "connectors" => {
+                    "unsupported context service; ctx.connectors needs a connector broker First doesn't have yet. Call the provider's API with fetch and a credential from process.env, or keep the app on 0.8"
+                }
+                "storage" => {
+                    "unsupported context service; ctx.storage maps to First file buckets, which the converter doesn't write. Port the calls to a bucket by hand"
+                }
+                _ => "unsupported context service; port its authority and behavior explicitly",
+            };
+            return Err(fail(&pointer(&pointer(self.at, "ctx"), service), why));
         }
         // `helper(ctx, ...)` or `helper(req, ...)` for a function of this module: the helper takes
         // the v2 context or route request there and its body is rewritten like a handler's

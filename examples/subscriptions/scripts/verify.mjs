@@ -6,7 +6,7 @@ const authorization = `Basic ${Buffer.from(process.env.FIRST_APP_PASSWORD).toStr
 const run = `subscription-proof-${Date.now()}`;
 const owned = [];
 async function api(method, path, data, extra = {}, expected) {
-  const response = await fetch(`${site}/wp-json/first/v1${path}`, {
+  const response = await fetch(`${site}/__first/api/v1${path}`, {
     method, headers: { "Content-Type": "application/json", Authorization: authorization, ...extra },
     ...(data === undefined ? {} : { body: JSON.stringify(data) }),
   });

@@ -4,12 +4,11 @@
 require_once '/wordpress/wp-load.php';
 // Every write must succeed: a seed that half-ran would show a site that looks broken.
 $call = static function (string $method, string $route, array $body): void {
-	$request = new WP_REST_Request($method, $route);
-	$request->set_header('content-type', 'application/json');
-	$request->set_body(wp_json_encode($body));
-	$response = rest_do_request($request);
-	if ($response->get_status() >= 300) {
-		throw new RuntimeException("$method $route answered {$response->get_status()}");
+	// The app's API (/__first/api/v1), in process: each call dispatches to the core route as the
+	// current user, exactly as an HTTP request to the facade would.
+	[$status] = \First\Wp\Facade::route(\First\Wp\Runtime::plugin(), $method, $route, [], (string) wp_json_encode($body));
+	if ($status >= 300) {
+		throw new RuntimeException("$method $route answered $status");
 	}
 };
 $paragraph = static fn (string $text): string => "<!-- wp:paragraph --><p>$text</p><!-- /wp:paragraph -->";
@@ -20,12 +19,12 @@ foreach ([
 	['title' => 'Counting swifts', 'dek' => 'Forty-two over the church tower.', 'body' => $paragraph('They arrive in May and leave in August.')],
 	['title' => 'A wet field day', 'dek' => 'Rain all morning, sun by three.', 'body' => $paragraph('The notebook survived. The pencil did not.')],
 ] as $note) {
-	$call('POST', '/first/v1/notes', $note + ['status' => 'published']);
+	$call('POST', '/notes', $note + ['status' => 'published']);
 	$first ??= get_page_by_path(sanitize_title($note['title']), OBJECT, 'first_notes')?->ID;
 }
-$call('POST', '/first/v1/notes', ['title' => 'Notes for next week', 'dek' => 'Not ready yet.', 'status' => 'draft']);
+$call('POST', '/notes', ['title' => 'Notes for next week', 'dek' => 'Not ready yet.', 'status' => 'draft']);
 // Three cheers on the first note, through the action the page's button calls.
 wp_set_current_user(0);
 for ($i = 0; $i < 3 && $first !== null; $i++) {
-	$call('POST', '/first/v1/actions/cheer', ['noteId' => $first]);
+	$call('POST', '/actions/cheer', ['noteId' => $first]);
 }

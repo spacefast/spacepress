@@ -35,6 +35,42 @@ final class UserMeta
         add_filter('rest_user_query', [self::class, 'query'], 20, 2);
         add_filter('rest_request_before_callbacks', [self::class, 'before'], 20, 3);
         add_filter('rest_dispatch_request', [self::class, 'dispatch'], 20, 4);
+        add_filter('rest_endpoints', [self::class, 'endpoints']);
+    }
+
+    /**
+     * rest_endpoints: on the API's own dispatches, reading a user is First's read rule's question (a
+     * member outside it is a 404, so existence never leaks, §1.6), not core's list_users capability,
+     * which answers 403. Core's own clients keep core's check.
+     */
+    public static function endpoints(array $endpoints): array
+    {
+        foreach ($endpoints['/wp/v2/users/(?P<id>[\d]+)'] ?? [] as $i => $handler) {
+            if (!is_array($handler) || !isset($handler['permission_callback'])) {
+                continue;
+            }
+            $methods = $handler['methods'] ?? '';
+            if (!(is_array($methods) ? isset($methods['GET']) : str_contains((string) $methods, 'GET'))) {
+                continue;
+            }
+            $core = $handler['permission_callback'];
+            $endpoints['/wp/v2/users/(?P<id>[\d]+)'][$i]['permission_callback'] = static function (\WP_REST_Request $request) use ($core): mixed {
+                $collection = self::collection();
+                if (!Facade::dispatching() || $collection === null || $request['context'] === 'edit') {
+                    return call_user_func($core, $request);
+                }
+                $viewer = CoreAccess::viewer();
+                try {
+                    $row = $viewer === null ? null : self::plugin()->db()->findFirst($collection, ['where' => ['id' => (int) $request['id']]], $viewer);
+                } catch (HttpError $e) {
+                    return CoreAccess::error($e);
+                }
+
+                return $row !== null ? true : new \WP_Error('rest_user_invalid_id', __('Invalid user ID.'), ['status' => 404]);
+            };
+        }
+
+        return $endpoints;
     }
 
     public static function registerMeta(): void

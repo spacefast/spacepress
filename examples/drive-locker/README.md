@@ -203,7 +203,7 @@ The final source has no compiler diagnostics. The compiler diagnostic count is
 
 | Gap | Exact observed diagnostic | Trigger in this example |
 | --- | --- | --- |
-| Owner-filtered unique writes | HTTP 403, `forbidden`, `You can't set serialKey`, pointer `/serialKey` | `serialKey.unique()` with the owner-filtered `access` in `first.config.ts`; `POST /wp-json/first/v1/drives` |
+| Owner-filtered unique writes | HTTP 403, `forbidden`, `You can't set serialKey`, pointer `/serialKey` | `serialKey.unique()` with the owner-filtered `access` in `first.config.ts`; `POST /__first/api/v1/drives` |
 | Owner-filtered referential deletes | HTTP 409, `reference_violation`, `Rows in health_readings may reference this row` | Drive references from `healthReadings.driveId` and deleting a drive |
 | Owner-filtered referential deletes | HTTP 409, `reference_violation`, `Rows in drives may reference this row` | `drives.placeId` and deleting an empty place |
 | Missing CLI preflight | `Command zero:check not found.` | `sf first check --help` using installed `spacefast/0.8.0` |

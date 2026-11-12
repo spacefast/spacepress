@@ -6,9 +6,9 @@ Set `APP_SERVICES_RECIPIENT`, `APP_SERVICES_SENDER` and `FIRST_SERVICES_RATE_SEC
 
 The authored collection key is `articles`; its stored name is `service_posts`. Requests use:
 
-- `POST /wp-json/first/v1/services/forms/contact`, with `Idempotency-Key` and `{ "data": { "email": "visitor@example.test", "message": "Hello there" }, "website": "" }`.
-- `GET /wp-json/first/v1/services/search?collection=service_posts&q=workshop`.
-- `POST /wp-json/first/v1/services/checkout`, with `Idempotency-Key` and `{ "product": "workshop" }`.
+- `POST /__first/api/v1/services/forms/contact`, with `Idempotency-Key` and `{ "data": { "email": "visitor@example.test", "message": "Hello there" }, "website": "" }`.
+- `GET /__first/api/v1/services/search?collection=service_posts&q=workshop`.
+- `POST /__first/api/v1/services/checkout`, with `Idempotency-Key` and `{ "product": "workshop" }`.
 
 Run the focused authoring owner from the repository root:
 

@@ -18,7 +18,7 @@ pub struct Options {
     pub check: bool,
 }
 
-/// A synced collection, as `/_schema` describes it.
+/// A synced collection, as the facade's schema (`GET /__first/api/v1`) describes it.
 struct Collection {
     name: String,
     dir: PathBuf,
@@ -33,9 +33,9 @@ struct Collection {
 
 /// Collections that sync, targets of references first (a cycle keeps config order).
 fn collections(schema: &Value, project: &Path, only: &Option<Vec<String>>) -> Result<Vec<Collection>, String> {
-    let all = schema["collections"]
+    let all = schema["kinds"]
         .as_object()
-        .ok_or("the site's /_schema has no collections")?;
+        .ok_or("the site's schema (GET /__first/api/v1) has no kinds; deploy this First version to the site")?;
     let mut synced: IndexMap<String, Collection> = IndexMap::new();
     for (name, spec) in all {
         let Some(sync) = spec["sync"].as_object() else { continue };
@@ -366,11 +366,11 @@ fn entry(item: &Value) -> Result<(String, Remote), String> {
 
 pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Report) -> Result<(), String> {
     let schema = client
-        .get("/_schema")
+        .get("")
         .map_err(|p| report.problem("could not read the site's schema", &p))?;
     let site = schema["site"]["id"]
         .as_str()
-        .ok_or("the site's /_schema has no site id; rebuild and deploy with this First version")?
+        .ok_or("the site's schema has no site id; rebuild and deploy with this First version")?
         .to_string();
     let mut bases = Bases::load(project)?;
     let known = bases.knows_site(&site);
@@ -956,10 +956,10 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
     let (files_digest, site_digest) =
         conflict::digests(&text).ok_or("the conflict file's header is missing; rerun first sync")?;
     let resolved = conflict::resolved(&text)?;
-    let schema = client.get("/_schema").map_err(|p| report.problem("site", &p))?;
+    let schema = client.get("").map_err(|p| report.problem("site", &p))?;
     let site = schema["site"]["id"]
         .as_str()
-        .ok_or("the site's /_schema has no site id")?
+        .ok_or("the site's schema has no site id")?
         .to_string();
     let mut bases = Bases::load(project)?;
     for c in collections(&schema, project, &None)? {

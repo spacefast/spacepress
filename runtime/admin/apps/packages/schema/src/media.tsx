@@ -13,7 +13,7 @@ import { Page, RouterLink, useDocumentChanges } from '@first-admin/admin-toolkit
 import { DataViews, type View, type Field } from '@first-admin/dataviews';
 import { uploadAttachment } from '@first-admin/attachment-importer';
 import { allowed, object, text, type Row } from './model';
-import { bootstrap, message, unwrap, useLoad } from './api';
+import { api, bootstrap, message, unwrap, useLoad } from './api';
 import { Loading } from './screens';
 
 export function MediaLibrary() {
@@ -148,7 +148,7 @@ export function MediaDocument() {
 					path: `/wp/v2/media/${encodeURIComponent(id)}?context=view`,
 				})
 			),
-			apiFetch({ path: `/first/v1/media/${encodeURIComponent(id)}` }),
+			apiFetch(api(`/media/${encodeURIComponent(id)}`)),
 		]);
 		return { core: object(core), first: object(unwrap(first)) };
 	}, [id]);
@@ -221,7 +221,7 @@ function MediaForms({ id, core, first }: { id: string; core: Row; first: Row }) 
 		if (!canUpdate) throw new Error('Media cannot be edited.');
 		const snapshot = { alt, point };
 		await apiFetch({
-			path: `/first/v1/media/${encodeURIComponent(id)}`,
+			...api(`/media/${encodeURIComponent(id)}`),
 			method: 'PATCH', data: { alt: snapshot.alt, focal: snapshot.point },
 		});
 		setMediaBaseline(snapshot);
@@ -340,7 +340,7 @@ function MediaForms({ id, core, first }: { id: string; core: Row; first: Row }) 
 								onClick={() => {
 									void mutate(async () => {
 										await apiFetch({
-											path: `/first/v1/media/${encodeURIComponent(id)}`,
+											...api(`/media/${encodeURIComponent(id)}`),
 											method: 'DELETE',
 										});
 										setDeleted(true);

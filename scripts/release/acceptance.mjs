@@ -102,12 +102,12 @@ try {
   assert.equal(response.status, 200);
   assert.match(await response.text(), /Make something/);
   for (const asset of ['app.js', 'style.css']) assert.equal((await fetch(`${frontend}${asset}`)).status, 200);
-  const schemaResponse = await fetch(`${base}/wp-json/first/v1/_schema`);
+  const schemaResponse = await fetch(`${base}/__first/api/v1`);
   assert.equal(schemaResponse.status, 200);
   const { data: schema } = await schemaResponse.json();
   assert.equal(schema.runtime.wp.database.kind, 'sqlite');
   assert.deepEqual(schema.runtime.pendingMigrations, []);
-  assert.equal((await fetch(`${base}/wp-json/first/v1/notes`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Anonymous write', body: '' }) })).status, 401);
+  assert.equal((await fetch(`${base}/__first/api/v1/notes`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Anonymous write', body: '' }) })).status, 401);
   // The native WordPress REST seam creates the content read by the public app.
   const password = (await run('npm', ['run', '--silent', 'wp', '--', 'user', 'application-password', 'create', 'admin', 'setup-acceptance', '--porcelain'])).trim();
   const created = await fetch(`${base}/wp-json/wp/v2/first_notes`, {
@@ -115,12 +115,12 @@ try {
     body: JSON.stringify({ title: 'From native WordPress', status: 'publish', acf: { first_body: 'One server, real SQLite.' } }),
   });
   assert.equal(created.status, 201, await created.text());
-  const { data: notes } = await (await fetch(`${base}/wp-json/first/v1/notes`)).json();
+  const { data: notes } = await (await fetch(`${base}/__first/api/v1/notes`)).json();
   assert.equal(notes.length, 1);
   assert.equal(notes[0].title, 'From native WordPress');
   assert.equal(notes[0].body, 'One server, real SQLite.');
   const { createClient } = await import(pathToFileURL(join(project, 'first/_generated/client/index.ts')).href);
-  assert.equal((await createClient({ url: `${base}/wp-json/first/v1` }).notes.list())[0].title, 'From native WordPress');
+  assert.equal((await createClient({ url: `${base}/__first/api/v1` }).notes.list())[0].title, 'From native WordPress');
   // Exercise the actual supplied-compiler escape hatch independently of the cache.
   await run(first, ['check'], { env: { ...env, FIRST_BIN: compiler, FIRST_OFFLINE: '1', FIRST_CACHE_DIR: join(work, 'unused-cache') } });
   await run('npm', ['run', 'stop']);

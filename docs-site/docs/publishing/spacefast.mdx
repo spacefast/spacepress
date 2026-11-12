@@ -57,7 +57,7 @@ Publishing a First app needs a `spacefast` CLI newer than 0.8.0. Run `sf --versi
 6. Open the address. Check that a page loads, then call one route:
 
    ```sh
-   curl https://my-app.space.fast/wp-json/first/v1/notes
+   curl https://my-app.space.fast/__first/api/v1/notes
    ```
 
 To publish a new version, run `sf publish` again from the same directory. The CLI remembers the Space in `.spacefast/`.
@@ -66,7 +66,7 @@ To publish a new version, run `sf publish` again from the same directory. The CL
 
 Each version runs the code it was compiled from. These work with no extra setup:
 
-- The REST routes under `/wp-json/first/v1`. See the [REST API reference](/rest).
+- The API under `/__first/api/v1`, over WordPress's own REST routes. See the [API reference](/rest).
 - The `routes` in your config, on their own paths.
 - `public/`, served as static files.
 - The typed client at `/__first/client.js`, with its types at `/__first/client.d.ts`.

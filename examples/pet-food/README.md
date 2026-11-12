@@ -74,7 +74,7 @@ After the verifier succeeds, execute the queued Action Scheduler jobs:
 ```sh
 ./target/debug/first dev wp examples/pet-food -- action-scheduler run --group=first-pet-food --force
 ./target/debug/first dev wp examples/pet-food -- first jobs list
-curl --fail-with-body -u "$FIRST_AUTH" 'http://localhost:8897/wp-json/first/v1/shopping_list'
+curl --fail-with-body -u "$FIRST_AUTH" 'http://localhost:8897/__first/api/v1/shopping_list'
 unset FIRST_AUTH FIRST_OTHER_AUTH
 ```
 
@@ -116,7 +116,7 @@ all candidates; filter `needed: true` to read the current shopping list:
 ```sh
 curl --get --fail-with-body -u "$FIRST_AUTH" \
 	--data-urlencode 'where={"needed":true}' \
-	'http://localhost:8897/wp-json/first/v1/shopping_list'
+	'http://localhost:8897/__first/api/v1/shopping_list'
 ```
 
 ## Customize the admin

@@ -58,14 +58,14 @@ runtime=$(ls "$store/runtime")
 url=$(json url < "$work/harness.json")
 "$here/harness.sh" compose exec -T wordpress sh -c "mkdir -p /var/www/html/wp-content/mu-plugins && cp /var/www/html/wp-content/plugins/first-store-host.php /var/www/html/wp-content/mu-plugins/first-store-host.php && cp /var/www/html/wp-content/plugins/first-store-contract-host.php /var/www/html/wp-content/mu-plugins/first-store-contract-host.php"
 
-action() { curl -sS -X POST -H 'Content-Type: application/json' -H "X-First-Build: $1" --data '{}' "$url/wp-json/first/v1/actions/which"; }
+action() { curl -sS -X POST -H 'Content-Type: application/json' -H "X-First-Build: $1" --data '{}' "$url/__first/api/v1/actions/which"; }
 # WP-CLI as the host: select the build before WordPress loads, then call the loader.
 host() { local build="$1"; shift; wp --exec="define('FIRST_TEST_BUILD', '$build');" eval "$@"; }
 root=/var/www/html/wp-content/plugins/first-store
 initialize() { host "$1" "echo json_encode(First\\Loader\\Loader::initialize('$root', '$1'));"; }
 gc() { host "$1" "echo json_encode(First\\Loader\\Store::gc('$root', json_decode('$2'), $3));"; }
 
-status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-First-Build: $first" --data '{}' "$url/wp-json/first/v1/actions/which")
+status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-First-Build: $first" --data '{}' "$url/__first/api/v1/actions/which")
 [[ $status == 404 ]] || fail "an uninitialized build is not served, got $status"
 ok "a build is not served before it initializes"
 
@@ -106,7 +106,7 @@ PY
 [[ $(gc "$first" "[\"$first\"]" false) == "$dry" ]] || fail "gc removes what the dry run listed"
 [[ $(ls "$store/app" | wc -l) -eq 1 && $(ls "$store/build" | wc -l) -eq 1 && $(ls "$store/runtime" | wc -l) -eq 1 ]] || fail "gc keeps the kept build's runtime and app"
 [[ $(action "$first" | json data.build) == one ]] || fail "the kept build still answers after gc"
-status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-First-Build: $second" --data '{}' "$url/wp-json/first/v1/actions/which")
+status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-First-Build: $second" --data '{}' "$url/__first/api/v1/actions/which")
 [[ $status == 404 ]] || fail "a collected build is gone, got $status"
 ok "gc removes only what the kept builds do not reference"
 

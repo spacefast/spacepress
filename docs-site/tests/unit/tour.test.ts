@@ -32,10 +32,11 @@ test("every playground example compiles with the First names the editor shows", 
 	const { readFileSync } = await import("node:fs");
 	const path = await import("node:path");
 	const { Compiler } = await import("../../lib/compiler.ts");
-	const { playgroundExamples, firstFiles, compilerFiles } = await import("../../lib/playground-catalog.ts");
+	const { firstFiles, compilerFiles } = await import("../../lib/playground-catalog.ts");
+	const { siteExamples } = await import("../../lib/site-examples.ts");
 	const { sources, repo, site } = await import("../../lib/examples.ts");
 	const compiler = await Compiler.load(readFileSync(path.join(site, "public/compiler.wasm")));
-	for (const { name } of playgroundExamples) {
+	for (const { name } of siteExamples) {
 		// What the browser does: show First names, then hand the compiler the names it reads.
 		const shown = firstFiles(sources(path.join(repo, "examples", name)));
 		assert.ok("first.config.ts" in shown, name);

@@ -3179,7 +3179,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(span, "instanceof requires a named First class");
                 }
                 Out::atom(
-                    format!("\\First\\JsClass::isInstance({}, {})", left.php, right.php),
+                    format!("\\First\\JsClass::instanceOf({}, {})", left.php, right.php),
                     Ty::Bool,
                 )
             }
@@ -4050,6 +4050,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         match &v {
             Value::Class(class) => self.class_value(class),
+            Value::Prototype(class) => {
+                let out = self.class_value(class)?;
+                if out.ty != Ty::Dynamic {
+                    return err_help(
+                        span,
+                        format!("`{}.prototype` only works in imported JavaScript", class.class.name),
+                        "check instances with instanceof, and members with `\"name\" in instance`",
+                    );
+                }
+                Ok(Out::atom(format!("{}->prototype()", out.php), Ty::Dynamic))
+            }
             Value::Closure(c) if c.has_props() && !callee => err_help(
                 span,
                 format!("`{n}` is a function with properties, which can't be used as a value in PHP"),
@@ -4261,27 +4272,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Value::Symbol(symbol) => {
                 self.require_javascript_symbols(span)?;
-                let php = match &**symbol {
-                    SymbolVal::Registered(key) => format!("\\First\\JsSymbol::for({})", php_str(key)),
-                    SymbolVal::WellKnown(name) => format!("\\First\\JsSymbol::wellKnown({})", php_str(name)),
-                    SymbolVal::Unique(description) => {
-                        let key = (self.owner(), 5, Rc::as_ptr(symbol) as usize);
-                        let name = match self.data_helpers.get(&key) {
-                            Some(name) => name.clone(),
-                            None => {
-                                let name = self.unique_name("captured_symbol");
-                                self.data_helpers.insert(key, name.clone());
-                                let description = description.as_deref().map(php_str).unwrap_or_default();
-                                let _ = writeln!(
-                                    self.output,
-                                    "function {name}(): \\First\\JsSymbol {{ static $value; return $value ??= \\First\\JsSymbol::create(new \\First\\JsArray([{description}])); }}\n"
-                                );
-                                name
-                            }
-                        };
-                        format!("\\FirstApp\\{name}()")
-                    }
-                };
+                let php = self.symbol_php(symbol);
                 Ok(Out::atom(php, Ty::Dynamic))
             }
             Value::Weak(weak) => {
@@ -4423,6 +4414,32 @@ impl<'a, 'p> Compiler<'a, 'p> {
             None => Value::Undef,
         };
         Ok(Some((path, value, Binding { ann: None, ..binding })))
+    }
+
+    /// The PHP expression for a build-time symbol: registered and well-known symbols by name,
+    /// others as one per-request static per allocation.
+    pub(super) fn symbol_php(&mut self, symbol: &Rc<SymbolVal>) -> String {
+        match &**symbol {
+            SymbolVal::Registered(key) => format!("\\First\\JsSymbol::for({})", php_str(key)),
+            SymbolVal::WellKnown(name) => format!("\\First\\JsSymbol::wellKnown({})", php_str(name)),
+            SymbolVal::Unique(description) => {
+                let key = (self.owner(), 5, Rc::as_ptr(symbol) as usize);
+                let name = match self.data_helpers.get(&key) {
+                    Some(name) => name.clone(),
+                    None => {
+                        let name = self.unique_name("captured_symbol");
+                        self.data_helpers.insert(key, name.clone());
+                        let description = description.as_deref().map(php_str).unwrap_or_default();
+                        let _ = writeln!(
+                            self.output,
+                            "function {name}(): \\First\\JsSymbol {{ static $value; return $value ??= \\First\\JsSymbol::create(new \\First\\JsArray([{description}])); }}\n"
+                        );
+                        name
+                    }
+                };
+                format!("\\FirstApp\\{name}()")
+            }
+        }
     }
 
     fn captured_data(&mut self, value: &Value) -> Result<String> {
@@ -6240,6 +6257,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn index(&mut self, obj: &Expr, index: &Expr, optional: bool, span: Span) -> Result<Out> {
         if let Some(out) = self.host_index(obj, index)? {
             return Ok(out);
+        }
+        // `Function.prototype[Symbol.hasInstance]`, which a class's own [Symbol.hasInstance]
+        // calls for subclasses. Other Function.prototype members throw at run time.
+        if let ExprKind::Member {
+            obj: function, prop, ..
+        } = &obj.kind
+            && prop == "prototype"
+            && let ExprKind::Ident(name) = &function.kind
+            && self.javascript_module(self.fx.as_ref().expect("fn").module)
+            && matches!(self.resolve(name, function.span)?, Resolved::Global("Function"))
+        {
+            let key = self.expr(index)?;
+            return Ok(Out::atom(
+                format!("\\First\\JsClass::functionPrototypeGet({})", key.php),
+                Ty::Dynamic,
+            ));
         }
         let o = self.expr(obj)?;
         let mut o = self.finish_value(o, obj.span)?;

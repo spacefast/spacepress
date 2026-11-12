@@ -1242,6 +1242,10 @@ impl CommonJsScope<'_> {
                 for accessor in &class.accessors {
                     self.function(&accessor.func)?;
                 }
+                for method in &class.symbol_methods {
+                    self.expression(&method.key)?;
+                    self.function(&method.func)?;
+                }
             }
             ExprKind::Array(items) => {
                 for ArrEl::Item(value) | ArrEl::Spread(value) in items {

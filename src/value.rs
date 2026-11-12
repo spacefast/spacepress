@@ -39,6 +39,8 @@ impl ObjCell {
 #[derive(Clone, Debug)]
 pub enum Value {
     Class(Rc<ClassValue>),
+    /// `C.prototype` of a class declared in this program.
+    Prototype(Rc<ClassValue>),
     Undef,
     Null,
     Bool(bool),
@@ -118,7 +120,14 @@ pub struct ClassValue {
     pub builtin_base: Option<&'static str>,
     pub env: Rc<Scope>,
     pub statics: IndexMap<String, Value>,
+    /// The evaluated key of each `class.symbol_methods` entry, in the same order.
+    pub symbol_keys: Vec<Rc<SymbolVal>>,
+    /// `Object.defineProperty(C.prototype, symbol, { value })` run while the module was
+    /// evaluated: (key, value, enumerable, writable, configurable), last definition wins.
+    pub prototype_symbols: std::cell::RefCell<Vec<PrototypeSymbol>>,
 }
+
+pub type PrototypeSymbol = (Rc<SymbolVal>, Value, bool, bool, bool);
 
 #[derive(Debug)]
 pub struct Closure {
@@ -441,6 +450,7 @@ impl Value {
     pub fn describe(&self) -> String {
         match self {
             Value::Class(c) => format!("class {}", c.class.name),
+            Value::Prototype(c) => format!("{}.prototype", c.class.name),
             Value::Undef => "undefined".into(),
             Value::Null => "null".into(),
             Value::Bool(b) => b.to_string(),
@@ -517,7 +527,7 @@ impl Value {
 
     pub fn strict_eq(&self, other: &Value) -> bool {
         match (self, other) {
-            (Value::Class(a), Value::Class(b)) => Rc::ptr_eq(a, b),
+            (Value::Class(a), Value::Class(b)) | (Value::Prototype(a), Value::Prototype(b)) => Rc::ptr_eq(a, b),
             (Value::Undef, Value::Undef) | (Value::Null, Value::Null) => true,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Num(a), Value::Num(b)) => a == b,

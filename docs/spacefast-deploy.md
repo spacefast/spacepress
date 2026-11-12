@@ -61,6 +61,14 @@ the project has pages, and publish with `sf publish`. The CLI captures supported
 installed package sources into the vendor bundle. The host never runs npm
 install or JavaScript.
 
+`compile-sources` also accepts the bundle the compiler wrote before the rename to
+First, format `zero.source-bundle.v1` (`app.zero.json`, `vendor.zero.json`, sources
+importing `"zero"`), which the `spacefast` CLI and `@spacefast/mcp` 0.9.0 still
+upload. It compiles to the same tree as the app captured as First. A capture with
+0.3.0-rendered TSX pages is refused; publish it again with a current client.
+`src/zero_bundle.rs` holds all of it, to be deleted once no released client sends
+that format.
+
 Use `sf first build` to emit local WordPress plugins and `sf first dev` to run
 WordPress Studio. These two commands use the native optional platform package
 shipped with the CLI. See the [local development guide](../CONTRIBUTING.md#the-commands).

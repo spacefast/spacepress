@@ -972,7 +972,8 @@ fn collection_options(
             ),
         )
         .help(format!(
-            "use a name of at most {MAX_POST_TYPE_TABLE} characters, or use table() for SQL data"
+            "use a name of at most {MAX_POST_TYPE_TABLE} characters, or use table() for SQL data; a site that ran this collection before the rename to First keeps its posts under `zero_{}` until they are moved to the new name",
+            c.table()
         )));
     }
     if editor

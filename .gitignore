@@ -26,6 +26,7 @@ runtime/identity/apps/node_modules/
 
 # Disposable SQL adoption proof artifacts.
 /tests/wp/app-migrate/.run.*/
+/tests/wp/zero-upgrade/.run.*/
 
 /tests/wp/.wp-content-spacefast/
 /tests/host-types/node_modules/

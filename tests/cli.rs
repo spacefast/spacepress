@@ -205,7 +205,7 @@ impl Drop for Served {
 }
 
 const CONFIG: &str = r#"import { defineConfig, table, text, job, jobs, integer } from "first";
-const notes = table({ title: text().optional() }, { access: { read: "anyone" } });
+const notes = table({ title: text() }, { access: { read: "anyone" } });
 export default defineConfig({
   name: "clilane",
   tables: { notes },

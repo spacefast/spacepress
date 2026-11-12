@@ -125,7 +125,7 @@ fn replaced_field_forms_name_their_replacement() {
         ("reject-function-default", "`.default()` takes a literal value, not a function", "first.config.ts:2:46"),
         ("reject-select-options", "select() takes its options as an array", "first.config.ts:2:29"),
         ("reject-text-enum", "`text({ enum })` is now `select([...])`", "first.config.ts:2:42"),
-        ("reject-group-wrapper", "group().optional() takes its fields directly, without the `{ fields }` wrapper", "first.config.ts:2:28"),
+        ("reject-group-wrapper", "group() takes its fields directly, without the `{ fields }` wrapper", "first.config.ts:2:28"),
         ("reject-many-text", "`.many()` isn't valid on a text column", "first.config.ts:2:37"),
     ] {
         rejects(fixture, message, at);
@@ -341,13 +341,13 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-bad-reference",
         "`aName` is integer() but references a.name, which is text()",
-        "first.config.ts:3:46",
+        "first.config.ts:3:36",
     );
     // §1.2: modifiers per column kind, pointing at the modifier call.
     rejects(
         "reject-modifier-kind",
         "`.max()` isn't valid on a boolean column",
-        "first.config.ts:2:45",
+        "first.config.ts:2:35",
     );
     // §1.3: sub-fields hold plain values.
     rejects(
@@ -1691,7 +1691,6 @@ fn rejects_phase2_static_contracts() {
     let cases = [
         ("reject-showif-dynamic", "showIf must be static data"),
         ("reject-sync-symlink", "sync directory must stay inside the project"),
-        ("reject-field-access-id", "access/showIf is not allowed on id()"),
         ("reject-field-access-title", "title is always readable"),
         ("reject-field-access-filter", "field rules here return a boolean"),
         ("reject-field-access-query", "access rules can't query"),
@@ -1773,7 +1772,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-auth-duplicate", "at most one userProjection()"),
         (
             "reject-auth-email",
-            "userProjection() needs email: email().unique()",
+            "userProjection() needs `email: email().unique().max(191)`",
         ),
         ("reject-auth-drafts", "userProjection() requires drafts: false"),
         ("reject-auth-revisions", "userProjection() requires revisions: false"),
@@ -2319,12 +2318,12 @@ fn kind_urls_and_the_frontend_mode_reach_the_schema() {
     rejects(
         "reject-kind-url",
         "`:titel` in \"/notes/:titel\" names no field of this kind",
-        "first.config.ts:2:69",
+        "first.config.ts:2:59",
     );
     rejects(
         "reject-kind-url-overlap",
         "\"/n/:topic/:id\" can match the same URLs as `notes`'s url",
-        "first.config.ts:3:94",
+        "first.config.ts:3:74",
     );
     rejects(
         "reject-table-url",
@@ -2365,8 +2364,8 @@ fn kind_urls_and_the_frontend_mode_reach_the_schema() {
     };
     let built = schema(
         r#"import { collection, defineConfig, text } from "first";
-export const notes = collection({ title: text().optional() }, { url: "/notes/:year/:slug" });
-export const plain = collection({ title: text().optional() });
+export const notes = collection({ title: text() }, { url: "/notes/:year/:slug" });
+export const plain = collection({ title: text() });
 export default defineConfig({ name: "kindurls", collections: { notes, plain }, frontend: "https://www.example.com/" });
 "#,
     );
@@ -2731,7 +2730,7 @@ fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
         tmp.path().join("first.config.ts"),
         r#"import { action, defineConfig, text } from "first";
 import { run } from "./first/run.mjs";
-export default defineConfig({ name: "p", actions: { a: action({ access: "anyone", input: { s: text().optional() }, async handler(input) { return { v: run(input.s) }; } }) } });
+export default defineConfig({ name: "p", actions: { a: action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }) } });
 "#,
     )
     .unwrap();

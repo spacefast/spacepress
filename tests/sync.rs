@@ -11,7 +11,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 
-const CONFIG: &str = r#"import { collection, integer, richText, select, slug, text, defineConfig , table} from "first";
+const CONFIG: &str = r#"import { collection, integer, richText, select, slug, text, defineConfig , table, ref } from "first";
 
 const people = table({
   name: text(),
@@ -22,7 +22,7 @@ const notes = table({
   slug: slug({ source: "title" }).optional(),
   body: richText().optional(),
   level: select(["intro", "advanced"]).optional(),
-  authorId: integer().references(() => people.id, { onDelete: "set null" }).optional(),
+  authorId: ref(people).optional(),
 }, { title: "title", content: "body", sync: "content/notes/*.md", access: { read: "anyone" } });
 
 // A JSON collection without a content column: `body` is an ordinary field.
@@ -35,20 +35,20 @@ const snippets = table({
 // Two collections that reference each other.
 const teams = table({
   name: text(),
-  leadId: integer().references((): any => players.id, { onDelete: "set null" }).optional(),
-  ownerId: integer().references(() => people.id),
+  leadId: ref(() => players).optional(),
+  ownerId: ref(people),
 }, { sync: "content/teams/*.json", access: { read: "anyone" } });
 const players = table({
   name: text(),
-  teamId: integer().references(() => teams.id, { onDelete: "set null" }).optional(),
+  teamId: ref(teams).optional(),
 }, { sync: "content/players/*.json", access: { read: "anyone" } });
 
 // A chain of required references inside one collection, and a required cycle between two.
 const steps = table({
   name: text(),
   // Required: a step can't be created before the one it follows, so a chain needs a pass per link.
-  prevId: integer().references(() => people.id),
-  afterId: integer().references((): any => steps.id).optional(),
+  prevId: ref(people),
+  afterId: ref(() => steps).optional().onDelete("restrict"),
 }, { sync: "content/steps/*.json", access: { read: "anyone" } });
 // A chain of required references across records of one collection.
 // A chain across three collections that must be created in order. Each requires (NOT NULL) a record
@@ -56,32 +56,32 @@ const steps = table({
 // reference makes one wait for another: the references go "backwards", against that order), so the
 // run meets the chain from its far end and needs a pass per link.
 const tops = table({
-  midId: integer().references((): any => mids.id),
-  loopId: integer().references((): any => bottoms.id).optional(),
+  midId: ref(() => mids),
+  loopId: ref(() => bottoms).optional().onDelete("restrict"),
 }, { sync: "content/tops/*.json", access: { read: "anyone" } });
 const mids = table({
-  bottomId: integer().references((): any => bottoms.id),
-  loopId: integer().references(() => tops.id).optional(),
+  bottomId: ref(() => bottoms),
+  loopId: ref(tops).optional().onDelete("restrict"),
 }, { sync: "content/mids/*.json", access: { read: "anyone" } });
 const bottoms = table({
-  personId: integer().references(() => people.id),
-  loopId: integer().references(() => mids.id).optional(),
+  personId: ref(people),
+  loopId: ref(mids).optional().onDelete("restrict"),
 }, { sync: "content/bottoms/*.json", access: { read: "anyone" } });
 const eggs = table({
-  chickenId: integer().references((): any => chickens.id),
+  chickenId: ref(() => chickens),
 }, { sync: "content/eggs/*.json", access: { read: "anyone" } });
 const chickens = table({
-  eggId: integer().references(() => eggs.id),
+  eggId: ref(eggs),
 }, { sync: "content/chickens/*.json", access: { read: "anyone" } });
 // A head requires a rung; a rung requires the next rung and may name its head. The last rung of a
 // ladder points at a rung already on the site. Heads and rungs reference each other, so neither
 // collection is ordered first.
 const heads = table({
-  rungId: integer().references((): any => rungs.id),
+  rungId: ref(() => rungs),
 }, { sync: "content/heads/*.json", access: { read: "anyone" } });
 const rungs = table({
-  nextId: integer().references((): any => rungs.id),
-  headId: integer().references(() => heads.id).optional(),
+  nextId: ref(() => rungs),
+  headId: ref(heads).optional().onDelete("restrict"),
 }, { sync: "content/rungs/*.json", access: { read: "anyone" } });
 // Content only admins may read (field access): editors sync these without a body.
 const dossiers = table({
@@ -92,9 +92,9 @@ const dossiers = table({
 // A required reference to a target the syncing editor may not list (admins only), on a record whose
 // identity is pushed first because of an optional reference to a record not on the site yet.
 const safes = table({
-  vaultId: integer().references(() => vaults.id),
-  keeperId: integer().references(() => people.id).optional(),
-  snippetKey: integer().references(() => snippets.key).access({ read: "admin" }).optional(),
+  vaultId: ref(() => vaults),
+  keeperId: ref(people).optional().onDelete("restrict"),
+  snippetId: ref(snippets).access({ read: "admin" }).optional(),
 }, { sync: "content/safes/*.json", access: { read: "anyone" } });
 // A reference target the syncing editor may not read (admins only): knowing its UID grants no access.
 const vaults = table({
@@ -896,12 +896,11 @@ fn a_pointerless_reference_refusal_is_not_reported_as_a_missing_target() {
         String::from_utf8_lossy(&pulled.stdout)
     );
     let path = project.join(format!("content/snippets/{uid}.json"));
-    let mut record: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    record["key"] = serde_json::json!(2);
-    std::fs::write(&path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+    std::fs::remove_file(&path).unwrap();
 
-    // Even an empty hidden incoming relationship refuses a key change. This is not a target
-    // another push could create, so preserve the server's refusal rather than defer it.
+    // Even an empty hidden incoming relationship (`safes.snippetId`, admin-only) refuses the delete.
+    // This is not a target another push could create, so preserve the server's refusal rather than
+    // defer it.
     let out = sync(&project, &site, &["--only", "snippets"]);
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(
@@ -910,12 +909,7 @@ fn a_pointerless_reference_refusal_is_not_reported_as_a_missing_target() {
             "snippets/{uid}: Rows in safes may reference this row (reference_violation)"
         )])
     );
-    assert_eq!(site.rows("snippets")[0]["key"], 1, "the refused update did not land");
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap()["key"],
-        2,
-        "the local edit is retained"
-    );
+    assert_eq!(site.rows("snippets").len(), 1, "the refused delete did not land");
     let _ = std::fs::remove_dir_all(&project);
 }
 

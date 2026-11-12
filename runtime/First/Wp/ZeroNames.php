@@ -237,13 +237,13 @@ final class ZeroNames
         $posts = $this->db->wpdb()->posts;
         // Field values (`zero_<col>`, nested `zero_<col>_<i>_<sub>`) and SCF's companions (`_zero_…`, whose
         // value is the field key `field_zero_<table>_…`), on First posts and their revisions only:
-        // other plugins' meta keys that happen to start with zero_ are not First's.
-        $scope = "p.post_type LIKE 'first\\_%' OR (p.post_type = 'revision' AND EXISTS (SELECT 1 FROM `$posts` o WHERE o.ID = p.post_parent AND o.post_type LIKE 'first\\_%'))";
+        // another plugin's meta key that happens to start with zero_ is not First's.
+        $scope = "post_id IN (SELECT ID FROM `$posts` WHERE post_type LIKE 'first\\_%' OR (post_type = 'revision' AND post_parent IN (SELECT ID FROM `$posts` WHERE post_type LIKE 'first\\_%')))";
         $this->count('postmeta', $this->changed(
-            "UPDATE `$meta` m JOIN `$posts` p ON p.ID = m.post_id SET m.meta_key = CONCAT('first_', SUBSTRING(m.meta_key, 6)) WHERE m.meta_key LIKE 'zero\\_%' AND ($scope)"
+            "UPDATE `$meta` SET meta_key = CONCAT('first_', SUBSTRING(meta_key, 6)) WHERE meta_key LIKE 'zero\\_%' AND $scope"
         ));
         $this->count('postmeta', $this->changed(
-            "UPDATE `$meta` m JOIN `$posts` p ON p.ID = m.post_id SET m.meta_key = CONCAT('_first_', SUBSTRING(m.meta_key, 7)), m.meta_value = CONCAT('field_first_', SUBSTRING(m.meta_value, 12)) WHERE m.meta_key LIKE '\\_zero\\_%' AND m.meta_value LIKE 'field\\_zero\\_%' AND ($scope)"
+            "UPDATE `$meta` SET meta_key = CONCAT('_first_', SUBSTRING(meta_key, 7)), meta_value = CONCAT('field_first_', SUBSTRING(meta_value, 12)) WHERE meta_key LIKE '\\_zero\\_%' AND meta_value LIKE 'field\\_zero\\_%' AND $scope"
         ));
     }
 

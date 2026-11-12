@@ -35,9 +35,14 @@ final class Runtime
         add_action('init', static function (): void {
             if (!self::$managed && ZeroNames::pending() && Platform::problems() === []) {
                 global $wpdb;
-                self::$unavailable = Migrator::upgrade(new Connection($wpdb), ZeroNames::DONE, static fn (): bool => !ZeroNames::pending(), static function () use ($wpdb): void {
+                try {
                     ZeroNames::upgrade(new Connection($wpdb));
-                });
+                } catch (\Throwable $e) {
+                    // WordPress keeps serving; First refuses until the next request retries.
+                    self::$unavailable = $e->getMessage();
+                    error_log('[first] ' . self::$unavailable);
+                    self::notice(self::$unavailable);
+                }
             }
             foreach (ZeroNames::kept() as $type) {
                 self::notice("posts of type $type were kept under that name: WordPress limits post types to 20 characters, and its First name would be longer. Rename the collection to at most 14 characters and move its posts to first_<name>");

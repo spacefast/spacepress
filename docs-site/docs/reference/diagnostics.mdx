@@ -41,8 +41,7 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F1003` | JSX files can't be part of a First config | [`reject-jsx-config-unused`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-config-unused) |
 | `F1003` | JSX files can't be part of a First config | [`reject-jsx-action`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-action) |
 | `F1003` | JSX files can't be part of a First config | [`reject-jsx-config`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-config) |
-| `F1003` | "use client" components aren't compiled yet | [`reject-jsx-use-client-prologue`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-use-client-prologue) |
-| `F1003` | "use client" components aren't compiled yet | [`reject-jsx-use-client`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-use-client) |
+| `F1003` | a "use client" component can't import "dayjs" | [`reject-client-npm`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-client-npm) |
 | `F1003` | not a .ts handler file | [`reject-wp-hook-file`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-wp-hook-file) |
 | `F1101` | abstract, ambient or generic classes | [`reject-class`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-class) |
 | `F1102` | Node built-ins other than node:crypto are unavailable | [`reject-node-builtin`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-node-builtin) |
@@ -94,6 +93,7 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F4001` | SVG animation of | [`reject-jsx-svg-animate`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-svg-animate) |
 | `F4001` | `<textarea>` can't have children | [`reject-jsx-textarea`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-textarea) |
 | `F4001` | is an unsafe URL | [`reject-jsx-unsafe-url`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-unsafe-url) |
+| `F4001` | a client component returns one element | [`reject-client-root`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-client-root) |
 | `F4001` | localeCompare() isn't supported | [`reject-locale-compare`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-locale-compare) |
 | `F4001` | mapped keys need direct keyof | [`reject-type-mapped-provenance`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-mapped-provenance) |
 | `F4001` | holds functions, so it exists only while the config is built | [`reject-namespace-value`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-namespace-value) |
@@ -109,6 +109,7 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F4001` | isn't a function | [`reject-self-reference-nullable-let`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-self-reference-nullable-let) |
 | `F4001` | is referenced before its lexical declaration | [`reject-self-reference-read`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-self-reference-read) |
 | `F4001` | refers to itself before its type is known | [`reject-self-reference-untyped`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-self-reference-untyped) |
+| `F4001` | `SharedArrayBuffer` isn't supported | [`reject-shared-array-buffer`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-shared-array-buffer) |
 | `F4001` | timingSafeEqual() compares Buffers made from text | [`reject-timing-safe-equal`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-timing-safe-equal) |
 | `F4001` | type declaration merging | [`reject-type-merging`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-merging) |
 | `F4001` | symbol-keyed class methods only work in imported JavaScript | [`reject-typescript-class-symbol-method`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-typescript-class-symbol-method) |

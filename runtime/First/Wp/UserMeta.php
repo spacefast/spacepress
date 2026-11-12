@@ -91,7 +91,7 @@ final class UserMeta
         if (Facade::dispatching()) {
             // The facade's row is First's: the member as this viewer may read it (email and role
             // included, for one's own row too), or nothing when the read rule doesn't cover it.
-            $data[Kinds::USER_ROW] = $row === null ? null : (object) PostMeta::values($collection, $row, array_map('strval', array_keys($row)));
+            $data[Kinds::ROW] = $row === null ? null : (object) PostMeta::values($collection, $row, array_map('strval', array_keys($row)));
         }
         $response->set_data($data);
 
@@ -338,7 +338,7 @@ final class UserMeta
             return CoreAccess::error(self::problem($e));
         }
         if (Facade::dispatching() && is_array($previous)) {
-            $previous[Kinds::USER_ROW] = (object) PostMeta::values($collection, $deleted, array_map('strval', array_keys($deleted)));
+            $previous[Kinds::ROW] = (object) PostMeta::values($collection, $deleted, array_map('strval', array_keys($deleted)));
         }
         $response = rest_ensure_response(['deleted' => true, 'previous' => $previous]);
         do_action('rest_delete_user', $user, $response, $request); // core's own notice, as its delete fires it

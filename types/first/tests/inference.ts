@@ -47,7 +47,7 @@ expectType<
   Equal<Post["sections"], ({ layout: "hero"; heading: string; image: number | null } | { layout: "quote"; text: string; cite: string | null })[] | null>
 >();
 type Hero = Extract<BlockValue<{ hero: { heading: ReturnType<typeof text> } }>, { layout: "hero" }>;
-expectType<Equal<Hero, { layout: "hero"; heading: string | null }>>();
+expectType<Equal<Hero, { layout: "hero"; heading: string }>>();
 
 // Collections gain status/publishedAt; tables don't.
 expectType<Equal<Post["status"], "draft" | "published" | "scheduled">>();
@@ -117,7 +117,7 @@ declare const vctx: ValidateCtx;
 expectType<Equal<typeof vctx.user, User | null>>();
 
 export default defineConfig({
-  jobs: { sendWelcome: job({ input: { email: email().notNull(), name: text().notNull().default("world") }, handler: async (input, ctx) => { expectType<Equal<typeof input.name, string>>(); void [input.email, ctx.attempt, ctx.jobId]; } }) },
+  jobs: { sendWelcome: job({ input: { email: email(), name: text().default("world") }, handler: async (input, ctx) => { expectType<Equal<typeof input.name, string>>(); void [input.email, ctx.attempt, ctx.jobId]; } }) },
   locales: { default: "en", all: ["en", "de"] },
   name: "fixture",
   collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
@@ -155,7 +155,7 @@ export default defineConfig({
   },
   actions: {
     consume: action({
-      input: { itemId: integer().notNull(), amount: integer().default(1), note: text() },
+      input: { itemId: integer(), amount: integer().default(1).optional(), note: text().optional() },
       handler(input) {
         expectType<Equal<typeof input, { itemId: number; amount: number | null; note?: string | null }>>();
         return input.itemId;
@@ -169,7 +169,7 @@ export default defineConfig({
         return ctx.user?.name ?? "anonymous";
       },
     }),
-    publish: action({ input: { id: integer().notNull() }, access: "editor", handler: ({ id }) => id }),
+    publish: action({ input: { id: integer() }, access: "editor", handler: ({ id }) => id }),
   },
 });
 void queries;

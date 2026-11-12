@@ -9,13 +9,14 @@
 mod annotations;
 mod app;
 mod classes;
+mod client;
 mod effects;
 mod host;
 mod javascript;
 
 use crate::builtins::ERROR_CONSTRUCTORS;
 use crate::diag::{Diag, Result, Span, suggest};
-use crate::eval::Evaluator;
+use crate::eval::{BINARY_GLOBALS, Evaluator};
 use crate::extract::{Extracted, Root, Slot};
 use crate::ir::*;
 use crate::num::php_number;
@@ -372,6 +373,10 @@ pub struct Compiler<'a, 'p> {
     used_names: HashSet<String>,
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
     pub output: String,
+    /// The `"use client"` component being compiled (generator B), if any.
+    client: Option<client::ClientCtx>,
+    /// Compiled `"use client"` components: namespace → (analysis, server actions).
+    pub islands: Vec<crate::client_component::Analysis>,
     fx: Option<FnCtx>,
     /// Inferred result type of each action handler (for the typed client).
     pub action_results: HashMap<String, Ty>,
@@ -483,6 +488,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             plugin_names: ext.uses.iter().map(|p| p.name.clone()).collect(),
             abilities: crate::wordpress::abilities::Catalog::default(),
             wordpress_uses: Vec::new(),
+            client: None,
+            islands: Vec::new(),
         }
     }
 
@@ -815,12 +822,56 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.plugin = root.plugin.map(|i| (i, self.plugin_names[i].clone()));
             let params = self.root_params(&root.slot);
             let name = self.unique_name(&root.name);
+            // A `"use client"` component: analyse it for generator B before its server body compiles.
+            self.client = None;
+            if let Slot::Component { name: component } = &root.slot
+                && self.ev_program().modules[root.closure.func.module].use_client
+            {
+                let module = &self.ev_program().modules[root.closure.func.module];
+                let export = component.rsplit('#').next().unwrap_or_default();
+                let export = if export == "default" {
+                    root.closure.func.name.clone().unwrap_or_else(|| "Component".into())
+                } else {
+                    export.to_string()
+                };
+                let namespace = format!("{}/{export}", self.schema.name);
+                if let Some(other) = self.islands.iter().find(|a| a.namespace == namespace) {
+                    let _ = other;
+                    return err_help(
+                        root.closure.func.span,
+                        format!("two \"use client\" components are named `{export}`"),
+                        "give each client component its own name; the name is its Interactivity store namespace",
+                    );
+                }
+                let actions: std::collections::BTreeSet<String> = self.schema.actions.keys().cloned().collect();
+                let analysis = crate::client_component::analyse(
+                    namespace,
+                    &root.closure.func,
+                    module,
+                    crate::loader::CLIENT_MODULE,
+                    &actions,
+                )?;
+                self.client = Some(client::ClientCtx {
+                    analysis,
+                    root_pending: true,
+                });
+            }
             self.current = name.clone();
             self.root_capabilities(root);
             // A hook given by reference (`afterCreate: restock`) reuses the helper's compiled body.
             let key = closure_key(&root.closure);
             let no_db = matches!(root.slot, Slot::Access { .. } | Slot::FieldAccess { .. });
             self.compile_function(&root.closure, &name, Some(params), Some(&root.slot), no_db)?;
+            if let Some(ctx) = self.client.take() {
+                if ctx.root_pending {
+                    return err_help(
+                        root.closure.func.span,
+                        "a client component returns one element",
+                        "wrap what it returns in an element, e.g. `<div>…</div>`; React's fragments and components can't carry the Interactivity directives",
+                    );
+                }
+                self.islands.push(ctx.analysis);
+            }
             if let Slot::ActionHandler { action } = &root.slot
                 && let Some(Ty::Fn(_, ret)) = self.helper_types.get(&key)
             {
@@ -943,6 +994,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Slot::Component { .. } => vec![],
             Slot::AppPage { file } | Slot::AppMetadata { file } => vec![self.app_props(file)],
             Slot::AppGuard { .. } => vec![types::hook_ctx()],
+            Slot::AppAccess { .. } => vec![types::access_ctx(Ty::Map(Box::new(Ty::Unknown)))],
             Slot::AppHandler { .. } => vec![types::route_request(), ctx],
             Slot::ActionHandler { action } => vec![
                 types::action_input(&self.schema.actions[action].input, &types::json_ty),
@@ -1357,6 +1409,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let v = self.return_value(e)?;
                 self.note_return(&v.ty, e.span)?;
                 let _ = writeln!(body, "    return {};", v.php);
+            }
+            FnBody::Block(stmts) if self.client.is_some() => {
+                let rewritten = Self::client_server_body(stmts, &self.client.as_ref().expect("client").analysis);
+                body.push_str(&self.block(&rewritten, 1)?);
+                self.note_fallthrough(&rewritten, f.span)?;
+                body.push_str("    return \\First\\Js::undefined();\n");
             }
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 1)?);
@@ -3159,6 +3217,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 if let ExprKind::Ident(name) = &right.kind
                     && let Resolved::Global(g) = self.resolve(name, right.span)?
+                    && BINARY_GLOBALS.contains(&g)
+                {
+                    self.binary_global(g, right.span)?;
+                    let left = self.expr(left)?;
+                    let left = self.finish_value(left, span)?;
+                    return Ok(Out::atom(
+                        format!("\\First\\JsBinary::instanceOf({}, {})", left.php, php_str(g)),
+                        Ty::Bool,
+                    ));
+                }
+                if let ExprKind::Ident(name) = &right.kind
+                    && let Resolved::Global(g) = self.resolve(name, right.span)?
                     && ERROR_CONSTRUCTORS.contains(&g)
                 {
                     let left = self.expr(left)?;
@@ -4023,6 +4093,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Resolved::Global("AbortSignal") if self.javascript_module(self.fx.as_ref().expect("fn").module) => {
                 Ok(Out::atom("\\First\\Js::dynamicNamespace('AbortSignal')", Ty::Dynamic))
             }
+            Resolved::Global(g) if BINARY_GLOBALS.contains(&g) => {
+                self.binary_global(g, span)?;
+                Ok(Out::atom(
+                    format!("\\First\\JsConstructor::of({})", php_str(g)),
+                    Ty::Dynamic,
+                ))
+            }
             Resolved::Global(g) => err_help(
                 span,
                 format!("`{g}` can't be used as a value; call one of its functions"),
@@ -4293,6 +4370,45 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let _ = writeln!(
                             self.output,
                             "function {name}(): \\First\\Js{kind} {{ static $value; return $value ??= new \\First\\Js{kind}(); }}\n"
+                        );
+                        name
+                    }
+                };
+                Ok(Out::atom(format!("\\FirstApp\\{name}()"), Ty::Dynamic))
+            }
+            Value::Native(native) => {
+                if !self.javascript_module(self.fx.as_ref().expect("fn").module) {
+                    return err_help(
+                        span,
+                        format!("`{n}` is {}, which typed code can't use yet", v.describe()),
+                        "use it from imported JavaScript, or pass plain data",
+                    );
+                }
+                let key = (self.owner(), 8, Rc::as_ptr(native) as usize);
+                let name = match self.data_helpers.get(&key) {
+                    Some(name) => name.clone(),
+                    None => {
+                        let mut args = Vec::new();
+                        for arg in &native.args {
+                            args.push(self.captured_data(arg)?);
+                        }
+                        let args = args.join(", ");
+                        let build = match &native.method {
+                            None => format!(
+                                "\\First\\Js::dynamicConstruct({}, new \\First\\JsArray([{args}]))",
+                                php_str(native.constructor)
+                            ),
+                            Some(m) => format!(
+                                "\\First\\Js::dynamicStaticCall({}, {}, new \\First\\JsArray([{args}]))",
+                                php_str(native.constructor),
+                                php_str(m)
+                            ),
+                        };
+                        let name = self.unique_name("captured_native");
+                        self.data_helpers.insert(key, name.clone());
+                        let _ = writeln!(
+                            self.output,
+                            "function {name}(): object {{ static $value; return $value ??= {build}; }}\n"
                         );
                         name
                     }
@@ -5975,6 +6091,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if let ExprKind::Ident(n) = &obj.kind
             && let Ok(Resolved::Global(g)) = self.resolve(n, obj.span)
         {
+            if BINARY_GLOBALS.contains(&g) {
+                self.binary_global(g, obj.span)?;
+                return Ok(Out::atom(
+                    format!(
+                        "\\First\\Js::dynamicGet(\\First\\JsConstructor::of({}), {})",
+                        php_str(g),
+                        php_str(prop)
+                    ),
+                    Ty::Dynamic,
+                ));
+            }
             return match (g, prop) {
                 ("Math", "PI") => Ok(Out::atom("M_PI", Ty::Num)),
                 ("Math", "E") => Ok(Out::atom("M_E", Ty::Num)),
@@ -6247,7 +6374,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return err_help(
                     span,
                     format!("can't read `{prop}` of a value with unknown shape"),
-                    "give it a type, e.g. `json().$type<{ ... }>()`",
+                    "give it a type, e.g. `json<{ ... }>()`",
                 );
             }
             _ => return err(prop_span, format!("{} has no property `{prop}`", base.describe())),
@@ -6606,6 +6733,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         ExprKind::Str(text) => Some(text.as_str()),
                         _ => None,
                     };
+                    // In a client component, handlers and refs exist only in the browser: the
+                    // directives below carry them, and the server HTML has no attribute for them.
+                    let folded = name.to_ascii_lowercase();
+                    if self.client.is_some()
+                        && (name == "ref"
+                            || (folded.starts_with("on")
+                                && folded.len() > 2
+                                && literal.is_none()
+                                && !matches!(value.kind, ExprKind::Template(..))))
+                    {
+                        continue;
+                    }
+                    if self.client.is_some() && name.to_ascii_lowercase().starts_with("data-wp-") {
+                        return err_help(
+                            *span,
+                            format!("`{name}` is a directive First writes"),
+                            "use state, props and handlers; the compiler adds the directives",
+                        );
+                    }
                     self.jsx_attribute_rule(&folded_tag, name, literal, value, *span)?;
                     let v = self.expr(value)?;
                     let v = self.finish_value(v, value.span)?;
@@ -6668,6 +6814,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
         }
+        entries.extend(self.client_directives(jsx)?);
+        // A client element's dynamic text: `data-wp-text` on the element when it is the only
+        // child, otherwise a compiler `<span>` around it (generator B).
+        let mut client_children = None;
+        if self.client.is_some() && !RAW_TEXT_TAGS.contains(&folded_tag.as_str()) {
+            let alone = jsx.children.len() == 1;
+            let mut out = Vec::new();
+            for child in &jsx.children {
+                if let ExprKind::Str(text) = &child.kind {
+                    out.push(format!("\\First\\Html::raw({})", php_str(&jsx_escape(text))));
+                    continue;
+                }
+                let v = self.expr(child)?;
+                let v = self.finish_value(v, child.span)?;
+                self.jsx_child_type(&v.ty, child.span)?;
+                let (php, directive) = self.client_text(child, v.php, alone)?;
+                if let Some(r) = directive {
+                    entries.push(format!("'data-wp-text' => {}", php_str(&r)));
+                }
+                out.push(php);
+            }
+            client_children = Some(out);
+        }
         let attrs = if spread {
             // A later attribute replaces an earlier spread key, as object spread does.
             format!(
@@ -6696,14 +6865,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut args = vec![php_str(&output_tag), attrs];
         // A literal string child stays a string, so `Html::element` can apply React's rules that
         // depend on it (the doubled leading newline in `<pre>`).
-        match jsx.children.as_slice() {
-            [
-                Expr {
-                    kind: ExprKind::Str(text),
-                    ..
-                },
-            ] => args.push(php_str(text)),
-            children => args.extend(self.jsx_children(children)?),
+        match (jsx.children.as_slice(), client_children) {
+            (
+                [
+                    Expr {
+                        kind: ExprKind::Str(text),
+                        ..
+                    },
+                ],
+                _,
+            ) => args.push(php_str(text)),
+            (_, Some(children)) => args.extend(children),
+            (children, None) => args.extend(self.jsx_children(children)?),
         }
         Ok(Out::atom(
             format!("\\First\\Html::element({})", args.join(", ")),
@@ -6865,6 +7038,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn new_expr(&mut self, callee: &Expr, args: &[ArrEl], type_args: &[TyAnn], span: Span) -> Result<Out> {
+        if let ExprKind::Ident(name) = &callee.kind
+            && let Resolved::Global(g) = self.resolve(name, callee.span)?
+            && BINARY_GLOBALS.contains(&g)
+        {
+            self.binary_global(g, callee.span)?;
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(
+                format!("\\First\\Js::dynamicConstruct({}, {argv})", php_str(g)),
+                Ty::Dynamic,
+            ));
+        }
         if let Some(out) = self.host_new(callee, args, span)? {
             return Ok(out);
         }
@@ -8134,6 +8318,28 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn global_call(&mut self, g: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if BINARY_GLOBALS.contains(&g) {
+            self.binary_global(g, span)?;
+            return err_help(
+                span,
+                format!("`{g}` must be called with `new`"),
+                format!("write `new {g}(...)`"),
+            );
+        }
+        if matches!(g, "atob" | "btoa") {
+            if !self.javascript_module(self.fx.as_ref().expect("fn").module) {
+                return err_help(
+                    span,
+                    format!("`{g}` is only available in imported JavaScript so far"),
+                    "call a JavaScript or npm helper that uses it",
+                );
+            }
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(
+                format!("\\First\\JsBinary::{g}(...({argv})->a)"),
+                Ty::Dynamic,
+            ));
+        }
         if g == "Symbol" {
             self.require_javascript_symbols(span)?;
         }
@@ -8361,6 +8567,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn static_call(&mut self, g: &str, m: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        if BINARY_GLOBALS.contains(&g) {
+            self.binary_global(g, span)?;
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(
+                format!("\\First\\Js::dynamicStaticCall({}, {}, {argv})", php_str(g), php_str(m)),
+                Ty::Dynamic,
+            ));
+        }
         if (g, m) == ("Error", "captureStackTrace") {
             // First records no frames; the target gets Error's header-only stack.
             let argv = self.javascript_args(args)?;
@@ -9862,7 +10076,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             format!("globals.{name}"),
             m_span,
         );
-        // Typed like collection rows: `json().$type<T>()` fields read and write as T.
+        // Typed like collection rows: `json<T>()` fields read and write as T.
         let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
             ("get", []) => format!("\\First\\Seam::globalGet({})", php_str(name)),
@@ -10778,7 +10992,7 @@ fn same_type(a: &Ty, b: &Ty) -> bool {
     assignable(a, b) && assignable(b, a)
 }
 
-fn stmt_span(s: &Stmt) -> Span {
+pub fn stmt_span(s: &Stmt) -> Span {
     match s {
         Stmt::Decl { span, .. } | Stmt::Return(_, span) | Stmt::Break(_, span) | Stmt::Continue(_, span) => *span,
         Stmt::Expr(e) | Stmt::Throw(e) | Stmt::If(e, ..) | Stmt::While(e, _) | Stmt::DoWhile(_, e) => e.span,

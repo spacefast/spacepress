@@ -1,7 +1,7 @@
 import { action, defineConfig, db, table, text } from "first";
 
 // The build-store lane edits BUILD_LABEL per build: the same app, different action code.
-const notes = table({ title: text().notNull() }, { sync: "content/notes/*.json" });
+const notes = table({ title: text() }, { sync: "content/notes/*.json" });
 
 export default defineConfig({
   name: "storelane",

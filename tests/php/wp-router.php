@@ -24,14 +24,24 @@ if (str_starts_with($path, '/wp-content/uploads/first-private/')) {
     http_response_code(403);
     exit;
 }
-if (str_starts_with($path, '/wp-content/') && !str_ends_with($path, '.php') && is_file("$dir/content/" . substr($path, strlen('/wp-content/')))) {
-    $file = "$dir/content/" . substr($path, strlen('/wp-content/'));
-    header('Content-Type: ' . (mime_content_type($file) ?: 'application/octet-stream'));
-    readfile($file);
+// Static files, from the site's wp-content or from core, with the types a browser needs (a module
+// script must be JavaScript; mime_content_type() calls a .js file text/plain).
+$static = match (true) {
+    str_starts_with($path, '/wp-content/') => "$dir/content/" . substr($path, strlen('/wp-content/')),
+    $path !== '/' => $core . $path,
+    default => null,
+};
+if ($static !== null && !str_ends_with($path, '.php') && !str_contains($path, '..') && is_file($static)) {
+    $type = match (strtolower(pathinfo($static, PATHINFO_EXTENSION))) {
+        'js', 'mjs' => 'text/javascript',
+        'css' => 'text/css',
+        'json' => 'application/json',
+        'svg' => 'image/svg+xml',
+        default => mime_content_type($static) ?: 'application/octet-stream',
+    };
+    header('Content-Type: ' . $type);
+    readfile($static);
     exit;
-}
-if ($path !== '/' && !str_ends_with($path, '.php') && is_file($core . $path)) {
-    return false;
 }
 if (preg_match('#^/wp-json(/.*)?$#', $path, $m) === 1) {
     $_GET['rest_route'] = ($m[1] ?? '') === '' ? '/' : $m[1];

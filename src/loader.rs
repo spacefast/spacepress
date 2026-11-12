@@ -14,6 +14,8 @@ use std::rc::Rc;
 pub const FIRST_MODULE: &str = "first";
 /// Page and layout helpers for `first/app/` and components (docs/spec/rendering.md §2–§4).
 pub const APP_MODULE: &str = "first/app";
+/// Hooks for `"use client"` components (docs/decisions/2026-11-08-tsx-to-php.md, generator B).
+pub const CLIENT_MODULE: &str = "first/client";
 /// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
 pub const WORDPRESS_MODULE: &str = "php/wordpress";
 /// The app's kinds, by registered name (docs/spec/spec.md §2.1); typed by `first/_generated/db.d.ts`.
@@ -26,6 +28,7 @@ pub fn builtin_module(spec: &str) -> bool {
         || spec == WORDPRESS_MODULE
         || spec == DB_MODULE
         || spec == APP_MODULE
+        || spec == CLIENT_MODULE
         || crate::builtins::module(spec).is_some()
 }
 
@@ -44,6 +47,17 @@ pub trait Fs {
     /// A stored source bundle: frozen data captured by some earlier compiler, so layout rules that
     /// came later (the `first/` import fence) don't apply to it. A live project is never frozen.
     fn frozen_capture(&self) -> bool {
+        false
+    }
+    /// Another name these sources import `"first"` by: a stored bundle captured before the rename
+    /// imports `"zero"` (`crate::zero_bundle`). Read on parsed import statements, never source text.
+    fn module_alias(&self) -> Option<&'static str> {
+        None
+    }
+    /// The 0.3.0 field reading (docs/decisions/2026-11-11-authoring-surface.md, ruling 21): a capture
+    /// in the pre-rename format holds source written when a plain builder was nullable and
+    /// `.notNull()` made it required, so it is read that way. Only `crate::zero_bundle` sets it.
+    fn legacy_fields(&self) -> bool {
         false
     }
     fn read_to_string(&self, path: &Path) -> std::io::Result<String>;
@@ -276,10 +290,27 @@ fn jsx_reachability(program: &Program) -> Vec<Diag> {
         );
     }
     for module in &program.modules {
-        if module.use_client {
+        if !module.use_client {
+            continue;
+        }
+        let at = Span {
+            file: module.file,
+            start: 0,
+            end: 0,
+        };
+        // Plugins can't ship browser code until a capability kind covers it (the TSX decision record).
+        if module.path.components().any(|c| c.as_os_str() == "node_modules") {
             out.push(
-                Diag::new(Span { file: module.file, start: 0, end: 0 }, "\"use client\" components aren't compiled yet")
-                    .help("remove the directive to render it on the server; interactive components land with the Interactivity API output")
+                Diag::new(at, format!("{} is a \"use client\" file inside an installed package", module.path.display()))
+                    .help("plugins can't ship client components yet; keep interactive components in the app's first/components/")
+                    .code(diag::Code::Import),
+            );
+            continue;
+        }
+        if module.path.extension().is_none_or(|e| e != "tsx") {
+            out.push(
+                Diag::new(at, "a \"use client\" file is a .tsx component")
+                    .help("rename it to .tsx under first/components/, or remove the directive")
                     .code(diag::Code::Import),
             );
         }
@@ -438,11 +469,14 @@ fn load_module(
     let id = program.modules.len();
     by_path.insert(path.to_path_buf(), id);
     let Parsed {
-        body,
-        commonjs,
+        mut body,
+        mut commonjs,
         type_names,
         use_client,
     } = parse(fs, &source, path, &program.root, file, id, diagnostics)?;
+    if let Some(alias) = fs.module_alias() {
+        rename_module(&mut body, commonjs.as_mut(), alias);
+    }
     // `"first:db"` gives this app's kinds to the module that imports them; re-exporting it would hand
     // them on under another module's name, which no evaluator path resolves.
     // Locals bound by `import { x } from "first:db"`: exporting one again is the same re-export.
@@ -499,6 +533,15 @@ fn load_module(
     }));
     for (index, (spec, span)) in imports.into_iter().enumerate() {
         if builtin_module(&spec) {
+            continue;
+        }
+        // Browser code is first-party: an npm package in a client file would need a bundler.
+        if program.modules[id].use_client && !spec.starts_with('.') {
+            diagnostics.push(
+                Diag::new(span, format!("a \"use client\" component can't import \"{spec}\""))
+                    .help("client components run in the browser without a bundler: import \"first/client\" and relative modules only")
+                    .code(diag::Code::Import),
+            );
             continue;
         }
         if spec == "php" || spec.starts_with("php/") {
@@ -559,6 +602,27 @@ fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> R
     .help(format!(
         "First loads app code only from first/: move {shown} to {destination} and import it from there, or install it as an npm package"
     )))
+}
+
+/// Reads every import, re-export and `require` of `alias` as one of `"first"`.
+fn rename_module(body: &mut [Stmt], commonjs: Option<&mut CommonJs>, alias: &str) {
+    for stmt in body {
+        match stmt {
+            Stmt::Import { source, .. }
+            | Stmt::ExportNames { from: Some(source), .. }
+            | Stmt::ExportAll { from: source, .. }
+                if source == alias =>
+            {
+                *source = FIRST_MODULE.to_owned();
+            }
+            _ => {}
+        }
+    }
+    for (spec, _) in commonjs.into_iter().flat_map(|c| c.requires.iter_mut()) {
+        if spec == alias {
+            *spec = FIRST_MODULE.to_owned();
+        }
+    }
 }
 
 fn import_source(s: &Stmt) -> Option<(String, Span)> {

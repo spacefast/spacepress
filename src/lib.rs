@@ -6,8 +6,10 @@
 //! plugin dependencies and carry the embedded PHP runtime. [`wasm`] exports the core to a browser.
 
 pub mod app;
+mod app_plugin;
 pub mod builtins;
 pub mod client;
+pub mod client_component;
 pub mod compile;
 pub mod diag;
 pub mod eval;
@@ -55,3 +57,5 @@ mod runtime_files {
 }
 
 pub mod bundle;
+#[cfg(feature = "host")]
+mod zero_bundle;

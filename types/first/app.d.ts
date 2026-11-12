@@ -28,6 +28,8 @@ type Params<R> = R extends keyof Routes ? (Routes[R] extends { params: infer P }
 export interface PageProps<R extends keyof Routes | string = string, S = Record<string, any>> {
   params: Params<R>;
   search: S;
+  /** On a page whose folders serve a kind's `url` pattern: that item, read as the visitor. */
+  item: R extends keyof Routes ? (Routes[R] extends { item: infer I } ? I : never) : any;
 }
 
 /** What a layout receives: its params and the page (or nested layout) rendered inside it. */

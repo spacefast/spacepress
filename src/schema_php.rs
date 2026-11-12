@@ -349,12 +349,36 @@ pub fn render(schema: &Schema) -> String {
             let _ = writeln!(out, "        {} => {},", php_str(name), php_str(function));
         }
     }
+    if !schema.islands.is_empty() {
+        out.push_str("    ],\n    'islands' => [\n");
+        for (namespace, island) in &schema.islands {
+            let _ = writeln!(
+                out,
+                "        {} => ['file' => {}, 'actions' => [{}]],",
+                php_str(namespace),
+                php_str(&island.file),
+                island.actions.iter().map(|a| php_str(a)).collect::<Vec<_>>().join(", ")
+            );
+        }
+    }
     if let Some(app) = &schema.app {
         out.push_str("    ],\n    'app' => [\n");
         let opt = |v: &Option<String>| v.as_deref().map(php_str).unwrap_or_else(|| "null".into());
         let route = |r: &crate::schema::AppRoute| {
+            let kind = match &r.kind {
+                Some((kind, bound)) => format!(
+                    "['name' => {}, 'params' => [{}]]",
+                    php_str(kind),
+                    bound
+                        .iter()
+                        .map(|(field, param)| format!("{} => {}", php_str(field), php_str(param)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                None => "null".into(),
+            };
             format!(
-                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}]",
+                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'kind' => {kind}]",
                 php_str(&r.id),
                 php_str(&r.pattern),
                 opt(&r.page),
@@ -392,11 +416,13 @@ pub fn render(schema: &Schema) -> String {
                 .join(", ");
             let _ = writeln!(
                 out,
-                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'search' => {}, 'methods' => [{methods}]],",
+                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'access' => {}, 'signature' => {}, 'search' => {}, 'methods' => [{methods}]],",
                 php_str(path),
                 opt(&f.component),
                 f.metadata.as_ref().map(php_json).unwrap_or_else(|| "null".into()),
                 f.guard.as_ref().map(access).unwrap_or_else(|| "null".into()),
+                f.access.as_ref().map(access).unwrap_or_else(|| "null".into()),
+                f.signature.as_ref().map(php_json).unwrap_or_else(|| "null".into()),
                 f.search
                     .as_ref()
                     .map(|s| fields_block(&s.fields, 3))
@@ -521,7 +547,11 @@ pub fn gen_ts(schema: &Schema) -> String {
         };
         let _ = writeln!(out, "  {}: Collection<{}, {{", php_str(&c.key), php_str(&c.table));
         for col in c.columns.values().filter(|col| !col.hidden) {
-            let kind = if col.auto_increment { "id" } else { col.ty.name() };
+            let kind = if col.auto_increment {
+                "id"
+            } else {
+                col.ty.builder_name()
+            };
             let translations = c.localized && col.name == "translations" && col.system;
             let value = if translations {
                 format!(

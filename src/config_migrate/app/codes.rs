@@ -117,8 +117,16 @@ pub static RULES: &[Rule] = &[
         example: ("/sf.jsonc/fallback", "the serving settings are not carried over: x"),
     },
     Rule {
+        code: "Z08_OMITTED_CRON",
+        feature: "sf.jsonc cron whose path the candidate doesn't serve with GET",
+        v2: "the same sf.jsonc cron, calling a GET route or static file at the same path",
+        fix: "Point the cron at a GET endpoint or static file the app keeps (the host calls a cron's path with GET), or remove the cron.",
+        test: |_, r| r.starts_with(omitted::CRONS),
+        example: ("/sf.jsonc/crons/0", "the cron is not carried over: x"),
+    },
+    Rule {
         code: "Z08_OMITTED_CONFIG",
-        feature: "0.8 Space setting (an sf.jsonc key such as theme, meta, cache, firewall, crons or sell, or theme.json)",
+        feature: "0.8 Space setting (an sf.jsonc key such as theme, meta, cache, firewall or sell, or theme.json)",
         v2: "first.config.ts, the pages themselves or the Space's own settings",
         fix: "Recreate what the setting did in v2, or remove it if the Space doesn't need it.",
         test: |_, r| r.starts_with(omitted::CONFIG),
@@ -270,20 +278,20 @@ pub static RULES: &[Rule] = &[
         example: ("/client/index.tsx", "client source the browser build cannot compile: x"),
     },
     Rule {
-        code: "Z08_CLIENT_NATIVE",
-        feature: "client app converted by the browser compiler",
-        v2: "first migrate app from the native CLI",
-        fix: "Run first migrate app --from zero-0.8 with the native CLI; it compiles the client into public/.",
-        test: |_, r| r.starts_with(client::TAG_NATIVE),
-        example: ("/client/index.tsx", "client app conversion outside the native CLI: x"),
-    },
-    Rule {
         code: "Z08_CLIENT_PUBLIC",
         feature: "client app with its own public/ directory",
         v2: "public/, which holds the converted client",
         fix: "Move the files in public/ into the client, or out of the capsule, and convert again.",
         test: |_, r| r.starts_with(client::TAG_PUBLIC),
         example: ("/public", "client app over an existing public/: x"),
+    },
+    Rule {
+        code: "Z08_CLIENT_STYLES",
+        feature: "client app styled by 0.8's generated zero.css",
+        v2: "public/zero.css, linked from public/index.html as 0.8 linked it",
+        fix: "Pass the published zero.css: --zero-css <file> (zeroCss in wasm), or --manifest with a payload that kept its bytes.",
+        test: |_, r| r.starts_with(client::TAG_STYLES),
+        example: ("/client/index.tsx", "client app without its 0.8 zero.css: x"),
     },
     Rule {
         code: "Z08_CLIENT_UNREADABLE",
@@ -384,11 +392,14 @@ pub static RULES: &[Rule] = &[
     },
     Rule {
         code: "Z08_ENDPOINT_WRITING_GET",
-        feature: "writing GET endpoint",
+        feature: "writing GET endpoint that reads the visitor",
         v2: "a POST route",
-        fix: "Make the endpoint POST (or another unsafe method) and update its callers.",
+        fix: "Make the endpoint POST (or another unsafe method) and update its callers, or stop reading ctx.auth in it.",
         test: |_, r| r.contains("writing GET"),
-        example: ("/endpoints/hit", "a writing GET endpoint needs a manual port"),
+        example: (
+            "/endpoints/hit",
+            "a writing GET endpoint that reads the visitor needs a manual port",
+        ),
     },
     Rule {
         code: "Z08_ENDPOINT_RESERVED_PATH",
@@ -457,8 +468,11 @@ pub static RULES: &[Rule] = &[
         code: "Z08_CTX_AUTH_PROFILE",
         feature: "ctx.auth profile fields and methods",
         v2: "ctx.user ({ id, name, role })",
-        fix: "Read ctx.user; keep other profile fields in a members collection.",
-        test: |p, r| p.contains("/ctx/auth/") && r.starts_with("legacy profiles and auth methods"),
+        fix: "With Space Users, migrate with --users. Without them, keep the app on 0.8: what a First user carries for these fields waits on the Sign in with Spacefast decision.",
+        test: |p, r| {
+            p.contains("/ctx/auth/")
+                && (r.starts_with("legacy profiles and auth methods") || r.starts_with("ctx.auth profile fields"))
+        },
         example: (
             "/queries/me/ctx/auth/email",
             "legacy profiles and auth methods require an explicit identity mapping",
@@ -468,7 +482,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_CTX_AUTH_USERS",
         feature: "ctx.auth.userId without Space Users",
         v2: "ctx.user.id",
-        fix: "Migrate with --users when the Space uses Space Users; otherwise key rows by ctx.user.id.",
+        fix: "With Space Users, migrate with --users. Without them, keep the app on 0.8: mapping Spacefast accounts and guests to First users waits on the Sign in with Spacefast decision.",
         test: |_, r| r.starts_with("ctx.auth.userId maps only for Space Users"),
         example: (
             "/queries/me/ctx/auth/userId",

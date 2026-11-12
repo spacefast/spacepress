@@ -127,6 +127,20 @@ test("pings: pingbacks and trackbacks are closed, and none go out", () => {
   assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${id}), get_option('default_ping_status'), get_option('default_pingback_flag'), has_action('do_pings', 'do_all_pings')]);`), [false, "closed", "0", false]);
 });
 
+test("the facade's built-in settings: public fields for everyone, writes for admins, as core decides", async () => {
+  const settings = `${site}/__first/api/v1/settings`;
+  const patch = (who: "editor" | "admin", body: unknown) =>
+    fetch(settings, { method: "PATCH", headers: { "content-type": "application/json", ...auth(who) }, body: JSON.stringify(body) });
+  const anon = await (await fetch(settings)).json();
+  assert.deepEqual(Object.keys(anon.data).sort(), ["frontPage", "icon", "locale", "logo", "tagline", "timezone", "title"]);
+  const tagline = `Facade tagline ${randomBytes(4).toString("hex")}`;
+  assert.equal((await patch("editor", { tagline })).status, 403);
+  const set = await patch("admin", { tagline });
+  assert.deepEqual([set.status, (await set.json()).data.tagline], [200, tagline]);
+  assert.equal((await (await fetch(settings)).json()).data.tagline, tagline);
+  assert.equal((await (await patch("admin", { nope: 1 })).json()).pointer, "/nope");
+});
+
 test("emoji: no detection script or styles on the front end or in wp-admin", async () => {
   assert.doesNotMatch(await (await page("/")).text(), /wp-emoji|_wpemojiSettings/);
   const cookie = await loginCookie(site, "admin", `${site}/wp-admin/`);
@@ -166,6 +180,17 @@ test("comments: closed on core posts, pages and kinds without `comments`; open w
   assert.deepEqual([await comment(ids.post), await comment(ids.page), await comment(ids.memo)].map((r) => r.status), [403, 403, 403]);
   assert.equal((await comment(ids.note)).status, 201);
   assert.deepEqual(evalJson("echo wp_json_encode([get_default_comment_status('post'), get_default_comment_status('first_memos'), get_default_comment_status('first_notes')]);"), ["closed", "closed", "open"]);
+  // The facade's built-in `comments` kind (spec §2.1, this app declares none): core's route and rules,
+  // First's field names, and the same refusal on a closed item.
+  const facade = `${site}/__first/api/v1/comments`;
+  const write = (on: number) => fetch(facade, { method: "POST", headers: { "content-type": "application/json", ...auth("editor") }, body: JSON.stringify({ on, content: `facade on ${on}` }) });
+  const closed = await write(ids.memo);
+  assert.equal(closed.status, 403, await closed.text());
+  const created = await write(ids.note);
+  const row = (await created.json()).data;
+  assert.deepEqual([created.status, row.on, row.author, row.type, row.status], [201, ids.note, harness.users.editor.id, "comment", "approved"]);
+  const listed = (await (await fetch(`${facade}?post=${ids.note}`)).json()).data;
+  assert.ok(listed.some((c: any) => c.id === row.id && /facade on/.test(c.content)), JSON.stringify(listed));
 });
 
 test("permalinks: pretty URLs route even when the stored structure is plain", async () => {

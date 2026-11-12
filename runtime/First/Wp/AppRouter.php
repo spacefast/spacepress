@@ -55,11 +55,17 @@ final class AppRouter
         }
         self::$instance = new self($plugin, $app);
         add_filter('do_parse_request', [self::$instance, 'handlers'], 0);
-        add_action('template_redirect', [self::$instance, 'claim'], 0);
+        // After the frontend-mode gate (-1) and a kind URL's old-slug redirect (0).
+        add_action('template_redirect', [self::$instance, 'claim'], 1);
         add_filter('redirect_canonical', static fn (string|false $redirect): string|false => self::$instance?->serving ? false : $redirect, 10, 1);
     }
 
     private bool $serving = false;
+
+    public static function instance(): ?self
+    {
+        return self::$instance;
+    }
 
     /** @param array<string, mixed> $app */
     private function __construct(private readonly Plugin $plugin, array $app)
@@ -205,11 +211,15 @@ final class AppRouter
             $this->emit($problem['status'], ['Content-Type' => 'application/problem+json'], (string) Js::jsonStringify($problem));
         }
         $params = array_map(static fn ($v) => is_array($v) ? implode('/', $v) : $v, $match['params']);
-        $spec = ['handler' => $methods[$lookup], 'access' => ['role' => 'anyone'], 'signature' => null];
+        // The file's own `access` rule, or its `signature` (verified over the raw body; the
+        // handler then runs as the system, spec §3).
+        $spec = ['handler' => $methods[$lookup], 'access' => $file['access'] ?? ['allow' => false], 'signature' => $file['signature'] ?? null];
         $query = HttpRoutes::query((string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '')));
         $url = HttpRoutes::url((string) ($_SERVER['HTTP_HOST'] ?? (wp_parse_url(home_url('/'), PHP_URL_HOST) ?? '')), (string) ($_SERVER['REQUEST_URI'] ?? '/'));
-        // An unsigned handler reads as its caller, like a page (spec §3).
-        [$status, $out, $body] = Seam::asViewer(new Viewer($user), fn (): array => $this->plugin->app()->serveRoute(
+        // An unsigned handler reads as its caller, like a page; a signed webhook runs as the
+        // system (spec §3), so its reads are trusted.
+        $viewer = $spec['signature'] !== null ? null : new Viewer($user);
+        [$status, $out, $body] = Seam::asViewer($viewer, fn (): array => $this->plugin->app()->serveRoute(
             ['name' => (string) $route['id'], 'route' => $spec, 'params' => $params],
             $method, $path, $query, (string) file_get_contents('php://input'), $headers, $user, $url,
         ));
@@ -291,6 +301,13 @@ final class AppRouter
             if (($page['search'] ?? null) !== null) {
                 $props->p['search'] = $this->search($page['search']);
             }
+            if (($route['kind'] ?? null) !== null) {
+                $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $params));
+                if ($item === null) {
+                    throw Halt::notFoundSignal();
+                }
+                $props->p['item'] = $item;
+            }
             [$head, $body] = Reads::during(fn (): array => Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props)), $reads);
         } catch (Halt $halt) {
             if ($halt->location !== null) {
@@ -315,6 +332,159 @@ final class AppRouter
         // (docs/spec/rendering.md §6.2). Nothing consumes it yet.
         do_action('first_app_rendered', (string) $route['id'], (string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         $this->document($status, $head, $body);
+    }
+
+    /**
+     * The item a kind URL names, read as the visitor (the caller binds the viewer), or null when it
+     * is missing, not published to them, or the URL isn't its canonical one (`/2025/hello` for a
+     * post from 2026). `:slug`/`:path` find the item by slug, `:id` by id.
+     *
+     * @param array{name: string, params: array<string, string>} $kind
+     * @param array<string, string|list<string>> $params
+     */
+    private function item(array $kind, array $params): ?\First\JsObject
+    {
+        $name = $kind['name'];
+        $spec = $this->plugin->schema->collection($name);
+        $value = static fn (string $param) => is_array($params[$param] ?? null) ? implode('/', $params[$param]) : (string) ($params[$param] ?? '');
+        $where = null;
+        foreach ($kind['params'] as $field => $param) {
+            if ($field === 'id' && ctype_digit($value($param))) {
+                $where = [$spec['primaryKey'] => (int) $value($param)];
+            } elseif (($field === 'slug' || $field === 'path') && ($spec['slug'] ?? null) !== null) {
+                $parts = explode('/', $value($param));
+                $where = [$spec['slug'] => (string) end($parts)];
+            }
+        }
+        if ($where === null) {
+            return null;
+        }
+        try {
+            $row = Seam::findFirst($name, ['where' => $where]);
+        } catch (\First\HttpError) {
+            return null;
+        }
+        if ($row === null) {
+            return null;
+        }
+        // The URL must be the item's own: other placeholders (`:year`, a field) have to agree.
+        $post = get_post((int) ($row->p[$spec['primaryKey']] ?? 0));
+        $urls = KindUrls::instance();
+        if ($post instanceof \WP_Post && $urls !== null) {
+            $want = $urls->path($name, $post);
+            $have = '/' . trim((string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH), '/');
+            if ($want !== null && rawurldecode($have) !== rawurldecode($want)) {
+                return null;
+            }
+        }
+        return $row;
+    }
+
+    /**
+     * The app's public static pages for `/llms.txt`: (path, title), for each page route with no
+     * parameters and no layout guard, titled by its metadata (a literal title, else its path).
+     *
+     * @return list<array{string, string}>
+     */
+    public function pages(): array
+    {
+        $out = [];
+        foreach ($this->app['routes'] as $route) {
+            if (($route['page'] ?? null) === null || str_contains((string) $route['pattern'], ':') || str_contains((string) $route['pattern'], '*')) {
+                continue;
+            }
+            if ($this->twinRoute(home_url($route['pattern'])) === null) {
+                continue;
+            }
+            // Only pages that render: the twin's heading is the page's title.
+            $twin = $this->twin(home_url($route['pattern']));
+            if ($twin === null || $twin[0] !== 200) {
+                continue;
+            }
+            $title = preg_match('/^# (.+)$/m', $twin[1], $m) === 1 ? $m[1] : (string) $route['pattern'];
+            $out[] = [(string) $route['pattern'], $title];
+        }
+        return $out;
+    }
+
+    /**
+     * Whether a URL is a `first/app/` page anyone may see, so whether it has a Markdown twin: a
+     * page route (not a handler), outside any layout `guard`.
+     */
+    public function serves(string $url): bool
+    {
+        $route = $this->twinRoute($url);
+        return $route !== null;
+    }
+
+    /** @return ?array{route: array, params: array} */
+    private function twinRoute(string $url): ?array
+    {
+        $path = (string) (wp_parse_url($url, PHP_URL_PATH) ?? '/');
+        $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
+        if ($base !== '' && str_starts_with($path, $base)) {
+            $path = substr($path, strlen($base)) ?: '/';
+        }
+        if ($this->reserved($path)) {
+            return null;
+        }
+        $match = self::match($this->app['routes'], $path);
+        if ($match === null || ($match['route']['page'] ?? null) === null) {
+            return null;
+        }
+        foreach ($match['route']['layouts'] as $layout) {
+            if (($this->file($layout)['guard'] ?? null) !== null) {
+                return null; // a guarded page is not public: no twin
+            }
+        }
+        return $match;
+    }
+
+    /**
+     * A `first/app/` page's Markdown twin (rendering.md §5: "code pages render from their compiled
+     * output"): the page rendered as an anonymous visitor, its title as the heading, the page's own
+     * HTML (not its layouts' navigation) converted to Markdown. Null when the URL is not an app
+     * page, so the WordPress twin answers. A missing item or `notFound()` is a 404 twin.
+     *
+     * @return ?array{int, string}
+     */
+    public function twin(string $url): ?array
+    {
+        $match = $this->twinRoute($url);
+        if ($match === null) {
+            return null;
+        }
+        $this->plugin->app();
+        $viewer = new Viewer(null);
+        $route = $match['route'];
+        $page = $this->file($route['page']);
+        $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
+        try {
+            $props = new JsObject([
+                'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \First\JsArray($v) : $v, $match['params'])),
+            ]);
+            if (($page['search'] ?? null) !== null) {
+                $props->p['search'] = $this->search($page['search']);
+            }
+            if (($route['kind'] ?? null) !== null) {
+                $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $match['params']));
+                if ($item === null) {
+                    return [404, "# Not found\n\nNothing is published at this address.\n"];
+                }
+                $props->p['item'] = $item;
+            }
+            // The page alone: its layouts add navigation and chrome, which a twin leaves out.
+            [$head, $body] = Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props, false));
+        } catch (Halt $halt) {
+            return $halt->location === null ? [404, "# Not found\n\nNothing is published at this address.\n"] : null;
+        } catch (\Throwable $error) {
+            error_log('First page twin ' . ($route['id'] ?? '?') . ' failed: ' . $error::class . ': ' . $error->getMessage());
+            return [500, "# Something went wrong\n"];
+        }
+        $markdown = trim(\First\Sync\Markdown::fromRenderedHtml($body));
+        $title = trim((string) $head['title']);
+        $doc = ($title !== '' && !str_starts_with($markdown, '# ') ? '# ' . $title . "\n\n" : '') . $markdown;
+        return [200, rtrim($doc) . "\n"];
     }
 
     /** A render error: logged, and the nearest `error.tsx` (or a plain message) with a 500. */
@@ -374,11 +544,12 @@ final class AppRouter
      * @param list<array<string, mixed>> $layouts
      * @return array{0: array<string, mixed>, 1: string}
      */
-    private function render(?array $page, array $layouts, JsObject $props): array
+    private function render(?array $page, array $layouts, JsObject $props, bool $wrap = true): array
     {
         Navigation::reset();
         $metadata = [];
-        foreach ([...$layouts, $page] as $file) {
+        // A twin is the page alone: its heading is the page's own title, not a layout's template.
+        foreach ($wrap ? [...$layouts, $page] : [$page] as $file) {
             $meta = $file['metadata'] ?? null;
             if (is_array($meta) && isset($meta['fn'])) {
                 $fn = '\\FirstApp\\' . $meta['fn'];
@@ -388,7 +559,7 @@ final class AppRouter
         }
         $fn = '\\FirstApp\\' . $page['component'];
         $html = Html::component($fn(...), $props);
-        foreach (array_reverse($layouts) as $layout) {
+        foreach ($wrap ? array_reverse($layouts) : [] as $layout) {
             $layoutProps = new JsObject(['params' => $props->p['params'], 'children' => $html]);
             $layoutFn = '\\FirstApp\\' . $layout['component'];
             $html = Html::component($layoutFn(...), $layoutProps);
@@ -473,9 +644,7 @@ final class AppRouter
             });
         }
         Navigation::enqueue(plugins_url('first/Render/client/router.js', Runtime::file()));
-        if (class_exists(\First\Islands::class)) {
-            \First\Islands::enqueue();
-        }
+        \First\Islands::enqueue();
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'HEAD') {
             exit;
         }

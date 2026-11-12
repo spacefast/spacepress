@@ -130,6 +130,8 @@ trait JsDynamic
 
     public static function dynamicGet(mixed $value, mixed $key): mixed
     {
+        // Typed array element reads are the hot path of byte algorithms (hashes, codecs).
+        if (is_int($key) && $value instanceof JsTypedArray) { return $key >= 0 && $key < $value->length ? $value->at($key) : JsUndefined::Value; }
         if (self::isNullish($value)) { throw new JsError('Cannot read properties of null or undefined', 'TypeError'); }
         if ($key instanceof JsSymbol) { return self::symbolGet($value, $key); }
         $key = self::key($key);
@@ -146,6 +148,8 @@ trait JsDynamic
         if ($value instanceof JsPrototype) { return self::prototypeGet($value, $key); }
         if ($value instanceof JsClass && $key === 'prototype') { return $value->prototype(); }
         if ($value instanceof JsClass) { return $value->has($key) || !$value->hasStaticMethod($key) ? $value->get($key) ?? JsUndefined::Value : self::dynamicMethodValue($value, $key); }
+        if (JsBinary::is($value)) { return JsBinary::get($value, $key); }
+        if ($value instanceof JsConstructor) { return JsBinary::constructorGet($value, $key); }
         if ($value instanceof JsNamespace && $value->name === 'AbortSignal') {
             return in_array($key, ['abort', 'any', 'timeout'], true) ? self::dynamicMethodValue($value, $key) : JsUndefined::Value;
         }
@@ -214,6 +218,11 @@ trait JsDynamic
 
     public static function dynamicSet(mixed $target, mixed $key, mixed $value): mixed
     {
+        if (is_int($key) && $target instanceof JsTypedArray) {
+            $number = self::toNumber($value);
+            if ($key >= 0 && $key < $target->length) { $target->put($key, $number); }
+            return $value;
+        }
         if (self::isNullish($target)) { throw new JsError('Cannot set properties of null or undefined', 'TypeError'); }
         if ($target instanceof JsPrototype) { throw new JsError('Assigning to a class prototype is not supported; use Object.defineProperty with a symbol key', 'TypeError'); }
         if ($key instanceof JsSymbol) {
@@ -236,6 +245,8 @@ trait JsDynamic
         if ($target instanceof JsAbortSignal && $key === 'onabort') { $target->setOnabort($value); return $value; }
         if ($target instanceof JsAbortSignal || $target instanceof JsAbortController) { throw new JsError('Cannot assign to ' . $key . ' on an abort object', 'TypeError'); }
         if ($target instanceof JsUrl) { $target->set($key, $value); return $value; }
+        if (JsBinary::is($target)) { return JsBinary::set($target, $key, $value); }
+        if ($target instanceof JsConstructor) { throw new JsError('Cannot assign to ' . $key . ' on a built-in constructor in compiled code', 'TypeError'); }
         if ($target instanceof JsArray) { self::writable($target); }
         if ($target instanceof JsArray || $target instanceof JsArguments) {
             if ($key === '__proto__' && !array_key_exists($key, $target->p)) {
@@ -387,6 +398,8 @@ trait JsDynamic
             return new JsArray(array_map('strval', self::ownKeys($properties)));
         }
         if (is_string($value)) { $length = self::length($value); return new JsArray($length === 0 ? [] : array_map('strval', range(0, $length - 1))); }
+        if (JsBinary::is($value)) { return new JsArray(JsBinary::keys($value)); }
+        if ($value instanceof JsConstructor) { return new JsArray(); }
         if ($value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsIterator || $value instanceof JsAbortSignal || $value instanceof JsAbortController || $value instanceof JsTimeout || $value instanceof JsUrl || $value instanceof JsUrlSearchParams || $value instanceof JsWeakMap || $value instanceof JsWeakSet || $value instanceof JsSymbol || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar($value) || $value instanceof \Closure) { return new JsArray(); }
         throw new JsError('Unsupported object enumeration', 'TypeError');
     }
@@ -461,6 +474,8 @@ trait JsDynamic
             yield from $value->rest();
         } elseif ($value instanceof JsUrlSearchParams) {
             yield from $value->entriesIterator();
+        } elseif ($value instanceof JsTypedArray) {
+            for ($i = 0; $i < $value->length; $i++) { yield $value->at($i); }
         } elseif ($value instanceof JsGenerator || $value instanceof JsObject && JsIter::wellKnownMethod($value, 'iterator') !== null) {
             // Spread, Array.from and the combinators follow the iterator protocol, closing on a throw.
             $iter = JsIter::open($value);
@@ -488,8 +503,9 @@ trait JsDynamic
             $value instanceof JsUrl => 'URL', $value instanceof JsUrlSearchParams => 'URLSearchParams',
             $value instanceof JsWeakMap => 'WeakMap', $value instanceof JsWeakSet => 'WeakSet', $value instanceof JsSymbol => 'Symbol',
             $value instanceof JsNamespace => $value->name,
+            is_object($value) && JsBinary::is($value) => JsBinary::tag($value),
             $value instanceof JsError, $value instanceof JsObject && $value->class?->builtinRoot() !== null => 'Error',
-            $value instanceof \Closure, $value instanceof JsClass => 'Function', default => 'Object',
+            $value instanceof \Closure, $value instanceof JsClass, $value instanceof JsConstructor => 'Function', default => 'Object',
         };
         return '[object ' . $tag . ']';
     }
@@ -525,6 +541,7 @@ trait JsDynamic
     public static function dynamicInstanceof(mixed $value, mixed $constructor): bool
     {
         if ($constructor instanceof JsClass) { return JsClass::instanceOf($value, $constructor); }
+        if ($constructor instanceof JsConstructor) { return JsBinary::instanceOf($value, $constructor->name); }
         if (in_array($constructor, Builtins::ERROR_CONSTRUCTORS, true)) { return self::isError($value, $constructor); }
         if ($constructor instanceof \Closure) { throw new JsError('instanceof with plain functions is not supported', 'TypeError'); }
         throw new JsError("Right-hand side of 'instanceof' is not callable", 'TypeError');
@@ -562,6 +579,11 @@ trait JsDynamic
     /** Resolve the callee before evaluating arguments, including an own method override. */
     public static function dynamicMethod(mixed $receiver, mixed $name): \Closure
     {
+        // Byte views have no own properties, so their methods resolve directly (MD5's view.getUint32).
+        if (($receiver instanceof JsDataView || $receiver instanceof JsTypedArray) && !$name instanceof JsSymbol) {
+            $name = self::key($name);
+            return static fn (...$args) => JsBinary::call($receiver, $name, $args);
+        }
         self::requirePresent($receiver);
         if ($name instanceof JsSymbol) {
             $method = self::symbolGet($receiver, $name);
@@ -614,6 +636,8 @@ trait JsDynamic
         if ($receiver instanceof JsPromise) { Builtins::check('promise', $name, count($a)); return $receiver->call($name, $a); }
         if ($receiver instanceof JsReadableStream || $receiver instanceof JsWritableStream) { return $receiver->call($name, $a); }
         if ($receiver instanceof JsGenerator || $receiver instanceof JsAsyncGenerator) { Builtins::check('generator', $name, count($a)); return $receiver->call($name, $a); }
+        if (JsBinary::is($receiver)) { return JsBinary::call($receiver, $name, $a); }
+        if ($receiver instanceof JsConstructor && !in_array($name, ['call', 'apply', 'toString', 'valueOf'], true)) { return JsBinary::staticCall($receiver->name, $name, $a); }
         $surface = match (true) {
             is_string($receiver) => 'string', is_int($receiver), is_float($receiver) => 'number',
             $receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
@@ -628,7 +652,12 @@ trait JsDynamic
         if ($receiver instanceof JsNamespace && Builtins::has($receiver->name, $name)) { return self::dynamicStaticCall($receiver->name, $name, $args); }
         if ($name === 'toFixed' && (is_int($receiver) || is_float($receiver))) { return self::toFixed($receiver, $get(0, 0)); }
         if ($name === 'toString') {
-            if ((is_int($receiver) || is_float($receiver)) && $get(0) !== JsUndefined::Value && self::toInteger(self::toNumber($get(0))) !== 10) { throw new JsError('Number.toString radix is not supported', 'TypeError'); }
+            if ((is_int($receiver) || is_float($receiver)) && $get(0) !== JsUndefined::Value && ($radix = self::toInteger(self::toNumber($get(0)))) !== 10) {
+                if ($radix < 2 || $radix > 36) { throw new JsError('toString() radix must be between 2 and 36', 'RangeError'); }
+                // Integer digits are exact in every base; fractional digits depend on the engine.
+                if (!is_int($receiver) || abs($receiver) > 9007199254740991) { throw new JsError('Number.toString radix is supported for safe integers only', 'TypeError'); }
+                return ($receiver < 0 ? '-' : '') . base_convert((string) abs($receiver), 10, (int) $radix);
+            }
             if ($receiver instanceof JsArray) {
                 if (array_key_exists('join', $receiver->p) && !$receiver->p['join'] instanceof \Closure) { return self::dynamicObjectTag($receiver); }
                 return self::dynamicCallMethod($receiver, 'join', new JsArray());
@@ -908,6 +937,7 @@ trait JsDynamic
     {
         Builtins::check($owner, $method, count($args->a));
         $a = $args->a;
+        if (in_array($owner, JsBinary::GLOBALS, true)) { return JsBinary::staticCall($owner, $method, $a); }
         $get = static fn (int $i, mixed $default = JsUndefined::Value): mixed => array_key_exists($i, $a) ? $a[$i] : $default;
         if ($owner === 'AbortSignal') {
             return match ($method) {
@@ -1014,7 +1044,9 @@ trait JsDynamic
     {
         $a = $args->a;
         if ($constructor instanceof JsClass) { return $constructor->construct(...$a); }
+        if ($constructor instanceof JsConstructor) { $constructor = $constructor->name; }
         if (is_string($constructor)) { Builtins::check('constructor', $constructor, count($a)); }
+        if (in_array($constructor, JsBinary::GLOBALS, true)) { return JsBinary::construct($constructor, $a); }
         if ($constructor === 'Promise') { return JsPromise::construct($a[0] ?? JsUndefined::Value); }
         if ($constructor === 'ReadableStream') { return new JsReadableStream($a[0] ?? JsUndefined::Value, $a[1] ?? JsUndefined::Value); }
         if ($constructor === 'WritableStream') { return new JsWritableStream($a[0] ?? JsUndefined::Value, $a[1] ?? JsUndefined::Value); }

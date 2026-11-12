@@ -1,6 +1,6 @@
 import { HttpError, integer, type AccessCtx, type HookCtx } from "first";
 
-export const ownerId = integer().notNull().access({ create: false, update: false });
+export const ownerId = integer().access({ create: false, update: false });
 
 export function ownerFilter(ctx: AccessCtx) {
   return ctx.user ? { ownerId: ctx.user.id } : false;

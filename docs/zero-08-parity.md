@@ -67,7 +67,8 @@ Each feature is decided from whichever of these can decide it:
 
 | Feature | Decided from | Without the original source |
 | --- | --- | --- |
-| Endpoint method, path, mode (writing GET, reserved paths, OPTIONS) | `artifact.server.endpoints` | Decided |
+| Endpoint method, path, mode (reserved paths, OPTIONS) | `artifact.server.endpoints` | Decided |
+| Writing GET endpoint | `artifact.server.endpoints` lists it; whether its body reads the visitor decides it | Needs the source |
 | Document pages (`.md`, `.html`) | `artifact.pages[].render`, `file` | Decided (refused) |
 | Client app with no pages | `artifact.pages` empty, client entry in `sourceManifest`; what it imports from the uploaded `client.js` | Converted; refused only for imports with no v2 bridge (census rule), else its body needs the source |
 | `ctx` services, request APIs, database calls, handler shapes | The bundle, run through the converter | Decided when refused |
@@ -430,8 +431,8 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `ctx.auth.isSignedIn`, `isAuthenticated`, `isGuest`, `displayName` | `ctx.user` and its role | Auto | — |
 | `ctx.auth.userId` with Space Users | The member's hidden `spacefastSubject`, which `migrate-spacefast` copies from `spacefast_app_subject_<id>_<space>` | Auto with `--users`, **WP** | New users answer `wp:<id>`; rows owned by `guest:<id>` or `account:<id>` principals have no v2 user |
 | `ctx.auth.requireSignedIn()`, `requireIdentity()` | Same refusal (401), same returned fields | Auto with `--users` | — |
-| `ctx.auth.userId` without Space Users (Spacefast accounts, guests) | **missing**: v2 users are WordPress users | Refused | Map principals to users explicitly |
-| `ctx.auth.email`, `picture`, `provider`, `subject`, `identityAliases` | **missing** in handler context | Refused | Read the member row, or port |
+| `ctx.auth.userId` without Space Users (Spacefast accounts, guests) | **open owner decision**: v2 users are WordPress users, and how a Spacefast account or a 0.8 `guest:<id>` becomes one waits on Sign in with Spacefast | Refused (`Z08_CTX_AUTH_USERS`, which names the decision) | Keep the app on 0.8 until the decision lands |
+| `ctx.auth.email`, `emailVerified`, `picture`, `provider`, `subject`, `identityAliases` | With Space Users: what 0.8 gave a Space Users session, `provider` `"space-users"` (`"guest"` for a guest, `null` signed out) and the rest unset. Without them: **open owner decision**, tied to Sign in with Spacefast | Auto with `--users`; otherwise refused (`Z08_CTX_AUTH_PROFILE`, naming the decision) | Keep the app on 0.8 until the decision lands |
 | Users, passwords, sessions, Google bindings, Space Users subjects | `wp first migrate-spacefast`; a users receipt without the candidate's subjects refuses (`first_spacefast_subjects_missing`) and `--verify` reports `incomplete` | Data command, **WP** | Original auth salt and cookie alias on the host |
 | `verifyUser()` (server SDK) | `GET /wp-json/first-identity/v1/account` | Not applicable (runs outside the capsule) | Port callers |
 
@@ -476,7 +477,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | --- | --- | --- | --- |
 | Static `pages/*.tsx` (no hooks, event attributes, browser globals, clocks, client or kit imports) | `pages/<path>/page.tsx`, rendered at capture, served by WordPress; relative imports are adjusted for the move | Auto, **WP** (hosted compile) | Run `first-pages build` and commit `first/pages.json` |
 | `client/index.tsx` static `Layout` | `pages/layout.tsx` | Auto, **WP** | — |
-| Client app without pages (`client/` served as a single-page app) | Static files in `public/`: the client compiled to browser modules, mounted by `public/index.html`, with `public/first/client.js` answering `@spacefast/zero/client` | Auto (native CLI; the WebAssembly compiler refuses it with `Z08_CLIENT_NATIVE`) | Check each screen on the candidate; reads refresh on this browser's writes and on focus |
+| Client app without pages (`client/` served as a single-page app) | Static files in `public/`: the client compiled to browser modules, mounted by `public/index.html`, with `public/first/client.js` answering `@spacefast/zero/client` | Auto (native CLI and the WebAssembly compiler give the same files) | Check each screen on the candidate; reads refresh on this browser's writes and on focus |
 | `"use client"` pages with `useQuery`, `useMutation`, `useAction`, `useState`, `useAuth` | `load()` reads as the visitor, plus `<Island>` with an Interactivity store calling actions | Refused, lists what each page uses | Port each page |
 | `usePaginatedQuery` | In a client app without pages: the bridge calls the paginated action, passing `{ numItems, cursor }` to the handler's `PaginationOptions` parameter. In a `"use client"` page: an island over the paginated action | Auto in a client app; refused in a page | Port pages |
 | `@spacefast/zero/kit` components | **missing**: plain markup and CSS | Refused | Restyle |
@@ -487,7 +488,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `pages/[param].tsx` | `collectionPage()` for collection items | Refused | Port |
 | `pages/*.md`, `pages/*.html` documents | **missing** (content-owned pages are not in this release) | Refused | Move the text into a TSX page or a collection |
 | `_pages/` system pages (404, access gate) | The host's own pages | Refused | — |
-| Tailwind `zero.css` | **missing** | Not converted | Ship CSS through the page imports |
+| Tailwind `zero.css` | No generator: First does not compile Tailwind | Client app without pages: the published `zero.css` goes to `public/zero.css`, linked first as 0.8 linked it. It comes from `--zero-css <file>` (wasm `zeroCss`) or from a `--manifest` payload that kept its bytes; without it the app is refused with `Z08_CLIENT_STYLES` | For a version whose payload kept no bytes, compile it with 0.8's `compileZeroUtilityStylesheet` over the published source |
 | Live updates, realtime | `watch()` in the v2 client (#128) | Owned by #128 | Replace subscriptions |
 | `Link`, `navigate`, `Router` | Plain links; WordPress routes the page | Refused with the page | Port |
 

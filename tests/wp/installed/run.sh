@@ -16,7 +16,7 @@ target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
 mkdir -p "$src/scripts" "$bin" "$home" "$project"
 rsync -a --exclude node_modules --exclude target \
-  "$repo"/{build.rs,Cargo.toml,Cargo.lock,rust-toolchain,src,runtime} "$src/"
+  "$repo"/{build.rs,Cargo.toml,Cargo.lock,rust-toolchain,crates,src,runtime} "$src/"
 rsync -a "$repo/scripts/dev" "$repo/scripts/deploy" "$src/scripts/"
 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" CARGO_TARGET_DIR="$target" \
   cargo build -q --release --locked --manifest-path "$src/Cargo.toml"
@@ -24,7 +24,7 @@ cp "$target/release/first" "$bin/first"
 rm -rf "$src"
 cat > "$project/first.config.ts" <<'CONFIG'
 import { defineConfig, table, text } from 'first';
-export default defineConfig({ tables: { notes: table({ title: text().notNull() }) } });
+export default defineConfig({ tables: { notes: table({ title: text() }) } });
 CONFIG
 cd "$work"
 env -u FIRST_WP_HARNESS HOME="$home" XDG_CACHE_HOME= \

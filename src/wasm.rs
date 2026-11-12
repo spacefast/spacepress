@@ -23,7 +23,11 @@
 //!
 //! Response: `{ "check": <first-diagnostics envelope>, "output": null }` on a diagnostic, otherwise
 //! `output` carries `schemaPhp`, `functionsPhp`, `migrations` (`[name, sql]` pairs), `snapshot`,
-//! `client` (`types.ts` and `schema.ts`), `genTs`, `warnings`, `unsupportedPlugins` and `hints`.
+//! `client` (`types.ts` and `schema.ts`), `genTs`, `warnings`, `unsupportedPlugins`, `hints`,
+//! `appPlugin` (every file of the `first-app-<name>` plugin `first build` writes, by path below the
+//! plugins directory: the `.sql` files under `first/_generated/migrations/` in `files` and this
+//! compile's new ones), `firstPlugins` (First's plugins in activation
+//! order) and `wordpressPlugins` (`{slug, version}`, dependencies first).
 
 use crate::loader::{self, Fs};
 use crate::{diag, pipeline};
@@ -57,6 +61,18 @@ struct Output {
     warnings: Vec<String>,
     unsupported_plugins: Vec<String>,
     hints: Vec<String>,
+    /// The app plugin `first build` writes, file by file, by path below the plugins directory.
+    app_plugin: BTreeMap<String, String>,
+    /// First's plugins for this app, in activation order.
+    first_plugins: Vec<String>,
+    /// The WordPress.org plugins the app needs, dependencies first.
+    wordpress_plugins: Vec<WordPressPlugin>,
+}
+
+#[derive(Serialize)]
+struct WordPressPlugin {
+    slug: String,
+    version: String,
 }
 
 #[derive(Serialize)]
@@ -195,6 +211,16 @@ pub fn compile(request: &str) -> String {
 
 fn compile_request(request: Request) -> String {
     let project = PathBuf::from("/").join(&request.name);
+    // The project's `public/` and the ledger's SQL go into the app plugin, as `first build` copies them.
+    let under = |prefix: &str| -> Vec<(String, Vec<u8>)> {
+        request
+            .files
+            .iter()
+            .filter_map(|(rel, text)| Some((rel.strip_prefix(prefix)?.to_string(), text.clone().into_bytes())))
+            .collect()
+    };
+    let public = under("public/");
+    let ledger = under(&format!("{}/", pipeline::LEDGER));
     let files = request
         .files
         .into_iter()
@@ -215,13 +241,43 @@ fn compile_request(request: Request) -> String {
     let (diagnostics, output) = match built {
         Err(diagnostics) => (diagnostics, None),
         Ok(built) => {
+            let schema_php = crate::schema_php::render(&built.schema);
+            // The ledger's SQL from the request, then this compile's new files, as `first build`
+            // writes the new ones into the ledger and packs all of it.
+            let migrations = ledger.into_iter().chain(
+                built
+                    .migrations
+                    .iter()
+                    .map(|(name, sql)| (name.clone(), sql.clone().into_bytes())),
+            );
+            let app_plugin = crate::app_plugin::files(&built, &schema_php, migrations, public)
+                .into_iter()
+                .map(|(path, bytes)| (path, String::from_utf8_lossy(&bytes).into_owned()))
+                .collect();
+            let empty = crate::wp_plugins::Config { plugins: Vec::new() };
+            // The config's plugins resolved when it was extracted; this repeats that plan for its order.
+            let wordpress_plugins = crate::wp_plugins::resolve(
+                built.plugins.as_ref().unwrap_or(&empty),
+                &crate::platform::plugins(built.schema.locales.is_some()),
+            )
+            .map(|plan| plan.plugins)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|p| WordPressPlugin {
+                slug: p.slug,
+                version: p.version,
+            })
+            .collect();
             let client = built
                 .client_files
                 .into_iter()
                 .map(|(name, bytes)| (name, String::from_utf8_lossy(&bytes).into_owned()))
                 .collect();
             let output = Output {
-                schema_php: crate::schema_php::render(&built.schema),
+                first_plugins: crate::app_plugin::first_plugins(&built.schema),
+                app_plugin,
+                wordpress_plugins,
+                schema_php,
                 functions_php: built.functions_php,
                 migrations: built.migrations,
                 snapshot: built.snapshot,
@@ -293,7 +349,10 @@ pub fn operation(operation: &str, request: &str) -> String {
                         fs,
                         &project,
                         tables,
-                        request["users"].as_bool().unwrap_or(false),
+                        crate::config_migrate::app::Inputs {
+                            users: request["users"].as_bool().unwrap_or(false),
+                            zero_css: request["zeroCss"].as_str().map(str::to_owned),
+                        },
                     );
                     candidate.finish();
                     Ok(serde_json::to_value(candidate).unwrap())

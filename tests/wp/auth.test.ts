@@ -719,8 +719,8 @@ test("hidden columns can't be filtered or ordered on, also through relations; ro
   const asSelf = { token: (await signIn(fy.email, fy.password)).json.access_token };
   const hiddenFilter = await call("GET", "/members", { ...asSelf, query: { where: JSON.stringify({ passwordHash: { isNotNull: true } }) } });
   assert.deepEqual([hiddenFilter.status, hiddenFilter.json.code, hiddenFilter.json.pointer], [403, "forbidden", "/where/passwordHash"]);
-  const throughRelation = await call("GET", "/guestbook", { query: { where: JSON.stringify({ member: { suspendedAt: null } }) } });
-  assert.deepEqual([throughRelation.status, throughRelation.json.pointer], [403, "/where/member/suspendedAt"]);
+  const throughRelation = await call("GET", "/guestbook", { query: { where: JSON.stringify({ memberId: { suspendedAt: null } }) } });
+  assert.deepEqual([throughRelation.status, throughRelation.json.pointer], [403, "/where/memberId/suspendedAt"]);
   const promote = await call("PATCH", `/members/${fy.id}`, { ...asSelf, body: { role: "admin" } });
   assert.equal(promote.status, 403, "role is admin-only");
   const cleared = await http("PATCH", `${api}/members/1`, { as: "admin", body: { role: null } });

@@ -12,7 +12,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
-first="$target/debug/first"
+bin="$target/debug/first"
 export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-first-wp-store}"
 export FIRST_WP_PORT="${FIRST_WP_PORT:-8901}"
 work="$(mktemp -d)"
@@ -27,21 +27,23 @@ print(v if not isinstance(v,(dict,list,bool)) and v is not None else json.dumps(
 
 # The same app, two builds: only the action's returned label differs.
 for label in one two; do
-  rsync -a --exclude host.php "$here/store/" "$work/$label/storelane/"
+  mkdir -p "$work/$label/storelane"
+  rsync -a --exclude host.php --exclude contract-host.php "$here/store/" "$work/$label/storelane/"
   sed -i.bak "s/BUILD_LABEL/$label/" "$work/$label/storelane/first.config.ts" && rm "$work/$label/storelane/first.config.ts.bak"
-  "$first" sources "$work/$label/storelane" --out "$work/$label/sources"
+  "$bin" sources "$work/$label/storelane" --out "$work/$label/sources"
 done
 # The harness installs the pinned platform plugins from a native build's lock; it never serves the build.
-"$first" build "$work/one/storelane" --quiet >/dev/null
+"$bin" build "$work/one/storelane" --quiet >/dev/null
 mkdir -p "$work/content/plugins"
 cp "$here/store/host.php" "$work/content/plugins/first-store-host.php"
+cp "$here/store/contract-host.php" "$work/content/plugins/first-store-contract-host.php"
 cp "$work/one/storelane/first/dist/wp-content/first-manifest.json" "$work/content/"
 # The store lives in the bind-mounted plugins directory so the container sees it; FIRST_BUILD_STORE points at it.
 store="$work/content/plugins/first-store"
 start=$(date +%s%N)
-first=$("$first" compile-to-store "$work/one/sources" "$store" "$work/one/sources" | json build)
+first=$("$bin" compile-to-store "$work/one/sources" "$store" "$work/one/sources" | json build)
 mid=$(date +%s%N)
-second=$("$first" compile-to-store "$work/two/sources" "$store" "$work/two/sources" "$first" | json build)
+second=$("$bin" compile-to-store "$work/two/sources" "$store" "$work/two/sources" "$first" | json build)
 end=$(date +%s%N)
 echo "compile: first $(( (mid - start) / 1000000 )) ms, second $(( (end - mid) / 1000000 )) ms"
 [[ $first != "$second" ]] || fail "different action code gives different builds"
@@ -54,7 +56,7 @@ runtime=$(ls "$store/runtime")
 # through the must-use loader, not as WordPress plugins.
 "$here/harness.sh" up --wp-content "$work/content" --platform > "$work/harness.json"
 url=$(json url < "$work/harness.json")
-"$here/harness.sh" compose exec -T wordpress sh -c "mkdir -p /var/www/html/wp-content/mu-plugins && cp /var/www/html/wp-content/plugins/first-store-host.php /var/www/html/wp-content/mu-plugins/first-store-host.php"
+"$here/harness.sh" compose exec -T wordpress sh -c "mkdir -p /var/www/html/wp-content/mu-plugins && cp /var/www/html/wp-content/plugins/first-store-host.php /var/www/html/wp-content/mu-plugins/first-store-host.php && cp /var/www/html/wp-content/plugins/first-store-contract-host.php /var/www/html/wp-content/mu-plugins/first-store-contract-host.php"
 
 action() { curl -sS -X POST -H 'Content-Type: application/json' -H "X-First-Build: $1" --data '{}' "$url/wp-json/first/v1/actions/which"; }
 # WP-CLI as the host: select the build before WordPress loads, then call the loader.
@@ -107,3 +109,17 @@ PY
 status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-First-Build: $second" --data '{}' "$url/wp-json/first/v1/actions/which")
 [[ $status == 404 ]] || fail "a collected build is gone, got $status"
 ok "gc removes only what the kept builds do not reference"
+
+# The host contract (docs/host-contract.md): every hook it lists is called by the runtime, and one
+# `wp first jobs tick` runs the queued job, whose mail goes through the host's transport.
+contract() { wp eval "echo wp_json_encode(get_option('first_test_contract', []));"; }
+added=$(curl -sS -X POST -H 'Content-Type: application/json' -H "X-First-Build: $first" --data '{"title":"Contract"}' "$url/wp-json/first/v1/actions/add")
+[[ $(json data.added <<< "$added") == Contract ]] || fail "the add action answers: $added"
+seen=$(contract)
+[[ $(json first_runtime_loaded <<< "$seen") == true ]] || fail "first_runtime_loaded fired: $seen"
+[[ $(json first_realtime_changes <<< "$seen") == '["notes"]' ]] || fail "first_realtime_changes carried the write: $seen"
+[[ $(json 'First\Realtime\Publisher' <<< "$seen") == 1 ]] || fail "the host's Publisher got the notice: $seen"
+tick=$(host "$first" "WP_CLI::runcommand('first jobs tick --limit=10');")
+[[ $(json data.processed <<< "$tick") -ge 1 && $(json data.failures <<< "$tick") == 0 && $(json data.remaining <<< "$tick") == false ]] || fail "a tick runs the queued job: $tick"
+[[ $(json first_mail_transport <<< "$(contract)") == 'Added Contract' ]] || fail "the job's mail went through first_mail_transport: $(contract)"
+ok "the runtime calls the host's hooks, its Publisher, and one jobs tick runs the queue"

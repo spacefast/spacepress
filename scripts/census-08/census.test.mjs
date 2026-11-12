@@ -123,7 +123,7 @@ test("only verified source can be accepted", () => {
   assert.equal(outcome({ verified: true, report: clean, census: [] }).outcome, "accepted");
   assert.equal(outcome({ verified: true, report: clean, census: ["x"] }).outcome, "refused");
   const erased = { status: "refused", errors: [{ pointer: "", reason: "generated application refused by v2 compiler: error: this argument is unknown, but the function expects string" }] };
-  assert.deepEqual(outcome({ verified: false, report: erased, census: [] }), { outcome: "not recoverable", refusals: [], missing: ["erased parameter types"] });
+  assert.deepEqual(outcome({ verified: false, report: erased, census: [] }), { outcome: "not recoverable", refusals: [], missing: ["erased parameter types"], codes: [] });
 });
 
 test("a crashed or truncated converter run is a tool failure, not a census outcome", () => {

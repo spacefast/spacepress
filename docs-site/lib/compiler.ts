@@ -57,7 +57,19 @@ export interface Output {
   client: Record<string, string>;
   genTs: string;
   warnings: string[];
+  /** Declared WordPress plugins outside the tested list; they still install. */
+  unsupportedPlugins: string[];
   hints: string[];
+  /**
+   * Every file of the `first-app-<name>` plugin `first build` writes, by path below the plugins
+   * directory: the `.sql` files under `first/_generated/migrations/` in the request and this
+   * compile's new migrations.
+   */
+  appPlugin: Record<string, string>;
+  /** First's plugins for this app, in activation order. */
+  firstPlugins: string[];
+  /** The WordPress.org plugins the app needs, dependencies first. */
+  wordpressPlugins: { slug: string; version: string }[];
 }
 
 export interface Compiled {

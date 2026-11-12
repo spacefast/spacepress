@@ -211,7 +211,9 @@ pub enum Builtin {
 #[derive(Debug, Clone)]
 pub struct ColBuilder {
     pub ty: ColType,
-    pub not_null: bool,
+    /// `.optional()`: the value may be null or omitted. Fields are required otherwise.
+    pub optional: bool,
+    /// Only the implicit `id`: authored fields never are primary keys.
     pub primary_key: bool,
     pub auto_increment: bool,
     pub unique: bool,
@@ -235,6 +237,9 @@ pub struct ColBuilder {
     pub show_if: Option<Value>,
     pub ui: Option<Value>,
     pub localized: bool,
+    /// `.title()` / `.content()`: this field is the kind's title or body.
+    pub title: bool,
+    pub content: bool,
     pub bucket: Option<String>,
     /// `.was("old")`: the stored name this field had before a rename.
     pub was: Option<String>,

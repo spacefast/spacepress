@@ -1642,11 +1642,12 @@ fn column(
                     ),
                 ));
             }
-            if *on_delete == Some(RefAction::SetNull) && b.not_null {
+            if *on_delete == Some(RefAction::SetNull) && !b.optional {
                 return Err(Diag::new(
                     *span,
-                    format!("`{name}` is notNull(), so `onDelete: \"set null\"` can't work"),
-                ));
+                    format!("`{name}` is required, so `onDelete: \"set null\"` can't work"),
+                )
+                .help("make it `.optional()`, or use `onDelete: \"cascade\"` or `\"restrict\"`"));
             }
             Some(Reference {
                 collection: r.collection.table().to_string(),
@@ -1731,7 +1732,7 @@ fn column(
     Ok(Column {
         name: name.to_string(),
         ty: b.ty,
-        not_null: b.not_null,
+        not_null: !b.optional,
         primary_key: b.primary_key,
         auto_increment: b.auto_increment,
         unique: b.unique,
@@ -1834,8 +1835,8 @@ fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
         ))
     };
     if matches!(v, Value::Null | Value::Undef) {
-        if b.not_null {
-            return bad("notNull()");
+        if !b.optional {
+            return bad("required (add `.optional()` to allow null)");
         }
         return Ok(Json::Null);
     }

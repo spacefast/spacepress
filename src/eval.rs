@@ -227,9 +227,8 @@ pub const FIRST_EXPORTS: &[&str] = &[
     "collection",
     "table",
     "userProjection",
-    "id",
     "integer",
-    "real",
+    "number",
     "text",
     "boolean",
     "date",
@@ -1904,30 +1903,20 @@ impl<'p> Evaluator<'p> {
                     return Err(Ctl::Short);
                 }
                 let argv = self.eval_args(args, scope)?;
-                if let Value::Bound(recv, m) = &f
-                    && &**m == "$type"
-                    && let Value::Column(c) = recv.as_ref()
-                {
-                    crate::builtins::check(
-                        "column",
-                        "$type",
-                        argv.len(),
-                        crate::builtins::Phase::Evaluator,
-                        call_span,
-                    )
-                    .map_err(Ctl::Err)?;
-                    let Some(t) = type_args.first() else {
-                        return err(e.span, "`$type` needs a type argument: `json().$type<string[]>()`");
-                    };
+                // `json<T>()`: the type argument types the field.
+                if matches!(f, Value::Builtin(Builtin::Column(ColType::Json))) && !type_args.is_empty() {
                     if type_args.len() != 1 {
                         return err_help(
                             e.span,
-                            "$type takes exactly one type argument",
-                            "pass one type and no runtime arguments",
+                            "json<T>() takes exactly one type argument",
+                            "write `json<string[]>()`",
                         );
                     }
-                    let mut c = (**c).clone();
-                    c.ts_type = Some((t.clone(), scope.module, call_span));
+                    let Value::Column(c) = self.call(&f, argv, call_span)? else {
+                        unreachable!("json() builds a column")
+                    };
+                    let mut c = (*c).clone();
+                    c.ts_type = Some((type_args[0].clone(), scope.module, call_span));
                     return Ok(Value::Column(Rc::new(c)));
                 }
                 if let Value::Bound(receiver, method) = &f
@@ -2441,14 +2430,18 @@ impl<'p> Evaluator<'p> {
                         }
                     }
                 }
-                // Both declaration and reference evaluation see the same implicit primary key.
-                if !columns.values().any(|c| c.primary_key) && !columns.contains_key("id") {
-                    let mut id = ColBuilder::new(ColType::Integer, span);
-                    id.primary_key = true;
-                    id.auto_increment = true;
-                    id.not_null = true;
-                    columns.shift_insert(0, "id".into(), Rc::new(id));
+                // Every kind with rows has the integer `id`; declaration and reference evaluation see the same one.
+                if let Some(authored) = columns.get("id") {
+                    return err_help(
+                        authored.span,
+                        "`id` is built in: every kind has an integer `id`",
+                        "delete this field; for a text key, declare `code: text().unique().max(191)`",
+                    );
                 }
+                let mut id = ColBuilder::new(ColType::Integer, span);
+                id.primary_key = true;
+                id.auto_increment = true;
+                columns.shift_insert(0, "id".into(), Rc::new(id));
                 let options = match arg(1) {
                     Value::Undef => None,
                     o @ Value::Object(_) => Some(o),
@@ -2496,13 +2489,11 @@ impl<'p> Evaluator<'p> {
                     span,
                 })))
             }
-            Builtin::Id => {
-                let mut c = ColBuilder::new(ColType::Integer, span);
-                c.primary_key = true;
-                c.auto_increment = true;
-                c.not_null = true;
-                Ok(Value::Column(Rc::new(c)))
-            }
+            Builtin::Id => err_help(
+                span,
+                "`id()` is gone: every kind already has an integer `id`",
+                "delete `id: id()`; for a text key, declare `code: text().unique().max(191)` and read it with `get({ code })`",
+            ),
             Builtin::DefineRelations => {
                 let Value::Object(schema) = arg(0) else {
                     return err(
@@ -2656,13 +2647,16 @@ impl<'p> Evaluator<'p> {
         Ok(out)
     }
 
-    /// `text()`, `email()`, `select({ options })`, `group({ fields })`, ...
+    /// `text()`, `email()`, `select(["a", "b"])`, `group({ title: text() })`, ...
     fn make_column(&self, builder: &'static str, args: &[Value], span: Span) -> R<Value> {
+        if let Some((message, fix)) = removed_builder(builder) {
+            return err_help(span, message, fix);
+        }
         crate::builtins::check("field", builder, args.len(), crate::builtins::Phase::Evaluator, span)
             .map_err(Ctl::Err)?;
         let ty = match builder {
             "integer" => ColType::Integer,
-            "real" => ColType::Real,
+            "number" => ColType::Real,
             "text" => ColType::Text,
             "boolean" => ColType::Boolean,
             "date" => ColType::Date,
@@ -2682,22 +2676,51 @@ impl<'p> Evaluator<'p> {
         };
         let mut c = ColBuilder::new(ty, span);
         let opts_val = args.first().cloned().unwrap_or(Value::Undef);
+        match builder {
+            "select" => {
+                c.enum_values = Some(self.select_options(&opts_val, span)?);
+                return Ok(Value::Column(Rc::new(c)));
+            }
+            "group" | "repeater" => {
+                refuse_wrapped(builder, &opts_val, "fields", span)?;
+                c.fields = Some(self.fields_object(
+                    &opts_val,
+                    span,
+                    &format!("{builder}() takes its fields directly: `{builder}({{ title: text() }})`"),
+                )?);
+                return Ok(Value::Column(Rc::new(c)));
+            }
+            "blocks" => {
+                refuse_wrapped(builder, &opts_val, "layouts", span)?;
+                let Value::Object(lo) = &opts_val else {
+                    return err_help(
+                        span,
+                        "blocks() takes its layouts directly",
+                        "write `blocks({ hero: { heading: text() } })`",
+                    );
+                };
+                let mut layouts = IndexMap::new();
+                for (lk, lv) in lo.borrow().iter() {
+                    let lsp = self.key_span(&opts_val, lk).unwrap_or(span);
+                    layouts.insert(
+                        lk.clone(),
+                        self.fields_object(lv, lsp, &format!("layout `{lk}` must be an object of fields"))?,
+                    );
+                }
+                if layouts.is_empty() {
+                    return err_help(span, "blocks() needs at least one layout", "write `blocks({ hero: { heading: text() } })`");
+                }
+                c.layouts = Some(layouts);
+                return Ok(Value::Column(Rc::new(c)));
+            }
+            _ => {}
+        }
         let allowed: &[&str] = match builder {
-            "text" => &["enum", "multiline"],
+            "text" => &["multiline"],
             "slug" => &["source"],
             "file" => &["bucket"],
-            "media" => &["accept", "multiple"],
-            "select" => &["options", "multiple"],
-            "group" | "repeater" => &["fields"],
-            "blocks" => &["layouts"],
+            "media" => &["accept"],
             _ => &[],
-        };
-        let required: Option<&str> = match builder {
-            "select" => Some("options"),
-            "file" => Some("bucket"),
-            "group" | "repeater" => Some("fields"),
-            "blocks" => Some("layouts"),
-            _ => None,
         };
         let opts = match &opts_val {
             Value::Undef => IndexMap::new(),
@@ -2709,38 +2732,14 @@ impl<'p> Evaluator<'p> {
                 );
             }
         };
-        if let Some(r) = required
-            && !opts.contains_key(r)
-        {
-            return err_help(
-                span,
-                format!("{builder}() needs `{r}`"),
-                match builder {
-                    "select" => "select({ options: [\"a\", \"b\"] })",
-                    "blocks" => "blocks({ layouts: { hero: { heading: text() } } })",
-                    _ => "group({ fields: { title: text() } })",
-                },
-            );
+        if builder == "file" && !opts.contains_key("bucket") {
+            return err_help(span, "file() needs `bucket`", "write `file({ bucket: \"decks\" })`");
         }
-        let strings = |v: &Value, what: &str, sp: Span| -> R<Vec<String>> {
-            let Value::Array(items) = v else {
-                return err(sp, format!("`{what}` must be an array of strings"));
-            };
-            let mut values = Vec::new();
-            for item in items.borrow().iter() {
-                match item {
-                    Value::Str(s) => values.push(s.to_string()),
-                    other => return err(sp, format!("{what} values must be strings, got {}", other.describe())),
-                }
-            }
-            if values.is_empty() {
-                return err(sp, format!("`{what}` needs at least one value"));
-            }
-            Ok(values)
-        };
-        let mut multiple = false;
         for (k, v) in &opts {
             let ksp = self.key_span(&opts_val, k).unwrap_or(span);
+            if let Some((message, fix)) = removed_option(builder, k) {
+                return err_help(ksp, message, fix);
+            }
             if !allowed.contains(&k.as_str()) {
                 let mut d = Diag::new(ksp, format!("{builder}() has no option `{k}`"));
                 if let Some(s) = suggest(k, allowed.iter().copied()) {
@@ -2748,14 +2747,11 @@ impl<'p> Evaluator<'p> {
                 }
                 return Err(Ctl::Err(d));
             }
-            let flag = |v: &Value| match v {
-                Value::Bool(b) => Ok(*b),
-                other => err(ksp, format!("`{k}` must be true or false, not {}", other.describe())),
-            };
             match k.as_str() {
-                "enum" | "options" => c.enum_values = Some(strings(v, k, ksp)?),
-                "multiline" => c.multiline = flag(v)?,
-                "multiple" => multiple = flag(v)?,
+                "multiline" => match v {
+                    Value::Bool(b) => c.multiline = *b,
+                    other => return err(ksp, format!("`multiline` must be true or false, not {}", other.describe())),
+                },
                 "bucket" => match v {
                     Value::Str(s) if !s.is_empty() => c.bucket = Some(s.to_string()),
                     _ => return err(ksp, "`bucket` must be a bucket name"),
@@ -2774,33 +2770,8 @@ impl<'p> Evaluator<'p> {
                         );
                     }
                 },
-                "fields" => c.fields = Some(self.fields_object(v, ksp, "`fields` must be an object of columns")?),
-                "layouts" => {
-                    let Value::Object(lo) = v else {
-                        return err(ksp, "`layouts` must be an object like `{ hero: { heading: text() } }`");
-                    };
-                    let mut layouts = IndexMap::new();
-                    for (lk, lv) in lo.borrow().iter() {
-                        let lsp = self.key_span(v, lk).unwrap_or(ksp);
-                        layouts.insert(
-                            lk.clone(),
-                            self.fields_object(lv, lsp, &format!("layout `{lk}` must be an object of columns"))?,
-                        );
-                    }
-                    if layouts.is_empty() {
-                        return err(ksp, "`layouts` needs at least one layout");
-                    }
-                    c.layouts = Some(layouts);
-                }
                 _ => unreachable!(),
             }
-        }
-        if multiple {
-            c.ty = if builder == "media" {
-                ColType::MediaList
-            } else {
-                ColType::Select
-            };
         }
         if builder == "media" && c.accept.is_none() {
             c.accept = Some("any".into());
@@ -2809,6 +2780,45 @@ impl<'p> Evaluator<'p> {
             c.unique = true;
         }
         Ok(Value::Column(Rc::new(c)))
+    }
+
+    /// `select(["a", "b"])`: the options, in order.
+    fn select_options(&self, v: &Value, span: Span) -> R<Vec<String>> {
+        let items = match v {
+            Value::Array(items) => items,
+            Value::Object(o) if o.borrow().contains_key("options") => {
+                let multiple = matches!(o.borrow().get("multiple"), Some(Value::Bool(true)));
+                return err_help(
+                    span,
+                    "select() takes its options as an array",
+                    if multiple {
+                        "write `select([\"a\", \"b\"]).many()`; `.many()` replaces `multiple: true`"
+                    } else {
+                        "write `select([\"a\", \"b\"])`"
+                    },
+                );
+            }
+            other => {
+                return err_help(
+                    span,
+                    format!("select() needs an array of options, not {}", other.describe()),
+                    "write `select([\"a\", \"b\"])`",
+                );
+            }
+        };
+        let mut values = Vec::new();
+        for item in items.borrow().iter() {
+            match item {
+                Value::Str(s) => values.push(s.to_string()),
+                other => {
+                    return err(span, format!("select() options must be strings, got {}", other.describe()));
+                }
+            }
+        }
+        if values.is_empty() {
+            return err_help(span, "select() needs at least one option", "write `select([\"a\", \"b\"])`");
+        }
+        Ok(values)
     }
 
     fn call_static(&mut self, g: &str, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
@@ -3244,9 +3254,11 @@ fn first_export(name: &str, span: Span) -> R<Value> {
         "collection" => Builtin::Collection(StorageKind::Collection),
         "table" => Builtin::Collection(StorageKind::Table),
         "userProjection" => Builtin::Collection(StorageKind::UserProjection),
+        // Deleted builders still resolve, so the call says what replaces them.
         "id" => Builtin::Id,
+        "real" => Builtin::Field("real"),
         "integer" => Builtin::Column(ColType::Integer),
-        "real" => Builtin::Column(ColType::Real),
+        "number" => Builtin::Field("number"),
         "text" => Builtin::Column(ColType::Text),
         "boolean" => Builtin::Column(ColType::Boolean),
         "date" => Builtin::Column(ColType::Date),
@@ -3621,6 +3633,51 @@ fn call_global(g: &str, args: &[Value], span: Span) -> R<Value> {
     })
 }
 
+/// A builder the authoring surface deleted: (message, fix).
+fn removed_builder(builder: &str) -> Option<(&'static str, &'static str)> {
+    match builder {
+        "real" => Some((
+            "`real()` is now `number()`",
+            "replace `real()` with `number()`; it stores the same column",
+        )),
+        _ => None,
+    }
+}
+
+/// A builder option the authoring surface deleted: (message, fix).
+fn removed_option(builder: &str, option: &str) -> Option<(&'static str, &'static str)> {
+    match (builder, option) {
+        ("text", "enum") => Some((
+            "`text({ enum })` is now `select([...])`",
+            "write `select([\"a\", \"b\"])`; it stores the same column",
+        )),
+        ("media", "multiple") => Some((
+            "`media({ multiple: true })` is now `.many()`",
+            "write `media({ accept: \"image\" }).many()`",
+        )),
+        _ => None,
+    }
+}
+
+/// `group({ fields: { ... } })` and `blocks({ layouts: { ... } })`, the deleted wrappers.
+fn refuse_wrapped(builder: &str, v: &Value, key: &str, span: Span) -> R<()> {
+    let Value::Object(o) = v else { return Ok(()) };
+    let o = o.borrow();
+    if o.len() == 1 && matches!(o.get(key), Some(Value::Object(_))) {
+        let example = if builder == "blocks" {
+            "blocks({ hero: { heading: text() } })".to_string()
+        } else {
+            format!("{builder}({{ title: text() }})")
+        };
+        return err_help(
+            span,
+            format!("{builder}() takes its {key} directly, without the `{{ {key} }}` wrapper"),
+            format!("write `{example}`"),
+        );
+    }
+    Ok(())
+}
+
 fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<Value> {
     crate::builtins::check("column", m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
     let mut c = (**c).clone();
@@ -3636,6 +3693,9 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
             DefaultVal::Fn(f)
         }
     };
+    if let Some((message, fix)) = removed_modifier(m) {
+        return err_help(span, message, fix);
+    }
     if let Some(why) = modifier_invalid(&c, m) {
         return err_help(span, why.0, why.1);
     }
@@ -3648,6 +3708,23 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
         "showIf" => c.show_if = Some(arg(0)),
         "ui" => c.ui = Some(arg(0)),
         "localized" => c.localized = true,
+        "optional" => c.optional = true,
+        "title" => c.title = true,
+        "content" => c.content = true,
+        "many" => match c.ty {
+            ColType::Text if c.enum_values.is_some() => c.ty = ColType::Select,
+            ColType::Media => c.ty = ColType::MediaList,
+            ColType::Select | ColType::MediaList => {
+                return err_help(span, "this field is already a list", "call `.many()` once");
+            }
+            _ => {
+                return err_help(
+                    span,
+                    format!("`.many()` isn't valid on {}", kind_phrase(c.ty)),
+                    "`.many()` makes a list of select() options or media()",
+                );
+            }
+        },
         "was" => match arg(0) {
             Value::Str(old) => c.was = Some(old.to_string()),
             other => {
@@ -3657,7 +3734,6 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
                 );
             }
         },
-        "notNull" => c.not_null = true,
         "unique" => c.unique = true,
         "min" | "max" => {
             let n = match arg(0) {
@@ -3697,17 +3773,13 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
             }
         },
         "validate" => c.validate = Some(closure_arg()?),
-        "primaryKey" => {
-            c.primary_key = true;
-            c.not_null = true;
-            c.auto_increment = c.ty == ColType::Integer;
-        }
         "default" => {
             let v = arg(0);
-            if matches!(v, Value::Closure(_)) {
-                return err(
+            if matches!(v, Value::Closure(_) | Value::Builtin(_) | Value::Bound(..)) {
+                return err_help(
                     span,
-                    "`.default()` takes a value; use `.$default(() => ...)` for a function",
+                    "`.default()` takes a literal value, not a function",
+                    "use a literal, `.defaultNow()` on a date or timestamp, or `.$default(() => ...)`",
                 );
             }
             c.default = Some(DefaultVal::Value(v));
@@ -3779,17 +3851,16 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
 }
 
 const MODIFIERS: &[&str] = &[
-    "notNull",
+    "optional",
     "unique",
-    "primaryKey",
     "default",
     "defaultNow",
+    "many",
     "$default",
     "$defaultFn",
     "$onUpdate",
     "$onUpdateFn",
     "references",
-    "$type",
     "min",
     "max",
     "pattern",
@@ -3798,8 +3869,29 @@ const MODIFIERS: &[&str] = &[
     "showIf",
     "ui",
     "localized",
+    "title",
+    "content",
     "was",
 ];
+
+/// A modifier the authoring surface deleted: (message, fix).
+fn removed_modifier(m: &str) -> Option<(&'static str, &'static str)> {
+    Some(match m {
+        "notNull" => (
+            "`.notNull()` is gone: fields are required by default",
+            "delete `.notNull()`; add `.optional()` to a field that may be empty",
+        ),
+        "primaryKey" => (
+            "`.primaryKey()` is gone: every kind has an integer `id`",
+            "for a text key, declare `code: text().unique().max(191)` and read it with `get({ code })`",
+        ),
+        "$type" => (
+            "`json().$type<T>()` is now `json<T>()`",
+            "write the type on the builder: `json<string[]>()`",
+        ),
+        _ => return None,
+    })
+}
 
 /// "a text column", "an email column".
 pub fn kind_phrase(ty: ColType) -> String {
@@ -3825,7 +3917,9 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
         "unique" => matches!(ty, T::Integer | T::Real | T::Date | T::Timestamp) || ty.is_stringy(),
         "references" => matches!(ty, T::Integer | T::Real),
         "default" | "$default" | "$defaultFn" => ty != T::Media,
-        "$type" => ty == T::Json,
+        "defaultNow" => matches!(ty, T::Timestamp | T::Date),
+        "title" => ty == T::Text,
+        "content" => ty == T::RichText,
         _ => true,
     };
     if ok {
@@ -3837,6 +3931,9 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
             "use `.validate((value) => ... )` for custom checks".to_string()
         }
         ("default" | "$default" | "$defaultFn", T::Media) => "media columns start empty; set them on write".into(),
+        ("defaultNow", _) => "use `.default(value)` with a literal".into(),
+        ("title", _) => "the title is a `text()` field".into(),
+        ("content", _) => "the body is a `richText()` field".into(),
         _ => "remove it".into(),
     };
     Some((format!("`.{m}()` isn't valid on {}", kind_phrase(ty)), fix))
@@ -3846,7 +3943,7 @@ impl ColBuilder {
     pub fn new(ty: ColType, span: Span) -> Self {
         ColBuilder {
             ty,
-            not_null: false,
+            optional: false,
             primary_key: false,
             auto_increment: false,
             unique: false,
@@ -3868,6 +3965,8 @@ impl ColBuilder {
             show_if: None,
             ui: None,
             localized: false,
+            title: false,
+            content: false,
             bucket: None,
             was: None,
             span,

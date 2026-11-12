@@ -833,6 +833,153 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
     }
 }
 
+/// Byte values from imported JavaScript: every exported case of tests/differential/binary.mjs runs
+/// under Node and as compiled PHP, including files-sdk's own MD5 code and Blob reads and streams.
+#[test]
+fn binary_data_matches_node_through_generated_php() {
+    let tmp = tempfile::tempdir().unwrap();
+    for file in ["binary.mjs", "files-sdk-md5.mjs"] {
+        copy_app(
+            root().join("tests/differential").join(file),
+            tmp.path().join("first").join(file),
+        )
+        .unwrap();
+    }
+    let node = Command::new("node")
+        .current_dir(tmp.path())
+        .args([
+            "--input-type=module",
+            "-e",
+            "import * as cases from './first/binary.mjs'; const out = {}; for (const [name, run] of Object.entries(cases)) out[name] = await run(); process.stdout.write(JSON.stringify(out));",
+        ])
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    let names: Vec<&String> = expected.as_object().unwrap().keys().collect();
+    assert!(names.len() >= 14, "{expected}");
+    let actions: Vec<String> = names
+        .iter()
+        .map(|name| format!("{name}: action({{ input: {{}}, handler: async () => await {name}() }})"))
+        .collect();
+    std::fs::write(
+        tmp.path().join("first.config.ts"),
+        format!(
+            "import {{ action, defineConfig }} from 'first';\nimport {{ {} }} from './first/binary.mjs';\nexport default defineConfig({{ name: 'binary-tests', actions: {{ {} }} }});\n",
+            names.iter().map(|name| name.as_str()).collect::<Vec<_>>().join(", "),
+            actions.join(", ")
+        ),
+    )
+    .unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $out = [];
+        foreach ($schema['actions'] as $name => $action) {
+            $fn = '\\FirstApp\\' . $action['handler'];
+            try { $out[$name] = $fn(new \First\JsObject(), new \First\JsObject()); }
+            catch (\Throwable $e) { $out[$name] = get_class($e) . ': ' . $e->getMessage(); }
+        }
+        echo \First\Js::jsonStringify(new \First\JsObject($out));
+    "#,
+        &[
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-binary-tests/first/app"),
+        ],
+    );
+    for name in &names {
+        assert_eq!(
+            actual[name.as_str()],
+            expected[name.as_str()],
+            "{name}: compiled byte behavior differs from Node"
+        );
+    }
+    // JSON has no byte type: an action result holding bytes is refused, with the text fix.
+    let refused = php(
+        r#"
+        require $argv[1];
+        $bytes = \First\JsTypedArray::fromBytes('ab');
+        try { \First\JsBinary::refuseWire(new \First\JsObject(['v' => new \First\JsArray([$bytes])]), 'action a'); echo 'null'; }
+        catch (\First\JsError $e) { echo json_encode([$e->jsName, $e->getMessage()]); }
+    "#,
+        &[&content.join("plugins/first-runtime/first/bootstrap.php")],
+    );
+    assert_eq!(refused[0], "TypeError");
+    let message = refused[1].as_str().unwrap();
+    assert!(
+        message.contains("Uint8Array at .v.0") && message.contains("TextDecoder"),
+        "{message}"
+    );
+}
+
+#[test]
+fn binary_globals_refuse_shared_memory_and_typed_code_with_fixes() {
+    for (file, source, message, fix) in [
+        (
+            "helper.mjs",
+            "export function make(){ return new SharedArrayBuffer(4); }",
+            "`SharedArrayBuffer` isn't supported",
+            "use ArrayBuffer",
+        ),
+        (
+            "helper.mjs",
+            "export function make(){ return new BigUint64Array(1); }",
+            "`BigUint64Array` isn't supported",
+            "DataView",
+        ),
+        (
+            "helper.mjs",
+            "export function make(){ return Uint8Array(2); }",
+            "`Uint8Array` must be called with `new`",
+            "new Uint8Array",
+        ),
+        (
+            "helper.mjs",
+            "const made = new TextEncoder(() => 1); export function make(){ return made; }",
+            "module-scope `TextEncoder` arguments must be plain data",
+            "inside the function",
+        ),
+        (
+            "helper.mjs",
+            "const holder = { values: Uint8Array.of(1) }; export function make(){ return holder; }",
+            "exists only while the config is built",
+            "call or read its members directly",
+        ),
+        (
+            "helper.ts",
+            "export function make(): number { return new Uint8Array(2).length; }",
+            "`Uint8Array` is only available in imported JavaScript so far",
+            "pass text across",
+        ),
+        (
+            "helper.ts",
+            "export function make(): string { return btoa(\"x\"); }",
+            "`btoa` is only available in imported JavaScript so far",
+            "JavaScript or npm helper",
+        ),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        write_app(tmp.path().join("first").join(file), source).unwrap();
+        std::fs::write(
+            tmp.path().join("first.config.ts"),
+            format!("import {{ action, defineConfig }} from 'first';\nimport {{ make }} from './first/{file}';\nexport default defineConfig({{ actions: {{ probe: action({{ handler: () => {{ make(); return 1; }} }}) }} }});\n"),
+        )
+        .unwrap();
+        let (out, report) = checked(tmp.path());
+        assert_eq!(out.status.code(), Some(1), "{source}: {report}");
+        let diagnostic = &report["diagnostics"][0];
+        assert!(
+            diagnostic["message"].as_str().unwrap().contains(message),
+            "{source}: {report}"
+        );
+        assert!(diagnostic["location"].is_object(), "{report}");
+        assert!(diagnostic["help"].as_str().unwrap().contains(fix), "{source}: {report}");
+    }
+}
+
 #[test]
 fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
     // Job order is observable in JavaScript: every log must match Node exactly.

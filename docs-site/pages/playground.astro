@@ -2,19 +2,25 @@
 // The playground: edit an example's config and see everything the compiler makes of it, compiled in
 // the browser by the same compiler as `first build` (public/compiler.wasm, built from src/wasm.rs).
 import path from "node:path";
-import { readFileSync } from "node:fs";
 import PageLayout from "blume/components/layout/PageLayout.astro";
 import data from "blume:data";
+import { readFileSync } from "node:fs";
+import type { ExampleRun } from "../lib/blueprint.ts";
 import { example, repo } from "../lib/examples.ts";
+import { platformVersions } from "../lib/platform.ts";
 import { firstFiles, wordpressFiles } from "../lib/playground-catalog.ts";
+import { exampleRun } from "../lib/showcase.ts";
 import { siteExamples } from "../lib/site-examples.ts";
 
 const examples = Object.fromEntries(await Promise.all(
 	siteExamples.map(async ({ name }) => [name, firstFiles((await example(name)).files)]),
 ));
+// What "Run in WordPress" needs to build a blueprint for the edited config (lib/blueprint.ts).
+const runs: Record<string, ExampleRun> = Object.fromEntries(await Promise.all(siteExamples.map(async ({ name }) => [name, await exampleRun(name)])));
+const { php, sqlite } = platformVersions();
 const runtime = Object.fromEntries(wordpressFiles.map(({ path: file }) => [file, readFileSync(path.join(repo, file), "utf8")]));
 const { config } = data;
-// Playground fetches the blueprint from the published site.
+// Playground fetches First's shared plugin zips from the published site.
 const siteUrl = (config.site ?? "https://first-docs.space.fast").replace(/\/$/, "");
 ---
 
@@ -40,14 +46,14 @@ const siteUrl = (config.site ?? "https://first-docs.space.fast").replace(/\/$/, 
 				<label for="example">Example</label>
 				<select id="example">{siteExamples.map(({ name, title, summary }) => <option value={name} data-description={summary}>{title}</option>)}</select>
 				<button id="reset" type="button">Reset example</button>
-				<button id="run-wordpress" class="run" type="button" data-site={siteUrl}>Run in WordPress</button>
+				<button id="run-wordpress" class="run" type="button" data-site={siteUrl} data-php={php} data-sqlite={sqlite}>Run in WordPress</button>
 			</div>
 		</div>
 		<p id="example-description" class="note">{siteExamples[0]!.summary}</p>
 		<section id="wordpress" class="wordpress" hidden aria-labelledby="wordpress-heading">
 			<div class="pane-heading">
 				<h2 id="wordpress-heading">WordPress</h2>
-				<span class="wordpress-note">The example as committed, built when this site was built, running in <a href="https://wordpress.org/playground/">WordPress Playground</a> in your browser. Your edits don't apply here.</span>
+				<span id="wordpress-note" class="wordpress-note">Your config as it was when you pressed Run, compiled here and running in <a href="https://wordpress.org/playground/">WordPress Playground</a> in your browser. Edit it and press Run again to start a fresh WordPress with the change.</span>
 				<a id="wordpress-tab" target="_blank" rel="noopener">Open in a new tab ↗</a>
 			</div>
 			<iframe id="wordpress-frame" title="WordPress running the example"></iframe>
@@ -88,6 +94,7 @@ const siteUrl = (config.site ?? "https://first-docs.space.fast").replace(/\/$/, 
 		<noscript>Turn on JavaScript to edit and compile a config.</noscript>
 	</main>
 	<script id="playground-examples" type="application/json" set:html={JSON.stringify(examples).replace(/</g, "\\u003c")} />
+	<script id="playground-runs" type="application/json" set:html={JSON.stringify(runs).replace(/</g, "\\u003c")} />
 	<script id="playground-runtime" type="application/json" set:html={JSON.stringify(runtime).replace(/</g, "\\u003c")} />
 	<script src="../lib/playground.ts"></script>
 </PageLayout>

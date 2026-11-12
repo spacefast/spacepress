@@ -41,8 +41,8 @@ export const tours: Tour[] = [
     ],
     stops: [
       {
-        slug: "a-collection",
-        title: "A collection becomes a table",
+        slug: "a-table",
+        title: "A table becomes SQL",
         prose: [
           "A table holds app data in SQL; collections hold editorial content in WordPress. An implicit `id()` is the primary key, `notNull()` and `default()` mean what they say in SQL, and `enum` is recorded in `schema.php` for the runtime to check on every write.",
           "The first build writes `0001_init.sql`; the next build diffs the schema against the committed snapshot and writes only what changed.",
@@ -57,7 +57,7 @@ export const tours: Tour[] = [
         slug: "composition",
         title: "Composition is plain TypeScript",
         prose: [
-          "The config is evaluated at build time by First's own evaluator, so helpers, factories and spreads work as you expect: `named()` adds an id and a name to any set of columns, and `...timestamps` comes from another file.",
+          "The config is evaluated at build time by First's own evaluator, so helpers, factories and spreads work as you expect: `named()` adds a `name` column to any set of columns, and `...timestamps` comes from another file.",
           "The evaluator has no file system and no clock. What it produces is the schema as plain data, which is all the next steps need.",
         ],
         config: { file: "first.config.ts", lines: { from: 'export const items = table(', to: "}));" } },

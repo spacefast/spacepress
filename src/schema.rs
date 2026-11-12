@@ -21,7 +21,7 @@ pub enum ColType {
     Media,
     File,
     MediaList,
-    /// `select({ multiple: true })`. A single select is `Text` with `enum`.
+    /// `select([...]).many()`. A single select is `Text` with `enum`.
     Select,
     Group,
     Repeater,
@@ -186,7 +186,7 @@ pub struct Column {
     pub bucket: Option<String>,
     pub derived: bool,
     pub hidden: bool,
-    /// `json().$type<T>()` annotation, module and call position.
+    /// `json<T>()` annotation, module and call position.
     pub ts_type: Option<(crate::ir::TyAnn, usize, crate::diag::Span)>,
     /// `.was("old")`: the stored name before a rename (spec §2.5).
     pub was: Option<String>,

@@ -125,7 +125,7 @@ fn replaced_field_forms_name_their_replacement() {
         ("reject-function-default", "`.default()` takes a literal value, not a function", "first.config.ts:2:46"),
         ("reject-select-options", "select() takes its options as an array", "first.config.ts:2:29"),
         ("reject-text-enum", "`text({ enum })` is now `select([...])`", "first.config.ts:2:42"),
-        ("reject-group-wrapper", "group() takes its fields directly, without the `{ fields }` wrapper", "first.config.ts:2:28"),
+        ("reject-group-wrapper", "group().optional() takes its fields directly, without the `{ fields }` wrapper", "first.config.ts:2:28"),
         ("reject-many-text", "`.many()` isn't valid on a text column", "first.config.ts:2:37"),
     ] {
         rejects(fixture, message, at);
@@ -394,15 +394,15 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     let tmp = tempfile::tempdir().unwrap();
     for (body, message) in [
         (
-            "collections: { notes: table({ title: text().notNull() }) }",
+            "collections: { notes: table({ title: text() }) }",
             "table() belongs in `tables`",
         ),
         (
-            "collections: { notes: collection({ title: text().notNull() }) }, tables: { notes: table({}) }",
+            "collections: { notes: collection({ title: text() }) }, tables: { notes: table({}) }",
             "share the physical name `notes`",
         ),
         (
-            "collections: { stockItems: collection({ title: text().notNull() }) }, tables: { stock_items: table({}) }",
+            "collections: { stockItems: collection({ title: text() }) }, tables: { stock_items: table({}) }",
             "share the physical name `stock_items`",
         ),
         (
@@ -422,7 +422,7 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "\"media\" is reserved",
         ),
         (
-            "collections: { services: collection({ title: text().notNull() }) }",
+            "collections: { services: collection({ title: text() }) }",
             "\"services\" is reserved",
         ),
         (
@@ -430,27 +430,27 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "share the physical name `existing`",
         ),
         (
-            "collections: { notes: collection({ title: text().notNull() }) }, tables: { notes: table({}, { storageName: 'other' }) }",
+            "collections: { notes: collection({ title: text() }) }, tables: { notes: table({}, { storageName: 'other' }) }",
             "duplicate logical registration `notes`",
         ),
         (
-            "globals: { status: global('status', { label: text().default('Ready') }) }",
+            "globals: { status: global('status', { label: text().default('Ready').optional() }) }",
             "\"status\" is reserved by generated client types",
         ),
         (
-            "globals: { user: global('user', { label: text().default('Ready') }) }",
+            "globals: { user: global('user', { label: text().default('Ready').optional() }) }",
             "\"user\" is reserved by generated client types",
         ),
         (
-            "globals: { record: global('record', { label: text().default('Ready') }) }",
+            "globals: { record: global('record', { label: text().default('Ready').optional() }) }",
             "\"record\" is reserved by generated client types",
         ),
         (
-            "globals: { client: global('client', { label: text().default('Ready') }) }",
+            "globals: { client: global('client', { label: text().default('Ready').optional() }) }",
             "\"client\" is reserved by generated client types",
         ),
         (
-            "globals: { extract: global('extract', { label: text().default('Ready') }) }",
+            "globals: { extract: global('extract', { label: text().default('Ready').optional() }) }",
             "\"extract\" is reserved by generated client types",
         ),
         ("tables: []", "`tables` must be an object"),
@@ -469,24 +469,20 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         ),
         ("uploads: { backend: 'local', bucket: 'uploads' }", "has no option"),
         (
-            "collections: { notes: collection({ postId: id(), title: text().notNull() }) }",
-            "primary key is the WordPress post ID",
-        ),
-        (
-            "collections: { notes: collection({ title: text().notNull() }, { revisions: false }) }",
+            "collections: { notes: collection({ title: text() }, { revisions: false }) }",
             "collections always have native revisions",
         ),
         (
-            "tables: { notes: table({ title: text() }, { comments: true }) }",
+            "tables: { notes: table({ title: text().optional() }, { comments: true }) }",
             "only collection() kinds take comments",
         ),
         (
-            "collections: { notes: collection({ title: text().notNull() }, { comments: 'yes' }) }",
+            "collections: { notes: collection({ title: text() }, { comments: 'yes' }) }",
             "`comments` must be true or false",
         ),
     ] {
         std::fs::write(tmp.path().join("first.config.ts"), format!(
-            "import {{ collection, table, global, id, text, defineConfig }} from 'first'; const shared = table({{}}); export default defineConfig({{ {body} }});"
+            "import {{ collection, table, global, text, defineConfig }} from 'first'; const shared = table({{}}); export default defineConfig({{ {body} }});"
         )).unwrap();
         let checked = first().arg("check").arg(tmp.path()).output().unwrap();
         assert_eq!(checked.status.code(), Some(1));
@@ -1777,7 +1773,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-auth-duplicate", "at most one userProjection()"),
         (
             "reject-auth-email",
-            "userProjection() needs email: email().notNull().unique()",
+            "userProjection() needs email: email().unique()",
         ),
         ("reject-auth-drafts", "userProjection() requires drafts: false"),
         ("reject-auth-revisions", "userProjection() requires revisions: false"),
@@ -2059,7 +2055,7 @@ fn rejects_phase2_static_contracts() {
         ),
     ] {
         std::fs::write(tmp.join("first.config.ts"), format!(
-            "import {{ collection, id, text, defineConfig , table}} from 'first'; const notes = table({{ id: id(), secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}) }}); export default defineConfig({{ tables: {{ notes }} }});"
+            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}).optional() }}); export default defineConfig({{ tables: {{ notes }} }});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -2109,7 +2105,7 @@ fn rejects_phase2_static_contracts() {
         ),
     ] {
         std::fs::write(tmp.join("first.config.ts"), format!(
-            "import {{ collection, id, text, defineConfig , table}} from 'first'; const notes = table({{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}); export default defineConfig({{ tables: {{ notes }} }});"
+            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export default defineConfig({{ tables: {{ notes }} }});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -2133,7 +2129,7 @@ fn rejects_phase2_static_contracts() {
         "const objects = [{ write: writers[0]! }]; objects.forEach(({ write }) => write())",
     ] {
         std::fs::write(tmp.join("first.config.ts"), format!(
-            "import {{ collection, id, text, defineConfig , table}} from 'first'; const notes = table({{ id: id(), secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}) }}); export default defineConfig({{ tables: {{ notes }} }});"
+            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export default defineConfig({{ tables: {{ notes }} }});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -2369,8 +2365,8 @@ fn kind_urls_and_the_frontend_mode_reach_the_schema() {
     };
     let built = schema(
         r#"import { collection, defineConfig, text } from "first";
-export const notes = collection({ title: text().notNull() }, { url: "/notes/:year/:slug" });
-export const plain = collection({ title: text().notNull() });
+export const notes = collection({ title: text().optional() }, { url: "/notes/:year/:slug" });
+export const plain = collection({ title: text().optional() });
 export default defineConfig({ name: "kindurls", collections: { notes, plain }, frontend: "https://www.example.com/" });
 "#,
     );
@@ -2735,7 +2731,7 @@ fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
         tmp.path().join("first.config.ts"),
         r#"import { action, defineConfig, text } from "first";
 import { run } from "./first/run.mjs";
-export default defineConfig({ name: "p", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
+export default defineConfig({ name: "p", actions: { a: action({ access: "anyone", input: { s: text().optional() }, async handler(input) { return { v: run(input.s) }; } }) } });
 "#,
     )
     .unwrap();

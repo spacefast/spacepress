@@ -1465,7 +1465,7 @@ fn column(
     if b.primary_key && (b.access.is_some() || b.show_if.is_some()) {
         return Err(Diag::new(
             b.span_of(if b.access.is_some() { "access" } else { "showIf" }),
-            "access/showIf is not allowed on id() or system columns",
+            "access/showIf is not allowed on `id` or system columns",
         )
         .help("remove the modifier"));
     }

@@ -126,11 +126,13 @@ test("Run in WordPress runs the config in the editor", async ({ page }) => {
 
 test("Run in WordPress says so when an edited config needs a plugin this WordPress doesn't install", async ({ page }) => {
   await page.route("https://playground.wordpress.net/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html>" }));
-  await page.goto("./playground?example=wp-plugins");
+  await page.goto("./playground?example=pantry");
   const status = page.locator("#compile-status");
   const source = page.getByRole("textbox", { name: "Source code", exact: true });
   await expect(status).toHaveAttribute("data-state", "ok", { timeout: 30_000 });
-  await source.fill((await source.inputValue()).replace('"classic-editor": "1.6.7",', '"classic-editor": "1.6.7",\n    "hello-dolly": "1.7.2",'));
+  await expect(page.getByRole("combobox", { name: "Example", exact: true })).toHaveValue("pantry");
+  // Pantry's lock has no hello-dolly, so the published WordPress can't install it.
+  await source.fill((await source.inputValue()).replace("export default defineConfig({\n", 'export default defineConfig({\n  plugins: { "hello-dolly": "1.7.2" },\n'));
   await expect(status).toHaveAttribute("data-state", "ok");
   await page.getByRole("button", { name: "Run in WordPress" }).click();
   await expect(page.locator("#wordpress-note")).toContainText("hello-dolly 1.7.2");

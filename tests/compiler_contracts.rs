@@ -2286,7 +2286,7 @@ fn schema_builders_refuse_discarded_arguments_at_the_call_site() {
         "new HttpError(400, 'bad', 'message')",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{text, json, action, defineConfig, HttpError}} from 'first';\nconst invalid = {expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>1}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{text, json, select, action, defineConfig, HttpError}} from 'first';\nconst invalid = {expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>1}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];

@@ -271,8 +271,8 @@ fn a_stale_or_missing_render_artifact_is_refused_before_publishing() {
     fs::write(
         &config,
         text.replace(
-            "dek: text({ multiline: true }).max(240),",
-            "dek: text({ multiline: true }).max(240),\n  mood: text(),",
+            "dek: text({ multiline: true }).max(240).optional(),",
+            "dek: text({ multiline: true }).max(240).optional(),\n  mood: text().optional(),",
         ),
     )
     .unwrap();

@@ -1719,7 +1719,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-sync-auth", "user projections cannot sync"),
         (
             "reject-auth-primary-key",
-            "userProjection() needs the primary key id: id()",
+            "`.primaryKey()` is gone: every kind has an integer `id`",
         ),
         ("reject-sync-directory", "two collections sync into the same directory"),
         ("reject-sync-outside", "sync directory must stay inside the project"),
@@ -1727,7 +1727,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-sync-uid", "uid: false cannot be combined with sync"),
         (
             "reject-sync-primary-key",
-            "syncs with files, so its primary key must be id()",
+            "`.primaryKey()` is gone: every kind has an integer `id`",
         ),
         ("reject-sync-reference", "sync references need uid: true on a"),
         (

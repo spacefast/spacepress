@@ -104,7 +104,7 @@ test("Run in WordPress runs the config in the editor", async ({ page }) => {
   expect(committed.steps.some((step) => step.step === "runPHP")).toBe(true);
 
   // Edited: a new text field on items reaches the app plugin's schema and a new migration.
-  await source.fill((await source.inputValue()).replace("  opened: boolean().notNull().default(false),", "  opened: boolean().notNull().default(false),\n  note: text(),"));
+  await source.fill((await source.inputValue()).replace("  opened: boolean().default(false),", "  opened: boolean().default(false),\n  note: text().optional(),"));
   await expect(status).toHaveAttribute("data-state", "ok");
   const before = (await frame.getAttribute("src"))!;
   await run.click();

@@ -10,11 +10,11 @@ import { mine, ownerId, signedIn } from "./first/lib/owner";
 
 // A collection is stored as WordPress posts, so it gets the editor, drafts and revisions.
 export const books = collection({
-  title: text().notNull().max(160),
-  slug: slug({ source: "title" }),
-  review: richText(),
+  title: text().max(160),
+  slug: slug({ source: "title" }).optional(),
+  review: richText().optional(),
   // Written by the tally job below; a client can't set it.
-  minutesRead: integer().notNull().default(0).access({ create: false, update: false }),
+  minutesRead: integer().default(0).access({ create: false, update: false }),
 }, {
   title: "title",
   content: "review",
@@ -23,9 +23,9 @@ export const books = collection({
 
 // A table is a plain SQL table, with its migration written for you.
 export const reads = table({
-  bookId: integer().notNull().references(() => books.id, { onDelete: "cascade" }),
-  minutes: integer().notNull(),
-  finishedAt: timestamp().notNull().defaultNow(),
+  bookId: integer().references(() => books.id, { onDelete: "cascade" }),
+  minutes: integer(),
+  finishedAt: timestamp().defaultNow(),
   ownerId,
 }, {
   access: { read: mine, create: "authenticated", update: mine, delete: mine },
@@ -56,7 +56,7 @@ export default defineConfig({
   actions: {
     // POST /wp-json/first/v1/actions/logRead, typed in the generated client.
     logRead: action({
-      input: { bookId: integer().notNull(), minutes: integer().notNull() },
+      input: { bookId: integer(), minutes: integer() },
       access: "authenticated",
       async handler({ bookId, minutes }, ctx) {
         const [read] = await db.insert(reads).values({ bookId, minutes, ownerId: signedIn(ctx) }).returning();
@@ -67,7 +67,7 @@ export default defineConfig({
   jobs: {
     // A job runs after the request, on Action Scheduler: here it totals a book's reading time.
     tally: job({
-      input: { bookId: integer().notNull() },
+      input: { bookId: integer() },
       async handler({ bookId }) {
         const all = await db.query.reads.findMany({ where: { bookId } });
         const minutesRead = all.reduce((sum, r) => sum + r.minutes, 0);

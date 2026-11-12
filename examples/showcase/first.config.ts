@@ -22,10 +22,10 @@ export { stories } from "./first/stories";
 
 export const tasks = table(
   {
-    title: text().notNull().min(1).max(120),
-    done: boolean().notNull().default(false),
-    storyId: integer().references(() => stories.id, { onDelete: "set null" }),
-    editorNote: text().access({ read: "editor" }),
+    title: text().min(1).max(120),
+    done: boolean().default(false),
+    storyId: integer().references(() => stories.id, { onDelete: "set null" }).optional(),
+    editorNote: text().access({ read: "editor" }).optional(),
   },
   {
     access: {
@@ -87,8 +87,8 @@ export default defineConfig({
     settings: global(
       "settings",
       {
-        title: text().notNull().default("The small things, shipped."),
-        description: text().default("A working publication, built with First."),
+        title: text().default("The small things, shipped."),
+        description: text().default("A working publication, built with First.").optional(),
       },
       { access: { read: "anyone", update: "editor" } },
     ),
@@ -107,7 +107,7 @@ export default defineConfig({
     restock,
     previewHeadline: action({
       access: "anyone",
-      input: { title: text().notNull().min(1).max(120) },
+      input: { title: text().min(1).max(120) },
       handler: ({ title }) => new Headline(title).preview(),
     }),
   },

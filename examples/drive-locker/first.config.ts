@@ -1,6 +1,6 @@
 import {
   action, date, db, defineConfig, defineRelations, email, HttpError,
-  integer, job, jobs, json, real, table, text, timestamp, userProjection, type AccessConfig,
+  integer, job, jobs, json, table, text, timestamp, userProjection, type AccessConfig, number, select,
 } from "first";
 import { HEALTH } from "./first/lib/health";
 
@@ -10,53 +10,53 @@ const access = {
   update: ({ user }) => user ? { ownerId: user.id } : false,
   delete: ({ user }) => user ? { ownerId: user.id } : false,
 } satisfies AccessConfig;
-const ownerId = integer().notNull().default(0).access({ create: false, update: false });
+const ownerId = integer().default(0).access({ create: false, update: false });
 
 export const places = table({
   ownerId,
-  name: text().notNull().min(1).max(120),
-  kind: text({ enum: ["nas-bay", "desktop", "laptop", "drawer", "offsite"] }).notNull(),
+  name: text().min(1).max(120),
+  kind: select(["nas-bay", "desktop", "laptop", "drawer", "offsite"]),
 }, { access });
 
 export const drives = table({
   ownerId,
-  label: text().notNull().min(1).max(120),
-  model: text().notNull().min(1).max(160),
-  serial: text().notNull().min(1).max(160),
-  serialKey: text().notNull().max(191).unique().default("").access({ read: false, create: false, update: false }),
-  kind: text({ enum: ["ssd", "hdd", "nvme", "sd", "usb"] }).notNull(),
-  capacityGb: real().notNull().min(0.001),
-  interface: text().notNull().min(1).max(80),
-  purchasedOn: date(),
-  warrantyUntil: date(),
-  placeId: integer().references(() => places.id, { onDelete: "set null" }),
-  status: text({ enum: ["in-use", "spare", "failed", "retired"] }).notNull().default("spare"),
-  notes: text({ multiline: true }),
-  tags: json().$type<string[]>().notNull().$default(() => []),
-  replacementNeededAt: timestamp().access({ create: false, update: false }),
+  label: text().min(1).max(120),
+  model: text().min(1).max(160),
+  serial: text().min(1).max(160),
+  serialKey: text().max(191).unique().default("").access({ read: false, create: false, update: false }),
+  kind: select(["ssd", "hdd", "nvme", "sd", "usb"]),
+  capacityGb: number().min(0.001),
+  interface: text().min(1).max(80),
+  purchasedOn: date().optional(),
+  warrantyUntil: date().optional(),
+  placeId: integer().references(() => places.id, { onDelete: "set null" }).optional(),
+  status: select(["in-use", "spare", "failed", "retired"]).default("spare"),
+  notes: text({ multiline: true }).optional(),
+  tags: json<string[]>().$default(() => []),
+  replacementNeededAt: timestamp().access({ create: false, update: false }).optional(),
 }, { access });
 
 export const healthReadings = table({
   ownerId,
-  driveId: integer().notNull().references(() => drives.id, { onDelete: "cascade" }),
-  readOn: date().notNull(),
-  powerOnHours: integer().notNull().min(0),
-  wearPercent: real().notNull().min(0).max(100),
-  reallocatedSectors: integer().notNull().min(0),
-  tempC: real().notNull().min(-40).max(150),
+  driveId: integer().references(() => drives.id, { onDelete: "cascade" }),
+  readOn: date(),
+  powerOnHours: integer().min(0),
+  wearPercent: number().min(0).max(100),
+  reallocatedSectors: integer().min(0),
+  tempC: number().min(-40).max(150),
 }, { access });
 
 export const contents = table({
   ownerId,
-  driveId: integer().notNull().references(() => drives.id, { onDelete: "cascade" }),
-  description: text().notNull().min(1).max(500),
-  usedGb: real().notNull().min(0),
-  lastBackupOn: date(),
+  driveId: integer().references(() => drives.id, { onDelete: "cascade" }),
+  description: text().min(1).max(500),
+  usedGb: number().min(0),
+  lastBackupOn: date().optional(),
 }, { access });
 
 const members = userProjection({
-  email: email().notNull().unique().max(191),
-  name: text().notNull(),
+  email: email().unique().max(191),
+  name: text(),
 }, { access: { read: "self", create: false, update: "self", delete: false } });
 
 const tables = { drives, places, healthReadings, contents };
@@ -174,7 +174,7 @@ export default defineConfig({
   },
   jobs: {
     stampReplacement: job({
-      input: { driveId: integer().notNull(), ownerId: integer().notNull(), flaggedAt: timestamp().notNull() },
+      input: { driveId: integer(), ownerId: integer(), flaggedAt: timestamp() },
       retries: 2,
       async handler({ driveId, ownerId, flaggedAt }) {
         await db.update(drives).set({ replacementNeededAt: flaggedAt })
@@ -186,9 +186,9 @@ export default defineConfig({
     logHealth: action({
       access: "authenticated",
       input: {
-        driveId: integer().notNull(), readOn: date().notNull(),
-        powerOnHours: integer().notNull().min(0), wearPercent: real().notNull().min(0).max(100),
-        reallocatedSectors: integer().notNull().min(0), tempC: real().notNull().min(-40).max(150),
+        driveId: integer(), readOn: date(),
+        powerOnHours: integer().min(0), wearPercent: number().min(0).max(100),
+        reallocatedSectors: integer().min(0), tempC: number().min(-40).max(150),
       },
       async handler(input, ctx) {
         const ownerId = actor(ctx.user?.id);
@@ -215,7 +215,7 @@ export default defineConfig({
     }),
     whereIs: action({
       access: "authenticated",
-      input: { query: text().notNull().min(1).max(160) },
+      input: { query: text().min(1).max(160) },
       async handler({ query }, ctx) {
         const ownerId = actor(ctx.user?.id);
         const needle = query.trim().toLowerCase();
@@ -255,7 +255,7 @@ export default defineConfig({
       },
     }),
     warrantyExpiring: action({
-      access: "authenticated", input: { days: integer().notNull().min(0).max(3650).default(30) },
+      access: "authenticated", input: { days: integer().min(0).max(3650).default(30) },
       async handler({ days }, ctx) {
         const today = new Date().toISOString().slice(0, 10);
         const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
@@ -266,7 +266,7 @@ export default defineConfig({
       },
     }),
     retire: action({
-      access: "authenticated", input: { driveId: integer().notNull() },
+      access: "authenticated", input: { driveId: integer() },
       async handler({ driveId }, ctx) {
         const ownerId = actor(ctx.user?.id);
         await requireDrive(driveId, ownerId);

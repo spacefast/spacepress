@@ -1,3 +1,3 @@
-import { collection, id, text, defineConfig } from "first";
-const media = collection({ id: id(), title: text().notNull() });
+import { collection, text, defineConfig } from "first";
+const media = collection({ title: text() });
 export default defineConfig({ collections: { media } });

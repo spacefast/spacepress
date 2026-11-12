@@ -5,32 +5,32 @@ import {
 } from "first";
 
 const access = { read: "anyone", create: "editor", update: "editor", delete: "editor" };
-export const writers = collection({ name: text().notNull() }, { title: "name", uid: true, access });
+export const writers = collection({ name: text() }, { title: "name", uid: true, access });
 export const stories = collection({
-  title: text().notNull().localized(),
-  body: richText().localized(),
-  slug: slug({ source: "title" }),
-  writerId: integer().references(() => writers.id, { onDelete: "set null" }),
-  cover: media({ accept: "image" }),
-  price: integer(),
-  editorNote: text().access({ read: "editor", create: "editor", update: "editor" }),
-  details: group({ fields: { subtitle: text(), featured: boolean().default(false) } }),
-  links: repeater({ fields: { label: text().notNull(), href: text().notNull() } }),
-  sections: blocks({ layouts: {
-    quote: { text: text().notNull(), cite: text() },
-    callout: { heading: text().notNull(), body: text() },
-  } }),
-  metadata: json(),
+  title: text().localized(),
+  body: richText().localized().optional(),
+  slug: slug({ source: "title" }).optional(),
+  writerId: integer().references(() => writers.id, { onDelete: "set null" }).optional(),
+  cover: media({ accept: "image" }).optional(),
+  price: integer().optional(),
+  editorNote: text().access({ read: "editor", create: "editor", update: "editor" }).optional(),
+  details: group({ subtitle: text().optional(), featured: boolean().default(false).optional() }).optional(),
+  links: repeater({ label: text(), href: text() }).optional(),
+  sections: blocks({
+    quote: { text: text(), cite: text().optional() },
+    callout: { heading: text(), body: text().optional() },
+  }).optional(),
+  metadata: json().optional(),
 }, { title: "title", content: "body", drafts: true, revisions: true, access });
 export const tasks = table({
-  label: text().notNull(),
-  storyId: integer().references(() => stories.id, { onDelete: "cascade" }),
-  processed: boolean().notNull().default(false),
+  label: text(),
+  storyId: integer().references(() => stories.id, { onDelete: "cascade" }).optional(),
+  processed: boolean().default(false),
 }, { access });
-export const guides = collection({ title: text().notNull(), body: richText(), slug: slug({ source: "title" }) }, {
+export const guides = collection({ title: text(), body: richText().optional(), slug: slug({ source: "title" }).optional() }, {
   title: "title", content: "body", sync: "content/guides/*.md", drafts: true, revisions: true, access,
 });
-export const deliveries = table({ message: text().notNull() }, { access: { read: "editor" } });
+export const deliveries = table({ message: text() }, { access: { read: "editor" } });
 
 const relations = defineRelations({ stories, writers, tasks }, (r) => ({
   stories: { writer: r.one.writers({ from: r.stories.writerId, to: r.writers.id }), tasks: r.many.tasks() },
@@ -47,12 +47,12 @@ export default defineConfig({
     beforeCreate(data) { data.label = data.label.trim(); },
     async afterCreate(row) { await jobs.processTask.enqueue({ taskId: row.id }); },
   } },
-  jobs: { processTask: job({ input: { taskId: integer().notNull() }, handler: async ({ taskId }) => {
+  jobs: { processTask: job({ input: { taskId: integer() }, handler: async ({ taskId }) => {
     await db.update(tasks).set({ processed: true }).where({ id: taskId });
   } }) },
   webhooks: [{ url: env("PLATFORM_HOOK_URL"), secret: env("PLATFORM_HOOK_SECRET"), events: ["tasks.created"] }],
   actions: { receive: action({
-    input: { message: text().notNull() },
+    input: { message: text() },
     signature: { secret: env("PLATFORM_HOOK_SECRET"), header: "first-signature", scheme: "hmac-sha256" },
     handler: async ({ message }) => { await db.insert(deliveries).values({ message }); return { received: message }; },
   }) },

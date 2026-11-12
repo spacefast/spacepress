@@ -74,7 +74,7 @@ export async function POST(req: RouteRequest) {
 - `metadata` is an object or a function of the page's props: `title`,
   `description`, `canonical`, `robots: { index, follow }`. A layout's
   `title: { default, template: "%s · Site" }` wraps its pages' titles.
-- `export const search = { page: integer().notNull().default(1), q: text() }`
+- `export const search = { page: integer().default(1), q: text().optional() }`
   types the query string. A value a field refuses (`?page=abc`) reads as absent.
 - `guard` on a layout: a role (`"subscriber"`, `"editor"`, …),
   `"authenticated"`, or `({ user }) => boolean`. A signed-out visitor goes to

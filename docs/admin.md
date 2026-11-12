@@ -7,13 +7,12 @@ Enable pretty permalinks and visit `/first-admin/`. A subdirectory installation
 uses its own prefix, for example `/blog/first-admin/`.
 
 ```ts
-import { collection, defineConfig, id, richText, text } from "first";
+import { collection, defineConfig, richText, text } from "first";
 
 const posts = collection({
-  id: id(),
-  title: text().notNull(),
-  body: richText(),
-  summary: text(),
+  title: text(),
+  body: richText().optional(),
+  summary: text().optional(),
 }, {
   title: "title",
   content: "body",

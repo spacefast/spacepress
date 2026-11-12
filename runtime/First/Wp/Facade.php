@@ -19,6 +19,9 @@ use First\Js;
  *   DELETE /__first/api/v1/<kind>/<id>     → DELETE /wp/v2/<base>/<id> (post kinds: force)
  *   GET    /__first/api/v1/me              → GET  /wp/v2/users/me
  *   POST   /__first/api/v1/actions/<name>  → /wp-abilities/v1/abilities/<app>/<name>/run (GET if readonly)
+ *   GET/PATCH /__first/api/v1/<global>      → the global's get/update Ability, through the same run route
+ *   GET/PATCH /__first/api/v1/settings      → GET /wp/v2/settings (public fields from the index for others)
+ *   GET    /__first/api/v1/menus[/<loc>]    → /wp/v2/menu-locations + /wp/v2/menu-items, public locations only
  *   GET    /__first/api/v1                 → the app's schema: kinds, fields, actions (`first pull`)
  *
  * Errors are RFC 9457 problem documents mapped from core's `WP_Error`. Callers authenticate as core
@@ -127,6 +130,9 @@ final class Facade
         if ($name === 'actions' && count($segments) === 2) {
             return self::action($plugin, $method, $segments[1], $query, $body);
         }
+        if (isset($plugin->schema->globals()[$name]) && count($segments) === 1) {
+            return self::global($plugin, $method, $name, $body);
+        }
         if ($name === 'settings' && count($segments) === 1 && !isset($kinds['settings'])) {
             return self::settings($method, $body);
         }
@@ -217,10 +223,11 @@ final class Facade
     }
 
     /**
-     * `POST /actions/<name>` (`GET` when readonly): the action's Ability, run as core runs it (its
-     * input validation, its permission callback, its output validation), `{ data }` back. Through
-     * `WP_Ability::execute()` rather than the run route's REST discovery, so an `agents: false`
-     * action (hidden from REST and MCP listings) is still the app's own to call, as on `/first/v1`.
+     * `POST /actions/<name>` (`GET` when readonly): the action's Ability through core's run route
+     * (`/wp-abilities/v1/abilities/<app>/<name>/run`), so core's own checks decide (input, permission,
+     * execution, output) and the facade only maps: the facade method onto the one the run route takes
+     * (GET for readonly, DELETE for destructive + idempotent, POST otherwise), `{ input }` in, `{ data }`
+     * out. An `agents: false` action is the app's own to call ({@see Abilities\FirstAbility}).
      */
     private static function action(Plugin $plugin, string $method, string $name, array $query, string $body): array
     {
@@ -229,22 +236,39 @@ final class Facade
             throw HttpError::notFound("Unknown action '$name'"); // a signed webhook is a route, not an action
         }
         \First\App::allow($method, ($action['readonly'] ?? false) ? ['GET', 'HEAD', 'POST'] : ['POST']);
-        $ability = wp_get_ability(\First\Wp\Abilities\Register::kebab($plugin->schema->name()) . '/' . \First\Wp\Abilities\Register::kebab($name))
-            ?? throw HttpError::notFound("Unknown action '$name'");
         $input = $method === 'POST' ? $body : (string) Js::jsonStringify(self::queryInput($query));
-        $decoded = self::body($input);
-        $result = \First\Wp\Abilities\Register::withSentInput($ability->get_name(), $input, static function () use ($ability, $decoded) {
-            // The ability's own check first, so a refusal keeps First's status and code; execute()
-            // checks again and reduces any refusal to a generic one.
-            $allowed = $ability->check_permissions($decoded);
 
-            return $allowed instanceof \WP_Error ? $allowed : $ability->execute($decoded);
-        });
-        if ($result instanceof \WP_Error) {
-            throw self::fromWpError($result, 403);
+        return self::json(200, ['data' => self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'")]);
+    }
+
+    /** `GET`/`PATCH /<global>` (spec §3a): the global's read and update Abilities through the run route. */
+    private static function global(Plugin $plugin, string $method, string $name, string $body): array
+    {
+        \First\App::allow($method, ['GET', 'HEAD', 'PATCH']);
+        $op = $method === 'PATCH' ? 'update' : 'get';
+
+        return self::json(200, ['data' => self::ability($plugin, 'global-' . Abilities\Register::kebab($name) . '-' . $op, $op === 'update' ? $body : '{}', "Unknown global '$name'")]);
+    }
+
+    /** One run of the app's ability `<app>/<ability>` with $input (a JSON object) through core's run route. */
+    private static function ability(Plugin $plugin, string $ability, string $input, string $missing): mixed
+    {
+        $name = Abilities\Register::kebab($plugin->schema->name()) . '/' . $ability;
+        $object = wp_get_ability($name) ?? throw HttpError::notFound($missing);
+        self::body($input); // a JSON object, or the facade's 400/422
+        $annotations = (array) $object->get_meta_item('annotations', []);
+        $method = !empty($annotations['readonly']) ? 'GET' : (!empty($annotations['destructive']) && !empty($annotations['idempotent']) ? 'DELETE' : 'POST');
+        $request = new \WP_REST_Request($method, '/wp-abilities/v1/abilities/' . $name . '/run');
+        if ($method === 'POST') {
+            // The body as sent, so `{}` inside a json() value stays an object (Register::rawInput).
+            $request->set_header('content-type', 'application/json');
+            $request->set_body('{"input":' . (trim($input) === '' ? '{}' : $input) . '}');
+        } else {
+            $request->set_query_params(['input' => json_decode(trim($input) === '' ? '{}' : $input, true)]);
         }
+        $response = Abilities\Register::withSentInput($name, $input, static fn () => self::run($request));
 
-        return self::json(200, ['data' => $result]);
+        return self::unwrap($response);
     }
 
     // ================================================================ dispatch

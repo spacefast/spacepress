@@ -232,13 +232,13 @@ export const actions = {
     },
   }),
   vaultPeek: action({
-    input: { title: text() },
+    input: { title: text(), system: integer().optional() },
     access: "anyone",
     readonly: true,
-    async handler({ title }) {
-      const asVisitor = await vaultKind.get({ title });
+    async handler({ title, system }) {
+      if (system !== 1) return (await vaultKind.get({ title }))?.title ?? null;
       const trusted = await vaultKind.system.get({ title });
-      return { visitor: asVisitor === null ? null : asVisitor.title, system: trusted === null ? null : trusted.title, count: await vaultKind.count({ where: { title } }) };
+      return { system: trusted === null ? null : trusted.title, count: await vaultKind.system.count({ where: { title } }) };
     },
   }),
 };

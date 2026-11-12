@@ -260,12 +260,25 @@ final class Seam
      */
     private static function as(bool $trusted): ?Viewer
     {
-        if ($trusted) {
-            return null;
-        }
-        $actor = Db::instance()->actor();
+        return $trusted ? null : (self::$viewer ?? self::$visitor);
+    }
 
-        return self::$viewer ?? ($actor === null ? null : new Viewer($actor));
+    /** Who the kind API runs as outside a render: the caller of an action or route; null is the system. */
+    private static ?Viewer $visitor = null;
+
+    /**
+     * Runs $fn with the kind API bound to $visitor (an action's or a route's caller; `new Viewer(null)`
+     * is an anonymous one), then restores the binding before. Unlike asViewer(), `db.*` stays trusted.
+     */
+    public static function asVisitor(?Viewer $visitor, callable $fn): mixed
+    {
+        $previous = self::$visitor;
+        self::$visitor = $visitor;
+        try {
+            return $fn();
+        } finally {
+            self::$visitor = $previous;
+        }
     }
 
     /** `search`: a case-insensitive match on the kind's title, content and text fields the viewer may read. */
@@ -332,7 +345,10 @@ final class Seam
         return Db::instance()->count($collection, $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true]));
     }
 
-    /** One row by id or by a filter (`{ slug: "hello" }`), or null when none matches or the visitor can't read it. */
+    /**
+     * One row by id or by a filter (`{ slug: "hello" }`); null when no row the visitor may read matches.
+     * A kind the visitor may not read at all is the API's 401/403, as on every list.
+     */
     public static function kindGet(string $collection, array $selector, mixed $opts, bool $trusted): ?JsObject
     {
         $db = Db::instance();

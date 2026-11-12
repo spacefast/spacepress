@@ -328,15 +328,23 @@ fn php_lint(files: &[PathBuf]) -> Result<(), String> {
 }
 
 fn check_json(project: &Path, frozen: bool) -> ExitCode {
-    let (diagnostics, plugins) = match loader::load_all(&project.join("first.config.ts")) {
-        Err(diagnostics) => (diagnostics, None),
+    let (diagnostics, plugins, indexes) = match loader::load_all(&project.join("first.config.ts")) {
+        Err(diagnostics) => (diagnostics, None, None),
         Ok(program) => match build_program(project, &program, frozen) {
-            Ok(built) => (Vec::new(), Some(built.plugin_report)),
-            Err(d) => (vec![d], None),
+            Ok(built) => (
+                Vec::new(),
+                Some(built.plugin_report),
+                Some(crate::migrate::index_report(&built.snapshot)),
+            ),
+            Err(d) => (vec![d], None, None),
         },
     };
     let mut envelope =
         serde_json::to_value(diag::envelope(&diagnostics, project)).expect("diagnostic envelope serializes");
+    // Each SQL index the deploy keeps, and why (spec §2.9).
+    if let Some(indexes) = indexes.filter(|i| i.as_array().is_some_and(|i| !i.is_empty())) {
+        envelope["indexes"] = indexes;
+    }
     // Each plugin's package, source integrity, locked and inferred grant, and read→send flows.
     if let Some(plugins) = plugins.filter(|p| p.as_array().is_some_and(|p| !p.is_empty())) {
         envelope["plugins"] = plugins;

@@ -871,7 +871,7 @@ export interface KindApi<TSchema extends Schema, TRels, K extends keyof TSchema>
   paginate<TCols extends ColumnsSelection<TSchema[K]> = {}, TWith extends WithConfig<TSchema, TRels, K> = {}>(
     q?: KindListOptions<TSchema, TRels, K, TCols, TWith> & { cursor?: string | null },
   ): Promise<{ rows: QueryRow<TSchema, TRels, K, TCols, TWith>[]; cursor: string | null }>;
-  /** One row by id or by a filter (`{ slug: "hello" }`); null when none matches or the visitor can't read it. */
+  /** One row by id or by a filter (`{ slug: "hello" }`); null when no row the visitor may read matches. A kind they may not read at all throws the API's 401/403. */
   get<TCols extends ColumnsSelection<TSchema[K]> = {}, TWith extends WithConfig<TSchema, TRels, K> = {}>(
     target: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id | RelationsFilter<TSchema, TRels, K> : RelationsFilter<TSchema, TRels, K>,
     q?: { locale?: Locale | "*"; columns?: TCols; with?: TWith },

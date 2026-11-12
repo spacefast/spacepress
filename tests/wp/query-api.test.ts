@@ -44,9 +44,11 @@ test("the read rule follows the signed-in visitor: their own draft for a subscri
   assert.equal(typeof editor.pages[2], "string", "more pages follow");
 });
 
-test("an admin-only kind: the visitor reads nothing, `.system` reads the row", async () => {
-  const peek = await ok("GET", "/actions/vaultPeek?" + new URLSearchParams({ input: JSON.stringify({ title: `Vault ${run}` }) }), { as: "editor" });
-  assert.deepEqual(peek, { visitor: null, system: `Vault ${run}`, count: 0 });
+test("an admin-only kind: the visitor's read is refused as on the API, `.system` reads the row", async () => {
+  const peek = (system?: number) => http("GET", `${api}/actions/vaultPeek?` + new URLSearchParams({ input: JSON.stringify({ title: `Vault ${run}`, ...(system ? { system } : {}) }) }), { as: "editor" });
+  const denied = await peek();
+  assert.deepEqual([denied.status, denied.json.code], [403, "forbidden"]);
+  assert.deepEqual((await peek(1)).json.data, { system: `Vault ${run}`, count: 1 });
 });
 
 test("create, update and delete run the kind's write rules as the visitor", async () => {

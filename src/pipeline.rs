@@ -166,6 +166,7 @@ pub fn build(
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
+    let islands;
     let wordpress_uses;
     let catalog = crate::wordpress::abilities::Catalog::new(&schema, &read_lock(program)?);
     // Each collection hook kind: its compiled functions, by owning plugin (None: the app).
@@ -178,6 +179,7 @@ pub fn build(
         c.resolve_json_types().map_err(|d| d.phase(diag::Code::Compile))?;
         let slots = c.compile_roots(&roots).map_err(|d| d.phase(diag::Code::Compile))?;
         action_results = std::mem::take(&mut c.action_results);
+        islands = std::mem::take(&mut c.islands);
         wordpress_uses = std::mem::take(&mut c.wordpress_uses);
         for ((slot, name), root) in slots.iter().zip(&roots) {
             if let Slot::Hook { table, kind } = slot {
@@ -254,7 +256,11 @@ pub fn build(
             Slot::Component { name: component } => {
                 schema.components.insert(component, name);
             }
-            Slot::AppPage { .. } | Slot::AppMetadata { .. } | Slot::AppGuard { .. } | Slot::AppHandler { .. } => {
+            Slot::AppPage { .. }
+            | Slot::AppMetadata { .. }
+            | Slot::AppGuard { .. }
+            | Slot::AppAccess { .. }
+            | Slot::AppHandler { .. } => {
                 app::fill(&mut schema, &slot, &name);
             }
             Slot::ActionHandler { action } => schema.actions.get_mut(&action).expect("action").handler = name,
@@ -281,6 +287,32 @@ pub fn build(
                 }
             }
         }
+    }
+    // Generator B: each `"use client"` component's store module, content-hashed.
+    for analysis in islands {
+        let source = analysis.store().map_err(|d| d.phase(diag::Code::Compile))?;
+        let hash: String = {
+            use sha2::{Digest, Sha256};
+            Sha256::digest(source.as_bytes())
+                .iter()
+                .take(6)
+                .map(|b| format!("{b:02x}"))
+                .collect()
+        };
+        let stem = analysis
+            .namespace
+            .rsplit('/')
+            .next()
+            .unwrap_or("island")
+            .to_ascii_lowercase();
+        schema.islands.insert(
+            analysis.namespace.clone(),
+            schema::Island {
+                file: format!("{stem}.{hash}.js"),
+                source,
+                actions: analysis.server_actions.iter().cloned().collect(),
+            },
+        );
     }
     schema.wp_views =
         !wordpress_uses.is_empty() && wordpress_uses.iter().any(|u| u.kind != compile::WordPressKind::Ability);

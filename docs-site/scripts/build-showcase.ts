@@ -9,6 +9,9 @@
 //
 //   <name>.json        every path of the example, with the blob that holds each text file
 //   blobs/<hash>.txt   each distinct text file once: the runtime is the same for every example
+//   <name>.blueprint.json, plugins/<name>/*.zip   the example's WordPress Playground blueprint and zips
+//   plugins/<slug>.zip the plugins every app shares (runtime, identity, admin), once, for the
+//                      playground page's blueprint of an edited config (lib/blueprint.ts)
 //
 // The site fetches a blob when someone opens its file, so a page carries only the tree.
 import { spawnSync } from "node:child_process";
@@ -19,7 +22,8 @@ import path from "node:path";
 
 import { toFirst } from "../lib/names.ts";
 import { filesRoot, showcaseRoot, type Manifest } from "../lib/showcase.ts";
-import { blueprint } from "../lib/blueprint.ts";
+import { blueprint, sharedPlugins } from "../lib/blueprint.ts";
+import { platformVersions } from "../lib/platform.ts";
 import { siteExamples, siteFiles } from "../lib/site-examples.ts";
 
 const site = path.dirname(path.dirname(new URL(import.meta.url).pathname));
@@ -117,12 +121,18 @@ for (const { name, landing, seed } of siteExamples) {
 	// A synced collection (`sync: "content/posts/*.md"`) starts with its content files' rows.
 	const syncSeed = syncRecords(to);
 
-	const locked = (JSON.parse(readFileSync(path.join(to, "first/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string }[] }).plugins.map((p) => p.slug);
-	const published = thirdParty(locked);
+	const lock = JSON.parse(readFileSync(path.join(to, "first/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
+	const published = thirdParty(lock.plugins.map((p) => p.slug));
 	// `plugins` lists First's own plugins in the order `first build` writes them: the runtime, then
 	// the plugins that require it. WordPress refuses to activate a plugin before the ones it requires.
 	const built = JSON.parse(readFileSync(path.join(to, "first/dist/wp-content/first-manifest.json"), "utf8")) as { app: string; plugins: Record<string, string> };
-	const manifest: Manifest = { app: built.app, files: [] };
+	const manifest: Manifest = {
+		app: built.app,
+		files: [],
+		wordpressPlugins: lock.plugins.map(({ slug, version }) => ({ slug, version })),
+		syncSeed,
+		...(pagesPlugins[0] ? { pages: { slug: pagesPlugins[0], path: `files/plugins/${name}/${pagesPlugins[0]}.zip` } } : {}),
+	};
 	for (const file of walk(to).filter((file) => !file.startsWith("node_modules/") && !file.startsWith(".first/"))) {
 		const bytes = readFileSync(path.join(to, file));
 		const text = new TextDecoder("utf-8", { fatal: true });
@@ -153,9 +163,17 @@ for (const { name, landing, seed } of siteExamples) {
 	mkdirSync(path.join(filesRoot, "plugins", name), { recursive: true });
 	// Copied as built: the folder inside each zip is the plugin's name, so the zip keeps it.
 	for (const slug of generated) cpSync(path.join(plugins, `${slug}.zip`), path.join(filesRoot, "plugins", name, `${slug}.zip`));
-	const lock = JSON.parse(readFileSync(path.join(to, "first/_generated/wp-plugins.lock.json"), "utf8")) as { plugins: { slug: string; version: string }[] };
+	// The plugins every app shares are the same bytes whatever the config; a build where they differ
+	// would make the playground's blueprint for an edited config install the wrong ones.
+	for (const slug of generated.filter((slug) => (sharedPlugins as readonly string[]).includes(slug))) {
+		const zip = readFileSync(path.join(plugins, `${slug}.zip`));
+		const shared = path.join(filesRoot, "plugins", `${slug}.zip`);
+		if (!existsSync(shared)) writeFileSync(shared, zip);
+		else if (!readFileSync(shared).equals(zip)) throw new Error(`examples/${name}: ${slug}.zip differs from another example's; it must not depend on the config`);
+	}
 	const zipBase = `${process.env.SITE_URL ?? "https://first-docs.space.fast"}/files/plugins/${name}/`;
-	const print = blueprint({ zipBase, firstPlugins: generated, wordpressPlugins: lock.plugins, landingPage: landing, seed, syncSeed, prettyPermalinks: pagesPlugins.length > 0 });
+	const firstPlugins = generated.map((slug) => ({ slug, url: `${zipBase}${slug}.zip` }));
+	const print = blueprint({ platform: platformVersions(), firstPlugins, wordpressPlugins: lock.plugins, landingPage: landing, seed, syncSeed, prettyPermalinks: pagesPlugins.length > 0 });
 	writeFileSync(path.join(filesRoot, `${name}.blueprint.json`), `${JSON.stringify(print, null, "\t")}\n`);
 	console.log(`${name}: ${manifest.files.length} files`);
 }

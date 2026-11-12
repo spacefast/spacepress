@@ -90,6 +90,10 @@ pub(super) const TAG_ASSET: &str = "client import of a non-script file";
 pub(super) const TAG_SYNTAX: &str = "client source the browser build cannot compile";
 pub(super) const TAG_PUBLIC: &str = "client app over an existing public/";
 pub(super) const TAG_UNREADABLE: &str = "client module that cannot be read";
+pub(super) const TAG_STYLES: &str = "client app without its 0.8 zero.css";
+
+/// Where 0.8 served the generated utility stylesheet, and where the candidate serves it.
+pub(super) const ZERO_CSS: &str = "zero.css";
 
 /// The refusal tag for a 0.8 client name the bridge does not provide.
 fn unbridged(name: &str) -> &'static str {
@@ -438,7 +442,8 @@ fn normalize(path: &Path) -> Option<PathBuf> {
     Some(out)
 }
 
-/// The shell 0.8 generated around the client, with the bundle's stylesheets.
+/// The shell 0.8 generated around the client: `zero.css` first, as 0.8 linked it, then the
+/// bundle's stylesheets.
 fn shell(title: &str, styles: &[String]) -> String {
     let title = title.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
     let links: String = styles
@@ -467,16 +472,30 @@ fn handlers(handlers: &[super::transform::ClientHandler]) -> String {
     )
 }
 
+/// What the server conversion and the caller supply to the client conversion.
+pub(super) struct App<'a> {
+    /// The shell's `<title>`.
+    pub title: &'a str,
+    /// The `zero.css` 0.8 generated for this source; `None` refuses the app.
+    pub zero_css: Option<&'a str>,
+    /// Each converted handler's v2 inputs, for the bridge.
+    pub handlers: &'a [super::transform::ClientHandler],
+}
+
 /// Converts the client app at `entry` (capsule-relative). Errors are coded refusals.
 pub(super) fn convert(
     fs: &dyn Fs,
     root: &Path,
     entry_file: &Path,
-    title: &str,
-    converted: &[super::transform::ClientHandler],
+    app: App,
     entries: &mut Vec<Entry>,
     errors: &mut Vec<Failure>,
 ) -> Converted {
+    let App {
+        title,
+        zero_css,
+        handlers: converted,
+    } = app;
     let mut walk = Walk {
         fs,
         root,
@@ -488,11 +507,28 @@ pub(super) fn convert(
     let main = format!(
         "// Mounts the converted 0.8 client app as 0.8 did: its App (or default export) in #root.\nimport {{ h, render }} from \"./preact/preact.js\";\nimport * as Client from \"../{module}\";\n\nconst App = Client.App ?? Client.default;\nif (!App) throw new Error(\"The client entry must export App.\");\nrender(h(App, {{}}), document.getElementById(\"root\"));\n"
     );
-    let styles: Vec<String> = walk
-        .out
-        .keys()
-        .filter(|k| k.ends_with(".css"))
-        .map(|k| k.trim_start_matches("public/").to_string())
+    // 0.8 compiled the Tailwind utilities every client class used into `zero.css` and linked it
+    // from the shell. The converter can't regenerate it, so the caller supplies the one 0.8 built.
+    match zero_css {
+        Some(css) => {
+            walk.out.insert(format!("public/{ZERO_CSS}"), css.to_string());
+        }
+        None => walk.errors.push(
+            fail(
+                &super::pages::at(entry_file),
+                format!("{TAG_STYLES}: 0.8 styled the app with a generated zero.css (Tailwind utilities on the platform theme) that the source does not hold"),
+            )
+            .located(entry_file.to_string_lossy().replace('\\', "/"), 1, 1),
+        ),
+    }
+    let styles: Vec<String> = std::iter::once(ZERO_CSS.to_string())
+        .filter(|_| zero_css.is_some())
+        .chain(
+            walk.out
+                .keys()
+                .filter(|k| k.ends_with(".css") && k.as_str() != format!("public/{ZERO_CSS}"))
+                .map(|k| k.trim_start_matches("public/").to_string()),
+        )
         .collect();
     let mut files = walk.out;
     for (path, text) in RUNTIME {

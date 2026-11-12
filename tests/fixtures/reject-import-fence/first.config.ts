@@ -1,3 +1,3 @@
-import { defineConfig, table, id } from "first";
+import { defineConfig, table } from "first";
 import { tags } from "./first/tags";
-export default defineConfig({ tables: { items: table({ id: id() }) }, name: tags[0] });
+export default defineConfig({ tables: { items: table({  }) }, name: tags[0] });

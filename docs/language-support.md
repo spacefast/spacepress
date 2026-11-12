@@ -1056,13 +1056,29 @@ SVG `animate`/`set` can rewrite their target's attributes: they never target URL
 
 [Evidence](../tests/fixtures/reject-jsx-svg-animate)
 
-## jsx-use-client-pending
+## jsx-use-client
+
+Status: **supported**.
+
+A .tsx file under first/components/ that starts with "use client" (after comments and other directives such as "use strict") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState and server action calls compile; lists and reactive conditionals are refused for now.
+
+[Evidence](../tests/app_router.rs) (`client_components_compile_to_interactivity_stores`)
+
+## jsx-use-client-npm
 
 Status: **refused**. Diagnostic: `F1003`.
 
-Interactive components arrive with the Interactivity API output; until then, remove the directive to render on the server.
+Client components run in the browser without a bundler: import "first/client" and relative modules only.
 
-[Evidence](../tests/fixtures/reject-jsx-use-client)
+[Evidence](../tests/fixtures/reject-client-npm)
+
+## jsx-use-client-root
+
+Status: **refused**. Diagnostic: `F4001`.
+
+The root element carries the Interactivity directives: wrap fragments, components and conditionals in one element.
+
+[Evidence](../tests/fixtures/reject-client-root)
 
 ## jsx-children-type
 
@@ -1079,14 +1095,6 @@ Status: **refused**. Diagnostic: `F1003`.
 A `.tsx` module the config imports is refused even when its JSX never runs; components live in `first/components/`.
 
 [Evidence](../tests/fixtures/reject-jsx-config-unused)
-
-## jsx-use-client-after-prologue
-
-Status: **refused**. Diagnostic: `F1003`.
-
-The directive is found anywhere in the file's directive prologue, after comments and other directives such as `"use strict"`.
-
-[Evidence](../tests/fixtures/reject-jsx-use-client-prologue)
 
 ## jsx-children-type-local
 

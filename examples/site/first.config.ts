@@ -11,35 +11,35 @@ import {
 const STAFF = ["author", "editor", "admin"];
 
 export const authors = collection({
-  name: text().notNull().max(80),
-  bio: text({ multiline: true }).max(500),
-  avatar: media({ accept: "image" }),
-  userId: integer(),                       // the User.id that writes as this author
+  name: text().max(80),
+  bio: text({ multiline: true }).max(500).optional(),
+  avatar: media({ accept: "image" }).optional(),
+  userId: integer().optional(),                       // the User.id that writes as this author
 }, { label: "Authors", title: "name", uid: true, access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
 export const posts = collection({
   // Translated per locale. The other fields are shared by a post's translations, except each
   // row's own slug, status and dates.
-  title: text().notNull().min(1).max(120).localized(),
-  slug: slug({ source: "title" }),
-  body: richText().localized(),
-  dek: text({ multiline: true }).max(240).localized(),
-  cover: media({ accept: "image" }),
+  title: text().min(1).max(120).localized(),
+  slug: slug({ source: "title" }).optional(),
+  body: richText().localized().optional(),
+  dek: text({ multiline: true }).max(240).localized().optional(),
+  cover: media({ accept: "image" }).optional(),
   // The author's draft manuscript: a private file, readable by its uploader and the desk.
-  manuscript: file({ bucket: "manuscripts" }),
-  topics: select({ options: ["culture", "science", "tech"], multiple: true }).notNull().default([]),
-  featured: boolean().notNull().default(false),
+  manuscript: file({ bucket: "manuscripts" }).optional(),
+  topics: select(["culture", "science", "tech"]).many().default([]),
+  featured: boolean().default(false),
   // The desk's private notes: staff read and write them; readers' rows never carry the column.
-  deskNotes: text({ multiline: true }).max(2000).access({ read: "author", create: "editor", update: "editor" }),
-  authorId: integer().references(() => authors.id, { onDelete: "set null" }),
+  deskNotes: text({ multiline: true }).max(2000).access({ read: "author", create: "editor", update: "editor" }).optional(),
+  authorId: integer().references(() => authors.id, { onDelete: "set null" }).optional(),
   // The editor shows metaTitle only while the post is indexable (SCF conditional logic).
-  seo: group({ fields: { noindex: boolean().notNull().default(false), metaTitle: text().max(70).showIf({ noindex: false }) } }),
-  related: repeater({ fields: { label: text().notNull().max(80), href: url().notNull() } }).max(6),
-  sections: blocks({ layouts: {
-    pullQuote: { text: text({ multiline: true }).notNull(), cite: text().max(80) },
-    figure: { image: media({ accept: "image" }).notNull(), caption: text().max(160) },
-  } }),
-  updatedAt: timestamp().notNull().defaultNow().$onUpdate(() => new Date()),
+  seo: group({ noindex: boolean().default(false), metaTitle: text().max(70).showIf({ noindex: false }).optional() }).optional(),
+  related: repeater({ label: text().max(80), href: url() }).max(6).optional(),
+  sections: blocks({
+    pullQuote: { text: text({ multiline: true }), cite: text().max(80).optional() },
+    figure: { image: media({ accept: "image" }), caption: text().max(160).optional() },
+  }).optional(),
+  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()),
 }, {
   label: "Posts",
   title: "title",
@@ -55,11 +55,11 @@ export const posts = collection({
 });
 
 export const comments = table({
-  postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
-  name: text().notNull().max(60),
-  body: text({ multiline: true }).notNull().min(1).max(2000),
-  approved: boolean().notNull().default(false),
-  createdAt: timestamp().notNull().defaultNow(),
+  postId: integer().references(() => posts.id, { onDelete: "cascade" }),
+  name: text().max(60),
+  body: text({ multiline: true }).min(1).max(2000),
+  approved: boolean().default(false),
+  createdAt: timestamp().defaultNow(),
 }, {
   access: { read: (ctx) => STAFF.includes(ctx.user?.role ?? "") ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
 });
@@ -67,23 +67,23 @@ export const comments = table({
 // Newsletter sign-ups are acknowledged by subscribeNewsletter and processed privately on the queue.
 // Direct writes and subscriber identities stay admin-only.
 export const subscribers = table({
-  email: email().notNull().unique().max(191),
-  postId: integer().references(() => posts.id, { onDelete: "set null" }),
-  createdAt: timestamp().notNull().defaultNow(),
+  email: email().unique().max(191),
+  postId: integer().references(() => posts.id, { onDelete: "set null" }).optional(),
+  createdAt: timestamp().defaultNow(),
 }, { access: { create: "admin", read: "admin", update: "admin", delete: "admin" } });
 
 // Staff see announcement receipts; exact counts stay with the subscriber administrators.
 export const announcements = table({
-  postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
-  recipients: integer().notNull().access({ read: "admin", update: "admin" }),
-  attempt: integer().notNull(),
+  postId: integer().references(() => posts.id, { onDelete: "cascade" }),
+  recipients: integer().access({ read: "admin", update: "admin" }),
+  attempt: integer(),
 }, { access: { read: "editor", create: "admin", update: "admin", delete: "admin" } });
 
 // Readers who sign in: WordPress users through the first-identity screens. Readers see and edit their own row; administrators can read the identities they manage.
 export const members = userProjection({
-  email: email().notNull().unique().max(191),
-  name: text().notNull().max(80),
-  plan: select({ options: ["free", "supporter"] }).notNull().default("free"),
+  email: email().unique().max(191),
+  name: text().max(80),
+  plan: select(["free", "supporter"]).default("free"),
 }, { access: { read: (ctx) => ctx.user?.role === "admin" ? true : ctx.user ? { id: ctx.user.id } : false, update: "self", create: "admin", delete: "admin" } });
 
 export const collections = { authors, posts };
@@ -104,10 +104,10 @@ export const relations = defineRelations(entities, (r) => ({
 }));
 
 export const settings = global("settings", {
-  siteTitle: text().notNull().default("The First Review").max(80),
-  tagline: text().max(160),
-  commentsOpen: boolean().notNull().default(true),
-  social: repeater({ fields: { label: text().notNull().max(40), href: url().notNull() } }),
+  siteTitle: text().default("The First Review").max(80),
+  tagline: text().max(160).optional(),
+  commentsOpen: boolean().default(true),
+  social: repeater({ label: text().max(40), href: url() }).optional(),
 }, { label: "Site settings" });
 
 export default defineConfig({
@@ -130,7 +130,7 @@ export default defineConfig({
   webhooks: [{ url: env("SITE_HOOK_URL"), secret: env("SITE_HOOK_SECRET"), events: ["comments.created"] }],
   jobs: {
     subscribeReader: job({
-      input: { email: email().notNull().max(191), postId: integer() },
+      input: { email: email().max(191), postId: integer().optional() },
       agents: false,
       async handler({ email, postId }) {
         if (await db.query.subscribers.findFirst({ where: { email } })) return;
@@ -140,7 +140,7 @@ export default defineConfig({
     }),
     // Runs after the publishing request commits, on the queue (Action Scheduler on WordPress).
     notifyReaders: job({
-      input: { postId: integer().notNull() },
+      input: { postId: integer() },
       retries: 3,
       handler: async ({ postId }, ctx) => {
         const readers = await db.query.subscribers.findMany({ columns: { id: true } });
@@ -188,7 +188,7 @@ export default defineConfig({
   },
   actions: {
     subscribeNewsletter: action({
-      input: { email: email().notNull().max(191), postId: integer() },
+      input: { email: email().max(191), postId: integer().optional() },
       access: "anyone",
       async handler({ email, postId }) {
         const normalized = email.toLowerCase();
@@ -198,7 +198,7 @@ export default defineConfig({
     }),
     // Editors may remove posts and detach private subscriptions; no subscription data is returned.
     removePost: action({
-      input: { id: integer().notNull() },
+      input: { id: integer() },
       access: "editor",
       async handler({ id }) {
         const [gone] = await db.delete(posts).where({ id }).returning();
@@ -207,7 +207,7 @@ export default defineConfig({
       },
     }),
     moderateComment: action({
-      input: { id: integer().notNull(), decision: select({ options: ["approve", "reject"] }).notNull() },
+      input: { id: integer(), decision: select(["approve", "reject"]) },
       access: "editor",
       async handler({ id, decision }) {
         if (decision === "reject") {

@@ -1,12 +1,12 @@
 // Every action, access rule, and `.validate` closure here runs under Node and as compiled PHP;
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
-import { collection, id, text, integer, defineConfig, action, json, group, repeater, blocks , table} from "first";
+import { collection, text, integer, defineConfig, action, json, group, repeater, blocks , table} from "first";
 import { job, jobs, once } from "first"; // lane D
 import * as ns from "./namespace.mjs";
 import picoish from "./namespace.mjs";
 import { jsAbort, jsCollections, jsTimers } from "./stdlib.js";
 
-const n = table({ id: id() });
+const n = table({  });
 
 // These named helpers have enforced PHP object parameters. Alias mutation and missing
 // properties must keep their JavaScript behavior when reads/writes use native PHP.
@@ -57,14 +57,13 @@ const FINITE_VALUES = [NaN, Infinity, -Infinity, 0, "3", "", null, false, [], [3
 const PURE_FINITE = FINITE_VALUES.map(value => [Number.isFinite(value), isFinite(value)]);
 
 export const docs = collection({
-  id: id(),
-  title: text().notNull().validate((v): true | string => v.includes("http://") ? "No links" : v.trim().length > 0 || "blank"),
-  score: integer().validate((v, ctx) => (v % 2 === 1 && ctx.user?.role === "admin" ? `odd ${v} for ${ctx.user?.name}` : undefined)),
-  ownerId: integer(),
-  meta: json().$type<{ x: number }>().validate((value, ctx) => { if (ctx.data.meta) ctx.data.meta.x = 7; return value.x === 7 || "root alias lost"; }),
-  info: group({ fields: { meta: json().$type<{ x: number }>().notNull().validate((value, ctx) => { if (ctx.data.info) ctx.data.info.meta.x = 8; return value.x === 8 || "group alias lost"; }) } }),
-  entries: repeater({ fields: { meta: json().$type<{ x: number }>().notNull().validate((value, ctx) => { const first = ctx.data.entries?.[0]; if (first) first.meta.x = 9; return value.x === 9 || "repeater alias lost"; }) } }),
-  sections: blocks({ layouts: { hero: { meta: json().$type<{ x: number }>().notNull().validate((value, ctx) => { const first = ctx.data.sections?.[0]; if (first && first.layout === "hero") first.meta.x = 10; return value.x === 10 || "block alias lost"; }) } } }),
+  title: text().validate((v): true | string => v.includes("http://") ? "No links" : v.trim().length > 0 || "blank"),
+  score: integer().validate((v, ctx) => (v % 2 === 1 && ctx.user?.role === "admin" ? `odd ${v} for ${ctx.user?.name}` : undefined)).optional(),
+  ownerId: integer().optional(),
+  meta: json<{ x: number }>().validate((value, ctx) => { if (ctx.data.meta) ctx.data.meta.x = 7; return value.x === 7 || "root alias lost"; }).optional(),
+  info: group({ meta: json<{ x: number }>().validate((value, ctx) => { if (ctx.data.info) ctx.data.info.meta.x = 8; return value.x === 8 || "group alias lost"; }) }).optional(),
+  entries: repeater({ meta: json<{ x: number }>().validate((value, ctx) => { const first = ctx.data.entries?.[0]; if (first) first.meta.x = 9; return value.x === 9 || "repeater alias lost"; }) }).optional(),
+  sections: blocks({ hero: { meta: json<{ x: number }>().validate((value, ctx) => { const first = ctx.data.sections?.[0]; if (first && first.layout === "hero") first.meta.x = 10; return value.x === 10 || "block alias lost"; }) } }).optional(),
 }, {
   title: "title",
   access: {
@@ -855,7 +854,7 @@ export default defineConfig({
 // ---- lane D: jobs, once(), process.env (phase 2 §6.1). The Node shim keeps once() receipts and pending
 // enqueue keys in memory; PHP keeps them in __first_receipts and the outbox. Keys are unique per case.
 function laneDJobs() {
-  return { ping: job({ input: { note: text() }, handler: async () => {} }) };
+  return { ping: job({ input: { note: text().optional() }, handler: async () => {} }) };
 }
 
 function laneDActions() {
@@ -1027,11 +1026,10 @@ export const FIELD_CTXS = [
 // A hoisted function, so the collection can live in this block below the default export.
 function fieldDocs() {
   return table({
-    id: id(),
-    ownerId: integer(),
+    ownerId: integer().optional(),
     salary: integer().access({
       read: (ctx) => ctx.user !== null && (RANK.indexOf(ctx.user.role) >= 2 || ctx.data.ownerId === ctx.user.id),
       update: (ctx) => ctx.user?.role === "admin" || (ctx.data.salary !== null && ctx.op === "update"),
-    }),
+    }).optional(),
   });
 }

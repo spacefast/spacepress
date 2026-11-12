@@ -169,13 +169,13 @@ fn successful_json_check_and_the_reusable_recipe_write_nothing() {
 #[test]
 fn nested_presentation_reaches_scf_and_public_schema_without_storage_migrations() {
     let tmp = tempfile::tempdir().unwrap();
-    let config = r#"import { collection, defineConfig, id, text, group, repeater, blocks, json } from "first";
+    let config = r#"import { collection, defineConfig, text, group, repeater, blocks, json } from "first";
 const notes = collection({
-  id: id(), title: text().notNull(),
-  seo: group({ fields: { summary: text().ui({ label: "Display name", help: "<b>Plain text</b>", placeholder: "Jane", width: 50 }) } }).ui({ label: "SEO" }),
-  rows: repeater({ fields: { value: text().ui({ label: "Row value", help: undefined, placeholder: undefined, width: undefined }) } }),
-  content: blocks({ layouts: { hero: { heading: text().ui({ label: "Heading" }) } } }),
-  metadata: json(),
+  title: text(),
+  seo: group({ summary: text().ui({ label: "Display name", help: "<b>Plain text</b>", placeholder: "Jane", width: 50 }).optional() }).ui({ label: "SEO" }).optional(),
+  rows: repeater({ value: text().ui({ label: "Row value", help: undefined, placeholder: undefined, width: undefined }).optional() }).optional(),
+  content: blocks({ hero: { heading: text().ui({ label: "Heading" }).optional() } }).optional(),
+  metadata: json().optional(),
 }, { title: "title" });
 export default defineConfig({ name: "presentation", collections: { notes } });"#;
     std::fs::write(tmp.path().join("first.config.ts"), config).unwrap();
@@ -247,7 +247,7 @@ fn malformed_ui_is_rejected_including_unknown_keys_nulls_and_fractional_widths()
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("first.config.ts"), format!(
-            "import {{ collection, id, text, defineConfig }} from 'first'; const notes = collection({{ id: id(), title: text().ui({ui}) }}, {{ title: 'title' }}); export default defineConfig({{ collections: {{ notes }} }});"
+            "import {{ collection, text, defineConfig }} from 'first'; const notes = collection({{ title: text().ui({ui}).optional() }}, {{ title: 'title' }}); export default defineConfig({{ collections: {{ notes }} }});"
         )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{ui}: {report}");
@@ -265,10 +265,10 @@ fn uri_vectors_agree_in_node_pure_evaluation_and_generated_php() {
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
-import {{ collection, id, text, json, action, defineConfig }} from "first";
+import {{ collection, text, json, action, defineConfig }} from "first";
 const values = {values};
 const encoded = values.map(value => [encodeURI(value), encodeURIComponent(value)]);
-const notes = collection({{ id: id(), title: text().notNull(), result: json().default(encoded) }}, {{ title: "title" }});
+const notes = collection({{ title: text(), result: json().default(encoded).optional() }}, {{ title: "title" }});
 export default defineConfig({{ name: "uri", collections: {{ notes }}, actions: {{ encode: action({{ input: {{}}, handler: () => values.map(value => [encodeURI(value), encodeURIComponent(value)]) }}) }} }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
@@ -538,9 +538,9 @@ fn uri_encoding_refuses_coercion_and_discarded_arguments() {
                 expression.to_string()
             };
             std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
-import {{ collection, id, text, action, defineConfig }} from "first";
+import {{ collection, text, action, defineConfig }} from "first";
 const result = {invocation};
-const notes = collection({{ id: id(), title: text().notNull() }}, {{ title: "title" }});
+const notes = collection({{ title: text() }}, {{ title: "title" }});
 export default defineConfig({{ collections: {{ notes }}, actions: {{ encode: action({{ input: {{}}, handler: {handler_body} }}) }} }});
 "#, handler_body = if handler { "result".to_string() } else { "() => result".to_string() })).unwrap();
             let (out, report) = checked(tmp.path());
@@ -1097,9 +1097,9 @@ fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() 
     );
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
-import {{ collection, id, text, json, action, defineConfig }} from "first";
+import {{ collection, text, json, action, defineConfig }} from "first";
 const measured = {expression};
-const notes = collection({{ id: id(), title: text().notNull(), result: json().default(measured) }}, {{ title: "title" }});
+const notes = collection({{ title: text(), result: json().default(measured).optional() }}, {{ title: "title" }});
 export default defineConfig({{ name: "differences", collections: {{ notes }}, actions: {{ measure: action({{ input: {{}}, handler: () => {expression} }}) }} }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
@@ -1199,7 +1199,7 @@ fn static_commonjs_packages_match_node_through_generated_php() {
         r#"
 import { action, defineConfig, text } from "first";
 import run from "./first/probe.cjs";
-export default defineConfig({ name: "commonjs", actions: { probe: action({ access: "anyone", input: { glob: text().notNull() }, handler: (input) => run(input.glob) }) } });
+export default defineConfig({ name: "commonjs", actions: { probe: action({ access: "anyone", input: { glob: text() }, handler: (input) => run(input.glob) }) } });
 "#,
     )
     .unwrap();
@@ -1499,11 +1499,11 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         let input = if message == "JSON schemas cannot use class instance types" {
-            "{ value: json().$type<C>() }"
+            "{ value: json<C>().optional() }"
         } else {
             "{}"
         };
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{ table, id, json, action, defineConfig }} from 'first';\n{declarations}\nexport default defineConfig({{ tables: {{ n: table({{ id: id() }}) }}, actions: {{ test: action({{input: {input}, handler: () => {handler} }}) }} }});\n")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{ table, json, action, defineConfig }} from 'first';\n{declarations}\nexport default defineConfig({{ tables: {{ n: table({{}}) }}, actions: {{ test: action({{input: {input}, handler: () => {handler} }}) }} }});\n")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{message}: {report}");
         let diagnostic = report["diagnostics"]
@@ -1628,9 +1628,9 @@ fn check_reports_plugin_grants_and_read_to_send_flows() {
     std::fs::create_dir_all(tmp.path().join("node_modules/first-plugin-sync/src")).unwrap();
     std::fs::write(
         tmp.path().join("first.config.ts"),
-        r#"import { collection, defineConfig, id, text } from "first";
+        r#"import { collection, defineConfig, text } from "first";
 import sync from "first-plugin-sync";
-const posts = collection({ id: id(), title: text().notNull() }, { title: "title" });
+const posts = collection({ title: text() }, { title: "title" });
 export default defineConfig({ name: "flows", collections: { posts }, use: [sync()] });"#,
     )
     .unwrap();
@@ -1817,7 +1817,7 @@ export const describe = (shape: Shape): string => (shape.kind === "circle" ? `r=
 import { action, defineConfig, text } from 'first';
 import { run } from 'typed-lib';
 export default defineConfig({ name: 'typed-lib', actions: {
-  probe: action({ input: { key: text().notNull() }, handler: (input) => run(input.key) }),
+  probe: action({ input: { key: text() }, handler: (input) => run(input.key) }),
 } });
 "#,
     )
@@ -1859,7 +1859,7 @@ echo \First\Js::jsonStringify($fn($input, new \First\JsObject()));
         std::fs::write(
             tmp.path().join("first.config.ts"),
             format!(
-                "import {{ action, defineConfig, text }} from 'first'; {source} export default defineConfig({{ actions: {{ probe: action({{ input: {{ key: text().notNull() }}, handler: (input) => read(input.key) }}) }} }});"
+                "import {{ action, defineConfig, text }} from 'first'; {source} export default defineConfig({{ actions: {{ probe: action({{ input: {{ key: text() }}, handler: (input) => read(input.key) }}) }} }});"
             ),
         )
         .unwrap();
@@ -2340,7 +2340,7 @@ fn configuration_refuses_unsupported_coercion_at_the_call_site() {
 fn query_calls_refuse_extra_options_arguments_at_the_call_site() {
     for method in ["findMany", "findFirst"] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig, table, id, db}} from 'first';\nconst notes = table({{id:id()}});\nexport default defineConfig({{name:'queryarity',tables:{{notes}},actions:{{probe:action({{input:{{}},handler:async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig, table, db}} from 'first';\nconst notes = table({{}});\nexport default defineConfig({{name:'queryarity',tables:{{notes}},actions:{{probe:action({{input:{{}},handler:async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2373,7 +2373,7 @@ fn database_builders_refuse_discarded_arguments_at_the_call_site() {
         "(n++, db.insert(notes).values({count: 1}))",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig, table, id, integer, db}} from 'first';\nconst notes=table({{id:id(),count:integer()}});\nexport default defineConfig({{name:'builderarity',tables:{{notes}},actions:{{probe:action({{input:{{}},handler:async()=>{{let n=0; await {expression}; return n;}}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig, table, integer, db}} from 'first';\nconst notes=table({{count:integer().optional()}});\nexport default defineConfig({{name:'builderarity',tables:{{notes}},actions:{{probe:action({{input:{{}},handler:async()=>{{let n=0; await {expression}; return n;}}}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2428,16 +2428,16 @@ fn configuration_validates_callbacks_before_empty_input_shortcuts() {
 fn schema_builders_refuse_discarded_arguments_at_the_call_site() {
     for expression in [
         "text({}, 1)",
-        "id(1)",
-        "text().notNull(false)",
+        "text().optional(false)",
         "text().default('x', 1)",
-        "json().$type<string>(1)",
+        "json<string>(1)",
+        "select(['a'], 1)",
         "defineConfig({}, 1)",
         "action({handler:()=>1}, 1)",
         "new HttpError(400, 'bad', 'message')",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{text, id, json, action, defineConfig, HttpError}} from 'first';\nconst invalid = {expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>1}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{text, json, select, action, defineConfig, HttpError}} from 'first';\nconst invalid = {expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>1}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2611,7 +2611,7 @@ fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
         "Date",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{json,action,defineConfig}} from 'first';\nexport default defineConfig({{actions:{{probe:action({{input:{{values:json().$type<{annotation}>().notNull()}},handler:(input)=>input.values}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{json,action,defineConfig}} from 'first';\nexport default defineConfig({{actions:{{probe:action({{input:{{values:json<{annotation}>()}},handler:(input)=>input.values}})}}}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -3868,7 +3868,7 @@ fn widened_effects_are_deterministic_and_keep_php_equal_to_node() {
         tmp.path().join("first.config.ts"),
         r#"import { action, defineConfig, text } from "first";
 import { run } from "./first/run.mjs";
-export default defineConfig({ name: "tokens", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
+export default defineConfig({ name: "tokens", actions: { a: action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }) } });
 "#,
     )
     .unwrap();
@@ -4405,24 +4405,24 @@ fn was_renames_only_what_a_table_stores() {
         .map_err(|d| d.message)
     };
     let refused = |config: &str| build(config, None).err().unwrap_or_default();
-    let head = "import { defineConfig, collection, table, id, text, group } from 'first';";
+    let head = "import { defineConfig, collection, table, text, group } from 'first';";
     assert!(
-        refused(&format!("{head} const posts = collection({{ id: id(), title: text().notNull(), body: text().was('copy') }}, {{ title: 'title' }}); export default defineConfig({{ collections: {{ posts }} }});"))
+        refused(&format!("{head} const posts = collection({{ title: text(), body: text().was('copy').optional() }}, {{ title: 'title' }}); export default defineConfig({{ collections: {{ posts }} }});"))
             .contains("`.was()` renames a column of a table()"),
     );
     assert!(
-        refused(&format!("{head} const notes = table({{ id: id(), meta: group({{ fields: {{ tag: text().was('label') }} }}) }}); export default defineConfig({{ tables: {{ notes }} }});"))
+        refused(&format!("{head} const notes = table({{ meta: group({{ tag: text().was('label').optional() }}).optional() }}); export default defineConfig({{ tables: {{ notes }} }});"))
             .contains("`.was()` renames a stored column"),
     );
     // A First-created table renamed onto an adopted one (or back) would alter a table First didn't create.
     let first = build(
-        &format!("{head} const notes = table({{ id: id() }}); export default defineConfig({{ tables: {{ notes }} }});"),
+        &format!("{head} const notes = table({{}}); export default defineConfig({{ tables: {{ notes }} }});"),
         None,
     )
     .unwrap();
     let onto = build(
         &format!(
-            "{head} const memos = table({{ id: id() }}, {{ was: 'notes', existingTable: 'sf_space_memos' }}); export default defineConfig({{ tables: {{ memos }} }});"
+            "{head} const memos = table({{}}, {{ was: 'notes', existingTable: 'sf_space_memos' }}); export default defineConfig({{ tables: {{ memos }} }});"
         ),
         Some(first.snapshot.clone()),
     );
@@ -4433,7 +4433,7 @@ fn was_renames_only_what_a_table_stores() {
     );
     // The same rename between two First-created tables plans a RENAME, not a drop and a create.
     let renamed = build(
-        &format!("{head} const memos = table({{ id: id() }}, {{ was: 'notes' }}); export default defineConfig({{ tables: {{ memos }} }});"),
+        &format!("{head} const memos = table({{}}, {{ was: 'notes' }}); export default defineConfig({{ tables: {{ memos }} }});"),
         Some(first.snapshot),
     )
     .unwrap();

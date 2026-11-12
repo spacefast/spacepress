@@ -29,4 +29,5 @@ runtime/identity/apps/node_modules/
 
 /tests/wp/.wp-content-spacefast/
 /tests/host-types/node_modules/
+/tests/differential/client/node_modules/
 **/first/dist/

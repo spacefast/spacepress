@@ -55,12 +55,13 @@ test('wasm converts a 0.8 client app to the same public/ files as the native CLI
   try {
     const project = path.resolve('tests/fixtures/app-migrate/client-app');
     const out = path.join(temp, 'native');
-    execFileSync(first, ['migrate', 'app', '--from', 'zero-0.8', project, '--out', out, '--space', 'spc_migrate_test', '--users']);
-    const candidate = call(exports, 'first_migrate_app', { project, space: 'spc_migrate_test', users: true });
+    const styles = path.resolve('tests/fixtures/app-migrate/client-app-styles/zero.css');
+    execFileSync(first, ['migrate', 'app', '--from', 'zero-0.8', project, '--out', out, '--space', 'spc_migrate_test', '--users', '--zero-css', styles]);
+    const candidate = call(exports, 'first_migrate_app', { project, space: 'spc_migrate_test', users: true, zeroCss: fs.readFileSync(styles, 'utf8') });
     assert.deepEqual(candidate.report.errors, []);
     assert.equal(candidate.report.status, 'candidate');
     const client = Object.keys(candidate.files).filter((name) => name.startsWith('public/')).sort();
-    assert.ok(client.includes('public/app/client/index.js') && client.includes('public/index.html'), client.join(' '));
+    assert.ok(['public/app/client/index.js', 'public/index.html', 'public/zero.css'].every((f) => client.includes(f)), client.join(' '));
     for (const name of client) assert.equal(candidate.files[name], fs.readFileSync(path.join(out, name), 'utf8'), name);
     assert.equal(candidate.files['first.config.ts'], fs.readFileSync(path.join(out, 'first.config.ts'), 'utf8'));
     assert.deepEqual(call(exports, 'first_check', { project: '/candidate', files: candidate.files }).check.diagnostics, []);
@@ -76,7 +77,7 @@ test('host capture gives npm imports an actionable stable diagnostic', () => {
 
 test('wasm capture and check refuse a ledger still at first/migrations/', () => {
   const files = {
-    'first.config.ts': "import { defineConfig, table, id, text } from 'first'; const notes = table({ id: id(), body: text() }); export default defineConfig({ tables: { notes } });",
+    'first.config.ts': "import { defineConfig, table, text } from 'first'; const notes = table({ body: text().optional() }); export default defineConfig({ tables: { notes } });",
     'first/migrations/snapshot.json': '{"version":2,"tables":{}}',
   };
   const moved = 'first/migrations/ moved to first/_generated/migrations/';
@@ -91,7 +92,7 @@ test('wasm and native capture include the same synced Markdown files', () => {
   try {
     const project = path.join(temp, 'project');
     const files = {
-      'first.config.ts': "import { defineConfig, collection, id, text, richText } from 'first'; const posts = collection({ id: id(), title: text().notNull(), body: richText() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); export default defineConfig({ collections: { posts } });",
+      'first.config.ts': "import { defineConfig, collection, text, richText } from 'first'; const posts = collection({ title: text(), body: richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); export default defineConfig({ collections: { posts } });",
       'content/posts/hello.md': '---\ntitle: Hello\n---\nA **seed**.\n',
       'content/posts/ignored.txt': 'not synced',
     };

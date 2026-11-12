@@ -2,17 +2,16 @@
 // export into the app and fails the build if a key collides with the shared app or another lane.
 // Lane D (§6.1): a hook that enqueues, a job with a visible effect that can be made to fail, and an
 // idempotent action built on once().
-import { action, boolean, collection, db, env, group, HttpError, id, integer, job, jobs, json, once, repeater, text, table } from "first";
+import { action, boolean, collection, db, env, group, HttpError, integer, job, jobs, json, once, repeater, text, table } from "first";
 
 export const jobNotes = table({
-  id: id(),
-  title: text().notNull(),
-  fail: boolean().notNull().default(false),
-  stamped: text(),
+  title: text(),
+  fail: boolean().default(false),
+  stamped: text().optional(),
 }, { access: { create: "editor", read: "editor", update: "editor" } });
 
 // Webhooks (D2) listen only here, so the job tests above never see webhook deliveries.
-export const hookNotes = table({ id: id(), title: text().notNull() },
+export const hookNotes = table({ title: text() },
   { access: { create: "editor", read: "editor" } });
 
 export const collections = {  };
@@ -23,14 +22,14 @@ export const entities = { ...collections, ...tables, ...users };
 export const relations = (r: unknown) => ({});
 export const actions = {
   refsEnqueue: action({
-    input: { noteId: integer().notNull(), meta: json().notNull() }, access: "editor",
+    input: { noteId: integer(), meta: json() }, access: "editor",
     handler: async (input) => {
       const queued = await jobs.stamp.enqueue({ noteId: input.noteId, meta: input.meta, info: {}, rows: [{}] });
       return { id: queued.id, sent: JSON.stringify(input.meta) };
     },
   }),
   jobsOnce: action({
-    input: { note: text().notNull() },
+    input: { note: text() },
     access: "editor",
     idempotent: true,
     handler: async (input) => {
@@ -43,7 +42,7 @@ export const actions = {
   }),
   // Inbound webhook: an HMAC over the raw body replaces the access rule.
   jobsInbound: action({
-    input: { title: text().notNull() },
+    input: { title: text() },
     signature: { secret: env("FIRST_WP_INBOUND_SECRET"), header: "first-signature", scheme: "first" },
     agents: false, // abilities pass no headers, so a signature can't be checked over MCP
     handler: async (input, ctx) => {
@@ -67,7 +66,7 @@ export const config = {
   webhooks: [{ url: env("FIRST_WP_HOOK_URL"), secret: env("FIRST_WP_HOOK_SECRET"), events: ["hook_notes.created"] }],
   jobs: {
     stamp: job({
-      input: { noteId: integer().notNull(), fail: boolean().notNull().default(false), meta: json(), info: group({ fields: {} }), rows: repeater({ fields: {} }) },
+      input: { noteId: integer(), fail: boolean().default(false), meta: json().optional(), info: group({}).optional(), rows: repeater({}).optional() },
       retries: 2,
       agents: true, // also the `blog/job-stamp` ability (lane F)
       handler: async (input, ctx) => {

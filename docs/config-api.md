@@ -95,7 +95,7 @@ isn't changed either. None of these switches can be turned off in
 | `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
 | `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
 
-`GET /_schema` lists the switches in `runtime.wp.hardening`. The object cache
+`GET /__first/api/v1` lists the switches in `runtime.wp.hardening`. The object cache
 is whatever the host's `object-cache.php` drop-in provides. A plugin can't
 install a drop-in, so the host supplies it (on Spacefast, the box image does).
 
@@ -453,7 +453,7 @@ The API is served before the theme loads; it never uses 0.8's `/__zero/config`,
 `global(name, fields, { label?, access?: { read?, update? } })`, registered in
 `defineConfig({ globals: { name } })`. One record per global; fields use the
 sub-field rules, and notNull fields need a default. `GET`/`PATCH
-/wp-json/first/v1/globals/<name>`.
+/__first/api/v1/<name>`.
 
 ## defineConfig
 
@@ -598,7 +598,7 @@ Throwing anything aborts the request and rolls back every write in it.
 
 ## Actions
 
-`action({ input: { ...columns }, access?, handler(input, ctx) { ... } })` → `POST /wp-json/first/v1/actions/<name>`.
+`action({ input: { ...columns }, access?, handler(input, ctx) { ... } })` → `POST /__first/api/v1/actions/<name>`.
 `input` uses column builders for validation; the return value is the response `data`.
 
 - `idempotent: true`: a request with an `Idempotency-Key` header runs once per

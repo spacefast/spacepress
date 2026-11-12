@@ -75,11 +75,11 @@ shipped with the CLI. See the [local development guide](../CONTRIBUTING.md#the-c
 
 ## Call a REST endpoint, action or route
 
-Collections use `/wp-json/first/v1/<collection>`. An action named `hello` uses
-`POST /wp-json/first/v1/actions/hello` on the Space hostname:
+Collections use `/__first/api/v1/<collection>`. An action named `hello` uses
+`POST /__first/api/v1/actions/hello` on the Space hostname:
 
 ```sh
-curl --fail-with-body 'https://your-space.example/wp-json/first/v1/actions/hello' \
+curl --fail-with-body 'https://your-space.example/__first/api/v1/actions/hello' \
 	-H 'Content-Type: application/json' \
 	--data '{"name":"Sam"}'
 ```

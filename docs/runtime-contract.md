@@ -55,7 +55,7 @@ minted on activation.
 The app's schema is the authoritative runtime series check; the runtime
 refuses a mismatched series or a second app plugin.
 
-`GET /_schema` on WordPress includes `runtime.wp` with WordPress/PHP/database
+`GET /__first/api/v1` on WordPress includes `runtime.wp` with WordPress/PHP/database
 versions, `scf`, `actionScheduler`, `mcpAdapter`, `twoFactor`, `polylang`, `identity`,
 `imageCdn`, `akismet` (`{ version, spamChecks }`: the Akismet a site has through
 Jetpack, and whether it has a key; never required), and `incompatibleTables`. `runtime.pendingMigrations` and
@@ -483,23 +483,33 @@ uses the validated schema passed by the WordPress registry and requires
 its store, authentication and media services, and migrates on activation and
 on the first request after an update (`Wp\Plugin`).
 
-Routes, under `/wp-json/first/v1` (everything else → 404 problem):
+The app's API is `/__first/api/v1` (spec §3a, `Wp\Facade`), served on
+`do_parse_request` before the theme. Each request is dispatched with
+`rest_do_request()` to the core route that serves it, which enforces First's
+rules (`PostsController`, `UserMeta`, `TableController`, the Abilities run
+route); the facade maps input and output only. Everything else → 404 problem.
 
-| Method + path | Behavior | Success |
+| Method + path | Dispatched to | Success |
 |---|---|---|
-| `GET /_schema` | collections, columns, relations, actions (no function names) | 200 `{data}` |
-| `GET /{c}` | query params: `where` (JSON filter), `orderBy` (`name` or `-name`, comma-separated), `limit` (default 50, max 200), `offset`, `with` (comma-separated relation names) | 200 `{data: [rows]}` |
-| `GET /{c}/{id}` | by primary key, `with` allowed | 200 `{data: row}` / 404 `not_found` |
-| `POST /{c}` | JSON body = one row | 201 `{data: row}` |
-| `PATCH /{c}/{id}` | JSON body = patch | 200 `{data: row}` / 404 |
-| `DELETE /{c}/{id}` | | 200 `{data: deletedRow}` / 404 |
-| `POST /actions/{name}` | JSON body validated against `input` (unknown keys rejected, defaults applied, coerced like columns) | 200 `{data: result}` |
+| `GET /` | the app's schema: `kinds` (each with its core `route`), `globals`, `actions`, `runtime`, `site` | 200 `{data}` |
+| `GET /{kind}` | `GET /wp/v2/<route>` with `where`, `orderBy`, `with`, `search`, `locale`, `status`; `limit` (default 50, max 100), `offset`, `cursor` | 200 `{data: [rows], cursor}` |
+| `GET /{kind}/{id}` (`slug:x`) | `GET /wp/v2/<route>/{id}`, `with` allowed; `?format=md` is `MarkdownTwins::post()` | 200 `{data: row}` / 404 `not_found` |
+| `POST /{kind}`, `PATCH /{kind}/{id}`, `DELETE /{kind}/{id}` | the core route's create, update and permanent delete, through First's write pipeline | 201/200 `{data: row}` |
+| `GET /{kind}/{id}/revisions[/{rid}]`, `POST …/{rid}/restore` | core's revisions route; a restore is an update | 200 `{data}` |
+| `GET`/`PATCH /{global}` | `/wp-abilities/v1/abilities/<app>/global-<name>-{get,update}/run` | 200 `{data}` |
+| `POST /actions/{name}` (`GET` when readonly) | `/wp-abilities/v1/abilities/<app>/<name>/run` | 200 `{data: result}` |
+| `GET /me`, `/settings`, `/menus[/{location}]` | `/wp/v2/users/me`, `/wp/v2/settings`, `/wp/v2/menu-locations` + `/wp/v2/menu-items` | 200 `{data}` |
+| `/auth/*`, `/sync/*`, `/services/*`, `/files/*`, `/media/{id}/file/*` | First's own routes (no core route) | as each documents |
 
-A collection's `api` flags gate list/get/create/update/delete (disabled →
-405 `method_not_allowed`). `Wp\Rest` registers one catch-all route and serves
-the body App produced verbatim; WordPress's REST server owns authentication
-(cookie and nonce, or an application password), CORS headers and `OPTIONS`
-preflights.
+Kinds are the app's collections, tables and users kind, plus WordPress's
+own (`posts`, `pages`, `comments`, `media`, `categories`, `tags`, `menus`)
+where the app declares none of that name. A collection's `api` flags gate
+list/get/create/update/delete (disabled → 405 `method_not_allowed`).
+Authentication is core REST's (cookie and nonce, an application password,
+or a First Identity bearer); CORS headers and `OPTIONS` preflights are
+core's; `_method` and `X-HTTP-Method-Override` work as on `/wp-json`. Every
+answer is `Cache-Control: private, no-store` with `Vary: Origin, Cookie,
+Authorization`, except file streams.
 
 Success body: `{"data": ...}` with `Content-Type: application/json`.
 Failure body (RFC 9457), `Content-Type: application/problem+json`:
@@ -551,8 +561,8 @@ The v2 app plugin registers these. A WordPress without a First app is unchanged.
   `password` parameter, or an editor in the edit context). Core is asked only
   for the item's `id` (`_fields=id`), so `the_content` runs once per request. Every refusal stays
   core's JSON error. List routes and other methods are unchanged. The
-  `/__first/api/v1` facade's item route should call `MarkdownTwins::post()` so
-  that both give the same Markdown.
+  `/__first/api/v1` item route's `?format=md` calls `MarkdownTwins::post()`
+  too, so both give the same Markdown.
 - **Listing and `/llms.txt` summaries** come from the hand-written excerpt or
   from `Markdown::renderPost()` of the post, never from its raw stored markup. So
   anything that hides content from signed-out visitors (a block's render

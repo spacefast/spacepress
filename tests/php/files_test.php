@@ -84,11 +84,11 @@ $upload = static function (string $bucket, string $bytes, string $name, ?string 
 
     return call('POST', "/files/$bucket", $as, files: ['file' => ['name' => $name, 'tmp_name' => $tmp, 'error' => UPLOAD_ERR_OK]]);
 };
-/** Follow a signed url in-process (its path below the REST namespace); returns [status, headers as sent, body]. */
+/** Follow a signed url in-process (its path below the facade prefix); returns [status, headers as sent, body]. */
 $download = static function (string $url) use ($wp): array {
     $parts = parse_url($url);
     parse_str($parts['query'] ?? '', $query);
-    [$status, $headers, $payload] = $wp->handle('GET', (string) preg_replace('#^.*?/first/v1#', '', $parts['path']), '', null, [], $query);
+    [$status, $headers, $payload] = $wp->handle('GET', (string) preg_replace('#^.*?/__first/api/v1#', '', $parts['path']), '', null, [], $query);
     ob_start();
     \First\Response::emit($payload);
 

@@ -1663,19 +1663,24 @@ final class Js
 
     public static function toReversed(JsArray $a): JsArray { return new JsArray(array_reverse($a->a)); }
 
-    public static function sort(JsArray $a, ?callable $cmp = null): JsArray
+    public static function sort(JsArray $a, mixed $cmp = null): JsArray
     {
-        if (count($a->a) > 1) { self::writable($a); }
         $len = count($a->a);
         $sorted = self::sorted($a, $cmp);
+        // Like V8, the comparator runs before the first write fails on a frozen array.
+        if ($len > 1) { self::writable($a); }
         $a->a = [...$sorted->a, ...array_slice($a->a, $len)];
         return $a;
     }
 
-    public static function toSorted(JsArray $a, ?callable $cmp = null): JsArray { return self::sorted($a, $cmp); }
+    public static function toSorted(JsArray $a, mixed $cmp = null): JsArray { return self::sorted($a, $cmp); }
 
     private static ?\WeakMap $sortComparators = null;
 
+    /**
+     * Marks a compiled comparator that is a numeric difference of the two parameters or of the
+     * same property path on each, so sorting can read each key once instead of calling it.
+     */
     public static function sortComparator(\Closure $callback, array $keys, bool $descending): \Closure
     {
         self::$sortComparators ??= new \WeakMap();
@@ -1683,8 +1688,17 @@ final class Js
         return $callback;
     }
 
-    public static function sorted(JsArray $a, ?callable $cmp = null): JsArray
+    /**
+     * `toSorted`: undefined elements go last and never reach the comparator; the rest are sorted
+     * with V8's TimSort (JsSort), so every comparator, consistent or not, sees Node's call
+     * sequence and gives Node's order.
+     */
+    public static function sorted(JsArray $a, mixed $cmp = null): JsArray
     {
+        // Only a JavaScript function compares; a PHP callable string such as 'strcmp' must not run.
+        if ($cmp !== null && !$cmp instanceof \Closure) {
+            throw new JsError('The comparison function must be either a function or undefined', 'TypeError');
+        }
         $items = [];
         $undefined = 0;
         foreach ($a->a as $item) {
@@ -1692,37 +1706,56 @@ final class Js
             else { $items[] = $item; }
         }
         $tail = array_fill(0, $undefined, JsUndefined::Value);
-        if ($cmp !== null) {
-            if (!$cmp instanceof \Closure || !isset(self::$sortComparators[$cmp])) {
-                throw new JsError('Sorting requires a numeric key-difference comparator', 'TypeError');
-            }
-            [$keys, $descending] = self::$sortComparators[$cmp];
-            if (count($items) < 2) { return new JsArray([...$items, ...$tail]); }
-            $keyed = [];
-            foreach ($items as $item) {
-                $key = $item;
-                foreach ($keys as $property) {
-                    if ($key instanceof JsClass) { throw new JsError('Sorting class keys is not supported', 'TypeError'); }
-                    $key = self::dynamicGet($key, $property);
-                }
-                if (is_object($key)) { throw new JsError('Sorting requires finite primitive keys', 'TypeError'); }
-                $key = self::toNumber($key);
-                if (!is_finite((float) $key)) { throw new JsError('Sorting requires finite primitive keys', 'RangeError'); }
-                $keyed[] = [$key, $item];
-            }
-            usort($keyed, static fn (array $x, array $y): int => $descending ? $y[0] <=> $x[0] : $x[0] <=> $y[0]);
-            return new JsArray([...array_column($keyed, 1), ...$tail]);
-        }
         if (count($items) < 2) { return new JsArray([...$items, ...$tail]); }
-        foreach ($items as $item) {
-            if (is_object($item)) {
-                throw new JsError('Default sorting of objects requires an explicit comparator', 'TypeError');
-            }
+        if ($cmp !== null) {
+            $keyed = self::sortedByKeys($items, $cmp);
+            if ($keyed !== null) { return new JsArray([...$keyed, ...$tail]); }
+            $less = static function (mixed $x, mixed $y) use ($cmp): bool { return self::toNumber($cmp($x, $y)) < 0; };
+            return new JsArray([...JsSort::sort($items, $less), ...$tail]);
         }
+        // Converting a primitive has no effects, so each key is computed once. An object converts
+        // at every comparison, as in V8, because its toString can observe the calls.
+        $primitive = true;
+        foreach ($items as $item) {
+            if (is_object($item) && !$item instanceof JsBigInt && !$item instanceof JsSymbol) { $primitive = false; break; }
+        }
+        $utf16 = static fn (mixed $v): string => mb_convert_encoding(self::str($v), 'UTF-16BE', 'UTF-8');
+        if ($primitive) {
+            $keyed = [];
+            foreach ($items as $i => $item) { $keyed[] = [$utf16($item), $i]; }
+            $sorted = JsSort::sort($keyed, static fn (array $x, array $y): bool => strcmp($x[0], $y[0]) < 0);
+            return new JsArray([...array_map(static fn (array $k) => $items[$k[1]], $sorted), ...$tail]);
+        }
+        return new JsArray([...JsSort::sort($items, static fn (mixed $x, mixed $y): bool => strcmp($utf16($x), $utf16($y)) < 0), ...$tail]);
+    }
+
+    /**
+     * The fast path for a marked key-difference comparator: when every key is a finite number,
+     * string, boolean or null read from an own plain-object property, the comparator is a
+     * consistent total order without effects, and any stable sort returns V8's order. Otherwise
+     * null, and the comparator runs.
+     *
+     * @param list<mixed> $items
+     * @return list<mixed>|null
+     */
+    private static function sortedByKeys(array $items, \Closure $cmp): ?array
+    {
+        if (!isset(self::$sortComparators[$cmp])) { return null; }
+        [$keys, $descending] = self::$sortComparators[$cmp];
         $keyed = [];
-        foreach ($items as $item) { $keyed[] = [mb_convert_encoding(self::str($item), 'UTF-16BE', 'UTF-8'), $item]; }
-        usort($keyed, static fn (array $x, array $y): int => strcmp($x[0], $y[0]) <=> 0);
-        return new JsArray([...array_column($keyed, 1), ...$tail]);
+        foreach ($items as $item) {
+            $key = $item;
+            foreach ($keys as $property) {
+                if (!$key instanceof JsObject || $key->class !== null || !array_key_exists($property, $key->p)) { return null; }
+                $key = $key->p[$property];
+            }
+            if (is_object($key)) { return null; }
+            $key = self::toNumber($key);
+            if (!is_finite((float) $key)) { return null; }
+            $keyed[] = [$key, $item];
+        }
+        usort($keyed, static fn (array $x, array $y): int => $descending ? $y[0] <=> $x[0] : $x[0] <=> $y[0]);
+        return array_column($keyed, 1);
     }
 
     public static function with(JsArray $a, int|float $index, mixed $value): JsArray

@@ -249,3 +249,14 @@ test("revisions: core's revisions of the post, First's snapshots, and a restore 
   assert.deepEqual([mismatch.status, mismatch.json.code], [404, "not_found"]);
   assert.equal((await f("GET", "/posts/999999999/revisions", { as: "editor" })).status, 404);
 });
+
+test("a kind's api flags switch its operations off on the API: 405 method_not_allowed", async () => {
+  const row = first("insert", "notices", JSON.stringify({ title: `Notice ${run}` }))[0];
+  assert.equal((await f("GET", "/notices" + qs({ where: { id: row.id } }))).json.data[0].title, `Notice ${run}`, "list stays on");
+  assert.equal((await f("GET", `/notices/${row.id}`)).status, 200, "get stays on");
+  for (const [method, path, body] of [["POST", "/notices", { title: "x" }], ["PATCH", `/notices/${row.id}`, { title: "y" }], ["DELETE", `/notices/${row.id}`, undefined], ["GET", `/notices/${row.id}/revisions`, undefined]] as const) {
+    const r = await f(method, path, { as: "editor", body });
+    assert.deepEqual([r.status, r.json.code], [405, "method_not_allowed"], `${method} ${path}`);
+  }
+  assert.equal(first("find", "notices", JSON.stringify({ where: { id: row.id } }))[0].title, `Notice ${run}`, "nothing was written");
+});

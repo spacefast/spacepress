@@ -113,6 +113,14 @@ test("an opted-in host's identity cookie works on /first/v1 from its own pages o
       const overridden = await fetch(`${api}${path}`, { headers: { cookie, ...headers } });
       assert.deepEqual([overridden.status, (await overridden.json()).code], [403, "invalid_csrf"], `a method override is judged as a write: ${path}`);
     }
+    // Two overrides that disagree: the read one can't hide the write one, whichever the server applies.
+    for (const [path, headers] of [
+      ["/reviews?_method=PATCH", { "x-http-method-override": "GET" }],
+      ["/reviews?_method=GET", { "x-http-method-override": "PATCH" }],
+    ] as const) {
+      const overridden = await fetch(`${api}${path}`, { method: "POST", headers: { cookie, "content-type": "application/json", ...headers }, body: "{}" });
+      assert.deepEqual([overridden.status, (await overridden.json()).code], [403, "invalid_csrf"], `a method override is judged as a write: ${path}`);
+    }
   } finally {
     wp("option", "delete", "first_test_rest_cookie_auth");
   }

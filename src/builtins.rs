@@ -193,7 +193,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("array", &["concat", "push"], overload("...values: unknown[]", arity(0, VARIADIC), arity(0, VARIADIC), arity(0, VARIADIC))),
     ("array", &["unshift"], overload("...values: unknown[]", None, arity(0, VARIADIC), arity(0, VARIADIC))),
     ("array", &["pop", "shift", "reverse", "toReversed"], overload("no arguments; JavaScript dispatch ignores extra arguments", None, arity(0, 0), arity(0, VARIADIC))),
-    ("array", &["sort", "toSorted"], overload("compare?: numeric key-difference function; finite primitive keys", None, arity(0, 1), arity(0, 1))),
+    ("array", &["sort", "toSorted"], overload("compare?: function; V8 TimSort call order", arity(0, 1), arity(0, 1), arity(0, 1))),
     ("array", &["flat"], overload("depth?: 0 | 1 | null (typed; undefined defaults to 1); depth?: number (checked JavaScript)", None, arity(0, 1), arity(0, 1))),
     ("array", &["fill"], overload("value: unknown, start?: number, end?: number", None, arity(1, 3), arity(1, 3))),
     ("array", &["splice"], overload("start: number, deleteCount?: number, ...values: unknown[]", None, arity(1, VARIADIC), arity(0, VARIADIC))),
@@ -256,7 +256,10 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("Math", &["acos", "acosh", "asin", "asinh", "atan", "atanh", "atan2", "cbrt", "expm1", "clz32", "cos", "cosh", "fround", "hypot", "imul", "log1p", "log2", "log10", "sin", "sinh", "tan", "tanh", "f16round"], overload("unimplemented native methods are refused", None, None, None)),
 ];
 
-/// Only a numeric key difference has engine-independent ordering without callback effects.
+/// A comparator that subtracts the same numeric key of its two parameters, as
+/// `(a, b) => a - b` or `(a, b) => b.rank - a.rank`: the key path and whether it is descending.
+/// The runtime then sorts by keys read once (Js::sortComparator) whenever that gives the result
+/// calling the comparator would.
 pub fn sort_key(f: &crate::ir::Func) -> Option<(Vec<String>, bool)> {
     use crate::ir::{BinOp, Expr, ExprKind, FnBody, Pat, Stmt};
     fn path(e: &Expr) -> Option<(&str, Vec<String>)> {
@@ -276,7 +279,7 @@ pub fn sort_key(f: &crate::ir::Func) -> Option<(Vec<String>, bool)> {
             _ => None,
         }
     }
-    if f.is_async || f.params.len() != 2 || f.params.iter().any(|p| p.default.is_some() || p.rest) {
+    if f.is_async || f.is_generator || f.params.len() != 2 || f.params.iter().any(|p| p.default.is_some() || p.rest) {
         return None;
     }
     let (Pat::Id(a, _), Pat::Id(b, _)) = (&f.params[0].pat, &f.params[1].pat) else {
@@ -304,18 +307,6 @@ pub fn sort_key(f: &crate::ir::Func) -> Option<(Vec<String>, bool)> {
     } else {
         None
     }
-}
-
-pub fn check_sort_callback(args: &[crate::ir::ArrEl]) -> Result<(), Diag> {
-    use crate::ir::{ArrEl, ExprKind};
-    if let Some(ArrEl::Item(e)) = args.first()
-        && let ExprKind::Func(f) = &e.kind
-        && sort_key(f).is_none()
-    {
-        return Err(Diag::new(e.span, "sorting requires a numeric key-difference comparator")
-            .help("use (a, b) => a - b or (a, b) => a.rank - b.rank; effectful and arbitrary comparators aren't supported"));
-    }
-    Ok(())
 }
 
 pub fn check_date_literal(args: &[crate::ir::ArrEl], span: Span) -> Result<(), Diag> {

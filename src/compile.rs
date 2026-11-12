@@ -9033,9 +9033,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if let Some(family) = family {
             self.builtin_args(family, m, args, span)?;
         }
-        if (family == Some("array") || recv.ty == Ty::Dynamic) && matches!(m, "sort" | "toSorted") {
-            crate::builtins::check_sort_callback(args)?;
-        }
         let mut recv = self.finish_value(recv, recv_span)?;
         let javascript_instance = self.javascript_module(self.fx.as_ref().expect("fn").module) && family.is_some();
         // `f.call(thisArg, ...args)` / `f.apply(thisArg, args)` choose the receiver. A function that

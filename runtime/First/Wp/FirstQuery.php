@@ -84,7 +84,7 @@ final class FirstQuery
             // requested locale, as the pipeline resolves it per parent (Locale\Read).
             $locale = self::locale($collection, $request);
             $rows = $db->findMany($collection, ['where' => [$pk => ['in' => $ids]], 'with' => $with, 'columns' => $columns]
-                + ($locale !== null && $locale['locale'] !== '*' && \First\Locale\Module::localized($collection) ? ['locale' => '*'] : self::allLocales($collection)), $viewer);
+                + ($locale !== null && ($locale['locale'] ?? null) !== '*' && \First\Locale\Module::localized($collection) ? ['locale' => '*'] : self::allLocales($collection)), $viewer);
         } catch (\First\HttpError $e) {
             return CoreAccess::error($e);
         }

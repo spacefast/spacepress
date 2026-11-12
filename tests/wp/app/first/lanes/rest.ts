@@ -74,6 +74,10 @@ export const gated = collection({
   },
 });
 
+// `api` flags switch operations off on the API (a 405) while core's routes keep serving wp-admin.
+export const notices = collection({ title: text() },
+  { revisions: true, api: { create: false, update: false, delete: false }, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+
 // Editor saves roll back when a hook throws (§1.7): each hook writes a log row first, then refuses.
 export const fuses = collection({ title: text(), note: text().optional() },
   { revisions: true, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });

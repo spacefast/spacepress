@@ -245,7 +245,8 @@ TSX subset, so they are examples as well as product.
   `Accept` negotiation is a convenience on top. Before relying on negotiation
   at the edge, verify whether it keys on `Accept`.
 - Items render to markdown from their stored content (`Markdown::fromBlocks`).
-  Code pages render from their compiled output, and static pages are prebuilt.
+  Code pages render from their compiled output, as an anonymous visitor (built); prebuilt static
+  twins wait for the build-time policy in §6.1.
 - `/llms.txt` lists kinds with URLs plus pages, with descriptions.
 - In WordPress-rendered mode, First serves markdown for every kind URL.
 - Backend-only sites: `GET /wp-json/wp/v2/posts/<id>?format=md` (built), and `GET /__first/api/v1/posts/<id>?format=md` once the facade lands (workstream 2).

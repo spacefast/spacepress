@@ -1744,7 +1744,7 @@ fn ctx_crypto_maps_to_node_crypto_with_the_original_results() {
     let root = temp.path().join("jwt");
     project(
         &root,
-        r#"{actions:{token:action(async (ctx) => ctx.jwt.sign({ key: "K", kid: "k1", claims: {} }))}}"#,
+        r#"{actions:{token:action(async (ctx) => ctx.jwt.sign({ key: "K", kid: "k1", claims: {} })),check:action(async (ctx, content: string) => (await ctx.spam.check({ content })).spam)}}"#,
     );
     let source = std::fs::read_to_string(root.join("server/index.ts"))
         .unwrap()
@@ -1752,7 +1752,27 @@ fn ctx_crypto_maps_to_node_crypto_with_the_original_results() {
     std::fs::write(root.join("server/index.ts"), source).unwrap();
     let (ok, refused) = migrate(&root, &temp.path().join("no"), &["--dry-run"]);
     assert!(!ok);
-    assert_eq!(refused["errors"][0]["pointer"], "/actions/token/ctx/jwt");
+    // Each service with no First counterpart says what is missing and what to do instead.
+    let errors: Vec<(&str, &str, &str)> = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["pointer"].as_str().unwrap(),
+                e["code"].as_str().unwrap(),
+                e["reason"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(errors.len(), 2, "{refused:#}");
+    let reason = |pointer: &str| errors.iter().find(|e| e.0 == pointer).map(|e| (e.1, e.2)).unwrap();
+    let (code, jwt) = reason("/actions/token/ctx/jwt");
+    assert_eq!(code, "Z08_CTX_SERVICE");
+    assert!(jwt.contains("Ed25519") && jwt.contains("owner ruling"), "{jwt}");
+    let (code, spam) = reason("/actions/check/ctx/spam");
+    assert_eq!(code, "Z08_CTX_SERVICE");
+    assert!(spam.contains("Akismet") && spam.contains("owner ruling"), "{spam}");
 }
 
 #[test]

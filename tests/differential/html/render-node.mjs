@@ -22,6 +22,7 @@ const result = await build({
   platform: "node",
   jsx: "automatic",
   external: ["react", "react-dom", "react/jsx-runtime"],
+  alias: { "first/client": path.join(here, "first-client.mjs") },
   write: true,
   logLevel: "silent",
 });

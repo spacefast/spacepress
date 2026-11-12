@@ -32,6 +32,13 @@ pub(crate) fn files(
         files.push((at("wpml-config.xml"), wpml.into_bytes()));
     }
     files.push((at("first/app/functions.php"), built.functions_php.as_bytes().to_vec()));
+    // Compiled `"use client"` stores, which the page loads as script modules (generator B).
+    for island in built.schema.islands.values() {
+        files.push((
+            at(&format!("first/app/client/{}", island.file)),
+            island.source.as_bytes().to_vec(),
+        ));
+    }
     for (name, sql) in migrations {
         if name.ends_with(".sql") && !name.contains('/') {
             files.push((at(&format!("first/app/migrations/{name}")), sql));

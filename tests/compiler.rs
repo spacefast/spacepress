@@ -389,7 +389,7 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-subfield-unique",
         "`.unique()` isn't allowed inside a group, repeater, or blocks field (`code`)",
-        "first.config.ts:2:66",
+        "first.config.ts:2:46",
     );
     // §1.4: what an editor (post-backed) collection needs, and the names WordPress can't hold.
     rejects(
@@ -407,17 +407,17 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-unique-length",
         "unique text columns are limited to 191 characters on MySQL (`code`); add `.max(191)`",
-        "first.config.ts:2:42",
+        "first.config.ts:2:32",
     );
     rejects(
         "reject-drafts-reserved",
         "`status` is reserved: drafts add these",
-        "first.config.ts:2:71",
+        "first.config.ts:2:51",
     );
     // §1.5
     rejects(
         "reject-global-required",
-        "global fields that are notNull need a default (`title`)",
+        "a global field is required unless it has a default (`title`)",
         "first.config.ts:3:38",
     );
     // Literal defaults follow the strict ISO timestamp codec, inside structured columns too.
@@ -2364,7 +2364,7 @@ fn kind_urls_and_the_frontend_mode_reach_the_schema() {
     rejects(
         "reject-table-url",
         "only collection() kinds have URLs",
-        "first.config.ts:2:64",
+        "first.config.ts:2:54",
     );
     rejects(
         "reject-frontend",

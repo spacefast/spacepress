@@ -127,6 +127,7 @@ fn app_router_serves_pages_on_wordpress() {
     // A signed webhook route: refused without a valid HMAC, run as the system with one (it reads
     // the draft too).
     assert_eq!((&seen["webhook unsigned"], &seen["webhook bad"]), (&serde_json::json!(401), &serde_json::json!(401)));
+    // The system's read sees the draft too: 2 notes, where an anonymous visitor's sees 1.
     assert_eq!(seen["webhook"], serde_json::json!([202, "ping:2"]));
     assert_eq!(seen["HEAD"], serde_json::json!([200, ""]));
     // WordPress keeps its own URLs.

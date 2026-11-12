@@ -3844,6 +3844,128 @@ fn language_constructs_match_node_through_generated_php() {
     }
 }
 
+/// Twelve objects that point at each other through six fields, then twelve member writes through
+/// them. Every write reaches every object below every short field path, and alias expansion
+/// within one pass once grew an event's place set to millions of places before the end-of-pass
+/// widening check could see it: on this program the previous solver took more than 90 s and
+/// 2.9 GB in a debug build. The solver now numbers each place once and widens a binding whose group
+/// runs away inside a pass (docs/decisions/2026-11-12-effects-event-scale.md). Debug builds count
+/// path projections (`FIRST_DEBUG_EFFECTS_WORK`); the solve must stay a small multiple of its
+/// result, widen the same bindings on every run, and the PHP must compute what Node computes.
+#[test]
+fn effects_on_an_object_graph_stay_bounded_and_keep_php_equal_to_node() {
+    let tmp = tempfile::tempdir().unwrap();
+    let nodes = 12;
+    let fields = ["a", "b", "c", "d", "e", "f"];
+    let mut body = String::from("export function run(input) {\n  const nodes = [];\n");
+    for i in 0..nodes {
+        body.push_str(&format!(
+            "  const n{i} = {{ id: {i}, label: input }};\n  nodes.push(n{i});\n"
+        ));
+    }
+    for i in 0..nodes {
+        for (j, field) in fields.iter().enumerate() {
+            body.push_str(&format!("  n{i}.{field} = n{};\n", (i * 3 + j + 1) % nodes));
+        }
+    }
+    for i in 0..nodes {
+        body.push_str(&format!("  n{i}.{}.label = input + '{i}';\n", fields[i % fields.len()]));
+    }
+    body.push_str(
+        "  let out = '';
+  for (const n of nodes) out += n.id + ':' + n.a.label + n.b.id + n.c.d.label + ',';
+  return out;
+}
+",
+    );
+    std::fs::create_dir(tmp.path().join("first")).unwrap();
+    std::fs::write(tmp.path().join("first/run.mjs"), body).unwrap();
+    std::fs::write(tmp.path().join("package.json"), r#"{"type":"module"}"#).unwrap();
+    std::fs::write(
+        tmp.path().join("first.config.ts"),
+        r#"import { action, defineConfig, text } from "first";
+import { run } from "./first/run.mjs";
+export default defineConfig({ name: "graph", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
+"#,
+    )
+    .unwrap();
+
+    if cfg!(debug_assertions) {
+        let solve = |run: usize| {
+            let dump = tmp.path().join(format!("effects-{run}.txt"));
+            let work = tmp.path().join(format!("work-{run}.txt"));
+            let out = first()
+                .args(["check", "--json"])
+                .arg(tmp.path())
+                .env("FIRST_DEBUG_EFFECTS", &dump)
+                .env("FIRST_DEBUG_EFFECTS_WORK", &work)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+            (
+                std::fs::read_to_string(dump).expect("debug builds dump the solved effects"),
+                std::fs::read_to_string(work).expect("debug builds record the solver's work"),
+            )
+        };
+        let (dump, work) = solve(0);
+        let field = |name: &str| -> u64 {
+            work.split_whitespace()
+                .find_map(|part| part.strip_prefix(name)?.strip_prefix('='))
+                .and_then(|n| n.parse().ok())
+                .unwrap_or_else(|| panic!("{name} in {work:?}"))
+        };
+        let (projections, facts) = (field("projections"), field("facts"));
+        assert!(
+            dump.lines().any(|line| line.starts_with("widened ")),
+            "the program no longer reaches widening"
+        );
+        // The previous solver made 41M projections here for 28K facts at 8 nodes, and did not
+        // finish within 90 s at 12.
+        assert!(
+            projections < 5 * facts && facts < 200_000,
+            "the effects solver runs away: {projections} projections for {facts} facts"
+        );
+        assert_eq!(dump, solve(1).0, "the widened effects depend on the run");
+    }
+
+    let inputs = ["", "x", "a b"];
+    let node = Command::new("node")
+        .current_dir(tmp.path())
+        .args(["--input-type=module", "-e"])
+        .arg(format!(
+            "import {{ run }} from './first/run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
+            serde_json::to_string(&inputs).unwrap()
+        ))
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        &format!(
+            r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$fn = '\\FirstApp\\' . $schema['actions']['a']['handler'];
+$out = [];
+foreach (json_decode('{}') as $s) {{
+    $input = new \First\JsObject();
+    $input->p['s'] = $s;
+    $out[] = json_decode(\First\Js::jsonStringify($fn($input, new \First\JsObject())));
+}}
+echo json_encode($out);
+"#,
+            serde_json::to_string(&inputs).unwrap()
+        ),
+        &[
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-graph/first/app"),
+        ],
+    );
+    assert_eq!(actual, expected);
+}
+
 /// A token parser shaped like picomatch's `parse()`: each branch writes through `prev`,
 /// `prev.prev` and `prev.prev.prev`, so the effect places below those bindings multiply past
 /// the solver's widening threshold. The solve restarts with them widened

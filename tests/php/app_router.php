@@ -108,6 +108,15 @@ $out = [
     'HEAD' => [fetch("$url/", 'HEAD')['status'], fetch("$url/", 'HEAD')['body']],
     // php -S runs WordPress for every path, so wp-admin and wp-login.php are the browser suite's
     // (tests/wp); here the router must leave REST, feeds and reserved paths to WordPress.
+    // Markdown twins of app pages (rendering.md §5): the page's own output, never its layout's
+    // navigation, rendered as an anonymous visitor; advertised by the HTML page.
+    'twin home' => [fetch("$url/index.md")['status'], fetch("$url/index.md")['body'], fetch("$url/index.md")['headers']['content-type'][0] ?? null],
+    'twin note' => [fetch("$url/notes/hello.md")['status'], fetch("$url/notes/hello.md")['body']],
+    'twin note as editor' => fetch("$url/notes/hello.md", headers: [$cookie('chief')])['body'],
+    'twin draft' => fetch("$url/notes/draft.md")['status'],
+    'twin guarded' => fetch("$url/account.md", headers: [$cookie('reader')])['status'],
+    'twin link' => [fetch("$url/notes/hello")['headers']['link'] ?? [], str_contains(fetch("$url/notes/hello")['body'], '<link rel="alternate" type="text/markdown" href="' . $url . '/notes/hello.md"')],
+    'llms' => fetch("$url/llms.txt")['body'],
     'rest' => fetch("$url/wp-json/")['status'],
     'feed' => fetch("$url/feed/")['status'],
     'reserved' => str_contains(fetch("$url/wp-content/nothing-here")['body'], 'No such page'),

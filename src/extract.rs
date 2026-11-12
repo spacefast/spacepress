@@ -695,12 +695,7 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
                 .help("call the package's export: use: [seo({ ... })]"));
         };
         let o = object(&p.config, p.span, "definePlugin")?;
-        keys(
-            &o,
-            &["name", "hooks", "actions", "jobs"],
-            p.span,
-            "definePlugin",
-        )?;
+        keys(&o, &["name", "hooks", "actions", "jobs"], p.span, "definePlugin")?;
         let name = string(o.get("name"), p.span, "plugin name")?;
         if !(valid_ident(&name)
             && name

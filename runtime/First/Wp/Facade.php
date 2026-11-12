@@ -17,7 +17,7 @@ use First\Js;
  *   POST   /__first/api/v1/<kind>          → POST /wp/v2/<base>        First input → core input
  *   PATCH  /__first/api/v1/<kind>/<id>     → POST /wp/v2/<base>/<id>
  *   DELETE /__first/api/v1/<kind>/<id>     → DELETE /wp/v2/<base>/<id> (post kinds: force)
- *   GET    /__first/api/v1/me              → GET  /wp/v2/users/me
+ *   GET    /__first/api/v1/me              → GET  /wp/v2/users/me      { id, name, role } + the user's row
  *   POST   /__first/api/v1/actions/<name>  → /wp-abilities/v1/abilities/<app>/<name>/run (GET if readonly)
  *   GET/PATCH /__first/api/v1/<global>      → the global's get/update Ability, through the same run route
  *   GET/PATCH /__first/api/v1/settings      → GET /wp/v2/settings (public fields from the index for others)
@@ -121,13 +121,15 @@ final class Facade
         }
         if ($name === 'me' && count($segments) === 1) {
             \First\App::allow($method, ['GET', 'HEAD']);
-            if (get_current_user_id() === 0) {
+            // The signed-in user: `id`, `name` and First's `role`, with the users row as this viewer
+            // reads it (a member's own fields) merged in; null when signed out.
+            $user = WpAuth::current();
+            if ($user === null) {
                 return self::json(200, ['data' => null]);
             }
-            $users = $kinds['users'] ?? null;
-            $response = self::dispatch('GET', '/wp/v2/users/me', ['context' => 'edit']);
+            $row = Kinds::row($kinds['users'], self::dispatch('GET', '/wp/v2/users/me', ['context' => 'edit']));
 
-            return self::json(200, ['data' => $users === null ? $response : Kinds::row($users, $response)]);
+            return self::json(200, ['data' => array_merge(is_array($row) ? $row : [], $user)]);
         }
         if ($name === 'actions' && count($segments) === 2) {
             return self::action($plugin, $method, $segments[1], $query, $body);
@@ -207,29 +209,38 @@ final class Facade
             throw HttpError::invalidQuery('limit must be a positive integer', '/limit');
         }
         $limit = min($limit, self::MAX_LIMIT);
-        $page = 1;
+        // `offset` skips rows; `cursor` (opaque) is where the previous page of this API stopped.
+        $offset = 0;
+        if (isset($query['offset'])) {
+            if (!preg_match('/^\d{1,9}$/D', (string) $query['offset'])) {
+                throw HttpError::invalidQuery('offset must be a non-negative integer', '/offset');
+            }
+            $offset = (int) $query['offset'];
+        }
         if (isset($query['cursor'])) {
             $decoded = json_decode((string) base64_decode(strtr((string) $query['cursor'], '-_', '+/'), true), true);
-            if (!is_array($decoded) || !is_int($decoded['page'] ?? null) || $decoded['page'] < 2) {
+            if (!is_array($decoded) || !is_int($decoded['offset'] ?? null) || $decoded['offset'] < 1) {
                 throw HttpError::invalidQuery('cursor is not one this API issued', '/cursor');
             }
-            $page = $decoded['page'];
+            $offset = $decoded['offset'];
         }
+        $paging = ['per_page' => $limit] + ($offset > 0 ? ['offset' => $offset] : []);
         if (Kinds::first($kind)) {
             // `where` is always First's (an empty filter when none was given): First's pipeline picks the
             // rows, so its read rule and draft visibility decide, not core's default status filter.
             $params = array_intersect_key($query, array_flip(['where', 'orderBy', 'with', 'search', 'locale']))
-                + ['where' => '{}', 'per_page' => $limit, 'page' => $page] + self::context($kind);
+                + ['where' => '{}'] + $paging + self::context($kind);
         } else {
             // A WordPress kind: core's own filters (`search`, `post`, `parent`, `status`, ...), as core
             // accepts them for this viewer.
-            $params = array_diff_key($query, ['limit' => 1, 'cursor' => 1, 'format' => 1, 'per_page' => 1, 'page' => 1, 'context' => 1])
-                + ['per_page' => $limit, 'page' => $page] + self::context($kind);
+            $params = array_diff_key($query, ['limit' => 1, 'offset' => 1, 'cursor' => 1, 'format' => 1, 'per_page' => 1, 'page' => 1, 'context' => 1])
+                + $paging + self::context($kind);
         }
         $response = self::run(self::request('GET', $kind['route'], $params));
         $rows = self::unwrap($response);
-        $pages = (int) ($response->get_headers()['X-WP-TotalPages'] ?? 0);
-        $cursor = $page < $pages ? rtrim(strtr(base64_encode((string) json_encode(['page' => $page + 1])), '+/', '-_'), '=') : null;
+        $total = (int) ($response->get_headers()['X-WP-Total'] ?? 0);
+        $next = $offset + $limit;
+        $cursor = $next < $total ? rtrim(strtr(base64_encode((string) json_encode(['offset' => $next])), '+/', '-_'), '=') : null;
 
         $rows = array_values(array_filter(array_map(static fn (array $r) => Kinds::row($kind, $r), $rows), static fn ($r) => $r !== null));
 

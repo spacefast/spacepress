@@ -28,6 +28,9 @@ test("lists are First rows with { data, cursor }, the same rows /first/v1 return
   const second = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "2", cursor: first.json.cursor }));
   assert.deepEqual([second.json.data.map((e: any) => e.title), second.json.cursor], [[`Fa ${run}`], null]);
   assert.deepEqual(second.json.data[0].extra, { a: {} }, "a json() value keeps {}");
+  const skipped = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "1", offset: "2" }));
+  assert.deepEqual([skipped.json.data.map((e: any) => e.title), skipped.json.cursor], [[`Fa ${run}`], null], "offset skips rows, as the old namespace's did");
+  assert.equal((await f("GET", "/events?offset=-1")).json.pointer, "/offset");
   const bad = await f("GET", "/events?cursor=nope");
   assert.deepEqual([bad.status, bad.type.startsWith("application/problem+json"), bad.json.code, bad.json.pointer], [400, true, "invalid_query", "/cursor"]);
 });

@@ -178,7 +178,7 @@ export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
   readonly actions: ActionsClient;
   readonly globals: GlobalsClient;
   readonly auth: AuthClient;
-  /** `GET /_schema`: the app's public schema description. */
+  /** `GET /__first/api/v1`: the app's schema (kinds, fields, globals, actions), as `first pull` reads it. */
   schema(): Promise<unknown>;
 };
 
@@ -232,7 +232,7 @@ export function registerRealtimeTransport(transport: RealtimeTransport): void {
 }
 
 export interface ClientOptions {
-  /** Base URL including the REST prefix: "https://x.test/wp-json/first/v1". Default: `/wp-json/first/v1` on the page's origin. */
+  /** Base URL including the API prefix: "https://x.test/__first/api/v1". Default: `/__first/api/v1` on the page's origin. */
   url?: string;
   /** WordPress cookie auth: the REST nonce; sent as `X-WP-Nonce` with `credentials: "same-origin"`. */
   nonce?: string;
@@ -437,7 +437,7 @@ function authError(status: number, code: string, detail: string): FirstError {
 const refreshes = new Map<string, Promise<boolean>>();
 
 export function createClient(options: ClientOptions = {}): Client {
-  const base = (options.url ?? "/wp-json/first/v1").replace(/\/+$/, "");
+  const base = (options.url ?? "/__first/api/v1").replace(/\/+$/, "");
   const authOpts = options.auth ?? {};
   const doFetch = (input: string, init: RequestInit) => (options.fetch ?? globalThis.fetch)(input, init);
 
@@ -895,13 +895,13 @@ export function createClient(options: ClientOptions = {}): Client {
       SCHEMA.globals.map((name: string) => [
         name,
         {
-          get: () => request("GET", `/globals/${seg(name)}`),
-          update: (patch: unknown) => request("PATCH", `/globals/${seg(name)}`, { json: patch }),
+          get: () => request("GET", `/${seg(name)}`),
+          update: (patch: unknown) => request("PATCH", `/${seg(name)}`, { json: patch }),
         },
       ]),
     ),
     auth,
-    schema: () => request("GET", "/_schema"),
+    schema: () => request("GET", ""),
   };
   for (const key of Object.keys(SCHEMA.collections)) client[key] = collection(key as CollectionKey);
   hubs.set(client, realtime);

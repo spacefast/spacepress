@@ -73,13 +73,15 @@ final class TableController extends \WP_REST_Controller
             // The total over the same pipeline (read rule, query checks), counted in SQL.
             $count = $db->countQuery($this->collection, $opts['where'] ?? null, $viewer);
             $total = (int) (Plugin::instance()?->connection()->run($count['sql'], $count['params'])[0]['n'] ?? 0);
-            $rows = $db->findMany($this->collection, ['limit' => $perPage, 'offset' => ($page - 1) * $perPage] + $opts, $viewer);
+            // `offset` (core's own list argument) wins over `page`, as on core's posts and users routes.
+            $offset = $request['offset'] !== null ? (int) $request['offset'] : ($page - 1) * $perPage;
+            $rows = $db->findMany($this->collection, ['limit' => $perPage, 'offset' => $offset] + $opts, $viewer);
             $items = [];
             foreach ($rows as $row) {
                 $items[] = $this->prepare_response_for_collection($this->prepare_item_for_response($row, $request));
             }
             $pages = (int) ceil($total / max(1, $perPage));
-            if ($page > max(1, $pages) && $total > 0) {
+            if ($request['offset'] === null && $page > max(1, $pages) && $total > 0) {
                 throw new HttpError(400, 'rest_post_invalid_page_number', 'The page number requested is larger than the number of pages available.');
             }
             $response = rest_ensure_response($items);
@@ -180,6 +182,7 @@ final class TableController extends \WP_REST_Controller
         $params = parent::get_collection_params();
         unset($params['search']); // tables declare no searchable title or content
         $params['per_page']['maximum'] = 100;
+        $params['offset'] = ['description' => 'Rows to skip; replaces `page`.', 'type' => 'integer', 'minimum' => 0];
 
         return $params + [
             'where' => ['description' => 'A First filter, as JSON: `{"email":{"like":"%@example.com"}}`.', 'type' => 'string'],

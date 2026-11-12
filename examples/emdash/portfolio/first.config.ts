@@ -7,58 +7,58 @@ const editorial = { read: "anyone", create: "editor", update: "editor", delete: 
 const disciplines = ["identity", "editorial", "packaging", "digital", "spatial", "art-direction"];
 
 export const projects = collection({
-  title: text().notNull().min(1).max(160),
-  slug: slug({ source: "title" }),
-  summary: text({ multiline: true }).max(200),
-  client: text().max(160),
-  year: text().max(40),
-  website: url(),
-  featured: boolean().notNull().default(false),
-  cover: media({ accept: "image" }),
-  tags: select({ options: disciplines, multiple: true }).notNull().default([]),
-  body: richText(),
-  gallery: repeater({ fields: {
-    image: media({ accept: "image" }).notNull(),
-    caption: text().max(240),
-  } }).max(24),
-  seo: group({ fields: {
-    title: text().max(160), description: text().max(300), noindex: boolean().notNull().default(false),
-  } }),
+  title: text().min(1).max(160),
+  slug: slug({ source: "title" }).optional(),
+  summary: text({ multiline: true }).max(200).optional(),
+  client: text().max(160).optional(),
+  year: text().max(40).optional(),
+  website: url().optional(),
+  featured: boolean().default(false),
+  cover: media({ accept: "image" }).optional(),
+  tags: select(disciplines).many().default([]),
+  body: richText().optional(),
+  gallery: repeater({
+    image: media({ accept: "image" }),
+    caption: text().max(240).optional(),
+  }).max(24).optional(),
+  seo: group({
+    title: text().max(160).optional(), description: text().max(300).optional(), noindex: boolean().default(false),
+  }).optional(),
 }, { label: "Projects", title: "title", content: "body", access: editorial });
 
 export const pages = collection({
-  title: text().notNull().max(160),
-  slug: slug({ source: "title" }),
-  body: richText(),
-  layout: blocks({ layouts: {
-    statement: { text: text({ multiline: true }).notNull().max(160), label: text().max(40) },
-    selectedWork: { heading: text().notNull().max(40) },
+  title: text().max(160),
+  slug: slug({ source: "title" }).optional(),
+  body: richText().optional(),
+  layout: blocks({
+    statement: { text: text({ multiline: true }).max(160), label: text().max(40).optional() },
+    selectedWork: { heading: text().max(40) },
     clients: {
-      heading: text().notNull().max(40),
-      clients: repeater({ fields: { name: text().notNull().max(160) } }).min(1).max(40),
+      heading: text().max(40),
+      clients: repeater({ name: text().max(160) }).min(1).max(40).optional(),
     },
     contact: {
-      heading: text().notNull().max(80), label: text().max(40),
-      intro: text({ multiline: true }).max(400), email: email().notNull(), emailLabel: text().max(40),
-      details: repeater({ fields: {
-        label: text().notNull().max(80), text: text().notNull().max(240), note: text().max(240),
-      } }).max(6),
+      heading: text().max(80), label: text().max(40).optional(),
+      intro: text({ multiline: true }).max(400).optional(), email: email(), emailLabel: text().max(40).optional(),
+      details: repeater({
+        label: text().max(80), text: text().max(240), note: text().max(240).optional(),
+      }).max(6).optional(),
     },
-  } }).max(20),
-  seo: group({ fields: { title: text().max(160), description: text().max(300), noindex: boolean().notNull().default(false) } }),
+  }).max(20).optional(),
+  seo: group({ title: text().max(160).optional(), description: text().max(300).optional(), noindex: boolean().default(false) }).optional(),
 }, { label: "Portfolio pages", title: "title", content: "body", access: editorial });
 
 export const settings = global("settings", {
-  title: text().notNull().default("Norma").max(80),
-  tagline: text({ multiline: true }).max(400),
-  logo: media({ accept: "image" }),
-  separator: text().notNull().default("—").max(8),
-  social: group({ fields: {
-    twitter: text().max(240), github: text().max(240), facebook: text().max(240),
-    instagram: text().max(240), linkedin: text().max(240), youtube: text().max(240),
-  } }),
-  navigation: repeater({ fields: { label: text().notNull().max(80), href: text().notNull().max(300) } }).max(20),
-  footer: repeater({ fields: { label: text().notNull().max(80), href: text().notNull().max(300) } }).max(20),
+  title: text().default("Norma").max(80),
+  tagline: text({ multiline: true }).max(400).optional(),
+  logo: media({ accept: "image" }).optional(),
+  separator: text().default("—").max(8),
+  social: group({
+    twitter: text().max(240).optional(), github: text().max(240).optional(), facebook: text().max(240).optional(),
+    instagram: text().max(240).optional(), linkedin: text().max(240).optional(), youtube: text().max(240).optional(),
+  }).optional(),
+  navigation: repeater({ label: text().max(80), href: text().max(300) }).max(20).optional(),
+  footer: repeater({ label: text().max(80), href: text().max(300) }).max(20).optional(),
 }, { label: "Portfolio settings", access: { read: "anyone", update: "editor" } });
 
 export default defineConfig({

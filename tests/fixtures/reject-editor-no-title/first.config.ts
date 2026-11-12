@@ -1,3 +1,3 @@
-import { collection, id, text, defineConfig } from "first";
-const notes = collection({ id: id(), body: text() });
+import { collection, text, defineConfig } from "first";
+const notes = collection({ body: text().optional() });
 export default defineConfig({ collections: { notes } });

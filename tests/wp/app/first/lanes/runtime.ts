@@ -6,28 +6,25 @@
 // `bulkTourPrice` is one trusted update over two rows of a translation group (hooks once per row).
 // `guest_carts` (cascade) and `guest_notes` (set null) are rows a member owns, for guest pruning.
 // `big_counts` holds integers past 2^53 (BIGINT): compiled arithmetic on them must match JS.
-import { action, collection, db, id, integer, text, table } from "first";
+import { action, collection, db, integer, text, table } from "first";
 import { tours } from "./locales.ts";
 import { members } from "./auth.ts";
 
 export const legs = collection({
-  id: id(),
-  title: text().notNull().localized(),
-  tourId: integer().references(() => tours.id, { onDelete: "cascade" }),
+  title: text().localized(),
+  tourId: integer().references(() => tours.id, { onDelete: "cascade" }).optional(),
 }, { title: "title", access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
 export const guestCarts = table({
-  id: id(),
-  memberId: integer().notNull().references(() => members.id, { onDelete: "cascade" }),
+  memberId: integer().references(() => members.id, { onDelete: "cascade" }),
 }, { access: { read: "anyone", create: "authenticated" } });
 
 export const guestNotes = table({
-  id: id(),
-  body: text().notNull(),
-  memberId: integer().references(() => members.id, { onDelete: "set null" }),
+  body: text(),
+  memberId: integer().references(() => members.id, { onDelete: "set null" }).optional(),
 }, { access: { read: "anyone", create: "authenticated" } });
 
-export const bigCounts = table({ id: id(), n: integer().notNull() }, { access: { read: "anyone", create: "editor" } });
+export const bigCounts = table({ n: integer() }, { access: { read: "anyone", create: "editor" } });
 
 export const collections = { legs };
 export const tables = { guestCarts, guestNotes, bigCounts };
@@ -39,7 +36,7 @@ export const relations = (r: any) => ({
 });
 export const actions = {
   nativeHandler: action({
-    input: { title: text().notNull(), count: integer().notNull() },
+    input: { title: text(), count: integer() },
     access: "anyone", agents: false,
     handler(input) {
       input.title = input.title.trim();
@@ -50,7 +47,7 @@ export const actions = {
   // Arithmetic in compiled code on a stored integer and on an input one, past 2^53. The stored row
   // is still found by its exact value.
   bigMath: action({
-    input: { id: integer().notNull(), m: integer().notNull() },
+    input: { id: integer(), m: integer() },
     access: "editor",
     agents: false,
     async handler({ id, m }) {
@@ -64,7 +61,7 @@ export const actions = {
     },
   }),
   bulkTourPrice: action({
-    input: { a: integer().notNull(), b: integer().notNull(), price: integer().notNull() },
+    input: { a: integer(), b: integer(), price: integer() },
     access: "editor",
     agents: false,
     async handler({ a, b, price }) {

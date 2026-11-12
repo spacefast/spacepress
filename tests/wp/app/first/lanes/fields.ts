@@ -3,40 +3,38 @@
 //
 // Lane B (field access + conditional fields, phase 2 §4): a post-backed collection whose columns
 // carry `.access` and `.showIf`, linked to a `table()` table with an admin-only column.
-import { boolean, collection, email, group, id, integer, text, table } from "first";
+import { boolean, collection, email, group, integer, text, table, select } from "first";
 import { posts } from "../blog/first.config.ts";
 
 export const fieldTeams = table({
-  id: id(),
-  name: text().notNull(),
-  budget: integer().access({ read: "admin" }),
+  name: text(),
+  budget: integer().access({ read: "admin" }).optional(),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
 export const fieldStaff = collection({
-  id: id(),
-  name: text().notNull(),
-  email: email().access({ read: "editor" }),
-  ownerId: integer(),
+  name: text(),
+  email: email().access({ read: "editor" }).optional(),
+  ownerId: integer().optional(),
   // Owners and editors see the salary; only admins change it.
   salary: integer().access({
     read: (ctx) => ctx.user !== null && (ctx.user.role === "editor" || ctx.user.role === "admin" || ctx.data.ownerId === ctx.user.id),
     update: "admin",
-  }),
-  kind: text({ enum: ["basic", "pro"] }),
-  active: boolean(),
-  plan: text().showIf({ kind: "pro" }),
-  discount: integer().showIf({ OR: [{ kind: { in: ["basic", "pro"] } }, { active: true }] }),
+  }).optional(),
+  kind: select(["basic", "pro"]).optional(),
+  active: boolean().optional(),
+  plan: text().showIf({ kind: "pro" }).optional(),
+  discount: integer().showIf({ OR: [{ kind: { in: ["basic", "pro"] } }, { active: true }] }).optional(),
   // `status` is a core post column, not an SCF field: settled from the saved row when the form renders.
-  headline: text().showIf({ status: "published", kind: "pro" }),
+  headline: text().showIf({ status: "published", kind: "pro" }).optional(),
   // A reference to a post-backed collection renders as SCF post_object, whose inequality is '!=='.
-  postNote: text().showIf({ postId: { ne: 1 } }).validate((v, ctx) => v !== "pro only" || ctx.data.kind === "pro" || "Only pro staff take this note"),
-  always: text().showIf({ OR: [{}, { kind: "pro" }] }),
-  postId: integer().references(() => posts.id, { onDelete: "set null" }),
-  notes: group({ fields: {
-    public: text().validate((value, ctx) => ctx.data.notes?.public === value || "Invalid note"),
-    private: text().access({ read: "editor" }).showIf({ public: { isNotNull: true } }),
-  } }),
-  teamId: integer().references(() => fieldTeams.id, { onDelete: "set null" }),
+  postNote: text().showIf({ postId: { ne: 1 } }).validate((v, ctx) => v !== "pro only" || ctx.data.kind === "pro" || "Only pro staff take this note").optional(),
+  always: text().showIf({ OR: [{}, { kind: "pro" }] }).optional(),
+  postId: integer().references(() => posts.id, { onDelete: "set null" }).optional(),
+  notes: group({
+    public: text().validate((value, ctx) => ctx.data.notes?.public === value || "Invalid note").optional(),
+    private: text().access({ read: "editor" }).showIf({ public: { isNotNull: true } }).optional(),
+  }).optional(),
+  teamId: integer().references(() => fieldTeams.id, { onDelete: "set null" }).optional(),
 }, {
   title: "name",
   access: {

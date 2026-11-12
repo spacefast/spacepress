@@ -1,8 +1,8 @@
-import { collection, defineConfig, global, id, text, table } from "first";
+import { collection, defineConfig, global, text, table } from "first";
 
-const notes = table({ id: id(), body: text() });
+const notes = table({ body: text().optional() });
 
 export default defineConfig({
   tables: { notes },
-  globals: { settings: global("settings", { secret: text().access({ read: "editor" }) }) },
+  globals: { settings: global("settings", { secret: text().access({ read: "editor" }).optional() }) },
 });

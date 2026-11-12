@@ -8,7 +8,7 @@ export default defineConfig({
   actions: {
     link: action({
       access: "anyone",
-      input: { slug: text().notNull(), title: text().notNull() },
+      input: { slug: text(), title: text() },
       handler: (input) => {
         const href = urlJoin("/notes/", encodeURIComponent(input.slug));
         return {

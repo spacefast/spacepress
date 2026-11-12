@@ -1,3 +1,3 @@
-import { collection, defineConfig, id, text, table } from "first";
-const notes = table({ id: id(), kind: text(), x: text().showIf({ kind: { in: [] } }) });
+import { collection, defineConfig, text, table } from "first";
+const notes = table({ kind: text().optional(), x: text().showIf({ kind: { in: [] } }).optional() });
 export default defineConfig({ tables: { notes } });

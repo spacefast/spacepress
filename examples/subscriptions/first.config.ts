@@ -1,26 +1,26 @@
 import {
   table, text, integer, date, timestamp, defineConfig, defineRelations,
-  action, job, jobs, once, db, HttpError, type InferSelectModel,
+  action, job, jobs, once, db, HttpError, type InferSelectModel, select,
 } from "first";
 import { advanceRenewal, monthlyAmount } from "./first/lib/calendar";
 
 const ownership = {
-  ownerId: integer().notNull().default(0).access({ create: false, update: false }),
+  ownerId: integer().default(0).access({ create: false, update: false }),
 };
 export const subscriptions = table({
   ...ownership,
-  name: text().notNull().min(1).max(100),
-  vendor: text().notNull().default("").max(100),
-  amount: integer().notNull().min(0).max(100_000_000),
-  currency: text().notNull().default("USD").pattern(/^[A-Z]{3}$/),
-  cycle: text({ enum: ["weekly", "monthly", "yearly"] }).notNull().default("monthly"),
-  nextRenewal: date().notNull(),
-  category: text().notNull().default("Other").min(1).max(60),
-  paymentMethod: text().notNull().default("").max(100),
-  cancelUrl: text().notNull().default("").max(2000).validate((value) => value === "" || /^https?:\/\//.test(value) ? true : "Use an http or https cancellation URL"),
-  notes: text({ multiline: true }).notNull().default("").max(4000),
-  status: text({ enum: ["active", "paused", "cancelled"] }).notNull().default("active"),
-  remindedAt: timestamp().access({ create: false, update: false }),
+  name: text().min(1).max(100),
+  vendor: text().default("").max(100),
+  amount: integer().min(0).max(100_000_000),
+  currency: text().default("USD").pattern(/^[A-Z]{3}$/),
+  cycle: select(["weekly", "monthly", "yearly"]).default("monthly"),
+  nextRenewal: date(),
+  category: text().default("Other").min(1).max(60),
+  paymentMethod: text().default("").max(100),
+  cancelUrl: text().default("").max(2000).validate((value) => value === "" || /^https?:\/\//.test(value) ? true : "Use an http or https cancellation URL"),
+  notes: text({ multiline: true }).default("").max(4000),
+  status: select(["active", "paused", "cancelled"]).default("active"),
+  remindedAt: timestamp().access({ create: false, update: false }).optional(),
 }, { access: {
   read: (ctx) => ctx.user ? { ownerId: ctx.user.id } : false,
   create: "authenticated",
@@ -30,9 +30,9 @@ export const subscriptions = table({
 
 export const charges = table({
   ...ownership,
-  subscriptionId: integer().notNull().references(() => subscriptions.id, { onDelete: "cascade" }),
-  amount: integer().notNull().min(0).max(100_000_000),
-  chargedOn: date().notNull().defaultNow(),
+  subscriptionId: integer().references(() => subscriptions.id, { onDelete: "cascade" }),
+  amount: integer().min(0).max(100_000_000),
+  chargedOn: date().defaultNow(),
 }, { access: {
   read: (ctx) => ctx.user ? { ownerId: ctx.user.id } : false,
   create: "authenticated",
@@ -42,7 +42,7 @@ export const charges = table({
 
 export const categories = table({
   ...ownership,
-  name: text().notNull().min(1).max(60),
+  name: text().min(1).max(60),
 }, { access: {
   read: (ctx) => ctx.user ? { ownerId: ctx.user.id } : false,
   create: "authenticated",
@@ -119,7 +119,7 @@ export default defineConfig({
   },
   jobs: {
     remindRenewal: job({
-      input: { subscriptionId: integer().notNull(), renewal: date().notNull() },
+      input: { subscriptionId: integer(), renewal: date() },
       retries: 2,
       async handler({ subscriptionId, renewal }) {
         const row = await db.query.subscriptions.findFirst({ where: { id: subscriptionId, nextRenewal: renewal, status: "active" } });
@@ -158,7 +158,7 @@ export default defineConfig({
       },
     }),
     renewingSoon: action({
-      input: { days: integer().notNull().default(7).min(0).max(366) }, access: "authenticated",
+      input: { days: integer().default(7).min(0).max(366) }, access: "authenticated",
       async handler({ days }, ctx) {
         const user = ctx.user;
         if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");
@@ -171,7 +171,7 @@ export default defineConfig({
       },
     }),
     logCharge: action({
-      input: { subscriptionId: integer().notNull() }, access: "authenticated", idempotent: true,
+      input: { subscriptionId: integer() }, access: "authenticated", idempotent: true,
       async handler({ subscriptionId }, ctx) {
         const user = ctx.user;
         if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");
@@ -186,7 +186,7 @@ export default defineConfig({
       },
     }),
     cancel: action({
-      input: { subscriptionId: integer().notNull() }, access: "authenticated",
+      input: { subscriptionId: integer() }, access: "authenticated",
       async handler({ subscriptionId }, ctx) {
         const user = ctx.user;
         if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");

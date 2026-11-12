@@ -1,3 +1,3 @@
-import { collection, date, defineConfig, group, id, text, table } from "first";
-const notes = table({ id: id(), meta: group({ fields: { due: date(), x: text().showIf({ due: "2026-10-29" }) } }) });
+import { collection, date, defineConfig, group, text, table } from "first";
+const notes = table({ meta: group({ due: date().optional(), x: text().showIf({ due: "2026-10-29" }).optional() }).optional() });
 export default defineConfig({ tables: { notes } });

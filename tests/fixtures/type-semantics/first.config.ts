@@ -104,7 +104,7 @@ export default defineConfig({
       handler: () => Array.from(["first"]).map(value => value.toUpperCase()),
     }),
     typeReport: action({
-      input: { entry: json().$type<Projection<Draft>>().notNull() },
+      input: { entry: json<Projection<Draft>>() },
       handler: (input): Report => {
         const finite = Number.isFinite;
         const truth = Boolean;

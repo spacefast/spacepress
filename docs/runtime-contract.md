@@ -635,6 +635,16 @@ listens and purges those URLs from Batcache and the edge. With no listener
   rolled-back transaction announces nothing.
 - `Purges::paths(array $urls): list<string>` turns URLs into the announced
   paths, `.md` twins included.
+- **`first/app/` pages** (`Render\Cache`): an anonymous visitor's 200 render of
+  a page outside any guarded layout sends `Cache-Control: public,
+  s-maxage=300, max-age=0, must-revalidate` (the `first_app_cache_window`
+  filter sets the window); anything else sends `private, no-store` and calls
+  `batcache_cancel()`. Each cacheable render records the rows it read in
+  `first__app_reads` (kind, row id or `*` for a listing, path with query). A
+  committed write to a kind announces, once after commit, every recorded path
+  that read that row or listed the kind, with its `.md` twin. More than 200
+  paths becomes `/*`, a whole-host purge. Nothing is recorded or announced
+  without a listener.
 
 ## CLI (`wp first`)
 

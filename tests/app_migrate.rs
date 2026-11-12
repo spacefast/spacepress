@@ -1816,7 +1816,7 @@ fn ctx_crypto_maps_to_node_crypto_with_the_original_results() {
     let root = temp.path().join("jwt");
     project(
         &root,
-        r#"{actions:{token:action(async (ctx) => ctx.jwt.sign({ key: "K", kid: "k1", claims: {} }))}}"#,
+        r#"{actions:{token:action(async (ctx) => ctx.jwt.sign({ key: "K", kid: "k1", claims: {} })),check:action(async (ctx, content: string) => (await ctx.spam.check({ content })).spam)}}"#,
     );
     let source = std::fs::read_to_string(root.join("server/index.ts"))
         .unwrap()
@@ -1824,7 +1824,27 @@ fn ctx_crypto_maps_to_node_crypto_with_the_original_results() {
     std::fs::write(root.join("server/index.ts"), source).unwrap();
     let (ok, refused) = migrate(&root, &temp.path().join("no"), &["--dry-run"]);
     assert!(!ok);
-    assert_eq!(refused["errors"][0]["pointer"], "/actions/token/ctx/jwt");
+    // Each service with no First counterpart says what is missing and what to do instead.
+    let errors: Vec<(&str, &str, &str)> = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["pointer"].as_str().unwrap(),
+                e["code"].as_str().unwrap(),
+                e["reason"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(errors.len(), 2, "{refused:#}");
+    let reason = |pointer: &str| errors.iter().find(|e| e.0 == pointer).map(|e| (e.1, e.2)).unwrap();
+    let (code, jwt) = reason("/actions/token/ctx/jwt");
+    assert_eq!(code, "Z08_CTX_SERVICE");
+    assert!(jwt.contains("Ed25519") && jwt.contains("owner ruling"), "{jwt}");
+    let (code, spam) = reason("/actions/check/ctx/spam");
+    assert_eq!(code, "Z08_CTX_SERVICE");
+    assert!(spam.contains("Akismet") && spam.contains("owner ruling"), "{spam}");
 }
 
 #[test]
@@ -2846,6 +2866,46 @@ fn crons_calling_converted_get_endpoints_are_carried() {
         "{refused:#}"
     );
     assert!(refused["errors"][0]["reason"].as_str().unwrap().contains("`/api/post`"));
+}
+
+/// `ctx.gravatar.avatarUrl` gives 0.8's URL for every call in the fixture, refusals included (the
+/// expected values are 0.8's own client run in Node; fixtures README). `profile` converts to a
+/// fetch of Gravatar's public profile with 0.8's projection.
+#[test]
+fn ctx_gravatar_maps_to_the_same_avatar_urls() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("gravatar");
+    let (ok, report) = migrate(&fixture("gravatar"), &out, &[]);
+    assert!(ok, "{report:#}");
+    build(&out);
+    let expected: Value =
+        serde_json::from_str(&std::fs::read_to_string(fixture("gravatar/expected.json")).unwrap()).unwrap();
+    let mut calls: Vec<Value> = expected["calls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| serde_json::json!(["avatar", { "email": c[0], "options": c[1] }]))
+        .collect();
+    calls.extend(
+        expected["plain"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|email| serde_json::json!(["plain", { "email": email }])),
+    );
+    let results = run_actions(&out, &[], &Value::Array(calls));
+    let want: Vec<Value> = expected["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(expected["plainResults"].as_array().unwrap())
+        .map(|r| match r {
+            Value::String(url) => serde_json::json!({ "data": url }),
+            // 0.8 refused out-of-range options with a service_payload_invalid error.
+            _ => serde_json::json!({ "error": "service_payload_invalid" }),
+        })
+        .collect();
+    assert_eq!(results, Value::Array(want));
 }
 
 /// A finalize payload that kept its `zero.css` bytes (older 0.8 publishes did) supplies the

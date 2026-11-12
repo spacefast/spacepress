@@ -1,5 +1,5 @@
 // Content sync on real WordPress (design §5.3): uid meta on posts, the /sync routes over
-// /wp-json/first/v1 with application passwords, Markdown bodies stored as Gutenberg blocks, reference
+// /__first/api/v1 with application passwords, Markdown bodies stored as Gutenberg blocks, reference
 // uids, WordPress trash and restore, and a post created in the editor gaining a uid.
 import { test } from "node:test";
 import assert from "node:assert/strict";

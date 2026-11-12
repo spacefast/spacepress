@@ -1,0 +1,16 @@
+{
+  "calls": [
+    ["  Ada@Example.COM ", { "size": 80, "default": "identicon" }],
+    ["b+tag@x.org", { "rating": "pg", "forceDefault": true, "default": "404" }],
+    ["a@b.c", { "size": 4096 }]
+  ],
+  "plain": ["ada@example.com"],
+  "results": [
+    "https://gravatar.com/avatar/b5fc85e55755f9e0d030a10ab4429b6b2944855f9a0d60077fe832becbc41d72?s=80&d=identicon",
+    "https://gravatar.com/avatar/3c11d9c36cab2fc40e1c0dd876d524fa0eaf17e928ff99630e293140398f76af?d=404&r=pg&f=y",
+    { "error": "Avatar size must be an integer between 1 and 2048." }
+  ],
+  "plainResults": [
+    "https://gravatar.com/avatar/b5fc85e55755f9e0d030a10ab4429b6b2944855f9a0d60077fe832becbc41d72"
+  ]
+}

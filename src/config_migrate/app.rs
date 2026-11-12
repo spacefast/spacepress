@@ -450,6 +450,7 @@ fn convert(
         client_app.is_some(),
         declares_posts,
         &client_files.keys().cloned().collect::<Vec<_>>(),
+        &transformed.get_paths,
         &mut report.errors,
     );
     // A static file never replaces a generated client file; that would be a silent drop.

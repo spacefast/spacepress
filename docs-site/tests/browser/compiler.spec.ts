@@ -8,15 +8,15 @@ test("the playground opens the reading list by default", async ({ page }) => {
 });
 
 test("the playground recompiles edited sources and replaces invalid output with diagnostics", async ({ page }) => {
-  // The default example is the reading list; this test reads the kitchen sink's output.
-  await page.goto("./playground?example=kitchen-sink");
+  // The default example is the reading list; this test reads the blog's output.
+  await page.goto("./playground?example=blog");
   const status = page.locator("#compile-status");
   const source = page.getByRole("textbox", { name: "Source code", exact: true });
   const generated = page.getByRole("textbox", { name: "Generated code", exact: true });
   const generatedFile = page.getByRole("combobox", { name: "Generated file", exact: true });
   await expect(status).toHaveAttribute("data-state", "ok", { timeout: 30_000 });
-  await expect(page.getByRole("combobox", { name: "Example", exact: true })).toHaveValue("kitchen-sink");
-  await expect(generated).toHaveValue(/function action__publishPage/);
+  await expect(page.getByRole("combobox", { name: "Example", exact: true })).toHaveValue("blog");
+  await expect(generated).toHaveValue(/function action__approveComment/);
   const tokenColors = (view: string) => page.locator(`.code-editor[data-highlighted] ${view} .line > span`)
     .evaluateAll((spans) => new Set(spans.map((span) => getComputedStyle(span).color)).size);
   await expect(page.locator("#generated-view diffs-container")).toBeVisible();
@@ -26,8 +26,8 @@ test("the playground recompiles edited sources and replaces invalid output with 
   await expect(page.locator(".code-editor[data-highlighted] #source-view")).toHaveText(await source.inputValue());
   await expect(status).toHaveAttribute("data-state", "ok");
   await generatedFile.selectOption("first/app/schema.php");
-  await expect(generated).toHaveValue(/'postType' => 'first_pages'/);
-  await expect(generated).toHaveValue(/'admin' => true/);
+  await expect(generated).toHaveValue(/'postType' => 'first_posts'/);
+  await expect(generated).toHaveValue(/'sync' => \['dir' => 'content\/posts'/);
 
   await page.getByRole("button", { name: "Post writes", exact: true }).click();
   await expect(generatedFile).toHaveValue("runtime/First/Wp/WpPostStore.php");
@@ -72,14 +72,11 @@ test("the playground recompiles edited sources and replaces invalid output with 
   expect(download.suggestedFilename()).toBe("schema.php");
   expect(await readFile(await download.path(), "utf8")).toBe(await generated.inputValue());
 
-  await page.getByRole("combobox", { name: "Example", exact: true }).selectOption("recipes");
+  await page.getByRole("combobox", { name: "Example", exact: true }).selectOption("full-site");
   await expect(status).toHaveAttribute("data-state", "ok");
-  await expect(source).toHaveValue(/seoFields\(\)/);
-  await expect(generated).toHaveValue(/'postType' => 'first_articles'/);
-  await page.getByRole("combobox", { name: "Example", exact: true }).selectOption("wp-plugins");
-  await expect(status).toHaveAttribute("data-state", "ok");
-  await expect(source).toHaveValue(/"classic-editor": "1.6.7"/);
+  await expect(source).toHaveValue(/export const notes = collection/);
   await expect(generated).toHaveValue(/'postType' => 'first_notes'/);
+  await expect(page.locator("#example-description")).toContainText("Pages written in TSX");
 });
 
 /** The blueprint a Playground URL carries in its fragment. */

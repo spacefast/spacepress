@@ -6,7 +6,7 @@ import { highlightHtml, languageOf } from "./highlight.ts";
 import { toFirst } from "./names.ts";
 
 const dark = () => document.documentElement.dataset.theme === "dark";
-import { compilerFiles, playgroundExamples, wordpressFiles } from "./playground-catalog.ts";
+import { compilerFiles, wordpressFiles } from "./playground-catalog.ts";
 
 function readFiles(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid source files");
@@ -173,8 +173,8 @@ const loadExample = () => {
   if (!original) throw new Error(`Unknown example: ${example.value}`);
   files = drafts.get(example.value) ?? { ...original };
   drafts.set(example.value, files);
-  exampleDescription.textContent = playgroundExamples.find(({ name }) => name === example.value)?.description ?? "";
-  // Every site example can run in WordPress; the blog, which only the tour uses, has no seed or landing page here.
+  exampleDescription.textContent = example.selectedOptions[0]?.dataset.description ?? "";
+  // Every site example can run in WordPress; one with no run data on the page can't.
   runWordPress.hidden = !runs.has(example.value);
   wordpress.hidden = true;
   frame.removeAttribute("src");

@@ -34,6 +34,14 @@ export interface BlueprintInput {
 	landingPage: string;
 	/** PHP run after activation, such as sample data written through the app's REST API. */
 	seed?: string;
+	/**
+	 * Content files a synced collection reads (`sync: "content/posts/*.md"`), as the records
+	 * `first compile-sources` writes to `seed/<collection>.json`. They go in before `seed`, through the
+	 * runtime's own first-sync seed, the one `wp first seed` runs.
+	 */
+	syncSeed?: Record<string, unknown>;
+	/** Pretty permalinks (`/%postname%/`): TSX pages route on the path, as `/notes/`. */
+	prettyPermalinks?: boolean;
 }
 
 const openssl = `<?php
@@ -59,7 +67,25 @@ function tree(files: Record<string, string>): FileTree {
 	return root;
 }
 
-export function blueprint({ platform, firstPlugins, wordpressPlugins, landingPage, seed }: BlueprintInput) {
+const seedDirectory = "/internal/first-seed";
+// Seeds each synced collection from the records the blueprint wrote, as `wp first seed` does. It
+// runs as a cron request: a bare wp-load.php request is not one Polylang serves on a site with no
+// languages yet, so a localized collection would have no PLL() and First wouldn't add its languages.
+const syncSeedPhp = (directory: string) => `<?php
+define('DOING_CRON', true);
+require_once '/wordpress/wp-load.php';
+\\First\\Sync\\Seed::run(\\First\\Wp\\Runtime::plugin() ?? throw new RuntimeException('No First app is active'), '${directory}');
+`;
+
+// Set once, on a site nobody has used yet; the rewrite rules are written for the new structure.
+const permalinksPhp = `<?php
+require_once '/wordpress/wp-load.php';
+global $wp_rewrite;
+$wp_rewrite->set_permalink_structure('/%postname%/');
+flush_rewrite_rules();
+`;
+
+export function blueprint({ platform, firstPlugins, wordpressPlugins, landingPage, seed, syncSeed = {}, prettyPermalinks = false }: BlueprintInput) {
 	const wordpressOrg = (slug: string, version: string) => ({ resource: "url", url: `https://downloads.wordpress.org/plugin/${slug}.${version}.zip` });
 	return {
 		$schema: "https://playground.wordpress.net/blueprint-schema.json",
@@ -79,6 +105,10 @@ export function blueprint({ platform, firstPlugins, wordpressPlugins, landingPag
 					? { resource: "url", url: plugin.url }
 					: { resource: "literal:directory", name: plugin.slug, files: tree(plugin.files) },
 			})),
+			...(prettyPermalinks ? [{ step: "runPHP", code: permalinksPhp }] : []),
+			...(Object.keys(syncSeed).length ? [{ step: "mkdir", path: seedDirectory }] : []),
+			...Object.entries(syncSeed).map(([collection, records]) => ({ step: "writeFile", path: `${seedDirectory}/${collection}.json`, data: JSON.stringify(records) })),
+			...(Object.keys(syncSeed).length ? [{ step: "runPHP", code: syncSeedPhp(seedDirectory) }] : []),
 			...(seed ? [{ step: "runPHP", code: seed }] : []),
 		],
 	};
@@ -101,6 +131,13 @@ export interface ExampleRun {
 	/** `schema.php` of the example as committed: the seed runs only against that schema. */
 	schemaPhp: string;
 	ledger: Ledger;
+	/** The synced collections' content rows (BlueprintInput `syncSeed`), for the committed schema. */
+	syncSeed: Record<string, unknown>;
+	/**
+	 * The TSX pages plugin `first-pages build` wrote for the committed schema, as its published path
+	 * below the site (`files/plugins/<example>/first-pages-<app>.zip`), when the example has pages.
+	 */
+	pages?: { slug: string; path: string };
 }
 
 export type EditedRun = { blueprint: Blueprint; seeded: boolean } | { refused: string };
@@ -113,8 +150,10 @@ export type EditedRun = { blueprint: Blueprint; seeded: boolean } | { refused: s
  * version is refused, since Playground would install something no build here has checked.
  *
  * The example's seed writes sample data through the app's REST API for the committed schema, so it
- * runs only while the schema is unchanged; an edited schema starts empty. The landing page stays the
- * example's unless it lists a post type the edit removed; then it is WordPress's plugin screen.
+ * runs only while the schema is unchanged; an edited schema starts empty. The same goes for the
+ * synced content rows and the TSX pages plugin, which `first-pages build` compiled against the
+ * committed schema and the browser can't rebuild. The landing page stays the example's unless the
+ * edit took away what it shows (a post type, or the pages); then it is WordPress's plugin screen.
  */
 export function editedBlueprint({ output, example, site, platform }: { output: Output; example: ExampleRun; site: string; platform: Platform }): EditedRun {
 	const locked = new Map(example.lock.map(({ slug, version }) => [slug, version]));
@@ -128,14 +167,22 @@ export function editedBlueprint({ output, example, site, platform }: { output: O
 	const prefix = `${app}/`;
 	const files = Object.fromEntries(Object.entries(output.appPlugin).filter(([file]) => file.startsWith(prefix)).map(([file, text]) => [file.slice(prefix.length), text]));
 	const unchanged = output.schemaPhp === example.schemaPhp;
+	const pages = unchanged ? example.pages : undefined;
+	const firstPlugins: FirstPlugin[] = output.firstPlugins.map((slug) => (slug === app ? { slug, files } : { slug, url: sharedZip(site, slug) }));
+	// The pages plugin requires the app plugin, so it activates last.
+	if (pages) firstPlugins.push({ slug: pages.slug, url: `${site.replace(/\/$/, "")}/${pages.path}` });
+	// A page the TSX pages serve (full-site's `/notes/`) exists only with the pages plugin.
+	const landingOpens = unchanged || (opens(example.landing, output.schemaPhp) && (example.pages === undefined || example.landing.startsWith("/wp-")));
 	return {
 		seeded: unchanged && example.seed !== undefined,
 		blueprint: blueprint({
 			platform,
-			firstPlugins: output.firstPlugins.map((slug) => (slug === app ? { slug, files } : { slug, url: sharedZip(site, slug) })),
+			firstPlugins,
 			wordpressPlugins: output.wordpressPlugins,
-			landingPage: unchanged || opens(example.landing, output.schemaPhp) ? example.landing : "/wp-admin/plugins.php",
+			landingPage: landingOpens ? example.landing : "/wp-admin/plugins.php",
 			seed: unchanged ? example.seed : undefined,
+			syncSeed: unchanged ? example.syncSeed : {},
+			prettyPermalinks: pages !== undefined,
 		}),
 	};
 }

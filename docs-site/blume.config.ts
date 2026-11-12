@@ -36,6 +36,8 @@ export default defineConfig({
 				"Reach for First when an app needs a WordPress backend defined in TypeScript. Write one `first.config.ts`, run `first build`, and you get MySQL migrations, REST routes under `/wp-json/first/v1`, sign-in, wp-admin screens and a typed client. Create an app with `npm create @spacefast/first my-app`. Publish it to Spacefast with `sf publish`.",
 		},
 	},
+	// Examples the site no longer features. Their directories stay in the repository.
+	redirects: ["kitchen-sink", "recipes", "wp-plugins"].map((name) => ({ from: `/examples/${name}`, to: "/examples", status: 301 as const })),
 	feedback: false,
 	deployment: { site },
 	footer: {

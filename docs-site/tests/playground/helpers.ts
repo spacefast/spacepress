@@ -22,13 +22,17 @@ export function serveFiles(): Promise<http.Server> {
 	return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
 
-/** fetch with a cookie jar, following redirects: Playground signs the visitor in with a redirect. */
-export function browser(base: string) {
-	const cookies = new Map<string, string>();
-	return async (pathname: string): Promise<{ status: number; body: string; url: string }> => {
+/**
+ * fetch with a cookie jar, following redirects: Playground signs the visitor in with a redirect.
+ * A signed-out visitor starts with the cookie Playground sets after its one automatic sign-in, so
+ * it is never signed in.
+ */
+export function browser(base: string, { signedOut = false } = {}) {
+	const cookies = new Map<string, string>(signedOut ? [["playground_auto_login_already_happened", "1"]] : []);
+	return async (pathname: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<{ status: number; body: string; url: string }> => {
 		let url = new URL(pathname, base);
 		for (let hop = 0; hop < 5; hop++) {
-			const response = await fetch(url, { redirect: "manual", headers: { cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join("; ") } });
+			const response = await fetch(url, { ...init, redirect: "manual", headers: { ...init.headers, cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join("; ") } });
 			for (const header of response.headers.getSetCookie()) {
 				const [pair] = header.split(";");
 				const at = pair!.indexOf("=");

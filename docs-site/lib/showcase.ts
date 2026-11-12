@@ -8,7 +8,7 @@ import path from "node:path";
 import type { ExampleRun, Ledger } from "./blueprint.ts";
 import { example, repo, site } from "./examples.ts";
 import { compilerEntry } from "./playground-catalog.ts";
-import { siteExamples } from "./site-examples.ts";
+import { siteExamples, siteFiles } from "./site-examples.ts";
 
 export const showcaseRoot = path.join(site, ".showcase");
 export const filesRoot = path.join(site, "public/files");
@@ -20,6 +20,10 @@ export interface Manifest {
   files: { path: string; blob: string | null; size: number }[];
   /** The WordPress.org plugins in the lock `first build` wrote, with their versions. */
   wordpressPlugins: { slug: string; version: string }[];
+  /** The synced collections' content rows the blueprint seeds (scripts/build-showcase.ts `syncRecords`). */
+  syncSeed: Record<string, unknown>;
+  /** The TSX pages plugin, when the example has `pages/`: its slug and its path below the site. */
+  pages?: { slug: string; path: string };
 }
 
 // Not app sources: the README is the page's own text, tsconfig.json is editor setup, and the
@@ -51,7 +55,7 @@ function sourcesOf(dir: string, rel = ""): string[] {
   for (const name of readdirSync(path.join(dir, rel))) {
     const sub = rel ? `${rel}/${name}` : name;
     // Build output: `first build` writes first/_generated/ and first/dist/. App code under first/ counts.
-    if ([".first", "node_modules", "first/_generated", "first/dist"].includes(sub)) continue;
+    if ([".first", "node_modules", "first/_generated", "first/dist", ...siteFiles].includes(sub)) continue;
     if (lstatSync(path.join(dir, sub)).isDirectory()) found.push(...sourcesOf(dir, sub));
     else found.push(sub);
   }
@@ -72,10 +76,13 @@ export function ledger(dir: string): Ledger {
 /** What the playground page needs to run an edited copy of a site example (lib/blueprint.ts `editedBlueprint`). */
 export async function exampleRun(name: (typeof siteExamples)[number]["name"]): Promise<ExampleRun> {
   const { landing, seed } = siteExamples.find((e) => e.name === name)!;
+  const built = manifest(name);
   return {
-    lock: manifest(name).wordpressPlugins,
+    lock: built.wordpressPlugins,
     landing,
     seed,
+    syncSeed: built.syncSeed,
+    pages: built.pages,
     schemaPhp: (await example(name)).output.schemaPhp,
     ledger: ledger(path.join(repo, "examples", name)),
   };

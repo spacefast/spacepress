@@ -671,6 +671,13 @@ impl<'p> Evaluator<'p> {
         });
         // Dependencies first, like ESM. A CommonJS module loads its `require` targets lazily.
         for stmt in &module.body {
+            // A type-only import is erased, as TypeScript does: it never runs its target, so a
+            // `import type { X } from "../index.js"` back edge is not an evaluation cycle.
+            if let Stmt::Import { specs, type_only, .. } = stmt
+                && (*type_only || (!specs.is_empty() && specs.iter().all(|s| s.type_only)))
+            {
+                continue;
+            }
             if let Stmt::Import { source, .. }
             | Stmt::ExportNames { from: Some(source), .. }
             | Stmt::ExportAll { from: source, .. } = stmt
@@ -1507,12 +1514,28 @@ impl<'p> Evaluator<'p> {
                         statics.insert(field.name.clone(), value);
                     }
                 }
+                // Computed method keys run once, in source order, when the class is defined.
+                let mut symbol_keys = Vec::new();
+                for method in &class.symbol_methods {
+                    match self.eval(&method.key, scope)? {
+                        Value::Symbol(symbol) => symbol_keys.push(symbol),
+                        other => {
+                            return err_help(
+                                method.key.span,
+                                format!("computed class method keys must be symbols, not {}", other.describe()),
+                                "name the method, or key it by a symbol such as Symbol.for(\"name\")",
+                            );
+                        }
+                    }
+                }
                 Value::Class(Rc::new(ClassValue {
                     class: class.clone(),
                     base,
                     builtin_base,
                     env: scope.clone(),
                     statics,
+                    symbol_keys,
+                    prototype_symbols: Default::default(),
                 }))
             }
             ExprKind::Instanceof(_, _) => return err(e.span, "instanceof is only available inside compiled callbacks"),
@@ -2278,6 +2301,7 @@ impl<'p> Evaluator<'p> {
                 ),
                 None => Ok(Value::Undef),
             },
+            Value::Class(c) if prop == "prototype" => Ok(Value::Prototype(c.clone())),
             other => err(span, format!("can't read `{prop}` of {}", other.describe())),
         }
     }
@@ -2816,6 +2840,11 @@ impl<'p> Evaluator<'p> {
                     ),
                 ),
             };
+        }
+        if (g, m) == ("Object", "defineProperty")
+            && let Some(Value::Prototype(class)) = args.first()
+        {
+            return define_prototype_symbol(class, &args, span);
         }
         if (g, m) == ("Object", "hasOwn") {
             if let Some(receiver @ Value::Env(_)) = args.first() {
@@ -4018,6 +4047,63 @@ const ARRAY_PROTOTYPE: &[&str] = &[
 
 /// `key in object` during configuration evaluation, for the plain data values the evaluator
 /// models. Runtime `Js::hasProperty` covers every runtime value.
+/// `Object.defineProperty(C.prototype, symbol, { value, ... })` while the module is evaluated:
+/// the class descriptor records the data property, and compiled code sees it on the prototype.
+fn define_prototype_symbol(class: &Rc<ClassValue>, args: &[Value], span: Span) -> R<Value> {
+    let help = "brand the prototype with a symbol key and a data descriptor, as in Object.defineProperty(C.prototype, Symbol.for(\"brand\"), { value: true })";
+    let Some(Value::Symbol(key)) = args.get(1) else {
+        return err_help(
+            span,
+            "Object.defineProperty on a class prototype needs a symbol key",
+            help,
+        );
+    };
+    if let SymbolVal::WellKnown(name) = &**key {
+        return err_help(
+            span,
+            format!("defining `Symbol.{name}` on a class prototype isn't supported"),
+            help,
+        );
+    }
+    let Some(Value::Object(descriptor)) = args.get(2) else {
+        return err_help(span, "Object.defineProperty needs a descriptor object", help);
+    };
+    let descriptor = descriptor.borrow();
+    if descriptor.contains_key("get") || descriptor.contains_key("set") {
+        return err_help(span, "accessor descriptors on class prototypes aren't supported", help);
+    }
+    let value = descriptor.get("value").cloned().unwrap_or(Value::Undef);
+    if !matches!(
+        value,
+        Value::Undef | Value::Null | Value::Bool(_) | Value::Num(_) | Value::Str(_) | Value::Symbol(_)
+    ) {
+        return err_help(
+            span,
+            "class prototype data defined while the module is evaluated must be a primitive or a symbol",
+            help,
+        );
+    }
+    let flag = |name: &str| descriptor.get(name).is_some_and(Value::truthy);
+    let mut symbols = class.prototype_symbols.borrow_mut();
+    if let Some(existing) = symbols.iter().position(|(k, ..)| *k == *key) {
+        if !symbols[existing].4 {
+            return err(
+                span,
+                format!("Cannot redefine property: {}", Value::Symbol(key.clone()).describe()),
+            );
+        }
+        symbols.remove(existing);
+    }
+    symbols.push((
+        key.clone(),
+        value,
+        flag("enumerable"),
+        flag("writable"),
+        flag("configurable"),
+    ));
+    Ok(Value::Prototype(class.clone()))
+}
+
 fn build_time_in(key: &str, object: &Value, span: Span) -> R<bool> {
     let index_below = |length: usize| key.parse::<usize>().is_ok_and(|i| i.to_string() == key && i < length);
     Ok(match object {

@@ -5,14 +5,14 @@ import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { Compiler, type Compiled, type Output, type Request } from "./compiler.ts";
-import type { playgroundExamples } from "./playground-catalog.ts";
+import { siteFiles, type SiteExampleName } from "./site-examples.ts";
 
 // Astro bundles this module at build time, so paths cannot come from import.meta.url. The build,
 // the generator and the tests all run from docs-site/.
 export const site = process.cwd();
 export const repo = path.dirname(site);
 
-export type ExampleName = (typeof playgroundExamples)[number]["name"];
+export type ExampleName = SiteExampleName;
 
 export interface Example {
   name: ExampleName;
@@ -30,7 +30,7 @@ export interface Example {
 export function sources(dir: string): Request["files"] {
   // Skipped at the project root only (web page, tests, content), except `.first` and `node_modules`
   // at any depth: app code under `first/` may import from its own `first/content/` or `first/public/`.
-  const skip = new Set([".first", "node_modules", "public", "client-tests", "content", "first/_generated", "first/dist"]);
+  const skip = new Set([".first", "node_modules", "public", "client-tests", "content", "first/_generated", "first/dist", ...siteFiles]);
   const anyDepth = new Set([".first", "node_modules"]);
   const files: Request["files"] = {};
   const lock = path.join(dir, "first/_generated/abilities.json");

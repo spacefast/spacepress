@@ -67,7 +67,8 @@ Each feature is decided from whichever of these can decide it:
 
 | Feature | Decided from | Without the original source |
 | --- | --- | --- |
-| Endpoint method, path, mode (writing GET, reserved paths, OPTIONS) | `artifact.server.endpoints` | Decided |
+| Endpoint method, path, mode (reserved paths, OPTIONS) | `artifact.server.endpoints` | Decided |
+| Writing GET endpoint | `artifact.server.endpoints` lists it; whether its body reads the visitor decides it | Needs the source |
 | Document pages (`.md`, `.html`) | `artifact.pages[].render`, `file` | Decided (refused) |
 | Client app with no pages | `artifact.pages` empty, client entry in `sourceManifest`; what it imports from the uploaded `client.js` | Converted; refused only for imports with no v2 bridge (census rule), else its body needs the source |
 | `ctx` services, request APIs, database calls, handler shapes | The bundle, run through the converter | Decided when refused |

@@ -161,3 +161,59 @@ test("markdown answers are private to their caller, like JSON ones", async () =>
     assert.match(res.headers.get("vary") ?? "", /Cookie/, url);
   }
 });
+
+test("WordPress's own kinds answer through their core routes, in spec §2.1 shapes", async () => {
+  // Core posts and pages: written and read through /wp/v2/posts and /wp/v2/pages, as core allows.
+  const created = await f("POST", "/pages", { as: "editor", body: { title: `Facade page ${run}`, content: "<p>Page body</p>", order: 3 } });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  assert.deepEqual([created.json.data.title, created.json.data.status, created.json.data.order, created.json.data.parent], [`Facade page ${run}`, "published", 3, null]);
+  const page = created.json.data.id;
+  assert.deepEqual((await f("GET", `/pages/${page}`)).json.data.id, page);
+  assert.equal((await f("GET", `/pages/slug:${created.json.data.slug}`)).json.data.id, page);
+  assert.equal((await f("POST", "/pages", { body: { title: "Anonymous" } })).status, 401, "core's create_posts decides");
+  const md = await fetch(`${facade}/pages/${page}?format=md`);
+  assert.equal(await md.text(), await (await fetch(`${core}/pages/${page}?format=md`)).text(), "one Markdown producer for the facade and core");
+  assert.equal((await f("DELETE", `/pages/${page}`, { as: "editor" })).status, 200);
+  assert.equal((await f("GET", `/pages/${page}`)).status, 404, "deleted for good, not trashed");
+
+  // Comments on a core post: core's moderation and visibility, First's field names.
+  // Terms and media: lists with { data, cursor }, core's rules. (This app's own `comments` and `posts`
+  // kinds shadow the built-ins; the hardening lane, which has neither, covers built-in comments.)
+  const categories = await f("GET", "/categories");
+  assert.deepEqual([categories.status, Array.isArray(categories.json.data), "cursor" in categories.json], [200, true, true]);
+  assert.ok(categories.json.data.every((c: any) => typeof c.name === "string" && typeof c.count === "number"), JSON.stringify(categories.json.data));
+  assert.equal((await f("POST", "/categories", { as: "subscriber", body: { name: `No ${run}` } })).status, 403);
+  const media = await f("GET", "/media" + qs({ limit: "1" }));
+  assert.equal(media.status, 200, JSON.stringify(media.json));
+});
+
+test("settings: public fields for everyone, the rest and writes for admins, as core decides", async () => {
+  const anon = await f("GET", "/settings");
+  assert.equal(anon.status, 200, JSON.stringify(anon.json));
+  assert.deepEqual(Object.keys(anon.json.data).sort(), ["frontPage", "icon", "locale", "logo", "tagline", "timezone", "title"]);
+  const tagline = `Facade tagline ${run}`;
+  assert.equal((await f("PATCH", "/settings", { as: "editor", body: { tagline } })).status, 403);
+  const set = await f("PATCH", "/settings", { as: "admin", body: { tagline } });
+  assert.deepEqual([set.status, set.json.data.tagline], [200, tagline]);
+  assert.equal((await f("GET", "/settings")).json.data.tagline, tagline);
+  assert.equal((await f("PATCH", "/settings", { as: "admin", body: { nope: 1 } })).json.pointer, "/nope");
+});
+
+test("menus: a menu in a theme location is public; its items are a tree", async () => {
+  const label = `Facade home ${run}`;
+  wp("eval", `$m = wp_create_nav_menu('Facade ${run}'); $p = wp_update_nav_menu_item($m, 0, ['menu-item-title' => '${label}', 'menu-item-url' => '/', 'menu-item-status' => 'publish']); wp_update_nav_menu_item($m, 0, ['menu-item-title' => 'Child', 'menu-item-url' => '/c/', 'menu-item-parent-id' => $p, 'menu-item-status' => 'publish']); set_theme_mod('nav_menu_locations', ['primary' => $m]); if (function_exists('PLL')) { $o = get_option('polylang'); foreach (pll_languages_list() as $l) { $o['nav_menus'][get_option('stylesheet')]['primary'][$l] = $m; } update_option('polylang', $o); }`);
+  // (Polylang, active on this site for the locales lane, assigns a location's menu per language.)
+  const primary = await f("GET", "/menus/primary");
+  assert.equal(primary.status, 200, JSON.stringify(primary.json));
+  assert.deepEqual(primary.json.data, { location: "primary", items: [{ label, url: "/", item: null, children: [{ label: "Child", url: "/c/", item: null, children: [] }] }] });
+  assert.equal((await f("GET", "/menus/nowhere")).status, 404);
+  assert.equal((await http("GET", `${core}/menu-locations`)).status, 401, "core's own menu routes stay closed to anonymous visitors");
+});
+
+test("rows carry First's system fields and every locale, as the old namespace did", async () => {
+  const tour = first("insert", "tours", JSON.stringify({ title: `Facade tour ${run}`, price: 4 }))[0];
+  const viaFacade = await f("GET", `/tours/${tour.id}`, { as: "editor" });
+  assert.deepEqual(viaFacade.json.data, await ok("GET", `/tours/${tour.id}`, { as: "editor" }));
+  const both = await f("GET", "/tours" + qs({ locale: "*", where: { id: tour.id } }), { as: "editor" });
+  assert.deepEqual(both.json.data.map((t: any) => [t.id, t.locale]), [[tour.id, "en"]]);
+});

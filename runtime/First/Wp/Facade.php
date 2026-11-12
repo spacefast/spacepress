@@ -30,6 +30,32 @@ use First\Js;
 final class Facade
 {
     public const PREFIX = '/__first/api/v1';
+
+    /** The absolute URL of a facade path (`/media/42`), below the site's home URL. */
+    public static function url(string $path = ''): string
+    {
+        return home_url(self::PREFIX . $path);
+    }
+
+    /**
+     * First's row of a post kind as $viewer reads it (field masks, system fields), or null when the
+     * read rule doesn't cover it. Core has already decided the item is readable; this only gives the
+     * facade First's own shape of it (PostsController puts it on the facade's dispatches).
+     */
+    public static function firstRow(string $collection, int $id, \First\Viewer $viewer): ?object
+    {
+        $db = Plugin::instance()?->db() ?? throw new \LogicException('No First app');
+        $pk = $db->schema()->collection($collection)['primaryKey'];
+        $all = \First\Locale\Module::localized($collection) ? ['locale' => '*'] : [];
+        try {
+            $row = $db->findFirst($collection, ['where' => [$pk => $id]] + $all, $viewer);
+        } catch (HttpError) {
+            return null;
+        }
+
+        return $row === null ? null : (object) PostMeta::values($collection, $row, array_map('strval', array_keys($row)));
+    }
+
     private const LIMIT = 50;
     private const MAX_LIMIT = 100;
 
@@ -101,7 +127,13 @@ final class Facade
         if ($name === 'actions' && count($segments) === 2) {
             return self::action($plugin, $method, $segments[1], $query, $body);
         }
+        if ($name === 'settings' && count($segments) === 1 && !isset($kinds['settings'])) {
+            return self::settings($method, $body);
+        }
         $kind = $kinds[$name] ?? throw HttpError::notFound("Unknown kind '$name'");
+        if ($kind['type'] === 'menus') {
+            return self::menus($method, $segments);
+        }
         $base = $kind['route'];
         if (count($segments) === 1) {
             \First\App::allow($method, ['GET', 'HEAD', 'POST']);
@@ -127,19 +159,21 @@ final class Facade
         if ($method === 'DELETE') {
             // First's delete is permanent: core trashes posts without `force`, and refuses users without it.
             $out = self::dispatch('DELETE', $item, match ($kind['type']) {
-                'post' => ['force' => true],
+                'post', 'wp-post', 'comments', 'media', 'term' => ['force' => true],
                 'users' => ['force' => true, 'reassign' => false], // the member's posts are kept, unowned
                 default => [],
             });
 
             return self::json(200, ['data' => Kinds::row($kind, $out['previous'] ?? $out)]);
         }
-        $row = self::dispatch('GET', $item, self::context($kind) + array_intersect_key($query, ['with' => true]));
-        if ($kind['type'] === 'users' && Kinds::row($kind, $row) === null) {
+        $row = self::dispatch('GET', $item, self::context($kind) + array_intersect_key($query, Kinds::first($kind) ? ['with' => true, 'locale' => true] : ['password' => true]));
+        if (Kinds::first($kind) && Kinds::row($kind, $row) === null) {
             throw HttpError::notFound("No {$kind['name']} row with id $id"); // First's read rule doesn't cover it
         }
         if (($query['format'] ?? null) === 'md') {
-            return [200, ['Content-Type' => 'text/markdown; charset=utf-8'] + self::PRIVATE, Kinds::markdown($kind, $row)];
+            $markdown = Kinds::markdown($kind, $row) ?? throw HttpError::notFound("{$kind['name']} has no Markdown form");
+
+            return [200, ['Content-Type' => MarkdownTwins::CONTENT_TYPE, 'X-Content-Type-Options' => 'nosniff'] + self::PRIVATE, $markdown];
         }
 
         return self::json(200, ['data' => Kinds::row($kind, $row)]);
@@ -161,10 +195,17 @@ final class Facade
             }
             $page = $decoded['page'];
         }
-        // `where` is always First's (an empty filter when none was given): First's pipeline picks the rows,
-        // so its read rule and draft visibility decide, not core's default status filter.
-        $params = array_intersect_key($query, array_flip(['where', 'orderBy', 'with', 'search']))
-            + ['where' => '{}', 'per_page' => $limit, 'page' => $page] + self::context($kind);
+        if (Kinds::first($kind)) {
+            // `where` is always First's (an empty filter when none was given): First's pipeline picks the
+            // rows, so its read rule and draft visibility decide, not core's default status filter.
+            $params = array_intersect_key($query, array_flip(['where', 'orderBy', 'with', 'search', 'locale']))
+                + ['where' => '{}', 'per_page' => $limit, 'page' => $page] + self::context($kind);
+        } else {
+            // A WordPress kind: core's own filters (`search`, `post`, `parent`, `status`, ...), as core
+            // accepts them for this viewer.
+            $params = array_diff_key($query, ['limit' => 1, 'cursor' => 1, 'format' => 1, 'per_page' => 1, 'page' => 1, 'context' => 1])
+                + ['per_page' => $limit, 'page' => $page] + self::context($kind);
+        }
         $response = self::run(self::request('GET', $kind['route'], $params));
         $rows = self::unwrap($response);
         $pages = (int) ($response->get_headers()['X-WP-TotalPages'] ?? 0);
@@ -358,8 +399,10 @@ final class Facade
 
     private static function id(array $kind, string $raw): int|string
     {
-        if (str_starts_with($raw, 'slug:') && $kind['type'] === 'post') {
-            $rows = self::dispatch('GET', $kind['route'], ['where' => (string) Js::jsonStringify([$kind['spec']['slug'] ?? 'slug' => substr($raw, 5)]), '_fields' => 'id']);
+        if (str_starts_with($raw, 'slug:') && in_array($kind['type'], ['post', 'wp-post', 'term'], true)) {
+            $rows = self::dispatch('GET', $kind['route'], ($kind['type'] === 'post'
+                ? ['where' => (string) Js::jsonStringify([$kind['spec']['slug'] ?? 'slug' => substr($raw, 5)])]
+                : ['slug' => substr($raw, 5)]) + ['_fields' => 'id']);
 
             return (int) ($rows[0]['id'] ?? throw HttpError::notFound("No {$kind['name']} with slug " . substr($raw, 5)));
         }
@@ -376,6 +419,53 @@ final class Facade
     private static function context(array $kind): array
     {
         return ['context' => 'view'];
+    }
+
+    /** `GET`/`PATCH /settings` (spec §2.1): core's settings for admins; the index's public fields for others. */
+    private static function settings(string $method, string $body): array
+    {
+        \First\App::allow($method, ['GET', 'HEAD', 'PATCH']);
+        if ($method === 'PATCH') {
+            $settings = self::dispatch('POST', '/wp/v2/settings', [], Kinds::settingsInput(self::body($body)));
+        } else {
+            $response = self::run(self::request('GET', '/wp/v2/settings', []));
+            $settings = $response->is_error() ? null : rest_get_server()->response_to_data($response, false);
+        }
+        $index = self::dispatch('GET', '/', ['_fields' => 'name,description,timezone_string,site_logo,site_icon']);
+
+        return self::json(200, ['data' => Kinds::settings($index, is_array($settings) ? $settings : null)]);
+    }
+
+    /**
+     * `GET /menus` and `/menus/<location>`: each registered location's menu as a tree. Read through core's
+     * menu routes with read access opened for exactly these dispatches: a menu assigned to a theme
+     * location is shown on the site to everyone, so its items are public (build plan §2).
+     */
+    private static function menus(string $method, array $segments): array
+    {
+        \First\App::allow($method, ['GET', 'HEAD']);
+        if (count($segments) > 2) {
+            throw HttpError::notFound('No such menus route');
+        }
+        $open = static fn (bool $access, mixed $request): bool => $access || ($request instanceof \WP_REST_Request
+            && preg_match('#^/wp/v2/menu-(locations|items)#', $request->get_route()) && self::dispatching());
+        add_filter('rest_menu_read_access', $open, 10, 2);
+        try {
+            $locations = self::dispatch('GET', '/wp/v2/menu-locations', []);
+            $locations = is_array($locations) ? $locations : [];
+            if (isset($segments[1])) {
+                $locations = [$segments[1] => $locations[$segments[1]] ?? throw HttpError::notFound("No menu location '{$segments[1]}'")];
+            }
+            $menus = Kinds::menus($locations, static function (int $menu): array {
+                $items = self::dispatch('GET', '/wp/v2/menu-items', ['menus' => $menu, 'per_page' => 100]);
+
+                return is_array($items) ? $items : [];
+            });
+        } finally {
+            remove_filter('rest_menu_read_access', $open, 10);
+        }
+
+        return self::json(200, ['data' => isset($segments[1]) ? $menus[0] : $menus]);
     }
 
     /** Every facade answer depends on who asks (cookie, application password, bearer): never cached for others. */

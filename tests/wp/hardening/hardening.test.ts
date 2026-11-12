@@ -166,6 +166,17 @@ test("comments: closed on core posts, pages and kinds without `comments`; open w
   assert.deepEqual([await comment(ids.post), await comment(ids.page), await comment(ids.memo)].map((r) => r.status), [403, 403, 403]);
   assert.equal((await comment(ids.note)).status, 201);
   assert.deepEqual(evalJson("echo wp_json_encode([get_default_comment_status('post'), get_default_comment_status('first_memos'), get_default_comment_status('first_notes')]);"), ["closed", "closed", "open"]);
+  // The facade's built-in `comments` kind (spec §2.1, this app declares none): core's route and rules,
+  // First's field names, and the same refusal on a closed item.
+  const facade = `${site}/__first/api/v1/comments`;
+  const write = (on: number) => fetch(facade, { method: "POST", headers: { "content-type": "application/json", ...auth("editor") }, body: JSON.stringify({ on, content: `facade on ${on}` }) });
+  const closed = await write(ids.memo);
+  assert.equal(closed.status, 403, await closed.text());
+  const created = await write(ids.note);
+  const row = (await created.json()).data;
+  assert.deepEqual([created.status, row.on, row.author, row.type, row.status], [201, ids.note, harness.users.editor.id, "comment", "approved"]);
+  const listed = (await (await fetch(`${facade}?post=${ids.note}`)).json()).data;
+  assert.ok(listed.some((c: any) => c.id === row.id && /facade on/.test(c.content)), JSON.stringify(listed));
 });
 
 test("permalinks: pretty URLs route even when the stored structure is plain", async () => {

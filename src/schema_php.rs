@@ -404,11 +404,13 @@ pub fn render(schema: &Schema) -> String {
                 .join(", ");
             let _ = writeln!(
                 out,
-                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'search' => {}, 'methods' => [{methods}]],",
+                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'access' => {}, 'signature' => {}, 'search' => {}, 'methods' => [{methods}]],",
                 php_str(path),
                 opt(&f.component),
                 f.metadata.as_ref().map(php_json).unwrap_or_else(|| "null".into()),
                 f.guard.as_ref().map(access).unwrap_or_else(|| "null".into()),
+                f.access.as_ref().map(access).unwrap_or_else(|| "null".into()),
+                f.signature.as_ref().map(php_json).unwrap_or_else(|| "null".into()),
                 f.search
                     .as_ref()
                     .map(|s| fields_block(&s.fields, 3))

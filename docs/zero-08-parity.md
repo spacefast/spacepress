@@ -487,7 +487,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `pages/[param].tsx` | `collectionPage()` for collection items | Refused | Port |
 | `pages/*.md`, `pages/*.html` documents | **missing** (content-owned pages are not in this release) | Refused | Move the text into a TSX page or a collection |
 | `_pages/` system pages (404, access gate) | The host's own pages | Refused | — |
-| Tailwind `zero.css` | **missing** | Not converted | Ship CSS through the page imports |
+| Tailwind `zero.css` | No generator: First does not compile Tailwind | Client app without pages: the published `zero.css` goes to `public/zero.css`, linked first as 0.8 linked it. It comes from `--zero-css <file>` (wasm `zeroCss`) or from a `--manifest` payload that kept its bytes; without it the app is refused with `Z08_CLIENT_STYLES` | For a version whose payload kept no bytes, compile it with 0.8's `compileZeroUtilityStylesheet` over the published source |
 | Live updates, realtime | `watch()` in the v2 client (#128) | Owned by #128 | Replace subscriptions |
 | `Link`, `navigate`, `Router` | Plain links; WordPress routes the page | Refused with the page | Port |
 

@@ -46,3 +46,9 @@ semantics are proven by `tests/differential/language`.
 0.8's own client returns for its calls: `makeGravatar` from `RUNTIME_SERVICE_CLIENT_SOURCE` in
 `spacefast/monorepo` `packages/common/src/contracts/runtime-services.ts` (main `384d463fa4`), run
 in Node with that file's constants substituted.
+
+`client-app-styles/zero.css` is the stylesheet Zero 0.8 generates for `client-app`:
+`compileZeroUtilityStylesheet` from `spacefast/monorepo`
+`legacy/zero-0.8/packages/zero-compile/src/tailwind-core.ts` (main `384d463fa4`), unchanged, with
+`tailwindcss@4.3.3`, over the capsule's `client/`, `server/` and `shared/` sources and no
+`theme.json`, as 0.8's CLI ran it. Regenerate it the same way after changing the fixture's classes.

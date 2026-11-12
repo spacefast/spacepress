@@ -187,18 +187,6 @@ test("WordPress's own kinds answer through their core routes, in spec §2.1 shap
   assert.equal(media.status, 200, JSON.stringify(media.json));
 });
 
-test("settings: public fields for everyone, the rest and writes for admins, as core decides", async () => {
-  const anon = await f("GET", "/settings");
-  assert.equal(anon.status, 200, JSON.stringify(anon.json));
-  assert.deepEqual(Object.keys(anon.json.data).sort(), ["frontPage", "icon", "locale", "logo", "tagline", "timezone", "title"]);
-  const tagline = `Facade tagline ${run}`;
-  assert.equal((await f("PATCH", "/settings", { as: "editor", body: { tagline } })).status, 403);
-  const set = await f("PATCH", "/settings", { as: "admin", body: { tagline } });
-  assert.deepEqual([set.status, set.json.data.tagline], [200, tagline]);
-  assert.equal((await f("GET", "/settings")).json.data.tagline, tagline);
-  assert.equal((await f("PATCH", "/settings", { as: "admin", body: { nope: 1 } })).json.pointer, "/nope");
-});
-
 test("menus: a menu in a theme location is public; its items are a tree", async () => {
   const label = `Facade home ${run}`;
   wp("eval", `$m = wp_create_nav_menu('Facade ${run}'); $p = wp_update_nav_menu_item($m, 0, ['menu-item-title' => '${label}', 'menu-item-url' => '/', 'menu-item-status' => 'publish']); wp_update_nav_menu_item($m, 0, ['menu-item-title' => 'Child', 'menu-item-url' => '/c/', 'menu-item-parent-id' => $p, 'menu-item-status' => 'publish']); set_theme_mod('nav_menu_locations', ['primary' => $m]); if (function_exists('PLL')) { $o = get_option('polylang'); foreach (pll_languages_list() as $l) { $o['nav_menus'][get_option('stylesheet')]['primary'][$l] = $m; } update_option('polylang', $o); }`);
@@ -208,6 +196,17 @@ test("menus: a menu in a theme location is public; its items are a tree", async 
   assert.deepEqual(primary.json.data, { location: "primary", items: [{ label, url: "/", item: null, children: [{ label: "Child", url: "/c/", item: null, children: [] }] }] });
   assert.equal((await f("GET", "/menus/nowhere")).status, 404);
   assert.equal((await http("GET", `${core}/menu-locations`)).status, 401, "core's own menu routes stay closed to anonymous visitors");
+});
+
+test("globals run through their Abilities on core's run route: the global's own rules, { data }", async () => {
+  const before = await f("GET", "/settings");
+  assert.deepEqual(before.json.data, await ok("GET", "/globals/settings"), "the app's `settings` global answers, not the built-in");
+  const tagline = `Facade global ${run}`;
+  assert.equal((await f("PATCH", "/settings", { as: "subscriber", body: { tagline } })).status, 403);
+  const set = await f("PATCH", "/settings", { as: "admin", body: { tagline } });
+  assert.deepEqual([set.status, set.json.data.tagline], [200, tagline], JSON.stringify(set.json));
+  assert.equal((await http("GET", `${harness.url}/wp-json/wp-abilities/v1/abilities/blog/global-settings-get/run`, { as: "admin" })).json.tagline, tagline);
+  assert.equal((await f("DELETE", "/settings", { as: "admin" })).status, 405);
 });
 
 test("rows carry First's system fields and every locale, as the old namespace did", async () => {

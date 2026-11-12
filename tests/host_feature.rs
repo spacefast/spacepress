@@ -361,9 +361,3 @@ fn app_routes_capture_and_compile_on_the_host() {
         serde_json::json!([{ "method": "GET", "path": "/api/:id/feed.json" }])
     );
 }
-
-fn rand_suffix() -> u64 {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static N: AtomicU64 = AtomicU64::new(0);
-    N.fetch_add(1, Ordering::Relaxed)
-}

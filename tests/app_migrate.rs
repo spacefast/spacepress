@@ -45,7 +45,7 @@ fn build(project: &Path) {
     assert!(node.join("node").is_dir(), "run: npm ci --prefix tests/host-types");
     std::fs::write(project.join("tsconfig.json"), serde_json::json!({
         "compilerOptions": {"target":"ES2022", "lib":["ES2022"], "module":"ESNext", "moduleResolution":"bundler", "strict":true,"noEmit":true,"types":["node"],"typeRoots":[node],"paths":{"first":[types]}},
-        "include":["first.config.ts","first/_generated/db.d.ts","first/server/**/*.ts","first/shared/**/*.ts"]
+        "include":["first.config.ts","first/_generated/db.d.ts","first/server/**/*.ts","first/shared/**/*.ts","first/app/**/route.ts"]
     }).to_string()).unwrap();
     let checked = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .arg("-p")
@@ -784,11 +784,11 @@ fn ctx_passed_to_helpers_aliased_or_destructured_converts() {
                $r = fn ($n, $in, $as) => $wp->call("POST", "/actions/$n", (object) $in, $as)[1];
                // The endpoint hands its request to helpers: a header check through two of them, then
                // the JSON body through a third.
-               $post = fn ($auth) => $app->serveRoute($app->matchRoute("POST", "/api/notes"), "POST", "/api/notes", "", "{\"body\":\"three\"}", ["Authorization" => $auth], null, "https://notes.example/api/notes")[0];
+               $post = fn ($auth) => $app->serveRoute($wp->route("POST", "/api/notes"), "POST", "/api/notes", "", "{\"body\":\"three\"}", ["Authorization" => $auth], null, "https://notes.example/api/notes")[0];
                $denied = $post("Bearer nope");
                // 0.8's request.url: https, the host as served, share-link secrets redacted.
-               $parse = fn ($body) => json_decode($app->serveRoute($app->matchRoute("POST", "/api/parse"), "POST", "/api/parse", "", $body, [], null, "https://notes.example/api/parse")[2], true);
-               $where = json_decode($app->serveRoute($app->matchRoute("GET", "/api/where"), "GET", "/api/where", "t=1", "", [], null, \First\Wp\HttpRoutes::url("Notes.Example:8080", "/api/where?__=s&t=1"))[2], true);
+               $parse = fn ($body) => json_decode($app->serveRoute($wp->route("POST", "/api/parse"), "POST", "/api/parse", "", $body, [], null, "https://notes.example/api/parse")[2], true);
+               $where = json_decode($app->serveRoute($wp->route("GET", "/api/where"), "GET", "/api/where", "t=1", "", [], null, \First\Wp\RouteRequest::url("Notes.Example:8080", "/api/where?__=s&t=1"))[2], true);
                $saved = $post("Bearer k1");
                echo json_encode([
                  "denied" => $denied, "saved" => $saved, "where" => $where, "parsed" => $parse("{\"a\":1}"), "unparsed" => $parse("{"),
@@ -2775,7 +2775,7 @@ fn a_writing_get_that_never_reads_the_visitor_becomes_a_writing_get_route() {
         .arg("eval")
         .arg(out.join("first/dist/wp-content"))
         .arg(
-            r#"$get = fn ($tag) => $app->serveRoute($app->matchRoute("GET", "/api/seen/$tag"), "GET", "/api/seen/$tag", "", "", [], null, "https://hits.example/api/seen/$tag");
+            r#"$get = fn ($tag) => $app->serveRoute($wp->route("GET", "/api/seen/$tag"), "GET", "/api/seen/$tag", "", "", [], null, "https://hits.example/api/seen/$tag");
                $first = $get("a"); $get("a"); $get("b");
                global $wpdb;
                $table = $wpdb->get_var("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%hits%'");
@@ -2826,7 +2826,7 @@ fn crons_calling_converted_get_endpoints_are_carried() {
         .arg("eval")
         .arg(out.join("first/dist/wp-content"))
         .arg(
-            r#"$r = $app->serveRoute($app->matchRoute("GET", "/api/sweep"), "GET", "/api/sweep", "", "", ["x-spacefast-cron" => "sweep.1.x"], null, "https://hits.example/api/sweep");
+            r#"$r = $app->serveRoute($wp->route("GET", "/api/sweep"), "GET", "/api/sweep", "", "", ["x-spacefast-cron" => "sweep.1.x"], null, "https://hits.example/api/sweep");
                global $wpdb;
                $table = $wpdb->get_var("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%hits%'");
                echo json_encode(["status" => $r[0], "body" => $r[2], "rows" => $wpdb->get_col("SELECT tag FROM `$table`")]), "\n";"#,

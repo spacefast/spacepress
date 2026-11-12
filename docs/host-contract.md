@@ -92,6 +92,7 @@ The app API is `/__first/api/v1`; actions are `POST /__first/api/v1/actions/<nam
 |---|---|
 | `first_realtime_changes` | WordPress action fired once per committed transaction with its change notice `{id, at, changes: [{collection, ops, ids}]}` |
 | `First\Realtime\Publisher` | PHP interface a host implements to send each notice to its realtime transport (`First\Realtime\Module::publish`) |
+| `First\Realtime\Module::shared($notice)` | the notice with the ids of collections not every visitor can list set to null, for a room every visitor shares |
 | `__firstRealtime` | the page-wide registry on `globalThis` that every generated client on a page shares; a host script calls `registerRealtimeTransport` from the client to set it |
 
 ### Background work

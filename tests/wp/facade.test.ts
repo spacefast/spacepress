@@ -216,3 +216,23 @@ test("rows carry First's system fields and every locale, as the old namespace di
   const both = await f("GET", "/tours" + qs({ locale: "*", where: { id: tour.id } }), { as: "editor" });
   assert.deepEqual(both.json.data.map((t: any) => [t.id, t.locale]), [[tour.id, "en"]]);
 });
+
+test("revisions: core's revisions of the post, First's snapshots, and a restore that is an update", async () => {
+  const post = first("insert", "posts", JSON.stringify({ title: `Rev ${run}`, excerpt: "one" }))[0];
+  await http("PATCH", `${api}/posts/${post.id}`, { as: "editor", body: { excerpt: "two" } });
+  const list = await f("GET", `/posts/${post.id}/revisions`, { as: "editor" });
+  assert.equal(list.status, 200, JSON.stringify(list.json));
+  assert.deepEqual(list.json.data, await ok("GET", `/posts/${post.id}/revisions`, { as: "editor" }), "the same list as the old namespace");
+  const oldest = list.json.data.at(-1).id;
+  const at = await f("GET", `/posts/${post.id}/revisions/${oldest}`, { as: "editor" });
+  assert.deepEqual(at.json.data, await ok("GET", `/posts/${post.id}/revisions/${oldest}`, { as: "editor" }));
+  const restored = await f("POST", `/posts/${post.id}/revisions/${oldest}/restore`, { as: "editor" });
+  assert.deepEqual([restored.status, restored.json.data.excerpt], [200, at.json.data.excerpt], JSON.stringify(restored.json));
+  // Denials: anonymous, a subscriber without the update rule, another post's revision, a missing row.
+  assert.equal((await f("GET", `/posts/${post.id}/revisions`)).status, 401);
+  assert.equal((await f("GET", `/posts/${post.id}/revisions`, { as: "subscriber" })).status, 404);
+  const other = first("insert", "posts", JSON.stringify({ title: `Other ${run}` }))[0];
+  const mismatch = await f("GET", `/posts/${other.id}/revisions/${oldest}`, { as: "editor" });
+  assert.deepEqual([mismatch.status, mismatch.json.code], [404, "not_found"]);
+  assert.equal((await f("GET", "/posts/999999999/revisions", { as: "editor" })).status, 404);
+});

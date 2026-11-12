@@ -162,6 +162,9 @@ final class Facade
 
             return self::list($kind, $query);
         }
+        if ($kind['type'] === 'post' && ($segments[2] ?? null) === 'revisions' && count($segments) <= 5) {
+            return self::revisions($kind, $method, self::id($kind, $segments[1]), array_slice($segments, 3));
+        }
         if (count($segments) !== 2) {
             throw HttpError::notFound("No route for $path");
         }
@@ -352,7 +355,8 @@ final class Facade
             'rest_forbidden', 'rest_cannot_create', 'rest_cannot_edit', 'rest_cannot_delete', 'rest_cannot_read', 'rest_forbidden_context',
             'rest_cannot_create_user', 'rest_user_cannot_delete', 'rest_user_cannot_view', 'rest_cannot_edit_roles',
             'rest_ability_cannot_execute' => get_current_user_id() === 0 ? 'unauthenticated' : 'forbidden',
-            'rest_post_invalid_id', 'rest_user_invalid_id', 'rest_no_route', 'rest_ability_not_found' => 'not_found',
+            'rest_post_invalid_id', 'rest_user_invalid_id', 'rest_no_route', 'rest_ability_not_found', 'rest_revision_parent_id_mismatch',
+            'rest_term_invalid', 'rest_comment_invalid_id', 'rest_menu_location_invalid' => 'not_found',
             'rest_invalid_param', 'rest_missing_callback_param' => 'invalid_input',
             'rest_no_route_method', 'rest_ability_invalid_method' => 'method_not_allowed',
             default => $code,
@@ -454,6 +458,71 @@ final class Facade
     private static function context(array $kind): array
     {
         return ['context' => 'view'];
+    }
+
+    /**
+     * `/<kind>/<id>/revisions[/<rid>[/restore]]` over core's `/wp/v2/<type>/<id>/revisions` (core's
+     * revisions controller, First's snapshot and field masks on each one, CoreAccess::prepareChild).
+     * A restore is the revision's row as an update of the post through its core route, so the update
+     * rule, validation and hooks decide it exactly as any other edit. Needs First's update rule.
+     */
+    private static function revisions(array $kind, string $method, int|string $id, array $rest): array
+    {
+        $collection = (string) $kind['name'];
+        $spec = $kind['spec'];
+        if (!($spec['revisions'] ?? false)) {
+            throw HttpError::notFound("$collection keeps no revisions");
+        }
+        $viewer = CoreAccess::viewer();
+        if ($viewer === null || !CoreAccess::covers($collection, 'update', $id, $viewer)) {
+            throw $viewer?->user === null ? new HttpError(401, 'unauthenticated', "Sign in to see the revisions of $collection rows")
+                : HttpError::notFound("No $collection row $id");
+        }
+        $route = "{$kind['route']}/" . rawurlencode((string) $id) . '/revisions';
+        $db = Plugin::instance()?->db() ?? throw new \LogicException('No First app');
+        if ($rest === []) {
+            \First\App::allow($method, ['GET', 'HEAD']);
+            $out = [];
+            foreach ((array) self::dispatch('GET', $route, ['context' => 'view', 'per_page' => 100, '_fields' => 'id,author,date_gmt']) as $r) {
+                if (wp_is_post_autosave((int) $r['id'])) {
+                    continue;
+                }
+                $user = (int) ($r['author'] ?? 0) > 0 ? get_userdata((int) $r['author']) : null;
+                $out[] = ['id' => (int) $r['id'], 'at' => self::isoGmt((string) ($r['date_gmt'] ?? '')),
+                    'user' => $user instanceof \WP_User ? ['id' => (int) $user->ID, 'name' => (string) $user->display_name] : null];
+            }
+
+            return self::json(200, ['data' => $out]);
+        }
+        if (!preg_match('/^\d{1,18}$/D', $rest[0])) {
+            throw HttpError::notFound("No revision {$rest[0]}");
+        }
+        $rid = (int) $rest[0];
+        self::dispatch('GET', "$route/$rid", ['_fields' => 'id']); // core's own check that it is one of this post's
+        $row = $db->revision($collection, $id, $rid, $viewer); // First's snapshot, masked for this viewer
+        if (count($rest) === 1) {
+            \First\App::allow($method, ['GET', 'HEAD']);
+
+            return self::json(200, ['data' => $row]);
+        }
+        if ($rest[1] !== 'restore' || count($rest) !== 2) {
+            throw HttpError::notFound('No such revisions route');
+        }
+        \First\App::allow($method, ['POST']);
+        $patch = [];
+        foreach ($spec['columns'] as $name => $col) {
+            if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !isset($col['onUpdate']) && array_key_exists($name, $row)) {
+                $patch[(string) $name] = $row[$name];
+            }
+        }
+        $updated = self::dispatch('POST', "{$kind['route']}/" . rawurlencode((string) $id), self::context($kind), Kinds::input($kind, $patch));
+
+        return self::json(200, ['data' => Kinds::row($kind, $updated)]);
+    }
+
+    private static function isoGmt(string $gmt): string
+    {
+        return str_replace(' ', 'T', $gmt) . '.000Z';
     }
 
     /** `GET`/`PATCH /settings` (spec §2.1): core's settings for admins; the index's public fields for others. */

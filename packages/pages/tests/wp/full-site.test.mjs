@@ -46,7 +46,8 @@ test('TSX pages serve a full site from native WordPress with viewer-bound data',
   const root = await mkdtemp(join(tmpdir(), 'first-pages-native-'));
   const project = join(root, 'site');
   const content = join(project, 'first/dist/wp-content');
-  for (const entry of ['first.config.ts', 'pages', 'components', 'islands', 'styles']) {
+  // The pages and the backend they read; the example's first/app/ routes are tested in tests/wp/hosted-pages.
+  for (const entry of ['first.config.ts', 'first/actions.ts', 'pages', 'components', 'islands', 'styles']) {
     await cp(join(example, entry), join(project, entry), { recursive: true });
   }
   const config = join(project, 'first.config.ts');

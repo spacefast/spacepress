@@ -1271,7 +1271,13 @@ fn compiled_tsx_renders_the_html_react_renders() {
             Some(html) => serde_json::json!({ "html": without_image_preloads(&html.replace("<!-- -->", "")) }),
             None => want.clone(),
         };
-        let got = &compiled[index];
+        // Generator B adds `data-wp-*` attributes and wraps dynamic text in spans that carry only
+        // `data-wp-text`; with those set aside, a client component renders React's HTML.
+        let got = match compiled[index].get("html").and_then(serde_json::Value::as_str) {
+            Some(html) => serde_json::json!({ "html": without_directives(html) }),
+            None => compiled[index].clone(),
+        };
+        let got = &got;
         if *got != want {
             mismatches.push(format!("case {index}\n  react: {want}\n  php:   {got}"));
         }
@@ -1434,6 +1440,15 @@ fn html_runtime_drops_unsafe_attribute_names_from_any_source() {
          <div style=\"width:1px;--ok:1\"></div>\nrefused\n<my-el style=\"width:1px;--ok:1\"></my-el>\ntrue\n\
          <p style=\"color:red\"></p>\n"
     );
+}
+
+/// Server HTML with generator B's additions removed: every `data-wp-*` attribute, and the
+/// `<span data-wp-text="…">` wrappers it puts around dynamic text that shares its parent.
+fn without_directives(html: &str) -> String {
+    let attr = regex::Regex::new(r#" data-wp-[a-z0-9-]+="[^"]*""#).unwrap();
+    let span = regex::Regex::new(r#"<span data-wp-text="[^"]*" data-first-text="">([^<]*)</span>"#).unwrap();
+    let html = span.replace_all(html, "$1");
+    attr.replace_all(&html, "").into_owned()
 }
 
 fn without_image_preloads(html: &str) -> String {

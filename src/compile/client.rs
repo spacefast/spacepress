@@ -171,7 +171,8 @@ impl Compiler<'_, '_> {
         if alone {
             return Ok((php, Some(r)));
         }
-        Ok((format!("\\First\\Html::element('span', ['data-wp-text' => {}], {php})", php_str(&r)), None))
+        // `data-first-text` marks the span as the compiler's, not the author's.
+        Ok((format!("\\First\\Html::element('span', ['data-wp-text' => {}, 'data-first-text' => ''], {php})", php_str(&r)), None))
     }
 }
 

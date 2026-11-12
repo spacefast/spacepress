@@ -63,9 +63,6 @@ final class Plugin
             UserMeta::register();
         }
         IdentityBridge::hook($this->connection());
-        add_action('rest_api_init', fn () => $this->unavailable() === null
-            ? Rest::register(fn () => $this->app())
-            : Rest::unavailable(self::UNAVAILABLE));
         add_action('rest_api_init', fn () => TableController::registerAll($this));
         // While storage is behind, First collections' posts can't be written by any path (core REST,
         // wp-admin, other plugins): their hooks would run against tables the build doesn't match.
@@ -102,7 +99,6 @@ final class Plugin
                 wp_die(esc_html(self::UNAVAILABLE), 'First', ['response' => 503, 'back_link' => true]);
             }
         });
-        Rest::boot();
         Facade::register($this);
         HttpRoutes::register($this);
         AppRouter::register($this);

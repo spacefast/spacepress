@@ -6,7 +6,9 @@ namespace First;
 
 /**
  * Boots a generated app and serves its REST API (§4.8) and CLI. The WordPress plugin passes its
- * Store/Auth/Media and calls handle() with the path after its REST prefix (`/wp-json/first/v1`).
+ * Store/Auth/Media and calls handle() with the path after the API prefix (`/__first/api/v1`): the
+ * WordPress facade for First's own routes with no core route (sign-in, sync, services, files), and
+ * the abilities (invoke).
  */
 final class App
 {

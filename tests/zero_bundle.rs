@@ -198,3 +198,36 @@ fn a_zero_source_bundle_with_rendered_pages_is_refused_with_how_to_publish_again
         error.help
     );
 }
+
+/// What a deployed 0.3.0 Space's next version serves its pages: recompiled from its stored
+/// `zero.source-bundle.v1`, its generated client, run under Node, calls First's API at
+/// `/__first/api/v1` (tests/wp/zero-upgrade proves what the site answers there and on the old paths).
+#[test]
+fn a_recompiled_zero_bundle_client_calls_the_first_api() {
+    let work = tempfile::tempdir().unwrap();
+    let legacy = Path::new(FIXTURE).join("sources");
+    let output = work.path().join("compiled");
+    first::bundle::compile(&legacy, &output, &legacy, Some(&Path::new(FIXTURE).join("compiled"))).unwrap();
+    let client = tree(&output)
+        .into_keys()
+        .find(|k| k.ends_with("client/client.js"))
+        .expect("a generated client");
+    let probe = work.path().join("probe.mjs");
+    fs::write(
+        &probe,
+        format!(
+            "const calls = [];\nglobalThis.fetch = async (url, init) => {{ calls.push([init?.method ?? 'GET', String(url)]); return new Response(JSON.stringify({{ data: [], cursor: null }}), {{ status: 200, headers: {{ 'content-type': 'application/json' }} }}); }};\nconst {{ createClient }} = await import({:?});\nconst c = createClient({{ fetch: globalThis.fetch }});\nawait c.notes.list();\nawait c.actions.count({{}});\nconsole.log(JSON.stringify(calls));\n",
+            format!("file://{}", output.join(&client).display())
+        ),
+    )
+    .unwrap();
+    let out = std::process::Command::new("node").arg(&probe).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let calls: Vec<(String, String)> = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(calls.len(), 2, "{calls:?}");
+    for (_, url) in &calls {
+        assert!(url.starts_with("/__first/api/v1/"), "{calls:?}");
+    }
+    assert_eq!(calls[0], ("GET".into(), "/__first/api/v1/notes".into()));
+    assert_eq!(calls[1].1, "/__first/api/v1/actions/count");
+}

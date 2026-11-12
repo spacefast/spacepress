@@ -11,7 +11,7 @@ namespace First\Wp;
  * - Lists: a read rule that denies is 401/403; a filtering rule (or draft visibility) limits the
  *   query to the rows it covers, so pagination counts only those. `search` and `slug` can't probe a
  *   column hidden from the viewer.
- * - Items: a row the read rule filters out is 404, as on `/first/v1`.
+ * - Items: a row the read rule filters out is 404, as in First's read pipeline.
  * - Every response, in every context, drops the fields the viewer can't read.
  * - Creates and updates run in one transaction ({@see EditorSave}) that First's rules authorize on the
  *   save's own data before it commits; a refusal is First's 401/403 and nothing is saved.

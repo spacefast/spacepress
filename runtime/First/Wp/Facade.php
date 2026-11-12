@@ -82,6 +82,15 @@ final class Facade
         if (!defined('REST_REQUEST')) {
             define('REST_REQUEST', true); // core's REST behaviour (auth, caching headers) for the dispatches
         }
+        // WordPress's CORS for the request's origin, as /wp-json sends it (rest_send_cors_headers and
+        // the filters on it), and its answer to a preflight.
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        rest_send_cors_headers(false);
+        if ($method === 'OPTIONS') {
+            header('Access-Control-Allow-Headers: ' . implode(', ', (array) apply_filters('rest_allowed_cors_headers',
+                ['Authorization', 'X-WP-Nonce', 'Content-Disposition', 'Content-MD5', 'Content-Type', 'Idempotency-Key', 'First-Signature'], new \WP_REST_Request('OPTIONS', self::PREFIX . $path))));
+            self::emit(204, self::PRIVATE, '');
+        }
         try {
             if ($plugin->unavailable() !== null) {
                 throw new HttpError(503, 'unavailable', Plugin::UNAVAILABLE);
@@ -90,7 +99,6 @@ final class Facade
             if ($auth instanceof \WP_Error) {
                 self::problem($auth);
             }
-            $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
             $query = self::query();
             [$status, $headers, $body] = self::route($plugin, $method, $path, $query, (string) file_get_contents('php://input'));
             self::emit($status, $headers, $body);
@@ -619,7 +627,7 @@ final class Facade
     }
 
     /** Every facade answer depends on who asks (cookie, application password, bearer): never cached for others. */
-    private const PRIVATE = ['Cache-Control' => 'private, no-store', 'Vary' => 'Cookie, Authorization'];
+    private const PRIVATE = ['Cache-Control' => 'private, no-store', 'Vary' => 'Origin, Cookie, Authorization'];
 
     /** @return array{int, array<string, string>, string} */
     private static function json(int $status, array $body): array

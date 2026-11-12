@@ -112,6 +112,8 @@ final class Seam
         }
         if ($type === 'json' || $value instanceof JsObject || $value instanceof JsArray) { return Js::detach(self::jsonJs($value)); }
         if ($type === 'media' && is_array($value)) { return self::media($value); }
+        // A populated file({ bucket }) column is a FileRef: plain JSON (id, bucket, url, ...).
+        if ($type === 'file' && (is_array($value) || $value instanceof \stdClass)) { return Js::detach(self::jsonJs($value)); }
         if (!is_array($value) && !$value instanceof \stdClass) { return $value; }
         $value = self::container($value);
         if ($shape === null) {

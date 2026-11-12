@@ -318,8 +318,11 @@ final class Kinds
                 $out['date_gmt'] = is_string($value) ? substr($value, 0, 19) : $value;
             } elseif (in_array($col, ['locale', 'translationOf'], true) && ($spec['localized'] ?? false)) {
                 $out[$col] = $value; // a translation's language and group (PostsController::createTranslated)
-            } else {
+            } elseif (isset($spec['columns'][$col]) && !($spec['columns'][$col]['system'] ?? false)) {
                 $meta[$col] = $value;
+            } else {
+                // Core ignores a `meta` key it doesn't know; First refuses a field the kind doesn't have.
+                throw \First\HttpError::invalidInput(isset($spec['columns'][$col]) ? "$col is managed by First" : "Unknown field '$col'", \First\HttpError::seg($col));
             }
         }
         if ($kind['type'] === 'post' && !isset($out['status']) && $create) {

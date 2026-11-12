@@ -34,13 +34,17 @@ function serveFiles(): Promise<http.Server> {
 	return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
 
-/** fetch with a cookie jar, following redirects: Playground signs the visitor in with a redirect. */
-function browser(base: string) {
-	const cookies = new Map<string, string>();
-	return async (pathname: string): Promise<{ status: number; body: string; url: string }> => {
+/**
+ * fetch with a cookie jar, following redirects: Playground signs the visitor in with a redirect.
+ * A signed-out visitor starts with the cookie Playground sets after its one automatic sign-in, so
+ * it is never signed in.
+ */
+function browser(base: string, { signedOut = false } = {}) {
+	const cookies = new Map<string, string>(signedOut ? [["playground_auto_login_already_happened", "1"]] : []);
+	return async (pathname: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<{ status: number; body: string; url: string }> => {
 		let url = new URL(pathname, base);
 		for (let hop = 0; hop < 5; hop++) {
-			const response = await fetch(url, { redirect: "manual", headers: { cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join("; ") } });
+			const response = await fetch(url, { ...init, redirect: "manual", headers: { ...init.headers, cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join("; ") } });
 			for (const header of response.headers.getSetCookie()) {
 				const [pair] = header.split(";");
 				const at = pair!.indexOf("=");
@@ -79,6 +83,89 @@ foreach (json_decode(base64_decode('${Buffer.from(JSON.stringify(keys)).toString
 }
 echo wp_json_encode($out);
 `;
+
+type Browser = ReturnType<typeof browser>;
+
+/**
+ * A REST call as `as` makes it. WordPress reads a cookie as signed out on the REST API unless the
+ * request carries the REST nonce, which the block editor prints for the signed-in admin.
+ */
+async function rest(as: Browser, route: string, init: { method?: string; body?: unknown } = {}, nonce?: string) {
+	const response = await as(route, {
+		method: init.method,
+		headers: { ...(nonce ? { "x-wp-nonce": nonce } : {}), ...(init.body === undefined ? {} : { "content-type": "application/json" }) },
+		body: init.body === undefined ? undefined : JSON.stringify(init.body),
+	});
+	assert.equal(response.status, 200, `${route}: ${response.body.slice(0, 300)}`);
+	return JSON.parse(response.body) as { data: Record<string, unknown>[] };
+}
+
+async function adminNonce(admin: Browser): Promise<string> {
+	const editor = await admin("/wp-admin/post-new.php");
+	const nonce = /createNonceMiddleware\(\s*"([0-9a-f]+)"/.exec(editor.body)?.[1];
+	assert.ok(nonce, "the block editor printed no REST nonce");
+	return nonce;
+}
+
+// What each example's sample data shows: the seed ran, and its hooks and jobs did their work.
+const exampleChecks: Record<string, { title: string; run: (base: string, admin: Browser) => Promise<void> }> = {
+	"reading-list": {
+		title: "the tally jobs filled in minutes read, the draft is the admin's only, and the shelf route lists the books",
+		async run(base, admin) {
+			const visitor = browser(base, { signedOut: true });
+			const books = (await rest(visitor, "/wp-json/first/v1/books")).data;
+			assert.deepEqual(books.map((b) => [b.title, b.minutesRead]).sort(), [["A Wizard of Earthsea", 45], ["The Dispossessed", 65], ["The Left Hand of Darkness", 25]]);
+			const all = (await rest(admin, "/wp-json/first/v1/books?status=draft", {}, await adminNonce(admin))).data;
+			assert.deepEqual(all.map((b) => b.title), ["The Lathe of Heaven"]);
+			const shelf = await visitor("/shelf.html");
+			assert.equal(shelf.status, 200);
+			assert.match(shelf.body, /<li>The Dispossessed: 1 hour<\/li>/);
+		},
+	},
+	pantry: {
+		title: "milk is on the shopping list and notified, and milk and butter expire soon",
+		async run(_base, admin) {
+			const nonce = await adminNonce(admin);
+			const list = (await rest(admin, "/wp-json/first/v1/shopping_list", {}, nonce)).data;
+			assert.deepEqual(list.map((row) => row.name), ["Milk"]);
+			assert.ok(list[0]!.notifiedAt, "the notifyLowStock job did not run");
+			const soon = (await rest(admin, "/wp-json/first/v1/actions/expiringSoon", { method: "POST", body: {} }, nonce)).data;
+			assert.deepEqual(soon.map((item) => [item.name, item.where]), [["Butter", "Fridge"], ["Milk", "Fridge"]]);
+		},
+	},
+	blog: {
+		title: "/wp-json/first/v1/posts lists the published posts, and a reader's comment waits for an editor",
+		async run(base, admin) {
+			const visitor = browser(base, { signedOut: true });
+			const published = (await rest(visitor, "/wp-json/first/v1/posts")).data;
+			assert.deepEqual(published.map((p) => p.title).sort(), ["Comments are moderated", "Hello, First"]);
+			const nonce = await adminNonce(admin);
+			const drafts = (await rest(admin, "/wp-json/first/v1/posts?status=draft", {}, nonce)).data;
+			assert.deepEqual(drafts.map((p) => p.title), ["Typed content, plain files"]);
+			const shown = (await rest(visitor, "/wp-json/first/v1/comments")).data;
+			assert.equal(shown.length, 2, "a signed-out reader should see the two approved comments");
+			const waiting = (await rest(admin, "/wp-json/first/v1/comments", {}, nonce)).data.filter((c) => c.approved === false);
+			assert.equal(waiting.length, 1);
+			assert.ok(waiting[0]!.notifiedAt, "the notifyEditors job did not stamp the reader's comment");
+		},
+	},
+	"full-site": {
+		title: "a signed-out visitor reads the TSX pages: /notes/, and a note with its cheer island and no desk notes",
+		async run(base) {
+			const visitor = browser(base, { signedOut: true });
+			const list = await visitor("/notes/");
+			assert.equal(list.status, 200);
+			assert.match(list.body, /<a href="[^"]*\/notes\/dawn-on-the-ridge\/">Dawn on the ridge<\/a>/);
+			assert.doesNotMatch(list.body, /Notes for next week/, "a draft is listed to a signed-out visitor");
+			const note = await visitor("/notes/dawn-on-the-ridge/");
+			assert.equal(note.status, 200);
+			assert.match(note.body, /<h1[^>]*>Dawn on the ridge<\/h1>/);
+			assert.match(note.body, /data-wp-interactive="fullsite\/cheer"/);
+			assert.match(note.body, /data-wp-text="context.count"[^>]*>3</);
+			assert.doesNotMatch(note.body, /Check the photo credit/, "desk notes shown to a signed-out visitor");
+		},
+	},
+};
 
 let zips: http.Server;
 before(async () => {
@@ -154,5 +241,9 @@ for (const example of siteExamples) {
 				if (example.seed) assert.ok(rows.length > 0, `${example.landing} is empty after the seed ran`);
 			}
 		});
+
+		for (const [name, check] of Object.entries(exampleChecks)) {
+			if (name === example.name) test(check.title, () => check.run(wordpress.serverUrl, get));
+		}
 	});
 }

@@ -1,0 +1,5 @@
+{
+  "title": "Full site",
+  "summary": "A small editorial site. Pages written in TSX, rendered by WordPress, with one button that runs on the Interactivity API.",
+  "landing": "/notes/"
+}

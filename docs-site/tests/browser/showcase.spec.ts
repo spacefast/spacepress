@@ -42,7 +42,7 @@ test("a link to a file opens it, with the folders above it", async ({ page }) =>
 });
 
 test("every example page has the explorer and its own app plugin", async ({ page }) => {
-	for (const [name, app] of [["pantry", "pantry"], ["kitchen-sink", "kitchen-sink"], ["recipes", "recipes"], ["wp-plugins", "plugin-demo"]]) {
+	for (const [name, app] of [["pantry", "pantry"], ["blog", "blog"], ["full-site", "fullsite"]]) {
 		await page.goto(`./examples/${name}`);
 		await expect(page.locator(".explorer-config")).toContainText("defineConfig");
 		await row(page, `${plugins}/first-app-${app}/first/app/schema.php`).click();
@@ -63,7 +63,7 @@ test("the explorer follows the site's dark theme", async ({ page }) => {
 });
 
 test("each example has a WordPress Playground blueprint with its own built plugins", async ({ request }) => {
-	for (const name of ["reading-list", "pantry", "kitchen-sink", "recipes", "wp-plugins"]) {
+	for (const name of ["reading-list", "pantry", "blog", "full-site"]) {
 		const response = await request.get(`./files/${name}.blueprint.json`);
 		expect(response.headers()["access-control-allow-origin"]).toBe("*");
 		const blueprint = await response.json();

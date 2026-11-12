@@ -363,3 +363,114 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
     );
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.
+fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value {
+    let project = fixture("frontend-modes", variant);
+    if app {
+        copy(&project.join("app/first/app"), &project.join("first/app"));
+    }
+    let _ = std::fs::remove_dir_all(project.join("app"));
+    if let Some(frontend) = frontend {
+        let config = project.join("first.config.ts");
+        let text = std::fs::read_to_string(&config).unwrap();
+        std::fs::write(
+            &config,
+            text.replace(
+                r#"{ name: "modes" }"#,
+                &format!(r#"{{ name: "modes", frontend: {frontend} }}"#),
+            ),
+        )
+        .unwrap();
+    }
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/frontend_modes.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{variant}: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let _ = std::fs::remove_dir_all(project);
+    serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|_| panic!("{variant}: {}", String::from_utf8_lossy(&out.stdout)))
+}
+
+/// spec §2.7 and §5 on WordPress: a kind's `url` is how WordPress resolves and links its items in
+/// every mode; with no first/app/ the theme renders them, a first/app/ page that matches the
+/// pattern takes the URL over, `frontend: false` serves no public HTML, and an external frontend
+/// gets every front-end URL. wp-admin's REST and feeds keep working throughout, and a slug change
+/// (or a stale placeholder like a wrong year) 301s to the item's own URL.
+#[test]
+fn frontend_modes_on_wordpress() {
+    let theme = modes("theme", None, false);
+    assert_eq!(theme["note status"], 200, "{theme}");
+    assert_eq!(
+        (&theme["note by theme"], &theme["note by app"]),
+        (&serde_json::json!(true), &serde_json::json!(false))
+    );
+    assert_eq!(theme["note body"], true);
+    assert_eq!(theme["permalink"], "/notes/hello-note/");
+    assert_eq!(theme["draft"], 404);
+    assert_eq!(theme["missing note"], 404);
+    assert_eq!(theme["journal"], 200);
+    assert_eq!(
+        theme["journal wrong year"],
+        serde_json::json!([301, "/journal/2026/day-one/"])
+    );
+    assert_eq!(theme["renamed"], serde_json::json!([301, "/notes/renamed-note/"]));
+    assert_eq!(theme["new url"], 200);
+    assert_eq!(theme["about"][0], 404);
+    assert_eq!(theme["home"], 200);
+
+    let app = modes("app", None, true);
+    assert_eq!(
+        (&app["note status"], &app["note by app"], &app["note body"]),
+        (
+            &serde_json::json!(200),
+            &serde_json::json!(true),
+            &serde_json::json!(true)
+        ),
+        "{app}"
+    );
+    assert_eq!(app["draft"], 404);
+    assert_eq!(app["missing note"], 404);
+    assert_eq!(app["about"], serde_json::json!([200, true]));
+    // A kind URL with no page of its own still renders with the theme.
+    assert_eq!(app["journal"], 200);
+    assert_eq!(app["renamed"], serde_json::json!([301, "/notes/renamed-note/"]));
+    // WordPress's own post URLs keep working.
+    assert_eq!(app["post"], serde_json::json!([301, "/hello-world/"]));
+
+    let off = modes("off", Some("false"), false);
+    for key in ["note status", "journal", "home", "draft"] {
+        assert_eq!(off[key], 404, "{key}: {off}");
+    }
+    assert_eq!(off["permalink"], "/notes/hello-note/");
+
+    let external = modes("external", Some(r#""https://front.example""#), false);
+    assert_eq!(
+        external["permalink"], "https://front.example/notes/hello-note/",
+        "{external}"
+    );
+    assert_eq!(external["note status"], 308);
+    assert_eq!(external["post"][0], 308);
+
+    for (name, mode) in [("theme", &theme), ("app", &app), ("off", &off), ("external", &external)] {
+        assert_eq!(
+            (&mode["rest"], &mode["rest note"], &mode["feed"]),
+            (
+                &serde_json::json!(200),
+                &serde_json::json!(200),
+                &serde_json::json!(200)
+            ),
+            "{name}: {mode}"
+        );
+    }
+}

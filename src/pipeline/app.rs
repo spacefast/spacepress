@@ -166,6 +166,12 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         }
         files.insert(path.clone(), file);
     }
+    let kinds: Vec<(String, String)> = ext
+        .schema
+        .collections
+        .iter()
+        .filter_map(|(name, c)| c.url.clone().map(|u| (name.clone(), u)))
+        .collect();
     let route = |r: &app::Route| AppRoute {
         id: r.id(),
         pattern: r.pattern(),
@@ -173,6 +179,13 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         handler: (r.kind == RouteKind::Handler).then(|| r.file.clone()),
         layouts: r.layouts.clone(),
         error: r.error.clone(),
+        kind: (r.kind == RouteKind::Page)
+            .then(|| {
+                kinds
+                    .iter()
+                    .find_map(|(k, u)| app::serves_kind_url(r, u).map(|b| (k.clone(), b)))
+            })
+            .flatten(),
     };
     ext.schema.app = Some(crate::schema::App {
         routes: program.app.routes.iter().map(route).collect(),

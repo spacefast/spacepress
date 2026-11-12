@@ -1138,10 +1138,6 @@
       "feature": "client source the browser build cannot compile"
     },
     {
-      "code": "Z08_CLIENT_NATIVE",
-      "feature": "client app converted by the browser compiler"
-    },
-    {
       "code": "Z08_CLIENT_PUBLIC",
       "feature": "client app with its own public/ directory"
     },

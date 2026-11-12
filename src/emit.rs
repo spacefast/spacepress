@@ -1,4 +1,5 @@
-use crate::{pipeline::Built, platform, runtime_files, schema, schema_php};
+use crate::app_plugin::{readme, substitute};
+use crate::{pipeline::Built, platform, runtime_files, schema_php};
 use std::path::Path;
 
 pub(crate) fn write(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
@@ -8,32 +9,46 @@ pub(crate) fn write(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<(
     std::fs::write(path, content)
 }
 
-fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(to)?;
-    for entry in std::fs::read_dir(from)? {
-        let entry = entry?;
-        let target = to.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            std::fs::create_dir_all(&target)?;
-            copy_dir(&entry.path(), &target)?;
-        } else {
-            std::fs::copy(entry.path(), target)?;
+/// Every file under `root`, by `/`-separated path below it, sorted.
+fn read_tree(root: &Path) -> std::io::Result<Vec<(String, Vec<u8>)>> {
+    fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) -> std::io::Result<()> {
+        let mut entries = std::fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                walk(root, &path, out)?;
+            } else {
+                let rel = path
+                    .strip_prefix(root)
+                    .expect("under root")
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                out.push((rel, std::fs::read(&path)?));
+            }
         }
+        Ok(())
     }
-    Ok(())
+    let mut out = Vec::new();
+    walk(root, root, &mut out)?;
+    Ok(out)
 }
 
-fn copy_sql(from: &Path, to: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(to)?;
-    if from.is_dir() {
-        for entry in std::fs::read_dir(from)? {
+/// The ledger's `.sql` files, by name.
+fn read_sql(dir: &Path) -> std::io::Result<Vec<(String, Vec<u8>)>> {
+    let mut out = Vec::new();
+    if dir.is_dir() {
+        for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             if entry.path().extension().is_some_and(|e| e == "sql") {
-                std::fs::copy(entry.path(), to.join(entry.file_name()))?;
+                out.push((
+                    entry.file_name().to_string_lossy().into_owned(),
+                    std::fs::read(entry.path())?,
+                ));
             }
         }
     }
-    Ok(())
+    Ok(out)
 }
 
 pub(crate) fn runtime_file(rel: &str) -> Option<&'static [u8]> {
@@ -97,13 +112,6 @@ pub(crate) fn runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
     files
 }
 
-fn readme(slug: &str) -> String {
-    format!(
-        "=== {slug} ===\nStable tag: {}\nLicense: GPL-2.0-or-later\n",
-        env!("CARGO_PKG_VERSION")
-    )
-}
-
 /// Generated plugins are prepared in the same private tree as acquired dependencies. Without
 /// `runtime`, only the app plugin is written (the build store holds the runtime tree separately).
 pub(crate) fn emit_generated(
@@ -114,7 +122,6 @@ pub(crate) fn emit_generated(
     runtime: bool,
 ) -> std::io::Result<()> {
     let schema_php = schema_php::render(&built.schema);
-    let vars = plugin_vars(&built.schema, &schema_php);
     if runtime {
         for (rel, bytes) in runtime_tree() {
             // The optional admin screens: only when the config opted in.
@@ -123,76 +130,16 @@ pub(crate) fn emit_generated(
             }
         }
     }
-    let slug = format!("first-app-{}", built.schema.name);
-    let directory = plugins.join(&slug);
-    std::fs::create_dir_all(&directory)?;
-    let template = runtime_file("wp-plugin/first-app.php").expect("embedded plugin template");
-    write(
-        &directory.join(format!("{slug}.php")),
-        substitute(&String::from_utf8_lossy(template), &vars),
-    )?;
-    let uninstall = runtime_file("wp-plugin/first-app-uninstall.php").expect("embedded uninstall template");
-    write(&directory.join("uninstall.php"), uninstall)?;
-    write(&directory.join("readme.txt"), readme(&slug))?;
-    // The app plugin declares GPL-2.0-or-later like the runtime it extends; carry the text.
-    if let Some(license) = runtime_file("First/LICENSE") {
-        write(&directory.join("LICENSE"), license)?;
-    }
-    write(&directory.join("first/app/schema.php"), &schema_php)?;
-    if let Some(wpml) = crate::wpml_config::render(&built.schema) {
-        write(&directory.join("wpml-config.xml"), wpml)?;
-    }
-    write(&directory.join("first/app/functions.php"), &built.functions_php)?;
-    for island in built.schema.islands.values() {
-        write(&directory.join("first/app/client").join(&island.file), &island.source)?;
-    }
-    copy_sql(migrations, &directory.join("first/app/migrations"))?;
+    // The migrations directory exists even when the ledger has no SQL yet, as it always has.
+    std::fs::create_dir_all(plugins.join(format!("first-app-{}/first/app/migrations", built.schema.name)))?;
     let public = project.join("public");
-    if public.is_dir() {
-        copy_dir(&public, &directory.join("public"))?;
+    let public = if public.is_dir() {
+        read_tree(&public)?
+    } else {
+        Vec::new()
+    };
+    for (rel, bytes) in crate::app_plugin::files(built, &schema_php, read_sql(migrations)?, public) {
+        write(&plugins.join(rel), bytes)?;
     }
     Ok(())
-}
-
-pub(crate) fn plugin_vars(schema: &schema::Schema, schema_php: &str) -> Vec<(&'static str, String)> {
-    let hash = {
-        // FNV-1a: a stable fingerprint of the built schema (changes when the plugin must migrate).
-        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-        for b in schema_php.bytes() {
-            h ^= u64::from(b);
-            h = h.wrapping_mul(0x0100_0000_01b3);
-        }
-        format!("{h:016x}")
-    };
-    let label = schema::title_case(&schema.name);
-    vec![
-        ("name", schema.name.clone()),
-        ("slug", format!("first-app-{}", schema.name)),
-        ("runtimeSeries", platform::SERIES.to_string()),
-        ("wpVersion", platform::WORDPRESS.to_string()),
-        ("phpVersion", platform::PHP.to_string()),
-        (
-            "requires",
-            platform::plugins(schema.locales.is_some())
-                .into_iter()
-                .map(|p| p.slug)
-                .chain(["first-runtime".to_string()])
-                .collect::<Vec<_>>()
-                .join(", "),
-        ),
-        ("label", label.clone()),
-        ("Name", label),
-        ("version", env!("CARGO_PKG_VERSION").to_string()),
-        ("schemaHash", hash),
-        ("firstVersion", env!("CARGO_PKG_VERSION").to_string()),
-    ]
-}
-
-/// `{{key}}` → value. Unknown placeholders are left as they are.
-fn substitute(text: &str, vars: &[(&'static str, String)]) -> String {
-    let mut out = text.to_string();
-    for (k, v) in vars {
-        out = out.replace(&format!("{{{{{k}}}}}"), v);
-    }
-    out
 }

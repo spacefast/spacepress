@@ -1186,7 +1186,7 @@
     },
     {
       "code": "Z08_ENDPOINT_WRITING_GET",
-      "feature": "writing GET endpoint"
+      "feature": "writing GET endpoint that reads the visitor"
     },
     {
       "code": "Z08_ENDPOINT_RESERVED_PATH",

@@ -591,7 +591,7 @@ struct Solved {
     /// Reachable copies already in `aliases`, by position in `copies`.
     aliased: IndexSet<usize>,
     aliases: IndexMap<Span, Vec<(Place, Place)>>,
-    /// Places of each set already closed under aliases: numeric, writes, events, write events.
+    /// Places of each numbered set already closed under aliases, by `EffectSet` and key.
     expanded: [IndexMap<Span, usize>; 4],
     edges: IndexMap<(usize, Span), EdgeRead>,
     /// `events` and `write_events`, each event's places by binding.

@@ -457,8 +457,11 @@ pub static RULES: &[Rule] = &[
         code: "Z08_CTX_AUTH_PROFILE",
         feature: "ctx.auth profile fields and methods",
         v2: "ctx.user ({ id, name, role })",
-        fix: "Read ctx.user; keep other profile fields in a members collection.",
-        test: |p, r| p.contains("/ctx/auth/") && r.starts_with("legacy profiles and auth methods"),
+        fix: "With Space Users, migrate with --users. Without them, keep the app on 0.8: what a First user carries for these fields waits on the Sign in with Spacefast decision.",
+        test: |p, r| {
+            p.contains("/ctx/auth/")
+                && (r.starts_with("legacy profiles and auth methods") || r.starts_with("ctx.auth profile fields"))
+        },
         example: (
             "/queries/me/ctx/auth/email",
             "legacy profiles and auth methods require an explicit identity mapping",

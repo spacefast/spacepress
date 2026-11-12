@@ -1225,6 +1225,71 @@ fn space_user_subjects_back_owner_scoped_handlers() {
     build(&out);
 }
 
+/// A Space Users session gave 0.8 handlers `provider: "space-users"` and no email, picture,
+/// subject or aliases, so with `--users` those fields convert to exactly that; without Space Users
+/// they came from the visitor's Spacefast account, which waits on the Sign in with Spacefast
+/// decision, so they are refused with a message naming it.
+#[test]
+fn profile_fields_convert_for_space_users_and_name_the_decision_otherwise() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("todo");
+    trimmed("starter-todo", &root, &["pages", "client"], |text| {
+        without_endpoints(text).replacen(
+            "  queries: {\n",
+            "  queries: {\n    me: query(async (ctx) => ({ provider: ctx.auth.provider, email: ctx.auth.email ?? null, picture: ctx.auth.picture ?? null, verified: ctx.auth.emailVerified === true })),\n",
+            1,
+        )
+    });
+    let (ok, refused) = migrate(
+        &root,
+        &temp.path().join("refused"),
+        &["--space", "spc_migrate_test", "--dry-run"],
+    );
+    assert!(!ok);
+    let profile: Vec<&Value> = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["pointer"].as_str().unwrap().starts_with("/queries/me/ctx/auth/"))
+        .collect();
+    assert!(!profile.is_empty(), "{refused:#}");
+    for e in profile {
+        assert_eq!(e["code"], "Z08_CTX_AUTH_PROFILE", "{e}");
+        assert!(e["reason"].as_str().unwrap().contains("Sign in with Spacefast"), "{e}");
+    }
+    let out = temp.path().join("candidate");
+    let (ok, report) = migrate(&root, &out, &["--space", "spc_migrate_test", "--users"]);
+    assert!(ok, "{report:#}");
+    build(&out);
+    let source = std::fs::read_to_string(out.join("first/server/index.ts")).unwrap();
+    let fresh = regex::Regex::new(r#"existingTable: "[^"]*", "#)
+        .unwrap()
+        .replace_all(&source, "");
+    std::fs::write(out.join("first/server/index.ts"), fresh.as_ref()).unwrap();
+    std::fs::remove_dir_all(out.join("first/_generated/migrations")).unwrap();
+    build(&out);
+    let run = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(out.join("first/dist/wp-content"))
+        .arg(r#"echo json_encode(["member" => $wp->call("POST", "/actions/me", (object) [], "ada")[1], "anonymous" => $wp->call("POST", "/actions/me", (object) [], null)[1]]), "\n";"#)
+        .arg("null")
+        .arg("ada=subscriber")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    let got: Value = serde_json::from_str(stdout.lines().next_back().unwrap_or(""))
+        .unwrap_or_else(|_| panic!("{stdout}{}", String::from_utf8_lossy(&run.stderr)));
+    assert_eq!(
+        got,
+        serde_json::json!({
+            "member": { "provider": "space-users", "email": null, "picture": null, "verified": false },
+            "anonymous": { "provider": null, "email": null, "picture": null, "verified": false },
+        })
+    );
+}
+
 #[test]
 fn a_page_importing_a_component_module_refuses_at_the_page() {
     let temp = tempfile::tempdir().unwrap();

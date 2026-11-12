@@ -339,6 +339,19 @@ function __z08RequireIdentity(user: __z08User | null, subject: string | null) {
 }
 "#;
 
+/// The profile fields a 0.8 Space Users session left unset, typed as 0.8 typed them (optional).
+const ABSENT_PROFILE: &str = "function __z08AbsentText(): string | undefined { return undefined; }\nfunction __z08AbsentFlag(): boolean | undefined { return undefined; }\nfunction __z08AbsentList(): string[] | undefined { return undefined; }\n";
+
+/// The 0.8 `ctx.auth` profile fields (`AuthProfile` plus `provider`).
+const PROFILE: &[&str] = &[
+    "email",
+    "emailVerified",
+    "picture",
+    "subject",
+    "identityAliases",
+    "provider",
+];
+
 /// v2 compiles `console.*` to the PHP error log; the declaration types it for editors.
 /// The 401 a writing handler answers without a caller when it (or a helper) reads the subject.
 const SUBJECT_GATE: &str =
@@ -2360,11 +2373,27 @@ impl Rewrite<'_> {
                     "(__z08ctx.user === null ? \"Signed out\" : String(__z08ctx.user.role) === \"guest\" ? \"Guest\" : __z08ctx.user?.name ?? \"Signed out\")"
                 }
                 "userId" if self.subjects => &self.subject()?,
+                // A Space Users session gave 0.8 only userId and displayName, with provider
+                // "space-users"; email, picture, subject and aliases were never set for it, and a
+                // guest or signed-out caller had none either.
+                "provider" if self.subjects => {
+                    "(__z08ctx.user === null ? null : String(__z08ctx.user.role) === \"guest\" ? \"guest\" : \"space-users\")"
+                }
+                "email" | "emailVerified" | "picture" | "subject" | "identityAliases" if self.subjects => {
+                    self.helpers.push(ABSENT_PROFILE.into());
+                    match prop.as_str() {
+                        "emailVerified" => "__z08AbsentFlag()",
+                        "identityAliases" => "__z08AbsentList()",
+                        _ => "__z08AbsentText()",
+                    }
+                }
                 _ => {
                     return Err(fail(
                         &pointer(&pointer(&pointer(self.at, "ctx"), "auth"), prop),
                         if prop == "userId" {
                             "ctx.auth.userId maps only for Space Users (pass --users): its usr_ subjects are copied with each user. Without Space Users, 0.8 answered a Spacefast account (account:<id>) or a guest (guest:<id>), and which First user each becomes waits on an owner decision: how Sign in with Spacefast signs visitors in to a First Space, and whether guest:<id> rows get guest users. Until then the app stays on 0.8"
+                        } else if PROFILE.contains(&prop.as_str()) {
+                            "ctx.auth profile fields map only for Space Users (pass --users), whose 0.8 sessions carried no email, picture, subject or aliases. Without Space Users they came from the visitor's Spacefast account or sign-in provider, and what a First user carries for them waits on the same owner decision as ctx.auth.userId (Sign in with Spacefast)"
                         } else {
                             "legacy profiles and auth methods require an explicit identity mapping"
                         },

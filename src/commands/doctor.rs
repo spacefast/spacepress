@@ -111,12 +111,18 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
         return Err("site must be an HTTP(S) URL without credentials".into());
     }
     if url.query().is_some() {
-        return Err("site must be the site's URL without a query (https://example.test or https://example.test/blog)".into());
+        return Err(
+            "site must be the site's URL without a query (https://example.test or https://example.test/blog)".into(),
+        );
     }
     // The facade's schema (spec §3a): `GET /__first/api/v1`, below the site's path.
     let path = url.path().trim_end_matches('/').to_string();
     let api = crate::sync::client::API;
-    url.set_path(&if path.ends_with(api) { path } else { format!("{path}{api}") });
+    url.set_path(&if path.ends_with(api) {
+        path
+    } else {
+        format!("{path}{api}")
+    });
     url.set_fragment(None);
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(15)))

@@ -49,11 +49,22 @@ test('wasm migrates real source and returns a compilable file map without writes
   assert.deepEqual(config.errors, []);
 });
 
-test('wasm refuses a 0.8 client app with a coded diagnostic instead of a partial public/', () => {
-  const candidate = call(exports, 'first_migrate_app', { project: path.resolve('tests/fixtures/app-migrate/client-app'), space: 'spc_migrate_test', users: true });
-  assert.equal(candidate.report.status, 'refused');
-  assert.deepEqual(candidate.files, {});
-  assert.deepEqual(candidate.report.errors.map((e) => [e.code, e.file, e.line, e.column]), [['Z08_CLIENT_NATIVE', 'client/index.tsx', 1, 1]]);
+test('wasm converts a 0.8 client app to the same public/ files as the native CLI', () => {
+  // The publish path converts in wasm, so a client app without pages must not depend on the native CLI.
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'first-wasm-client-'));
+  try {
+    const project = path.resolve('tests/fixtures/app-migrate/client-app');
+    const out = path.join(temp, 'native');
+    execFileSync(first, ['migrate', 'app', '--from', 'zero-0.8', project, '--out', out, '--space', 'spc_migrate_test', '--users']);
+    const candidate = call(exports, 'first_migrate_app', { project, space: 'spc_migrate_test', users: true });
+    assert.deepEqual(candidate.report.errors, []);
+    assert.equal(candidate.report.status, 'candidate');
+    const client = Object.keys(candidate.files).filter((name) => name.startsWith('public/')).sort();
+    assert.ok(client.includes('public/app/client/index.js') && client.includes('public/index.html'), client.join(' '));
+    for (const name of client) assert.equal(candidate.files[name], fs.readFileSync(path.join(out, name), 'utf8'), name);
+    assert.equal(candidate.files['first.config.ts'], fs.readFileSync(path.join(out, 'first.config.ts'), 'utf8'));
+    assert.deepEqual(call(exports, 'first_check', { project: '/candidate', files: candidate.files }).check.diagnostics, []);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
 test('host capture gives npm imports an actionable stable diagnostic', () => {

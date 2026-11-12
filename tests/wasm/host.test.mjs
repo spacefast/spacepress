@@ -76,7 +76,7 @@ test('host capture gives npm imports an actionable stable diagnostic', () => {
 
 test('wasm capture and check refuse a ledger still at first/migrations/', () => {
   const files = {
-    'first.config.ts': "import { defineConfig, table, id, text } from 'first'; const notes = table({ id: id(), body: text() }); export default defineConfig({ tables: { notes } });",
+    'first.config.ts': "import { defineConfig, table, text } from 'first'; const notes = table({ body: text().optional() }); export default defineConfig({ tables: { notes } });",
     'first/migrations/snapshot.json': '{"version":2,"tables":{}}',
   };
   const moved = 'first/migrations/ moved to first/_generated/migrations/';
@@ -91,7 +91,7 @@ test('wasm and native capture include the same synced Markdown files', () => {
   try {
     const project = path.join(temp, 'project');
     const files = {
-      'first.config.ts': "import { defineConfig, collection, id, text, richText } from 'first'; const posts = collection({ id: id(), title: text().notNull(), body: richText() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); export default defineConfig({ collections: { posts } });",
+      'first.config.ts': "import { defineConfig, collection, text, richText } from 'first'; const posts = collection({ title: text(), body: richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); export default defineConfig({ collections: { posts } });",
       'content/posts/hello.md': '---\ntitle: Hello\n---\nA **seed**.\n',
       'content/posts/ignored.txt': 'not synced',
     };

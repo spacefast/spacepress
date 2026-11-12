@@ -1,4 +1,3 @@
-pub(crate) use crate::app_plugin::plugin_vars;
 use crate::app_plugin::{readme, substitute};
 use crate::{pipeline::Built, platform, runtime_files, schema_php};
 use std::path::Path;

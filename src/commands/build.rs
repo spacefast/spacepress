@@ -1,5 +1,6 @@
+use crate::app_plugin::plugin_vars;
 use crate::diag::{Diag, Span};
-use crate::emit::{emit_generated, plugin_vars, runtime_file, write};
+use crate::emit::{emit_generated, runtime_file, write};
 use crate::pipeline::{self, Built};
 use crate::{diag, layout, loader, platform, schema_php, wp_plugins};
 use std::path::{Path, PathBuf};

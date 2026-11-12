@@ -5,8 +5,10 @@
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import { repo, site } from "./examples.ts";
+import type { ExampleRun, Ledger } from "./blueprint.ts";
+import { example, repo, site } from "./examples.ts";
 import { compilerEntry } from "./playground-catalog.ts";
+import { siteExamples } from "./site-examples.ts";
 
 export const showcaseRoot = path.join(site, ".showcase");
 export const filesRoot = path.join(site, "public/files");
@@ -16,6 +18,8 @@ export interface Manifest {
   app: string;
   /** Every file, sorted, with First names. `blob` is null for a binary file. */
   files: { path: string; blob: string | null; size: number }[];
+  /** The WordPress.org plugins in the lock `first build` wrote, with their versions. */
+  wordpressPlugins: { slug: string; version: string }[];
 }
 
 // Not app sources: the README is the page's own text, tsconfig.json is editor setup, and the
@@ -52,4 +56,27 @@ function sourcesOf(dir: string, rel = ""): string[] {
     else found.push(sub);
   }
   return found;
+}
+
+/** An example's committed migration ledger, `first/_generated/migrations/`: the snapshot and the SQL files. */
+export function ledger(dir: string): Ledger {
+  const ledgerDir = path.join(dir, "first/_generated/migrations");
+  if (!existsSync(ledgerDir)) return { snapshot: null, files: {} };
+  const snapshot = path.join(ledgerDir, "snapshot.json");
+  return {
+    snapshot: existsSync(snapshot) ? JSON.parse(readFileSync(snapshot, "utf8")) : null,
+    files: Object.fromEntries(readdirSync(ledgerDir).filter((file) => file.endsWith(".sql")).sort().map((file) => [file, readFileSync(path.join(ledgerDir, file), "utf8")])),
+  };
+}
+
+/** What the playground page needs to run an edited copy of a site example (lib/blueprint.ts `editedBlueprint`). */
+export async function exampleRun(name: (typeof siteExamples)[number]["name"]): Promise<ExampleRun> {
+  const { landing, seed } = siteExamples.find((e) => e.name === name)!;
+  return {
+    lock: manifest(name).wordpressPlugins,
+    landing,
+    seed,
+    schemaPhp: (await example(name)).output.schemaPhp,
+    ledger: ledger(path.join(repo, "examples", name)),
+  };
 }

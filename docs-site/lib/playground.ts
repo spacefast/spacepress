@@ -1,5 +1,6 @@
 import { File } from "@pierre/diffs";
 
+import { editedBlueprint, playgroundUrl, runRequest, type ExampleRun } from "./blueprint.ts";
 import { Compiler } from "./compiler.ts";
 import { highlightHtml, languageOf } from "./highlight.ts";
 import { toFirst } from "./names.ts";
@@ -173,8 +174,8 @@ const loadExample = () => {
   files = drafts.get(example.value) ?? { ...original };
   drafts.set(example.value, files);
   exampleDescription.textContent = playgroundExamples.find(({ name }) => name === example.value)?.description ?? "";
-  // Every site example has a Playground blueprint; the blog, which only the tour uses, doesn't.
-  runWordPress.hidden = example.value === "blog";
+  // Every site example can run in WordPress; the blog, which only the tour uses, has no seed or landing page here.
+  runWordPress.hidden = !runs.has(example.value);
   wordpress.hidden = true;
   frame.removeAttribute("src");
   // Installed npm packages go to the compiler with the rest but aren't listed for editing.
@@ -189,17 +190,46 @@ const loadExample = () => {
 };
 
 // WordPress Playground, embedded on request: it downloads WordPress and PHP (about 30 MB), so it
-// starts only when asked. The blueprint (public/files/<example>.blueprint.json, written by
-// scripts/build-showcase.ts) installs the plugins `first build` wrote for the committed example.
+// starts only when asked. The config in the editor is compiled again with the example's migration
+// ledger, and lib/blueprint.ts turns the result into a blueprint: the app plugin the compiler
+// returned, First's shared plugins from this site, and the WordPress.org plugins in the example's
+// lock. Each press starts a fresh WordPress.
 const runWordPress = document.querySelector<HTMLButtonElement>("#run-wordpress")!;
 const wordpress = document.querySelector<HTMLElement>("#wordpress")!;
 const frame = document.querySelector<HTMLIFrameElement>("#wordpress-frame")!;
 const wordpressTab = document.querySelector<HTMLAnchorElement>("#wordpress-tab")!;
+const wordpressNote = document.querySelector<HTMLElement>("#wordpress-note")!;
+const runsData = document.querySelector<HTMLScriptElement>("#playground-runs");
+const runs = new Map(Object.entries(JSON.parse(runsData?.textContent ?? "{}") as Record<string, ExampleRun>));
+const ran = wordpressNote.innerHTML;
 runWordPress.addEventListener("click", () => {
-  const url = `https://playground.wordpress.net/?blueprint-url=${encodeURIComponent(`${runWordPress.dataset.site}/files/${example.value}.blueprint.json`)}`;
-  frame.src = url;
-  wordpressTab.href = url;
+  const run = runs.get(example.value);
+  if (!compiler || !run) return;
+  const { output } = compiler.compile(runRequest(example.value, compilerFiles(files), run.ledger));
   wordpress.hidden = false;
+  if (!output) {
+    // The status line and the diagnostics already say what to fix.
+    frame.removeAttribute("src");
+    frame.hidden = true;
+    wordpressTab.hidden = true;
+    wordpressNote.textContent = "Fix the config first: it doesn't compile, so there is nothing to run.";
+  } else {
+    const built = editedBlueprint({ output, example: run, site: runWordPress.dataset.site!, platform: { php: runWordPress.dataset.php!, sqlite: runWordPress.dataset.sqlite! } });
+    if ("refused" in built) {
+      frame.removeAttribute("src");
+      frame.hidden = true;
+      wordpressTab.hidden = true;
+      wordpressNote.textContent = built.refused;
+    } else {
+      const url = playgroundUrl(built.blueprint);
+      frame.hidden = false;
+      wordpressTab.hidden = false;
+      frame.src = url;
+      wordpressTab.href = url;
+      wordpressNote.innerHTML = ran;
+      if (!built.seeded && run.seed) wordpressNote.append(" Your edit changed the schema, so the example's sample data isn't loaded.");
+    }
+  }
   wordpress.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 

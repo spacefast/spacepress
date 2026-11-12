@@ -1,7 +1,7 @@
 import { createClient, FirstError, type Collections, type Actions } from "../../first/_generated/client/index.ts";
 
 export const first = createClient({
-  url: "/wp-json/first/v1",
+  url: "/__first/api/v1",
   auth: {
     clientId: "app_drive_locker",
     redirectUri: location.origin + location.pathname,

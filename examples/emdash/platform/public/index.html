@@ -13,7 +13,7 @@ const locale = document.querySelector('#locale');
 locale.value = query.get('locale') || 'en';
 locale.addEventListener('change', () => { query.set('locale',locale.value); query.delete('id'); location.search=query.toString(); });
 const text = (tag, value) => { const el=document.createElement(tag); el.textContent=value; return el; };
-async function read(path) { const response=await fetch('/wp-json/first/v1'+path); const value=await response.json(); if(!response.ok) throw Error(value.detail || 'Could not load stories'); return value.data; }
+async function read(path) { const response=await fetch('/__first/api/v1'+path); const value=await response.json(); if(!response.ok) throw Error(value.detail || 'Could not load stories'); return value.data; }
 try {
  const id=query.get('id');
  const rows=id ? [await read('/stories/'+encodeURIComponent(id)+'?locale='+locale.value+'&with=writer,cover')] : await read('/stories?locale='+locale.value+'&with=writer,cover');

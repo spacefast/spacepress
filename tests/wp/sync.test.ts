@@ -50,9 +50,9 @@ test("sync on WordPress", async (t) => {
   };
 
   await t.test("site id and uids", async () => {
-    const schema = await ok("GET", "/_schema");
+    const schema = await ok("GET", "");
     assert.match(schema.site.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-    assert.equal((await ok("GET", "/_schema")).site.id, schema.site.id);
+    assert.equal((await ok("GET", "")).site.id, schema.site.id);
     assert.match(writer.uid, /^zr_[0-9a-f]{20}$/);
     const meta = sql(`SELECT meta_value FROM wp_postmeta WHERE post_id = ${writer.id} AND meta_key = '_first_uid'`);
     assert.deepEqual(meta, [{ meta_value: writer.uid }], "the uid lives in _first_uid meta, not an SCF field");

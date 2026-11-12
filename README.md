@@ -84,7 +84,7 @@ built 2 collections, 0 globals, 1 hooks, 1 actions -> first/dist/wp-content in 6
 | MySQL migrations, diffed against the last build | `first/_generated/migrations/0001_init.sql` |
 | A typed client: `first.posts.list({ with: { writer: true } })` and friends | `first/_generated/client/` |
 | Editor types, so `db` in your hooks knows your schema | `first/_generated/db.d.ts` |
-| REST endpoints for every collection, global and action, with relations loaded through `with` | `/wp-json/first/v1/...` |
+| An HTTP API for every collection, global and action, with relations loaded through `with`, over WordPress's REST routes | `/__first/api/v1/...` |
 | Sign-in, sessions, roles, guests, passkeys and MFA | the `first-identity` plugin |
 | A dashboard: WordPress admin, with a post type and a field group generated for each collection that has an editor | Posts and Authors menus in `wp-admin` |
 | Three WordPress plugins plus the pinned platform plugins, as folders and ZIPs | `first/dist/wp-content/plugins/` |
@@ -155,7 +155,7 @@ history also requires this explicit apply.
 
 ```sh
 export AUTH="admin:<the application password>"
-BASE=http://localhost:8787/wp-json/first/v1
+BASE=http://localhost:8787/__first/api/v1
 
 curl -u "$AUTH" -X POST $BASE/locations -d '{"name":"Fridge","kind":"fridge"}'
 curl -u "$AUTH" -X POST $BASE/items -d '{"name":" Eggs ","quantity":1,"locationId":1}'
@@ -197,7 +197,7 @@ application password from that command:
 import { createClient } from "./first/_generated/client/index.ts";
 
 const first = createClient({
-  url: "http://localhost:8787/wp-json/first/v1",
+  url: "http://localhost:8787/__first/api/v1",
   headers: { Authorization: "Basic " + btoa("admin:<application password>") },
 });
 

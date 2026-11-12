@@ -425,7 +425,7 @@ async function main() {
     managed.owner.devMu = true;
     await atomicJson(managed.marker, managed.owner);
     await configure(flags.includes('--allow-destructive'));
-    const response = await fetch(`${url}/wp-json/first/v1/_schema`, { signal: AbortSignal.timeout(15000) });
+    const response = await fetch(`${url}/__first/api/v1`, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`First application is not ready: HTTP ${response.status}. Run first doctor --site ${url}`);
     console.log(`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`);
     if (await exists(join(project, 'public/index.html'))) console.log(`App:       ${url}/wp-content/plugins/first-app-${encodeURIComponent(managed.owner.app)}/public/index.html`);

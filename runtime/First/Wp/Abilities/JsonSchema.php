@@ -211,6 +211,8 @@ final class JsonSchema
             'alt' => ['type' => ['string', 'null']],
             'filename' => ['type' => 'string'],
             'createdAt' => ['type' => 'string', 'format' => 'date-time'],
+            'author' => ['type' => ['integer', 'null']],
+            'caption' => ['type' => 'string'],
         ]];
     }
 

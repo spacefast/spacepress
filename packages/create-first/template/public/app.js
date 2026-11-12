@@ -1,7 +1,7 @@
 const status = document.getElementById('status');
 const notes = document.getElementById('notes');
 try {
-  const response = await fetch('/wp-json/first/v1/notes');
+  const response = await fetch('/__first/api/v1/notes');
   if (!response.ok) throw new Error(`The API returned ${response.status}.`);
   const { data } = await response.json();
   if (!Array.isArray(data)) throw new Error('The API returned an unexpected response.');

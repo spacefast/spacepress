@@ -63,7 +63,7 @@ test("a group update keeps the sub-field the viewer can't see in postmeta", asyn
   assert.deepEqual([kept.notes, first("find", "field_staff", JSON.stringify({ where: { id: mine.id } }))[0].notes], [{ public: "edited" }, { public: "edited", private: "secret" }]);
 });
 
-test("/_schema reports showIf on WordPress", async () => {
-  const described = (await ok("GET", "/_schema")).collections.field_staff;
+test("the API schema reports showIf on WordPress", async () => {
+  const described = (await ok("GET", "")).kinds.field_staff;
   assert.deepEqual(described.columns.notes.fields.private.showIf, { public: { isNotNull: true } });
 });

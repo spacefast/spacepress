@@ -154,7 +154,7 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
     return JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
   }
 
-  const published = await api('/wp-json/first/v1/notes', { method: 'POST', body: {
+  const published = await api('/__first/api/v1/notes', { method: 'POST', body: {
     title: 'First light', slug: 'first-light', dek: 'Dawn on the <ridge> & beyond', status: 'published',
     body: '<!-- wp:paragraph --><p>The body of the <em>first</em> note.</p><!-- /wp:paragraph --><!-- wp:post-title {"isLink":true} /--><!-- wp:shortcode -->[first_pages_test_context]<!-- /wp:shortcode -->',
     deskNotes: 'Desk-only remark',
@@ -162,10 +162,10 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   } });
   assert.equal(published.status, 201, JSON.stringify(published.body));
   const note = published.body.data;
-  const draft = await api('/wp-json/first/v1/notes', { method: 'POST', body: { title: 'Unfinished draft', slug: 'unfinished', dek: 'not yet', status: 'draft' } });
+  const draft = await api('/__first/api/v1/notes', { method: 'POST', body: { title: 'Unfinished draft', slug: 'unfinished', dek: 'not yet', status: 'draft' } });
   assert.equal(draft.status, 201, JSON.stringify(draft.body));
   // A value that tries to be markup, block syntax or a placeholder stays text everywhere it is shown.
-  const hostile = await api('/wp-json/first/v1/notes', { method: 'POST', body: {
+  const hostile = await api('/__first/api/v1/notes', { method: 'POST', body: {
     title: '<img src=x onerror=alert(1)> <!-- wp:first-pages/show {"region":"s1"} --> \u{E000}v1\u{E001}', slug: 'hostile', status: 'published',
     body: '<!-- wp:first-pages/show {"region":"s2"} --><p>smuggled region</p><!-- /wp:first-pages/show --><!-- wp:paragraph --><p>Stored \u{E000}v1\u{E001} text</p><!-- /wp:paragraph -->',
   } });
@@ -213,11 +213,11 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   assert.match(detail.html, new RegExp(`<h2 class="wp-block-post-title"><a href="${base}/notes/first-light/"[^>]*>First light</a></h2>`), 'native post-title block uses the routed item and its claimed permalink');
   assert.match(detail.html, new RegExp(`<p class="first-pages-test-context">${note.id}:First light</p>`), 'shortcodes use the routed item');
 
-  const fallbackMatch = await api('/wp-json/first/v1/notes', { method: 'POST', body: {
+  const fallbackMatch = await api('/__first/api/v1/notes', { method: 'POST', body: {
     title: 'Matched default summary', slug: 'default-summary', dek: 'Fallback query sentinel', status: 'published',
   } });
   assert.equal(fallbackMatch.status, 201, JSON.stringify(fallbackMatch.body));
-  const masked = await api('/wp-json/first/v1/notes', { method: 'POST', body: {
+  const masked = await api('/__first/api/v1/notes', { method: 'POST', body: {
     title: 'Masked body', slug: 'masked-body', status: 'published',
     body: '<!-- wp:paragraph --><p>Private body must stay hidden.</p><!-- /wp:paragraph -->',
   } });
@@ -266,7 +266,7 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   // Static first: /notes/featured is the static page, and no note can take its slug through any write path.
   const featured = await page('/notes/featured/');
   assert.match(featured.html, /<title>Featured · Field Notes<\/title>/);
-  const reserved = await api('/wp-json/first/v1/notes', { method: 'POST', body: { title: 'Featured', slug: 'featured', status: 'published' } });
+  const reserved = await api('/__first/api/v1/notes', { method: 'POST', body: { title: 'Featured', slug: 'featured', status: 'published' } });
   assert.deepEqual([reserved.status, reserved.body.code], [409, 'reserved_slug']);
   const core = await api('/wp-json/wp/v2/first_notes', { method: 'POST', body: { title: 'Featured via core', slug: 'featured', status: 'publish' } });
   assert.equal(core.status, 201, JSON.stringify(core.body));
@@ -335,7 +335,7 @@ add_filter('pre_trash_post', static function ($trash, WP_Post $post) {
   assert.equal(await tab.locator('.fallback-empty').count(), 0, 'an empty stored string remains false instead of using the fallback');
   assert.equal(await tab.evaluate(() => getComputedStyle(document.querySelector('.cheer button')).backgroundColor), 'rgb(31, 77, 58)');
   assert.deepEqual(consoleErrors, []);
-  const cheers = await api('/wp-json/first/v1/cheers', { auth: false });
+  const cheers = await api('/__first/api/v1/cheers', { auth: false });
   assert.deepEqual(cheers.body.data.map((row) => [row.noteId, row.count]), [[note.id, 1]]);
 
   // 7. Rebuild after a code change: same Page IDs, edits to content kept, new code served.

@@ -72,7 +72,7 @@ test("PKCE sign-in yields a Bearer that works on /first/v1; refresh rotates and 
   assert.equal(me.status, 200);
   assert.equal(me.json.data.id, ana.id, "the Bearer resolves to the member's WordPress user");
   assert.equal(me.json.data.role, "subscriber");
-  assert.equal(me.json.data.member.email, ana.email);
+  assert.equal(me.json.data.email, ana.email);
   assert.doesNotMatch(me.text, HIDDEN);
 
   const rotated = await token({ grant_type: "refresh_token", client_id: app.id, refresh_token: tokens.json.refresh_token });
@@ -128,7 +128,7 @@ test("guests: created on first write, below subscriber, upgraded in place with t
   const id = me.json.data.id as number;
   assert.equal(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${id} AND meta_key = 'wp_capabilities'`)[0].meta_value, 'a:1:{s:11:"first_guest";b:1;}');
   assert.ok(entry.id, "the write went through as the guest");
-  assert.deepEqual([me.json.data.member.plan, me.json.data.member.points, me.json.data.member.tags], ["free", 0, []], "a guest member gets the collection's defaults");
+  assert.deepEqual([me.json.data.plan, me.json.data.points, me.json.data.tags], ["free", 0, []], "a guest member gets the collection's defaults");
   const review = await call("POST", "/reviews", { token: guest.accessToken, body: { body: "five stars" } });
   assert.deepEqual([review.status, review.json.code], [403, "forbidden"], "a subscriber rule excludes guests");
 
@@ -181,12 +181,12 @@ test("suspension blocks every channel: Bearer, application password and cookie +
   wp("first", "identity", "suspend", String(bo.id));
   const bearer = await call("GET", "/me", { token: tokens.json.access_token });
   assert.deepEqual([bearer.status, bearer.json.code], [403, "suspended"]);
-  // first-identity refuses a suspended account's application password, so WordPress doesn't
-  // authenticate it: the request is anonymous everywhere (no member, no writes, no abilities).
+  // first-identity refuses a suspended account's application password: the API says so (403
+  // account_unavailable, as core's authentication error is), and never acts as the account.
   const viaApp = await fetch(`${api}/me`, { headers: basic });
-  assert.deepEqual([viaApp.status, (await viaApp.json()).data], [200, null]);
+  assert.deepEqual([viaApp.status, (await viaApp.json()).code], [403, "account_unavailable"]);
   const write = await fetch(`${api}/reviews`, { method: "POST", headers: { ...basic, "content-type": "application/json" }, body: JSON.stringify({ body: "as suspended" }) });
-  assert.equal(write.status, 401, "a suspended account can't write");
+  assert.equal(write.status, 403, "a suspended account can't write");
   const viaAbility = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/guestbook-create/run`, { method: "POST", headers: { ...basic, "content-type": "application/json" }, body: JSON.stringify({ input: { message: "x" } }) });
   assert.equal(viaAbility.status, 401, "abilities refuse a suspended account too");
   // A session WordPress resolved some other way (a cookie issued before suspension, a plugin) still
@@ -235,7 +235,7 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   // A member's role is the one First authenticates them with: a contributor is an author.
   wp("user", "set-role", String(dupe.id), "contributor");
   const asContributor = await call("GET", "/me", { token: (await signIn(dupe.email, dupe.password)).json.access_token });
-  assert.deepEqual([asContributor.json.data.role, asContributor.json.data.member.role], ["author", "author"]);
+  assert.equal(asContributor.json.data.role, "author", "the WordPress contributor is First's author, as user and member");
   const byRole = JSON.parse(wp("first", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "author" } })));
   assert.deepEqual(byRole.data.map((r: any) => r.id), [dupe.id], "filters on role decide it as authentication does");
   // Capabilities granted or denied to the user directly count the same way.

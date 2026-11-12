@@ -116,6 +116,7 @@ final class Uploads
                 self::object((string) $upload['file']);
             } catch (\Throwable) {
                 @unlink($upload['file']);
+                self::$storageFailed = true; // core reports any upload error as a 500; this one is a 503
                 return ['error' => 'The configured upload storage is unavailable', 'first_storage_error' => true];
             }
 
@@ -169,7 +170,9 @@ final class Uploads
             return $check;
         }, 100, 4);
         add_filter('get_attached_file', static function ($file, int $id) {
-            if (!self::active()) {
+            // A delete needs no bytes (the object goes after commit, Uploads::deleted): core's
+            // wp_delete_attachment asks for the path, and must not fetch the object to get one.
+            if (!self::active() || doing_action('delete_attachment') || self::$deleting === $id) {
                 return $file;
             }
             $rel = get_post_meta($id, '_wp_attached_file', true);
@@ -178,6 +181,11 @@ final class Uploads
                 throw new HttpError(503, 'uploads_migration_required', 'This attachment must be migrated before enabling S3 uploads');
             }
             $dest = self::scratch() . '/' . $rel;
+            // An API read or delete needs the path, never the bytes (core's attachment rendering asks
+            // whether the file is an image from its extension): no provider round trip for it.
+            if (in_array(Facade::dispatchingMethod(), ['GET', 'HEAD', 'DELETE'], true)) {
+                return $dest;
+            }
             // Core image editing/restoration may need backups and sizes alongside the original.
             foreach (self::manifest($id) as $variant => $object) {
                 $local = self::scratch() . '/' . $variant;
@@ -241,6 +249,17 @@ final class Uploads
         add_action('delete_attachment', static function (int $id): void {
             if (self::active()) {
                 self::deleted($id);
+            }
+        });
+        // wp_delete_attachment reads the attached file before `delete_attachment` fires.
+        add_filter('pre_delete_attachment', static function (mixed $check, mixed $post): mixed {
+            self::$deleting = $post instanceof \WP_Post ? $post->ID : null;
+
+            return $check;
+        }, PHP_INT_MAX, 2);
+        add_action('deleted_post', static function (int $id): void {
+            if (self::$deleting === $id) {
+                self::$deleting = null;
             }
         });
         add_action(self::MAINTAIN, self::maintain(...));
@@ -328,6 +347,19 @@ final class Uploads
         foreach (self::manifest($id) as $entry) {
             Runtime::plugin()?->connection()->afterCommit(static fn () => self::discard($entry['key']));
         }
+    }
+
+    private static bool $storageFailed = false;
+    /** The attachment core is deleting right now, whose path needs no bytes. */
+    private static ?int $deleting = null;
+
+    /** Whether this request's upload failed because the storage was unavailable; reading it resets it. */
+    public static function storageFailed(): bool
+    {
+        $failed = self::$storageFailed;
+        self::$storageFailed = false;
+
+        return $failed;
     }
 
     public static function url(int $id, string $rel): string

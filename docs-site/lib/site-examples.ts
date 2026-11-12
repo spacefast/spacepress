@@ -9,7 +9,7 @@
 //                                         Playground opens
 //   examples/<name>/playground-seed.php   optional: PHP the blueprint runs once the plugins are
 //                                         active, which writes sample data through the app's own
-//                                         REST API, so access rules, hooks and jobs run as they
+//                                         API (/__first/api/v1), so access rules, hooks and jobs run as they
 //                                         would for a real request
 //
 // Server-only: it reads files. The playground's browser script gets titles and summaries through

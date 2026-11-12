@@ -7,7 +7,11 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { api, auth, harness, http, ok, run, wp, wpTry, first, type Role } from "./env.ts";
+import { auth, harness, http, ok, run, wp, wpTry, first, type Role } from "./env.ts";
+
+// Abilities run First's own pipeline (App::invoke), the one the old namespace served; until they run
+// through the core routes too, they are compared with it.
+const api = `${harness.url}/wp-json/first/v1`;
 
 type Who = Role | "anonymous";
 const here = dirname(fileURLToPath(import.meta.url));
@@ -119,7 +123,7 @@ test("executing an ability answers each user exactly as REST does", async () => 
       async () => assert.equal((await ok("GET", `/posts/${postId}`, { as: "editor" })).excerpt, `by agent ${run}`)],
     ["blog/signups-list", { limit: 1 }, "GET", "GET", "/signups?limit=1", undefined],
     ["blog/global-settings-update", { tagline: `agents ${run}` }, "POST", "PATCH", "/globals/settings", { tagline: `rest ${run}` },
-      async () => assert.equal((await ok("GET", "/globals/settings")).tagline, `agents ${run}`)],
+      async () => assert.equal((await ok("GET", "/settings")).tagline, `agents ${run}`)],
     ["blog/approve-comment", { id: 999999999 }, "POST", "POST", "/actions/approveComment", { id: 999999999 }],
     // Non-editors may only reset a json() value to {}: the ability's check sees `{}` as REST does, and
     // the run stores `{}`, not `[]`.

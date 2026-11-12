@@ -104,6 +104,7 @@ final class EditorSave
             $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
             $plugin->db()->requireUniqueVisibility($collection, $declared, $viewer, $before === null, $before);
             $plugin->db()->validateWriteReferences($collection, $declared, $viewer);
+            self::checkCoreFields($collection, $request, $declared, $before);
         } catch (HttpError $e) {
             if ($plugin->connection()->inTransaction()) {
                 throw $e;
@@ -155,6 +156,28 @@ final class EditorSave
         is_wp_error($result) ? self::rollback() : self::commit();
 
         return $result;
+    }
+
+    /**
+     * The columns core stores itself (title, content, slug) under their First rules (min, max,
+     * pattern, validate), as every other write path checks them; fields in `meta` and `acf` are
+     * checked where they're stored (PostMeta, Scf). A core-shaped name the request doesn't use (an
+     * unknown body key) is core's to ignore, as on any other core route.
+     */
+    private static function checkCoreFields(string $collection, \WP_REST_Request $request, array $declared, ?array $before): void
+    {
+        $spec = Plugin::instance()?->schema->collection($collection) ?? [];
+        $core = array_filter([$spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null]);
+        $values = array_intersect_key($declared, array_flip($core));
+        if ($values === []) {
+            return;
+        }
+        $ctx = ['data' => $values + ($before ?? []), 'user' => WpAuth::current()];
+        foreach ($values as $col => $value) {
+            $def = $spec['columns'][$col];
+            $norm = \First\Schema::normalize($def, $value, (string) $col, HttpError::seg((string) $col));
+            \First\Schema::checkRules($def, $norm, (string) $col, HttpError::seg((string) $col), $ctx, $spec['columns']);
+        }
     }
 
     /** wp_insert_post_data: open the save of a First post before core writes it. */

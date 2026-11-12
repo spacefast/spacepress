@@ -48,7 +48,7 @@ export default defineConfig({
     },
   },
   actions: {
-    // POST /wp-json/first/v1/actions/logRead, typed in the generated client.
+    // POST /__first/api/v1/actions/logRead, typed in the generated client.
     logRead: action({
       input: { bookId: integer(), minutes: integer() },
       access: "authenticated",

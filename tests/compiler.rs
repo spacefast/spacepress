@@ -784,7 +784,7 @@ impl Server {
         self.users[name]["appPassword"].as_str().unwrap().to_string()
     }
 
-    /// Returns (status, body) for a request to First's REST route.
+    /// Returns (status, body) for a request to First's API (/__first/api/v1).
     fn send(&self, method: &str, path: &str, body: Option<&str>) -> (u16, serde_json::Value) {
         let mut s = TcpStream::connect(("127.0.0.1", self.port)).unwrap();
         let body = body.unwrap_or("");
@@ -795,7 +795,7 @@ impl Server {
             .map(|u| format!("Authorization: Basic {}\r\n", base64(self.credential(u).as_bytes())))
             .unwrap_or_default();
         let request = format!(
-            "{method} /wp-json/first/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "{method} /__first/api/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
         s.write_all(request.as_bytes()).unwrap();
@@ -1040,7 +1040,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     // §6.1: restocking enqueued notifyLowStock; Action Scheduler runs it off the request (the queue's
     // semantics live in tests/php/jobs_test.php). `wp first jobs` lists it before and after.
     let jobs = |args: &str| -> serde_json::Value {
-        let (_, out) = server.send("GET", "/_schema", None);
+        let (_, out) = server.send("GET", "", None);
         assert_eq!(out["data"]["name"], "pantry");
         serde_json::from_str(&String::from_utf8_lossy(
             &Command::new("php")

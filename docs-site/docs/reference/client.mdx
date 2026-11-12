@@ -55,6 +55,9 @@ Each collection and table in your config is a property of the client.
 ```ts
 interface CollectionClient<K extends CollectionKey> {
   list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
+  paginate<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
+    q?: ListQuery<K, ExactWith<K, W>> & { cursor?: string | null },
+  ): Promise<{ rows: RowWith<K, W>[]; cursor: string | null }>;
   get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Promise<RowWith<K, W>>;
   create(data: Collections[K]["insert"]): Promise<Row<K>>;
   update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
@@ -119,7 +122,7 @@ any frontend or import it by path. Don't edit it: `first build` rewrites it.
 ```ts
 import { createClient, FirstError } from "./first/_generated/client/index.ts";
 
-const first = createClient({ url: "https://example.test/wp-json/first/v1" });
+const first = createClient({ url: "https://example.test/__first/api/v1" });
 
 const posts = await first.posts.list({ where: { tags: { has: "news" } }, orderBy: { createdAt: "desc" }, with: { author: true } });
 const post = await first.posts.create({ title: "Hello" });

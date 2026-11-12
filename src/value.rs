@@ -544,9 +544,9 @@ impl Value {
             Value::Str(_) => "string",
             Value::Builtin(
                 Builtin::Db
-                    | Builtin::Jobs
-                    | Builtin::Global("Math" | "JSON" | "console" | "globalThis")
-                    | Builtin::ObjectPrototype,
+                | Builtin::Jobs
+                | Builtin::Global("Math" | "JSON" | "console" | "globalThis")
+                | Builtin::ObjectPrototype,
             ) => "object",
             Value::Symbol(_) => "symbol",
             Value::Class(_) | Value::Closure(_) | Value::Builtin(_) | Value::Bound(..) => "function",

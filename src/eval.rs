@@ -1181,7 +1181,13 @@ impl<'p> Evaluator<'p> {
     /// A destructuring assignment, in JavaScript order: each leaf resolves its target, then reads
     /// its value, then applies its default, then writes.
     /// `{ a, ...rest } = object`: the own enumerable properties not named, getters called.
-    fn rest_properties(&mut self, value: &Value, obj: &ObjCell, taken: &[String], span: Span) -> R<IndexMap<String, Value>> {
+    fn rest_properties(
+        &mut self,
+        value: &Value,
+        obj: &ObjCell,
+        taken: &[String],
+        span: Span,
+    ) -> R<IndexMap<String, Value>> {
         if !obj.has_attributes() {
             let mut map = obj.borrow().clone();
             for key in taken {
@@ -2874,9 +2880,7 @@ impl<'p> Evaluator<'p> {
             Builtin::Require(from) => self.require(*from, &args, span),
             Builtin::ObjectPrototype => err(span, "Object.prototype isn't a function"),
             // Called plainly, `this` is undefined, which every modeled method rejects.
-            Builtin::ObjectPrototypeMethod(m) => {
-                self.object_prototype_method(m, &Value::Undef, &args, span)
-            }
+            Builtin::ObjectPrototypeMethod(m) => self.object_prototype_method(m, &Value::Undef, &args, span),
             // `export const cart = sharedState({ items: [] })`: the value is its initial state.
             Builtin::Client("sharedState") => Ok(args.into_iter().next().unwrap_or(Value::Undef)),
             Builtin::Client(name) => err_help(
@@ -3401,7 +3405,10 @@ impl<'p> Evaluator<'p> {
                     key,
                     Value::Str(_) | Value::Num(_) | Value::Bool(_) | Value::Null | Value::Undef
                 ) {
-                    return err(span, format!("Object.prototype.{m} at build time needs a primitive property key"));
+                    return err(
+                        span,
+                        format!("Object.prototype.{m} at build time needs a primitive property key"),
+                    );
                 }
                 let key = key.to_js_string().expect("primitive key");
                 let own = own_property(this, &key, span)?;
@@ -3433,7 +3440,10 @@ impl<'p> Evaluator<'p> {
             other => {
                 return err_help(
                     span,
-                    format!("Object.defineProperty at build time doesn't support {}", other.describe()),
+                    format!(
+                        "Object.defineProperty at build time doesn't support {}",
+                        other.describe()
+                    ),
                     "define properties on a plain object or a function",
                 );
             }
@@ -3453,7 +3463,10 @@ impl<'p> Evaluator<'p> {
             other => {
                 return err(
                     span,
-                    format!("Object.defineProperty at build time needs a primitive key, not {}", other.describe()),
+                    format!(
+                        "Object.defineProperty at build time needs a primitive key, not {}",
+                        other.describe()
+                    ),
                 );
             }
         };
@@ -3466,7 +3479,10 @@ impl<'p> Evaluator<'p> {
                 "function `name`, `length`, `prototype` and `Function.prototype` members aren't modeled; use another property name",
             );
         }
-        if key == "__proto__" && matches!(&target, Value::Object(o) if !o.null_prototype()) && !cell.borrow().contains_key(&key) {
+        if key == "__proto__"
+            && matches!(&target, Value::Object(o) if !o.null_prototype())
+            && !cell.borrow().contains_key(&key)
+        {
             // defineProperty creates an own `__proto__` data property; First's objects can't hold
             // one beside the prototype accessor.
             return err_help(
@@ -3521,7 +3537,9 @@ impl<'p> Evaluator<'p> {
                 && next.enumerable == current.enumerable
                 && !next.configurable
                 && match (&existing, &slot) {
-                    (Some(Value::Accessor(a)), Value::Accessor(b)) => a.get.strict_eq(&b.get) && a.set.strict_eq(&b.set),
+                    (Some(Value::Accessor(a)), Value::Accessor(b)) => {
+                        a.get.strict_eq(&b.get) && a.set.strict_eq(&b.set)
+                    }
                     (Some(old), new) => current.writable || !next.writable && same_value(old, new),
                     _ => false,
                 };
@@ -4783,11 +4801,15 @@ fn own_property(value: &Value, key: &str, span: Span) -> R<Option<(Value, Attrs)
     };
     Ok(match value {
         Value::Object(o) => o.borrow().get(key).cloned().map(|v| (v, o.attrs(key))),
-        Value::Arguments(o) if key == "length" => o
-            .borrow()
-            .get(key)
-            .cloned()
-            .map(|v| (v, Attrs { enumerable: false, ..Attrs::ORDINARY })),
+        Value::Arguments(o) if key == "length" => o.borrow().get(key).cloned().map(|v| {
+            (
+                v,
+                Attrs {
+                    enumerable: false,
+                    ..Attrs::ORDINARY
+                },
+            )
+        }),
         Value::Arguments(_) if key == "callee" => {
             return err_help(
                 span,
@@ -4824,13 +4846,19 @@ fn own_property(value: &Value, key: &str, span: Span) -> R<Option<(Value, Attrs)
         Value::Undef | Value::Null => {
             return err(
                 span,
-                format!("Cannot convert {} to object; JavaScript throws a TypeError here", value.describe()),
+                format!(
+                    "Cannot convert {} to object; JavaScript throws a TypeError here",
+                    value.describe()
+                ),
             );
         }
         other => {
             return err_help(
                 span,
-                format!("inspecting the own properties of {} isn't supported at build time", other.describe()),
+                format!(
+                    "inspecting the own properties of {} isn't supported at build time",
+                    other.describe()
+                ),
                 "inspect a plain object, array, function or primitive value",
             );
         }
@@ -4850,7 +4878,10 @@ fn own_property_descriptor(args: &[Value], span: Span) -> R<Value> {
     }
     require_static_coercion(&key, span)?;
     let Some(key) = key.to_js_string() else {
-        return err(span, "Object.getOwnPropertyDescriptor at build time needs a primitive key");
+        return err(
+            span,
+            "Object.getOwnPropertyDescriptor at build time needs a primitive key",
+        );
     };
     let Some((slot, attrs)) = own_property(&target, &key, span)? else {
         return Ok(Value::Undef);
@@ -4874,7 +4905,8 @@ fn own_property_descriptor(args: &[Value], span: Span) -> R<Value> {
 /// `Object.create(null)` or `Object.create(Object.prototype)`: a new empty object. Other
 /// prototypes and the second (properties) argument are refused.
 fn object_create(args: &[Value], span: Span) -> R<Value> {
-    let help = "First models `Object.create(null)` and `Object.create(Object.prototype)`; use an object literal for others";
+    let help =
+        "First models `Object.create(null)` and `Object.create(Object.prototype)`; use an object literal for others";
     if args.len() > 1 && !matches!(args[1], Value::Undef) {
         return err_help(span, "Object.create with a properties argument isn't supported", help);
     }

@@ -9,7 +9,7 @@ export default defineConfig({
   jobs: {
     // The host contract lane: a job a tick runs, which mails through the host's transport.
     notify: job({
-      input: { title: text().notNull() },
+      input: { title: text() },
       handler: async ({ title }) => {
         await mail.send({ from: "app@example.com", to: "editor@example.com", subject: `Added ${title}`, text: title });
       },
@@ -17,7 +17,7 @@ export default defineConfig({
   },
   actions: {
     add: action({
-      input: { title: text().notNull() },
+      input: { title: text() },
       access: "anyone",
       async handler({ title }) {
         await db.insert(notes).values({ title });

@@ -2333,7 +2333,7 @@ impl Rewrite<'_> {
                     return Err(fail(
                         &pointer(&pointer(&pointer(self.at, "ctx"), "auth"), prop),
                         if prop == "userId" {
-                            "ctx.auth.userId maps only for Space Users (pass --users): its usr_ subjects are copied with each user. Spacefast account principals and guest:<id> identities have no v2 user"
+                            "ctx.auth.userId maps only for Space Users (pass --users): its usr_ subjects are copied with each user. Without Space Users, 0.8 answered a Spacefast account (account:<id>) or a guest (guest:<id>), and which First user each becomes waits on an owner decision: how Sign in with Spacefast signs visitors in to a First Space, and whether guest:<id> rows get guest users. Until then the app stays on 0.8"
                         } else {
                             "legacy profiles and auth methods require an explicit identity mapping"
                         },

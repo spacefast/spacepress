@@ -533,8 +533,8 @@ fn client_components_compile_to_interactivity_stores() {
         "'data-wp-bind--disabled' => 'context.busy'",
         "'data-wp-on--click' => 'actions.click1'",
         "'data-wp-on-window--resize' => 'actions.onResize3'",
-        "'data-wp-watch--effect1' => 'callbacks.effect1'",
-        "'data-wp-init--mount2' => 'callbacks.mount2'",
+        "'data-wp-watch---effect1' => 'callbacks.effect1'",
+        "'data-wp-init---mount2' => 'callbacks.mount2'",
         "'data-wp-on--submit' => 'actions.submit'",
     ] {
         assert!(functions.contains(directive), "{directive}");
@@ -621,4 +621,58 @@ fn refuses_client_code_outside_the_subset() {
         "first/components/A.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// The record's browser check: compiled client components on a real WordPress page, in Chromium
+/// with `SCRIPT_DEBUG` (the Interactivity runtime's development build, the one that warns).
+/// Hydration changes nothing in the server HTML, the runtime logs no warnings, a click calls the
+/// server action and updates the label, and effects and shared state follow state changes.
+#[test]
+fn client_components_hydrate_in_the_browser() {
+    let project = fixture("client-components", "browser");
+    build(&project);
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .env("FIRST_WP_SCRIPT_DEBUG", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/browser.mjs"))
+        .arg(format!("{url}/"))
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["hydration"], serde_json::json!([]), "{seen}");
+    assert_eq!(seen["warnings"], serde_json::json!([]), "{seen}");
+    assert_eq!(
+        (&seen["before"], &seen["after"]),
+        (&serde_json::json!("♥ 1 like"), &serde_json::json!("♥ 141 likes"))
+    );
+    assert_eq!(
+        (&seen["output"], &seen["items"], &seen["seen"]),
+        (
+            &serde_json::json!("4"),
+            &serde_json::json!("2"),
+            &serde_json::json!("20")
+        )
+    );
 }

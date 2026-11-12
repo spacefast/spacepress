@@ -99,14 +99,14 @@ impl Compiler<'_, '_> {
             for (name, _) in &ctx.analysis.watch {
                 extra.push(format!(
                     "{} => {}",
-                    php_str(&format!("data-wp-watch--{name}")),
+                    php_str(&format!("data-wp-watch---{name}")),
                     php_str(&format!("callbacks.{name}"))
                 ));
             }
             for (name, _) in &ctx.analysis.init {
                 extra.push(format!(
                     "{} => {}",
-                    php_str(&format!("data-wp-init--{name}")),
+                    php_str(&format!("data-wp-init---{name}")),
                     php_str(&format!("callbacks.{name}"))
                 ));
             }

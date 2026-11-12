@@ -165,6 +165,8 @@ final class Seam
             if ($column['hidden'] ?? false) { unset($row[$name]); }
         }
         foreach ($spec['relations'] ?? [] as $name => $relation) {
+            // A `ref()` field is its id until `with` loads the row in its place.
+            if (isset($fields[$name]) && !is_array($row[$name] ?? null)) { continue; }
             $fields[$name] = ['type' => $relation['kind'] === 'many' ? 'rows' : 'row', 'collection' => $relation['collection']];
         }
         if ($spec['localized'] ?? false) { $fields['translations'] = ['type' => 'record']; }
@@ -342,8 +344,8 @@ final class Seam
             $where[$k] = match (true) {
                 $k === 'OR' || $k === 'AND' => is_array(self::container($v)) ? array_map(fn ($f) => self::filter($collection, $f, $schema), self::container($v)) : self::toPhp($v),
                 $k === 'NOT' => self::filter($collection, $v, $schema),
+                Schema::filtersRelation($spec, $k, $v) => self::filter($spec['relations'][$k]['collection'], $v, $schema),
                 isset($spec['columns'][$k]) => self::plainOperand($spec['columns'][$k], $v),
-                isset($spec['relations'][$k]) => self::filter($spec['relations'][$k]['collection'], $v, $schema),
                 default => self::toPhp($v),
             };
         }

@@ -200,12 +200,10 @@ export interface ColumnBuilder<
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /** Unique text columns also need `.max(n)` with n ≤ 191 (MySQL index limit). Not allowed on sub-fields or globals. */
   unique(this: ColumnBuilder<UniqueKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
-  /** Foreign key. The target column's type must match this column's type. */
-  references(
-    this: ColumnBuilder<ReferenceKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
-    ref: () => Column<ColumnKind, NonNullable<TData>>,
-    options?: ReferenceOptions,
-  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
+  /** What deleting the referenced row does: `restrict` (the default when required), `setNull` (the default when optional) or `cascade`. `ref()` fields only. */
+  onDelete(action: "cascade" | "restrict" | "setNull"): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
+  /** The name of the list of referencing rows on the target. Default: the referencing kind's name. `ref()` fields only. */
+  reverse(name: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
 
   /** Numbers: inclusive lower bound. text/email/url/slug/richText: length in code points. repeater/mediaList/select(multiple)/blocks: item count. */
   min(this: ColumnBuilder<BoundedKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>, n: number): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
@@ -252,6 +250,12 @@ export interface Column<
 
 export type AnyColumn = Column<ColumnKind, unknown, boolean, boolean, string, string>;
 
+/**
+ * A reference to a row of `kind` (its `id`): the field holds the id, `with: { field: true }` loads the
+ * row in its place, and `kind` gets a list of the referencing rows named after this kind. Pass
+ * `() => kind` for a kind declared later or for the kind itself.
+ */
+export declare function ref(kind: AnyCollection | (() => AnyCollection)): ColumnBuilder<"integer", number, true, false>;
 /** Every field is required unless `.optional()`; `.default()` or `.defaultNow()` make it omittable on create. */
 export declare function integer(): ColumnBuilder<"integer", number, true, false>;
 /** Any finite number (a double). */
@@ -704,9 +708,11 @@ export type RelationsFilter<
   TSchema extends Schema,
   TRels,
   K extends keyof TSchema,
-> = ColumnFilters<ColumnsOf<TSchema[K]>> & {
+> = Omit<ColumnFilters<ColumnsOf<TSchema[K]>>, keyof RelationsOf<TRels, K>> & {
+  // A `ref()` field filters its id, or the row it refers to.
   [R in keyof RelationsOf<TRels, K>]?:
     | boolean
+    | (R extends keyof ColumnFilters<ColumnsOf<TSchema[K]>> ? ColumnFilters<ColumnsOf<TSchema[K]>>[R] : never)
     | RelationsFilter<TSchema, TRels, TargetOf<RelationsOf<TRels, K>[R]> & keyof TSchema>;
 } & {
   OR?: RelationsFilter<TSchema, TRels, K>[];
@@ -791,8 +797,10 @@ type WithResult<TSchema extends Schema, TRels, K extends keyof TSchema, TWith> =
 };
 
 /** One row of `db.query.<K>` given its `columns` and `with`. */
+/** A `ref()` field loaded by `with` holds the row in place of its id. */
 export type QueryRow<TSchema extends Schema, TRels, K extends keyof TSchema, TCols, TWith> = Simplify<
-  PickColumns<TSchema[K]["$inferSelect"], TCols> & WithResult<TSchema, TRels, K, TWith>
+  Omit<PickColumns<TSchema[K]["$inferSelect"], TCols>, keyof WithResult<TSchema, TRels, K, TWith>> &
+    WithResult<TSchema, TRels, K, TWith>
 >;
 
 export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof TSchema> {

@@ -110,7 +110,9 @@ final class Kinds
         if (!is_array($item)) {
             return $item;
         }
-        $with = is_array($item['with'] ?? null) ? $item['with'] : [];
+        // Relations attached by FirstQuery::attach, an object so that `{}` stays one on core's wire.
+        $with = $item['with'] ?? [];
+        $with = is_object($with) ? get_object_vars($with) : (is_array($with) ? $with : []);
         return match ($kind['type']) {
             'table' => (static function () use ($item, $with): array {
                 unset($item['_links'], $item['with']);
@@ -314,6 +316,8 @@ final class Kinds
                 $out['status'] = ['published' => 'publish', 'scheduled' => 'future', 'draft' => 'draft', 'pending' => 'pending'][$value] ?? $value;
             } elseif ($col === 'publishedAt' && ($spec['columns']['publishedAt']['system'] ?? false)) {
                 $out['date_gmt'] = is_string($value) ? substr($value, 0, 19) : $value;
+            } elseif (in_array($col, ['locale', 'translationOf'], true) && ($spec['localized'] ?? false)) {
+                $out[$col] = $value; // a translation's language and group (PostsController::createTranslated)
             } else {
                 $meta[$col] = $value;
             }

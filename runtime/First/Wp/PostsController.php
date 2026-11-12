@@ -185,7 +185,65 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function create_item($request)
     {
+        if (\First\Locale\Module::polylang($this->collection) && ($request->has_param('locale') || $request->has_param('translationOf'))) {
+            return $this->createTranslated($request);
+        }
+
         return EditorSave::rest($this->collection, null, $request, fn () => $this->save($request, fn () => parent::create_item($request)));
+    }
+
+    /**
+     * A create of a localized collection that names its `locale` or `translationOf` (spec §2.6 `locales`):
+     * Polylang group membership is First's write (the group lock, synced columns copied and compared),
+     * so the row is created with Db::insert as the viewer, then answered in core's shape, as the users
+     * route creates members ({@see UserMeta}).
+     */
+    private function createTranslated(\WP_REST_Request $request): mixed
+    {
+        $plugin = Plugin::instance() ?? throw new \LogicException('No First app');
+        $spec = $plugin->schema->collection($this->collection);
+        $data = [];
+        foreach (['title' => $spec['title'] ?? null, 'content' => $spec['content'] ?? null, 'slug' => $spec['slug'] ?? null] as $param => $col) {
+            if ($col !== null && $request->has_param($param)) {
+                $v = $request->get_param($param);
+                $data[$col] = is_array($v) ? ($v['raw'] ?? null) : $v;
+            }
+        }
+        if (is_string($status = $request->get_param('status'))) {
+            $data['status'] = ['publish' => 'published', 'future' => 'scheduled'][$status] ?? $status;
+        }
+        if (is_string($date = $request->get_param('date_gmt'))) {
+            $data['publishedAt'] = substr($date, 0, 19) . '.000Z';
+        }
+        $meta = PostMeta::input($request);
+        if (is_array($meta)) {
+            $data += array_intersect_key($meta, PostMeta::fields($spec));
+        }
+        foreach (['locale', 'translationOf'] as $param) {
+            if ($request->has_param($param)) {
+                $data[$param] = $request->get_param($param);
+            }
+        }
+        try {
+            $viewer = CoreAccess::viewer() ?? throw new \First\HttpError(403, 'suspended', 'This account is suspended');
+            $db = $plugin->db();
+            $previous = $db->actor();
+            $db->setActor($viewer->user);
+            try {
+                $row = $db->insert($this->collection, $data, true, $viewer)[0];
+            } finally {
+                $db->setActor($previous);
+            }
+        } catch (\First\HttpError | \First\JsError $e) {
+            $problem = \First\App::problem($e);
+
+            return CoreAccess::error(new \First\HttpError($problem['status'], $problem['code'], $problem['detail'], $problem['pointer'] ?? null));
+        }
+        $post = get_post((int) $row[$spec['primaryKey']]);
+        $response = rest_ensure_response($this->prepare_item_for_response($post, $request));
+        $response->set_status(201);
+
+        return $response;
     }
 
     /** A hook refusing the delete is the editor's 4xx with its message (§1.7), and nothing is deleted. */

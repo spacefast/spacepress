@@ -210,6 +210,10 @@ final class Rest
         try {
             $response = call_user_func($handler['callback'], $request);
             if (is_wp_error($response)) {
+                // The storage refused the file: First's 503 (retry later), not core's generic 500.
+                if (\First\Wp\Uploads::storageFailed()) {
+                    throw \First\Media\S3::unavailable();
+                }
                 throw new Refused($response);
             }
             WpMedia::requireRendered();

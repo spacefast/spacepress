@@ -9,7 +9,7 @@ const entries = collection({
   body: richText().optional(),
   profile: group({ name: text().optional(), featured: boolean().optional() }).optional(),
   ingredients: repeater({ name: text(), quantity: integer().min(0).optional() }).optional(),
-  grid: repeater({ monday: text().optional().optional(), tuesday: text() }).optional(),
+  grid: repeater({ monday: text().optional(), tuesday: text().optional() }).optional(),
   tags: json().optional(),
   palette: text().pattern(/^#[0-9a-fA-F]{6}$/).default("#375c48").optional(),
   embeds: json().optional(),

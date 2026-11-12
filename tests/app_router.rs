@@ -140,6 +140,42 @@ fn app_router_serves_pages_on_wordpress() {
     // The system's read sees the draft too: 2 notes, where an anonymous visitor's sees 1.
     assert_eq!(seen["webhook"], serde_json::json!([202, "ping:2"]));
     assert_eq!(seen["HEAD"], serde_json::json!([200, ""]));
+    // Markdown twins of app pages: the page's own output as Markdown (no layout navigation),
+    // the same for every visitor, a 404 for an unpublished item and none for a guarded page.
+    assert_eq!(
+        seen["twin home"],
+        serde_json::json!([200, "# Home\n\n- Hello\n", "text/markdown; charset=UTF-8"])
+    );
+    assert_eq!(seen["twin note"], serde_json::json!([200, "# Hello\n"]));
+    assert_eq!(
+        seen["twin note as editor"], "# Hello\n",
+        "a twin never carries what only some viewers may read"
+    );
+    assert_eq!(
+        (&seen["twin draft"], &seen["twin guarded"]),
+        (&serde_json::json!(404), &serde_json::json!(404))
+    );
+    assert_eq!(seen["twin link"][1], true);
+    assert!(
+        seen["twin link"][0][0]
+            .as_str()
+            .unwrap()
+            .ends_with("/notes/hello.md>; rel=\"alternate\"; type=\"text/markdown\"")
+    );
+    // /llms.txt lists the app's public static pages that render, titled from their twins.
+    let llms = seen["llms"].as_str().unwrap();
+    let pages = llms
+        .split("## Site pages\n\n")
+        .nth(1)
+        .expect("a Site pages section")
+        .split("\n\n")
+        .next()
+        .unwrap();
+    let titles: Vec<&str> = pages
+        .lines()
+        .map(|l| l.split(']').next().unwrap().trim_start_matches("- ["))
+        .collect();
+    assert_eq!(titles, ["About", "Notes", "Home"], "{llms}");
     // WordPress keeps its own URLs.
     assert_eq!(seen["rest"], 200);
     assert_eq!(seen["feed"], 200);

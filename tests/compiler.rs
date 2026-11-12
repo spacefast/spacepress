@@ -163,6 +163,31 @@ fn replaced_field_forms_name_their_replacement() {
             "`.many()` isn't valid on a text column",
             "first.config.ts:2:37",
         ),
+        (
+            "reject-define-relations",
+            "`defineRelations()` is gone: a reference is a field",
+            "first.config.ts:3:26",
+        ),
+        (
+            "reject-references",
+            "`.references()` is gone: a reference is a `ref()` field",
+            "first.config.ts:3:40",
+        ),
+        (
+            "reject-ref-set-null",
+            "`noteId` is required, so deleting what it refers to can't set it to null",
+            "first/schema.ts:3:48",
+        ),
+        (
+            "reject-ref-reverse-clash",
+            "`noteId` gives \"notes\" a reverse list named `tags`, which \"notes\" already has",
+            "first/schema.ts:3:37",
+        ),
+        (
+            "reject-ref-target",
+            "ref() takes a kind, not \"notes\"",
+            "first/schema.ts:2:37",
+        ),
     ] {
         rejects(fixture, message, at);
     }

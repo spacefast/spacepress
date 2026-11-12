@@ -20,6 +20,30 @@ final class Rest
     public static function boot(): void
     {
         add_filter('rest_dispatch_request', [self::class, 'dispatch'], 10, 4);
+        add_action('rest_api_init', [self::class, 'fields']);
+    }
+
+    /**
+     * `first_focal` on core's attachments: the focal point (`{ x, y }` from the top-left, 0..1, or null).
+     * Writing it re-renders the cover sizes, inside {@see dispatch()}'s transaction and under First's
+     * media `update` rule, so the facade's `PATCH /media/<id> { focal }` is a core media update.
+     */
+    public static function fields(): void
+    {
+        register_rest_field('attachment', 'first_focal', [
+            'schema' => ['description' => 'The focal point First crops cover sizes around.', 'type' => ['object', 'null'], 'context' => ['view', 'edit'],
+                'properties' => ['x' => ['type' => 'number', 'minimum' => 0, 'maximum' => 1], 'y' => ['type' => 'number', 'minimum' => 0, 'maximum' => 1]]],
+            'get_callback' => static fn (array $post): ?array => WpMedia::focal((int) $post['id']),
+            'update_callback' => static function (mixed $value, \WP_Post $post): ?\WP_Error {
+                try {
+                    Runtime::plugin()?->db()->media()->update($post->ID, ['focal' => \First\Media\Images::focal($value)]);
+                } catch (HttpError $e) {
+                    return CoreAccess::error($e);
+                }
+
+                return null;
+            },
+        ]);
     }
 
     public static function dispatch(mixed $result, \WP_REST_Request $request, string $route, array $handler): mixed
@@ -43,7 +67,7 @@ final class Rest
             $operation = match (true) {
                 $method === 'DELETE' => 'delete',
                 $id === null, in_array($endpoint, ['post-process', 'sideload', 'finalize'], true) => 'create',
-                $request->has_param('alt_text'), $endpoint === 'edit' => 'update',
+                $request->has_param('alt_text'), $request->has_param('first_focal'), $endpoint === 'edit' => 'update',
                 default => null, // Caption/title and other core fields retain WP's permissions.
             };
             if ($operation !== null) {

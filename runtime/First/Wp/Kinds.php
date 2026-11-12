@@ -207,7 +207,11 @@ final class Kinds
             }
         }
 
-        return [
+        // First's own media row (its named sizes, focal point, file name and size) when First runs the
+        // site; core's fields fill the rest (spec §2.1).
+        $first = isset($item['id']) ? Plugin::instance()?->db()->mediaGet((int) $item['id']) : null;
+
+        return (is_array($first) ? $first : []) + [
             'id' => $item['id'] ?? null,
             'url' => $item['source_url'] ?? null,
             'alt' => ($item['alt_text'] ?? '') ?: null,
@@ -216,6 +220,7 @@ final class Kinds
             'width' => isset($details['width']) ? (int) $details['width'] : null,
             'height' => isset($details['height']) ? (int) $details['height'] : null,
             'sizes' => $sizes === [] ? new \stdClass() : $sizes,
+            'focal' => $item['first_focal'] ?? null,
             'author' => ($item['author'] ?? 0) ?: null,
             'createdAt' => self::gmt($item['date_gmt'] ?? null),
         ];
@@ -246,7 +251,7 @@ final class Kinds
             'comments' => self::rename($data, ['on' => 'post', 'parent' => 'parent', 'content' => 'content', 'authorName' => 'author_name',
                 'authorEmail' => 'author_email', 'type' => 'type'], isset($data['status'])
                     ? ['status' => ['approved' => 'approved', 'pending' => 'hold'][$data['status']] ?? $data['status']] : []),
-            'media' => self::rename($data, ['alt' => 'alt_text', 'caption' => 'caption']),
+            'media' => self::rename($data, ['alt' => 'alt_text', 'caption' => 'caption', 'focal' => 'first_focal']),
             'term' => self::rename($data, ['name' => 'name', 'slug' => 'slug', 'description' => 'description', 'parent' => 'parent']),
             default => throw new \First\HttpError(405, 'method_not_allowed', "{$kind['name']} is read-only here"),
         };

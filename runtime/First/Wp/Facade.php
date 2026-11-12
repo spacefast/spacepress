@@ -156,6 +156,9 @@ final class Facade
         $base = $kind['route'];
         if (count($segments) === 1) {
             \First\App::allow($method, ['GET', 'HEAD', 'POST']);
+            if ($method === 'POST' && $kind['type'] === 'media') {
+                return self::json(201, ['data' => Kinds::row($kind, self::upload($base))]);
+            }
             if ($method === 'POST') {
                 $row = self::dispatch('POST', $base, self::context($kind), Kinds::input($kind, self::body($body), create: true), 201);
 
@@ -534,6 +537,32 @@ final class Facade
     private static function isoGmt(string $gmt): string
     {
         return str_replace(' ', 'T', $gmt) . '.000Z';
+    }
+
+    /**
+     * `POST /media`: a multipart upload (`file`, optional `alt`) as core's `POST /wp/v2/media`, which
+     * keeps core's file validation, metadata and hooks, with First's media rules around it
+     * ({@see Media\Rest}).
+     */
+    private static function upload(string $route): mixed
+    {
+        $file = $_FILES['file'] ?? null;
+        if (!is_array($file) || is_array($file['error'] ?? null)) {
+            throw HttpError::invalidInput('Send the file as multipart/form-data field "file"', '/file');
+        }
+        $err = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+        if ($err === UPLOAD_ERR_INI_SIZE || $err === UPLOAD_ERR_FORM_SIZE) {
+            throw new HttpError(413, 'payload_too_large', 'The upload is larger than this server accepts');
+        }
+        $request = new \WP_REST_Request('POST', $route);
+        $request->set_file_params(['file' => $file]);
+        $alt = $_POST['alt'] ?? null;
+        if ($alt !== null && !is_string($alt)) {
+            throw HttpError::invalidInput('alt must be a string', '/alt');
+        }
+        $request->set_body_params($alt === null ? [] : ['alt_text' => wp_unslash($alt)]);
+
+        return self::unwrap(self::run($request), 201);
     }
 
     /** `GET`/`PATCH /settings` (spec §2.1): core's settings for admins; the index's public fields for others. */

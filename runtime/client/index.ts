@@ -83,6 +83,10 @@ export type ListQuery<K extends CollectionKey, W = Collections[K]["with"]> = {
 
 export interface CollectionClient<K extends CollectionKey> {
   list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
+  /** One page and the `cursor` of the next (null on the last page): pass it back as `cursor`. */
+  paginate<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
+    q?: ListQuery<K, ExactWith<K, W>> & { cursor?: string | null },
+  ): Promise<{ rows: RowWith<K, W>[]; cursor: string | null }>;
   /** With `locale`, the row of `id`'s translation group in that locale (or its fallback). */
   get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Promise<RowWith<K, W>>;
   create(data: Collections[K]["insert"]): Promise<Row<K>>;
@@ -378,6 +382,8 @@ interface Send {
   form?: FormData;
   /** Token and guest endpoints: no held Bearer, no refresh or guest retry. */
   anonymous?: boolean;
+  /** Return the whole `{ data, cursor }` envelope of a list instead of `data`. */
+  envelope?: boolean;
 }
 
 /** What `auth.session()` exposes, plus what refresh and sign-out need. Stored as JSON under `first.auth:<base>`. */
@@ -523,7 +529,7 @@ export function createClient(options: ClientOptions = {}): Client {
     const { res, parsed } = await call(base + path + (qs ? `?${qs}` : ""), init, `${method} ${path}`);
     if (res.ok) {
       if (!isObject(parsed) || !("data" in parsed)) throw networkError(`${method} ${path}: response has no data`);
-      return parsed.data as T;
+      return (send.envelope ? { rows: parsed.data, cursor: parsed.cursor ?? null } : parsed.data) as T;
     }
     const error = toError(res, parsed);
     if (error.status === 401 && error.code === "unauthenticated" && !send.anonymous && !retried) {
@@ -844,8 +850,14 @@ export function createClient(options: ClientOptions = {}): Client {
     const path = `/${seg(desc.path)}`;
     const one = (id: string | number) => `${path}/${seg(id)}`;
     const list = (q?: Json) => request("GET", path, { query: listParams(q) });
+    const paginate = (q?: Json) => {
+      const query = listParams(q);
+      if (typeof q?.cursor === "string") query.set("cursor", q.cursor);
+      return request("GET", path, { query, envelope: true });
+    };
     return {
       list,
+      paginate,
       watch: (q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: FirstError) => void) =>
         watchWith(realtime, dependencies(key, q?.with), () => list(q), onRows, onError),
       get: (id: string | number, q?: Json) => request("GET", one(id), { query: listParams(q ? { with: q.with, locale: q.locale } : undefined) }),

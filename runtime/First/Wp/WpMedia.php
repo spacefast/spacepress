@@ -221,6 +221,12 @@ final class WpMedia implements Media
         return $out;
     }
 
+    /** The attachment's focal point, or null (core REST's `first_focal`). */
+    public static function focal(int $id): ?array
+    {
+        return self::focalOf($id);
+    }
+
     private static function focalOf(int $id): ?array
     {
         $raw = get_post_meta($id, self::FOCAL, true);

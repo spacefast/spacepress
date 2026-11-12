@@ -188,7 +188,7 @@ final class TableController extends \WP_REST_Controller
             'where' => ['description' => 'A First filter, as JSON: `{"email":{"like":"%@example.com"}}`.', 'type' => 'string'],
             'orderBy' => ['description' => 'First fields to sort by, comma-separated; `-field` sorts descending.', 'type' => 'string'],
             'with' => ['description' => 'Relations to attach: `team,signups` or a JSON object.', 'type' => 'string'],
-        ] + (\First\Locale\Module::localized($this->collection)
+        ] + ((Plugin::instance()?->schema->collection($this->collection)['localized'] ?? false)
             ? ['locale' => ['description' => 'A First locale, or `*`: that locale\'s rows, else each translation group\'s fallback.', 'type' => 'string']]
             : []);
     }

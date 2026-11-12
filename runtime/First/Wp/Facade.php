@@ -104,7 +104,7 @@ final class Facade
 
     /**
      * @param array<string, mixed> $query
-     * @return array{int, array<string, string>, string}
+     * @return array{int, array<string, string>, string|\Closure}
      */
     public static function route(Plugin $plugin, string $method, string $path, array $query, string $body): array
     {
@@ -132,6 +132,15 @@ final class Facade
         }
         if (isset($plugin->schema->globals()[$name]) && count($segments) === 1) {
             return self::global($plugin, $method, $name, $body);
+        }
+        if (\First\Extensions::routeHandler($name) !== null && ($name !== 'media' || ($segments[2] ?? null) === 'file')) {
+            // First's own features with no core route (sign-in, sync, services, private files and the
+            // streams of uploads kept off the web root): their one implementation, under the facade's
+            // prefix. Media rows themselves are the built-in kind, served by core's media route.
+            [$status, $headers, $out] = $plugin->app()->handle($method, '/' . implode('/', array_map('rawurlencode', $segments)), $query, $body, self::headers(), $_FILES, $_POST);
+            $cached = array_filter(array_keys($headers), static fn ($h) => strtolower((string) $h) === 'cache-control') !== [];
+
+            return [$status, $cached ? $headers : $headers + self::PRIVATE, $out];
         }
         if ($name === 'settings' && count($segments) === 1 && !isset($kinds['settings'])) {
             return self::settings($method, $body);
@@ -507,15 +516,33 @@ final class Facade
         self::emit($problem['status'], ['Content-Type' => 'application/problem+json'] + self::PRIVATE, (string) Js::jsonStringify($problem));
     }
 
+    /** @return array<string, string> lower-cased request headers, as First's handlers read them */
+    private static function headers(): array
+    {
+        $headers = [];
+        foreach ($_SERVER as $key => $value) {
+            if (is_string($value) && str_starts_with((string) $key, 'HTTP_')) {
+                $headers[strtolower(str_replace('_', '-', substr((string) $key, 5)))] = $value;
+            }
+        }
+        foreach (['CONTENT_TYPE' => 'content-type', 'CONTENT_LENGTH' => 'content-length'] as $key => $name) {
+            if (isset($_SERVER[$key]) && is_string($_SERVER[$key])) {
+                $headers[$name] = $_SERVER[$key];
+            }
+        }
+
+        return $headers;
+    }
+
     /** @param array<string, string> $headers */
-    private static function emit(int $status, array $headers, string $body): never
+    private static function emit(int $status, array $headers, string|\Closure $body): never
     {
         status_header($status);
         foreach ($headers as $name => $value) {
             header($name . ': ' . $value, true);
         }
         if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'HEAD') {
-            echo $body;
+            \First\Response::emit($body); // a file download streams through its closure
         }
         exit;
     }

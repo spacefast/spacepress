@@ -101,6 +101,17 @@ final class Markdown
     }
 
     /**
+     * Rendered HTML (a `first/app/` page's own output) as Markdown for reading, with the same rule
+     * as renderPost(): no raw HTML reaches the output.
+     */
+    public static function fromRenderedHtml(string $html): string
+    {
+        $markdown = trim(HtmlMarkdown::convert($html));
+
+        return $markdown === '' ? '' : self::escapeTags($markdown) . "\n";
+    }
+
+    /**
      * `\<` for every `<` that a Markdown renderer could read as the start of raw HTML (a tag, a
      * comment, a declaration), outside fenced code and code spans, where it is shown as written.
      */

@@ -113,7 +113,7 @@ ok "gc removes only what the kept builds do not reference"
 # The host contract (docs/host-contract.md): every hook it lists is called by the runtime, and one
 # `wp first jobs tick` runs the queued job, whose mail goes through the host's transport.
 contract() { wp eval "echo wp_json_encode(get_option('first_test_contract', []));"; }
-added=$(curl -sS -X POST -H 'Content-Type: application/json' -H "X-First-Build: $first" --data '{"title":"Contract"}' "$url/wp-json/first/v1/actions/add")
+added=$(curl -sS -X POST -H 'Content-Type: application/json' -H "X-First-Build: $first" --data '{"title":"Contract"}' "$url/__first/api/v1/actions/add")
 [[ $(json data.added <<< "$added") == Contract ]] || fail "the add action answers: $added"
 seen=$(contract)
 [[ $(json first_runtime_loaded <<< "$seen") == true ]] || fail "first_runtime_loaded fired: $seen"

@@ -1198,7 +1198,10 @@ fn space_user_subjects_back_owner_scoped_handlers() {
     for named in ["account:<id>", "guest:<id>", "owner decision", "Sign in with Spacefast"] {
         assert!(reason.contains(named), "{named}: {reason}");
     }
-    assert!(error["fix"].as_str().unwrap().contains("keep the app on 0.8"), "{error}");
+    assert!(
+        error["fix"].as_str().unwrap().contains("keep the app on 0.8"),
+        "{error}"
+    );
     let (ok, report) = migrate(&root, &out, &["--space", "spc_migrate_test", "--users"]);
     assert!(ok, "{report:#}");
     let entries = report["entries"].as_array().unwrap();

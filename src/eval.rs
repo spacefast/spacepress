@@ -2185,6 +2185,11 @@ impl<'p> Evaluator<'p> {
                 Value::Regex(..) => "regex",
                 _ => unreachable!(),
             };
+            if surface == "column"
+                && let Some((message, fix)) = removed_modifier(prop)
+            {
+                return err_help(span, message, fix);
+            }
             if crate::builtins::contract(surface, prop).is_none() {
                 return err_help(
                     span,
@@ -2725,7 +2730,11 @@ impl<'p> Evaluator<'p> {
                     );
                 }
                 if layouts.is_empty() {
-                    return err_help(span, "blocks() needs at least one layout", "write `blocks({ hero: { heading: text() } })`");
+                    return err_help(
+                        span,
+                        "blocks() needs at least one layout",
+                        "write `blocks({ hero: { heading: text() } })`",
+                    );
                 }
                 c.layouts = Some(layouts);
                 return Ok(Value::Column(Rc::new(c)));
@@ -2767,7 +2776,12 @@ impl<'p> Evaluator<'p> {
             match k.as_str() {
                 "multiline" => match v {
                     Value::Bool(b) => c.multiline = *b,
-                    other => return err(ksp, format!("`multiline` must be true or false, not {}", other.describe())),
+                    other => {
+                        return err(
+                            ksp,
+                            format!("`multiline` must be true or false, not {}", other.describe()),
+                        );
+                    }
                 },
                 "bucket" => match v {
                     Value::Str(s) if !s.is_empty() => c.bucket = Some(s.to_string()),
@@ -2828,12 +2842,19 @@ impl<'p> Evaluator<'p> {
             match item {
                 Value::Str(s) => values.push(s.to_string()),
                 other => {
-                    return err(span, format!("select() options must be strings, got {}", other.describe()));
+                    return err(
+                        span,
+                        format!("select() options must be strings, got {}", other.describe()),
+                    );
                 }
             }
         }
         if values.is_empty() {
-            return err_help(span, "select() needs at least one option", "write `select([\"a\", \"b\"])`");
+            return err_help(
+                span,
+                "select() needs at least one option",
+                "write `select([\"a\", \"b\"])`",
+            );
         }
         Ok(values)
     }

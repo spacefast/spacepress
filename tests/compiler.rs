@@ -112,6 +112,26 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     );
 }
 
+/// The field forms the authoring surface replaced are refused where they're written, naming the
+/// replacement (docs/spec/spec.md §2.5, §8).
+#[test]
+fn replaced_field_forms_name_their_replacement() {
+    for (fixture, message, at) in [
+        ("reject-not-null", "`.notNull()` is gone: fields are required by default", "first.config.ts:2:37"),
+        ("reject-id-builder", "`id()` is gone: every kind already has an integer `id`", "first.config.ts:2:27"),
+        ("reject-authored-id", "`id` is built in: every kind has an integer `id`", "first.config.ts:2:27"),
+        ("reject-real", "`real()` is now `number()`", "first.config.ts:2:30"),
+        ("reject-type-annotation", "`json().$type<T>()` is now `json<T>()`", "first.config.ts:2:36"),
+        ("reject-function-default", "`.default()` takes a literal value, not a function", "first.config.ts:2:46"),
+        ("reject-select-options", "select() takes its options as an array", "first.config.ts:2:29"),
+        ("reject-text-enum", "`text({ enum })` is now `select([...])`", "first.config.ts:2:42"),
+        ("reject-group-wrapper", "group() takes its fields directly, without the `{ fields }` wrapper", "first.config.ts:2:28"),
+        ("reject-many-text", "`.many()` isn't valid on a text column", "first.config.ts:2:37"),
+    ] {
+        rejects(fixture, message, at);
+    }
+}
+
 /// JSX outside the subset fails the build at its source, saying what to write instead
 /// (docs/decisions/2026-11-08-tsx-to-php.md, "Errors").
 #[test]

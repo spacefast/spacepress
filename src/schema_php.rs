@@ -521,7 +521,11 @@ pub fn gen_ts(schema: &Schema) -> String {
         };
         let _ = writeln!(out, "  {}: Collection<{}, {{", php_str(&c.key), php_str(&c.table));
         for col in c.columns.values().filter(|col| !col.hidden) {
-            let kind = if col.auto_increment { "id" } else { col.ty.builder_name() };
+            let kind = if col.auto_increment {
+                "id"
+            } else {
+                col.ty.builder_name()
+            };
             let translations = c.localized && col.name == "translations" && col.system;
             let value = if translations {
                 format!(

@@ -71,6 +71,21 @@ test("table rows, posts with their revisions, the global and the file read back 
   assert.equal(wp("eval", "echo is_dir(WP_CONTENT_DIR . '/uploads/zero-private') ? 'old' : 'moved';"), "moved");
 });
 
+test("the 0.3 client's paths: First's API answers its next build's client; the old paths are not served", async () => {
+  // The client a 0.3 build generated calls /wp-json/zero/v1 and loads /__zero/client.js. Once the
+  // site runs First, those are WordPress's own 404s; the client First generates calls /__first/api/v1.
+  for (const path of ["/wp-json/zero/v1/notes", "/wp-json/first/v1/notes"]) {
+    const old = await fetch(`${site}${path}`);
+    assert.deepEqual([old.status, (await old.json()).code], [404, "rest_no_route"], path);
+  }
+  const action = await fetch(`${site}/wp-json/zero/v1/actions/add`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "From an open tab" }) });
+  assert.equal(action.status, 404, "an action an old tab sends is not run");
+  assert.equal((await fetch(`${site}/__zero/client.js`)).status, 404);
+  const notes = await http("GET", `${api}/notes`);
+  assert.equal(notes.status, 200);
+  assert.ok(Array.isArray(notes.json.data) && "cursor" in notes.json);
+});
+
 test("an editor still edits the post in wp-admin: its post type, fields and SCF field keys are First's", async () => {
   const fields = JSON.parse(wp("eval", `echo wp_json_encode(get_fields(${seeded.post}));`));
   assert.equal(fields.first_summary ?? fields.summary, "Edited by 0.3");

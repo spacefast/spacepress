@@ -49,6 +49,11 @@ pub trait Fs {
     fn frozen_capture(&self) -> bool {
         false
     }
+    /// Another name these sources import `"first"` by: a stored bundle captured before the rename
+    /// imports `"zero"` (`crate::zero_bundle`). Read on parsed import statements, never source text.
+    fn module_alias(&self) -> Option<&'static str> {
+        None
+    }
     fn read_to_string(&self, path: &Path) -> std::io::Result<String>;
     fn is_file(&self, path: &Path) -> bool;
     fn is_dir(&self, path: &Path) -> bool;
@@ -458,11 +463,14 @@ fn load_module(
     let id = program.modules.len();
     by_path.insert(path.to_path_buf(), id);
     let Parsed {
-        body,
-        commonjs,
+        mut body,
+        mut commonjs,
         type_names,
         use_client,
     } = parse(fs, &source, path, &program.root, file, id, diagnostics)?;
+    if let Some(alias) = fs.module_alias() {
+        rename_module(&mut body, commonjs.as_mut(), alias);
+    }
     // `"first:db"` gives this app's kinds to the module that imports them; re-exporting it would hand
     // them on under another module's name, which no evaluator path resolves.
     // Locals bound by `import { x } from "first:db"`: exporting one again is the same re-export.
@@ -588,6 +596,27 @@ fn fence(root: &Path, from: &Path, spec: &str, target: PathBuf, span: Span) -> R
     .help(format!(
         "First loads app code only from first/: move {shown} to {destination} and import it from there, or install it as an npm package"
     )))
+}
+
+/// Reads every import, re-export and `require` of `alias` as one of `"first"`.
+fn rename_module(body: &mut [Stmt], commonjs: Option<&mut CommonJs>, alias: &str) {
+    for stmt in body {
+        match stmt {
+            Stmt::Import { source, .. }
+            | Stmt::ExportNames { from: Some(source), .. }
+            | Stmt::ExportAll { from: source, .. }
+                if source == alias =>
+            {
+                *source = FIRST_MODULE.to_owned();
+            }
+            _ => {}
+        }
+    }
+    for (spec, _) in commonjs.into_iter().flat_map(|c| c.requires.iter_mut()) {
+        if spec == alias {
+            *spec = FIRST_MODULE.to_owned();
+        }
+    }
 }
 
 fn import_source(s: &Stmt) -> Option<(String, Span)> {

@@ -10,7 +10,7 @@ type Entities = {
     'serial': ColumnBuilder<'text', string, true, false, false, false>;
     'serialKey': ColumnBuilder<'text', string, true, true, false, false>;
     'kind': ColumnBuilder<'text', "ssd" | "hdd" | "nvme" | "sd" | "usb", true, false, false, false>;
-    'capacityGb': ColumnBuilder<'real', number, true, false, false, false>;
+    'capacityGb': ColumnBuilder<'number', number, true, false, false, false>;
     'interface': ColumnBuilder<'text', string, true, false, false, false>;
     'purchasedOn': ColumnBuilder<'date', string, false, false, false, false>;
     'warrantyUntil': ColumnBuilder<'date', string, false, false, false, false>;
@@ -32,16 +32,16 @@ type Entities = {
     'driveId': ColumnBuilder<'integer', number, true, false, false, false>;
     'readOn': ColumnBuilder<'date', string, true, false, false, false>;
     'powerOnHours': ColumnBuilder<'integer', number, true, false, false, false>;
-    'wearPercent': ColumnBuilder<'real', number, true, false, false, false>;
+    'wearPercent': ColumnBuilder<'number', number, true, false, false, false>;
     'reallocatedSectors': ColumnBuilder<'integer', number, true, false, false, false>;
-    'tempC': ColumnBuilder<'real', number, true, false, false, false>;
+    'tempC': ColumnBuilder<'number', number, true, false, false, false>;
   }, false, 'table'>;
   'contents': Collection<'contents', {
     'id': ColumnBuilder<'id', number, true, true, false, true>;
     'ownerId': ColumnBuilder<'integer', number, true, true, false, false>;
     'driveId': ColumnBuilder<'integer', number, true, false, false, false>;
     'description': ColumnBuilder<'text', string, true, false, false, false>;
-    'usedGb': ColumnBuilder<'real', number, true, false, false, false>;
+    'usedGb': ColumnBuilder<'number', number, true, false, false, false>;
     'lastBackupOn': ColumnBuilder<'date', string, false, false, false, false>;
   }, false, 'table'>;
   'members': Collection<'members', {

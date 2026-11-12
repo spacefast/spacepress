@@ -14,12 +14,12 @@ const first = resolve(process.env.FIRST_BIN ?? 'target/debug/first');
 const command = async (args, env = process.env) => (await exec(first, args, { env, timeout: 600000, maxBuffer: 4 * 1024 * 1024 })).stdout.trim();
 const config = (version, extra = '', admin = true) => `
 import { defineConfig, table, collection, text, boolean, integer, json, richText, action, job, jobs, db } from 'first';
-const items = table({ name: text().notNull(), processed: boolean().notNull().default(false), ${extra} });
-const stories = collection({ title: text().notNull().max(160), body: richText(), details: json() }, { title: 'title', content: 'body', access: { read: 'anyone', create: 'editor', update: 'editor', delete: 'editor' } });
+const items = table({ name: text(), processed: boolean().default(false), ${extra} });
+const stories = collection({ title: text().max(160), body: richText().optional(), details: json().optional() }, { title: 'title', content: 'body', access: { read: 'anyone', create: 'editor', update: 'editor', delete: 'editor' } });
 export default defineConfig({
   admin: ${admin}, tables: { items }, collections: { stories },
   hooks: { items: { afterCreate: async (item) => { await jobs.stamp.enqueue({ itemId: item.id }); } } },
-  jobs: { stamp: job({ input: { itemId: integer().notNull() }, handler: async ({ itemId }) => {
+  jobs: { stamp: job({ input: { itemId: integer() }, handler: async ({ itemId }) => {
     await db.update(items).set({ processed: true }).where({ id: itemId });
   } }) },
   actions: { version: action({ input: {}, handler() { return '${version}'; } }) }
@@ -175,7 +175,7 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
 if (defined('WP_CLI') && WP_CLI) {
   WP_CLI::error('Acceptance configuration interruption');
 }`);
-  await writeFile(join(project, 'first.config.ts'), config('second', 'shelf: text(),'));
+  await writeFile(join(project, 'first.config.ts'), config('second', 'shelf: text().optional(),'));
   cursor = await session.wait('Acceptance configuration interruption', cursor);
   cursor = await session.wait('Fix the error and save to retry.', cursor);
   const interrupted = JSON.parse(await readFile(join(project, '.first/dev/owner.json'), 'utf8'));
@@ -196,7 +196,7 @@ if (defined('WP_CLI') && WP_CLI) {
   cursor = await session.wait('Local data was preserved.', cursor);
   assert.equal((await api('/items')).find((row) => row.id === item.id).shelf, 'A2');
   // Restoring the config must not replay a hidden DROP migration from the rejected save.
-  await writeFile(join(project, 'first.config.ts'), config('third', 'shelf: text(),', false));
+  await writeFile(join(project, 'first.config.ts'), config('third', 'shelf: text().optional(),', false));
   cursor = await session.wait('Updated. Refresh', cursor);
   assert.equal((await api('/items')).find((row) => row.id === item.id).shelf, 'A2');
   const plugins = JSON.parse(await wp('plugin', 'list', '--status=active', '--format=json'));

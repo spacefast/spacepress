@@ -37,11 +37,11 @@ First loads every `.ts` file under `first/`, except `app/`, `components/`,
 
 ```ts
 // first/schema.ts
-export const notes = table({ id: id(), title: text().notNull() });
+export const notes = table({ title: text() });
 
 // first/server/likes.ts (any file name)
 import { notes } from "first:db";
-export const like = action({ input: { id: integer().notNull() }, async handler({ id }) { /* … */ } });
+export const like = action({ input: { id: integer() }, async handler({ id }) { /* … */ } });
 ```
 
 - Other exports are ignored, so helper modules need no special place.
@@ -106,12 +106,12 @@ import {
   collection, table, text, integer, defineRelations, defineConfig,
 } from "first";
 
-// Native WordPress content with an editor and an implicit id: id().
-const posts = collection({ title: text().notNull() });
+// Native WordPress content with an editor and the integer id every kind has.
+const posts = collection({ title: text() });
 // App data in SQL, with a reference to the content.
 const stock = table({
-  postId: integer().references(() => posts.id, { onDelete: "cascade" }),
-  quantity: integer().notNull().default(0),
+  postId: integer().references(() => posts.id, { onDelete: "cascade" }).optional(),
+  quantity: integer().default(0),
 });
 const collections = { posts };
 const tables = { stock };
@@ -138,40 +138,54 @@ The SQL column is the one a `table()` gets in the generated MySQL migration;
 a `collection()` stores the same values
 as post fields and meta.
 
+Every kind has an integer `id` (BIGINT UNSIGNED AUTO_INCREMENT, the primary key);
+an authored `id` field is refused.
+
+Fields are **required** unless `.optional()`: a required field is NOT NULL and
+must be given on create. `.default(value)` or `.defaultNow()` (timestamp/date)
+makes it omittable on create; it stays NOT NULL. `.optional().default(value)` is
+nullable with a default.
+
 | builder | SQL | TS select type |
 |---|---|---|
-| `id()` | BIGINT UNSIGNED AUTO_INCREMENT, primary key | `number` |
 | `integer()` | BIGINT | `number` |
-| `real()` | DOUBLE | `number` |
-| `text()` / `text({ enum: [...] })` | LONGTEXT (VARCHAR when unique, when `.max()` is 191 or less, or for an enum) | `string` / union of the enum |
+| `number()` | DOUBLE | `number` |
+| `text()` | LONGTEXT (VARCHAR when unique or when `.max()` is 191 or less) | `string` |
+| `select(["a", "b"])` | VARCHAR | `"a" \| "b"` |
+| `select(["a", "b"]).many()` | LONGTEXT (JSON) | `("a" \| "b")[]` |
 | `boolean()` | TINYINT(1) 0/1 | `boolean` |
 | `timestamp()` | CHAR(24) (UTC ISO-8601 with ms); writes take epoch ms or ISO 8601 with `Z`/`±HH:MM` (a bare `YYYY-MM-DD` is UTC midnight) | `string` |
 | `date()` | CHAR(10) `YYYY-MM-DD`, a real calendar day | `string` |
-| `json()` / `json().$type<T>()` | LONGTEXT (JSON; an object keyed exactly `"0"`, `"1"`, ... reads back as a list, so a `.default()` can't contain one) | `unknown` / `T` |
+| `json<T>()` | LONGTEXT (JSON; an object keyed exactly `"0"`, `"1"`, ... reads back as a list, so a `.default()` can't contain one) | `T` (`unknown` without a type argument) |
 | `text({ multiline: true })` | LONGTEXT | `string` (textarea in wp-admin) |
 | `email()` / `url()` | VARCHAR or LONGTEXT as `text()`, validated | `string` |
 | `slug({ source? })` | VARCHAR(200), unique, `^[a-z0-9]+(?:-[a-z0-9]+)*$`, derived from `source` when omitted | `string` |
 | `richText()` | LONGTEXT (HTML) | `string` |
 | `media({ accept? })` | BIGINT media id | `number` (a media row with `with: { col: true }`) |
-| `media({ multiple: true })` | LONGTEXT (JSON ids) | `number[]` |
-| `select({ options })` | same as `text({ enum })` | union of the options |
-| `select({ options, multiple: true })` | LONGTEXT (JSON) | `option[]` |
-| `group({ fields })` | LONGTEXT (JSON) | `{ ...fields }` |
-| `repeater({ fields })` | LONGTEXT (JSON) | `{ ...fields }[]` |
-| `blocks({ layouts })` | LONGTEXT (JSON) | `({ layout: "a", ...a } \| { layout: "b", ...b })[]` |
+| `media().many()` | LONGTEXT (JSON ids) | `number[]` |
+| `group({ ...fields })` | LONGTEXT (JSON) | `{ ...fields }` |
+| `repeater({ ...fields })` | LONGTEXT (JSON) | `{ ...fields }[]` |
+| `blocks({ a: { ...fields }, b: { ...fields } })` | LONGTEXT (JSON) | `({ layout: "a", ...a } \| { layout: "b", ...b })[]` |
 
 Modifiers (each returns a new builder; builders are immutable so shared field
-sets are safe): `.notNull()`, `.default(value)`, `.defaultNow()`
+sets are safe): `.optional()`, `.default(value)` (a literal), `.defaultNow()`
 (timestamp/date), `.$default(() => value)` / `.$defaultFn(...)` (runs in PHP on
 insert), `.$onUpdate(() => value)` / `.$onUpdateFn(...)` (runs in PHP on
-update; `() => new Date()` on a timestamp is recognized as "now"),
-`.unique()`, `.primaryKey()`, `.references(() => other.col, { onDelete,
+update; `() => new Date()` on a timestamp is recognized as "now"), `.many()`
+(select and media), `.unique()`, `.references(() => other.col, { onDelete,
 onUpdate })` with actions `"cascade" | "restrict" | "set null" | "no action"`,
-`.$type<T>()` (type only), `.min(n)` / `.max(n)` (numbers: bounds; strings:
-length; lists: item count), `.pattern(/re/)` (strings), `.validate((value, ctx)
-=> true | "message")` (compiled to PHP, runs on every write), `.was("old")` (a
-rename: the deploy renames the stored column and keeps its values; see
+`.min(n)` / `.max(n)` (numbers: bounds; strings: length; lists: item count),
+`.pattern(/re/)` (strings), `.validate((value, ctx) => true | "message")`
+(compiled to PHP, runs on every write), `.was("old")` (a rename: the deploy
+renames the stored column and keeps its values; see
 [Schema changes at deploy](#schema-changes-at-deploy)).
+
+The earlier forms are refused with a located error that names the replacement:
+`.notNull()` (fields are required by default), `id()` and `.primaryKey()` (every
+kind has an integer `id`; a text key is `code: text().unique().max(191)`),
+`real()` (`number()`), `text({ enum })` and `select({ options })` (`select([...])`),
+`multiple: true` (`.many()`), `{ fields }` and `{ layouts }` wrappers, and
+`json().$type<T>()` (`json<T>()`).
 
 Phase-2 modifiers:
 
@@ -198,9 +212,8 @@ Phase-2 modifiers:
 Each modifier is checked against the column kind (design §1.2): `.max()` on a
 boolean, `.pattern()` on a number, `.references()` on text and so on fail the
 build at the modifier. `.unique()` text needs `.max(≤191)` (MySQL index limit).
-Sub-fields of `group`/`repeater`/`blocks` can't use `id()`, `.primaryKey()`,
-`.unique()`, `.references()`, `slug()`, `blocks()`, or `.$onUpdate()`, and nest
-at most 3 deep.
+Sub-fields of `group`/`repeater`/`blocks` can't use `.unique()`,
+`.references()`, `slug()`, `blocks()`, or `.$onUpdate()`, and nest at most 3 deep.
 
 Column keys are the SQL column names.
 
@@ -212,15 +225,14 @@ options?)` is app/relational data in its own SQL table. Fields never choose
 storage. Register each definition in its matching namespace:
 
 ```ts
-const posts = collection({ title: text().notNull() });
-const stock = table({ postId: integer().references(() => posts.id) });
+const posts = collection({ title: text() });
+const stock = table({ postId: integer().references(() => posts.id).optional() });
 export default defineConfig({ collections: { posts }, tables: { stock } });
 ```
 
 Definitions need no exports. Backend-only config is sufficient; `first build`
 emits `first/_generated/db.d.ts` to type `db.query` without importing authored definitions.
-An `id: id()` primary key is implicit. Tables may declare a custom single primary
-key; collections and user projections use the native integer `id`.
+Every kind's primary key is the integer `id`.
 
 The registry key is the logical name, used verbatim by `db.query`, hooks,
 relations and the flat generated client (`first.shoppingList`). Physical names
@@ -239,7 +251,7 @@ registered once.
 | `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
 | `revisions` | `true` for collections, `false` for tables | collections always keep native revisions; tables may opt in |
 | `comments` | `false` | collections only; WordPress comments on the post type. Comments are closed on every kind that doesn't set it ([opinionated WordPress](#opinionated-wordpress)) |
-| `title` | a `title: text()` column | WordPress post title; must be `text().notNull()` for collections |
+| `title` | a `title: text()` column | WordPress post title; must be a required `text()` for collections |
 | `content` | a `content: richText()` column | WordPress post content |
 | `access` | read `"anyone"`, writes `"editor"` | see below |
 | `api` | all `true` | `{ list?, get?, create?, update?, delete? }` |
@@ -452,7 +464,7 @@ The API is served before the theme loads; it never uses 0.8's `/__zero/config`,
 
 `global(name, fields, { label?, access?: { read?, update? } })`, registered in
 `defineConfig({ globals: { name } })`. One record per global; fields use the
-sub-field rules, and notNull fields need a default. `GET`/`PATCH
+sub-field rules, and a required field needs a default. `GET`/`PATCH
 /__first/api/v1/<name>`.
 
 ## defineConfig
@@ -722,7 +734,7 @@ import { action, defineConfig, HttpError, text } from "first";
 export default defineConfig({
   actions: {
     weather: action({
-      input: { city: text().notNull() },
+      input: { city: text() },
       access: "anyone",
       async handler({ city }) {
         const query = new URLSearchParams({ q: city });
@@ -813,7 +825,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export default defineConfig({
   actions: {
     verify: action({
-      input: { body: text().notNull(), signature: text().notNull() },
+      input: { body: text(), signature: text() },
       access: "anyone",
       handler({ body, signature }) {
         const expected = createHmac("sha256", process.env.WEBHOOK_SECRET!).update(body).digest("hex");
@@ -858,7 +870,7 @@ import { action, defineConfig, email, mail, text } from "first";
 export default defineConfig({
   actions: {
     invite: action({
-      input: { to: email().notNull(), name: text() },
+      input: { to: email(), name: text().optional() },
       access: "editor",
       async handler({ to, name }) {
         const queued = await mail.send({
@@ -906,7 +918,7 @@ import { abilities } from "php/wordpress";
 export default defineConfig({
   actions: {
     count: action({
-      input: { text: text().notNull() },
+      input: { text: text() },
       access: "authenticated",
       async handler(input) {
         const result = await abilities.call("acme/word-count", { text: input.text });
@@ -1063,7 +1075,7 @@ export default function (postId: number, post: WP_Post, update: boolean) {
 
 ```ts
 jobs: {
-  notifyEditors: job({ input: { commentId: integer().notNull() }, retries: 3, handler: async (input, ctx) => { ... } }),
+  notifyEditors: job({ input: { commentId: integer() }, retries: 3, handler: async (input, ctx) => { ... } }),
 },
 webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated"] }],
 ```
@@ -1154,7 +1166,7 @@ fields translate.
 Register one `userProjection(fields, options?)` under `users: { members }`.
 It projects existing WordPress users and usermeta, preserving their IDs and
 authentication; it creates no second user table or post type. It needs
-`email: email().notNull().unique()`, gets a write-only `password` and an
+`email: email().unique()`, gets a write-only `password` and an
 admin-only `role`, and cannot have drafts, revisions, slugs or localization. Members sign in
 through the typed client: `auth.signIn()` and `auth.handleCallback()` redirect
 through the first-identity screens (register the frontend once with
@@ -1186,8 +1198,7 @@ matches records and deletes nothing. It commits the files it wrote unless
 `.gitignore`, because the sync base is committed.
 
 What sync leaves out: `$onUpdate` columns, derived and hidden system columns,
-and fields the viewer's field access hides. A synced collection needs `id()`
-as its primary key. References to a `uid` collection are written as that
+and fields the viewer's field access hides. References to a `uid` collection are written as that
 row's uid. When required references form a cycle that no order of writes can
 satisfy, sync reports it and writes nothing.
 
@@ -1208,7 +1219,7 @@ isNotNull, OR, AND, NOT } }`, top-level `OR`/`AND`/`NOT`, relation keys
 `{ col: "asc" | "desc" }`. Column, relation, and operator names in literal
 filters are checked at build time.
 
-List columns (`select({ multiple })`, `media({ multiple })`) take `has`,
+List columns (`select([...]).many()`, `media().many()`) take `has`,
 `isNull`/`isNotNull` and `eq: []`; JSON columns (`json`, `group`, `repeater`,
 `blocks`) take `eq`/`ne` on the whole value and `isNull`/`isNotNull`, and
 neither can be ordered by. On editor collections `group`/`repeater`/`blocks`
@@ -1400,7 +1411,7 @@ Instances retain identity through assignment, arguments and closures. JSON
 responses and generated client types contain own fields only; they do not
 include methods or class metadata. Object spread copies own fields shallowly.
 `structuredClone`, stored JSON, callback inputs and persistent `once` results
-produce plain data without class identity. Use object types in `json().$type<T>()`;
+produce plain data without class identity. Use object types in `json<T>()`;
 class types and assertions that would pretend to hydrate a class are refused.
 
 Private names (`#field`, `#method()`, `static #x` and `#x in value`) belong to

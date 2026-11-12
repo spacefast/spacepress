@@ -1,22 +1,20 @@
 // The auth-collection fixture (§6.2): members are users. tests/php/auth_test.php runs the runtime on
 // it; tests/compiler.rs keeps auth.schema.json in step with the compiler.
-import { collection, defineConfig, defineRelations, email, group, id, integer, select, text, userProjection, table } from "first";
+import { collection, defineConfig, defineRelations, email, group, integer, select, text, userProjection, table } from "first";
 
 export const members = userProjection({
-  id: id(),
-  email: email().notNull().unique().max(191),
-  name: text().notNull().max(80),
-  plan: select({ options: ["free", "pro"] }).notNull().default("free"),
+  email: email().unique().max(191),
+  name: text().max(80),
+  plan: select(["free", "pro"]).default("free"),
   // A required sub-field only admins set: a member's own patch of `billing` may leave it out.
-  billing: group({ fields: { city: text(), tier: text().notNull().access({ update: "admin" }) } }),
+  billing: group({ city: text().optional(), tier: text().access({ update: "admin" }) }).optional(),
   // A required group whose grandchild only admins set: a member's patch of `profile` may leave `vip` out.
-  profile: group({ fields: { bio: text(), vip: group({ fields: { level: text().notNull().access({ update: "admin" }) } }).notNull() } }),
+  profile: group({ bio: text().optional(), vip: group({ level: text().access({ update: "admin" }) }) }).optional(),
 }, { access: { read: "self", update: "self", create: "anyone", delete: "admin" } });
 
 export const notes = table({
-  id: id(),
-  body: text().notNull(),
-  memberId: integer().references(() => members.id),
+  body: text(),
+  memberId: integer().references(() => members.id).optional(),
 }, { revisions: true, access: { read: "anyone", create: "authenticated", update: "authenticated" } });
 
 export const collections = {  };

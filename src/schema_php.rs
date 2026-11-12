@@ -349,6 +349,18 @@ pub fn render(schema: &Schema) -> String {
             let _ = writeln!(out, "        {} => {},", php_str(name), php_str(function));
         }
     }
+    if !schema.islands.is_empty() {
+        out.push_str("    ],\n    'islands' => [\n");
+        for (namespace, island) in &schema.islands {
+            let _ = writeln!(
+                out,
+                "        {} => ['file' => {}, 'actions' => [{}]],",
+                php_str(namespace),
+                php_str(&island.file),
+                island.actions.iter().map(|a| php_str(a)).collect::<Vec<_>>().join(", ")
+            );
+        }
+    }
     if let Some(app) = &schema.app {
         out.push_str("    ],\n    'app' => [\n");
         let opt = |v: &Option<String>| v.as_deref().map(php_str).unwrap_or_else(|| "null".into());
@@ -535,7 +547,11 @@ pub fn gen_ts(schema: &Schema) -> String {
         };
         let _ = writeln!(out, "  {}: Collection<{}, {{", php_str(&c.key), php_str(&c.table));
         for col in c.columns.values().filter(|col| !col.hidden) {
-            let kind = if col.auto_increment { "id" } else { col.ty.name() };
+            let kind = if col.auto_increment {
+                "id"
+            } else {
+                col.ty.builder_name()
+            };
             let translations = c.localized && col.name == "translations" && col.system;
             let value = if translations {
                 format!(

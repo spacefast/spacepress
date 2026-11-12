@@ -4,7 +4,7 @@
     "seo": {
       "package": "first-plugin-seo",
       "version": "1.2.0",
-      "integrity": "sha256-a798208bbde9f91bc691cb0f228026cde8576e7b7cb32e16b6c30ba888219ec3",
+      "integrity": "sha256-8a76f4df1d5d59efb0a28af42a0a5d38cee2523055f4461c5d929a04e3e5564d",
       "grant": {
         "read": [
           "posts"

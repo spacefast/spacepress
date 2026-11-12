@@ -1,56 +1,51 @@
 import {
   action, collection, date, db, defineConfig, defineRelations, file, files,
   HttpError, integer, job, jobs, media, richText, text, timestamp,
-  type InferSelectModel,
+  type InferSelectModel, select,
 } from "first";
 import { addDays, overdueDelay, today } from "./first/lib/dates";
 
-const owner = integer().notNull().access({ create: false, update: false })
-  .ui({ label: "Owner", help: "Set automatically from your WordPress account." });
+const owner = integer().access({ create: false, update: false }).ui({ label: "Owner", help: "Set automatically from your WordPress account." });
 
 export const systems = collection({
-  name: text().notNull().min(1).max(120),
+  name: text().min(1).max(120),
   ownerId: owner,
-  room: text().notNull().min(1).max(80),
-  kind: text({ enum: ["hvac", "plumbing", "electrical", "appliance", "safety"] }).notNull(),
-  make: text().max(120),
-  model: text().max(120),
-  installedOn: date(),
+  room: text().min(1).max(80),
+  kind: select(["hvac", "plumbing", "electrical", "appliance", "safety"]),
+  make: text().max(120).optional(),
+  model: text().max(120).optional(),
+  installedOn: date().optional(),
   manual: file({ bucket: "manuals" }).ui({
     label: "Manual PDF", help: "Upload to /__first/api/v1/files/manuals, then enter its file ID.",
-  }),
+  }).optional(),
 }, { title: "name", label: "Home systems", access: {
   read: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), create: "authenticated",
   update: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), delete: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }),
 } });
 
 export const tasks = collection({
-  title: text().notNull().min(1).max(160),
+  title: text().min(1).max(160),
   ownerId: owner,
-  systemId: integer().notNull().references(() => systems.id, { onDelete: "restrict" }),
-  everyDays: integer().notNull().min(1).max(36500).default(90)
-    .ui({ label: "Repeat every days", help: "The next date is calculated in UTC when you mark this task done." }),
-  lastDoneOn: date(),
-  nextDueOn: date().notNull().defaultNow(),
-  instructions: richText(),
-  overdueAt: timestamp().access({ create: false, update: false })
-    .ui({ label: "Overdue since", help: "Stamped by Action Scheduler after the due day ends in UTC." }),
+  systemId: integer().references(() => systems.id, { onDelete: "restrict" }),
+  everyDays: integer().min(1).max(36500).default(90).ui({ label: "Repeat every days", help: "The next date is calculated in UTC when you mark this task done." }),
+  lastDoneOn: date().optional(),
+  nextDueOn: date().defaultNow(),
+  instructions: richText().optional(),
+  overdueAt: timestamp().access({ create: false, update: false }).ui({ label: "Overdue since", help: "Stamped by Action Scheduler after the due day ends in UTC." }).optional(),
 }, { title: "title", content: "instructions", label: "Maintenance tasks", access: {
   read: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), create: "authenticated",
   update: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), delete: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }),
 } });
 
 export const doneLogs = collection({
-  title: text().notNull().default("Maintenance completed"),
+  title: text().default("Maintenance completed"),
   ownerId: owner,
-  taskId: integer().notNull().references(() => tasks.id, { onDelete: "restrict" }),
-  systemId: integer().notNull().references(() => systems.id, { onDelete: "restrict" })
-    .access({ create: false, update: false })
-    .ui({ help: "The system maintained when this work was logged, preserved for yearly costs." }),
-  doneOn: date().notNull().defaultNow(),
-  notes: text({ multiline: true }).max(10000),
-  costCents: integer().notNull().min(0).max(100000000).default(0),
-  photo: media({ accept: "image" }),
+  taskId: integer().references(() => tasks.id, { onDelete: "restrict" }),
+  systemId: integer().references(() => systems.id, { onDelete: "restrict" }).access({ create: false, update: false }).ui({ help: "The system maintained when this work was logged, preserved for yearly costs." }),
+  doneOn: date().defaultNow(),
+  notes: text({ multiline: true }).max(10000).optional(),
+  costCents: integer().min(0).max(100000000).default(0),
+  photo: media({ accept: "image" }).optional(),
 }, { title: "title", label: "Work done", access: {
   read: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), create: "authenticated",
   update: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), delete: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }),
@@ -149,7 +144,7 @@ export default defineConfig({
   },
   actions: {
     dueNext: action({
-      input: { days: integer().notNull().min(0).max(366).default(30) },
+      input: { days: integer().min(0).max(366).default(30) },
       access: "authenticated",
       async handler({ days }, ctx) {
         if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
@@ -164,8 +159,8 @@ export default defineConfig({
     }),
     markDone: action({
       input: {
-        taskId: integer().notNull(), notes: text().max(10000),
-        costCents: integer().min(0).max(100000000),
+        taskId: integer(), notes: text().max(10000).optional(),
+        costCents: integer().min(0).max(100000000).optional(),
       },
       access: "authenticated",
       idempotent: true,
@@ -185,7 +180,7 @@ export default defineConfig({
       },
     }),
     yearCost: action({
-      input: { year: integer().notNull().min(1900).max(9998) },
+      input: { year: integer().min(1900).max(9998) },
       access: "authenticated",
       async handler({ year }, ctx) {
         if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
@@ -204,7 +199,7 @@ export default defineConfig({
   },
   jobs: {
     flagOverdue: job({
-      input: { taskId: integer().notNull(), ownerId: integer().notNull(), dueOn: date().notNull() },
+      input: { taskId: integer(), ownerId: integer(), dueOn: date() },
       retries: 3,
       async handler({ taskId, ownerId: userId, dueOn }) {
         const task = await db.query.tasks.findFirst({ where: { id: taskId, ownerId: userId } });

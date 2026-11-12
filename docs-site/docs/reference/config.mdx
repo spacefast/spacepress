@@ -34,24 +34,20 @@ A First app is one `first.config.ts`. It imports its building blocks from `"firs
 
 ## Columns
 
-### `id`
-
-INTEGER PRIMARY KEY AUTOINCREMENT.
-
-```ts
-export declare function id(): ColumnBuilder<"id", number, true, true, false, true>;
-```
-
 ### `integer`
 
+Every field is required unless `.optional()`; `.default()` or `.defaultNow()` make it omittable on create.
+
 ```ts
-export declare function integer(): ColumnBuilder<"integer", number, false, false>;
+export declare function integer(): ColumnBuilder<"integer", number, true, false>;
 ```
 
-### `real`
+### `number`
+
+Any finite number (a double).
 
 ```ts
-export declare function real(): ColumnBuilder<"real", number, false, false>;
+export declare function number(): ColumnBuilder<"number", number, true, false>;
 ```
 
 ### `text`
@@ -59,11 +55,7 @@ export declare function real(): ColumnBuilder<"real", number, false, false>;
 Single line by default; `multiline: true` is a textarea in editors.
 
 ```ts
-export declare function text(config?: { multiline?: boolean }): ColumnBuilder<"text", string, false, false>;
-export declare function text<const TEnum extends readonly [string, ...string[]]>(config: {
-  enum: TEnum;
-  multiline?: boolean;
-}): ColumnBuilder<"text", TEnum[number], false, false>;
+export declare function text(config?: { multiline?: boolean }): ColumnBuilder<"text", string, true, false>;
 ```
 
 ### `boolean`
@@ -71,7 +63,7 @@ export declare function text<const TEnum extends readonly [string, ...string[]]>
 Stored as INTEGER 0/1.
 
 ```ts
-export declare function boolean(): ColumnBuilder<"boolean", boolean, false, false>;
+export declare function boolean(): ColumnBuilder<"boolean", boolean, true, false>;
 ```
 
 ### `date`
@@ -79,7 +71,7 @@ export declare function boolean(): ColumnBuilder<"boolean", boolean, false, fals
 TEXT `YYYY-MM-DD`.
 
 ```ts
-export declare function date(): ColumnBuilder<"date", string, false, false>;
+export declare function date(): ColumnBuilder<"date", string, true, false>;
 ```
 
 ### `timestamp`
@@ -87,15 +79,15 @@ export declare function date(): ColumnBuilder<"date", string, false, false>;
 TEXT, UTC ISO-8601 with milliseconds.
 
 ```ts
-export declare function timestamp(): ColumnBuilder<"timestamp", string, false, false>;
+export declare function timestamp(): ColumnBuilder<"timestamp", string, true, false>;
 ```
 
 ### `json`
 
-TEXT holding JSON; `unknown` until narrowed with `.$type<T>()`.
+TEXT holding JSON of type `T`: `json<string[]>()`.
 
 ```ts
-export declare function json(): ColumnBuilder<"json", unknown, false, false>;
+export declare function json<T = unknown>(): ColumnBuilder<"json", T, true, false>;
 ```
 
 ### `email`
@@ -103,7 +95,7 @@ export declare function json(): ColumnBuilder<"json", unknown, false, false>;
 An email address (validated). TEXT.
 
 ```ts
-export declare function email(): ColumnBuilder<"email", string, false, false>;
+export declare function email(): ColumnBuilder<"email", string, true, false>;
 ```
 
 ### `url`
@@ -111,7 +103,7 @@ export declare function email(): ColumnBuilder<"email", string, false, false>;
 An absolute `http(s)://` URL (validated). TEXT.
 
 ```ts
-export declare function url(): ColumnBuilder<"url", string, false, false>;
+export declare function url(): ColumnBuilder<"url", string, true, false>;
 ```
 
 ### `slug`
@@ -119,8 +111,8 @@ export declare function url(): ColumnBuilder<"url", string, false, false>;
 URL-safe identifier: `^[a-z0-9]+(?:-[a-z0-9]+)*$`, at most 200 characters, unique. With `source` (a text column of the same collection), an omitted slug is derived from it ("-2", "-3" ... until unique). At most one per collection; not allowed in sub-fields or globals.
 
 ```ts
-export declare function slug(config?: { source?: undefined }): ColumnBuilder<"slug", string, false, false>;
-export declare function slug(config: { source: string }): ColumnBuilder<"slug", string, false, true>;
+export declare function slug(config?: { source?: undefined }): ColumnBuilder<"slug", string, true, false>;
+export declare function slug(config: { source: string }): ColumnBuilder<"slug", string, true, true>;
 ```
 
 ### `file`
@@ -128,7 +120,7 @@ export declare function slug(config: { source: string }): ColumnBuilder<"slug", 
 A private-file id in the named bucket.
 
 ```ts
-export declare function file(config: { bucket: string }): ColumnBuilder<"file", number, false, false>;
+export declare function file(config: { bucket: string }): ColumnBuilder<"file", number, true, false>;
 ```
 
 ### `richText`
@@ -136,31 +128,25 @@ export declare function file(config: { bucket: string }): ColumnBuilder<"file", 
 HTML. On WordPress the `content`-designated richText is the block editor's post_content.
 
 ```ts
-export declare function richText(): ColumnBuilder<"richText", string, false, false>;
+export declare function richText(): ColumnBuilder<"richText", string, true, false>;
 ```
 
 ### `media`
 
-A media id (the built-in `media` collection). `with: { <col>: true }` populates it in place.
+A media id (the built-in `media` collection); `.many()` for a list. `with: { <col>: true }` populates it in place.
 
 ```ts
-export declare function media(config?: { accept?: "image" | "any"; multiple?: false }): ColumnBuilder<"media", number, false, false>;
-export declare function media(config: { accept?: "image" | "any"; multiple: true }): ColumnBuilder<"mediaList", number[], false, false>;
+export declare function media(config?: { accept?: "image" | "any" }): ColumnBuilder<"media", number, true, false>;
 ```
 
 ### `select`
 
-One of `options`: exactly `text({ enum: options })`.
+One of `options`; `.many()` for any number of them, stored as a JSON array and filtered with `{ has: option }`.
 
 ```ts
-export declare function select<const TOptions extends readonly [string, ...string[]]>(config: {
-  options: TOptions;
-  multiple?: false;
-}): ColumnBuilder<"text", TOptions[number], false, false>;
-export declare function select<const TOptions extends readonly [string, ...string[]]>(config: {
-  options: TOptions;
-  multiple: true;
-}): ColumnBuilder<"select", TOptions[number][], false, false>;
+export declare function select<const TOptions extends readonly [string, ...string[]]>(
+  options: TOptions,
+): ColumnBuilder<"text", TOptions[number], true, false>;
 ```
 
 ### `group`
@@ -168,7 +154,7 @@ export declare function select<const TOptions extends readonly [string, ...strin
 One object with fixed sub-fields (absent optional sub-fields read as null).
 
 ```ts
-export declare function group<F extends FieldsConfig>(config: { fields: F }): ColumnBuilder<"group", SelectShape<F>, false, false, HasLocalized<F>>;
+export declare function group<F extends FieldsConfig>(fields: F): ColumnBuilder<"group", SelectShape<F>, true, false, HasLocalized<F>>;
 ```
 
 ### `repeater`
@@ -176,17 +162,17 @@ export declare function group<F extends FieldsConfig>(config: { fields: F }): Co
 A list of objects with the same sub-fields. `.min/.max` count items.
 
 ```ts
-export declare function repeater<F extends FieldsConfig>(config: { fields: F }): ColumnBuilder<"repeater", SelectShape<F>[], false, false, HasLocalized<F>>;
+export declare function repeater<F extends FieldsConfig>(fields: F): ColumnBuilder<"repeater", SelectShape<F>[], true, false, HasLocalized<F>>;
 ```
 
 ### `blocks`
 
-Flexible content: a list of items, each `{ layout, ...that layout's fields }`.
+Flexible content: a list of items, each `{ layout, ...that layout's fields }`, one entry per layout.
 
 ```ts
-export declare function blocks<L extends Record<string, FieldsConfig>>(config: {
-  layouts: L;
-}): ColumnBuilder<"blocks", BlockValue<L>[], false, false, HasLocalized<L[keyof L]>>;
+export declare function blocks<L extends Record<string, FieldsConfig>>(
+  layouts: L,
+): ColumnBuilder<"blocks", BlockValue<L>[], true, false, HasLocalized<L[keyof L]>>;
 ```
 
 ## Collections
@@ -267,7 +253,7 @@ export declare function action<TInput extends ColumnsConfig, TResult>(definition
 
 ### `global`
 
-Defines a global. Fields use the column builders with the sub-field restrictions, and no `.unique()`/`id()`/`slug()`/`blocks()`; NOT NULL fields need a default. Default access: `read: "anyone"`, `update: "editor"`.
+Defines a global. Fields use the column builders with the sub-field restrictions, and no `.unique()`/`slug()`/`blocks()`; a required field needs a default. Default access: `read: "anyone"`, `update: "editor"`.
 
 ```ts
 export declare function global<const TName extends string, TFields extends FieldsConfig>(

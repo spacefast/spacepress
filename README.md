@@ -26,16 +26,16 @@ import {
 } from "first";
 
 export const authors = collection({
-  name: text().notNull().max(80),
-  avatar: media({ accept: "image" }),
+  name: text().max(80),
+  avatar: media({ accept: "image" }).optional(),
 }, { title: "name" });
 
 export const posts = collection({
-  title: text().notNull().max(120),
-  slug: slug({ source: "title" }),
-  body: richText(),
-  authorId: integer().references(() => authors.id, { onDelete: "set null" }),
-  updatedAt: timestamp().notNull().defaultNow().$onUpdate(() => new Date()),
+  title: text().max(120),
+  slug: slug({ source: "title" }).optional(),
+  body: richText().optional(),
+  authorId: integer().references(() => authors.id, { onDelete: "set null" }).optional(),
+  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()),
 }, {
   content: "body",
   access: { read: "anyone", create: "author", update: "author", delete: "editor" },
@@ -43,8 +43,8 @@ export const posts = collection({
 
 export const collections = { authors, posts };
 export const stock = table({
-  postId: integer().references(() => posts.id),
-  quantity: integer().notNull().default(0),
+  postId: integer().references(() => posts.id).optional(),
+  quantity: integer().default(0),
 });
 export const tables = { stock };
 

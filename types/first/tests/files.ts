@@ -1,7 +1,7 @@
 // Feature 6 config surface (phase 2 §7.2): media sizes and private file buckets. Compiles only.
-import { collection, defineConfig, file, files, id, text, env } from "first";
+import { collection, defineConfig, file, files, text, env } from "first";
 
-const talks = collection({ id: id(), title: text().notNull(), deck: file({ bucket: "decks" }) });
+const talks = collection({ title: text(), deck: file({ bucket: "decks" }).optional() });
 type TalkRow = typeof talks.$inferSelect;
 const deckId: TalkRow["deck"] = 1;
 const noDeck: TalkRow["deck"] = null;
@@ -22,7 +22,7 @@ files("broken", { accept: ["application/pdf"] });
 // @ts-expect-error fit is cover or inside
 defineConfig({ name: "x", collections: {}, media: { sizes: { a: { width: 1, fit: "fill" } } } });
 // @ts-expect-error file() needs a bucket
-file();
+file().optional();
 void deckId, noDeck;
 
 // @ts-expect-error credentials must be runtime environment references

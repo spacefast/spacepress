@@ -1,3 +1,3 @@
-import { collection, id, text, defineConfig, table } from "first";
-const notes = table({ id: id(), secret: text().access({ read: ctx => { try { if (ctx.user === null) throw new Error("anonymous"); return true; } catch (error) {} } }) });
+import { collection, text, defineConfig, table } from "first";
+const notes = table({ secret: text().access({ read: ctx => { try { if (ctx.user === null) throw new Error("anonymous"); return true; } catch (error) {} } }).optional() });
 export default defineConfig({ tables: { notes } });

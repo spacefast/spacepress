@@ -169,18 +169,17 @@ impl Field {
     fn builder(&self) -> String {
         let mut s = match self.kind.as_str() {
             "boolean" => "__z08Boolean()",
-            "number" => "__z08Real()",
+            "number" => "__z08Number()",
             _ => "__z08Text()",
         }
         .to_string();
         if self.kind == "userId" {
             s.push_str(".min(1)");
         }
-        if !self.optional || self.default.is_some() {
-            s.push_str(".notNull()");
-        }
         if let Some(d) = &self.default {
             s.push_str(&format!(".default({d})"));
+        } else if self.optional {
+            s.push_str(".optional()");
         }
         s
     }
@@ -316,7 +315,7 @@ fn physical(space: &str, name: &str) -> String {
 /// Every v2 user projects as a member whose hidden `spacefastSubject` holds the 0.8 Space
 /// subject (`usr_<64 hex>` for Space Users) copied by `wp first migrate-spacefast`. Users created
 /// after the migration answer `wp:<id>`, which no 0.8 subject can equal.
-const IDENTITY: &str = r#"const __z08Members = __z08Users({email: __z08Email().notNull().unique().max(191), name: __z08Text().notNull(), spacefastSubject: __z08Text().max(191).access({ read: false, create: false, update: false })});
+const IDENTITY: &str = r#"const __z08Members = __z08Users({email: __z08Email().unique().max(191), name: __z08Text(), spacefastSubject: __z08Text().max(191).optional().access({ read: false, create: false, update: false })});
 type __z08User = { id: number; name: string; role: "guest" | "subscriber" | "author" | "editor" | "admin" };
 async function __z08Subject(user: __z08User | null): Promise<string | null> {
   if (user === null) return null;
@@ -338,6 +337,19 @@ function __z08RequireIdentity(user: __z08User | null, subject: string | null) {
   return { userId: subject, displayName: guest ? "Guest" : user.name, isGuest: guest, isSignedIn: !guest, isAuthenticated: !guest };
 }
 "#;
+
+/// The profile fields a 0.8 Space Users session left unset, typed as 0.8 typed them (optional).
+const ABSENT_PROFILE: &str = "function __z08AbsentText(): string | undefined { return undefined; }\nfunction __z08AbsentFlag(): boolean | undefined { return undefined; }\nfunction __z08AbsentList(): string[] | undefined { return undefined; }\n";
+
+/// The 0.8 `ctx.auth` profile fields (`AuthProfile` plus `provider`).
+const PROFILE: &[&str] = &[
+    "email",
+    "emailVerified",
+    "picture",
+    "subject",
+    "identityAliases",
+    "provider",
+];
 
 /// v2 compiles `console.*` to the PHP error log; the declaration types it for editors.
 /// The 401 a writing handler answers without a caller when it (or a helper) reads the subject.
@@ -1083,7 +1095,7 @@ pub(super) fn app(
         ));
     }
     let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, real as __z08Real, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"first\";\n",
+        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, number as __z08Number, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"first\";\n",
     );
     if uses_crypto {
         config.push_str(CRYPTO_PRELUDE);
@@ -1289,7 +1301,7 @@ fn type_aliases(source: &str) -> String {
 fn table_code(t: &Table) -> String {
     let n = &t.name;
     let mut out = format!(
-        "const __z08_{n} = __z08Table({{\ncreatedAt: __z08Text().notNull().$defaultFn(() => new Date().toISOString()),\nupdatedAt: __z08Text().notNull().$defaultFn(() => new Date().toISOString()).$onUpdate(() => new Date().toISOString()),\n"
+        "const __z08_{n} = __z08Table({{\ncreatedAt: __z08Text().$defaultFn(() => new Date().toISOString()),\nupdatedAt: __z08Text().$defaultFn(() => new Date().toISOString()).$onUpdate(() => new Date().toISOString()),\n"
     );
     for f in &t.fields {
         out.push_str(&format!("{}: {},\n", q(&f.name), f.builder()));
@@ -1440,9 +1452,9 @@ fn destructured_parameter(text: &str) -> Option<(String, String)> {
 fn input_builder(ty: &TyAnn, source_ty: &str, optional: bool, at: &str) -> Result<String, Failure> {
     let (base, nullable) = match ty {
         TyAnn::Str => ("__z08Text()".into(), false),
-        TyAnn::Num => ("__z08Real()".into(), false),
+        TyAnn::Num => ("__z08Number()".into(), false),
         TyAnn::Bool => ("__z08Boolean()".into(), false),
-        TyAnn::Obj(_) | TyAnn::Ref(..) | TyAnn::Array(_) => (format!("__z08Json().$type<{source_ty}>()"), false),
+        TyAnn::Obj(_) | TyAnn::Ref(..) | TyAnn::Array(_) => (format!("__z08Json<{source_ty}>()"), false),
         TyAnn::Union(xs)
             if xs
                 .iter()
@@ -1460,7 +1472,7 @@ fn input_builder(ty: &TyAnn, source_ty: &str, optional: bool, at: &str) -> Resul
     };
     Ok(format!(
         "{base}{}",
-        if optional || nullable { "" } else { ".notNull()" }
+        if optional || nullable { ".optional()" } else { "" }
     ))
 }
 
@@ -1559,9 +1571,9 @@ fn handler(
             }
             let optional = p.optional || p.default.is_some();
             input.push(format!(
-                "{}: __z08Json().$type<{ty}>(){}",
+                "{}: __z08Json<{ty}>(){}",
                 q(&n),
-                if optional { "" } else { ".notNull()" }
+                if optional { ".optional()" } else { "" }
             ));
             let value = match &p.default {
                 Some(default) => format!("__z08input.{n} ?? ({})", raw(source, default.span)),
@@ -1607,7 +1619,7 @@ fn handler(
                     "rest and default parameters need a manual input schema unless the rest type is an array",
                 ));
             }
-            input.push(format!("{}: __z08Json().$type<{ty}>()", q(&n)));
+            input.push(format!("{}: __z08Json<{ty}>().optional()", q(&n)));
             bindings.push_str(&format!("const {n}: {ty} = __z08input.{n} ?? [];\n"));
             continue;
         }
@@ -2360,11 +2372,27 @@ impl Rewrite<'_> {
                     "(__z08ctx.user === null ? \"Signed out\" : String(__z08ctx.user.role) === \"guest\" ? \"Guest\" : __z08ctx.user?.name ?? \"Signed out\")"
                 }
                 "userId" if self.subjects => &self.subject()?,
+                // A Space Users session gave 0.8 only userId and displayName, with provider
+                // "space-users"; email, picture, subject and aliases were never set for it, and a
+                // guest or signed-out caller had none either.
+                "provider" if self.subjects => {
+                    "(__z08ctx.user === null ? null : String(__z08ctx.user.role) === \"guest\" ? \"guest\" : \"space-users\")"
+                }
+                "email" | "emailVerified" | "picture" | "subject" | "identityAliases" if self.subjects => {
+                    self.helpers.push(ABSENT_PROFILE.into());
+                    match prop.as_str() {
+                        "emailVerified" => "__z08AbsentFlag()",
+                        "identityAliases" => "__z08AbsentList()",
+                        _ => "__z08AbsentText()",
+                    }
+                }
                 _ => {
                     return Err(fail(
                         &pointer(&pointer(&pointer(self.at, "ctx"), "auth"), prop),
                         if prop == "userId" {
                             "ctx.auth.userId maps only for Space Users (pass --users): its usr_ subjects are copied with each user. Without Space Users, 0.8 answered a Spacefast account (account:<id>) or a guest (guest:<id>), and which First user each becomes waits on an owner decision: how Sign in with Spacefast signs visitors in to a First Space, and whether guest:<id> rows get guest users. Until then the app stays on 0.8"
+                        } else if PROFILE.contains(&prop.as_str()) {
+                            "ctx.auth profile fields map only for Space Users (pass --users), whose 0.8 sessions carried no email, picture, subject or aliases. Without Space Users they came from the visitor's Spacefast account or sign-in provider, and what a First user carries for them waits on the same owner decision as ctx.auth.userId (Sign in with Spacefast)"
                         } else {
                             "legacy profiles and auth methods require an explicit identity mapping"
                         },

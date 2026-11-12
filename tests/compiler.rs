@@ -1803,7 +1803,7 @@ fn rejects_phase2_static_contracts() {
         ("reject-sync-reference", "sync references need uid: true on a"),
         (
             "reject-job-reference",
-            "`.references()` isn't allowed on an action input",
+            "`ref()` isn't allowed on an action input",
         ),
         ("reject-job-unique", "`.unique()` isn't allowed on an action input"),
         ("reject-job-retries", "job retries must be a whole number from 0 to 20"),

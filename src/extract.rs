@@ -1545,7 +1545,7 @@ fn column(
     } else if b.unique && b.ty != ColType::Slug {
         Some(("`.unique()`", b.span_of("unique")))
     } else if b.references.is_some() {
-        Some(("`.references()`", b.span_of("references")))
+        Some(("`ref()`", b.span))
     } else if b.on_update.is_some() {
         Some(("`.$onUpdate()`", b.span_of("$onUpdate")))
     } else if b.ty == ColType::Slug {

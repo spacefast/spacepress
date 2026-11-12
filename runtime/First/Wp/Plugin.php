@@ -299,7 +299,9 @@ final class Plugin
 
     public function maybeMigrate(): void
     {
-        if (Runtime::managed() || $this->current()) {
+        // Storage from before the rename that hasn't moved yet: migrating now would create empty
+        // tables under the names the data is about to take. The runtime reports why (Runtime::boot).
+        if (Runtime::managed() || ZeroNames::pending() || $this->current()) {
             return;
         }
         // A schema refusal holds until someone confirms or changes something: this build, or the

@@ -39,10 +39,28 @@ final class Runtime
         // before the app's own plugin has booted.
         add_filter('application_password_is_api_request', static fn (bool $api): bool => $api || Facade::path() !== null);
         register_activation_hook($runtimeFile, [self::class, 'activate']);
+        // A site that ran a build from before the rename to First moves its stored names first, before
+        // any table, option or post type of First's exists (ZeroNames). Managed apps do it in initialize().
+        add_action('init', static function (): void {
+            if (!self::$managed && ZeroNames::pending() && Platform::problems() === []) {
+                global $wpdb;
+                try {
+                    ZeroNames::upgrade(new Connection($wpdb));
+                } catch (\Throwable $e) {
+                    // WordPress keeps serving; First refuses until the next request retries.
+                    self::$unavailable = $e->getMessage();
+                    error_log('[first] ' . self::$unavailable);
+                    self::notice(self::$unavailable);
+                }
+            }
+            foreach (ZeroNames::kept() as $type) {
+                self::notice("posts of type $type were kept under that name: WordPress limits post types to 20 characters, and its First name would be longer. Rename the collection to at most 14 characters and move its posts to first_<name>");
+            }
+        }, PHP_INT_MIN);
         // As with app migrations: a runtime updated by copying files in sets up its tables on the
         // first request of any kind, once, under a lock.
         add_action('init', static function (): void {
-            if (self::$managed || get_option('first_runtime_tables') === self::tablesVersion() || Platform::problems() !== []) {
+            if (self::$managed || ZeroNames::pending() || get_option('first_runtime_tables') === self::tablesVersion() || Platform::problems() !== []) {
                 return;
             }
             global $wpdb;
@@ -154,6 +172,7 @@ final class Runtime
             throw new \RuntimeException(implode('; ', $problems));
         }
         global $wpdb;
+        ZeroNames::upgrade(new Connection($wpdb));
         Migrator::locked(new Connection($wpdb), 'first_runtime_tables', [self::class, 'applySystemTables']);
         return self::$plugin->initialize($drops);
     }
@@ -165,6 +184,7 @@ final class Runtime
             wp_die(esc_html('First: ' . implode('; ', $problems)), 'First', ['back_link' => true]);
         }
         global $wpdb;
+        ZeroNames::upgrade(new Connection($wpdb));
         Migrator::locked(new Connection($wpdb), 'first_runtime_tables', [self::class, 'applySystemTables']);
     }
 

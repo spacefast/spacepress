@@ -125,6 +125,7 @@ final class Sessions
             $session = null;
         }
         $session ??= Legacy\SessionUpgrade::find($this->db, $secret);
+        $session ??= Legacy\ZeroSession::find($this->db, $secret);
         if ($alias && $session) {
             self::cookie($secret, (int) $session['expires_at']);
             $_COOKIE[self::cookieName()] = $secret;

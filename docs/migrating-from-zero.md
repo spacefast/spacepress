@@ -250,7 +250,7 @@ Each error has this shape:
   "column": 36,
   "feature": "ctx.auth.userId without Space Users",
   "v2": "ctx.user.id",
-  "fix": "Migrate with --users when the Space uses Space Users; otherwise key rows by ctx.user.id."
+  "fix": "With Space Users, migrate with --users. Without them, keep the app on 0.8: mapping Spacefast accounts and guests to First users waits on the Sign in with Spacefast decision."
 }
 ```
 

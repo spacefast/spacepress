@@ -943,6 +943,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Slot::Component { .. } => vec![],
             Slot::AppPage { file } | Slot::AppMetadata { file } => vec![self.app_props(file)],
             Slot::AppGuard { .. } => vec![types::hook_ctx()],
+            Slot::AppAccess { .. } => vec![types::access_ctx(Ty::Map(Box::new(Ty::Unknown)))],
             Slot::AppHandler { .. } => vec![types::route_request(), ctx],
             Slot::ActionHandler { action } => vec![
                 types::action_input(&self.schema.actions[action].input, &types::json_ty),

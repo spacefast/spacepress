@@ -1142,6 +1142,10 @@
       "feature": "client app with its own public/ directory"
     },
     {
+      "code": "Z08_CLIENT_STYLES",
+      "feature": "client app styled by 0.8's generated zero.css"
+    },
+    {
       "code": "Z08_CLIENT_UNREADABLE",
       "feature": "client module that cannot be read"
     },

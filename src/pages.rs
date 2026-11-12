@@ -403,7 +403,7 @@ fn plugin_file(name: &str) -> bool {
             .is_some_and(|(_, ext)| ASSET_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
 }
 
-fn base64_decode(text: &str) -> Option<Vec<u8>> {
+pub(crate) fn base64_decode(text: &str) -> Option<Vec<u8>> {
     let value = |c: u8| -> Option<u32> {
         Some(match c {
             b'A'..=b'Z' => c - b'A',

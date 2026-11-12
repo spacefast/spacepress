@@ -45,3 +45,9 @@ semantics are proven by `tests/differential/language`.
 `hits` is a writing GET endpoint that never reads the visitor (a hit counter), in the 0.8 capsule
 API: it converts to a GET route that writes. A writing GET that reads `ctx.auth` stays refused
 (`Z08_ENDPOINT_WRITING_GET`).
+
+`client-app-styles/zero.css` is the stylesheet Zero 0.8 generates for `client-app`:
+`compileZeroUtilityStylesheet` from `spacefast/monorepo`
+`legacy/zero-0.8/packages/zero-compile/src/tailwind-core.ts` (main `384d463fa4`), unchanged, with
+`tailwindcss@4.3.3`, over the capsule's `client/`, `server/` and `shared/` sources and no
+`theme.json`, as 0.8's CLI ran it. Regenerate it the same way after changing the fixture's classes.

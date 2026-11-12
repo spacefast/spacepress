@@ -95,6 +95,9 @@ fn column(c: &Column, ctx: Ctx, indent: usize) -> String {
         if let Some(a) = r.on_delete {
             rp.push(format!("'onDelete' => {}", php_str(a.sql())));
         }
+        if let Some(join) = &r.join {
+            rp.push(format!("'join' => {}", php_str(join)));
+        }
         parts.push(format!("'references' => [{}]", rp.join(", ")));
     }
     if !c.rules.is_empty() {
@@ -234,9 +237,21 @@ fn collection(out: &mut String, c: &Collection) {
     let _ = writeln!(out, "            'relations' => [");
     for r in c.relations.values() {
         let kind = if r.kind == RelKind::One { "one" } else { "many" };
+        let through = r
+            .through
+            .as_ref()
+            .map(|(table, from, to)| {
+                format!(
+                    ", 'through' => ['table' => {}, 'from' => {}, 'to' => {}]",
+                    php_str(table),
+                    php_str(from),
+                    php_str(to)
+                )
+            })
+            .unwrap_or_default();
         let _ = writeln!(
             out,
-            "                {} => ['kind' => '{kind}', 'collection' => {}, 'from' => {}, 'to' => {}, 'optional' => {}],",
+            "                {} => ['kind' => '{kind}', 'collection' => {}, 'from' => {}, 'to' => {}, 'optional' => {}{through}],",
             php_str(&r.name),
             php_str(&r.collection),
             php_str(&r.from),

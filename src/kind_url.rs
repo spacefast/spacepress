@@ -374,6 +374,7 @@ mod tests {
             column: "id".into(),
             on_delete: None,
             on_update: None,
+            join: None,
         });
         col
     }

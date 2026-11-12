@@ -3908,16 +3908,23 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
         "localized" => c.localized = true,
         "optional" => c.optional = true,
         "many" => match c.ty {
+            ColType::Integer
+                if c.references
+                    .as_ref()
+                    .is_some_and(|r| !matches!(r.0, RefTarget::Column(_))) =>
+            {
+                c.ty = ColType::RefList;
+            }
             ColType::Text if c.enum_values.is_some() => c.ty = ColType::Select,
             ColType::Media => c.ty = ColType::MediaList,
-            ColType::Select | ColType::MediaList => {
+            ColType::Select | ColType::MediaList | ColType::RefList => {
                 return err_help(span, "this field is already a list", "call `.many()` once");
             }
             _ => {
                 return err_help(
                     span,
                     format!("`.many()` isn't valid on {}", kind_phrase(c.ty)),
-                    "`.many()` makes a list of select() options or media()",
+                    "`.many()` makes a list of select() options, media() or ref() targets",
                 );
             }
         },
@@ -4116,6 +4123,17 @@ pub fn kind_phrase(ty: ColType) -> String {
 fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
     use ColType as T;
     let ty = c.ty;
+    if ty == T::RefList
+        && matches!(
+            m,
+            "unique" | "default" | "$default" | "$defaultFn" | "defaultNow" | "$onUpdate" | "$onUpdateFn"
+        )
+    {
+        return Some((
+            format!("`.{m}()` isn't valid on a `ref().many()` field"),
+            "a many-ref is a list of links First keeps in its own table; remove the modifier".into(),
+        ));
+    }
     let ok = match m {
         "min" | "max" => !matches!(
             ty,

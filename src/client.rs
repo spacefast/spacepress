@@ -100,7 +100,7 @@ fn value_ts_with(c: &Column, mode: impl Into<Mode>, json_type: &dyn Fn(&Column) 
             "string".into()
         }
         ColType::Json => ty_ts(&crate::types::json_wire_type(&json_type(c)), &[]),
-        ColType::MediaList => "number[]".into(),
+        ColType::MediaList | ColType::RefList => "number[]".into(),
         ColType::Select => format!(
             "({})[]",
             c.enum_values.as_ref().map(enum_union).unwrap_or("string".into())

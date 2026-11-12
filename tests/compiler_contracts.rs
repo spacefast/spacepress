@@ -1796,7 +1796,7 @@ export function local() { return LOCAL; }
 // Built-in prototypes carry well-known symbol methods First doesn't model: refused, not guessed.
 export function unmodeled() {
   const list = [1];
-  return [() => Symbol.iterator in list, () => list[Symbol.iterator], () => Symbol.hasInstance in isObject, () => class_instance()[BRAND]].map((f) => { try { return f(); } catch (e) { return [e.name, e.message]; } });
+  return [() => Symbol.iterator in list, () => list[Symbol.iterator], () => Symbol.hasInstance in isObject].map((f) => { try { return f(); } catch (e) { return [e.name, e.message]; } });
 }
 class Holder {}
 const class_instance = () => new Holder();
@@ -1821,6 +1821,8 @@ export function probe() {
     weak: [internals.get(plain).loaded, internals.has(plain), internals.has({}), internals.get("text") === undefined, internals.delete(plain), internals.has(plain), seen.has(plain), seen.has(LOCAL), seen.delete(plain), seen.has(plain), new WeakMap([[plain, 2]]).get(plain), String(internals)],
     errors: [attempt(() => internals.set("text", 1)), attempt(() => internals.set(undefined, 1)), attempt(() => seen.add(BRAND)), attempt(() => `${LOCAL}`), attempt(() => LOCAL + 1), attempt(() => +LOCAL), attempt(() => new WeakSet([1]))],
     detect: [globalThis.window === undefined, globalThis.Bun !== undefined],
+    // A class prototype is modeled exactly, so a symbol it lacks is absent on an instance.
+    classes: [class_instance()[BRAND] === undefined, BRAND in class_instance(), Symbol.iterator in class_instance()],
     operators: [BRAND in branded, BRAND in plain, LOCAL in wrapped, LOCAL in copy, "code" in branded, BRAND in list, list[BRAND] === undefined, attempt(() => delete branded[BRAND]), delete copy[LOCAL], LOCAL in copy, delete plain[BRAND], attempt(() => BRAND in "text")],
   };
 }
@@ -1860,7 +1862,7 @@ echo \First\Js::jsonStringify(new \First\JsArray([$run('probe'), $run('unmodeled
         "TypeError",
         "Symbol-keyed properties are only supported on plain objects"
     ]);
-    assert_eq!(actual, json!([expected, [refused, refused, refused, refused]]));
+    assert_eq!(actual, json!([expected, [refused, refused, refused]]));
 
     // Authored TypeScript has no symbol type and no weak collections; both are located refusals.
     for (source, message) in [

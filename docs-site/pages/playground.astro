@@ -6,10 +6,11 @@ import { readFileSync } from "node:fs";
 import PageLayout from "blume/components/layout/PageLayout.astro";
 import data from "blume:data";
 import { example, repo } from "../lib/examples.ts";
-import { firstFiles, playgroundExamples, wordpressFiles } from "../lib/playground-catalog.ts";
+import { firstFiles, wordpressFiles } from "../lib/playground-catalog.ts";
+import { siteExamples } from "../lib/site-examples.ts";
 
 const examples = Object.fromEntries(await Promise.all(
-	playgroundExamples.map(async ({ name }) => [name, firstFiles((await example(name)).files)]),
+	siteExamples.map(async ({ name }) => [name, firstFiles((await example(name)).files)]),
 ));
 const runtime = Object.fromEntries(wordpressFiles.map(({ path: file }) => [file, readFileSync(path.join(repo, file), "utf8")]));
 const { config } = data;
@@ -37,12 +38,12 @@ const siteUrl = (config.site ?? "https://first-docs.space.fast").replace(/\/$/, 
 			</div>
 			<div class="example-controls">
 				<label for="example">Example</label>
-				<select id="example">{playgroundExamples.map(({ name, label }) => <option value={name}>{label}</option>)}</select>
+				<select id="example">{siteExamples.map(({ name, title, summary }) => <option value={name} data-description={summary}>{title}</option>)}</select>
 				<button id="reset" type="button">Reset example</button>
 				<button id="run-wordpress" class="run" type="button" data-site={siteUrl}>Run in WordPress</button>
 			</div>
 		</div>
-		<p id="example-description" class="note">{playgroundExamples[0].description}</p>
+		<p id="example-description" class="note">{siteExamples[0]!.summary}</p>
 		<section id="wordpress" class="wordpress" hidden aria-labelledby="wordpress-heading">
 			<div class="pane-heading">
 				<h2 id="wordpress-heading">WordPress</h2>

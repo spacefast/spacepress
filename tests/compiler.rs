@@ -2307,7 +2307,7 @@ fn kind_urls_and_the_frontend_mode_reach_the_schema() {
     );
     rejects(
         "reject-kind-url-overlap",
-        "\"/:topic/:id\" can match the same URLs as `notes`'s url",
+        "\"/n/:topic/:id\" can match the same URLs as `notes`'s url",
         "first.config.ts:3:94",
     );
     rejects(

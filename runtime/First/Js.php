@@ -1247,16 +1247,22 @@ final class Js
      * exactly when it is below the length.
      */
     /**
-     * Whether an own-slot lookup decides a symbol key on $object exactly. Plain objects inherit
-     * no symbol keys, and built-in prototypes carry only well-known symbols
-     * (Array.prototype[Symbol.iterator], Function.prototype[Symbol.hasInstance], ...), which
-     * First doesn't model. A class instance without that own symbol is undecided: its
-     * prototype could define the symbol method.
+     * [[Get]] of a symbol key: the property's value, or JsClass::absent() when nothing on the
+     * prototype chain has it. Plain objects inherit no symbol keys, and class prototypes are
+     * modeled exactly (JsClass::symbolGet). Other built-in prototypes carry only well-known
+     * symbols (Array.prototype[Symbol.iterator], ...), which First doesn't model, so a
+     * well-known symbol on them throws instead of guessing.
      */
-    public static function symbolAbsentInherited(mixed $object, JsSymbol $key): bool
+    public static function symbolLookup(mixed $object, JsSymbol $key): mixed
     {
-        if ($object instanceof JsObject) { return $object->class === null || $object->hasSymbol($key); }
-        return !$key->isWellKnown && !$object instanceof JsClass;
+        if ($object instanceof JsObject) {
+            if ($object->hasSymbol($key)) { return $object->getSymbol($key); }
+            return $object->class?->symbolGet($key, false) ?? JsClass::absent();
+        }
+        if ($object instanceof JsClass) { return $object->symbolGet($key, true); }
+        if ($object instanceof JsPrototype) { return $object->class->symbolGet($key, false); }
+        if ($key->isWellKnown) { throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError'); }
+        return JsClass::absent();
     }
 
     public static function hasProperty(mixed $key, mixed $object): bool
@@ -1266,10 +1272,7 @@ final class Js
             $in = is_string($object) ? $object : self::str($object);
             throw new JsError("Cannot use 'in' operator to search for '$search' in $in", 'TypeError');
         }
-        if ($key instanceof JsSymbol) {
-            if (self::symbolAbsentInherited($object, $key)) { return $object instanceof JsObject && $object->hasSymbol($key); }
-            throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError');
-        }
+        if ($key instanceof JsSymbol) { return self::symbolLookup($object, $key) !== JsClass::absent(); }
         $key = self::key($key);
         $index = static fn (int $length): bool => preg_match('/^(?:0|[1-9][0-9]*)$/D', $key) === 1 && (float) $key < 4294967295 && (int) $key < $length;
         if ($object instanceof JsObject) {
@@ -1284,6 +1287,9 @@ final class Js
             // Arguments indexes can be deleted, so presence is the slot itself, not the length.
             $own = preg_match('/^(?:0|[1-9][0-9]*)$/D', $key) === 1 && array_key_exists((int) $key, $object->a);
             return array_key_exists($key, $object->p) || $own || $key === 'callee' || ($key === 'length' && !$object->lengthDeleted) || self::prototypeHas('Object', $key);
+        }
+        if ($object instanceof JsPrototype) {
+            return $key === 'constructor' || $object->class->hasMember($key) || self::prototypeHas('Object', $key);
         }
         if ($object instanceof JsClass) {
             if ($object->has($key) || $object->hasStaticMethod($key) || in_array($key, ['length', 'name', 'prototype'], true)) { return true; }
@@ -1319,6 +1325,7 @@ final class Js
     public static function delete(mixed $object, mixed $key): bool
     {
         if (self::isNullish($object)) { throw new JsError('Cannot convert undefined or null to object', 'TypeError'); }
+        if ($object instanceof JsPrototype) { throw new JsError('Deleting class prototype members is not supported', 'TypeError'); }
         if ($key instanceof JsSymbol) {
             if (!$object instanceof JsObject) { throw new JsError('Symbol-keyed properties are only supported on plain objects', 'TypeError'); }
             $slot = $object->symbols[spl_object_id($key)] ?? null;
@@ -1935,6 +1942,10 @@ final class Js
             return $value;
         }
         if ($value instanceof RegExp && !$structured) { return $value; }
+        if ($value instanceof JsPrototype) {
+            if ($structured) { throw new JsError('Cloning a class prototype is not supported', 'TypeError'); }
+            return $value;
+        }
         if ($value instanceof JsArguments && $structured) { throw new JsError('Arguments could not be cloned', 'DataCloneError'); }
         if ($value instanceof JsSymbol || $value instanceof JsWeakMap || $value instanceof JsWeakSet) {
             if ($structured) { throw new JsError(($value instanceof JsSymbol ? $value->descriptiveString() : self::dynamicObjectTag($value)) . ' could not be cloned', 'DataCloneError'); }
@@ -2019,6 +2030,7 @@ final class Js
         }
         if ($value === JsUndefined::Value) { return null; }
         if ($value instanceof JsBigInt) { throw new JsError('Do not know how to serialize a BigInt', 'TypeError'); }
+        if ($value instanceof JsPrototype) { throw new JsError('Serializing a class prototype is not supported', 'TypeError'); }
         if ($value instanceof JsDate) { return is_finite((float) $value->milliseconds) ? self::iso($value->milliseconds) : null; }
         if ($value instanceof JsUrl) { return $value->toJSON(); }
         if ($value instanceof JsUrlSearchParams) { return new \stdClass(); }

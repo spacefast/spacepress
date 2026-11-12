@@ -135,6 +135,7 @@ page(
 	[
 		"Each example below is a directory in [`examples/`](" + tree + "/examples). Its page shows the files you write and every file `first build` writes for them, built when this site was built.",
 		["| Example | What it shows |", "| --- | --- |", ...siteExamples.map((e) => `| [${e.title}](/examples/${e.name}) | ${cell(e.summary)} |`)].join("\n"),
+		"The repository has more examples. Some are tests, some are unfinished.",
 	].join("\n\n"),
 );
 
@@ -494,6 +495,14 @@ ${sections
 		.map((item) => `### \`${item.name}\`\n\n${item.doc ? `${mdx(toFirst(item.doc))}\n\n` : ""}${fence("ts", toFirst(item.signature))}`)
 		.join("\n\n")}`)
 	.join("\n\n")}
+
+## Reusable fields
+
+The config is ordinary TypeScript, so a set of fields can live in a function in another file and be spread into any collection or table. This is \`examples/recipes\`:
+
+<ExampleConfig name="recipes" file="first/seo.ts" />
+
+<ExampleConfig name="recipes" />
 
 This page is read from [\`types/first/index.d.ts\`](${github}/types/first/index.d.ts), the declarations your editor uses for \`first.config.ts\`.
 `,

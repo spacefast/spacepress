@@ -545,6 +545,14 @@ fn bounded(mut p: Place, max_depth: usize) -> Place {
 /// reaches thousands. See docs/decisions/2026-11-08-effects-widening.md.
 const WIDEN_ABOVE: usize = 64;
 
+/// The end-of-pass check sees a group only after a whole pass. Alias expansion within one pass
+/// can grow a group far past `WIDEN_ABOVE` first (360K places in one files-sdk event set), so it
+/// widens a JavaScript-owned binding as soon as one of its groups in the set being expanded
+/// passes this bound. It is far above `WIDEN_ABOVE` so it only cuts a pass that would run away;
+/// every program that finished before reaches the same widened bindings as before. See
+/// docs/decisions/2026-11-12-effects-event-scale.md.
+const RUNAWAY_ABOVE: usize = 1024;
+
 /// Coarsens a place of a widened binding to its first step and everything below it.
 fn coarsened(mut p: Place, widened: &IndexSet<Span>) -> Place {
     if p.path.len() > 1 && widened.contains(&p.binding) {
@@ -714,7 +722,7 @@ struct Graph {
     events: IndexMap<Span, IdSet>,
     write_events: IndexMap<Span, IdSet>,
     /// JavaScript-owned bindings whose effect places are coarsened. Fixed for one solve, except
-    /// that alias expansion adds a binding whose group runs away within a pass (`WIDEN_ABOVE`);
+    /// that alias expansion adds a binding whose group runs away within a pass (`RUNAWAY_ABOVE`);
     /// that solve then ends with the binding among those to widen.
     widened: IndexSet<Span>,
 }
@@ -2059,7 +2067,7 @@ impl Graph {
     }
 
     /// Closes one set under aliases, starting from `pending`. A JavaScript-owned binding whose group
-    /// in this set grows past `WIDEN_ABOVE` here is widened on the spot, so one pass can't run away
+    /// in this set grows past `RUNAWAY_ABOVE` here is widened on the spot, so one pass can't run away
     /// before the end-of-pass check sees it. The places it already added stay, and the solve ends
     /// with the binding among those to widen, so the restart computes the result without them.
     fn expand_aliases(
@@ -2080,7 +2088,7 @@ impl Graph {
                 if p.path.len() > 1 && !self.widened.contains(&p.binding) {
                     let size = groups.entry(p.binding).or_default();
                     *size += 1;
-                    if *size > WIDEN_ABOVE && self.javascript_owned(p.binding) {
+                    if *size > RUNAWAY_ABOVE && self.javascript_owned(p.binding) {
                         let binding = p.binding;
                         self.widened.insert(binding);
                         runaway.insert(binding);

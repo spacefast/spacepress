@@ -1059,6 +1059,9 @@ pub(super) fn app(
     if uses_crypto {
         config.push_str(CRYPTO_PRELUDE);
     }
+    if helpers.iter().any(|h| h == GRAVATAR) {
+        config.push_str("import { createHash as __z08GravatarHash } from \"node:crypto\";\n");
+    }
     if !routes.is_empty() || !responses.is_empty() {
         config.push_str(super::endpoints::PRELUDE);
         config.push_str(&responses);
@@ -1189,6 +1192,66 @@ function __z08InlineKey(key: string | undefined): string {
 }
 function __z08TimingSafeEqual(a: string, b: string): boolean {
   return Buffer.byteLength(a) === Buffer.byteLength(b) && __z08Equal(Buffer.from(a), Buffer.from(b));
+}
+"#;
+
+/// 0.8's `ctx.gravatar` (`makeGravatar` in the monorepo's runtime-services.ts and
+/// `gravatar_profile` in stattic-zero-runner's services.rs): the same hash rule (trim, lower-case,
+/// SHA-256), the same option checks and query order, and the same projected public profile. A
+/// refused input answers 422 `service_payload_invalid` with the 0.8 message, as 0.8's service
+/// error did; an upstream failure answers where 0.8's broker refused.
+const GRAVATAR: &str = r#"function __z08GravatarId(email: string): string {
+  if (typeof email !== "string" || email.trim() === "") throw new __z08HttpError(422, "service_payload_invalid", "An email address is required.");
+  return __z08GravatarHash("sha256").update(email.trim().toLowerCase()).digest("hex");
+}
+function __z08GravatarUrl(email: string, options?: { size?: number; default?: string; rating?: string; forceDefault?: boolean }): string {
+  const hash = __z08GravatarId(email);
+  const query: string[] = [];
+  if (options !== undefined && options.size !== undefined) {
+    const size = options.size;
+    if (!Number.isInteger(size) || size < 1 || size > 2048) throw new __z08HttpError(422, "service_payload_invalid", "Avatar size must be an integer between 1 and 2048.");
+    query.push("s=" + String(size));
+  }
+  if (options !== undefined && options.default !== undefined) {
+    if (!["404", "mp", "identicon", "monsterid", "wavatar", "retro", "robohash", "blank"].includes(options.default)) throw new __z08HttpError(422, "service_payload_invalid", "Avatar default must be one of: 404, mp, identicon, monsterid, wavatar, retro, robohash, blank.");
+    query.push("d=" + encodeURIComponent(options.default));
+  }
+  if (options !== undefined && options.rating !== undefined) {
+    if (!["g", "pg", "r", "x"].includes(options.rating)) throw new __z08HttpError(422, "service_payload_invalid", "Avatar rating must be one of: g, pg, r, x.");
+    query.push("r=" + options.rating);
+  }
+  if (options !== undefined && options.forceDefault === true) query.push("f=y");
+  return "https://gravatar.com/avatar/" + hash + (query.length > 0 ? "?" + query.join("&") : "");
+}
+type __z08GravatarProfileValue = { hash: string; displayName: string | null; profileUrl: string | null; avatarUrl: string | null; location: string | null; description: string | null; pronouns: string | null; verifiedAccounts: { service: string; url: string; label: string | null }[] };
+function __z08GravatarField(document: Record<string, unknown>, name: string): string | null {
+  const value = document[name];
+  return typeof value === "string" && value !== "" ? value : null;
+}
+async function __z08GravatarProfile(email: string): Promise<__z08GravatarProfileValue | null> {
+  const hash = __z08GravatarId(email);
+  const response = await fetch("https://api.gravatar.com/v3/profiles/" + hash, { headers: { accept: "application/json" } });
+  if (response.status === 404) return null;
+  if (response.status === 429) throw new __z08HttpError(503, "service_rate_limited", "Gravatar is rate limiting this space.");
+  if (!response.ok) throw new __z08HttpError(502, "service_upstream_refused", "Gravatar answered " + String(response.status) + ".");
+  const document = (await response.json()) as Record<string, unknown>;
+  const accounts = Array.isArray(document["verified_accounts"]) ? (document["verified_accounts"] as Record<string, unknown>[]) : [];
+  const verifiedAccounts: { service: string; url: string; label: string | null }[] = [];
+  for (const account of accounts) {
+    const service = account["service_type"];
+    const url = account["url"];
+    if (typeof service === "string" && typeof url === "string") verifiedAccounts.push({ service, url, label: __z08GravatarField(account, "service_label") });
+  }
+  return {
+    hash,
+    displayName: __z08GravatarField(document, "display_name"),
+    profileUrl: __z08GravatarField(document, "profile_url"),
+    avatarUrl: __z08GravatarField(document, "avatar_url"),
+    location: __z08GravatarField(document, "location"),
+    description: __z08GravatarField(document, "description"),
+    pronouns: __z08GravatarField(document, "pronouns"),
+    verifiedAccounts,
+  };
 }
 "#;
 
@@ -2280,6 +2343,49 @@ impl Rewrite<'_> {
             self.edits.push((e.span, format!("({text})")));
             return Ok(());
         }
+        // ctx.gravatar.avatarUrl(email, options?) and ctx.gravatar.profile(email): 0.8's client
+        // code ported to v2 (the URL is pure; the profile is Gravatar's public document, fetched
+        // and projected as 0.8's broker did).
+        if let E::Call {
+            callee,
+            args,
+            optional: false,
+            ..
+        } = &call.kind
+            && let E::Member { obj, prop, .. } = &callee.kind
+            && self.service_of(obj) == Some("gravatar")
+        {
+            let at = pointer(&pointer(self.at, "ctx"), "gravatar");
+            let helper = match prop.as_str() {
+                "avatarUrl" => "__z08GravatarUrl",
+                "profile" => "__z08GravatarProfile",
+                _ => return Err(fail(&at, format!("ctx.gravatar.{prop} has no v2 counterpart"))),
+            };
+            let rendered = args
+                .iter()
+                .map(|a| match a {
+                    ArrEl::Item(e) => self.render(e),
+                    ArrEl::Spread(_) => Err(fail(&at, "spread gravatar arguments need a manual port")),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            self.helpers.push(GRAVATAR.into());
+            let text = format!("{helper}({})", rendered.join(", "));
+            // avatarUrl is synchronous in both. profile fetches: a returned promise was awaited by
+            // the 0.8 runtime, so it's awaited here; one stored for later needs a port.
+            let text = if prop == "profile" {
+                if !awaited && !self.returned.contains(&e.span) {
+                    return Err(fail(
+                        &at,
+                        "an unawaited ctx.gravatar.profile needs a manual port; await it",
+                    ));
+                }
+                format!("await {text}")
+            } else {
+                text
+            };
+            self.edits.push((e.span, format!("({text})")));
+            return Ok(());
+        }
         // ctx.email.send(message) → mail.send(message): the same EmailMessage, queued in the
         // handler's transaction and handed to the site's transport after commit, as 0.8's outbox did.
         if let E::Call {
@@ -2563,7 +2669,7 @@ impl Rewrite<'_> {
                 if let (Some(e), Pat::Id(binding, _)) = (init, pat)
                     && !self.is_ctx_expr(e)
                     && let Some(service) = self.service_of(e).map(str::to_owned)
-                    && ["db", "auth", "env", "crypto", "email", "log"].contains(&service.as_str())
+                    && ["db", "auth", "env", "crypto", "email", "log", "gravatar"].contains(&service.as_str())
                 {
                     self.services.insert(binding.clone(), service);
                     self.edits.push((*span, format!("__z08ctxService{} = 0", span.start)));

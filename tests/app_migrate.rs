@@ -2610,3 +2610,54 @@ console.log(JSON.stringify({ failed, kept, retried, guests, me: renewedMe, auth:
     assert_eq!(ran["auth"], "7", "/me renewed instead of reporting a guest: {ran:#}");
     assert_eq!(ran["session"]["refreshToken"], "r2");
 }
+
+/// `ctx.gravatar.avatarUrl` gives 0.8's URL for every call in the fixture, refusals included (the
+/// expected values are 0.8's own client run in Node; fixtures README). `profile` converts to a
+/// fetch of Gravatar's public profile with 0.8's projection.
+#[test]
+fn ctx_gravatar_maps_to_the_same_avatar_urls() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("gravatar");
+    let (ok, report) = migrate(&fixture("gravatar"), &out, &[]);
+    assert!(ok, "{report:#}");
+    build(&out);
+    let expected: Value =
+        serde_json::from_str(&std::fs::read_to_string(fixture("gravatar/expected.json")).unwrap()).unwrap();
+    let mut calls: Vec<Value> = expected["calls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| serde_json::json!(["avatar", { "email": c[0], "options": c[1] }]))
+        .collect();
+    calls.extend(
+        expected["plain"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|email| serde_json::json!(["plain", { "email": email }])),
+    );
+    let results = run_actions(&out, &[], &Value::Array(calls));
+    let want: Vec<Value> = expected["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(expected["plainResults"].as_array().unwrap())
+        .map(|r| match r {
+            Value::String(url) => serde_json::json!({ "data": url }),
+            _ => serde_json::json!({ "error": "thrown" }),
+        })
+        .collect();
+    let got: Vec<Value> = results
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| {
+            if r.get("data").is_some() {
+                r.clone()
+            } else {
+                serde_json::json!({ "error": "thrown" })
+            }
+        })
+        .collect();
+    assert_eq!(got, want, "{results}");
+}

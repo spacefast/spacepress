@@ -41,3 +41,8 @@ endpoints, services, site) exercise one mapping each and are not counted.
 apps (zero#138) from a handler, one `shared/<construct>.ts` per construct group.
 `language_constructs_convert_and_build` converts and builds it; the exact
 semantics are proven by `tests/differential/language`.
+
+`gravatar` calls `ctx.gravatar.avatarUrl` and `ctx.gravatar.profile`. `expected.json` holds what
+0.8's own client returns for its calls: `makeGravatar` from `RUNTIME_SERVICE_CLIENT_SOURCE` in
+`spacefast/monorepo` `packages/common/src/contracts/runtime-services.ts` (main `384d463fa4`), run
+in Node with that file's constants substituted.

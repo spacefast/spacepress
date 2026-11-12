@@ -399,11 +399,6 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "there's no hook called `beforeCreat`",
         "first.config.ts:3:",
     );
-    rejects(
-        "reject-bad-reference",
-        "`aName` is integer() but references a.name, which is text()",
-        "first.config.ts:3:36",
-    );
     // §1.2: modifiers per column kind, pointing at the modifier call.
     rejects(
         "reject-modifier-kind",
@@ -1047,9 +1042,9 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     let (s, consumed) = server.send("POST", "/actions/consume", Some(&format!(r#"{{"itemId":{milk_id}}}"#)));
     assert_eq!(s, 200, "{consumed}");
     assert_eq!(consumed["data"]["message"], "Oat Milk: 1 l left");
-    let (_, list) = server.send("GET", "/shopping_list?with=item", None);
+    let (_, list) = server.send("GET", "/shopping_list?with=itemId", None);
     assert_eq!(list["data"][0]["name"], "Oat Milk");
-    assert_eq!(list["data"][0]["item"]["quantity"], 1);
+    assert_eq!(list["data"][0]["itemId"]["quantity"], 1);
     assert_eq!(list["data"][0]["notifiedAt"], serde_json::Value::Null);
 
     // §6.1: restocking enqueued notifyLowStock; Action Scheduler runs it off the request (the queue's

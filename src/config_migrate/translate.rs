@@ -133,7 +133,7 @@ pub(super) fn config(input: Value, source: Source, report: &mut Vec<Entry>) -> R
     }
     let mut names = HashSet::new();
     let mut code = String::from(
-        "import { collection, table, defineConfig, ref, text, integer, number, boolean, timestamp, url, email, json, select, media } from \"first\";\n\n",
+        "import { collection, table, defineConfig, ref, text, integer, number, boolean, timestamp, url, email, json, select, media, type AnyCollection } from \"first\";\n\n",
     );
     let mut content = Vec::new();
     let mut tables = Vec::new();
@@ -381,7 +381,7 @@ fn reference(
     ident(&column, at)?;
     // `ref()` defaults to restrict when required and set null when optional. A thunk, because the
     // target may be declared later or be this collection.
-    let mut builder = format!("ref(() => imported{target})");
+    let mut builder = format!("ref((): AnyCollection => imported{target})");
     if !required {
         builder.push_str(".optional()");
     }

@@ -32,6 +32,8 @@ Besides `format`, `hostContract`, `compiler` and the platform versions (`wordpre
 
 ## Lifecycle
 
+See [Spacefast host checklist](spacefast-host-checklist.md) for what one host changes to meet this.
+
 Builds come from the build store: `first compile-to-store <sources> <store> <assets> [previous-build]`
 writes one and prints its id (see `docs/decisions/2026-11-07-build-store.md`). `Loader::load` mounts store
 builds only; a `compile-sources` tree is for hosts that mount it themselves and is not part of this

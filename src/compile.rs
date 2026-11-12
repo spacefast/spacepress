@@ -526,13 +526,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.uses("env", env.to_string(), span);
                 }
             }
-            Slot::RouteHandler { route } => {
-                let r = &self.schema.routes[route];
-                self.uses("routes", format!("{} {}", r.method, r.path), span);
-                if let Some(env) = r.signature.as_ref().and_then(|s| s["secret"]["env"].as_str()) {
-                    self.uses("env", env.to_string(), span);
-                }
-            }
             _ => {}
         }
     }
@@ -936,22 +929,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
             }
-            if let Slot::RouteHandler { route } = &root.slot {
-                let ret = match self.helper_types.get(&key) {
-                    Some(Ty::Fn(_, ret)) => match &**ret {
-                        Ty::Promise(t) => (**t).clone(),
-                        t => t.clone(),
-                    },
-                    _ => Ty::Unknown,
-                };
-                if !assignable(&ret, &types::route_response()) {
-                    return err_help(
-                        root.closure.func.span,
-                        format!("routes.{route} returns {}, not a route response", ret.describe()),
-                        "return { status?: number, headers?: Record<string, string>, body?: string }",
-                    );
-                }
-            }
             self.helpers
                 .entry((self.owner(), key, no_db))
                 .or_insert_with(|| name.clone());
@@ -997,7 +974,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .into_iter()
                 .map(|(_, t)| t)
                 .collect(),
-            Slot::RouteHandler { .. } => vec![types::route_request(), ctx],
             // A component's own annotation types its props (see `compile_function`); a page's
             // `metadata` function takes the same props.
             Slot::Component { .. } => vec![],
@@ -1025,9 +1001,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Owner::Global(name) => &self.schema.globals[name].fields,
                     Owner::Action(name) => &self.schema.actions[name].input,
                     Owner::Job(name) => &self.schema.jobs[name].input,
-                    Owner::FileBucket(_) | Owner::Route(_) => {
-                        unreachable!("file buckets and routes have no validator fields")
-                    }
+                    Owner::FileBucket(_) => unreachable!("file buckets have no validator fields"),
                 };
                 vec![
                     types::col_base(col, &types::json_ty, false),
@@ -4297,7 +4271,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
             | Value::Relation(_)
             | Value::Action(_)
             | Value::Job(_)
-            | Value::Route(_)
             | Value::Plugin(_)
             | Value::FileBucket(_)
             | Value::Bound(..) => err(

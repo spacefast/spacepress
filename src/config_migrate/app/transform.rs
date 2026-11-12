@@ -3178,7 +3178,7 @@ impl Rewrite<'_> {
                 // Uppercase on both sides.
                 "method" => Ok(true),
                 // 0.8's URL: https, the normalized host and the URI with share-link secrets
-                // redacted, which v2 builds the same way (First\Wp\HttpRoutes::url).
+                // redacted, which v2 builds the same way (First\Wp\RouteRequest::url).
                 "url" => Ok(true),
                 other => refuse(other),
             };

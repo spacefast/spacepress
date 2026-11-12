@@ -104,7 +104,6 @@ final class Plugin
         });
         Rest::boot();
         Facade::register($this);
-        HttpRoutes::register($this);
         AppRouter::register($this);
         KindUrls::register($this);
         MarkdownTwins::register();

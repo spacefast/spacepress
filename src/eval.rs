@@ -277,7 +277,6 @@ pub const FIRST_EXPORTS: &[&str] = &[
     "file",
     "files",
     "job",
-    "route",
     "env",
     "once",
     "jobs",
@@ -2834,22 +2833,14 @@ impl<'p> Evaluator<'p> {
                 "once(), jobs, mail, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
                 "move the call into a handler",
             ),
-            Builtin::Action | Builtin::Job | Builtin::Route => {
+            Builtin::Action | Builtin::Job => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
-                    return err(
-                        span,
-                        if *b == Builtin::Route {
-                            "route() needs `{ method, path, handler }`"
-                        } else {
-                            "action() needs `{ input, handler }`"
-                        },
-                    );
+                    return err(span, "action() needs `{ input, handler }`");
                 }
                 let value = Rc::new(ActionVal { config: cfg, span });
                 Ok(match b {
                     Builtin::Job => Value::Job(value),
-                    Builtin::Route => Value::Route(value),
                     _ => Value::Action(value),
                 })
             }
@@ -3794,7 +3785,6 @@ fn first_export(name: &str, span: Span) -> R<Value> {
         "file" => Builtin::Field("file"),
         "files" => Builtin::Files,
         "job" => Builtin::Job,
-        "route" => Builtin::Route,
         "jobs" => Builtin::Jobs,
         "once" => Builtin::Once,
         "mail" => Builtin::Mail,
@@ -3811,6 +3801,13 @@ fn first_export(name: &str, span: Span) -> R<Value> {
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,
         n if FIRST_TYPES.contains(&n) => return Ok(Value::Undef),
+        "route" => {
+            return err_help(
+                span,
+                "\"first\" has no export named `route`",
+                "an HTTP route is a file: first/app/<path>/route.ts exporting `access` (or `signature`) and GET, POST, … handlers",
+            );
+        }
         "fetch" | "crypto" => {
             return err_help(
                 span,

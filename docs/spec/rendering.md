@@ -245,7 +245,8 @@ TSX subset, so they are examples as well as product.
   `Accept` negotiation is a convenience on top. Before relying on negotiation
   at the edge, verify whether it keys on `Accept`.
 - Items render to markdown from their stored content (`Markdown::fromBlocks`).
-  Code pages render from their compiled output, and static pages are prebuilt.
+  Code pages render from their compiled output, as an anonymous visitor (built); prebuilt static
+  twins wait for the build-time policy in §6.1.
 - `/llms.txt` lists kinds with URLs plus pages, with descriptions.
 - In WordPress-rendered mode, First serves markdown for every kind URL.
 - Backend-only sites: `GET /wp-json/wp/v2/posts/<id>?format=md` (built), and `GET /__first/api/v1/posts/<id>?format=md` once the facade lands (workstream 2).
@@ -269,15 +270,23 @@ Already on main in the runtime:
 - Purges are whole-host today because the provider's URI purge can't address
   every query variant.
 
-### 6.1 Policy per route (decided by the compiler, never configured)
+### 6.1 Policy per response (decided by the router, never configured)
 
-| The page reads | Policy |
+Built ([decision](../decisions/2026-11-12-cache-policy-per-response.md)): the router decides the
+policy for each response.
+
+| The response is | Policy |
 |---|---|
-| nothing request-dependent | **prebuilt** in `dist/` (HTML + `.md`) and served by the engine before WordPress |
-| only content any visitor can read | **cacheable**: Batcache stores it, and the edge caches with `public, s-maxage=<window>, max-age=0, must-revalidate`; signed-in users, previews and comment-author cookies bypass |
-| anything viewer-dependent | `private, no-store`; still fast, because the shell has no viewer data when the viewer part is a client component |
+| an anonymous visitor's 200 render of a page no layout guards | **cacheable**: Batcache stores it, and the edge caches with `public, s-maxage=<window>, max-age=0, must-revalidate`; signed-in users, previews and comment-author cookies bypass |
+| anything else (a signed-in visitor, a guarded section, an error, a 404) | `private, no-store`; still fast, because the shell has no viewer data when the viewer part is a client component |
 
-`first check --json` prints each route's policy and the reason.
+Every read in a render is bound to the visitor, so an anonymous render is what any anonymous
+visitor sees.
+
+Deferred until the compiler can prove a route's reads don't depend on the viewer: a policy decided
+per route at build time, **prebuilt** pages (HTML + `.md` in `dist/`, served by the engine before
+WordPress) for routes that read nothing request-dependent, and `first check --json` printing each
+route's policy and the reason.
 
 ### 6.2 Purges by URL
 

@@ -65,13 +65,13 @@ final class TableController extends \WP_REST_Controller
     public function get_items($request)
     {
         return $this->run('list', $request, function (Viewer $viewer) use ($request): \WP_REST_Response {
-            $query = array_intersect_key($request->get_query_params(), array_flip(['where', 'orderBy', 'with']));
+            $query = array_intersect_key($request->get_query_params(), array_flip(['where', 'orderBy', 'with', 'locale']));
             $opts = App::listOptions($query);
             $perPage = (int) $request['per_page'];
             $page = (int) $request['page'];
             $db = $this->db();
             // The total over the same pipeline (read rule, query checks), counted in SQL.
-            $count = $db->countQuery($this->collection, $opts['where'] ?? null, $viewer);
+            $count = $db->countQuery($this->collection, $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true]));
             $total = (int) (Plugin::instance()?->connection()->run($count['sql'], $count['params'])[0]['n'] ?? 0);
             // `offset` (core's own list argument) wins over `page`, as on core's posts and users routes.
             $offset = $request['offset'] !== null ? (int) $request['offset'] : ($page - 1) * $perPage;
@@ -188,7 +188,9 @@ final class TableController extends \WP_REST_Controller
             'where' => ['description' => 'A First filter, as JSON: `{"email":{"like":"%@example.com"}}`.', 'type' => 'string'],
             'orderBy' => ['description' => 'First fields to sort by, comma-separated; `-field` sorts descending.', 'type' => 'string'],
             'with' => ['description' => 'Relations to attach: `team,signups` or a JSON object.', 'type' => 'string'],
-        ];
+        ] + (\First\Locale\Module::localized($this->collection)
+            ? ['locale' => ['description' => 'A First locale, or `*`: that locale\'s rows, else each translation group\'s fallback.', 'type' => 'string']]
+            : []);
     }
 
     // ================================================================ helpers

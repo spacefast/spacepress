@@ -146,6 +146,9 @@ final class FirstQuery
     public static function locale(string $collection, \WP_REST_Request $request): ?array
     {
         $locale = $request->get_query_params()['locale'] ?? null;
+        if ($locale === null && Facade::dispatching() && \First\Locale\Module::localized($collection)) {
+            return []; // First's own default for the API: the default locale's rows, with fallback
+        }
 
         return $locale === null ? null : ['locale' => $locale];
     }

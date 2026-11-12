@@ -72,7 +72,9 @@ final class PostsController extends \WP_REST_Posts_Controller
         $ordered = $query !== null && $request['orderBy'] !== null;
         // Rows First's query selected already passed its read rule and draft visibility: core's own
         // status filter (published only, for most viewers) must not drop them again.
-        $statuses = $query !== null && !$request->has_param('status') ? ['post_status' => ['publish', 'future', 'draft', 'pending', 'private']] : [];
+        // Only a `status` the caller sent counts: core's own default (`publish`) is not a request.
+        $sent = $request->get_query_params() + $request->get_body_params();
+        $statuses = $query !== null && !isset($sent['status']) ? ['post_status' => ['publish', 'future', 'draft', 'pending', 'private']] : [];
         $limit = static function (array $args) use ($keys, $ordered, $statuses, $searched): array {
             $in = !empty($args['post__in']) ? array_values(array_intersect($keys, array_map('intval', (array) $args['post__in']))) : $keys;
             $args = $searched ? FirstQuery::coreArgs($args) : $args;

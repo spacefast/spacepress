@@ -175,5 +175,33 @@
         2
       ]
     }
+  },
+  {
+    "component": "components/client.tsx#Counter",
+    "props": {
+      "start": 1,
+      "label": "Clicks <&>"
+    }
+  },
+  {
+    "component": "components/client.tsx#Counter",
+    "props": {
+      "start": 0.1,
+      "label": ""
+    }
+  },
+  {
+    "component": "components/client.tsx#Styled",
+    "props": {
+      "color": "red",
+      "on": true
+    }
+  },
+  {
+    "component": "components/client.tsx#Styled",
+    "props": {
+      "color": "it's",
+      "on": false
+    }
   }
 ]

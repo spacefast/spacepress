@@ -480,6 +480,8 @@ pub struct Schema {
     pub wp_hooks: Vec<WpHook>,
     /// Server components (`first/components/<file>.tsx#<export>`) → their compiled PHP function.
     pub components: IndexMap<String, String>,
+    /// `"use client"` components (generator B): namespace → its store module.
+    pub islands: IndexMap<String, Island>,
     /// `first/app/`: the route table and each route file's compiled exports (docs/spec/rendering.md).
     pub app: Option<App>,
     /// Hooks or WordPress functions hand `WP_Post`/`WP_User` views to compiled code.
@@ -507,6 +509,7 @@ impl Default for Schema {
             wp_hooks: Vec::new(),
             components: IndexMap::new(),
             app: None,
+            islands: IndexMap::new(),
             wp_views: false,
             files: IndexMap::new(),
             webhooks: Vec::new(),
@@ -658,4 +661,13 @@ pub struct AppFile {
 #[derive(Debug, Clone)]
 pub struct AppSearch {
     pub fields: IndexMap<String, Column>,
+}
+
+/// One compiled `"use client"` component: its store module and the server actions it calls.
+#[derive(Debug, Clone)]
+pub struct Island {
+    /// File name under the app plugin's `first/app/client/`, content-hashed.
+    pub file: String,
+    pub source: String,
+    pub actions: Vec<String>,
 }

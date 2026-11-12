@@ -634,6 +634,9 @@ pub struct AppRoute {
     pub handler: Option<String>,
     pub layouts: Vec<String>,
     pub error: Option<String>,
+    /// The kind whose `url` this page serves (spec §2.7), with each pattern placeholder's folder
+    /// parameter: the page receives that kind's `item`, and a missing one is a 404.
+    pub kind: Option<(String, Vec<(String, String)>)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -646,6 +649,10 @@ pub struct AppFile {
     pub search: Option<AppSearch>,
     /// HTTP method → compiled handler.
     pub methods: IndexMap<String, String>,
+    /// Who may call the handlers (`export const access`), or the signature that authenticates
+    /// them (`export const signature`, a raw signed webhook). Exactly one when there are handlers.
+    pub access: Option<Access>,
+    pub signature: Option<Json>,
 }
 
 #[derive(Debug, Clone)]

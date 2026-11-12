@@ -19,6 +19,9 @@ use First\Js;
  *   DELETE /__first/api/v1/<kind>/<id>     → DELETE /wp/v2/<base>/<id> (post kinds: force)
  *   GET    /__first/api/v1/me              → GET  /wp/v2/users/me
  *   POST   /__first/api/v1/actions/<name>  → /wp-abilities/v1/abilities/<app>/<name>/run (GET if readonly)
+ *   GET/PATCH /__first/api/v1/<global>      → the global's get/update Ability, through the same run route
+ *   GET/PATCH /__first/api/v1/settings      → GET /wp/v2/settings (public fields from the index for others)
+ *   GET    /__first/api/v1/menus[/<loc>]    → /wp/v2/menu-locations + /wp/v2/menu-items, public locations only
  *   GET    /__first/api/v1                 → the app's schema: kinds, fields, actions (`first pull`)
  *
  * Errors are RFC 9457 problem documents mapped from core's `WP_Error`. Callers authenticate as core
@@ -30,6 +33,32 @@ use First\Js;
 final class Facade
 {
     public const PREFIX = '/__first/api/v1';
+
+    /** The absolute URL of a facade path (`/media/42`), below the site's home URL. */
+    public static function url(string $path = ''): string
+    {
+        return home_url(self::PREFIX . $path);
+    }
+
+    /**
+     * First's row of a post kind as $viewer reads it (field masks, system fields), or null when the
+     * read rule doesn't cover it. Core has already decided the item is readable; this only gives the
+     * facade First's own shape of it (PostsController puts it on the facade's dispatches).
+     */
+    public static function firstRow(string $collection, int $id, \First\Viewer $viewer): ?object
+    {
+        $db = Plugin::instance()?->db() ?? throw new \LogicException('No First app');
+        $pk = $db->schema()->collection($collection)['primaryKey'];
+        $all = \First\Locale\Module::localized($collection) ? ['locale' => '*'] : [];
+        try {
+            $row = $db->findFirst($collection, ['where' => [$pk => $id]] + $all, $viewer);
+        } catch (HttpError) {
+            return null;
+        }
+
+        return $row === null ? null : (object) PostMeta::values($collection, $row, array_map('strval', array_keys($row)));
+    }
+
     private const LIMIT = 50;
     private const MAX_LIMIT = 100;
 
@@ -75,7 +104,7 @@ final class Facade
 
     /**
      * @param array<string, mixed> $query
-     * @return array{int, array<string, string>, string}
+     * @return array{int, array<string, string>, string|\Closure}
      */
     public static function route(Plugin $plugin, string $method, string $path, array $query, string $body): array
     {
@@ -101,7 +130,25 @@ final class Facade
         if ($name === 'actions' && count($segments) === 2) {
             return self::action($plugin, $method, $segments[1], $query, $body);
         }
+        if (isset($plugin->schema->globals()[$name]) && count($segments) === 1) {
+            return self::global($plugin, $method, $name, $body);
+        }
+        if (\First\Extensions::routeHandler($name) !== null && ($name !== 'media' || ($segments[2] ?? null) === 'file')) {
+            // First's own features with no core route (sign-in, sync, services, private files and the
+            // streams of uploads kept off the web root): their one implementation, under the facade's
+            // prefix. Media rows themselves are the built-in kind, served by core's media route.
+            [$status, $headers, $out] = $plugin->app()->handle($method, '/' . implode('/', array_map('rawurlencode', $segments)), $query, $body, self::headers(), $_FILES, $_POST);
+            $cached = array_filter(array_keys($headers), static fn ($h) => strtolower((string) $h) === 'cache-control') !== [];
+
+            return [$status, $cached ? $headers : $headers + self::PRIVATE, $out];
+        }
+        if ($name === 'settings' && count($segments) === 1 && !isset($kinds['settings'])) {
+            return self::settings($method, $body);
+        }
         $kind = $kinds[$name] ?? throw HttpError::notFound("Unknown kind '$name'");
+        if ($kind['type'] === 'menus') {
+            return self::menus($method, $segments);
+        }
         $base = $kind['route'];
         if (count($segments) === 1) {
             \First\App::allow($method, ['GET', 'HEAD', 'POST']);
@@ -127,19 +174,21 @@ final class Facade
         if ($method === 'DELETE') {
             // First's delete is permanent: core trashes posts without `force`, and refuses users without it.
             $out = self::dispatch('DELETE', $item, match ($kind['type']) {
-                'post' => ['force' => true],
+                'post', 'wp-post', 'comments', 'media', 'term' => ['force' => true],
                 'users' => ['force' => true, 'reassign' => false], // the member's posts are kept, unowned
                 default => [],
             });
 
             return self::json(200, ['data' => Kinds::row($kind, $out['previous'] ?? $out)]);
         }
-        $row = self::dispatch('GET', $item, self::context($kind) + array_intersect_key($query, ['with' => true]));
-        if ($kind['type'] === 'users' && Kinds::row($kind, $row) === null) {
+        $row = self::dispatch('GET', $item, self::context($kind) + array_intersect_key($query, Kinds::first($kind) ? ['with' => true, 'locale' => true] : ['password' => true]));
+        if (Kinds::first($kind) && Kinds::row($kind, $row) === null) {
             throw HttpError::notFound("No {$kind['name']} row with id $id"); // First's read rule doesn't cover it
         }
         if (($query['format'] ?? null) === 'md') {
-            return [200, ['Content-Type' => 'text/markdown; charset=utf-8'] + self::PRIVATE, Kinds::markdown($kind, $row)];
+            $markdown = Kinds::markdown($kind, $row) ?? throw HttpError::notFound("{$kind['name']} has no Markdown form");
+
+            return [200, ['Content-Type' => MarkdownTwins::CONTENT_TYPE, 'X-Content-Type-Options' => 'nosniff'] + self::PRIVATE, $markdown];
         }
 
         return self::json(200, ['data' => Kinds::row($kind, $row)]);
@@ -161,10 +210,17 @@ final class Facade
             }
             $page = $decoded['page'];
         }
-        // `where` is always First's (an empty filter when none was given): First's pipeline picks the rows,
-        // so its read rule and draft visibility decide, not core's default status filter.
-        $params = array_intersect_key($query, array_flip(['where', 'orderBy', 'with', 'search']))
-            + ['where' => '{}', 'per_page' => $limit, 'page' => $page] + self::context($kind);
+        if (Kinds::first($kind)) {
+            // `where` is always First's (an empty filter when none was given): First's pipeline picks the
+            // rows, so its read rule and draft visibility decide, not core's default status filter.
+            $params = array_intersect_key($query, array_flip(['where', 'orderBy', 'with', 'search', 'locale']))
+                + ['where' => '{}', 'per_page' => $limit, 'page' => $page] + self::context($kind);
+        } else {
+            // A WordPress kind: core's own filters (`search`, `post`, `parent`, `status`, ...), as core
+            // accepts them for this viewer.
+            $params = array_diff_key($query, ['limit' => 1, 'cursor' => 1, 'format' => 1, 'per_page' => 1, 'page' => 1, 'context' => 1])
+                + ['per_page' => $limit, 'page' => $page] + self::context($kind);
+        }
         $response = self::run(self::request('GET', $kind['route'], $params));
         $rows = self::unwrap($response);
         $pages = (int) ($response->get_headers()['X-WP-TotalPages'] ?? 0);
@@ -176,10 +232,11 @@ final class Facade
     }
 
     /**
-     * `POST /actions/<name>` (`GET` when readonly): the action's Ability, run as core runs it (its
-     * input validation, its permission callback, its output validation), `{ data }` back. Through
-     * `WP_Ability::execute()` rather than the run route's REST discovery, so an `agents: false`
-     * action (hidden from REST and MCP listings) is still the app's own to call, as on `/first/v1`.
+     * `POST /actions/<name>` (`GET` when readonly): the action's Ability through core's run route
+     * (`/wp-abilities/v1/abilities/<app>/<name>/run`), so core's own checks decide (input, permission,
+     * execution, output) and the facade only maps: the facade method onto the one the run route takes
+     * (GET for readonly, DELETE for destructive + idempotent, POST otherwise), `{ input }` in, `{ data }`
+     * out. An `agents: false` action is the app's own to call ({@see Abilities\FirstAbility}).
      */
     private static function action(Plugin $plugin, string $method, string $name, array $query, string $body): array
     {
@@ -188,22 +245,39 @@ final class Facade
             throw HttpError::notFound("Unknown action '$name'"); // a signed webhook is a route, not an action
         }
         \First\App::allow($method, ($action['readonly'] ?? false) ? ['GET', 'HEAD', 'POST'] : ['POST']);
-        $ability = wp_get_ability(\First\Wp\Abilities\Register::kebab($plugin->schema->name()) . '/' . \First\Wp\Abilities\Register::kebab($name))
-            ?? throw HttpError::notFound("Unknown action '$name'");
         $input = $method === 'POST' ? $body : (string) Js::jsonStringify(self::queryInput($query));
-        $decoded = self::body($input);
-        $result = \First\Wp\Abilities\Register::withSentInput($ability->get_name(), $input, static function () use ($ability, $decoded) {
-            // The ability's own check first, so a refusal keeps First's status and code; execute()
-            // checks again and reduces any refusal to a generic one.
-            $allowed = $ability->check_permissions($decoded);
 
-            return $allowed instanceof \WP_Error ? $allowed : $ability->execute($decoded);
-        });
-        if ($result instanceof \WP_Error) {
-            throw self::fromWpError($result, 403);
+        return self::json(200, ['data' => self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'")]);
+    }
+
+    /** `GET`/`PATCH /<global>` (spec §3a): the global's read and update Abilities through the run route. */
+    private static function global(Plugin $plugin, string $method, string $name, string $body): array
+    {
+        \First\App::allow($method, ['GET', 'HEAD', 'PATCH']);
+        $op = $method === 'PATCH' ? 'update' : 'get';
+
+        return self::json(200, ['data' => self::ability($plugin, 'global-' . Abilities\Register::kebab($name) . '-' . $op, $op === 'update' ? $body : '{}', "Unknown global '$name'")]);
+    }
+
+    /** One run of the app's ability `<app>/<ability>` with $input (a JSON object) through core's run route. */
+    private static function ability(Plugin $plugin, string $ability, string $input, string $missing): mixed
+    {
+        $name = Abilities\Register::kebab($plugin->schema->name()) . '/' . $ability;
+        $object = wp_get_ability($name) ?? throw HttpError::notFound($missing);
+        self::body($input); // a JSON object, or the facade's 400/422
+        $annotations = (array) $object->get_meta_item('annotations', []);
+        $method = !empty($annotations['readonly']) ? 'GET' : (!empty($annotations['destructive']) && !empty($annotations['idempotent']) ? 'DELETE' : 'POST');
+        $request = new \WP_REST_Request($method, '/wp-abilities/v1/abilities/' . $name . '/run');
+        if ($method === 'POST') {
+            // The body as sent, so `{}` inside a json() value stays an object (Register::rawInput).
+            $request->set_header('content-type', 'application/json');
+            $request->set_body('{"input":' . (trim($input) === '' ? '{}' : $input) . '}');
+        } else {
+            $request->set_query_params(['input' => json_decode(trim($input) === '' ? '{}' : $input, true)]);
         }
+        $response = Abilities\Register::withSentInput($name, $input, static fn () => self::run($request));
 
-        return self::json(200, ['data' => $result]);
+        return self::unwrap($response);
     }
 
     // ================================================================ dispatch
@@ -358,8 +432,10 @@ final class Facade
 
     private static function id(array $kind, string $raw): int|string
     {
-        if (str_starts_with($raw, 'slug:') && $kind['type'] === 'post') {
-            $rows = self::dispatch('GET', $kind['route'], ['where' => (string) Js::jsonStringify([$kind['spec']['slug'] ?? 'slug' => substr($raw, 5)]), '_fields' => 'id']);
+        if (str_starts_with($raw, 'slug:') && in_array($kind['type'], ['post', 'wp-post', 'term'], true)) {
+            $rows = self::dispatch('GET', $kind['route'], ($kind['type'] === 'post'
+                ? ['where' => (string) Js::jsonStringify([$kind['spec']['slug'] ?? 'slug' => substr($raw, 5)])]
+                : ['slug' => substr($raw, 5)]) + ['_fields' => 'id']);
 
             return (int) ($rows[0]['id'] ?? throw HttpError::notFound("No {$kind['name']} with slug " . substr($raw, 5)));
         }
@@ -378,6 +454,53 @@ final class Facade
         return ['context' => 'view'];
     }
 
+    /** `GET`/`PATCH /settings` (spec §2.1): core's settings for admins; the index's public fields for others. */
+    private static function settings(string $method, string $body): array
+    {
+        \First\App::allow($method, ['GET', 'HEAD', 'PATCH']);
+        if ($method === 'PATCH') {
+            $settings = self::dispatch('POST', '/wp/v2/settings', [], Kinds::settingsInput(self::body($body)));
+        } else {
+            $response = self::run(self::request('GET', '/wp/v2/settings', []));
+            $settings = $response->is_error() ? null : rest_get_server()->response_to_data($response, false);
+        }
+        $index = self::dispatch('GET', '/', ['_fields' => 'name,description,timezone_string,site_logo,site_icon']);
+
+        return self::json(200, ['data' => Kinds::settings($index, is_array($settings) ? $settings : null)]);
+    }
+
+    /**
+     * `GET /menus` and `/menus/<location>`: each registered location's menu as a tree. Read through core's
+     * menu routes with read access opened for exactly these dispatches: a menu assigned to a theme
+     * location is shown on the site to everyone, so its items are public (build plan §2).
+     */
+    private static function menus(string $method, array $segments): array
+    {
+        \First\App::allow($method, ['GET', 'HEAD']);
+        if (count($segments) > 2) {
+            throw HttpError::notFound('No such menus route');
+        }
+        $open = static fn (bool $access, mixed $request): bool => $access || ($request instanceof \WP_REST_Request
+            && preg_match('#^/wp/v2/menu-(locations|items)#', $request->get_route()) && self::dispatching());
+        add_filter('rest_menu_read_access', $open, 10, 2);
+        try {
+            $locations = self::dispatch('GET', '/wp/v2/menu-locations', []);
+            $locations = is_array($locations) ? $locations : [];
+            if (isset($segments[1])) {
+                $locations = [$segments[1] => $locations[$segments[1]] ?? throw HttpError::notFound("No menu location '{$segments[1]}'")];
+            }
+            $menus = Kinds::menus($locations, static function (int $menu): array {
+                $items = self::dispatch('GET', '/wp/v2/menu-items', ['menus' => $menu, 'per_page' => 100]);
+
+                return is_array($items) ? $items : [];
+            });
+        } finally {
+            remove_filter('rest_menu_read_access', $open, 10);
+        }
+
+        return self::json(200, ['data' => isset($segments[1]) ? $menus[0] : $menus]);
+    }
+
     /** Every facade answer depends on who asks (cookie, application password, bearer): never cached for others. */
     private const PRIVATE = ['Cache-Control' => 'private, no-store', 'Vary' => 'Cookie, Authorization'];
 
@@ -393,15 +516,33 @@ final class Facade
         self::emit($problem['status'], ['Content-Type' => 'application/problem+json'] + self::PRIVATE, (string) Js::jsonStringify($problem));
     }
 
+    /** @return array<string, string> lower-cased request headers, as First's handlers read them */
+    private static function headers(): array
+    {
+        $headers = [];
+        foreach ($_SERVER as $key => $value) {
+            if (is_string($value) && str_starts_with((string) $key, 'HTTP_')) {
+                $headers[strtolower(str_replace('_', '-', substr((string) $key, 5)))] = $value;
+            }
+        }
+        foreach (['CONTENT_TYPE' => 'content-type', 'CONTENT_LENGTH' => 'content-length'] as $key => $name) {
+            if (isset($_SERVER[$key]) && is_string($_SERVER[$key])) {
+                $headers[$name] = $_SERVER[$key];
+            }
+        }
+
+        return $headers;
+    }
+
     /** @param array<string, string> $headers */
-    private static function emit(int $status, array $headers, string $body): never
+    private static function emit(int $status, array $headers, string|\Closure $body): never
     {
         status_header($status);
         foreach ($headers as $name => $value) {
             header($name . ': ' . $value, true);
         }
         if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'HEAD') {
-            echo $body;
+            \First\Response::emit($body); // a file download streams through its closure
         }
         exit;
     }

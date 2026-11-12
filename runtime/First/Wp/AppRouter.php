@@ -55,7 +55,8 @@ final class AppRouter
         }
         self::$instance = new self($plugin, $app);
         add_filter('do_parse_request', [self::$instance, 'handlers'], 0);
-        add_action('template_redirect', [self::$instance, 'claim'], 0);
+        // After the frontend-mode gate (-1) and a kind URL's old-slug redirect (0).
+        add_action('template_redirect', [self::$instance, 'claim'], 1);
         add_filter('redirect_canonical', static fn (string|false $redirect): string|false => self::$instance?->serving ? false : $redirect, 10, 1);
     }
 
@@ -205,11 +206,15 @@ final class AppRouter
             $this->emit($problem['status'], ['Content-Type' => 'application/problem+json'], (string) Js::jsonStringify($problem));
         }
         $params = array_map(static fn ($v) => is_array($v) ? implode('/', $v) : $v, $match['params']);
-        $spec = ['handler' => $methods[$lookup], 'access' => ['role' => 'anyone'], 'signature' => null];
+        // The file's own `access` rule, or its `signature` (verified over the raw body; the
+        // handler then runs as the system, spec §3).
+        $spec = ['handler' => $methods[$lookup], 'access' => $file['access'] ?? ['allow' => false], 'signature' => $file['signature'] ?? null];
         $query = HttpRoutes::query((string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '')));
         $url = HttpRoutes::url((string) ($_SERVER['HTTP_HOST'] ?? (wp_parse_url(home_url('/'), PHP_URL_HOST) ?? '')), (string) ($_SERVER['REQUEST_URI'] ?? '/'));
-        // An unsigned handler reads as its caller, like a page (spec §3).
-        [$status, $out, $body] = Seam::asViewer(new Viewer($user), fn (): array => $this->plugin->app()->serveRoute(
+        // An unsigned handler reads as its caller, like a page; a signed webhook runs as the
+        // system (spec §3), so its reads are trusted.
+        $viewer = $spec['signature'] !== null ? null : new Viewer($user);
+        [$status, $out, $body] = Seam::asViewer($viewer, fn (): array => $this->plugin->app()->serveRoute(
             ['name' => (string) $route['id'], 'route' => $spec, 'params' => $params],
             $method, $path, $query, (string) file_get_contents('php://input'), $headers, $user, $url,
         ));
@@ -291,6 +296,13 @@ final class AppRouter
             if (($page['search'] ?? null) !== null) {
                 $props->p['search'] = $this->search($page['search']);
             }
+            if (($route['kind'] ?? null) !== null) {
+                $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $params));
+                if ($item === null) {
+                    throw Halt::notFoundSignal();
+                }
+                $props->p['item'] = $item;
+            }
             [$head, $body] = Reads::during(fn (): array => Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props)), $reads);
         } catch (Halt $halt) {
             if ($halt->location !== null) {
@@ -315,6 +327,52 @@ final class AppRouter
         // (docs/spec/rendering.md §6.2). Nothing consumes it yet.
         do_action('first_app_rendered', (string) $route['id'], (string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         $this->document($status, $head, $body);
+    }
+
+    /**
+     * The item a kind URL names, read as the visitor (the caller binds the viewer), or null when it
+     * is missing, not published to them, or the URL isn't its canonical one (`/2025/hello` for a
+     * post from 2026). `:slug`/`:path` find the item by slug, `:id` by id.
+     *
+     * @param array{name: string, params: array<string, string>} $kind
+     * @param array<string, string|list<string>> $params
+     */
+    private function item(array $kind, array $params): ?\First\JsObject
+    {
+        $name = $kind['name'];
+        $spec = $this->plugin->schema->collection($name);
+        $value = static fn (string $param) => is_array($params[$param] ?? null) ? implode('/', $params[$param]) : (string) ($params[$param] ?? '');
+        $where = null;
+        foreach ($kind['params'] as $field => $param) {
+            if ($field === 'id' && ctype_digit($value($param))) {
+                $where = [$spec['primaryKey'] => (int) $value($param)];
+            } elseif (($field === 'slug' || $field === 'path') && ($spec['slug'] ?? null) !== null) {
+                $parts = explode('/', $value($param));
+                $where = [$spec['slug'] => (string) end($parts)];
+            }
+        }
+        if ($where === null) {
+            return null;
+        }
+        try {
+            $row = Seam::findFirst($name, ['where' => $where]);
+        } catch (\First\HttpError) {
+            return null;
+        }
+        if ($row === null) {
+            return null;
+        }
+        // The URL must be the item's own: other placeholders (`:year`, a field) have to agree.
+        $post = get_post((int) ($row->p[$spec['primaryKey']] ?? 0));
+        $urls = KindUrls::instance();
+        if ($post instanceof \WP_Post && $urls !== null) {
+            $want = $urls->path($name, $post);
+            $have = '/' . trim((string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH), '/');
+            if ($want !== null && rawurldecode($have) !== rawurldecode($want)) {
+                return null;
+            }
+        }
+        return $row;
     }
 
     /** A render error: logged, and the nearest `error.tsx` (or a plain message) with a 500. */

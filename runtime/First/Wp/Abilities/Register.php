@@ -117,7 +117,8 @@ final class Register
             if ($on) {
                 self::$method = self::$sanitizing;
                 self::$untyped = null;
-                self::$raw = $request instanceof \WP_REST_Request ? self::rawInput($request) : null;
+                // The run body's own input, or (for the facade's GET/DELETE runs) what withSentInput set.
+                self::$raw = ($request instanceof \WP_REST_Request ? self::rawInput($request) : null) ?? self::$raw;
             }
 
             return $passthrough;
@@ -189,7 +190,7 @@ final class Register
     public static function describe(array $op): array
     {
         $args = self::args($op);
-        unset($args['execute_callback'], $args['permission_callback']);
+        unset($args['execute_callback'], $args['permission_callback'], $args['ability_class']);
 
         return ['name' => $op['name']] + $args;
     }
@@ -494,6 +495,7 @@ final class Register
             'output_schema' => $op['output'],
             'permission_callback' => static fn (mixed $input = null): bool|\WP_Error => Invoke::allowed($op, $input),
             'execute_callback' => static fn (mixed $input = null): mixed => Invoke::call($op, $input),
+            'ability_class' => FirstAbility::class,
             'meta' => [
                 'public' => $op['agents'],
                 'show_in_rest' => $op['agents'],

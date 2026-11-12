@@ -254,7 +254,11 @@ pub fn build(
             Slot::Component { name: component } => {
                 schema.components.insert(component, name);
             }
-            Slot::AppPage { .. } | Slot::AppMetadata { .. } | Slot::AppGuard { .. } | Slot::AppHandler { .. } => {
+            Slot::AppPage { .. }
+            | Slot::AppMetadata { .. }
+            | Slot::AppGuard { .. }
+            | Slot::AppAccess { .. }
+            | Slot::AppHandler { .. } => {
                 app::fill(&mut schema, &slot, &name);
             }
             Slot::ActionHandler { action } => schema.actions.get_mut(&action).expect("action").handler = name,
@@ -366,6 +370,14 @@ pub fn build(
     if uses_wordpress {
         gen_ts += &crate::wordpress::abilities::gen_ts(&catalog);
     }
+    let routes_ts = crate::app::routes_d_ts(
+        &program.app,
+        &schema
+            .collections
+            .iter()
+            .filter_map(|(name, c)| c.url.clone().map(|u| (name.clone(), u)))
+            .collect::<Vec<_>>(),
+    );
     Ok(Built {
         plugins: ext.plugins,
         unsupported_plugins,
@@ -375,7 +387,7 @@ pub fn build(
         snapshot,
         migrations,
         gen_ts,
-        routes_ts: crate::app::routes_d_ts(&program.app),
+        routes_ts,
         warnings,
         hints: ext.hints,
         plugin_lock: settled.lock,

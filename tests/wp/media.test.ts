@@ -499,7 +499,7 @@ test("a signed URL streams the file through the REST route with the security hea
   probe();
   const row = await deck("slide one");
   assert.deepEqual([row.bucket, row.mime, row.filename, row.ownerId, "path" in row], ["decks", "application/pdf", "Q3 plan.pdf", harness.users.author.id, false]);
-  assert.ok(row.url.startsWith(`${api}/files/decks/${row.id}/download?`), row.url);
+  assert.ok(row.url.startsWith(`${harness.url}/__first/api/v1/files/decks/${row.id}/download?`), row.url);
   const res = await fetch(row.url);
   assert.equal(res.status, 200);
   assert.deepEqual(new Uint8Array(await res.arrayBuffer()), pdf("slide one"));
@@ -699,7 +699,7 @@ test("without .htaccess the probe fails and uploads answer 503 until protection 
     assert.notDeepEqual(Buffer.from(await (await fetch(focal.sizes.card.url)).arrayBuffer()), derivative, "B hydrates original and generates a new crop");
     assert.equal((await fetch(freshImage.sizes.card.url)).status, 404, "superseded crop loses its manifest grant");
     const responsive = replicaPhp(`echo wp_get_attachment_image_srcset(${attachment.id}, 'first_wide');`);
-    assert.ok(responsive.includes('/wp-json/first/v1/media/'), responsive);
+    assert.ok(responsive.includes('/__first/api/v1/media/'), responsive);
     for (const candidate of responsive.split(', ')) {
       assert.equal((await fetch(candidate.split(' ')[0])).status, 200, "core srcset uses durable variants");
     }

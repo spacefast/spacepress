@@ -123,6 +123,18 @@ fn app_router_serves_pages_on_wordpress() {
     assert_eq!(seen["api"], serde_json::json!([200, "[\"Hello\"]"]));
     assert_eq!(seen["api method"], 405);
     assert_eq!(seen["page POST"], serde_json::json!([303, "/notes/hello?sent=1"]));
+    assert_eq!(
+        seen["page POST anonymous"], 401,
+        "a page's handlers follow its `access`"
+    );
+    // A signed webhook route: refused without a valid HMAC, run as the system with one (it reads
+    // the draft too).
+    assert_eq!(
+        (&seen["webhook unsigned"], &seen["webhook bad"]),
+        (&serde_json::json!(401), &serde_json::json!(401))
+    );
+    // The system's read sees the draft too: 2 notes, where an anonymous visitor's sees 1.
+    assert_eq!(seen["webhook"], serde_json::json!([202, "ping:2"]));
     assert_eq!(seen["HEAD"], serde_json::json!([200, ""]));
     // WordPress keeps its own URLs.
     assert_eq!(seen["rest"], 200);
@@ -317,10 +329,34 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "first/app/api/route.ts",
-            "export async function GET() { return { status: \"ok\" }; }\n",
+            "export const access = \"anyone\";\nexport async function GET() { return { status: \"ok\" }; }\n",
         )],
         "GET in app/api/route.ts returns",
         "first/app/api/route.ts",
+    );
+    rejects(
+        &dir,
+        &[("first/app/api/route.ts", "export async function GET() { return {}; }\n")],
+        "app/api/route.ts has HTTP handlers but no `access`",
+        "first/app/api/route.ts",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/api/route.ts",
+            "import { env } from \"first\";\nexport const access = \"anyone\";\nexport const signature = { secret: env(\"S\"), header: \"x-sig\", scheme: \"hmac-sha256\" };\nexport async function POST() { return {}; }\n",
+        )],
+        "exports both `access` and `signature`",
+        "first/app/api/route.ts",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/page.tsx",
+            "export const access = \"anyone\";\nexport default function P() { return <p/>; }\n",
+        )],
+        "exports `access` or `signature` but no HTTP handler",
+        "first/app/page.tsx",
     );
     rejects(
         &dir,
@@ -362,4 +398,115 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         "first/app/page.tsx:2:",
     );
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.
+fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value {
+    let project = fixture("frontend-modes", variant);
+    if app {
+        copy(&project.join("app/first/app"), &project.join("first/app"));
+    }
+    let _ = std::fs::remove_dir_all(project.join("app"));
+    if let Some(frontend) = frontend {
+        let config = project.join("first.config.ts");
+        let text = std::fs::read_to_string(&config).unwrap();
+        std::fs::write(
+            &config,
+            text.replace(
+                r#"{ name: "modes" }"#,
+                &format!(r#"{{ name: "modes", frontend: {frontend} }}"#),
+            ),
+        )
+        .unwrap();
+    }
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/frontend_modes.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{variant}: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let _ = std::fs::remove_dir_all(project);
+    serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|_| panic!("{variant}: {}", String::from_utf8_lossy(&out.stdout)))
+}
+
+/// spec §2.7 and §5 on WordPress: a kind's `url` is how WordPress resolves and links its items in
+/// every mode; with no first/app/ the theme renders them, a first/app/ page that matches the
+/// pattern takes the URL over, `frontend: false` serves no public HTML, and an external frontend
+/// gets every front-end URL. wp-admin's REST and feeds keep working throughout, and a slug change
+/// (or a stale placeholder like a wrong year) 301s to the item's own URL.
+#[test]
+fn frontend_modes_on_wordpress() {
+    let theme = modes("theme", None, false);
+    assert_eq!(theme["note status"], 200, "{theme}");
+    assert_eq!(
+        (&theme["note by theme"], &theme["note by app"]),
+        (&serde_json::json!(true), &serde_json::json!(false))
+    );
+    assert_eq!(theme["note body"], true);
+    assert_eq!(theme["permalink"], "/notes/hello-note/");
+    assert_eq!(theme["draft"], 404);
+    assert_eq!(theme["missing note"], 404);
+    assert_eq!(theme["journal"], 200);
+    assert_eq!(
+        theme["journal wrong year"],
+        serde_json::json!([301, "/journal/2026/day-one/"])
+    );
+    assert_eq!(theme["renamed"], serde_json::json!([301, "/notes/renamed-note/"]));
+    assert_eq!(theme["new url"], 200);
+    assert_eq!(theme["about"][0], 404);
+    assert_eq!(theme["home"], 200);
+
+    let app = modes("app", None, true);
+    assert_eq!(
+        (&app["note status"], &app["note by app"], &app["note body"]),
+        (
+            &serde_json::json!(200),
+            &serde_json::json!(true),
+            &serde_json::json!(true)
+        ),
+        "{app}"
+    );
+    assert_eq!(app["draft"], 404);
+    assert_eq!(app["missing note"], 404);
+    assert_eq!(app["about"], serde_json::json!([200, true]));
+    // A kind URL with no page of its own still renders with the theme.
+    assert_eq!(app["journal"], 200);
+    assert_eq!(app["renamed"], serde_json::json!([301, "/notes/renamed-note/"]));
+    // WordPress's own post URLs keep working.
+    assert_eq!(app["post"], serde_json::json!([301, "/hello-world/"]));
+
+    let off = modes("off", Some("false"), false);
+    for key in ["note status", "journal", "home", "draft"] {
+        assert_eq!(off[key], 404, "{key}: {off}");
+    }
+    assert_eq!(off["permalink"], "/notes/hello-note/");
+
+    let external = modes("external", Some(r#""https://front.example""#), false);
+    assert_eq!(
+        external["permalink"], "https://front.example/notes/hello-note/",
+        "{external}"
+    );
+    assert_eq!(external["note status"], 308);
+    assert_eq!(external["post"][0], 308);
+
+    for (name, mode) in [("theme", &theme), ("app", &app), ("off", &off), ("external", &external)] {
+        assert_eq!(
+            (&mode["rest"], &mode["rest note"], &mode["feed"]),
+            (
+                &serde_json::json!(200),
+                &serde_json::json!(200),
+                &serde_json::json!(200)
+            ),
+            "{name}: {mode}"
+        );
+    }
 }

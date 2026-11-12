@@ -353,8 +353,20 @@ pub fn render(schema: &Schema) -> String {
         out.push_str("    ],\n    'app' => [\n");
         let opt = |v: &Option<String>| v.as_deref().map(php_str).unwrap_or_else(|| "null".into());
         let route = |r: &crate::schema::AppRoute| {
+            let kind = match &r.kind {
+                Some((kind, bound)) => format!(
+                    "['name' => {}, 'params' => [{}]]",
+                    php_str(kind),
+                    bound
+                        .iter()
+                        .map(|(field, param)| format!("{} => {}", php_str(field), php_str(param)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                None => "null".into(),
+            };
             format!(
-                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}]",
+                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'kind' => {kind}]",
                 php_str(&r.id),
                 php_str(&r.pattern),
                 opt(&r.page),
@@ -392,11 +404,13 @@ pub fn render(schema: &Schema) -> String {
                 .join(", ");
             let _ = writeln!(
                 out,
-                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'search' => {}, 'methods' => [{methods}]],",
+                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'access' => {}, 'signature' => {}, 'search' => {}, 'methods' => [{methods}]],",
                 php_str(path),
                 opt(&f.component),
                 f.metadata.as_ref().map(php_json).unwrap_or_else(|| "null".into()),
                 f.guard.as_ref().map(access).unwrap_or_else(|| "null".into()),
+                f.access.as_ref().map(access).unwrap_or_else(|| "null".into()),
+                f.signature.as_ref().map(php_json).unwrap_or_else(|| "null".into()),
                 f.search
                     .as_ref()
                     .map(|s| fields_block(&s.fields, 3))

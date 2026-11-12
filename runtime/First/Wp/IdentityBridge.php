@@ -42,8 +42,9 @@ final class IdentityBridge implements Issuer
                 wp_cache_delete($uid, 'user_meta');
             });
         });
-        // On /first/v1 a failed Bearer is answered by WpAuth as a problem document; elsewhere identity's error stands.
-        add_filter('first_identity_bearer_error', static fn ($error) => str_starts_with((string) ($GLOBALS['wp']->query_vars['rest_route'] ?? ''), '/' . Rest::NAMESPACE . '/') ? null : $error);
+        // On First's API a failed Bearer is answered by WpAuth as a problem document; elsewhere identity's error stands.
+        add_filter('first_identity_bearer_error', static fn ($error) => Facade::path() !== null
+            || str_starts_with((string) ($GLOBALS['wp']->query_vars['rest_route'] ?? ''), '/' . Rest::NAMESPACE . '/') ? null : $error);
     }
 
     public static function suspended(int $userId): bool

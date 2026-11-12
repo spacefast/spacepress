@@ -255,6 +255,47 @@ fn fk_name(t: &str, col: &str) -> String {
     n.chars().take(64).collect()
 }
 
+/// Every index the schema's SQL tables get, and why it exists, for `first check --json`
+/// (spec §2.9). Post-backed kinds have none of their own: WordPress indexes `wp_posts` and its meta.
+pub fn index_report(snapshot: &Json) -> Json {
+    let tables = tables(snapshot);
+    let mut out = Vec::new();
+    for (t, def) in &tables {
+        if def["system"].as_bool() == Some(true) {
+            continue;
+        }
+        let empty = Map::new();
+        let cols = def["columns"].as_object().unwrap_or(&empty);
+        if let Some((pk, _)) = cols.iter().find(|(_, c)| c["primaryKey"].as_bool() == Some(true)) {
+            out.push(
+                json!({ "table": t, "name": "PRIMARY", "unique": true, "columns": [pk], "reason": "primary key" }),
+            );
+        }
+        for (name, unique, ix_cols) in indexes(t, def) {
+            let reason = if name.ends_with("_unique") {
+                format!("`{}` is .unique()", ix_cols[0])
+            } else if name == "status_publishedAt" {
+                "drafts: published rows are filtered by status and ordered by publishedAt".to_string()
+            } else if name == "translationGroup_locale" {
+                "localized: one row per locale in a translation group".to_string()
+            } else {
+                "a system table's lookup".to_string()
+            };
+            out.push(json!({ "table": t, "name": name, "unique": unique, "columns": ix_cols, "reason": reason }));
+        }
+        for (name, c) in cols {
+            if fk_sql(t, name, c, &tables).is_some() {
+                let target = c["references"]["table"].as_str().unwrap_or_default();
+                out.push(
+                    json!({ "table": t, "name": fk_name(t, name), "unique": false, "columns": [name],
+                    "reason": format!("`{name}` references {target}: MySQL indexes a foreign key") }),
+                );
+            }
+        }
+    }
+    Json::Array(out)
+}
+
 /// (index name, unique, columns) for a table.
 fn indexes(t: &str, def: &Json) -> Vec<(String, bool, Vec<String>)> {
     let mut out = Vec::new();

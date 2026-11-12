@@ -698,7 +698,8 @@ pub(crate) fn compile_tree(
     page_paths.dedup();
     // What a host shows and routes without reading First's generated files (docs/host-contract.md).
     let schema = &built.schema;
-    let mut tables: Vec<&str> = schema.collections.values().filter(|c| !c.editor && !c.auth).map(|c| c.key.as_str()).collect();
+    // Names as the REST API spells them (`/wp-json/first/v1/<name>`).
+    let mut tables: Vec<&str> = schema.collections.values().filter(|c| !c.editor && !c.auth).map(|c| c.table.as_str()).collect();
     tables.sort();
     let mut collections: Vec<&str> = schema.collections.keys().map(String::as_str).collect();
     collections.sort();

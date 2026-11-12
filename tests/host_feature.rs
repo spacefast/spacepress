@@ -13,6 +13,17 @@ fn host_capture_matches_native_bundle_bytes_and_compiles() {
     }
     let result = first::host::compile_sources(&host, &work.path().join("compiled"), &host, None).unwrap();
     assert_eq!(result["format"], "first.hosted.v1");
+    // What a host reads without opening First's generated files (docs/host-contract.md).
+    assert_eq!(result["hostContract"], first::host_contract::HOST_CONTRACT);
+    assert_eq!(result["summary"]["name"], "pantry");
+    assert_eq!(result["summary"]["tables"], serde_json::json!(["items", "locations", "shopping_list"]));
+    assert_eq!(result["summary"]["collections"], result["summary"]["tables"]);
+    assert!(result["summary"]["actions"].as_array().unwrap().iter().any(|a| a == "consume"), "{}", result["summary"]);
+    assert_eq!(result["host"]["mount"], "First\\Loader\\Loader::load");
+    assert_eq!(result["host"]["jobsCommand"], "wp first jobs tick");
+    let written: serde_json::Value =
+        serde_json::from_slice(&fs::read(work.path().join("compiled/manifest.json")).unwrap()).unwrap();
+    assert_eq!(written, result, "the manifest file is what compile_sources returns");
     assert!(
         work.path()
             .join("compiled/plugins/first-runtime/first-runtime.php")

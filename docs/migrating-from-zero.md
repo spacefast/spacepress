@@ -302,9 +302,10 @@ v2 generated client and the Spacefast integration's reserved API URL.
 Content declarations use the existing config importer. Native `posts` declarations,
 or a `content/posts` directory, add a post-backed `posts` collection with title
 and rich-text body. Spacefast's data migration copies the fenced native rows
-into that collection with their IDs, authors, dates and revisions intact. Legacy
-sync declarations are dropped with a review hint; hosted edits do not rebuild
-static frontends. Custom native post fields need an explicit port. Other content
+into that collection with their IDs, authors, dates and revisions intact.
+Undeclared `content/posts/` content is refused with `Z08_OMITTED_POSTS`, and a
+legacy sync declaration with `Z08_OMITTED_SYNC`: declare the collection with
+`sync` in `first.config.ts`. Hosted edits do not rebuild static frontends. Custom native post fields need an explicit port. Other content
 collections use `first migrate-legacy` and their content-model release on standalone
 WordPress. Do not activate a candidate before its data migration succeeds.
 
@@ -322,11 +323,9 @@ account mappings and ownership transfer require a separate identity migration.
 Spacefast moves accounts and sessions in its scoped data migration.
 The command does not invent `wp:<id>` owners or install an identity framework.
 
-Connector declarations produce a separate `connector-roles.json` host overlay,
-also included in the report. `owner` becomes `personal`; `team` and `visitor`
-keep their roles. The file carries no credentials or grants and is not part of
-the portable v2 config. Connector calls in handlers are refused. Spacefast's
-integration owns applying this overlay and account sessions.
+Connector declarations are refused with `Z08_OMITTED_CONNECTORS`: First has no
+connectors yet. Remove the connector, or keep the Space on 0.8. Connector calls
+in handlers are refused too.
 
 Realtime declarations map: v2 announces every committed write, so `realtime`
 and `ctx.invalidate(...)` (which named the live queries a mutation refreshed)
@@ -574,13 +573,13 @@ before activating an app.
 | Spacefast project root | Accepts `server/index.ts`, optional `sf.jsonc`, and `content/`; produces `first.config.ts` and migration metadata | Resolve every refusal and review entry before publication |
 | Application SQL tables | Adopts original physical tables with `existingTable`, preserving IDs and storage types | Requires the exact Space ID and expected columns, indexes, and foreign keys; IDs above JavaScript's safe integer range need a port |
 | Typed queries, mutations, and actions | Converts supported handlers, static DB/index calls and `paginate()` into named v2 actions; `ctx.env` and `ctx.log` map | Update clients to v2 input, response, error, and route contracts; dynamic builders and other context services are refused |
-| Native posts | A posts declaration or `content/posts/` adds a post-backed `posts` collection; scoped data copy preserves IDs, native body, authors, dates, and revisions | Custom native fields need a port; legacy sync declarations are dropped with a review hint |
+| Native posts | A posts declaration adds a post-backed `posts` collection; scoped data copy preserves IDs, native body, authors, dates, and revisions | Custom native fields need a port; undeclared `content/posts/` (`Z08_OMITTED_POSTS`) and legacy sync declarations (`Z08_OMITTED_SYNC`) are refused |
 | Content collections | Imports supported field declarations; scoped data copy maps collection tags, typed metadata, and revision fields to candidate storage | Rich blocks, multiple references, unsupported fields, and incompatible data need a port |
 | Media | Copies attachment IDs, metadata, and parent links | File bytes must remain available through the host's media binding; the database command does not copy files |
 | Users | Auth or Space Users adds a `members` user projection; copies user IDs, passwords, scoped role metadata, and verified primary email | Review permissions and legacy principal references; the converter does not invent owner IDs |
 | Sessions | Copies imported sessions with markers; accepts the old cookie and upgrades a valid legacy hash once, preserving expiry | Requires original auth salt and an explicitly scoped cookie alias; native v2 rows never get legacy fallback |
 | Google sign-in | Copies provider subject bindings to the same user IDs; host projects Google client values into managed identity configuration | Verify a fresh Google sign-in on the deployed host; never put provider secrets in source or reports |
-| Connector roles | Emits `connector-roles.json`; maps `owner` to `personal` and retains `team` and `visitor` | The overlay grants no credentials or permissions; old connector calls require a port |
+| Connector roles | Refused (`Z08_OMITTED_CONNECTORS`) | First has no connectors yet; remove them or keep the Space on 0.8 |
 | REST endpoints and actions | `endpoints` become v2 [routes](config-api.md#http-routes) at the same method and path, with 0.8's result rules | HEAD/OPTIONS, a `:splat` that is not last, writing GETs, WordPress-owned paths and `request.url`/`bytes()` are refused with pointers; unsafe methods need `X-WP-Nonce` for a signed-in caller |
 | Browser client | Generates v2 client contracts; Spacefast serves the selected version at `/__spacefast/client.js` | Replace old hooks, envelopes, and API calls; old subscriptions have no transport |
 | Realtime | Every committed write fires a change notice; Spacefast delivers it over Cast. Source conversion removes `realtime` and `ctx.invalidate` with a `mapped` entry | Replace `useQuery` subscriptions with [`watch`](realtime.md); notices name collections and ids, never rows |

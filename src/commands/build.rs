@@ -116,6 +116,12 @@ fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
         )?;
     }
     write(&project.join(layout::DB_TYPES), &built.gen_ts)?;
+    match &built.routes_ts {
+        Some(routes) => write(&project.join(layout::ROUTES_TYPES), routes)?,
+        None => {
+            let _ = std::fs::remove_file(project.join(layout::ROUTES_TYPES));
+        }
+    }
     if let Some(lock) = &built.plugin_lock {
         write(
             &project.join(crate::plugins::LOCK_PATH),

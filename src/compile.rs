@@ -10778,7 +10778,7 @@ fn same_type(a: &Ty, b: &Ty) -> bool {
     assignable(a, b) && assignable(b, a)
 }
 
-fn stmt_span(s: &Stmt) -> Span {
+pub fn stmt_span(s: &Stmt) -> Span {
     match s {
         Stmt::Decl { span, .. } | Stmt::Return(_, span) | Stmt::Break(_, span) | Stmt::Continue(_, span) => *span,
         Stmt::Expr(e) | Stmt::Throw(e) | Stmt::If(e, ..) | Stmt::While(e, _) | Stmt::DoWhile(_, e) => e.span,

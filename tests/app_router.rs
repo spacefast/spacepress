@@ -480,6 +480,16 @@ fn frontend_modes_on_wordpress() {
         serde_json::json!([301, "/journal/2026/day-one/"])
     );
     assert_eq!(theme["renamed"], serde_json::json!([301, "/notes/renamed-note/"]));
+    // A kind URL's item purges like a post: its old and new URLs and their twins.
+    assert_eq!(
+        theme["renamed purges"],
+        serde_json::json!([
+            "/notes/hello-note/",
+            "/notes/hello-note.md",
+            "/notes/renamed-note/",
+            "/notes/renamed-note.md"
+        ])
+    );
     assert_eq!(theme["new url"], 200);
     assert_eq!(theme["about"][0], 404);
     assert_eq!(theme["home"], 200);

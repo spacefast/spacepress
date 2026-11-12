@@ -191,11 +191,20 @@ final class Facade
         }
         if ($method === 'DELETE') {
             // First's delete is permanent: core trashes posts without `force`, and refuses users without it.
-            $out = self::dispatch('DELETE', $item, match ($kind['type']) {
+            $params = match ($kind['type']) {
                 'post', 'wp-post', 'comments', 'media', 'term' => ['force' => true],
                 'users' => ['force' => true, 'reassign' => false], // the member's posts are kept, unowned
                 default => [],
-            });
+            };
+            if ($kind['type'] === 'media') {
+                // The answer is the row as it was; core's own rendering of the deleted attachment
+                // (its description) would read the file, which a delete never needs.
+                $before = Kinds::row($kind, self::dispatch('GET', $item, self::context($kind)));
+                self::dispatch('DELETE', $item, $params + ['_fields' => 'deleted']);
+
+                return self::json(200, ['data' => $before]);
+            }
+            $out = self::dispatch('DELETE', $item, $params);
 
             return self::json(200, ['data' => Kinds::row($kind, $out['previous'] ?? $out)]);
         }
@@ -356,12 +365,23 @@ final class Facade
         return self::$depth > 0;
     }
 
+    /** @var list<string> the methods of the core dispatches in progress, innermost last */
+    private static array $methods = [];
+
+    /** The method of the core dispatch the facade is running now, or null outside one. */
+    public static function dispatchingMethod(): ?string
+    {
+        return self::$methods === [] ? null : self::$methods[count(self::$methods) - 1];
+    }
+
     private static function run(\WP_REST_Request $request): \WP_REST_Response
     {
         self::$depth++;
+        self::$methods[] = $request->get_method();
         try {
             return rest_do_request($request);
         } finally {
+            array_pop(self::$methods);
             self::$depth--;
         }
     }
@@ -527,7 +547,9 @@ final class Facade
      */
     private static function context(array $kind): array
     {
-        return ['context' => 'view'];
+        // Media: First's own row answers (WpMedia, through Kinds::row), so core is asked for the item's
+        // id and alt only: its full attachment rendering reads the file, which no API read needs.
+        return ['context' => 'view'] + ($kind['type'] === 'media' ? ['_fields' => 'id,alt_text,caption,author,first_focal'] : []);
     }
 
     /**

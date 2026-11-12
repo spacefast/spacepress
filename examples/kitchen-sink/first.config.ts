@@ -6,19 +6,19 @@ import {
 
 // Native WordPress posts: title, content, drafts, revisions and custom fields.
 export const pages = collection({
-  title: text().notNull().max(120).localized(),
-  slug: slug({ source: "title" }),
-  body: richText().localized(),
-  cover: media({ accept: "image" }),
-  featured: boolean().notNull().default(false),
-  seo: group({ fields: {
-    title: text().max(70),
-    description: text({ multiline: true }).max(160),
-  } }),
-  sections: blocks({ layouts: {
-    hero: { heading: text().notNull(), image: media({ accept: "image" }) },
-    quote: { text: text({ multiline: true }).notNull(), author: text() },
-  } }),
+  title: text().max(120).localized(),
+  slug: slug({ source: "title" }).optional(),
+  body: richText().localized().optional(),
+  cover: media({ accept: "image" }).optional(),
+  featured: boolean().default(false),
+  seo: group({
+    title: text().max(70).optional(),
+    description: text({ multiline: true }).max(160).optional(),
+  }).optional(),
+  sections: blocks({
+    hero: { heading: text(), image: media({ accept: "image" }).optional() },
+    quote: { text: text({ multiline: true }), author: text().optional() },
+  }).optional(),
 }, {
   label: "Pages", title: "title", content: "body", uid: true,
   access: {
@@ -28,36 +28,36 @@ export const pages = collection({
 });
 
 export const events = collection({
-  title: text().notNull().max(120),
-  slug: slug({ source: "title" }),
-  description: richText(),
-  startsOn: date().notNull(),
-  venue: text().notNull(),
-  poster: media({ accept: "image" }),
-  handout: file({ bucket: "handouts" }),
-  speakers: repeater({ fields: { name: text().notNull(), bio: text({ multiline: true }) } }),
+  title: text().max(120),
+  slug: slug({ source: "title" }).optional(),
+  description: richText().optional(),
+  startsOn: date(),
+  venue: text(),
+  poster: media({ accept: "image" }).optional(),
+  handout: file({ bucket: "handouts" }).optional(),
+  speakers: repeater({ name: text(), bio: text({ multiline: true }).optional() }).optional(),
 }, { label: "Events", title: "title", content: "description" });
 
 // WordPress users with additional profile fields and access to their own row.
 export const members = userProjection({
-  email: email().notNull().unique().max(191),
-  name: text().notNull().max(80),
-  website: url(),
-  plan: select({ options: ["free", "supporter"] }).notNull().default("free"),
+  email: email().unique().max(191),
+  name: text().max(80),
+  website: url().optional(),
+  plan: select(["free", "supporter"]).default("free"),
 }, { access: { read: "self", create: "anyone", update: "self", delete: "admin" } });
 
 // App data in custom tables, related to native posts and users.
 export const registrations = table({
-  eventId: integer().notNull().references(() => events.id, { onDelete: "cascade" }),
-  memberId: integer().notNull().references(() => members.id, { onDelete: "cascade" }),
-  confirmed: boolean().notNull().default(false),
-  createdAt: timestamp().notNull().defaultNow(),
+  eventId: integer().references(() => events.id, { onDelete: "cascade" }),
+  memberId: integer().references(() => members.id, { onDelete: "cascade" }),
+  confirmed: boolean().default(false),
+  createdAt: timestamp().defaultNow(),
 }, { access: { read: "editor", create: "authenticated", update: "editor", delete: "admin" } });
 
 export const activity = table({
-  pageId: integer().notNull().references(() => pages.id, { onDelete: "cascade" }),
-  message: text().notNull(),
-  createdAt: timestamp().notNull().defaultNow(),
+  pageId: integer().references(() => pages.id, { onDelete: "cascade" }),
+  message: text(),
+  createdAt: timestamp().defaultNow(),
 }, { access: { read: "editor", create: "admin", update: "admin", delete: "admin" } });
 
 const entities = { pages, events, members, registrations, activity };
@@ -74,10 +74,10 @@ const relations = defineRelations(entities, (r) => ({
 
 // Shared settings use WordPress options through Secure Custom Fields.
 export const settings = global("settings", {
-  siteTitle: text().notNull().default("The kitchen sink"),
-  contactEmail: email(),
-  announcement: text({ multiline: true }),
-  links: repeater({ fields: { label: text().notNull(), href: url().notNull() } }),
+  siteTitle: text().default("The kitchen sink"),
+  contactEmail: email().optional(),
+  announcement: text({ multiline: true }).optional(),
+  links: repeater({ label: text(), href: url() }).optional(),
 }, { label: "Site settings", access: { read: "anyone", update: "admin" } });
 
 export default defineConfig({
@@ -106,7 +106,7 @@ export default defineConfig({
   },
   jobs: {
     recordPage: job({
-      input: { pageId: integer().notNull() }, retries: 3,
+      input: { pageId: integer() }, retries: 3,
       async handler({ pageId }) {
         await db.insert(activity).values({ pageId, message: "Page created" });
       },
@@ -114,14 +114,14 @@ export default defineConfig({
   },
   actions: {
     publishPage: action({
-      input: { title: text().notNull(), body: text().notNull() }, access: "editor",
+      input: { title: text(), body: text() }, access: "editor",
       async handler({ title, body }) {
         const [page] = await db.insert(pages).values({ title, body, status: "published" }).returning();
         return page;
       },
     }),
     renameMember: action({
-      input: { id: integer().notNull(), name: text().notNull() }, access: "admin",
+      input: { id: integer(), name: text() }, access: "admin",
       async handler({ id, name }) {
         const [member] = await db.update(members).set({ name }).where({ id }).returning();
         if (!member) throw new HttpError(404, "not_found", "Member not found");

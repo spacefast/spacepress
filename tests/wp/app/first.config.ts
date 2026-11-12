@@ -2,7 +2,7 @@
 // first/blog/ so the app imports it from inside first/), relations, globals and actions, plus hooks that leave
 // an observable trace for the editor-parity and rollback tests. The blog's own hooks are repeated
 // verbatim (a config can't import another config's default export).
-import { action, boolean, collection, date, defineConfig, defineRelations, db, email, id, integer, json, real, select, text, timestamp, HttpError, table } from "first";
+import { action, boolean, collection, date, defineConfig, defineRelations, db, email, integer, json, select, text, timestamp, HttpError, table, number } from "first";
 import { collections, tables, users, entities, settings, comments } from "./first/blog/first.config.ts";
 import blog from "./first/blog/first.config.ts";
 // One fragment per phase-2 lane, so lanes add test collections without editing this file.
@@ -21,24 +21,22 @@ const lanes = [fields, sync, jobs, auth, abilities, media, locales, rest, runtim
 
 // A `table()` with a real SQL UNIQUE index (the blog has none).
 export const signups = table({
-  id: id(),
-  email: email().notNull().unique().max(191),
-  postId: integer().references(() => entities.posts.id, { onDelete: "set null" }),
-  teamId: integer().references(() => fields.fieldTeams.id, { onDelete: "set null" }),
+  email: email().unique().max(191),
+  postId: integer().references(() => entities.posts.id, { onDelete: "set null" }).optional(),
+  teamId: integer().references(() => fields.fieldTeams.id, { onDelete: "set null" }).optional(),
 }, { access: { create: "anyone", read: "editor" } });
 
 // A post-backed collection with one column of every scalar meta kind, for the postmeta filter suite.
 export const events = collection({
-  id: id(),
-  title: text().notNull(),
-  seats: integer(),
-  price: real(),
-  open: boolean().notNull().default(false),
-  day: date(),
-  startsAt: timestamp().default("2030-01-01"), // a bare-date default: editor saves store it as full ISO
-  kinds: select({ options: ["talk", "workshop", "social"], multiple: true }).notNull().default([]),
-  postId: integer().references(() => entities.posts.id, { onDelete: "set null" }),
-  extra: json(), // a json() meta column: `{}` must stay an object through postmeta
+  title: text(),
+  seats: integer().optional(),
+  price: number().optional(),
+  open: boolean().default(false),
+  day: date().optional(),
+  startsAt: timestamp().default("2030-01-01").optional(), // a bare-date default: editor saves store it as full ISO
+  kinds: select(["talk", "workshop", "social"]).many().default([]),
+  postId: integer().references(() => entities.posts.id, { onDelete: "set null" }).optional(),
+  extra: json().optional(), // a json() meta column: `{}` must stay an object through postmeta
 }, {
   access: {
     read: "anyone",

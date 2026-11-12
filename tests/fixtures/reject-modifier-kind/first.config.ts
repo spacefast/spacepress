@@ -1,3 +1,3 @@
-import { collection, id, boolean, defineConfig, table } from "first";
-const a = table({ id: id(), done: boolean().max(3) });
+import { collection, boolean, defineConfig, table } from "first";
+const a = table({ done: boolean().max(3).optional() });
 export default defineConfig({ tables: { a } });

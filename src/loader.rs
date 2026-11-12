@@ -54,6 +54,12 @@ pub trait Fs {
     fn module_alias(&self) -> Option<&'static str> {
         None
     }
+    /// The 0.3.0 field reading (docs/decisions/2026-11-11-authoring-surface.md, ruling 21): a capture
+    /// in the pre-rename format holds source written when a plain builder was nullable and
+    /// `.notNull()` made it required, so it is read that way. Only `crate::zero_bundle` sets it.
+    fn legacy_fields(&self) -> bool {
+        false
+    }
     fn read_to_string(&self, path: &Path) -> std::io::Result<String>;
     fn is_file(&self, path: &Path) -> bool;
     fn is_dir(&self, path: &Path) -> bool;

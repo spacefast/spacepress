@@ -1,3 +1,3 @@
-import { collection, id, defineConfig, table } from "first";
+import { collection, defineConfig, table } from "first";
 const v = Date.now();
-export default defineConfig({ tables: { a: table({ id: id() }) } });
+export default defineConfig({ tables: { a: table({  }) } });

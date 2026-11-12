@@ -29,8 +29,8 @@ export function upgrade(project: string): void {
     assert.ok(src.includes(anchor), `upgrade anchor missing: ${anchor}`);
     src = src.replace(anchor, anchor + line);
   };
-  add("  featured: boolean().notNull().default(false),\n", "  readingMinutes: integer().min(1).max(120),\n");
-  add("  approved: boolean().notNull().default(false),\n", "  pinned: boolean().notNull().default(false),\n");
+  add("  featured: boolean().default(false),\n", "  readingMinutes: integer().min(1).max(120).optional(),\n");
+  add("  approved: boolean().default(false),\n", "  pinned: boolean().default(false),\n");
   writeFileSync(file, src);
 }
 

@@ -1,4 +1,4 @@
-import { collection, id, text, email, media, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db, table, userProjection } from "first";
+import { collection, text, email, media, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db, table, userProjection } from "first";
 import type { FieldAccessCtx as FieldContext, JobCtx } from "first";
 function deny(): never { throw new Error("denied"); }
 async function yes() { return true; }
@@ -88,17 +88,17 @@ function visibleField(ctx: FieldContext): boolean { switch (ctx.op) { case "read
 function maybeFirst() { const values = ["a"]; values.unshift("b"); switch (values[0]) { case "a": return true; } }
 function maybeDefault() { const { words = ["a"] } = { words: undefined }; words.unshift("b"); switch (words[0]) { case "a": return true; } }
 function maybeFunction() { const predicates = [() => true]; predicates.unshift(() => false); const flag = predicates[0]!(); switch (flag) { case true: return true; } }
-const audit = table({ id: id(), note: text().notNull() }, { agents: false });
-const authors = collection({ id: id(), name: text().notNull(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }), avatar: media().access({ read: "authenticated" }) }, { title: "name", uid: true });
+const audit = table({ note: text() }, { agents: false });
+const authors = collection({ name: text(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }).optional(), avatar: media().access({ read: "authenticated" }).optional() }, { title: "name", uid: true });
 const posts = collection({
-  id: id(), title: text().notNull().localized(), content: richText().localized(), slug: slug({ source: "title" }),
-  authorId: integer().references(() => authors.id), deck: file({ bucket: "decks" }),
-  seo: group({ fields: { kind: text({ enum: ["a", "b"] }), enabled: boolean(), label: text().access({ read: visibleField }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }) } }).showIf({ status: "published" }),
-  items: repeater({ fields: { enabled: boolean(), label: text().showIf({ enabled: true }) } }),
-  sections: blocks({ layouts: { hero: { kind: text(), label: text().access({ update: ctx => { switch (ctx.op) { case "read": throw new Error("not an update"); case "create": return false; case "update": return visibleRole(ctx); } } }).showIf({ kind: { ne: "hidden" } }) } } }),
-  tags: select({ options: ["news", "guide"], multiple: true }).localized(), meta: json().localized(),
+  title: text().localized(), content: richText().localized().optional(), slug: slug({ source: "title" }).optional(),
+  authorId: integer().references(() => authors.id).optional(), deck: file({ bucket: "decks" }).optional(),
+  seo: group({ kind: select(["a", "b"]).optional(), enabled: boolean().optional(), label: text().access({ read: visibleField }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }).optional() }).showIf({ status: "published" }).optional(),
+  items: repeater({ enabled: boolean().optional(), label: text().showIf({ enabled: true }).optional() }).optional(),
+  sections: blocks({ hero: { kind: text().optional(), label: text().access({ update: ctx => { switch (ctx.op) { case "read": throw new Error("not an update"); case "create": return false; case "update": return visibleRole(ctx); } } }).showIf({ kind: { ne: "hidden" } }).optional() } }).optional(),
+  tags: select(["news", "guide"]).many().localized().optional(), meta: json().localized().optional(),
 }, { sync: "content/./posts/*.md", agents: true });
-const members = userProjection({ id: id(), email: email().notNull().unique().max(191), name: text() }, { access: { read: "self", create: "anyone", update: "self", delete: "admin" } });
+const members = userProjection({ email: email().unique().max(191), name: text().optional() }, { access: { read: "self", create: "anyone", update: "self", delete: "admin" } });
 export const collections = { authors, posts };
 export const tables = { audit };
 export const users = { members };
@@ -108,11 +108,11 @@ export default defineConfig({
   uploads: { backend: "s3", bucket: env("UPLOAD_BUCKET"), region: "us-east-1", endpoint: env("UPLOAD_ENDPOINT"), pathStyle: true, prefix: "phase2", credentials: { accessKeyId: env("UPLOAD_KEY"), secretAccessKey: env("UPLOAD_SECRET") } },
   locales: { default: "en", all: ["en", "de"] }, media: { sizes: { thumb: { width: 300, height: 300, fit: "cover" }, wide: { width: 1600 } } },
   files: { decks: files("decks", { accept: ["application/pdf", "image/*"], maxBytes: 20000000, access: { read: "owner", create: ctx => ctx.user !== null, delete: "owner" } }) },
-  globals: { settings: global("settings", { title: text().default("Hello") }, { agents: false }) },
-  jobs: { sendWelcome: job({ input: { email: email().notNull(), payload: json().$type<{ message: string }>().notNull(), data: group({ fields: { label: text().default("welcome"), payload: json().$type<{ suffix: string }>() } }) }, retries: 5, agents: true, handler: async (input, ctx: JobCtx) => { let choose = yes; choose = no; if (visible(input.email) && !(await choose())) { await db.insert(audit).values({ note: input.payload.message + ":" + ctx.jobId + ":" + ctx.attempt + ":" + (input.data?.payload?.suffix ?? "") }); } } }) },
+  globals: { settings: global("settings", { title: text().default("Hello").optional() }, { agents: false }) },
+  jobs: { sendWelcome: job({ input: { email: email(), payload: json<{ message: string }>(), data: group({ label: text().default("welcome").optional(), payload: json<{ suffix: string }>().optional() }).optional() }, retries: 5, agents: true, handler: async (input, ctx: JobCtx) => { let choose = yes; choose = no; if (visible(input.email) && !(await choose())) { await db.insert(audit).values({ note: input.payload.message + ":" + ctx.jobId + ":" + ctx.attempt + ":" + (input.data?.payload?.suffix ?? "") }); } } }) },
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted", "*"] }, { url: "https://example.com/hook", secret: env("OTHER_SECRET"), events: ["members.created"] }],
   actions: {
-    inbound: action({ input: { allow: boolean().notNull().default(true) }, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: (input, ctx): boolean => { if (ctx.user === null) return false; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return allowed(input.allow) && !allowed(null); } } }),
+    inbound: action({ input: { allow: boolean().default(true) }, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: (input, ctx): boolean => { if (ctx.user === null) return false; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return allowed(input.allow) && !allowed(null); } } }),
     widened: action({ input: {}, handler: () => {
       const values = ["a"]; values.unshift("b");
       let choice = values.length > 0 ? "a" : "b"; choice = "c";

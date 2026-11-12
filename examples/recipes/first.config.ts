@@ -2,7 +2,7 @@ import { collection, defineConfig, text } from "first";
 import { seoFields } from "./first/seo";
 
 const articles = collection({
-  title: text().notNull(),
+  title: text(),
   ...seoFields(),
 }, { title: "title" });
 

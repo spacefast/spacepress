@@ -1,4 +1,4 @@
-import { action, db, defineConfig, HttpError, integer, job, real, timestamp } from "first";
+import { action, db, defineConfig, HttpError, integer, job, timestamp, number } from "first";
 import { collections, tables, relations, feedings, stock, shoppingList } from "./first/lib/schema";
 import { DAY_MS, WINDOW_DAYS, ownerId, ownFood, ownPet, projection, queueStockCheck, usableStock } from "./first/lib/pantry";
 
@@ -65,7 +65,7 @@ export default defineConfig({
   },
   jobs: {
     checkLowStock: job({
-      input: { foodId: integer().notNull(), ownerId: integer().notNull() },
+      input: { foodId: integer(), ownerId: integer() },
       agents: false,
       retries: 3,
       async handler(input) {
@@ -83,8 +83,8 @@ export default defineConfig({
       access: "subscriber",
       idempotent: true,
       input: {
-        petId: integer().notNull(), foodId: integer().notNull(),
-        grams: real().notNull().min(0.01), fedAt: timestamp(),
+        petId: integer(), foodId: integer(),
+        grams: number().min(0.01), fedAt: timestamp().optional(),
       },
       async handler(input, ctx) {
         const owner = ownerId(ctx);
@@ -119,12 +119,12 @@ export default defineConfig({
     }),
     runsOutOn: action({
       access: "subscriber",
-      input: { foodId: integer().notNull() },
+      input: { foodId: integer() },
       async handler(input, ctx) { return await projection(input.foodId, ownerId(ctx)); },
     }),
     costPerMonth: action({
       access: "subscriber",
-      input: { petId: integer().notNull() },
+      input: { petId: integer() },
       async handler(input, ctx) {
         const owner = ownerId(ctx);
         await ownPet(input.petId, owner);

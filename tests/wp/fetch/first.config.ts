@@ -5,7 +5,7 @@ export default defineConfig({
   name: "fetch-lane",
   actions: {
     get: action({
-      input: { url: text().notNull() },
+      input: { url: text() },
       access: "anyone",
       async handler(input) {
         const response = await fetch(input.url);
@@ -23,7 +23,7 @@ export default defineConfig({
       },
     }),
     manual: action({
-      input: { url: text().notNull(), mode: text().notNull() },
+      input: { url: text(), mode: text() },
       access: "anyone",
       async handler(input) {
         const response = await fetch(input.url, { redirect: input.mode === "manual" ? "manual" : "error" });
@@ -31,7 +31,7 @@ export default defineConfig({
       },
     }),
     form: action({
-      input: { url: text().notNull() },
+      input: { url: text() },
       access: "anyone",
       async handler(input) {
         const response = await fetch(input.url, { method: "POST", headers: [["x-pair", "1"]], body: new URLSearchParams({ q: "a b" }) });
@@ -39,7 +39,7 @@ export default defineConfig({
       },
     }),
     post: action({
-      input: { url: text().notNull(), payload: text().notNull() },
+      input: { url: text(), payload: text() },
       access: "anyone",
       async handler(input) {
         const response = await fetch(input.url, {

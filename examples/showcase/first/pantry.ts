@@ -8,16 +8,14 @@ import {
   table,
   text,
   type CollectionHooks,
-  type InferSelectModel,
+  type InferSelectModel, select,
 } from "first";
 import { stories } from "./stories";
 
 export const locations = table(
   {
-    name: text().notNull().min(1).max(80),
-    kind: text({ enum: ["fridge", "freezer", "pantry"] })
-      .notNull()
-      .default("pantry"),
+    name: text().min(1).max(80),
+    kind: select(["fridge", "freezer", "pantry"]).default("pantry"),
   },
   {
     label: "Locations",
@@ -32,20 +30,18 @@ export const locations = table(
 
 export const items = table(
   {
-    name: text().notNull().min(1).max(120),
-    brand: text().max(80),
-    notes: text({ multiline: true }).max(2000),
-    opened: boolean().notNull().default(false),
-    storyId: integer().references(() => stories.id, { onDelete: "set null" }),
-    quantity: integer().notNull().min(0).default(1),
-    unit: text({ enum: ["pcs", "g", "ml"] })
-      .notNull()
-      .default("pcs"),
-    lowStockAt: integer().notNull().min(0).default(1),
-    expiresOn: date(),
+    name: text().min(1).max(120),
+    brand: text().max(80).optional(),
+    notes: text({ multiline: true }).max(2000).optional(),
+    opened: boolean().default(false),
+    storyId: integer().references(() => stories.id, { onDelete: "set null" }).optional(),
+    quantity: integer().min(0).default(1),
+    unit: select(["pcs", "g", "ml"]).default("pcs"),
+    lowStockAt: integer().min(0).default(1),
+    expiresOn: date().optional(),
     locationId: integer().references(() => locations.id, {
       onDelete: "set null",
-    }),
+    }).optional(),
   },
   {
     label: "Pantry items",
@@ -60,12 +56,9 @@ export const items = table(
 
 export const shoppingList = table(
   {
-    itemId: integer()
-      .notNull()
-      .unique()
-      .references(() => items.id, { onDelete: "cascade" }),
-    name: text().notNull().min(1).max(120),
-    done: boolean().notNull().default(false),
+    itemId: integer().unique().references(() => items.id, { onDelete: "cascade" }),
+    name: text().min(1).max(120),
+    done: boolean().default(false),
   },
   {
     label: "Shopping list",
@@ -149,8 +142,8 @@ async function changeStock(itemId: number, amount: number, consuming: boolean) {
 export const consume = action({
   access: "editor",
   input: {
-    itemId: integer().notNull().min(1),
-    amount: integer().notNull().min(1).default(1),
+    itemId: integer().min(1),
+    amount: integer().min(1).default(1),
   },
   handler: async ({ itemId, amount }) =>
     await changeStock(itemId, amount, true),
@@ -159,8 +152,8 @@ export const consume = action({
 export const restock = action({
   access: "editor",
   input: {
-    itemId: integer().notNull().min(1),
-    amount: integer().notNull().min(1),
+    itemId: integer().min(1),
+    amount: integer().min(1),
   },
   handler: async ({ itemId, amount }) =>
     await changeStock(itemId, amount, false),

@@ -2,34 +2,34 @@ import {
   text, integer, boolean, date, timestamp, json,
   defineRelations, defineConfig, action, job, jobs, db, HttpError,
   type InferSelectModel,
-  table,
+  table, select,
 } from "first";
 import { UNITS, LOW_STOCK, timestamps, slugify } from "./first/lib/fields";
 
 // Composition is plain TypeScript: shared field sets, factories, spreads.
-const named = <T extends object>(extra: T) => ({ name: text().notNull(), ...extra });
+const named = <T extends object>(extra: T) => ({ name: text(), ...extra });
 
 export const locations = table(named({
-  kind: text({ enum: ["fridge", "freezer", "pantry"] }).notNull().default("pantry"),
+  kind: select(["fridge", "freezer", "pantry"]).default("pantry"),
 }));
 
 export const items = table(named({
-  slug: text().unique().notNull().max(191),
-  quantity: integer().notNull().default(1),
-  unit: text({ enum: UNITS }).notNull().default("pcs"),
-  lowStockAt: integer().notNull().default(LOW_STOCK),
-  expiresOn: date(),
-  opened: boolean().notNull().default(false),
-  locationId: integer().references(() => locations.id, { onDelete: "set null" }),
-  tags: json().$type<string[]>().notNull().$default(() => []),
+  slug: text().unique().max(191),
+  quantity: integer().default(1),
+  unit: select(UNITS).default("pcs"),
+  lowStockAt: integer().default(LOW_STOCK),
+  expiresOn: date().optional(),
+  opened: boolean().default(false),
+  locationId: integer().references(() => locations.id, { onDelete: "set null" }).optional(),
+  tags: json<string[]>().$default(() => []),
   ...timestamps,
 }));
 
 export const shoppingList = table({
-  itemId: integer().references(() => items.id, { onDelete: "cascade" }).unique(),
-  name: text().notNull(),
-  done: boolean().notNull().default(false),
-  notifiedAt: timestamp(),                // set by the notifyLowStock job
+  itemId: integer().references(() => items.id, { onDelete: "cascade" }).unique().optional(),
+  name: text(),
+  done: boolean().default(false),
+  notifiedAt: timestamp().optional(),                // set by the notifyLowStock job
   ...timestamps,
 });
 
@@ -64,7 +64,7 @@ export default defineConfig({
   jobs: {
     // A real pantry would push a notification here; this one stamps the list entry.
     notifyLowStock: job({
-      input: { itemId: integer().notNull() },
+      input: { itemId: integer() },
       retries: 2,
       handler: async ({ itemId }) => {
         await db.update(shoppingList).set({ notifiedAt: new Date().toISOString() }).where({ itemId });
@@ -85,7 +85,7 @@ export default defineConfig({
   },
   actions: {
     consume: action({
-      input: { itemId: integer().notNull(), amount: integer().notNull().default(1) },
+      input: { itemId: integer(), amount: integer().default(1) },
       async handler({ itemId, amount }) {
         const item = await db.query.items.findFirst({ where: { id: itemId } });
         if (!item) throw new HttpError(404, "not_found", `No item ${itemId}`);
@@ -99,7 +99,7 @@ export default defineConfig({
       },
     }),
     expiringSoon: action({
-      input: { days: integer().notNull().default(3) },
+      input: { days: integer().default(3) },
       async handler({ days }) {
         const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
         const soon = await db.query.items.findMany({

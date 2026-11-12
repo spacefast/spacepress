@@ -1363,7 +1363,7 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
           mid:endpoint({method:"GET",path:"/a/:splat/b"},()=>text("")),
           admin:endpoint({method:"GET",path:"/wp-admin/x"},()=>text("")),
           root:endpoint({method:"GET",path:"/"},()=>text("")),
-          hit:endpoint({method:"GET",path:"/hit",readOnly:false},()=>text("")),
+          hit:endpoint({method:"GET",path:"/hit",readOnly:false},(ctx)=>text(String(ctx.auth.isSignedIn))),
           bytes:endpoint({method:"POST",path:"/bytes"},async (_ctx, req)=>text(String((await req.bytes()).length))),
           one:endpoint({method:"GET",path:"/a/:x"},()=>text("")),
           two:endpoint({method:"GET",path:"/a/:y"},()=>text(""))
@@ -1390,9 +1390,10 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
             "/endpoints/mid/path",
             "/endpoints/admin/path",
             "/endpoints/root/path",
-            "/endpoints/hit",
             "/endpoints/bytes/request/bytes",
-            "/endpoints/two"
+            "/endpoints/two",
+            // Decided once every helper is known: this writing GET reads the visitor.
+            "/endpoints/hit"
         ]
     );
 }
@@ -2060,7 +2061,7 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
         [
             "/sockets/chat",
             "/endpoints/GET ~1wp-admin~1x/path",
-            "/endpoints/GET ~1hit",
+            // A writing GET is decided by its body (does it read the visitor?), which needs the source.
             "/pages/0",
             "/source"
         ]
@@ -2677,6 +2678,52 @@ console.log(JSON.stringify({ failed, kept, retried, guests, me: renewedMe, auth:
     assert_eq!(ran["me"], serde_json::json!(["Bearer a2"]), "{ran:#}");
     assert_eq!(ran["auth"], "7", "/me renewed instead of reporting a guest: {ran:#}");
     assert_eq!(ran["session"]["refreshToken"], "r2");
+}
+
+/// A writing GET endpoint that never reads the visitor converts to a GET route that writes, as 0.8
+/// ran it: a cross-site request can do no more than an anonymous one. One that reads `ctx.auth`
+/// stays refused (`endpoints_become_routes_and_unroutable_ones_refuse`).
+#[test]
+fn a_writing_get_that_never_reads_the_visitor_becomes_a_writing_get_route() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("hits");
+    let (ok, report) = migrate(&fixture("hits"), &out, &[]);
+    assert!(ok, "{report:#}");
+    assert!(
+        report["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["pointer"] == "/endpoints/seen" && e["outcome"] == "review"),
+        "{report:#}"
+    );
+    build(&out);
+    let run = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(out.join("first/dist/wp-content"))
+        .arg(
+            r#"$get = fn ($tag) => $app->serveRoute($app->matchRoute("GET", "/api/seen/$tag"), "GET", "/api/seen/$tag", "", "", [], null, "https://hits.example/api/seen/$tag");
+               $first = $get("a"); $get("a"); $get("b");
+               global $wpdb;
+               $table = $wpdb->get_var("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%hits%'");
+               $rows = $wpdb->get_col("SELECT tag FROM `$table` ORDER BY id");
+               echo json_encode(["status" => $first[0], "body" => $first[2], "rows" => $rows]), "\n";"#,
+        )
+        .arg("null")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    let got: Value = serde_json::from_str(stdout.lines().next_back().unwrap_or(""))
+        .unwrap_or_else(|_| panic!("{stdout}{}", String::from_utf8_lossy(&run.stderr)));
+    assert_eq!(
+        (got["status"].as_i64(), got["body"].as_str()),
+        (Some(200), Some("seen")),
+        "{got}"
+    );
+    // Every GET wrote its row, as 0.8 did.
+    assert_eq!(got["rows"], serde_json::json!(["a", "a", "b"]), "{got}");
 }
 
 /// A finalize payload that kept its `zero.css` bytes (older 0.8 publishes did) supplies the

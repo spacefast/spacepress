@@ -78,3 +78,65 @@ test("the playground recompiles edited sources and replaces invalid output with 
   await expect(generated).toHaveValue(/'postType' => 'first_notes'/);
   await expect(page.locator("#example-description")).toContainText("Pages written in TSX");
 });
+
+/** The blueprint a Playground URL carries in its fragment. */
+const blueprintOf = (src: string) => JSON.parse(decodeURIComponent(new URL(src).hash.slice(1))) as {
+  landingPage: string;
+  steps: { step: string; code?: string; pluginData?: { resource: string; url?: string; name?: string; files?: Record<string, unknown> } }[];
+};
+
+test("Run in WordPress runs the config in the editor", async ({ page }) => {
+  // Playground itself isn't loaded: the frame gets an empty page, and the test reads its address.
+  await page.route("https://playground.wordpress.net/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html>" }));
+  await page.goto("./playground?example=pantry");
+  const status = page.locator("#compile-status");
+  const source = page.getByRole("textbox", { name: "Source code", exact: true });
+  const frame = page.locator("#wordpress-frame");
+  const run = page.getByRole("button", { name: "Run in WordPress" });
+  await expect(status).toHaveAttribute("data-state", "ok", { timeout: 30_000 });
+
+  // As committed: the app plugin's schema has no `note`, and the example's sample data loads.
+  await run.click();
+  await expect(frame).toBeVisible();
+  const committed = blueprintOf((await frame.getAttribute("src"))!);
+  const app = (print: typeof committed) => print.steps.find((step) => step.pluginData?.name === "first-app-pantry")!.pluginData!;
+  expect(JSON.stringify(app(committed).files)).not.toContain("'note'");
+  expect(committed.steps.some((step) => step.step === "runPHP")).toBe(true);
+
+  // Edited: a new text field on items reaches the app plugin's schema and a new migration.
+  await source.fill((await source.inputValue()).replace("  opened: boolean().notNull().default(false),", "  opened: boolean().notNull().default(false),\n  note: text(),"));
+  await expect(status).toHaveAttribute("data-state", "ok");
+  const before = (await frame.getAttribute("src"))!;
+  await run.click();
+  await expect(frame).not.toHaveAttribute("src", before);
+  const edited = blueprintOf((await frame.getAttribute("src"))!);
+  const plugin = app(edited);
+  expect(plugin.resource).toBe("literal:directory");
+  const appFiles = plugin.files as { first: { app: { "schema.php": string; migrations: Record<string, string> } } };
+  expect(appFiles.first.app["schema.php"]).toContain("'note'");
+  expect(Object.keys(appFiles.first.app.migrations)).toEqual(["0001_init.sql", "0002_update.sql", "0003_update.sql"]);
+  expect(appFiles.first.app.migrations["0003_update.sql"]).toMatch(/note/);
+  // The schema changed, so the seed written for the committed schema stays out.
+  expect(edited.steps.some((step) => step.step === "runPHP")).toBe(false);
+  // First's shared plugins come from this site; the order is the activation order.
+  const installs = edited.steps.filter((step) => step.step === "installPlugin").map((step) => step.pluginData!.url ?? step.pluginData!.name);
+  expect(installs.slice(-3)).toEqual([expect.stringMatching(/\/files\/plugins\/first-runtime\.zip$/), expect.stringMatching(/\/files\/plugins\/first-identity\.zip$/), "first-app-pantry"]);
+  await expect(page.locator("#wordpress-note")).toContainText("sample data isn't loaded");
+});
+
+test("Run in WordPress says so when an edited config needs a plugin this WordPress doesn't install", async ({ page }) => {
+  await page.route("https://playground.wordpress.net/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html>" }));
+  await page.goto("./playground?example=pantry");
+  const status = page.locator("#compile-status");
+  const source = page.getByRole("textbox", { name: "Source code", exact: true });
+  await expect(status).toHaveAttribute("data-state", "ok", { timeout: 30_000 });
+  await expect(page.getByRole("combobox", { name: "Example", exact: true })).toHaveValue("pantry");
+  // Pantry's lock has no hello-dolly, so the published WordPress can't install it.
+  await source.fill((await source.inputValue()).replace("export default defineConfig({\n", 'export default defineConfig({\n  plugins: { "hello-dolly": "1.7.2" },\n'));
+  await expect(status).toHaveAttribute("data-state", "ok");
+  await page.getByRole("button", { name: "Run in WordPress" }).click();
+  await expect(page.locator("#wordpress-note")).toContainText("hello-dolly 1.7.2");
+  await expect(page.locator("#wordpress-note")).toContainText("can't run in WordPress here");
+  await expect(page.locator("#wordpress-frame")).toBeHidden();
+  expect(await page.locator("#wordpress-frame").getAttribute("src")).toBeNull();
+});

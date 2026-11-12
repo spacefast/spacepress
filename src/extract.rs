@@ -463,7 +463,13 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     // Relations: each `ref()` field and its reverse list; a 0.3.0 capture's `defineRelations`.
     ref_relations(&mut out)?;
     if let Some(rel) = cfg_map.get("relations") {
-        relations(rel, ev, &mut out, span_of(ev, config, "relations", config_span))?;
+        let span = span_of(ev, config, "relations", config_span);
+        if !ev.legacy {
+            return Err(Diag::new(span, "`relations` is gone: a reference is a field").help(
+                "delete `relations` and declare `location: ref(locations)` on the referencing kind; `with: { location: true }` loads the row, and the target gets the reverse list named after the referencing kind",
+            ));
+        }
+        relations(rel, ev, &mut out, span)?;
     }
 
     // Globals

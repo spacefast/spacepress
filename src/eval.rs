@@ -556,7 +556,7 @@ pub struct Evaluator<'p> {
     /// module. `this.<key>` is typed `T`, as TypeScript types the literal.
     pub method_home_fields: HashMap<(usize, String), (TyAnn, usize)>,
     /// The 0.3.0 field reading for pre-rename captures (`Fs::legacy_fields`).
-    legacy: bool,
+    pub(crate) legacy: bool,
 }
 
 pub fn ptr_of(v: &Value) -> Option<usize> {

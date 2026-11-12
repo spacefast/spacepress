@@ -169,6 +169,11 @@ fn replaced_field_forms_name_their_replacement() {
             "first.config.ts:3:26",
         ),
         (
+            "reject-relations-key",
+            "`relations` is gone: a reference is a field",
+            "first.config.ts:3:66",
+        ),
+        (
             "reject-references",
             "`.references()` is gone: a reference is a `ref()` field",
             "first.config.ts:3:40",

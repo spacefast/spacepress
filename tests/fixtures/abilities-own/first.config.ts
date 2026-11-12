@@ -5,12 +5,12 @@ import { action, collection, defineConfig, global, integer, job, media, text, us
 // collection's create (with its `password` input), sync, an action with optional input, a global
 // and an agent-visible job. tests/compiler_contracts.rs compares them with Register::operations().
 const notes = collection({
-  title: text().notNull(),
-  body: text(),
-  cover: media({ accept: "image" }),
+  title: text(),
+  body: text().optional(),
+  cover: media({ accept: "image" }).optional(),
 }, { title: "title", revisions: true, sync: "content/notes/*.json" });
-const members = userProjection({ email: email().notNull().unique().max(191), name: text().notNull() }, {});
-const settings = global("settings", { tagline: text() });
+const members = userProjection({ email: email().unique().max(191), name: text() }, {});
+const settings = global("settings", { tagline: text().optional() });
 
 export default defineConfig({
   name: "own",
@@ -18,9 +18,9 @@ export default defineConfig({
   users: { members },
   globals: { settings },
   actions: {
-    greet: action({ input: { who: text().notNull(), times: integer() }, access: "anyone", handler: (i) => i.who }),
+    greet: action({ input: { who: text(), times: integer().optional() }, access: "anyone", handler: (i) => i.who }),
   },
   jobs: {
-    reindex: job({ input: { from: integer().notNull() }, agents: true, handler: async () => {} }),
+    reindex: job({ input: { from: integer() }, agents: true, handler: async () => {} }),
   },
 });

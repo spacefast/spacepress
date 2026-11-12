@@ -95,7 +95,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("field", &["file"], overload("options: object", arity(1, 1), None, None)),
     ("field", &["select"], overload("options: string[]", arity(1, 1), None, None)),
     ("field", &["group", "repeater", "blocks"], overload("fields: object", arity(1, 1), None, None)),
-    ("column", &["optional", "localized", "title", "content", "many", "unique", "defaultNow"], overload("no runtime arguments", arity(0, 0), None, None)),
+    ("column", &["optional", "localized", "many", "unique", "defaultNow"], overload("no runtime arguments", arity(0, 0), None, None)),
     ("column", &["access", "showIf", "ui", "min", "max", "pattern", "validate", "default", "$default", "$defaultFn", "$onUpdate", "$onUpdateFn", "was"], overload("one value or callback", arity(1, 1), None, None)),
     ("column", &["references"], overload("target: function, options?: object", arity(1, 2), None, None)),
     ("constructor", &["HttpError"], overload("runtime-only status: number, code: string, message: string, details?: object", None, arity(3, 4), None)),

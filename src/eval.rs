@@ -3709,8 +3709,6 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
         "ui" => c.ui = Some(arg(0)),
         "localized" => c.localized = true,
         "optional" => c.optional = true,
-        "title" => c.title = true,
-        "content" => c.content = true,
         "many" => match c.ty {
             ColType::Text if c.enum_values.is_some() => c.ty = ColType::Select,
             ColType::Media => c.ty = ColType::MediaList,
@@ -3869,8 +3867,6 @@ const MODIFIERS: &[&str] = &[
     "showIf",
     "ui",
     "localized",
-    "title",
-    "content",
     "was",
 ];
 
@@ -3918,8 +3914,6 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
         "references" => matches!(ty, T::Integer | T::Real),
         "default" | "$default" | "$defaultFn" => ty != T::Media,
         "defaultNow" => matches!(ty, T::Timestamp | T::Date),
-        "title" => ty == T::Text,
-        "content" => ty == T::RichText,
         _ => true,
     };
     if ok {
@@ -3932,8 +3926,6 @@ fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
         }
         ("default" | "$default" | "$defaultFn", T::Media) => "media columns start empty; set them on write".into(),
         ("defaultNow", _) => "use `.default(value)` with a literal".into(),
-        ("title", _) => "the title is a `text()` field".into(),
-        ("content", _) => "the body is a `richText()` field".into(),
         _ => "remove it".into(),
     };
     Some((format!("`.{m}()` isn't valid on {}", kind_phrase(ty)), fix))
@@ -3965,8 +3957,6 @@ impl ColBuilder {
             show_if: None,
             ui: None,
             localized: false,
-            title: false,
-            content: false,
             bucket: None,
             was: None,
             span,

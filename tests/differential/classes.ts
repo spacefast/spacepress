@@ -1,4 +1,4 @@
-import { table, id, defineConfig, action, db } from "first";
+import { table, defineConfig, action, db } from "first";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -88,4 +88,4 @@ const laneClasses = {
   classesBaseArgument: run(() => classAsBase(new ClassDouble("base argument"))),
 };
 
-export default defineConfig({ name: "class-tests", tables: { n: table({ id: id() }, { access: { read: () => ClassDatabase.allowed } }) }, actions: laneClasses });
+export default defineConfig({ name: "class-tests", tables: { n: table({  }, { access: { read: () => ClassDatabase.allowed } }) }, actions: laneClasses });

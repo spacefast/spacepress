@@ -2,7 +2,7 @@
 // which also works when the kind's module runs after this one.
 import { action, integer, db } from "first";
 import { notes } from "first:db";
-export const like = action({ input: { id: integer().notNull() }, access: "anyone", async handler({ id }) {
+export const like = action({ input: { id: integer() }, access: "anyone", async handler({ id }) {
   const row = await db.query.notes.findFirst({ where: { id } });
   const likes = (row?.likes ?? 0) + 1;
   await db.update(notes).set({ likes }).where({ id });

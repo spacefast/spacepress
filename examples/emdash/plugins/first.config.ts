@@ -1,28 +1,28 @@
 import {
   action, boolean, collection, db, defineConfig, group, integer,
-  json, repeater, richText, table, text,
+  json, repeater, richText, table, text, select,
 } from "first";
 
 // The four field-kit data shapes become native Secure Custom Fields controls.
 const entries = collection({
-  title: text().notNull().min(1).max(160),
-  body: richText(),
-  profile: group({ fields: { name: text(), featured: boolean() } }),
-  ingredients: repeater({ fields: { name: text().notNull(), quantity: integer().min(0) } }),
-  grid: repeater({ fields: { monday: text(), tuesday: text() } }),
-  tags: json(),
-  palette: text().pattern(/^#[0-9a-fA-F]{6}$/).default("#375c48"),
-  embeds: json(),
+  title: text().min(1).max(160),
+  body: richText().optional(),
+  profile: group({ name: text().optional(), featured: boolean().optional() }).optional(),
+  ingredients: repeater({ name: text(), quantity: integer().min(0).optional() }).optional(),
+  grid: repeater({ monday: text().optional().optional(), tuesday: text() }).optional(),
+  tags: json().optional(),
+  palette: text().pattern(/^#[0-9a-fA-F]{6}$/).default("#375c48").optional(),
+  embeds: json().optional(),
 }, {
   title: "title", content: "body", label: "Plugin stories", comments: true,
   access: { read: "anyone", create: "editor", update: "editor", delete: "editor" },
 });
 
 const records = table({
-  externalId: text().notNull().max(120).unique(),
-  state: text({ enum: ["pending", "processing", "done"] }).notNull().default("pending"),
-  score: integer().notNull().default(0),
-  payload: json(),
+  externalId: text().max(120).unique(),
+  state: select(["pending", "processing", "done"]).default("pending"),
+  score: integer().default(0),
+  payload: json().optional(),
 }, { access: { read: "editor", create: "editor", update: "editor", delete: "editor" } });
 
 export default defineConfig({
@@ -35,11 +35,11 @@ export default defineConfig({
   },
   actions: {
     echo: action({
-      access: "editor", input: { message: text().notNull().min(1).max(200) },
+      access: "editor", input: { message: text().min(1).max(200) },
       handler: ({ message }) => ({ message, length: message.length }),
     }),
     advance: action({
-      access: "editor", input: { id: integer().notNull() },
+      access: "editor", input: { id: integer() },
       handler: async ({ id }) => {
         await db.update(records).set({ state: "processing" }).where({ id });
         return await db.query.records.findFirst({ where: { id } });

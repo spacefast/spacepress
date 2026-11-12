@@ -237,9 +237,6 @@ pub struct ColBuilder {
     pub show_if: Option<Value>,
     pub ui: Option<Value>,
     pub localized: bool,
-    /// `.title()` / `.content()`: this field is the kind's title or body.
-    pub title: bool,
-    pub content: bool,
     pub bucket: Option<String>,
     /// `.was("old")`: the stored name this field had before a rename.
     pub was: Option<String>,

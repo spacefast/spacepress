@@ -117,8 +117,16 @@ pub static RULES: &[Rule] = &[
         example: ("/sf.jsonc/fallback", "the serving settings are not carried over: x"),
     },
     Rule {
+        code: "Z08_OMITTED_CRON",
+        feature: "sf.jsonc cron whose path the candidate doesn't serve with GET",
+        v2: "the same sf.jsonc cron, calling a GET route or static file at the same path",
+        fix: "Point the cron at a GET endpoint or static file the app keeps (the host calls a cron's path with GET), or remove the cron.",
+        test: |_, r| r.starts_with(omitted::CRONS),
+        example: ("/sf.jsonc/crons/0", "the cron is not carried over: x"),
+    },
+    Rule {
         code: "Z08_OMITTED_CONFIG",
-        feature: "0.8 Space setting (an sf.jsonc key such as theme, meta, cache, firewall, crons or sell, or theme.json)",
+        feature: "0.8 Space setting (an sf.jsonc key such as theme, meta, cache, firewall or sell, or theme.json)",
         v2: "first.config.ts, the pages themselves or the Space's own settings",
         fix: "Recreate what the setting did in v2, or remove it if the Space doesn't need it.",
         test: |_, r| r.starts_with(omitted::CONFIG),
@@ -384,11 +392,14 @@ pub static RULES: &[Rule] = &[
     },
     Rule {
         code: "Z08_ENDPOINT_WRITING_GET",
-        feature: "writing GET endpoint",
+        feature: "writing GET endpoint that reads the visitor",
         v2: "a POST route",
-        fix: "Make the endpoint POST (or another unsafe method) and update its callers.",
+        fix: "Make the endpoint POST (or another unsafe method) and update its callers, or stop reading ctx.auth in it.",
         test: |_, r| r.contains("writing GET"),
-        example: ("/endpoints/hit", "a writing GET endpoint needs a manual port"),
+        example: (
+            "/endpoints/hit",
+            "a writing GET endpoint that reads the visitor needs a manual port",
+        ),
     },
     Rule {
         code: "Z08_ENDPOINT_RESERVED_PATH",

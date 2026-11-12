@@ -26,6 +26,7 @@ pub(super) const PUBLIC: &str = "public/ is not carried over";
 pub(super) const SYMLINK: &str = "the symbolic link is not carried over";
 pub(super) const DENIED: &str = "the credential file is not carried over";
 pub(super) const CONFIG: &str = "the setting is not carried over";
+pub(super) const CRONS: &str = "the cron is not carried over";
 pub(super) const UNVERIFIED: &str = "the unverified static file is not carried over";
 pub(super) const UNVERIFIED_CONFIG: &str = "the unverified config is not carried over";
 
@@ -136,8 +137,13 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 ///
 /// Every other key is refused. Path rules don't survive the move, because the app's data URLs
 /// move from 0.8's `/__zero/*` to First's `/__first/api/v1/*`: so `access` path patterns, `cache`
-/// and `firewall` are refused, as are `crons` (no `CRON_SECRET` on v2) and `sell` (its product file
-/// and paid assets would be swept into public/).
+/// and `firewall` are refused, as is `sell` (its product file and paid assets would be swept into
+/// public/).
+///
+/// `crons` is carried when every entry still names something the candidate answers at the same
+/// path with GET (the Spacefast host calls a cron's path with GET): a converted GET endpoint, or a
+/// carried static file. The host keeps scheduling it and adds its `x-spacefast-cron` and
+/// `Authorization: Bearer <CRON_SECRET>` headers, which a v2 route reads from `req.headers`.
 pub(super) const PLATFORM_KEYS: &[&str] = &[
     "redirects",
     "cleanUrls",
@@ -147,16 +153,38 @@ pub(super) const PLATFORM_KEYS: &[&str] = &[
     "placement",
     "system",
     "access",
+    "crons",
 ];
+
+/// Where a cron the candidate carries can point: the GET routes it serves at their 0.8 paths, and
+/// the static files it carries (`/<name>`).
+pub(super) struct Targets<'a> {
+    pub get_paths: &'a BTreeSet<String>,
+    pub files: BTreeSet<String>,
+}
+
+impl Targets<'_> {
+    /// The first cron entry whose path the candidate doesn't answer with GET, by index.
+    pub(super) fn unanswered(&self, crons: &serde_json::Value) -> Option<(usize, String)> {
+        let Some(entries) = crons.as_array() else {
+            return Some((0, String::new()));
+        };
+        entries.iter().enumerate().find_map(|(i, cron)| {
+            let path = cron.get("path").and_then(serde_json::Value::as_str).unwrap_or("");
+            (!(self.get_paths.contains(path) || self.files.contains(path))).then(|| (i, path.to_string()))
+        })
+    }
+}
 
 /// Whether the candidate carries `key` with `value`: every platform key, `access` only as
 /// `"public"`, and `redirects` only when no rule can reach a URL the v2 app answers that 0.8 kept
 /// out of the redirect stage. `served` holds the first segments of every file the candidate
 /// writes under public/ (see `redirect_reaches_app`).
-pub(super) fn carries(key: &str, value: &serde_json::Value, served: &BTreeSet<String>) -> bool {
+pub(super) fn carries(key: &str, value: &serde_json::Value, served: &BTreeSet<String>, targets: &Targets) -> bool {
     PLATFORM_KEYS.contains(&key)
         && match key {
             "access" => value.as_str() == Some("public"),
+            "crons" => targets.unanswered(value).is_none(),
             "redirects" => value
                 .as_array()
                 .is_some_and(|rules| rules.iter().all(|r| !redirect_reaches_app(r, served))),
@@ -474,6 +502,7 @@ pub(super) fn sweep(
     client_app_converted: bool,
     declares_posts: bool,
     client_public: &[String],
+    get_paths: &BTreeSet<String>,
     errors: &mut Vec<Failure>,
 ) -> Omitted {
     let mut out = Omitted {
@@ -628,7 +657,11 @@ pub(super) fn sweep(
             if NO_OP_KEYS.contains(&key.as_str()) {
                 continue;
             }
-            if carries(key, value, &served) {
+            let targets = Targets {
+                get_paths,
+                files: out.carried.iter().map(|name| format!("/{name}")).collect(),
+            };
+            if carries(key, value, &served, &targets) {
                 out.kept.insert(key.clone(), value.clone());
                 continue;
             }
@@ -650,6 +683,20 @@ pub(super) fn sweep(
                     )
                 })
                 .unwrap_or_default();
+            // Name the cron whose path the candidate doesn't answer.
+            if key == "crons" {
+                let (index, path) = targets.unanswered(value).unwrap_or_default();
+                errors.push(
+                    fail(
+                        &pointer(&pointer(&format!("/{config_file}"), key), &index.to_string()),
+                        format!(
+                            "{CRONS}: `{path}` is not a GET endpoint or static file the candidate serves at that path"
+                        ),
+                    )
+                    .located(config_file.to_string(), line, column),
+                );
+                continue;
+            }
             errors.push(
                 fail(
                     &pointer(&format!("/{config_file}"), key),

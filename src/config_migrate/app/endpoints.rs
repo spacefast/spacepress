@@ -49,6 +49,11 @@ pub(super) struct Route {
     pub prefix: Option<String>,
 }
 
+/// Why a writing GET that reads the visitor is refused: v2 authenticates GET routes by cookie
+/// without a nonce. One that never reads the visitor converts (`transform::app` decides once its
+/// helpers are known): a cross-site link can then do only what an anonymous request already can.
+pub(super) const WRITING_GET: &str = "a writing GET endpoint that reads the visitor needs a manual port: v2 authenticates GET routes by cookie without a nonce, so a cross-site link could write as the visitor";
+
 /// Checks the literal route options; returns the v2 method, path and write mode.
 pub(super) fn route(method: &str, path: &str, read_only: Option<bool>, at: &str) -> Result<Route, Failure> {
     let method = method.to_ascii_uppercase();
@@ -111,12 +116,6 @@ pub(super) fn route(method: &str, path: &str, read_only: Option<bool>, at: &str)
         Some(r) => !r,
         None => method != "GET",
     };
-    if writes && method == "GET" {
-        return Err(fail(
-            at,
-            "a writing GET endpoint needs a manual port: v2 authenticates GET routes by cookie without a nonce, so a cross-site link could write as the visitor",
-        ));
-    }
     let prefix =
         (v2.last().map(String::as_str) == Some("*splat")).then(|| format!("/{}", v2[..v2.len() - 1].join("/")));
     Ok(Route {

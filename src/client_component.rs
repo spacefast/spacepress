@@ -38,8 +38,8 @@ pub enum Binding {
     Action,
     /// A `useRef()`: the element it is attached to.
     Ref,
-    /// A server action the file imports: called through `fetch`.
-    ServerAction,
+    /// A server action the file imports (its registered name): called through `fetch`.
+    ServerAction(String),
     /// `sharedState` exported from this module: the namespace's global `state`.
     Shared,
 }
@@ -123,7 +123,7 @@ pub fn analyse(
     };
     for (local, name) in imported {
         if server_actions.contains(&name) {
-            a.bindings.insert(local, Binding::ServerAction);
+            a.bindings.insert(local, Binding::ServerAction(name));
         }
     }
     // Module-level shared state.
@@ -138,7 +138,11 @@ pub fn analyse(
             && hook(callee, &hooks) == Some("sharedState")
         {
             let [ArrEl::Item(obj)] = args.as_slice() else {
-                return Err(refuse(init.span, "`sharedState` takes one object", "write `sharedState({ items: [] })`"));
+                return Err(refuse(
+                    init.span,
+                    "`sharedState` takes one object",
+                    "write `sharedState({ items: [] })`",
+                ));
             };
             a.shared.push((name.clone(), obj.clone()));
             a.bindings.insert(name.clone(), Binding::Shared);
@@ -154,11 +158,25 @@ pub fn analyse(
                         Pat::Id(n, _) => n.clone(),
                         Pat::Default(inner, _) => match &**inner {
                             Pat::Id(n, _) => n.clone(),
-                            _ => return Err(refuse(p.span, "nested props patterns aren't supported in client components", "destructure the top-level props only")),
+                            _ => {
+                                return Err(refuse(
+                                    p.span,
+                                    "nested props patterns aren't supported in client components",
+                                    "destructure the top-level props only",
+                                ));
+                            }
                         },
-                        _ => return Err(refuse(p.span, "nested props patterns aren't supported in client components", "destructure the top-level props only")),
+                        _ => {
+                            return Err(refuse(
+                                p.span,
+                                "nested props patterns aren't supported in client components",
+                                "destructure the top-level props only",
+                            ));
+                        }
                     };
-                    a.props.push(key.clone());
+                    // The context field is the local name the component's code reads.
+                    let _ = key;
+                    a.props.push(local.clone());
                     a.bindings.insert(local, Binding::Prop);
                 }
             }
@@ -170,64 +188,126 @@ pub fn analyse(
                 ));
             }
         },
-        [_, second, ..] => return Err(refuse(second.span, "a component takes one props object", "destructure every prop from the first parameter")),
+        [_, second, ..] => {
+            return Err(refuse(
+                second.span,
+                "a component takes one props object",
+                "destructure every prop from the first parameter",
+            ));
+        }
     }
     let FnBody::Block(body) = &f.body else {
-        return Err(refuse(f.span, "a client component needs a body with `return`", "write `{ const [n, setN] = useState(0); return <button>…</button>; }`"));
+        return Err(refuse(
+            f.span,
+            "a client component needs a body with `return`",
+            "write `{ const [n, setN] = useState(0); return <button>…</button>; }`",
+        ));
     };
     let mut returned = false;
     let mut n = 0;
     for stmt in body {
         match stmt {
-            Stmt::Decl { pat, init: Some(init), kind, span, .. } => {
+            Stmt::Decl {
+                pat,
+                init: Some(init),
+                kind,
+                span,
+                ..
+            } => {
                 if let ExprKind::Call { callee, args, .. } = &init.kind
                     && let Some(h) = hook(callee, &hooks)
                 {
                     match h {
                         "useState" => {
                             let Pat::Arr { elems, rest: None, .. } = pat else {
-                                return Err(refuse(*span, "`useState` returns a pair", "write `const [count, setCount] = useState(0)`"));
+                                return Err(refuse(
+                                    *span,
+                                    "`useState` returns a pair",
+                                    "write `const [count, setCount] = useState(0)`",
+                                ));
                             };
                             let name = match elems.first() {
                                 Some(Some(Pat::Id(n, _))) => n.clone(),
-                                _ => return Err(refuse(*span, "`useState` needs a value name", "write `const [count, setCount] = useState(0)`")),
+                                _ => {
+                                    return Err(refuse(
+                                        *span,
+                                        "`useState` needs a value name",
+                                        "write `const [count, setCount] = useState(0)`",
+                                    ));
+                                }
                             };
                             let setter = match elems.get(1) {
                                 Some(Some(Pat::Id(s, _))) => Some(s.clone()),
                                 None | Some(None) => None,
-                                _ => return Err(refuse(*span, "the setter is a plain name", "write `const [count, setCount] = useState(0)`")),
+                                _ => {
+                                    return Err(refuse(
+                                        *span,
+                                        "the setter is a plain name",
+                                        "write `const [count, setCount] = useState(0)`",
+                                    ));
+                                }
                             };
                             let initial = match args.as_slice() {
                                 [ArrEl::Item(e)] => e.clone(),
-                                [] => Expr { kind: ExprKind::Undefined, span: init.span },
-                                _ => return Err(refuse(init.span, "`useState` takes one initial value", "pass the value, not a function")),
+                                [] => Expr {
+                                    kind: ExprKind::Undefined,
+                                    span: init.span,
+                                },
+                                _ => {
+                                    return Err(refuse(
+                                        init.span,
+                                        "`useState` takes one initial value",
+                                        "pass the value, not a function",
+                                    ));
+                                }
                             };
                             if matches!(initial.kind, ExprKind::Func(_)) {
-                                return Err(refuse(initial.span, "lazy `useState(() => …)` isn't supported", "pass the initial value itself"));
+                                return Err(refuse(
+                                    initial.span,
+                                    "lazy `useState(() => …)` isn't supported",
+                                    "pass the initial value itself",
+                                ));
                             }
                             a.state.push((name.clone(), initial));
-                            a.bindings.insert(name.clone(), Binding::State { setter: setter.clone() });
+                            a.bindings
+                                .insert(name.clone(), Binding::State { setter: setter.clone() });
                             if let Some(s) = setter {
                                 a.bindings.insert(s, Binding::Setter { field: name });
                             }
                         }
                         "useRef" => {
                             let Pat::Id(name, _) = pat else {
-                                return Err(refuse(*span, "`useRef()` is assigned to a name", "write `const input = useRef()`"));
+                                return Err(refuse(
+                                    *span,
+                                    "`useRef()` is assigned to a name",
+                                    "write `const input = useRef()`",
+                                ));
                             };
                             a.bindings.insert(name.clone(), Binding::Ref);
                         }
                         other => {
-                            return Err(refuse(init.span, format!("`{other}` doesn't return a value"), format!("call `{other}(…)` as a statement")));
+                            return Err(refuse(
+                                init.span,
+                                format!("`{other}` doesn't return a value"),
+                                format!("call `{other}(…)` as a statement"),
+                            ));
                         }
                     }
                     continue;
                 }
                 if *kind != DeclKind::Const {
-                    return Err(refuse(*span, "a client component's locals are `const`", "keep changing values in `useState`"));
+                    return Err(refuse(
+                        *span,
+                        "a client component's locals are `const`",
+                        "keep changing values in `useState`",
+                    ));
                 }
                 let Pat::Id(name, _) = pat else {
-                    return Err(refuse(*span, "destructuring a derived value isn't supported", "derive each value as its own `const`"));
+                    return Err(refuse(
+                        *span,
+                        "destructuring a derived value isn't supported",
+                        "derive each value as its own `const`",
+                    ));
                 };
                 if let ExprKind::Func(func) = &init.kind {
                     a.actions.push((name.clone(), func.clone()));
@@ -244,18 +324,29 @@ pub fn analyse(
             }
             Stmt::Expr(e) => {
                 let ExprKind::Call { callee, args, .. } = &e.kind else {
-                    return Err(refuse(e.span, "a client component's body declares values, hooks and handlers", "move this into a handler or an effect"));
+                    return Err(refuse(
+                        e.span,
+                        "a client component's body declares values, hooks and handlers",
+                        "move this into a handler or an effect",
+                    ));
                 };
                 let callback = |i: usize| -> Result<Rc<Func>> {
                     match args.get(i) {
-                        Some(ArrEl::Item(Expr { kind: ExprKind::Func(f), .. })) => Ok(f.clone()),
+                        Some(ArrEl::Item(Expr {
+                            kind: ExprKind::Func(f),
+                            ..
+                        })) => Ok(f.clone()),
                         _ => Err(refuse(e.span, "this hook takes a function", "pass an arrow function")),
                     }
                 };
                 match hook(callee, &hooks) {
                     Some("useEffect") => {
                         if args.len() > 2 {
-                            return Err(refuse(e.span, "`useEffect` takes a function and its dependencies", "write `useEffect(() => { … }, [count])`"));
+                            return Err(refuse(
+                                e.span,
+                                "`useEffect` takes a function and its dependencies",
+                                "write `useEffect(() => { … }, [count])`",
+                            ));
                         }
                         n += 1;
                         a.watch.push((format!("effect{n}"), callback(0)?));
@@ -266,13 +357,29 @@ pub fn analyse(
                     }
                     Some("useEvent") => {
                         let event = match args.first() {
-                            Some(ArrEl::Item(Expr { kind: ExprKind::Str(s), .. })) if s.chars().all(|c| c.is_ascii_lowercase()) => s.clone(),
-                            _ => return Err(refuse(e.span, "`useEvent` takes an event name first", "write `useEvent(\"resize\", () => { … })`")),
+                            Some(ArrEl::Item(Expr {
+                                kind: ExprKind::Str(s), ..
+                            })) if s.chars().all(|c| c.is_ascii_lowercase()) => s.clone(),
+                            _ => {
+                                return Err(refuse(
+                                    e.span,
+                                    "`useEvent` takes an event name first",
+                                    "write `useEvent(\"resize\", () => { … })`",
+                                ));
+                            }
                         };
                         let target = match args.get(2) {
                             None => "window".to_string(),
-                            Some(ArrEl::Item(Expr { kind: ExprKind::Str(s), .. })) if s == "window" || s == "document" => s.clone(),
-                            _ => return Err(refuse(e.span, "`useEvent` listens on \"window\" or \"document\"", "pass \"document\" as the third argument, or leave it out")),
+                            Some(ArrEl::Item(Expr {
+                                kind: ExprKind::Str(s), ..
+                            })) if s == "window" || s == "document" => s.clone(),
+                            _ => {
+                                return Err(refuse(
+                                    e.span,
+                                    "`useEvent` listens on \"window\" or \"document\"",
+                                    "pass \"document\" as the third argument, or leave it out",
+                                ));
+                            }
                         };
                         n += 1;
                         let name = format!("on{}{n}", capitalize(&event));
@@ -280,14 +387,36 @@ pub fn analyse(
                         a.events.push((target, event, name));
                     }
                     Some(other) => {
-                        return Err(refuse(e.span, format!("`{other}` returns a value"), format!("assign it: `const x = {other}(…)`")));
+                        return Err(refuse(
+                            e.span,
+                            format!("`{other}` returns a value"),
+                            format!("assign it: `const x = {other}(…)`"),
+                        ));
                     }
                     None => {
-                        return Err(refuse(e.span, "a client component's body declares values, hooks and handlers", "move this call into a handler or an effect"));
+                        return Err(refuse(
+                            e.span,
+                            "a client component's body declares values, hooks and handlers",
+                            "move this call into a handler or an effect",
+                        ));
                     }
                 }
             }
-            Stmt::Return(Some(_), _) => returned = true,
+            Stmt::Return(Some(e), _) => {
+                // The root carries the directives, so it must be one element the compiler writes.
+                let mut root = e;
+                while let ExprKind::As(inner, _) | ExprKind::NonNull(inner) = &root.kind {
+                    root = inner;
+                }
+                if !matches!(&root.kind, ExprKind::Jsx(j) if matches!(j.kind, JsxKind::Intrinsic(_))) {
+                    return Err(refuse(
+                        e.span,
+                        "a client component returns one element",
+                        "wrap what it returns in an element, e.g. `<div>…</div>`: fragments, components and conditionals can't carry the Interactivity directives",
+                    ));
+                }
+                returned = true;
+            }
             Stmt::TypeAlias { .. } => {}
             other => {
                 return Err(refuse(
@@ -299,33 +428,34 @@ pub fn analyse(
         }
     }
     if !returned {
-        return Err(refuse(f.span, "a client component returns one element", "end the body with `return <div>…</div>;`"));
+        return Err(refuse(
+            f.span,
+            "a client component returns one element",
+            "end the body with `return <div>…</div>;`",
+        ));
     }
     // The server actions this component can call: their endpoints go into the store's config.
     let mut called = BTreeSet::new();
     let mut scan = |e: &Expr| {
         if let ExprKind::Call { callee, .. } = &e.kind
             && let ExprKind::Ident(n) = &callee.kind
-            && a.bindings.get(n) == Some(&Binding::ServerAction)
+            && let Some(Binding::ServerAction(name)) = a.bindings.get(n)
         {
-            called.insert(n.clone());
+            called.insert(name.clone());
         }
     };
     for stmt in body {
         stmt_exprs(stmt, &mut |e| visit_deep(e, &mut scan));
     }
-    // An import binds a local name to an action; the endpoint uses the action's name.
-    for (local, name) in imports(module, client_module).1 {
-        if called.contains(&local) {
-            a.server_actions.insert(name);
-        }
-    }
+    a.server_actions = called;
     Ok(a)
 }
 
 fn capitalize(s: &str) -> String {
     let mut c = s.chars();
-    c.next().map(|f| f.to_ascii_uppercase().to_string() + c.as_str()).unwrap_or_default()
+    c.next()
+        .map(|f| f.to_ascii_uppercase().to_string() + c.as_str())
+        .unwrap_or_default()
 }
 
 impl Analysis {
@@ -383,7 +513,9 @@ impl Analysis {
     /// The store module (plain JavaScript).
     pub fn store(&self) -> Result<String> {
         let mut out = String::from("// Generated by `first build` from a \"use client\" component. Do not edit.\n");
-        out.push_str("import { store, getContext, getElement, getConfig, withSyncEvent } from \"@wordpress/interactivity\";\n\n");
+        out.push_str(
+            "import { store, getContext, getElement, getConfig, withSyncEvent } from \"@wordpress/interactivity\";\n\n",
+        );
         let _ = writeln!(out, "const ns = {};", js_str(&self.namespace));
         out.push_str("const call = async (name, input) => {\n  const config = getConfig(ns);\n  const response = await fetch(config.actions[name], { method: \"POST\", credentials: \"same-origin\", headers: { \"content-type\": \"application/json\", \"x-wp-nonce\": config.nonce }, body: JSON.stringify(input ?? {}) });\n  const result = await response.json();\n  if (!response.ok) throw new Error(result?.detail ?? result?.error?.message ?? `action ${name} failed`);\n  return result.data;\n};\n\n");
         let _ = writeln!(out, "const {{ state, actions }} = store(ns, {{");
@@ -392,7 +524,11 @@ impl Analysis {
             let _ = writeln!(out, "    {name}: {},", self.js(init, &Scope::default())?);
         }
         for (name, e) in &self.derived {
-            let _ = writeln!(out, "    get {name}() {{\n      const context = getContext();\n      return {};\n    }},", self.js(e, &Scope::default())?);
+            let _ = writeln!(
+                out,
+                "    get {name}() {{\n      const context = getContext();\n      return {};\n    }},",
+                self.js(e, &Scope::default())?
+            );
         }
         out.push_str("  },\n  actions: {\n");
         for (name, f) in &self.actions {
@@ -417,11 +553,20 @@ impl Analysis {
                     scope.locals.insert(n.clone());
                     params.push(n.clone());
                 }
-                _ => return Err(refuse(p.span, "handler parameters are plain names", "write `(event) => …`")),
+                _ => {
+                    return Err(refuse(
+                        p.span,
+                        "handler parameters are plain names",
+                        "write `(event) => …`",
+                    ));
+                }
             }
         }
         let body = match &f.body {
-            FnBody::Expr(e) => format!("{pad}  const context = getContext();\n{pad}  return {};\n", self.js(e, &scope)?),
+            FnBody::Expr(e) => format!(
+                "{pad}  const context = getContext();\n{pad}  return {};\n",
+                self.js(e, &scope)?
+            ),
             FnBody::Block(stmts) => {
                 let mut b = format!("{pad}  const context = getContext();\n");
                 for s in stmts {
@@ -430,9 +575,14 @@ impl Analysis {
                 b
             }
         };
-        let sync = ["preventDefault", "stopPropagation", "stopImmediatePropagation", "currentTarget"]
-            .iter()
-            .any(|m| body.contains(&format!(".{m}")));
+        let sync = [
+            "preventDefault",
+            "stopPropagation",
+            "stopImmediatePropagation",
+            "currentTarget",
+        ]
+        .iter()
+        .any(|m| body.contains(&format!(".{m}")));
         let star = if f.is_async { "*" } else { "" };
         let head = if sync {
             format!("{pad}{name}: withSyncEvent(function{star} ({}) {{\n", params.join(", "))
@@ -447,7 +597,12 @@ impl Analysis {
             Stmt::Expr(e) => format!("{pad}{};\n", self.js(e, scope)?),
             Stmt::Return(None, _) => format!("{pad}return;\n"),
             Stmt::Return(Some(e), _) => format!("{pad}return {};\n", self.js(e, scope)?),
-            Stmt::Decl { kind, pat: Pat::Id(n, _), init, .. } => {
+            Stmt::Decl {
+                kind,
+                pat: Pat::Id(n, _),
+                init,
+                ..
+            } => {
                 scope.locals.insert(n.clone());
                 let k = match kind {
                     DeclKind::Const => "const",
@@ -474,7 +629,12 @@ impl Analysis {
                 o.push('\n');
                 o
             }
-            Stmt::Try { block, param, handler, finalizer } => {
+            Stmt::Try {
+                block,
+                param,
+                handler,
+                finalizer,
+            } => {
                 let mut o = format!("{pad}try {{\n");
                 for s in block {
                     o.push_str(&self.stmt(s, scope, &format!("{pad}  "))?);
@@ -545,13 +705,39 @@ impl Analysis {
             ExprKind::Ident(n) => match self.bindings.get(n) {
                 Some(Binding::State { .. } | Binding::Prop) => format!("context.{n}"),
                 Some(Binding::Derived) => format!("state.{n}"),
-                Some(Binding::Shared) => "state".to_string(),
+                Some(Binding::Shared) => format!("state.{n}"),
                 Some(Binding::Ref) => "getElement().ref".to_string(),
-                Some(Binding::Action) => format!("(() => {{ throw new Error({}) }})()", js_str("call handlers from markup")),
-                Some(Binding::Setter { .. } | Binding::ServerAction) => {
-                    return Err(refuse(e.span, format!("`{n}` can only be called"), format!("write `{n}(…)`")));
+                Some(Binding::Action) => format!(
+                    "(() => {{ throw new Error({}) }})()",
+                    js_str("call handlers from markup")
+                ),
+                Some(Binding::Setter { .. } | Binding::ServerAction(_)) => {
+                    return Err(refuse(
+                        e.span,
+                        format!("`{n}` can only be called"),
+                        format!("write `{n}(…)`"),
+                    ));
                 }
-                None if matches!(n.as_str(), "Math" | "JSON" | "Number" | "String" | "Boolean" | "Array" | "Object" | "Date" | "console" | "window" | "document" | "undefined" | "NaN" | "Infinity") => n.clone(),
+                None if matches!(
+                    n.as_str(),
+                    "Math"
+                        | "JSON"
+                        | "Number"
+                        | "String"
+                        | "Boolean"
+                        | "Array"
+                        | "Object"
+                        | "Date"
+                        | "console"
+                        | "window"
+                        | "document"
+                        | "undefined"
+                        | "NaN"
+                        | "Infinity"
+                ) =>
+                {
+                    n.clone()
+                }
                 None => {
                     return Err(refuse(
                         e.span,
@@ -560,7 +746,14 @@ impl Analysis {
                     ));
                 }
             },
-            ExprKind::Array(items) => format!("[{}]", items.iter().map(|i| self.arr_el(i, scope)).collect::<Result<Vec<_>>>()?.join(", ")),
+            ExprKind::Array(items) => format!(
+                "[{}]",
+                items
+                    .iter()
+                    .map(|i| self.arr_el(i, scope))
+                    .collect::<Result<Vec<_>>>()?
+                    .join(", ")
+            ),
             ExprKind::Object(props) => {
                 let mut parts = Vec::new();
                 for p in props {
@@ -595,8 +788,12 @@ impl Analysis {
             }
             ExprKind::Cond(c, t, f) => format!("({} ? {} : {})", js(c)?, js(t)?, js(f)?),
             ExprKind::Sequence(xs) => format!("({})", xs.iter().map(js).collect::<Result<Vec<_>>>()?.join(", ")),
-            ExprKind::Member { obj, prop, optional, .. } => format!("{}{}{prop}", js(obj)?, if *optional { "?." } else { "." }),
-            ExprKind::Index { obj, index, optional } => format!("{}{}[{}]", js(obj)?, if *optional { "?." } else { "" }, js(index)?),
+            ExprKind::Member {
+                obj, prop, optional, ..
+            } => format!("{}{}{prop}", js(obj)?, if *optional { "?." } else { "." }),
+            ExprKind::Index { obj, index, optional } => {
+                format!("{}{}[{}]", js(obj)?, if *optional { "?." } else { "" }, js(index)?)
+            }
             ExprKind::Chain(x) | ExprKind::NonNull(x) | ExprKind::As(x, _) => js(x)?,
             ExprKind::Await(x) => format!("(yield {})", js(x)?),
             ExprKind::In(k, o) => format!("({} in {})", js(k)?, js(o)?),
@@ -615,41 +812,78 @@ impl Analysis {
             ExprKind::Update { inc, prefix, target } => {
                 self.assignable(target, scope)?;
                 let o = if *inc { "++" } else { "--" };
-                if *prefix { format!("({o}{})", js(target)?) } else { format!("({}{o})", js(target)?) }
+                if *prefix {
+                    format!("({o}{})", js(target)?)
+                } else {
+                    format!("({}{o})", js(target)?)
+                }
             }
-            ExprKind::Call { callee, args, optional, .. } => {
-                let argv = || -> Result<String> { Ok(args.iter().map(|a| self.arr_el(a, scope)).collect::<Result<Vec<_>>>()?.join(", ")) };
+            ExprKind::Call {
+                callee, args, optional, ..
+            } => {
+                let argv = || -> Result<String> {
+                    Ok(args
+                        .iter()
+                        .map(|a| self.arr_el(a, scope))
+                        .collect::<Result<Vec<_>>>()?
+                        .join(", "))
+                };
                 match &callee.kind {
                     ExprKind::Ident(n) if !scope.locals.contains(n) => match self.bindings.get(n) {
                         Some(Binding::Setter { field }) => {
                             let [ArrEl::Item(v)] = args.as_slice() else {
-                                return Err(refuse(e.span, format!("`{n}` takes the new value"), format!("write `{n}(next)`")));
+                                return Err(refuse(
+                                    e.span,
+                                    format!("`{n}` takes the new value"),
+                                    format!("write `{n}(next)`"),
+                                ));
                             };
                             if let ExprKind::Func(f) = &v.kind {
                                 // `setCount((c) => c + 1)`: the updater sees the current value.
                                 let [p] = f.params.as_slice() else {
-                                    return Err(refuse(v.span, "an updater takes the current value", format!("write `{n}((value) => …)`")));
+                                    return Err(refuse(
+                                        v.span,
+                                        "an updater takes the current value",
+                                        format!("write `{n}((value) => …)`"),
+                                    ));
                                 };
                                 let Pat::Id(pn, _) = &p.pat else {
-                                    return Err(refuse(v.span, "an updater takes the current value", format!("write `{n}((value) => …)`")));
+                                    return Err(refuse(
+                                        v.span,
+                                        "an updater takes the current value",
+                                        format!("write `{n}((value) => …)`"),
+                                    ));
                                 };
                                 let mut inner = scope.clone();
                                 inner.locals.insert(pn.clone());
                                 let FnBody::Expr(body) = &f.body else {
-                                    return Err(refuse(v.span, "an updater returns the next value", format!("write `{n}((value) => value + 1)`")));
+                                    return Err(refuse(
+                                        v.span,
+                                        "an updater returns the next value",
+                                        format!("write `{n}((value) => value + 1)`"),
+                                    ));
                                 };
-                                format!("(context.{field} = (({pn}) => {})(context.{field}))", self.js(body, &inner)?)
+                                format!(
+                                    "(context.{field} = (({pn}) => {})(context.{field}))",
+                                    self.js(body, &inner)?
+                                )
                             } else {
                                 format!("(context.{field} = {})", js(v)?)
                             }
                         }
-                        Some(Binding::ServerAction) => {
+                        Some(Binding::ServerAction(action)) => {
                             let input = match args.as_slice() {
                                 [] => "undefined".to_string(),
                                 [ArrEl::Item(x)] => js(x)?,
-                                _ => return Err(refuse(e.span, format!("`{n}` takes one input object"), format!("write `{n}({{ … }})`"))),
+                                _ => {
+                                    return Err(refuse(
+                                        e.span,
+                                        format!("`{n}` takes one input object"),
+                                        format!("write `{n}({{ … }})`"),
+                                    ));
+                                }
                             };
-                            format!("call({}, {input})", js_str(n))
+                            format!("call({}, {input})", js_str(action))
                         }
                         // Another handler of this component, run in the same scope.
                         Some(Binding::Action) => format!("(yield* actions.{n}({}))", argv()?),
@@ -663,13 +897,21 @@ impl Analysis {
                 let mut params = Vec::new();
                 for p in &f.params {
                     let Pat::Id(n, _) = &p.pat else {
-                        return Err(refuse(p.span, "callback parameters are plain names here", "write `(item) => …`"));
+                        return Err(refuse(
+                            p.span,
+                            "callback parameters are plain names here",
+                            "write `(item) => …`",
+                        ));
                     };
                     inner.locals.insert(n.clone());
                     params.push(n.clone());
                 }
                 if f.is_async {
-                    return Err(refuse(f.span, "an async callback inside a handler isn't supported", "make the handler itself async"));
+                    return Err(refuse(
+                        f.span,
+                        "an async callback inside a handler isn't supported",
+                        "make the handler itself async",
+                    ));
                 }
                 match &f.body {
                     FnBody::Expr(b) => format!("(({}) => {})", params.join(", "), self.js(b, &inner)?),
@@ -684,14 +926,29 @@ impl Analysis {
                 }
             }
             ExprKind::New { callee, args, .. } => {
-                format!("new {}({})", js(callee)?, args.iter().map(|a| self.arr_el(a, scope)).collect::<Result<Vec<_>>>()?.join(", "))
+                format!(
+                    "new {}({})",
+                    js(callee)?,
+                    args.iter()
+                        .map(|a| self.arr_el(a, scope))
+                        .collect::<Result<Vec<_>>>()?
+                        .join(", ")
+                )
             }
             ExprKind::Regex { pattern, flags } => format!("/{pattern}/{flags}"),
             ExprKind::Jsx(_) => {
-                return Err(refuse(e.span, "JSX inside a handler or derived value isn't supported", "render markup in the component's return"));
+                return Err(refuse(
+                    e.span,
+                    "JSX inside a handler or derived value isn't supported",
+                    "render markup in the component's return",
+                ));
             }
             _ => {
-                return Err(refuse(e.span, "this expression isn't supported in client code yet", "use plain expressions on state, props and derived values"));
+                return Err(refuse(
+                    e.span,
+                    "this expression isn't supported in client code yet",
+                    "use plain expressions on state, props and derived values",
+                ));
             }
         })
     }
@@ -713,16 +970,22 @@ impl Analysis {
             && !scope.locals.contains(n)
         {
             return match self.bindings.get(n) {
-                Some(Binding::State { setter: Some(s) }) if std::ptr::eq(root, target) => {
-                    Err(refuse(target.span, format!("`{n}` changes through `{s}`"), format!("write `{s}(next)`")))
-                }
+                Some(Binding::State { setter: Some(s) }) if std::ptr::eq(root, target) => Err(refuse(
+                    target.span,
+                    format!("`{n}` changes through `{s}`"),
+                    format!("write `{s}(next)`"),
+                )),
                 Some(Binding::Shared) => Ok(()),
                 Some(Binding::State { .. } | Binding::Prop) if !std::ptr::eq(root, target) => Err(refuse(
                     target.span,
                     format!("changing a field of `{n}` in place isn't seen by React"),
                     "set a new value with the setter instead",
                 )),
-                _ => Err(refuse(target.span, format!("`{n}` can't be assigned here"), "keep changing values in `useState`")),
+                _ => Err(refuse(
+                    target.span,
+                    format!("`{n}` can't be assigned here"),
+                    "keep changing values in `useState`",
+                )),
             };
         }
         Ok(())
@@ -781,7 +1044,13 @@ pub fn visit(e: &Expr, f: &mut dyn FnMut(&Expr)) {
             Prop::KV(_, v) | Prop::Spread(v) => go(v),
             Prop::NullPrototype => {}
         }),
-        ExprKind::Unary(_, x) | ExprKind::IsNullish(x, _) | ExprKind::Chain(x) | ExprKind::NonNull(x) | ExprKind::As(x, _) | ExprKind::Await(x) | ExprKind::Delete(x) => go(x),
+        ExprKind::Unary(_, x)
+        | ExprKind::IsNullish(x, _)
+        | ExprKind::Chain(x)
+        | ExprKind::NonNull(x)
+        | ExprKind::As(x, _)
+        | ExprKind::Await(x)
+        | ExprKind::Delete(x) => go(x),
         ExprKind::Binary(_, l, r) | ExprKind::Logical(_, l, r) | ExprKind::In(l, r) | ExprKind::Instanceof(l, r) => {
             go(l);
             go(r)
@@ -822,8 +1091,17 @@ fn stmt_exprs(s: &Stmt, f: &mut dyn FnMut(&Expr)) {
             e.iter().flatten().for_each(|s| stmt_exprs(s, f));
         }
         Stmt::Block(b) => b.iter().for_each(|s| stmt_exprs(s, f)),
-        Stmt::Try { block, handler, finalizer, .. } => {
-            block.iter().chain(handler.iter().flatten()).chain(finalizer.iter().flatten()).for_each(|s| stmt_exprs(s, f));
+        Stmt::Try {
+            block,
+            handler,
+            finalizer,
+            ..
+        } => {
+            block
+                .iter()
+                .chain(handler.iter().flatten())
+                .chain(finalizer.iter().flatten())
+                .for_each(|s| stmt_exprs(s, f));
         }
         Stmt::Func(func) => func_exprs(func, f),
         _ => {}

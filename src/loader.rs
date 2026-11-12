@@ -282,7 +282,11 @@ fn jsx_reachability(program: &Program) -> Vec<Diag> {
         if !module.use_client {
             continue;
         }
-        let at = Span { file: module.file, start: 0, end: 0 };
+        let at = Span {
+            file: module.file,
+            start: 0,
+            end: 0,
+        };
         // Plugins can't ship browser code until a capability kind covers it (the TSX decision record).
         if module.path.components().any(|c| c.as_os_str() == "node_modules") {
             out.push(
@@ -298,21 +302,6 @@ fn jsx_reachability(program: &Program) -> Vec<Diag> {
                     .help("rename it to .tsx under first/components/, or remove the directive")
                     .code(diag::Code::Import),
             );
-        }
-        // Browser code is first-party: no npm packages, which no bundler would ship.
-        for stmt in &module.body {
-            if let Stmt::Import { source, span, type_only: false, .. } = stmt
-                && !source.starts_with('.')
-                && source != CLIENT_MODULE
-                && source != APP_MODULE
-                && source != FIRST_MODULE
-            {
-                out.push(
-                    Diag::new(*span, format!("a \"use client\" component can't import \"{source}\""))
-                        .help("client components run in the browser without a bundler: import \"first/client\" and relative modules only")
-                        .code(diag::Code::Import),
-                );
-            }
         }
     }
     out
@@ -530,6 +519,15 @@ fn load_module(
     }));
     for (index, (spec, span)) in imports.into_iter().enumerate() {
         if builtin_module(&spec) {
+            continue;
+        }
+        // Browser code is first-party: an npm package in a client file would need a bundler.
+        if program.modules[id].use_client && !spec.starts_with('.') {
+            diagnostics.push(
+                Diag::new(span, format!("a \"use client\" component can't import \"{spec}\""))
+                    .help("client components run in the browser without a bundler: import \"first/client\" and relative modules only")
+                    .code(diag::Code::Import),
+            );
             continue;
         }
         if spec == "php" || spec.starts_with("php/") {

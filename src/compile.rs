@@ -8,8 +8,8 @@
 
 mod annotations;
 mod app;
-mod client;
 mod classes;
+mod client;
 mod effects;
 mod host;
 mod javascript;
@@ -6666,11 +6666,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // In a client component, handlers and refs exist only in the browser: the
                     // directives below carry them, and the server HTML has no attribute for them.
                     let folded = name.to_ascii_lowercase();
-                    if self.client.is_some() && (name == "ref" || (folded.starts_with("on") && folded.len() > 2 && literal.is_none() && !matches!(value.kind, ExprKind::Template(..)))) {
+                    if self.client.is_some()
+                        && (name == "ref"
+                            || (folded.starts_with("on")
+                                && folded.len() > 2
+                                && literal.is_none()
+                                && !matches!(value.kind, ExprKind::Template(..))))
+                    {
                         continue;
                     }
                     if self.client.is_some() && name.to_ascii_lowercase().starts_with("data-wp-") {
-                        return err_help(*span, format!("`{name}` is a directive First writes"), "use state, props and handlers; the compiler adds the directives");
+                        return err_help(
+                            *span,
+                            format!("`{name}` is a directive First writes"),
+                            "use state, props and handlers; the compiler adds the directives",
+                        );
                     }
                     self.jsx_attribute_rule(&folded_tag, name, literal, value, *span)?;
                     let v = self.expr(value)?;

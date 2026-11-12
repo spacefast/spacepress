@@ -25,10 +25,17 @@ impl Compiler<'_, '_> {
         let mut out = Vec::new();
         for s in stmts {
             match s {
-                Stmt::Decl { pat: Pat::Arr { elems, .. }, init: Some(init), span, .. }
-                    if matches!(&init.kind, ExprKind::Call { .. }) && matches!(elems.first(), Some(Some(Pat::Id(..)))) =>
+                Stmt::Decl {
+                    pat: Pat::Arr { elems, .. },
+                    init: Some(init),
+                    span,
+                    ..
+                } if matches!(&init.kind, ExprKind::Call { .. })
+                    && matches!(elems.first(), Some(Some(Pat::Id(..)))) =>
                 {
-                    let Some(Some(Pat::Id(name, nspan))) = elems.first() else { unreachable!() };
+                    let Some(Some(Pat::Id(name, nspan))) = elems.first() else {
+                        unreachable!()
+                    };
                     if let Some((_, initial)) = analysis.state.iter().find(|(n, _)| n == name) {
                         out.push(Stmt::Decl {
                             kind: DeclKind::Const,
@@ -39,8 +46,9 @@ impl Compiler<'_, '_> {
                         });
                     }
                 }
-                Stmt::Decl { pat: Pat::Id(name, _), .. }
-                    if matches!(analysis.bindings.get(name), Some(Binding::Action | Binding::Ref)) => {}
+                Stmt::Decl {
+                    pat: Pat::Id(name, _), ..
+                } if matches!(analysis.bindings.get(name), Some(Binding::Action | Binding::Ref)) => {}
                 Stmt::Func(_) | Stmt::Expr(_) => {}
                 other => out.push(clone_stmt(other)),
             }
@@ -51,7 +59,9 @@ impl Compiler<'_, '_> {
     /// Directive attributes for one intrinsic element of a client component: `entries` already
     /// holds the element's PHP attributes; `jsx` is its source. Returns extra PHP entries.
     pub(super) fn client_directives(&mut self, jsx: &Jsx) -> Result<Vec<String>> {
-        let Some(ctx) = self.client.as_mut() else { return Ok(Vec::new()) };
+        let Some(ctx) = self.client.as_mut() else {
+            return Ok(Vec::new());
+        };
         let mut extra = Vec::new();
         if std::mem::take(&mut ctx.root_pending) {
             extra.push(format!("'data-wp-interactive' => {}", php_str(&ctx.analysis.namespace)));
@@ -80,23 +90,41 @@ impl Compiler<'_, '_> {
             ));
             let ctx = self.client.as_ref().expect("client");
             for (target, event, action) in &ctx.analysis.events {
-                extra.push(format!("{} => {}", php_str(&format!("data-wp-on-{target}--{event}")), php_str(&format!("actions.{action}"))));
+                extra.push(format!(
+                    "{} => {}",
+                    php_str(&format!("data-wp-on-{target}--{event}")),
+                    php_str(&format!("actions.{action}"))
+                ));
             }
             for (name, _) in &ctx.analysis.watch {
-                extra.push(format!("{} => {}", php_str(&format!("data-wp-watch--{name}")), php_str(&format!("callbacks.{name}"))));
+                extra.push(format!(
+                    "{} => {}",
+                    php_str(&format!("data-wp-watch--{name}")),
+                    php_str(&format!("callbacks.{name}"))
+                ));
             }
             for (name, _) in &ctx.analysis.init {
-                extra.push(format!("{} => {}", php_str(&format!("data-wp-init--{name}")), php_str(&format!("callbacks.{name}"))));
+                extra.push(format!(
+                    "{} => {}",
+                    php_str(&format!("data-wp-init--{name}")),
+                    php_str(&format!("callbacks.{name}"))
+                ));
             }
         }
         for attr in &jsx.attrs {
-            let JsxAttr::Named { name, value, span } = attr else { continue };
+            let JsxAttr::Named { name, value, span } = attr else {
+                continue;
+            };
             let folded = name.to_ascii_lowercase();
             let ctx = self.client.as_mut().expect("client");
             if folded.starts_with("on") && folded.len() > 2 {
                 let event = folded[2..].to_string();
                 let action = ctx.analysis.handler(value, &event)?;
-                extra.push(format!("{} => {}", php_str(&format!("data-wp-on--{event}")), php_str(&format!("actions.{action}"))));
+                extra.push(format!(
+                    "{} => {}",
+                    php_str(&format!("data-wp-on--{event}")),
+                    php_str(&format!("actions.{action}"))
+                ));
                 continue;
             }
             if name == "ref" {
@@ -108,26 +136,44 @@ impl Compiler<'_, '_> {
             let reference = self.client_reference(value)?;
             match name.as_str() {
                 "className" if matches!(value.kind, ExprKind::Object(_)) => {
-                    let ExprKind::Object(props) = &value.kind else { unreachable!() };
+                    let ExprKind::Object(props) = &value.kind else {
+                        unreachable!()
+                    };
                     for p in props {
                         if let Prop::KV(PropKey::Static(class), v) = p {
                             let r = self.client_reference(v)?;
-                            extra.push(format!("{} => {}", php_str(&format!("data-wp-class--{class}")), php_str(&r)));
+                            extra.push(format!(
+                                "{} => {}",
+                                php_str(&format!("data-wp-class--{class}")),
+                                php_str(&r)
+                            ));
                         }
                     }
                 }
                 "style" if matches!(value.kind, ExprKind::Object(_)) => {
-                    let ExprKind::Object(props) = &value.kind else { unreachable!() };
+                    let ExprKind::Object(props) = &value.kind else {
+                        unreachable!()
+                    };
                     for p in props {
                         if let Prop::KV(PropKey::Static(property), v) = p
                             && self.client.as_ref().expect("client").analysis.reactive(v)
                         {
                             let css: String = property
                                 .chars()
-                                .flat_map(|c| if c.is_ascii_uppercase() { vec!['-', c.to_ascii_lowercase()] } else { vec![c] })
+                                .flat_map(|c| {
+                                    if c.is_ascii_uppercase() {
+                                        vec!['-', c.to_ascii_lowercase()]
+                                    } else {
+                                        vec![c]
+                                    }
+                                })
                                 .collect();
                             let r = self.client_reference(v)?;
-                            extra.push(format!("{} => {}", php_str(&format!("data-wp-style--{css}")), php_str(&r)));
+                            extra.push(format!(
+                                "{} => {}",
+                                php_str(&format!("data-wp-style--{css}")),
+                                php_str(&r)
+                            ));
                         }
                     }
                 }
@@ -138,7 +184,11 @@ impl Compiler<'_, '_> {
                         other => other.to_string(),
                     };
                     let _ = span;
-                    extra.push(format!("{} => {}", php_str(&format!("data-wp-bind--{attribute}")), php_str(&reference)));
+                    extra.push(format!(
+                        "{} => {}",
+                        php_str(&format!("data-wp-bind--{attribute}")),
+                        php_str(&reference)
+                    ));
                 }
             }
         }
@@ -163,7 +213,9 @@ impl Compiler<'_, '_> {
     /// its parent with other children, it is wrapped in a `<span>` that carries only the directive
     /// (the record's rule), so the browser can replace exactly that text.
     pub(super) fn client_text(&mut self, child: &Expr, php: String, alone: bool) -> Result<(String, Option<String>)> {
-        let Some(ctx) = self.client.as_ref() else { return Ok((php, None)) };
+        let Some(ctx) = self.client.as_ref() else {
+            return Ok((php, None));
+        };
         if !ctx.analysis.reactive(child) {
             return Ok((php, None));
         }
@@ -172,13 +224,25 @@ impl Compiler<'_, '_> {
             return Ok((php, Some(r)));
         }
         // `data-first-text` marks the span as the compiler's, not the author's.
-        Ok((format!("\\First\\Html::element('span', ['data-wp-text' => {}, 'data-first-text' => ''], {php})", php_str(&r)), None))
+        Ok((
+            format!(
+                "\\First\\Html::element('span', ['data-wp-text' => {}, 'data-first-text' => ''], {php})",
+                php_str(&r)
+            ),
+            None,
+        ))
     }
 }
 
 fn clone_stmt(s: &Stmt) -> Stmt {
     match s {
-        Stmt::Decl { kind, pat, ann, init, span } => Stmt::Decl {
+        Stmt::Decl {
+            kind,
+            pat,
+            ann,
+            init,
+            span,
+        } => Stmt::Decl {
             kind: *kind,
             pat: pat.clone(),
             ann: ann.clone(),

@@ -43,10 +43,10 @@ final class Sessions
             }
             if (!$session) { return $result; }
             // A write proves intent by coming from the site's own pages or by the session's CSRF token.
-            // WordPress applies `?_method=` and X-HTTP-Method-Override after authentication, so the
-            // method that decides is the one the request will dispatch as.
-            $method = strtoupper((string) ($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'] ?? $_GET['_method'] ?? $_SERVER['REQUEST_METHOD'] ?? 'GET'));
-            if (!in_array($method, ['GET', 'HEAD', 'OPTIONS'], true) && $origin === ''
+            // WordPress applies `?_method=` and X-HTTP-Method-Override after authentication: a request
+            // is a read only when its method and every override it carries are reads.
+            $methods = array_map(static fn ($m) => strtoupper((string) $m), array_filter([$_SERVER['REQUEST_METHOD'] ?? 'GET', $_GET['_method'] ?? null, $_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'] ?? null], static fn ($m) => is_string($m) && $m !== ''));
+            if (array_diff($methods, ['GET', 'HEAD', 'OPTIONS']) !== [] && $origin === ''
                 && !hash_equals((string) $session['csrf'], (string) ($_SERVER['HTTP_X_IDENTITY_CSRF'] ?? ''))) {
                 return new \WP_Error('invalid_csrf', 'Refresh the page and try again.', ['status' => 403]);
             }

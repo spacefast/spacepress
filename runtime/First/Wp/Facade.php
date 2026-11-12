@@ -167,6 +167,7 @@ final class Facade
             if ($method === 'POST' && $kind['type'] === 'media') {
                 return self::json(201, ['data' => Kinds::row($kind, self::upload($base))]);
             }
+            self::gate($kind, $method === 'POST' ? 'create' : 'list');
             if ($method === 'POST') {
                 $row = self::dispatch('POST', $base, self::context($kind), Kinds::input($kind, self::body($body), create: true), 201);
 
@@ -176,6 +177,8 @@ final class Facade
             return self::list($kind, $query);
         }
         if ($kind['type'] === 'post' && ($segments[2] ?? null) === 'revisions' && count($segments) <= 5) {
+            self::gate($kind, 'update');
+
             return self::revisions($kind, $method, self::id($kind, $segments[1]), array_slice($segments, 3));
         }
         if (count($segments) !== 2) {
@@ -183,6 +186,7 @@ final class Facade
         }
         $id = self::id($kind, $segments[1]);
         \First\App::allow($method, ['GET', 'HEAD', 'PATCH', 'DELETE']);
+        self::gate($kind, ['PATCH' => 'update', 'DELETE' => 'delete'][$method] ?? 'get');
         $item = "$base/" . rawurlencode((string) $id);
         if ($method === 'PATCH') {
             $row = self::dispatch('POST', $item, self::context($kind), Kinds::input($kind, self::body($body)));
@@ -530,6 +534,17 @@ final class Facade
         }
 
         return $decoded;
+    }
+
+    /**
+     * A kind's `api` flags: an operation switched off (`api: { delete: false }`) is a 405 on the API,
+     * as its ability is unregistered. Core's own routes keep serving wp-admin and the block editor.
+     */
+    private static function gate(array $kind, string $op): void
+    {
+        if (Kinds::first($kind) && !($kind['spec']['api'][$op] ?? false)) {
+            throw new HttpError(405, 'method_not_allowed', "The $op operation is disabled for {$kind['name']}");
+        }
     }
 
     private static function id(array $kind, string $raw): int|string

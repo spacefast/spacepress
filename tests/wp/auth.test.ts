@@ -181,14 +181,12 @@ test("suspension blocks every channel: Bearer, application password and cookie +
   wp("first", "identity", "suspend", String(bo.id));
   const bearer = await call("GET", "/me", { token: tokens.json.access_token });
   assert.deepEqual([bearer.status, bearer.json.code], [403, "suspended"]);
-  // first-identity refuses a suspended account's application password, and the API answers as core's
-  // REST routes do for a refused application password: the refusal, never the account.
+  // first-identity refuses a suspended account's application password: the API says so (403
+  // account_unavailable, as core's authentication error is), and never acts as the account.
   const viaApp = await fetch(`${api}/me`, { headers: basic });
-  const viaCoreApp = await fetch(`${site}/wp-json/wp/v2/users/me`, { headers: basic });
-  assert.deepEqual([viaApp.status, (await viaApp.json()).data], [viaCoreApp.status, undefined]);
-  assert.equal(viaApp.status >= 400, true, "the refused application password is not a session");
+  assert.deepEqual([viaApp.status, (await viaApp.json()).code], [403, "account_unavailable"]);
   const write = await fetch(`${api}/reviews`, { method: "POST", headers: { ...basic, "content-type": "application/json" }, body: JSON.stringify({ body: "as suspended" }) });
-  assert.equal(write.status, 401, "a suspended account can't write");
+  assert.equal(write.status, 403, "a suspended account can't write");
   const viaAbility = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/guestbook-create/run`, { method: "POST", headers: { ...basic, "content-type": "application/json" }, body: JSON.stringify({ input: { message: "x" } }) });
   assert.equal(viaAbility.status, 401, "abilities refuse a suspended account too");
   // A session WordPress resolved some other way (a cookie issued before suspension, a plugin) still

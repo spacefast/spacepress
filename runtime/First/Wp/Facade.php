@@ -247,6 +247,11 @@ final class Facade
             // rows, so its read rule and draft visibility decide, not core's default status filter.
             $params = array_intersect_key($query, array_flip(['where', 'orderBy', 'with', 'search', 'locale']))
                 + ['where' => '{}'] + $paging + self::context($kind);
+            if (isset($query['status'])) {
+                // `status` is shorthand for a filter on `status`, ANDed with `where`.
+                $where = Js::decodeJson((string) $params['where']);
+                $params['where'] = (string) Js::jsonStringify(['AND' => [$where, ['status' => (string) $query['status']]]]);
+            }
         } else {
             // A WordPress kind: core's own filters (`search`, `post`, `parent`, `status`, ...), as core
             // accepts them for this viewer.

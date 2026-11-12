@@ -47,7 +47,7 @@ expectType<
   Equal<Post["sections"], ({ layout: "hero"; heading: string; image: number | null } | { layout: "quote"; text: string; cite: string | null })[] | null>
 >();
 type Hero = Extract<BlockValue<{ hero: { heading: ReturnType<typeof text> } }>, { layout: "hero" }>;
-expectType<Equal<Hero, { layout: "hero"; heading: string | null }>>();
+expectType<Equal<Hero, { layout: "hero"; heading: string }>>();
 
 // Collections gain status/publishedAt; tables don't.
 expectType<Equal<Post["status"], "draft" | "published" | "scheduled">>();

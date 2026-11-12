@@ -52,6 +52,15 @@ impl ColType {
         }
     }
 
+    /// The authoring name: the builder (`number()`) and its kind in the `"first"` types. `name()` is
+    /// the stored name, which the snapshot and schema.php keep.
+    pub fn builder_name(self) -> &'static str {
+        match self {
+            ColType::Real => "number",
+            other => other.name(),
+        }
+    }
+
     /// Strings validated by length/pattern.
     pub fn is_stringy(self) -> bool {
         matches!(self, ColType::Text | ColType::Email | ColType::Url | ColType::Slug)

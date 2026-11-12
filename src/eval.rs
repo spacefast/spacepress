@@ -3908,7 +3908,7 @@ fn removed_modifier(m: &str) -> Option<(&'static str, &'static str)> {
 
 /// "a text column", "an email column".
 pub fn kind_phrase(ty: ColType) -> String {
-    let n = ty.name();
+    let n = ty.builder_name();
     let article = if n.starts_with(['a', 'e', 'i', 'o', 'u']) {
         "an"
     } else {

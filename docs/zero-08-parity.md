@@ -75,6 +75,28 @@ Refusal reasons with at least 10 Spaces (Spaces with at least one error for the 
 Not recoverable, by what is missing (without / with `--users`): page body 218 / 301, bundle shape
 135 / 160, client app body 53 / 70, erased parameter types 25 / 28, stored payload only 3 / 3.
 
+**After the migration-gap PRs.** The same export, with one binary built from `origin/main`
+`55cc00b4` plus the open converter changes (writing GET endpoints that never read the visitor,
+`sf.jsonc` crons at a converted GET path, profile fields under Space Users, `ctx.gravatar`, and the
+per-service refusal reasons). Counts are Spaces whose report carries each converter code
+(`scripts/census-08/census.mjs` `codes`):
+
+| | Without `--users`, before → after | With `--users`, before → after |
+| --- | ---: | ---: |
+| Accepted | 0 → 0 | 0 → 0 |
+| Refused | 570 → 558 | 462 → 436 |
+| Not recoverable | 315 → 327 | 422 → 448 |
+| `Z08_ENDPOINT_WRITING_GET` | 43 → 0 | 43 → 0 |
+| `Z08_CTX_AUTH_PROFILE` | 99 → 99 | 70 → 5 |
+| `Z08_CTX_AUTH_USERS` | 251 → 251 | — |
+| `Z08_PAGE_INTERACTIVE` | 556 → 556 | 556 → 556 |
+| `Z08_CTX_SERVICE` | 126 → 126 | 78 → 78 |
+
+A Space that loses its last refusal moves to *not recoverable*, not to accepted: what is left
+needs its original source. A few codes rise (`Z08_CTX_DB`, `Z08_CTX_DYNAMIC`, `Z08_V2_COMPILE`,
+`Z08_ENDPOINT_REQUEST_API`): with an earlier refusal gone, the converter reaches code it used to
+stop before.
+
 ### Production census (2026-11-07)
 
 **The bar.** v2 can replace 0.8 on Spacefast when `first migrate app --from

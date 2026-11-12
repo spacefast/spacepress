@@ -1090,16 +1090,30 @@ fn collection_options(
     let url = match o.get("url") {
         None | Some(Value::Undef) => None,
         Some(Value::Str(pattern)) if editor => {
-            let has_slug = |table: &str| {
-                out.collections
-                    .iter()
-                    .any(|c| c.table() == table && c.kind == StorageKind::Collection)
+            // A collection's read rule defaults to "anyone"; only that default or the literal keeps
+            // its items' slugs public. (Drafts never have a permalink, so they never reach a URL.)
+            let public_slug = |table: &str| {
+                out.collections.iter().any(|c| {
+                    c.table() == table
+                        && c.kind == StorageKind::Collection
+                        && match c.options.as_ref() {
+                            Some(Value::Object(o)) => match o.borrow().get("access") {
+                                None | Some(Value::Undef) => true,
+                                Some(Value::Object(a)) => {
+                                    matches!(a.borrow().get("read"), None | Some(Value::Undef))
+                                        || matches!(a.borrow().get("read"), Some(Value::Str(r)) if &**r == "anyone")
+                                }
+                                Some(_) => false,
+                            },
+                            _ => true,
+                        }
+                })
             };
             let kind = crate::kind_url::UrlKind {
                 columns,
                 dated: drafts,
                 hierarchical: false,
-                has_slug: &has_slug,
+                public_slug: &public_slug,
             };
             let shape =
                 crate::kind_url::check(pattern, &kind).map_err(|e| Diag::new(span("url"), e.message).help(e.help))?;

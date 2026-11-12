@@ -37,11 +37,11 @@ First loads every `.ts` file under `first/`, except `app/`, `components/`,
 
 ```ts
 // first/schema.ts
-export const notes = table({ title: text() });
+export const notes = table({ title: text().optional() });
 
 // first/server/likes.ts (any file name)
 import { notes } from "first:db";
-export const like = action({ input: { id: integer() }, async handler({ id }) { /* … */ } });
+export const like = action({ input: { id: integer().optional() }, async handler({ id }) { /* … */ } });
 ```
 
 - Other exports are ignored, so helper modules need no special place.
@@ -107,11 +107,11 @@ import {
 } from "first";
 
 // Native WordPress content with an editor and the integer id every kind has.
-const posts = collection({ title: text() });
+const posts = collection({ title: text().optional() });
 // App data in SQL, with a reference to the content.
 const stock = table({
-  postId: integer().references(() => posts.id, { onDelete: "cascade" }),
-  quantity: integer().default(0),
+  postId: integer().references(() => posts.id, { onDelete: "cascade" }).optional(),
+  quantity: integer().default(0).optional(),
 });
 const collections = { posts };
 const tables = { stock };
@@ -734,7 +734,7 @@ import { action, defineConfig, HttpError, text } from "first";
 export default defineConfig({
   actions: {
     weather: action({
-      input: { city: text() },
+      input: { city: text().optional() },
       access: "anyone",
       async handler({ city }) {
         const query = new URLSearchParams({ q: city });
@@ -825,7 +825,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export default defineConfig({
   actions: {
     verify: action({
-      input: { body: text(), signature: text() },
+      input: { body: text().optional(), signature: text().optional() },
       access: "anyone",
       handler({ body, signature }) {
         const expected = createHmac("sha256", process.env.WEBHOOK_SECRET!).update(body).digest("hex");
@@ -870,7 +870,7 @@ import { action, defineConfig, email, mail, text } from "first";
 export default defineConfig({
   actions: {
     invite: action({
-      input: { to: email(), name: text().optional() },
+      input: { to: email().optional(), name: text().optional() },
       access: "editor",
       async handler({ to, name }) {
         const queued = await mail.send({
@@ -918,7 +918,7 @@ import { abilities } from "php/wordpress";
 export default defineConfig({
   actions: {
     count: action({
-      input: { text: text() },
+      input: { text: text().optional() },
       access: "authenticated",
       async handler(input) {
         const result = await abilities.call("acme/word-count", { text: input.text });
@@ -1411,7 +1411,7 @@ Instances retain identity through assignment, arguments and closures. JSON
 responses and generated client types contain own fields only; they do not
 include methods or class metadata. Object spread copies own fields shallowly.
 `structuredClone`, stored JSON, callback inputs and persistent `once` results
-produce plain data without class identity. Use object types in `json().$type<T>()`;
+produce plain data without class identity. Use object types in `json<T>()`;
 class types and assertions that would pretend to hydrate a class are refused.
 
 Private names (`#field`, `#method()`, `static #x` and `#x in value`) belong to

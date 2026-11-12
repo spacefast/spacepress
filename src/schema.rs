@@ -480,6 +480,8 @@ pub struct Schema {
     pub wp_hooks: Vec<WpHook>,
     /// Server components (`first/components/<file>.tsx#<export>`) → their compiled PHP function.
     pub components: IndexMap<String, String>,
+    /// `first/app/`: the route table and each route file's compiled exports (docs/spec/rendering.md).
+    pub app: Option<App>,
     /// Hooks or WordPress functions hand `WP_Post`/`WP_User` views to compiled code.
     pub wp_views: bool,
     pub files: IndexMap<String, FileBucket>,
@@ -504,6 +506,7 @@ impl Default for Schema {
             routes: IndexMap::new(),
             wp_hooks: Vec::new(),
             components: IndexMap::new(),
+            app: None,
             wp_views: false,
             files: IndexMap::new(),
             webhooks: Vec::new(),
@@ -609,4 +612,43 @@ pub fn physical_name(key: &str) -> String {
         out.push(c.to_ascii_lowercase());
     }
     out
+}
+
+/// `first/app/` as the runtime router reads it.
+#[derive(Debug, Clone, Default)]
+pub struct App {
+    /// Most specific first: the router takes the first match.
+    pub routes: Vec<AppRoute>,
+    pub not_found: Option<AppRoute>,
+    /// Route file (relative to `first/`) → its compiled exports.
+    pub files: IndexMap<String, AppFile>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AppRoute {
+    /// The folder below `app/`, `/` for the root: stable across builds.
+    pub id: String,
+    /// `/blog/:slug`, `/docs/*rest` (one or more), `/docs/**rest` (zero or more).
+    pub pattern: String,
+    pub page: Option<String>,
+    pub handler: Option<String>,
+    pub layouts: Vec<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AppFile {
+    /// The compiled default component.
+    pub component: Option<String>,
+    /// A literal metadata object, or `{ "fn": name }` for a function.
+    pub metadata: Option<Json>,
+    pub guard: Option<Access>,
+    pub search: Option<AppSearch>,
+    /// HTTP method → compiled handler.
+    pub methods: IndexMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AppSearch {
+    pub fields: IndexMap<String, Column>,
 }

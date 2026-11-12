@@ -10,6 +10,8 @@ final class Runtime
     private static ?Plugin $plugin = null;
     private static ?string $appFile = null;
     private static bool $booted = false;
+    /** The runtime plugin's main file, for URLs of the runtime's own browser modules. */
+    private static ?string $runtimeFile = null;
     private static bool $managed = false;
     /** @var array<string, callable> `wp first` commands other First plugins register (identity) */
     private static array $commands = [];
@@ -26,6 +28,7 @@ final class Runtime
             return;
         }
         self::$booted = true;
+        self::$runtimeFile = $runtimeFile;
         register_activation_hook($runtimeFile, [self::class, 'activate']);
         // As with app migrations: a runtime updated by copying files in sets up its tables on the
         // first request of any kind, once, under a lock.
@@ -204,6 +207,12 @@ final class Runtime
             self::notice($error->getMessage());
             return null;
         }
+    }
+
+    /** The runtime plugin's main file (`first-runtime/first-runtime.php`, or the build store's mount). */
+    public static function file(): string
+    {
+        return self::$runtimeFile ?? dirname(__DIR__, 2) . '/first-runtime.php';
     }
 
     public static function unavailable(): ?string

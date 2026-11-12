@@ -290,6 +290,7 @@ final class Kinds
         $spec = $kind['spec'];
         $out = [];
         $meta = [];
+        $first = [];
         foreach ($data as $col => $value) {
             $col = (string) $col;
             if ($kind['type'] === 'users') {
@@ -318,12 +319,11 @@ final class Kinds
             } elseif ($col === 'publishedAt' && ($spec['columns']['publishedAt']['system'] ?? false)) {
                 $out['date_gmt'] = is_string($value) ? substr($value, 0, 19) : $value;
             } elseif (in_array($col, ['locale', 'translationOf'], true) && ($spec['localized'] ?? false)) {
-                $out[$col] = $value; // a translation's language and group (PostsController::createTranslated)
-            } elseif (isset($spec['columns'][$col]) && !($spec['columns'][$col]['system'] ?? false)) {
-                $meta[$col] = $value;
+                $out[$col] = $value; // a translation's language and group (PostsController::firstWrite)
             } else {
-                // Core ignores a `meta` key it doesn't know; First refuses a field the kind doesn't have.
-                throw \First\HttpError::invalidInput(isset($spec['columns'][$col]) ? "$col is managed by First" : "Unknown field '$col'", \First\HttpError::seg($col));
+                // Every other field, known or not (`uid`, a typo): First's pipeline on the core route
+                // decides it, as for any write (PostsController::firstWrite reads `first`).
+                $first[$col] = $value;
             }
         }
         if ($kind['type'] === 'post' && !isset($out['status']) && $create) {
@@ -336,6 +336,9 @@ final class Kinds
         }
         if ($meta !== []) {
             $out['meta'] = (object) $meta;
+        }
+        if ($first !== []) {
+            $out['first'] = (object) $first;
         }
 
         return $out;

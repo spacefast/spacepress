@@ -104,7 +104,9 @@ final class Facade
             self::emit($status, $headers, $body);
         } catch (HttpError | \First\JsError $e) {
             $problem = \First\App::problem($e);
-            self::emit($problem['status'], ['Content-Type' => 'application/problem+json'] + self::PRIVATE, (string) Js::jsonStringify($problem));
+            // Storage behind the build is short-lived: a client retries shortly, as /wp-json said.
+            $retry = $problem['status'] === 503 ? ['Retry-After' => '5'] : [];
+            self::emit($problem['status'], ['Content-Type' => 'application/problem+json'] + $retry + self::PRIVATE, (string) Js::jsonStringify($problem));
         }
     }
 

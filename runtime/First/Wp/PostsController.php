@@ -235,6 +235,15 @@ final class PostsController extends \WP_REST_Posts_Controller
         if (is_array($meta)) {
             $data += array_intersect_key($meta, PostMeta::fields($spec));
         }
+        // The API's other fields as sent (`uid`, or a field the kind doesn't have): First decides them.
+        $body = (string) $request->get_body();
+        try {
+            $decoded = trim($body) === '' ? null : \First\Seam::container(\First\Js::decodeJson($body));
+        } catch (\JsonException) {
+            $decoded = null;
+        }
+        $extra = is_array($decoded) ? \First\Seam::container($decoded['first'] ?? null) : null;
+        $data += is_array($extra) ? $extra : [];
         foreach (['locale', 'translationOf'] as $param) {
             if (array_key_exists($param, (array) $sent)) {
                 $data[$param] = $sent[$param];

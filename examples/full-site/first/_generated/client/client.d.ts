@@ -23,6 +23,8 @@ export interface Media {
 		x: number;
 		y: number;
 	} | null;
+	author: number | null;
+	caption: string;
 }
 export interface PrivateFile {
 	id: number;

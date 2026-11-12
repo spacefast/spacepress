@@ -42,6 +42,10 @@ apps (zero#138) from a handler, one `shared/<construct>.ts` per construct group.
 `language_constructs_convert_and_build` converts and builds it; the exact
 semantics are proven by `tests/differential/language`.
 
+`hits` is a writing GET endpoint that never reads the visitor (a hit counter), in the 0.8 capsule
+API: it converts to a GET route that writes. A writing GET that reads `ctx.auth` stays refused
+(`Z08_ENDPOINT_WRITING_GET`).
+
 `gravatar` calls `ctx.gravatar.avatarUrl` and `ctx.gravatar.profile`. `expected.json` holds what
 0.8's own client returns for its calls: `makeGravatar` from `RUNTIME_SERVICE_CLIENT_SOURCE` in
 `spacefast/monorepo` `packages/common/src/contracts/runtime-services.ts` (main `384d463fa4`), run

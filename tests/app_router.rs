@@ -73,7 +73,8 @@ fn app_router_serves_pages_on_wordpress() {
         "{body}"
     );
     assert_eq!(seen["home description"], true);
-    assert_eq!(seen["home cache"][0], "private, no-store, max-age=0");
+    // An anonymous visitor's page is cacheable (rendering.md §6.1; app_pages_cache_and_purge_by_what_they_read).
+    assert_eq!(seen["home cache"][0], "public, s-maxage=300, max-age=0, must-revalidate");
     // `<Link>` to a path on the site is the router region's navigation, loaded on the page.
     assert!(body.contains(r#"/notes" data-wp-interactive="first/router" data-wp-on--click="actions.navigate" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
     assert_eq!(seen["router module"], true);

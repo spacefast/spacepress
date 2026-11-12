@@ -17,7 +17,7 @@ export const systems = collection({
   model: text().max(120),
   installedOn: date(),
   manual: file({ bucket: "manuals" }).ui({
-    label: "Manual PDF", help: "Upload to /wp-json/first/v1/files/manuals, then enter its file ID.",
+    label: "Manual PDF", help: "Upload to /__first/api/v1/files/manuals, then enter its file ID.",
   }),
 }, { title: "name", label: "Home systems", access: {
   read: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), create: "authenticated",

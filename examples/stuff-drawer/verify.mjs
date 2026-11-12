@@ -4,7 +4,7 @@ const site = process.env.FIRST_SITE?.replace(/\/$/, "");
 const password = process.env.FIRST_APP_PASSWORD;
 const otherPassword = process.env.FIRST_OTHER_APP_PASSWORD;
 assert.ok(site && password, "Set FIRST_SITE and FIRST_APP_PASSWORD=user:application-password.");
-const api = `${site}/wp-json/first/v1`;
+const api = `${site}/__first/api/v1`;
 
 async function request(method, path, body, credential = password, extraHeaders = {}) {
   const headers = { ...extraHeaders };

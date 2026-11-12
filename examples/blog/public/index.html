@@ -29,7 +29,7 @@
     // register this page once with
     // `first identity app add --name=Blog --id=app_blog --redirect=<this page's URL> --origin=<its origin>`.
     const first = createClient({
-      url: "/wp-json/first/v1",
+      url: "/__first/api/v1",
       auth: { storage: "session", clientId: "app_blog", redirectUri: location.origin + location.pathname },
     });
     const $ = (id) => document.getElementById(id);

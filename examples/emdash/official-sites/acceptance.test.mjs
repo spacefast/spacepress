@@ -36,7 +36,7 @@ test('pinned official Astro blank, starter and blog run against compiled native 
     const password = await wp(project,'user','application-password','create','admin','official-frontend-acceptance','--porcelain');
     const authorization = `Basic ${Buffer.from(`admin:${password}`).toString('base64')}`;
     async function rest(path, { method = 'GET', body, auth = true } = {}) {
-      const response = await fetch(`${backend}/wp-json/${path}`, { method, headers: { ...(auth ? { authorization } : {}), ...(body === undefined ? {} : { 'content-type':'application/json' }) }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+      const response = await fetch(path.startsWith('__first/') ? `${backend}/${path}` : `${backend}/wp-json/${path}`, { method, headers: { ...(auth ? { authorization } : {}), ...(body === undefined ? {} : { 'content-type':'application/json' }) }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30000) });
       const json = await response.json();
       assert.ok(response.ok, `${path}: ${response.status} ${JSON.stringify(json)}`);
       return json.data ?? json;
@@ -52,7 +52,7 @@ test('pinned official Astro blank, starter and blog run against compiled native 
       const { document } = parseHTML(home);
       assert.equal(document.querySelector('h1').textContent, 'Welcome to EmDash');
       assert.equal(document.querySelector('main a').getAttribute('href'), '/_emdash/admin');
-      const schema = await rest('first/v1/_schema', { auth: false });
+      const schema = await rest('__first/api/v1', { auth: false });
       assert.equal(schema.runtime.wp.database.kind, 'sqlite');
       const redirect = await fetch(`${frontend}/_emdash/admin`, { redirect: 'manual' });
       assert.equal(redirect.status, 302);
@@ -132,7 +132,7 @@ test('pinned official Astro blank, starter and blog run against compiled native 
     assert.equal((await html('/posts')).includes('Protected content marker'),false);
 
     console.log(`${mode}: signed draft preview and privacy passed`);
-    const reading = await rest('first/v1/actions/readingTime',{method:'POST',auth:false,body:{content:'word '.repeat(201) + '漢'.repeat(501)}});
+    const reading = await rest('__first/api/v1/actions/readingTime',{method:'POST',auth:false,body:{content:'word '.repeat(201) + '漢'.repeat(501)}});
     assert.deepEqual(reading,{minutes:3});
 
     if (mode === 'blog') {

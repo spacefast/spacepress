@@ -1,5 +1,6 @@
+use crate::app_plugin::plugin_vars;
 use crate::diag::{Diag, Span};
-use crate::emit::{emit_generated, plugin_vars, runtime_file, write};
+use crate::emit::{emit_generated, runtime_file, write};
 use crate::pipeline::{self, Built};
 use crate::{diag, layout, loader, platform, schema_php, wp_plugins};
 use std::path::{Path, PathBuf};
@@ -228,14 +229,7 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
     }
     prepared.install_into(&stage.join("plugins"))?;
     let plugins = stage.join("plugins");
-    let mut generated = vec![
-        "first-runtime".to_string(),
-        "first-identity".to_string(),
-        format!("first-app-{}", built.schema.name),
-    ];
-    if built.schema.admin {
-        generated.push("first-admin".to_string());
-    }
+    let generated = crate::app_plugin::first_plugins(&built.schema);
     // Admin is also owned here when its opt-in is removed.
     for slug in generated
         .iter()

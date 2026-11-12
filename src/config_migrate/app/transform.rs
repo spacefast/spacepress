@@ -813,6 +813,8 @@ pub(super) fn app(
     }
     let mut routes: Vec<(String, String)> = Vec::new();
     let mut prefixes: Vec<(String, String, String, String)> = Vec::new();
+    // Writing GET endpoints, by index in `routes`: refused if they turn out to read the visitor.
+    let mut writing_gets: Vec<(usize, String, Span)> = Vec::new();
     let mut seen = BTreeSet::new();
     if let Some(group) = root.get("endpoints") {
         for (name, e) in obj(group, "/endpoints")? {
@@ -887,6 +889,9 @@ pub(super) fn app(
                             at.clone(),
                             code[PREFIX_MARK.len()..].to_string(),
                         ));
+                    }
+                    if route.writes && route.method == "GET" {
+                        writing_gets.push((routes.len(), at.clone(), e.span));
                     }
                     routes.push((route.path.clone(), code));
                     entries.push(entry(
@@ -1009,6 +1014,23 @@ pub(super) fn app(
     }
     for (_, _, _, code) in &mut prefixes {
         *code = settle(code);
+    }
+    // Once the 401 gates are settled, a writing GET reads the visitor exactly when its code names
+    // the user or subject (a helper's read brings the subject gate along).
+    for (index, at, span) in writing_gets {
+        let code = &routes[index].1;
+        if ["__z08ctx.user", "__z08subject", "__z08Subject"]
+            .iter()
+            .any(|name| code.contains(name))
+        {
+            errors.push(fail(&at, super::endpoints::WRITING_GET).spanned(span, Path::new("")));
+        } else {
+            entries.push(entry(
+                &at,
+                "review",
+                "a GET route that writes, as in 0.8; it never reads the visitor, so a request from another site can do no more than an anonymous visit already can",
+            ));
+        }
     }
     for (function, (ctx, request)) in converted_helpers.keys() {
         entries.push(entry(

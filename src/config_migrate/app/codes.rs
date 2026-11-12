@@ -384,11 +384,14 @@ pub static RULES: &[Rule] = &[
     },
     Rule {
         code: "Z08_ENDPOINT_WRITING_GET",
-        feature: "writing GET endpoint",
+        feature: "writing GET endpoint that reads the visitor",
         v2: "a POST route",
-        fix: "Make the endpoint POST (or another unsafe method) and update its callers.",
+        fix: "Make the endpoint POST (or another unsafe method) and update its callers, or stop reading ctx.auth in it.",
         test: |_, r| r.contains("writing GET"),
-        example: ("/endpoints/hit", "a writing GET endpoint needs a manual port"),
+        example: (
+            "/endpoints/hit",
+            "a writing GET endpoint that reads the visitor needs a manual port",
+        ),
     },
     Rule {
         code: "Z08_ENDPOINT_RESERVED_PATH",

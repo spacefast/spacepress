@@ -196,6 +196,11 @@ fn filter_ts(c: &Column) -> String {
     if c.ty.is_json_kind() {
         return format!("{v} | null | {{ eq?: {v} | null; ne?: {v} | null; isNull?: true; isNotNull?: true }}");
     }
+    if c.ty == ColType::RefList {
+        // Never null: a row with no links holds `[]`. `true`/`false` (some link or none) and a filter
+        // on the linked rows come from the relation (`collection_types`).
+        return "[] | { has?: number; eq?: []; NOT?: { has?: number } }".into();
+    }
     if c.ty.is_list_kind() {
         let el = v
             .trim_end_matches("[]")
@@ -609,6 +614,12 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     let mut filter: Vec<String> = columns()
         .filter(|col| !col.derived)
         .map(|col| match c.relations.get(&col.name) {
+            Some(r) if col.ty == ColType::RefList => format!(
+                "{}?: {} | true | false | {}Filter",
+                key(&col.name),
+                filter_ts(col),
+                names[&r.collection]
+            ),
             Some(r) => format!(
                 "{}?: {} | {}Filter",
                 key(&col.name),

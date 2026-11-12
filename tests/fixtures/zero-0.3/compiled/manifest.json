@@ -1,0 +1,15 @@
+{
+  "format": "zero.hosted.v1",
+  "compiler": "0.3.0",
+  "app": "notes",
+  "wordpress": "7.1",
+  "php": "8.2",
+  "requires": {
+    "action-scheduler": "4.2.0",
+    "mcp-adapter": "0.7.1",
+    "secure-custom-fields": "6.9.7"
+  },
+  "pages": null,
+  "appSourceSha256": "b8ea83d375e2281166afa0e4ea7ce7ab1fcfa13033ef09ffa0f038eb46fe2cad",
+  "vendorSourceSha256": "fc942cc1c40d2aa27dea4de044a2e18ff34db975ead992c110dde4e8af4bc4a1"
+}

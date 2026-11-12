@@ -270,14 +270,6 @@ pub static RULES: &[Rule] = &[
         example: ("/client/index.tsx", "client source the browser build cannot compile: x"),
     },
     Rule {
-        code: "Z08_CLIENT_NATIVE",
-        feature: "client app converted by the browser compiler",
-        v2: "first migrate app from the native CLI",
-        fix: "Run first migrate app --from zero-0.8 with the native CLI; it compiles the client into public/.",
-        test: |_, r| r.starts_with(client::TAG_NATIVE),
-        example: ("/client/index.tsx", "client app conversion outside the native CLI: x"),
-    },
-    Rule {
         code: "Z08_CLIENT_PUBLIC",
         feature: "client app with its own public/ directory",
         v2: "public/, which holds the converted client",
@@ -468,7 +460,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_CTX_AUTH_USERS",
         feature: "ctx.auth.userId without Space Users",
         v2: "ctx.user.id",
-        fix: "Migrate with --users when the Space uses Space Users; otherwise key rows by ctx.user.id.",
+        fix: "With Space Users, migrate with --users. Without them, keep the app on 0.8: mapping Spacefast accounts and guests to First users waits on the Sign in with Spacefast decision.",
         test: |_, r| r.starts_with("ctx.auth.userId maps only for Space Users"),
         example: (
             "/queries/me/ctx/auth/userId",

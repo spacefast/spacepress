@@ -21,6 +21,12 @@ final class Halt extends \RuntimeException
         throw new self(404, null);
     }
 
+    /** The same stop, for the router's own checks (a kind URL whose item the visitor can't read). */
+    public static function notFoundSignal(): self
+    {
+        return new self(404, null);
+    }
+
     public static function redirect(string $url, int $status): never
     {
         if (!\First\Html::safeUrl($url)) {

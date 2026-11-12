@@ -22,14 +22,14 @@ first/app/
 ├── notes/[slug]/page.tsx         /notes/<slug>: params.slug
 ├── docs/[[...path]]/page.tsx     /docs, /docs/a/b: params.path is a string[]
 ├── account/layout.tsx            export const guard = "subscriber"
-├── api/notes/route.ts            export async function GET(req) { … }
+├── api/notes/route.ts            export const access = "anyone"; export async function GET(req) { … }
 └── _lib/                         never routed: colocated helpers
 ```
 
 | Name | Meaning |
 | --- | --- |
-| `page.tsx` | A route. It may also export `POST`, `PUT`, `PATCH` or `DELETE` handlers for its URL |
-| `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page |
+| `page.tsx` | A route. It may also export `POST`, `PUT`, `PATCH` or `DELETE` handlers for its URL, with `access` |
+| `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page, with `access` or `signature` |
 | `layout.tsx` | Wraps every page below it, outermost first. May export `guard` |
 | `not-found.tsx` | At the root only |
 | `error.tsx` | The nearest one above a page renders when the page throws |
@@ -55,7 +55,7 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 - `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
 - `<Content value>` renders a post body through `the_content`. `<Html value>` places a literal as written and runs anything else through `wp_kses_post`.
 
-### Typed search, a guard, an HTTP handler
+### Typed search, a guard, HTTP handlers
 
 <RepoFile path="tests/fixtures/app-router/first/app/notes/page.tsx" />
 
@@ -63,7 +63,11 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 
 <RepoFile path="tests/fixtures/app-router/first/app/api/notes/route.ts" />
 
+<RepoFile path="tests/fixtures/app-router/first/app/webhooks/notify/route.ts" />
+
 A value a `search` field refuses (`?page=abc`) reads as absent. A `guard` is a role, `"authenticated"`, or `({ user }) => boolean`: a signed-out visitor goes to the login page, a signed-in one gets a 403.
+
+Every HTTP handler says who may call it. `export const access` is `"anyone"`, `"authenticated"`, a role, a boolean or `({ user }) => boolean`, and the handler's reads run as the caller, like a page. `export const signature = { secret, header, scheme }` makes it a raw signed webhook: the body's HMAC is checked before the handler runs, and the handler runs as the system, so it can read what an anonymous visitor can't. A handler with neither, or with both, is a build error.
 
 `first build` writes `first/_generated/routes.d.ts`. With it, `<Link href>` is checked against the app's routes and `PageProps<"notes/[slug]">` types `params`. Point TypeScript at First's JSX types:
 

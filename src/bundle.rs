@@ -622,11 +622,50 @@ pub(crate) fn compile_tree(
     // - hand over any request whose path matches an entry, whatever its method, so a known path with
     //   the wrong method gets the runtime's 405 rather than the host's 404.
     // `pagePaths` are GET and HEAD only. The runtime still picks the most specific route.
+    let mut app_routes: Vec<(String, String)> = Vec::new();
+    let mut page_paths: Vec<String> = pages
+        .as_ref()
+        .map(|p| p.patterns.iter().map(|pattern| page_path(pattern)).collect())
+        .unwrap_or_default();
+    // `first/app/` pages are GET paths; `route.ts` handlers and pages with handlers take any
+    // method. A zero-or-more catch-all (`**rest`) is its folder plus `*rest`, in the host grammar.
+    if let Some(app) = &built.schema.app {
+        for route in &app.routes {
+            let paths = match route.pattern.rsplit_once("/**") {
+                Some((base, name)) => vec![
+                    if base.is_empty() {
+                        "/".to_string()
+                    } else {
+                        base.to_string()
+                    },
+                    format!("{base}/*{name}"),
+                ],
+                None => vec![route.pattern.clone()],
+            };
+            let file = route
+                .handler
+                .as_ref()
+                .or(route.page.as_ref())
+                .and_then(|f| app.files.get(f));
+            for path in paths {
+                if route.page.is_some() {
+                    page_paths.push(path.clone());
+                }
+                for method in file
+                    .map(|f| f.methods.keys().cloned().collect::<Vec<_>>())
+                    .unwrap_or_default()
+                {
+                    app_routes.push((path.clone(), method));
+                }
+            }
+        }
+    }
     let mut routes: Vec<(&str, &str)> = built
         .schema
         .routes
         .values()
         .map(|r| (r.path.as_str(), r.method.as_str()))
+        .chain(app_routes.iter().map(|(p, m)| (p.as_str(), m.as_str())))
         .collect();
     routes.sort();
     routes.dedup();
@@ -634,10 +673,6 @@ pub(crate) fn compile_tree(
         .iter()
         .map(|(path, method)| serde_json::json!({"method": method, "path": path}))
         .collect();
-    let mut page_paths: Vec<String> = pages
-        .as_ref()
-        .map(|p| p.patterns.iter().map(|pattern| page_path(pattern)).collect())
-        .unwrap_or_default();
     page_paths.sort();
     page_paths.dedup();
     let manifest = serde_json::json!({"format":"first.hosted.v1", "compiler":VERSION, "app":built.schema.name,

@@ -1187,10 +1187,21 @@ fn space_user_subjects_back_owner_scoped_handlers() {
     let root = temp.path().join("todo");
     trimmed("starter-todo", &root, &["pages", "client"], without_endpoints);
     let out = temp.path().join("candidate");
-    // Without Space Users there is no subject to carry, so userId stays refused.
+    // Without Space Users, which First user a Spacefast account or a 0.8 guest becomes is an open
+    // owner decision (Sign in with Spacefast), so userId stays refused and the refusal says so.
     let (ok, refused) = migrate(&root, &out, &["--space", "spc_migrate_test", "--dry-run"]);
     assert!(!ok);
-    assert_eq!(refused["errors"][0]["pointer"], "/queries/todos/ctx/auth/userId");
+    let error = &refused["errors"][0];
+    assert_eq!(error["pointer"], "/queries/todos/ctx/auth/userId");
+    assert_eq!(error["code"], "Z08_CTX_AUTH_USERS");
+    let reason = error["reason"].as_str().unwrap();
+    for named in ["account:<id>", "guest:<id>", "owner decision", "Sign in with Spacefast"] {
+        assert!(reason.contains(named), "{named}: {reason}");
+    }
+    assert!(
+        error["fix"].as_str().unwrap().contains("keep the app on 0.8"),
+        "{error}"
+    );
     let (ok, report) = migrate(&root, &out, &["--space", "spc_migrate_test", "--users"]);
     assert!(ok, "{report:#}");
     let entries = report["entries"].as_array().unwrap();

@@ -468,7 +468,7 @@ pub static RULES: &[Rule] = &[
         code: "Z08_CTX_AUTH_USERS",
         feature: "ctx.auth.userId without Space Users",
         v2: "ctx.user.id",
-        fix: "Migrate with --users when the Space uses Space Users; otherwise key rows by ctx.user.id.",
+        fix: "With Space Users, migrate with --users. Without them, keep the app on 0.8: mapping Spacefast accounts and guests to First users waits on the Sign in with Spacefast decision.",
         test: |_, r| r.starts_with("ctx.auth.userId maps only for Space Users"),
         example: (
             "/queries/me/ctx/auth/userId",

@@ -1,8 +1,8 @@
-import { action, db, defineConfig, defineRelations, id, integer, json, text, table } from "first";
-const owners = table({ id: id(), name: text().notNull() });
+import { action, db, defineConfig, defineRelations, integer, json, text, table } from "first";
+const owners = table({ name: text() });
 const records = table({
-  id: id(), name: text().notNull(), ownerId: integer().notNull().references(() => owners.id),
-  meta: json().$type<{ count: number; tags: string[]; detail: { label: string } }>().notNull(),
+  name: text(), ownerId: integer().references(() => owners.id),
+  meta: json<{ count: number; tags: string[]; detail: { label: string } }>(),
 });
 const tables = { owners, records };
 const entities = { ...tables };

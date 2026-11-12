@@ -12,22 +12,16 @@ import {
 
 export const stories = collection(
   {
-    title: text().notNull().min(1).max(120),
-    body: richText(),
-    cover: media({ accept: "image" }),
-    details: group({
-      fields: { subtitle: text(), featured: boolean().default(false) },
-    }),
-    links: repeater({
-      fields: { label: text().notNull(), href: text().notNull() },
-    }),
+    title: text().min(1).max(120),
+    body: richText().optional(),
+    cover: media({ accept: "image" }).optional(),
+    details: group({ subtitle: text().optional(), featured: boolean().default(false).optional() }).optional(),
+    links: repeater({ label: text(), href: text() }).optional(),
     sections: blocks({
-      layouts: {
-        quote: { text: text().notNull(), cite: text() },
-        callout: { heading: text().notNull(), body: text() },
-      },
-    }),
-    metadata: json(),
+        quote: { text: text(), cite: text().optional() },
+        callout: { heading: text(), body: text().optional() },
+      }).optional(),
+    metadata: json().optional(),
   },
   {
     title: "title",

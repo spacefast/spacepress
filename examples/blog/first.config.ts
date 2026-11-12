@@ -6,39 +6,39 @@ import {
 } from "first";
 
 export const authors = collection({
-  name: text().notNull().max(80),
+  name: text().max(80),
   // Public profiles, private inboxes: only editors see an author's address (§4.7).
-  email: email().notNull().unique().max(191).access({ read: "editor" }),
-  bio: text({ multiline: true }).max(500),
-  avatar: media({ accept: "image" }),
-  userId: integer(),                       // the User.id that owns this author profile
+  email: email().unique().max(191).access({ read: "editor" }),
+  bio: text({ multiline: true }).max(500).optional(),
+  avatar: media({ accept: "image" }).optional(),
+  userId: integer().optional(),                       // the User.id that owns this author profile
 }, { label: "Authors", title: "name", uid: true, access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
 export const posts = collection({
   // Translated per locale (§7.3). The other fields are shared by a post's translations, except
   // each row's own slug, status and dates.
-  title: text().notNull().min(1).max(120).localized(),
-  slug: slug({ source: "title" }),
-  body: richText().localized(),
-  excerpt: text({ multiline: true }).max(300).localized(),
-  cover: media({ accept: "image" }),
-  tags: select({ options: ["news", "guide", "release"], multiple: true }).notNull().default([]),
-  authorId: integer().references(() => authors.id, { onDelete: "set null" }),
+  title: text().min(1).max(120).localized(),
+  slug: slug({ source: "title" }).optional(),
+  body: richText().localized().optional(),
+  excerpt: text({ multiline: true }).max(300).localized().optional(),
+  cover: media({ accept: "image" }).optional(),
+  tags: select(["news", "guide", "release"]).many().default([]),
+  authorId: integer().references(() => authors.id, { onDelete: "set null" }).optional(),
   // Only worth filling in for published posts: the editor hides it otherwise (§4.7).
-  seo: group({ fields: {
-    metaTitle: text().max(70),
-    metaDescription: text().max(160),
-    noindex: boolean().notNull().default(false),
-  } }).showIf({ status: "published" }),
+  seo: group({
+    metaTitle: text().max(70).optional(),
+    metaDescription: text().max(160).optional(),
+    noindex: boolean().default(false),
+  }).showIf({ status: "published" }).optional(),
   // The talk's slide deck: a private file, downloaded through a signed link (§7.2).
-  deck: file({ bucket: "decks" }),
-  gallery: repeater({ fields: { image: media({ accept: "image" }).notNull(), caption: text().max(120) } }).max(12),
-  sections: blocks({ layouts: {
-    hero: { heading: text().notNull().max(80), image: media({ accept: "image" }) },
-    quote: { text: text({ multiline: true }).notNull(), cite: text().max(80) },
-  } }),
-  createdAt: timestamp().notNull().defaultNow(),
-  updatedAt: timestamp().notNull().defaultNow().$onUpdate(() => new Date()),
+  deck: file({ bucket: "decks" }).optional(),
+  gallery: repeater({ image: media({ accept: "image" }), caption: text().max(120).optional() }).max(12).optional(),
+  sections: blocks({
+    hero: { heading: text().max(80), image: media({ accept: "image" }).optional() },
+    quote: { text: text({ multiline: true }), cite: text().max(80).optional() },
+  }).optional(),
+  createdAt: timestamp().defaultNow(),
+  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()),
 }, {
   label: "Posts",
   title: "title",
@@ -54,21 +54,21 @@ export const posts = collection({
 });
 
 export const comments = table({
-  postId: integer().notNull().references(() => posts.id, { onDelete: "cascade" }),
-  name: text().notNull().max(60),
-  body: text({ multiline: true }).notNull().min(1).max(2000).validate((v) => v.includes("http://") ? "No links in comments" : true),
-  approved: boolean().notNull().default(false),
-  notifiedAt: timestamp(),                 // set by the notifyEditors job
-  createdAt: timestamp().notNull().defaultNow(),
+  postId: integer().references(() => posts.id, { onDelete: "cascade" }),
+  name: text().max(60),
+  body: text({ multiline: true }).min(1).max(2000).validate((v) => v.includes("http://") ? "No links in comments" : true),
+  approved: boolean().default(false),
+  notifiedAt: timestamp().optional(),                 // set by the notifyEditors job
+  createdAt: timestamp().defaultNow(),
 }, {
   access: { read: (ctx) => ["author", "editor", "admin"].includes(ctx.user?.role ?? "") ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
 });
 
 // Readers who sign in (§6.2): the first-identity screens on WordPress.
 export const members = userProjection({
-  email: email().notNull().unique().max(191),
-  name: text().notNull().max(80),
-  plan: select({ options: ["free", "pro"] }).notNull().default("free"),
+  email: email().unique().max(191),
+  name: text().max(80),
+  plan: select(["free", "pro"]).default("free"),
 }, { access: { read: "self", update: "self", create: "anyone", delete: "admin" } });
 
 export const collections = { authors, posts };
@@ -83,10 +83,10 @@ export const relations = defineRelations(entities, (r) => ({
 }));
 
 export const settings = global("settings", {
-  siteTitle: text().notNull().default("My blog").max(80),
-  tagline: text().max(160),
-  postsPerPage: integer().notNull().default(10).min(1).max(50),
-  social: repeater({ fields: { label: text().notNull().max(40), href: url().notNull() } }),
+  siteTitle: text().default("My blog").max(80),
+  tagline: text().max(160).optional(),
+  postsPerPage: integer().default(10).min(1).max(50),
+  social: repeater({ label: text().max(40), href: url() }).optional(),
 }, { label: "Site settings" });
 
 export default defineConfig({
@@ -105,7 +105,7 @@ export default defineConfig({
   jobs: {
     // Runs after the comment's request commits, on the queue (Action Scheduler on WordPress).
     notifyEditors: job({
-      input: { commentId: integer().notNull() },
+      input: { commentId: integer() },
       retries: 3,
       // A real site would email its editors here; this one stamps the comment so you can see it ran.
       handler: async ({ commentId }) => {
@@ -138,7 +138,7 @@ export default defineConfig({
   },
   actions: {
     approveComment: action({
-      input: { id: integer().notNull() },
+      input: { id: integer() },
       access: "editor",
       async handler({ id }) {
         const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();

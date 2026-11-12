@@ -16,46 +16,41 @@ import {
 
 export const pages = collection(
   {
-    title: text().notNull().min(1),
-    slug: slug({ source: "title" }),
+    title: text().min(1),
+    slug: slug({ source: "title" }).optional(),
     seo: group({
-      fields: {
-        title: text().max(160),
-        description: text({ multiline: true }).max(500),
-        image: media({ accept: "image" }),
-        noindex: boolean().notNull().default(false),
-      },
-    }),
+        title: text().max(160).optional(),
+        description: text({ multiline: true }).max(500).optional(),
+        image: media({ accept: "image" }).optional(),
+        noindex: boolean().default(false),
+      }).optional(),
     sections: blocks({
-      layouts: {
         hero: {
-          headline: text().notNull().min(1),
-          subheadline: text({ multiline: true }),
-          primary_cta_label: text(),
+          headline: text().min(1),
+          subheadline: text({ multiline: true }).optional(),
+          primary_cta_label: text().optional(),
           primary_cta_url: text().pattern(
             /^(?:$|\/(?![\/\\])[^\s]*|(?:https?:\/\/|mailto:|tel:|#)[^\s]+)$/,
-          ),
-          secondary_cta_label: text(),
+          ).optional(),
+          secondary_cta_label: text().optional(),
           secondary_cta_url: text().pattern(
             /^(?:$|\/(?![\/\\])[^\s]*|(?:https?:\/\/|mailto:|tel:|#)[^\s]+)$/,
-          ),
-          image: media({ accept: "image" }),
-          image_caption: text(),
-          eyebrow: text(),
+          ).optional(),
+          image: media({ accept: "image" }).optional(),
+          image_caption: text().optional(),
+          eyebrow: text().optional(),
           eyebrow_url: text().pattern(
             /^(?:$|\/(?![\/\\])[^\s]*|(?:https?:\/\/|mailto:|tel:|#)[^\s]+)$/,
-          ),
-          centered: boolean().notNull().default(false),
-          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/),
+          ).optional(),
+          centered: boolean().default(false),
+          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/).optional(),
         },
         features: {
-          headline: text().notNull().min(1),
-          subheadline: text({ multiline: true }),
-          eyebrow: text(),
+          headline: text().min(1),
+          subheadline: text({ multiline: true }).optional(),
+          eyebrow: text().optional(),
           features: repeater({
-            fields: {
-              icon: select({
-                options: [
+              icon: select([
                   "zap",
                   "shield",
                   "users",
@@ -77,165 +72,122 @@ export const pages = collection(
                   "file",
                   "sun",
                   "trend",
-                ],
-              }).notNull(),
-              title: text().notNull().min(1),
-              description: text({ multiline: true }).notNull().min(1),
-            },
-          })
-            .notNull()
-            .min(1)
-            .max(12),
-          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/),
+                ]),
+              title: text().min(1),
+              description: text({ multiline: true }).min(1),
+            }).min(1).max(12),
+          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/).optional(),
         },
         testimonials: {
-          headline: text(),
+          headline: text().optional(),
           testimonials: repeater({
-            fields: {
-              quote: text({ multiline: true }).notNull().min(1),
-              author: text().notNull().min(1),
-              role: text(),
-              company: text(),
-              avatar: media({ accept: "image" }),
-            },
-          })
-            .notNull()
-            .min(1)
-            .max(12),
-          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/),
+              quote: text({ multiline: true }).min(1),
+              author: text().min(1),
+              role: text().optional(),
+              company: text().optional(),
+              avatar: media({ accept: "image" }).optional(),
+            }).min(1).max(12),
+          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/).optional(),
         },
         pricing: {
-          headline: text(),
+          headline: text().optional(),
           plans: repeater({
-            fields: {
-              name: text().notNull().min(1),
-              price: text().notNull().min(1),
-              period: text(),
-              description: text({ multiline: true }),
-              features: text({ multiline: true }),
-              cta_label: text().notNull().min(1),
-              cta_url: text()
-                .pattern(
+              name: text().min(1),
+              price: text().min(1),
+              period: text().optional(),
+              description: text({ multiline: true }).optional(),
+              features: text({ multiline: true }).optional(),
+              cta_label: text().min(1),
+              cta_url: text().pattern(
                   /^(?:$|\/(?![\/\\])[^\s]*|(?:https?:\/\/|mailto:|tel:|#)[^\s]+)$/,
-                )
-                .notNull()
-                .min(1),
-              highlighted: boolean().notNull().default(false),
-              badge: text(),
-            },
-          })
-            .notNull()
-            .min(1)
-            .max(3),
-          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/),
+                ).min(1),
+              highlighted: boolean().default(false),
+              badge: text().optional(),
+            }).min(1).max(3),
+          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/).optional(),
         },
         faq: {
-          headline: text(),
-          subheadline: text({ multiline: true }),
+          headline: text().optional(),
+          subheadline: text({ multiline: true }).optional(),
           items: repeater({
-            fields: {
-              question: text().notNull().min(1),
-              answer: text({ multiline: true }).notNull().min(1),
-            },
-          })
-            .notNull()
-            .min(1)
-            .max(12),
-          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/),
+              question: text().min(1),
+              answer: text({ multiline: true }).min(1),
+            }).min(1).max(12),
+          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/).optional(),
         },
         logos: {
-          headline: text(),
+          headline: text().optional(),
           logos: repeater({
-            fields: {
-              name: text().notNull().min(1),
-              logo: media({ accept: "image" }),
-            },
-          })
-            .notNull()
-            .min(1)
-            .max(24),
-          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/),
+              name: text().min(1),
+              logo: media({ accept: "image" }).optional(),
+            }).min(1).max(24),
+          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/).optional(),
         },
         split: {
-          headline: text().notNull().min(1),
-          eyebrow: text(),
-          body: text({ multiline: true }),
-          points: text({ multiline: true }),
-          cta_label: text(),
+          headline: text().min(1),
+          eyebrow: text().optional(),
+          body: text({ multiline: true }).optional(),
+          points: text({ multiline: true }).optional(),
+          cta_label: text().optional(),
           cta_url: text().pattern(
             /^(?:$|\/(?![\/\\])[^\s]*|(?:https?:\/\/|mailto:|tel:|#)[^\s]+)$/,
-          ),
-          image: media({ accept: "image" }),
-          image_caption: text(),
-          image_first: boolean().notNull().default(false),
-          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/),
+          ).optional(),
+          image: media({ accept: "image" }).optional(),
+          image_caption: text().optional(),
+          image_first: boolean().default(false),
+          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/).optional(),
         },
         stats: {
-          headline: text(),
-          subheadline: text({ multiline: true }),
+          headline: text().optional(),
+          subheadline: text({ multiline: true }).optional(),
           stats: repeater({
-            fields: {
-              value: text().notNull().min(1),
-              label: text().notNull().min(1),
-            },
-          })
-            .notNull()
-            .min(1)
-            .max(6),
-          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/),
+              value: text().min(1),
+              label: text().min(1),
+            }).min(1).max(6),
+          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/).optional(),
         },
         cta: {
-          headline: text().notNull().min(1),
-          body: text({ multiline: true }),
-          primary_cta_label: text(),
+          headline: text().min(1),
+          body: text({ multiline: true }).optional(),
+          primary_cta_label: text().optional(),
           primary_cta_url: text().pattern(
             /^(?:$|\/(?![\/\\])[^\s]*|(?:https?:\/\/|mailto:|tel:|#)[^\s]+)$/,
-          ),
-          secondary_cta_label: text(),
+          ).optional(),
+          secondary_cta_label: text().optional(),
           secondary_cta_url: text().pattern(
             /^(?:$|\/(?![\/\\])[^\s]*|(?:https?:\/\/|mailto:|tel:|#)[^\s]+)$/,
-          ),
-          image: media({ accept: "image" }),
-          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/),
+          ).optional(),
+          image: media({ accept: "image" }).optional(),
+          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/).optional(),
         },
         contact: {
-          headline: text(),
-          eyebrow: text(),
-          subheadline: text({ multiline: true }),
+          headline: text().optional(),
+          eyebrow: text().optional(),
+          subheadline: text({ multiline: true }).optional(),
           options: repeater({
-            fields: {
-              icon: select({
-                options: [
+              icon: select([
                   "email",
                   "support",
                   "sales",
                   "phone",
                   "chat",
                   "location",
-                ],
-              }).notNull(),
-              title: text().notNull().min(1),
-              description: text({ multiline: true }),
-              link_label: text().notNull().min(1),
-              link_url: text()
-                .pattern(
+                ]),
+              title: text().min(1),
+              description: text({ multiline: true }).optional(),
+              link_label: text().min(1),
+              link_url: text().pattern(
                   /^(?:$|\/(?![\/\\])[^\s]*|(?:https?:\/\/|mailto:|tel:|#)[^\s]+)$/,
-                )
-                .notNull(),
-            },
-          })
-            .notNull()
-            .min(1)
-            .max(6),
-          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/),
+                ),
+            }).min(1).max(6),
+          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/).optional(),
         },
         text: {
-          headline: text(),
-          body: richText().notNull().min(1),
-          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/),
+          headline: text().optional(),
+          body: richText().min(1),
+          anchor_id: text().pattern(/^(?:$|[a-z][a-z0-9_-]*)$/).optional(),
         },
-      },
-    }).max(20),
+      }).max(20).optional(),
   },
   {
     label: "Marketing pages",
@@ -253,31 +205,23 @@ export const pages = collection(
 );
 
 const link = {
-  label: text().notNull().min(1).max(80),
-  href: text()
-    .notNull()
-    .pattern(/^(?:\/(?![\/\\])[^\s]*|(?:https?:\/\/|mailto:|tel:|#)[^\s]+)$/),
+  label: text().min(1).max(80),
+  href: text().pattern(/^(?:\/(?![\/\\])[^\s]*|(?:https?:\/\/|mailto:|tel:|#)[^\s]+)$/),
 };
 export const site = global(
   "site",
   {
     identity: group({
-      fields: {
-        title: text().notNull().default("My Site").max(80),
-        tagline: text().max(240),
-        logo: media({ accept: "image" }),
-      },
-    }),
-    seo: group({ fields: { titleSeparator: text().default("—").max(8) } }),
-    navigation: repeater({
-      fields: { ...link, button: boolean().notNull().default(false) },
-    }).max(24),
+        title: text().default("My Site").max(80),
+        tagline: text().max(240).optional(),
+        logo: media({ accept: "image" }).optional(),
+      }).optional(),
+    seo: group({ titleSeparator: text().default("—").max(8).optional() }).optional(),
+    navigation: repeater({ ...link, button: boolean().default(false) }).max(24).optional(),
     footer: repeater({
-      fields: {
-        heading: text().notNull().min(1),
-        links: repeater({ fields: link }).max(12),
-      },
-    }).max(6),
+        heading: text().min(1),
+        links: repeater(link).max(12).optional(),
+      }).max(6).optional(),
   },
   {
     label: "Site identity and navigation",

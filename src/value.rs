@@ -221,12 +221,16 @@ pub enum Builtin {
     // "first/app": page helpers, compiled by the app router; never run while the config builds.
     /// `notFound()`, `redirect(url, status?)`, `<Content>`, `<Html>`, `<Link>`: by export name.
     App(&'static str),
+    // "first/client": hooks for "use client" components, compiled to the Interactivity API.
+    Client(&'static str),
 }
 
 #[derive(Debug, Clone)]
 pub struct ColBuilder {
     pub ty: ColType,
-    pub not_null: bool,
+    /// `.optional()`: the value may be null or omitted. Fields are required otherwise.
+    pub optional: bool,
+    /// Only the implicit `id`: authored fields never are primary keys.
     pub primary_key: bool,
     pub auto_increment: bool,
     pub unique: bool,

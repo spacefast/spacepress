@@ -1,7 +1,7 @@
 import { HttpError, integer, type AccessCtx, type HookCtx } from "first";
 
 // Set by the server from the signed-in user; a client can't write it.
-export const ownerId = integer().notNull().access({ create: false, update: false });
+export const ownerId = integer().access({ create: false, update: false });
 
 // An access rule can return a filter: each reader sees only their own rows.
 export const mine = (ctx: AccessCtx) => (ctx.user ? { ownerId: ctx.user.id } : false);

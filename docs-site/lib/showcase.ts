@@ -5,9 +5,10 @@
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import { repo, site } from "./examples.ts";
+import type { ExampleRun, Ledger } from "./blueprint.ts";
+import { example, repo, site } from "./examples.ts";
 import { compilerEntry } from "./playground-catalog.ts";
-import { siteFiles } from "./site-examples.ts";
+import { siteExamples, siteFiles } from "./site-examples.ts";
 
 export const showcaseRoot = path.join(site, ".showcase");
 export const filesRoot = path.join(site, "public/files");
@@ -17,6 +18,12 @@ export interface Manifest {
   app: string;
   /** Every file, sorted, with First names. `blob` is null for a binary file. */
   files: { path: string; blob: string | null; size: number }[];
+  /** The WordPress.org plugins in the lock `first build` wrote, with their versions. */
+  wordpressPlugins: { slug: string; version: string }[];
+  /** The synced collections' content rows the blueprint seeds (scripts/build-showcase.ts `syncRecords`). */
+  syncSeed: Record<string, unknown>;
+  /** The TSX pages plugin, when the example has `pages/`: its slug and its path below the site. */
+  pages?: { slug: string; path: string };
 }
 
 // Not app sources: the README is the page's own text, tsconfig.json is editor setup, and the
@@ -53,4 +60,51 @@ function sourcesOf(dir: string, rel = ""): string[] {
     else found.push(sub);
   }
   return found;
+}
+
+/** Files under `root`, by path below it, sorted. */
+function walk(root: string, rel = ""): string[] {
+  const found: string[] = [];
+  for (const name of readdirSync(path.join(root, rel)).sort()) {
+    const sub = rel ? `${rel}/${name}` : name;
+    if (lstatSync(path.join(root, sub)).isDirectory()) found.push(...walk(root, sub));
+    else found.push(sub);
+  }
+  return found;
+}
+
+/**
+ * An example's committed migration ledger, `first/_generated/migrations/` (the snapshot and the SQL
+ * files), and its `public/` files, which `first build` copies into the app plugin. The compiler
+ * takes sources as text, so a `public/` file that is not UTF-8 text fails here rather than being
+ * left out of the plugin unnoticed.
+ */
+export function ledger(dir: string): Ledger {
+  const ledgerDir = path.join(dir, "first/_generated/migrations");
+  const publicDir = path.join(dir, "public");
+  const publicFiles = existsSync(publicDir)
+    ? Object.fromEntries(walk(publicDir).map((file) => [file, new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path.join(publicDir, file)))]))
+    : {};
+  if (!existsSync(ledgerDir)) return { snapshot: null, files: {}, public: publicFiles };
+  const snapshot = path.join(ledgerDir, "snapshot.json");
+  return {
+    snapshot: existsSync(snapshot) ? JSON.parse(readFileSync(snapshot, "utf8")) : null,
+    files: Object.fromEntries(readdirSync(ledgerDir).filter((file) => file.endsWith(".sql")).sort().map((file) => [file, readFileSync(path.join(ledgerDir, file), "utf8")])),
+    public: publicFiles,
+  };
+}
+
+/** What the playground page needs to run an edited copy of a site example (lib/blueprint.ts `editedBlueprint`). */
+export async function exampleRun(name: (typeof siteExamples)[number]["name"]): Promise<ExampleRun> {
+  const { landing, seed } = siteExamples.find((e) => e.name === name)!;
+  const built = manifest(name);
+  return {
+    lock: built.wordpressPlugins,
+    landing,
+    seed,
+    syncSeed: built.syncSeed,
+    pages: built.pages,
+    schemaPhp: (await example(name)).output.schemaPhp,
+    ledger: ledger(path.join(repo, "examples", name)),
+  };
 }

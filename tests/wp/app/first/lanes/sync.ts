@@ -4,37 +4,33 @@
 // Content sync (design §5): `guides` is a post-backed collection synced with Markdown files, and
 // `writers` gives it a uid'd reference target, so tests/wp/sync.test.ts covers bodies, references,
 // drafts and trash against real WordPress.
-import { collection, id, integer, richText, select, slug, text, HttpError } from "first";
+import { collection, integer, richText, select, slug, text, HttpError } from "first";
 
 export const writers = collection({
-  id: id(),
-  name: text().notNull().max(80),
+  name: text().max(80),
 }, { title: "name", uid: true });
 
 export const guides = collection({
-  id: id(),
-  title: text().notNull().max(120),
-  slug: slug({ source: "title" }),
-  body: richText(),
-  summary: text({ multiline: true }),
-  level: select({ options: ["intro", "advanced"] }),
-  writerId: integer().references(() => writers.id, { onDelete: "set null" }),
+  title: text().max(120),
+  slug: slug({ source: "title" }).optional(),
+  body: richText().optional(),
+  summary: text({ multiline: true }).optional(),
+  level: select(["intro", "advanced"]).optional(),
+  writerId: integer().references(() => writers.id, { onDelete: "set null" }).optional(),
   // Field access (lane B) applies to sync: editors never see `internal`, and may read but not change `review`.
-  internal: text().access({ read: "admin", update: "admin" }),
-  review: text().access({ update: "admin" }),
+  internal: text().access({ read: "admin", update: "admin" }).optional(),
+  review: text().access({ update: "admin" }).optional(),
 }, { title: "title", content: "body", sync: "content/guides/*.md", access: { create: "author" } });
 
 // Content behind field access: `briefs` hides its body from everyone below admin; `memos` lets
 // editors read the body but only admins change it.
 export const briefs = collection({
-  id: id(),
-  title: text().notNull(),
-  body: richText().access({ read: "admin" }),
+  title: text(),
+  body: richText().access({ read: "admin" }).optional(),
 }, { title: "title", content: "body", sync: "content/briefs/*.md" });
 export const memos = collection({
-  id: id(),
-  title: text().notNull(),
-  body: richText().access({ update: "admin" }),
+  title: text(),
+  body: richText().access({ update: "admin" }).optional(),
 }, { title: "title", content: "body", sync: "content/memos/*.md" });
 
 export const collections = { writers, guides, briefs, memos };

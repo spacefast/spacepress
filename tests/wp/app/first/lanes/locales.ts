@@ -4,25 +4,23 @@
 // Localization (§7.3): `tours` is a post-backed localized collection (Polylang owns language +
 // group) that also syncs with Markdown files (lane C), `phrases` a `table()` one (First's own
 // translationGroup column).
-import { action, collection, db, id, integer, richText, select, slug, text, table } from "first";
+import { action, collection, db, integer, richText, select, slug, text, table } from "first";
 
 export const tours = collection({
-  id: id(),
-  title: text().notNull().localized(),
-  summary: text().localized(),
-  slug: slug({ source: "title" }),
-  price: integer(),
-  tags: select({ options: ["tea", "coffee"], multiple: true }).notNull().default([]),
-  body: richText().localized(),
+  title: text().localized(),
+  summary: text().localized().optional(),
+  slug: slug({ source: "title" }).optional(),
+  price: integer().optional(),
+  tags: select(["tea", "coffee"]).many().default([]),
+  body: richText().localized().optional(),
 }, { title: "title", content: "body", drafts: true, revisions: true, sync: "content/tours/*.md", access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
 // Every tours afterUpdate leaves "<locale>:<price>", so per-row hooks during group sync are observable.
-export const tourLog = table({ id: id(), tourId: integer().notNull(), entry: text().notNull() }, { access: { read: "anyone" } });
+export const tourLog = table({ tourId: integer(), entry: text() }, { access: { read: "anyone" } });
 
 export const phrases = table({
-  id: id(),
-  text: text().notNull().localized(),
-  weight: integer(),
+  text: text().localized(),
+  weight: integer().optional(),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
 export const collections = { tours };
@@ -32,7 +30,7 @@ export const entities = { ...collections, ...tables, ...users };
 /** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
 export const relations = (r: unknown) => ({});
 export const actions = {
-  refsTranslations: action({ input: { id: integer().notNull() }, access: "editor", handler: async (input) => {
+  refsTranslations: action({ input: { id: integer() }, access: "editor", handler: async (input) => {
     const row = await db.query.tours.findFirst({ where: { id: input.id }, locale: "*" });
     return row ? Object.keys(row.translations).sort() : [];
   } }),

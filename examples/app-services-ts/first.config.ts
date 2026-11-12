@@ -1,8 +1,8 @@
 import { collection, defineConfig, env, text } from "first";
 
 const articles = collection({
-  title: text().notNull(),
-  excerpt: text(),
+  title: text(),
+  excerpt: text().optional(),
 }, {
   storageName: "service_posts",
   title: "title",

@@ -47,6 +47,7 @@ const CLIENT = [
   ["client source the browser build cannot compile", "client: source the browser build cannot compile"],
   ["client app over an existing public/", "client: existing public/"],
   ["client module that cannot be read", "client: unreadable module"],
+  ["client app without its 0.8 zero.css", "client: no zero.css supplied"],
 ];
 
 // [label, kind, test(pointer, reason)]
@@ -70,6 +71,7 @@ const RULES = [
   ["endpoint: request API (url, bytes, headers.entries)", "refusal", (p, r) => /request API has no v2 route equivalent/.test(r)],
   ["endpoint: name shared with a handler", "refusal", (p, r) => /endpoint name collides/.test(r)],
   // Context services, by name.
+  ["ctx.auth: profile fields without Space Users", "refusal", (p, r) => /\/ctx\/auth\//.test(p) && /^ctx\.auth profile fields map only for Space Users/.test(r)],
   ["ctx.auth: profile fields or methods", "refusal", (p, r) => /\/ctx\/auth\//.test(p) && /legacy profiles and auth methods/.test(r)],
   // Before #130 every `ctx.auth` principal read was refused, `userId` included.
   ["ctx.auth: principal id or profile", "refusal", (p, r) => /\/ctx\/auth\//.test(p) && /legacy principal IDs/.test(r)],

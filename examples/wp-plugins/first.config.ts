@@ -1,7 +1,7 @@
 import { collection, defineConfig, text } from "first";
 
 const notes = collection({
-  title: text().notNull(),
+  title: text(),
 });
 
 export const collections = { notes };

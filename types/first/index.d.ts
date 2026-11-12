@@ -1049,7 +1049,6 @@ export interface ConfigInput<
   collections?: TCollections & Record<string, CollectionMeta<string, ColumnsConfig, false, "collection">>;
   tables?: TTables & Record<string, CollectionMeta<string, ColumnsConfig, false, "table">>;
   users?: TUsers & Record<string, CollectionMeta<string, ColumnsConfig, true, "userProjection">>;
-  relations?: TRelations;
   /** Key = the name used in `db.globals.<key>` and `/globals/<key>`. */
   globals?: TGlobals;
   /** `NoInfer`: types come from the explicit registries, so unknown hook keys are errors. */

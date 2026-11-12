@@ -3,7 +3,8 @@ import {
   action, blocks, boolean, collection, db, defineConfig, global, HttpError, integer, media, repeater, richText, select, text, url,
   table,
 } from "first";
-import { authors, comments, items, locations, posts, entities, relations, settings, shoppingList, UNITS } from "./schema";
+import { authors, comments, items, locations, posts, entities, settings, shoppingList, UNITS } from "./schema";
+import type { AppRelations } from "./register";
 
 async function filters() {
   // Unknown column in a where filter
@@ -55,8 +56,8 @@ async function writes() {
 
 async function relationsNotLoaded() {
   const item = await db.query.items.findFirst({ where: { id: 1 } });
-  // @ts-expect-error `location` wasn't loaded via `with`
-  item?.location;
+  // @ts-expect-error a `ref()` field holds its id until `with` loads it
+  item?.locationId.name;
 
   const loc = await db.query.locations.findFirst({ columns: { name: true } });
   // @ts-expect-error `kind` was excluded by `columns`
@@ -84,7 +85,6 @@ integer().defaultNow().optional();
 // first assignability failure inside a single argument.
 defineConfig({
   collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
-  relations,
   hooks: {
     items: {
       // @ts-expect-error misspelled hook name

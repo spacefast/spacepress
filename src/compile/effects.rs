@@ -590,6 +590,18 @@ struct Solved {
     event_bindings: [IndexMap<Span, ByBinding>; 2],
     /// Each place's alias targets, for the aliases of the current pass, by place number.
     alias_targets: Vec<Option<Rc<[Id]>>>,
+    /// Group sizes of each numbered set (`events`, `write_events`, `function_numeric`,
+    /// `function_writes`, by position and key) and of `numeric`, `writes`, `incoming` and
+    /// `incoming_writes`.
+    groups: IndexMap<(usize, Span), Groups>,
+    plain_groups: [Groups; 4],
+}
+
+/// The size of each group in one set, counted up to position `read`.
+#[derive(Default)]
+struct Groups {
+    read: usize,
+    sizes: IndexMap<Span, usize>,
 }
 
 /// Positions in an insertion-ordered set of place numbers, by binding.
@@ -2241,37 +2253,49 @@ impl Graph {
     }
 
     /// JavaScript-owned bindings, not yet widened, whose group in some effect set is larger
-    /// than `WIDEN_ABOVE`.
-    fn widening_candidates(&self) -> IndexSet<Span> {
-        let numbered = self
-            .events
-            .values()
-            .chain(self.write_events.values())
-            .chain(self.function_numeric.values())
-            .chain(self.function_writes.values())
-            .map(|set| {
-                set.order
-                    .iter()
-                    .map(|id| &self.places[*id as usize])
-                    .collect::<Vec<_>>()
-            });
-        let plain = [&self.numeric, &self.writes, &self.incoming, &self.incoming_writes]
-            .into_iter()
-            .map(|set| set.iter().collect::<Vec<_>>());
+    /// than `WIDEN_ABOVE`. Sets only grow within a solve, so each group is counted once per
+    /// place, from where the previous pass stopped.
+    fn widening_candidates(&self, solved: &mut Solved) -> IndexSet<Span> {
         let mut over = IndexSet::new();
-        for set in numbered.chain(plain) {
-            let mut groups: IndexMap<Span, usize> = IndexMap::new();
-            for p in set {
-                if p.path.len() > 1 && !self.widened.contains(&p.binding) {
-                    *groups.entry(p.binding).or_default() += 1;
+        let mut count = |groups: &mut Groups, places: &mut dyn Iterator<Item = &Place>| {
+            for p in places {
+                if p.path.len() > 1 {
+                    let size = groups.sizes.entry(p.binding).or_default();
+                    *size += 1;
+                    if *size > WIDEN_ABOVE && !self.widened.contains(&p.binding) && self.javascript_owned(p.binding) {
+                        over.insert(p.binding);
+                    }
                 }
             }
-            over.extend(
-                groups
-                    .into_iter()
-                    .filter(|(binding, size)| *size > WIDEN_ABOVE && self.javascript_owned(*binding))
-                    .map(|(binding, _)| binding),
-            );
+        };
+        for (kind, sets) in [
+            &self.events,
+            &self.write_events,
+            &self.function_numeric,
+            &self.function_writes,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            for (key, set) in sets {
+                let groups = solved.groups.entry((kind, *key)).or_default();
+                let read = groups.read;
+                groups.read = set.len();
+                count(
+                    groups,
+                    &mut set.unread(read, set.len()).iter().map(|id| &self.places[*id as usize]),
+                );
+            }
+        }
+        for (groups, set) in
+            solved
+                .plain_groups
+                .iter_mut()
+                .zip([&self.numeric, &self.writes, &self.incoming, &self.incoming_writes])
+        {
+            let read = groups.read;
+            groups.read = set.len();
+            count(groups, &mut unread(set, read, set.len()));
         }
         over
     }
@@ -2567,7 +2591,7 @@ impl Graph {
             // Entry views only flow from a caller's prior events into that
             // invocation. Expanding them back through callback aliases would
             // move writes performed inside a function before its own entry.
-            let mut over = self.widening_candidates();
+            let mut over = self.widening_candidates(&mut solved);
             over.extend(runaway);
             if !over.is_empty() {
                 return Err(over);

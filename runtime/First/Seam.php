@@ -186,7 +186,7 @@ final class Seam
     public static function generated(array $col, mixed $value): mixed { return self::toPhp($value === JsUndefined::Value ? null : $value, $col); }
     public static function toWire(mixed $value): mixed
     {
-        $tree = Js::jsonTree($value);
+        $tree = Js::jsonTree(JsBinary::refuseWire($value, 'this operation'));
         // MCP consumes object operation envelopes as arrays before it invokes its JSON encoder.
         if ($tree instanceof \stdClass) {
             $members = get_object_vars($tree);

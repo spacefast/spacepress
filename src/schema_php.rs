@@ -376,7 +376,11 @@ pub fn render(schema: &Schema) -> String {
         let _ = writeln!(
             out,
             "        'reserved' => [{}],",
-            crate::app::RESERVED_FIRST.iter().map(|r| php_str(r)).collect::<Vec<_>>().join(", ")
+            crate::app::RESERVED_FIRST
+                .iter()
+                .map(|r| php_str(r))
+                .collect::<Vec<_>>()
+                .join(", ")
         );
         out.push_str("        'files' => [\n");
         for (path, f) in &app.files {

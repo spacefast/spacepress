@@ -150,16 +150,11 @@ final class PostsController extends \WP_REST_Posts_Controller
         $stored = Plugin::instance()?->db()->editorRow($this->collection, (int) $item->ID);
         $response = $this->meta instanceof PostMeta ? $this->meta->with((int) $item->ID, $stored, fn () => parent::prepare_item_for_response($item, $request))
             : parent::prepare_item_for_response($item, $request);
-        // For the facade's own dispatches, the stored title and content in the view context: under
-        // First, reading a field is the read rule's and the field rule's question (strip() then drops
-        // what's hidden), not edit capability. Core's own clients keep core's shape.
-        if (Facade::dispatching() && $response instanceof \WP_REST_Response && is_array($data = $response->get_data()) && $stored !== null) {
-            $spec = Plugin::instance()?->schema->collection($this->collection) ?? [];
-            foreach (['title' => $spec['title'] ?? null, 'content' => $spec['content'] ?? null] as $field => $col) {
-                if ($col !== null && is_array($data[$field] ?? null)) {
-                    $data[$field]['raw'] = (string) ($stored[$col] ?? '');
-                }
-            }
+        // For the facade's own dispatches, First's row as this viewer reads it (field masks, system
+        // fields such as `uid`, `locale` and `translations`): core already decided the item is
+        // readable; the facade only reshapes. Core's own clients keep core's shape.
+        if (Facade::dispatching() && $response instanceof \WP_REST_Response && is_array($data = $response->get_data()) && ($viewer = CoreAccess::viewer()) !== null) {
+            $data[Kinds::ROW] = Facade::firstRow($this->collection, (int) $item->ID, $viewer);
             $response->set_data($data);
         }
 

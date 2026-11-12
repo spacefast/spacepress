@@ -113,6 +113,22 @@ the earlier API becomes `.optional()`.
     the visitor; jobs and signed routes as the system; `first/wp-hooks/` as the request's visitor, or
     the system under WP-Cron, Action Scheduler and WP-CLI.
 
+## Captures from before the rename
+
+21. **The 0.3.0 field reading.** A `zero.source-bundle.v1` upload (what released clients that predate
+    the rename still send, and what hosts store for the deployed First Spaces) is source written when a
+    plain builder was nullable and `.notNull()` made it required. It is read that way: `Fs::legacy_fields`,
+    set only by `src/zero_bundle.rs`, turns on a reading in `src/eval.rs` (`mod legacy`) that accepts
+    `.notNull()`, `id()`, `.primaryKey()`, `real()`, `text({ enum })`, `select({ options, multiple })`,
+    `group({ fields })`, `blocks({ layouts })` and `json().$type<T>()` and maps each onto the same field
+    model the current forms build. Nothing after that reading differs. The boundary is the bundle format,
+    not `frozen_capture()`: a First-format capture and every live project get the current surface only,
+    and the old forms are located errors there. This is stored-data compatibility, not an alias: a
+    recompile that read `text()` as required would change the stored schema of a deployed Space. Later
+    cutover slices (implicit `createdAt`, handler-typed action input) go through the same hook; one that
+    can't be expressed as a reading into the current model goes to the owner. Delete the reading with
+    `src/zero_bundle.rs`, once no released client uploads `zero.source-bundle.v1` and no host stores one.
+
 ## Stored-schema changes the cutover accepts
 
 The criterion "the authoring rewrite produces no data migration" holds except for exactly these:

@@ -8,8 +8,12 @@
 //! here and the loader reads `"zero"` as `"first"` (see [`MODULE`]). Nothing else in the compiler
 //! knows the old names.
 //!
-//! Delete this module, its call in `bundle::compile_tree` and the `zero` arm of
-//! `loader::Fs::renamed_module` once no released client uploads this format.
+//! Its sources were written against the 0.3.0 field forms, so they are evaluated with that reading
+//! (`loader::Fs::legacy_fields`, `eval::legacy`; docs/decisions/2026-11-11-authoring-surface.md, ruling 21).
+//!
+//! Delete this module, its call in `bundle::compile_tree`, the `zero` arm of
+//! `loader::Fs::renamed_module`, `Fs::legacy_fields` and `eval::legacy` once no released client
+//! uploads this format and no host stores one.
 
 use crate::{
     bundle::{self, Manifest, SourceBundle},

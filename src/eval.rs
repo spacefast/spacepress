@@ -483,6 +483,8 @@ pub struct Evaluator<'p> {
     /// A field of such an object written `value as T`, by (object, key): its declared type and
     /// module. `this.<key>` is typed `T`, as TypeScript types the literal.
     pub method_home_fields: HashMap<(usize, String), (TyAnn, usize)>,
+    /// The 0.3.0 field reading for pre-rename captures (`Fs::legacy_fields`).
+    legacy: bool,
 }
 
 pub fn ptr_of(v: &Value) -> Option<usize> {
@@ -511,6 +513,7 @@ impl<'p> Evaluator<'p> {
             db_kinds: None,
             method_homes: HashMap::new(),
             method_home_fields: HashMap::new(),
+            legacy: program.fs.legacy_fields(),
         }
     }
 
@@ -1915,6 +1918,17 @@ impl<'p> Evaluator<'p> {
                     return Err(Ctl::Short);
                 }
                 let argv = self.eval_args(args, scope)?;
+                // 0.3.0 captures: `json().$type<T>()` types the field like `json<T>()` (`legacy`).
+                if self.legacy
+                    && let Value::Bound(recv, m) = &f
+                    && &**m == "$type"
+                    && let Value::Column(c) = recv.as_ref()
+                    && let [t] = type_args.as_slice()
+                {
+                    let mut c = (**c).clone();
+                    c.ts_type = Some((t.clone(), scope.module, call_span));
+                    return Ok(Value::Column(Rc::new(c)));
+                }
                 // `json<T>()`: the type argument types the field.
                 if matches!(f, Value::Builtin(Builtin::Column(ColType::Json))) && !type_args.is_empty() {
                     if type_args.len() != 1 {
@@ -2186,11 +2200,14 @@ impl<'p> Evaluator<'p> {
                 _ => unreachable!(),
             };
             if surface == "column"
+                && !(self.legacy && legacy::MODIFIERS.contains(&prop))
                 && let Some((message, fix)) = removed_modifier(prop)
             {
                 return err_help(span, message, fix);
             }
-            if crate::builtins::contract(surface, prop).is_none() {
+            if crate::builtins::contract(surface, prop).is_none()
+                && !(surface == "column" && self.legacy && legacy::MODIFIERS.contains(&prop))
+            {
                 return err_help(
                     span,
                     format!("unsupported built-in property `{surface}.{prop}`"),
@@ -2448,17 +2465,18 @@ impl<'p> Evaluator<'p> {
                     }
                 }
                 // Every kind with rows has the integer `id`; declaration and reference evaluation see the same one.
-                if let Some(authored) = columns.get("id") {
+                if let Some(authored) = columns.get("id")
+                    && !(self.legacy && authored.primary_key)
+                {
                     return err_help(
                         authored.span,
                         "`id` is built in: every kind has an integer `id`",
                         "delete this field; for a text key, declare `code: text().unique().max(191)`",
                     );
                 }
-                let mut id = ColBuilder::new(ColType::Integer, span);
-                id.primary_key = true;
-                id.auto_increment = true;
-                columns.shift_insert(0, "id".into(), Rc::new(id));
+                if !columns.contains_key("id") {
+                    columns.shift_insert(0, "id".into(), Rc::new(legacy::id(span)));
+                }
                 let options = match arg(1) {
                     Value::Undef => None,
                     o @ Value::Object(_) => Some(o),
@@ -2506,6 +2524,7 @@ impl<'p> Evaluator<'p> {
                     span,
                 })))
             }
+            Builtin::Id if self.legacy => Ok(Value::Column(Rc::new(legacy::id(span)))),
             Builtin::Id => err_help(
                 span,
                 "`id()` is gone: every kind already has an integer `id`",
@@ -2671,9 +2690,17 @@ impl<'p> Evaluator<'p> {
 
     /// `text()`, `email()`, `select(["a", "b"])`, `group({ title: text() })`, ...
     fn make_column(&self, builder: &'static str, args: &[Value], span: Span) -> R<Value> {
+        if self.legacy {
+            return legacy::column(self, builder, args, span);
+        }
         if let Some((message, fix)) = removed_builder(builder) {
             return err_help(span, message, fix);
         }
+        self.current_column(builder, args, span)
+    }
+
+    /// A builder call on the current surface.
+    fn current_column(&self, builder: &'static str, args: &[Value], span: Span) -> R<Value> {
         crate::builtins::check("field", builder, args.len(), crate::builtins::Phase::Evaluator, span)
             .map_err(Ctl::Err)?;
         let ty = match builder {
@@ -3110,6 +3137,7 @@ impl<'p> Evaluator<'p> {
             }
         }
         match recv {
+            Value::Column(c) if self.legacy && legacy::MODIFIERS.contains(&m) => legacy::modifier(c, m, &args, span),
             Value::Column(c) => column_method(c, m, &args, span),
             Value::Str(s) => string_method(s, m, &args, span),
             Value::Num(n) => {
@@ -4764,5 +4792,112 @@ export default [values.map(truth), applyEach(Boolean, values), values.filter(glo
             let rendered = crate::diag::render(&error, tmp.path());
             assert!(rendered.contains(&format!("--> {name}:1:1")), "{rendered}");
         }
+    }
+}
+
+/// The 0.3.0 field reading (docs/decisions/2026-11-11-authoring-surface.md, ruling 21). Sources in a
+/// `zero.source-bundle.v1` capture were written when a plain builder was nullable, `.notNull()` made
+/// it required, and `id()`, `.primaryKey()`, `real()`, `text({ enum })`, `select({ options,
+/// multiple })`, `group({ fields })`, `blocks({ layouts })` and `json().$type<T>()` existed. Each
+/// reads into the same field model the current forms build; nothing below this reading differs.
+/// Delete with `crate::zero_bundle`.
+mod legacy {
+    use super::*;
+
+    /// Modifiers this reading accepts besides the current ones.
+    pub const MODIFIERS: &[&str] = &["notNull", "primaryKey", "$type"];
+
+    /// The integer primary key: the implicit `id`, or `id()`.
+    pub fn id(span: Span) -> ColBuilder {
+        let mut id = ColBuilder::new(ColType::Integer, span);
+        id.primary_key = true;
+        id.auto_increment = true;
+        id
+    }
+
+    pub fn modifier(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<Value> {
+        if !args.is_empty() {
+            return err(span, format!("`.{m}()` takes no arguments"));
+        }
+        let mut c = (**c).clone();
+        match m {
+            "notNull" => c.optional = false,
+            "primaryKey" => {
+                c.primary_key = true;
+                c.optional = false;
+                c.auto_increment = c.ty == ColType::Integer;
+            }
+            // `$type<T>()` is a call with a type argument, handled where calls are evaluated.
+            _ => return err(span, format!("`.{m}()` isn't valid here")),
+        }
+        Ok(Value::Column(Rc::new(c)))
+    }
+
+    /// A builder call as 0.3.0 read it: nullable, with its options object.
+    pub fn column(ev: &Evaluator<'_>, builder: &'static str, args: &[Value], span: Span) -> R<Value> {
+        let opts_val = args.first().cloned().unwrap_or(Value::Undef);
+        let opts = match &opts_val {
+            Value::Object(o) => o.borrow().clone(),
+            _ => IndexMap::new(),
+        };
+        let take = |k: &str| opts.get(k).cloned();
+        let strings = |v: Value| -> R<Value> {
+            match v {
+                arr @ Value::Array(_) => Ok(arr),
+                other => err(span, format!("expected an array of strings, not {}", other.describe())),
+            }
+        };
+        let flag = |k: &str| matches!(opts.get(k), Some(Value::Bool(true)));
+        let without = |keys: &[&str]| -> Value {
+            let rest: IndexMap<String, Value> = opts
+                .iter()
+                .filter(|(k, _)| !keys.contains(&k.as_str()))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            if rest.is_empty() {
+                Value::Undef
+            } else {
+                Value::object(rest)
+            }
+        };
+        let built = match builder {
+            "real" => ev.current_column("number", &[], span)?,
+            "text" if opts.contains_key("enum") => {
+                let enum_values = strings(take("enum").unwrap())?;
+                let Value::Column(mut c) = ev.current_column("select", &[enum_values], span)? else {
+                    unreachable!()
+                };
+                Rc::make_mut(&mut c).multiline = flag("multiline");
+                Value::Column(c)
+            }
+            "select" => {
+                let options = strings(take("options").unwrap_or(Value::Undef))?;
+                let col = ev.current_column("select", &[options], span)?;
+                if flag("multiple") {
+                    column_method(&as_col(&col), "many", &[], span)?
+                } else {
+                    col
+                }
+            }
+            "media" if opts.contains_key("multiple") => {
+                let col = ev.current_column("media", &[without(&["multiple"])], span)?;
+                if flag("multiple") {
+                    column_method(&as_col(&col), "many", &[], span)?
+                } else {
+                    col
+                }
+            }
+            "group" | "repeater" => ev.current_column(builder, &[take("fields").unwrap_or(opts_val.clone())], span)?,
+            "blocks" => ev.current_column(builder, &[take("layouts").unwrap_or(opts_val.clone())], span)?,
+            _ => ev.current_column(builder, args, span)?,
+        };
+        let Value::Column(mut c) = built else { unreachable!() };
+        Rc::make_mut(&mut c).optional = true;
+        Ok(Value::Column(c))
+    }
+
+    fn as_col(v: &Value) -> Rc<ColBuilder> {
+        let Value::Column(c) = v else { unreachable!() };
+        c.clone()
     }
 }

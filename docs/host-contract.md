@@ -51,13 +51,13 @@ Host contract version: **1** (`hostContract` in the manifest).
 
 | Path | What |
 |---|---|
-| `/__first/*` | First's own HTTP surface (`/__first/api/v1/*`, the app facade) |
-| `/wp-json/first/v1/*` | the app's REST API: collections, globals, files, actions |
+| `/__first/*` | First's HTTP API (`/__first/api/v1/*`): kinds, globals, actions, files, `/me`; served before the theme, outside `/wp-json`. Route it to WordPress and never cache it: every answer is `Cache-Control: private, no-store` with `Vary: Cookie, Authorization`, except file streams |
+| `/wp-json/first/v1/*` | the app's REST API under WordPress's REST prefix, until its routes move to `/__first/api/v1` |
 | `/identity/*` | First Identity's issuer and pages, when the app mounts identity |
 | `/wp-json/first-identity/v1/*` | First Identity's REST API |
 | `/first-admin/*` | the optional admin screens, when the app sets `admin: true` |
 
-The REST prefix is `/wp-json/first/v1`; actions are `POST /wp-json/first/v1/actions/<name>`. The generated client is a file of the compiled tree (`client/client.js`); the host chooses the URL it serves it at.
+The app API is `/__first/api/v1`; actions are `POST /__first/api/v1/actions/<name>`. The generated client is a file of the compiled tree (`client/client.js`); the host chooses the URL it serves it at.
 
 ### Mount and lifecycle
 
@@ -107,8 +107,8 @@ First puts every table under WordPress's `$wpdb->prefix` and never changes it. A
     "/wp-json/first-identity/v1/*",
     "/first-admin/*"
   ],
-  "restPrefix": "/wp-json/first/v1",
-  "actionPrefix": "/wp-json/first/v1/actions/",
+  "apiPrefix": "/__first/api/v1",
+  "actionPrefix": "/__first/api/v1/actions/",
   "liveUpdates": {
     "action": "first_realtime_changes",
     "publisher": "First\\Realtime\\Publisher",

@@ -15,16 +15,16 @@ pub const HOST_CONTRACT: u32 = 1;
 /// Paths below the site root that First answers itself; a host routes them to WordPress and keeps
 /// its own paths out of them.
 pub const RESERVED_PATHS: &[(&str, &str)] = &[
-    ("/__first/*", "First's own HTTP surface (`/__first/api/v1/*`, the app facade)"),
-    ("/wp-json/first/v1/*", "the app's REST API: collections, globals, files, actions"),
+    ("/__first/*", "First's HTTP API (`/__first/api/v1/*`): kinds, globals, actions, files, `/me`; served before the theme, outside `/wp-json`. Route it to WordPress and never cache it: every answer is `Cache-Control: private, no-store` with `Vary: Cookie, Authorization`, except file streams"),
+    ("/wp-json/first/v1/*", "the app's REST API under WordPress's REST prefix, until its routes move to `/__first/api/v1`"),
     ("/identity/*", "First Identity's issuer and pages, when the app mounts identity"),
     ("/wp-json/first-identity/v1/*", "First Identity's REST API"),
     ("/first-admin/*", "the optional admin screens, when the app sets `admin: true`"),
 ];
 
-/// The REST namespace of the app API (`First\Wp\Rest::NAMESPACE`), and the path prefix of actions.
-pub const REST_PREFIX: &str = "/wp-json/first/v1";
-pub const ACTION_PREFIX: &str = "/wp-json/first/v1/actions/";
+/// The app API (`First\Wp\Facade::PREFIX`), and the path prefix of actions under it.
+pub const API_PREFIX: &str = "/__first/api/v1";
+pub const ACTION_PREFIX: &str = "/__first/api/v1/actions/";
 
 /// Live updates: what a host's transport and publisher deal in.
 pub const LIVE_UPDATES: &[(&str, &str)] = &[
@@ -67,7 +67,7 @@ pub const MAX_SUFFIX: usize = 29;
 pub fn manifest_host() -> Value {
     json!({
         "reservedPaths": RESERVED_PATHS.iter().map(|(p, _)| *p).collect::<Vec<_>>(),
-        "restPrefix": REST_PREFIX,
+        "apiPrefix": API_PREFIX,
         "actionPrefix": ACTION_PREFIX,
         "liveUpdates": {"action": "first_realtime_changes", "publisher": "First\\Realtime\\Publisher", "registry": "__firstRealtime"},
         "hooks": HOOKS.iter().map(|(name, _, _)| *name).collect::<Vec<_>>(),
@@ -85,7 +85,7 @@ pub fn render_doc() -> String {
     for (path, what) in RESERVED_PATHS {
         out.push_str(&format!("| `{path}` | {what} |\n"));
     }
-    out.push_str(&format!("\nThe REST prefix is `{REST_PREFIX}`; actions are `POST {ACTION_PREFIX}<name>`. The generated client is a file of the compiled tree (`client/client.js`); the host chooses the URL it serves it at.\n\n"));
+    out.push_str(&format!("\nThe app API is `{API_PREFIX}`; actions are `POST {ACTION_PREFIX}<name>`. The generated client is a file of the compiled tree (`client/client.js`); the host chooses the URL it serves it at.\n\n"));
     out.push_str("### Mount and lifecycle\n\n| Call | When |\n|---|---|\n");
     for (call, when) in MOUNT {
         out.push_str(&format!("| `{call}` | {when} |\n"));

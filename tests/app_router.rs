@@ -668,7 +668,9 @@ fn refuses_client_code_outside_the_subset() {
 #[test]
 fn client_components_hydrate_in_the_browser() {
     assert!(
-        root().join("tests/differential/client/node_modules/playwright-core").is_dir(),
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
         "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
     );
     let project = fixture("client-components", "browser");

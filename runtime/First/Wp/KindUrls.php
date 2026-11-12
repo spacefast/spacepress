@@ -207,11 +207,18 @@ final class KindUrls
             return;
         }
         if (is_404() && is_string($name) && $name !== '') {
+            // The published item with this slug now (the URL's other placeholders were stale, like
+            // a wrong year), or the one that had it before a rename (core's `_wp_old_slug`).
             global $wpdb;
+            $type = $this->kinds[$kind]['type'];
             $id = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_status = 'publish' AND post_name = %s LIMIT 1",
+                $type, $name,
+            ));
+            $id = $id ?: (int) $wpdb->get_var($wpdb->prepare(
                 "SELECT p.ID FROM {$wpdb->posts} p JOIN {$wpdb->postmeta} m ON m.post_id = p.ID AND m.meta_key = '_wp_old_slug'
                  WHERE p.post_type = %s AND p.post_status = 'publish' AND m.meta_value = %s ORDER BY p.ID DESC LIMIT 1",
-                $this->kinds[$kind]['type'], $name,
+                $type, $name,
             ));
             $post = $id > 0 ? get_post($id) : null;
             if ($post instanceof \WP_Post && ($url = $this->build($kind, $post)) !== null) {

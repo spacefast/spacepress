@@ -542,7 +542,7 @@ pub fn export(name: &str) -> Option<&'static str> {
 /// `first/_generated/routes.d.ts`: every page and handler route, so `<Link href>` and `PageProps<…>`
 /// are checked against the app's own URLs. Each route's `path` is a template literal type: a
 /// `[slug]` folder is any segment, a catch-all any rest of the path.
-pub fn routes_d_ts(table: &Table) -> Option<String> {
+pub fn routes_d_ts(table: &Table, kinds: &[(String, String)]) -> Option<String> {
     if table.routes.is_empty() {
         return None;
     }
@@ -576,8 +576,18 @@ pub fn routes_d_ts(table: &Table) -> Option<String> {
             path.push('/');
         }
         let id = serde_json::to_string(&route.id()).expect("JSON string");
+        // A page serving a kind's URL also gets that kind's item (spec §2.7).
+        let item = match kinds
+            .iter()
+            .find(|(_, url)| route.kind == RouteKind::Page && serves_kind_url(route, url).is_some())
+        {
+            Some((kind, _)) => format!(
+                "; item: import(\"first\").RegisteredKinds extends {{ {kind}: {{ $inferSelect: infer R }} }} ? R : Record<string, unknown>"
+            ),
+            None => String::new(),
+        };
         out.push_str(&format!(
-            "    {id}: {{ path: `{path}`; params: {{ {} }} }};\n",
+            "    {id}: {{ path: `{path}`; params: {{ {} }}{item} }};\n",
             params.join("; ")
         ));
     }

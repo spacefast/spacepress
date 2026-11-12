@@ -349,6 +349,62 @@ pub fn render(schema: &Schema) -> String {
             let _ = writeln!(out, "        {} => {},", php_str(name), php_str(function));
         }
     }
+    if let Some(app) = &schema.app {
+        out.push_str("    ],\n    'app' => [\n");
+        let opt = |v: &Option<String>| v.as_deref().map(php_str).unwrap_or_else(|| "null".into());
+        let route = |r: &crate::schema::AppRoute| {
+            format!(
+                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}]",
+                php_str(&r.id),
+                php_str(&r.pattern),
+                opt(&r.page),
+                opt(&r.handler),
+                r.layouts.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", "),
+                opt(&r.error)
+            )
+        };
+        out.push_str("        'routes' => [\n");
+        for r in &app.routes {
+            let _ = writeln!(out, "            {},", route(r));
+        }
+        out.push_str("        ],\n");
+        let _ = writeln!(
+            out,
+            "        'notFound' => {},",
+            app.not_found.as_ref().map(route).unwrap_or_else(|| "null".into())
+        );
+        let _ = writeln!(
+            out,
+            "        'reserved' => [{}],",
+            crate::app::RESERVED_FIRST
+                .iter()
+                .map(|r| php_str(r))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        out.push_str("        'files' => [\n");
+        for (path, f) in &app.files {
+            let methods = f
+                .methods
+                .iter()
+                .map(|(m, h)| format!("{} => {}", php_str(m), php_str(h)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let _ = writeln!(
+                out,
+                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'search' => {}, 'methods' => [{methods}]],",
+                php_str(path),
+                opt(&f.component),
+                f.metadata.as_ref().map(php_json).unwrap_or_else(|| "null".into()),
+                f.guard.as_ref().map(access).unwrap_or_else(|| "null".into()),
+                f.search
+                    .as_ref()
+                    .map(|s| fields_block(&s.fields, 3))
+                    .unwrap_or_else(|| "null".into()),
+            );
+        }
+        out.push_str("        ],\n");
+    }
     // The fields each WordPress class view exposes (hook arguments, function results): the
     // catalog's, so the runtime and the types agree. Only apps that touch WordPress carry them.
     if schema.wp_views {

@@ -91,7 +91,7 @@ final class HttpRoutes
      *
      * @param array<string, string> $headers
      */
-    private static function caller(string $method, array $headers): ?array
+    public static function caller(string $method, array $headers): ?array
     {
         $user = WpAuth::current();
         if ($user === null) {

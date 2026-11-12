@@ -1,0 +1,31 @@
+<?php
+
+declare(strict_types=1);
+
+namespace First\Render;
+
+/**
+ * `notFound()` and `redirect()` from "first/app": they stop the render, and the app router answers
+ * with the not-found page or the redirect (docs/spec/rendering.md §2). Thrown past the author's own
+ * `try`/`catch`, since compiled code catches only `First\JsError`.
+ */
+final class Halt extends \RuntimeException
+{
+    private function __construct(public readonly int $status, public readonly ?string $location)
+    {
+        parent::__construct($location === null ? 'not found' : "redirect to $location");
+    }
+
+    public static function notFound(): never
+    {
+        throw new self(404, null);
+    }
+
+    public static function redirect(string $url, int $status): never
+    {
+        if (!\First\Html::safeUrl($url)) {
+            throw new \First\JsError("redirect() can't go to \"$url\": use a path or an http(s) URL", 'Error');
+        }
+        throw new self($status, $url);
+    }
+}

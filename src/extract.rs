@@ -53,6 +53,24 @@ pub enum Slot {
     Component {
         name: String,
     },
+    /// The default export of a `first/app/` route file (page, layout, not-found, error): a component
+    /// whose props the router supplies, typed from the route.
+    AppPage {
+        file: String,
+    },
+    /// `export const metadata = (props) => ({ … })` in a `first/app/` page or layout.
+    AppMetadata {
+        file: String,
+    },
+    /// `export const guard = (ctx) => boolean` in a `first/app/` layout.
+    AppGuard {
+        file: String,
+    },
+    /// `export async function POST(req, ctx)` in a `first/app/` page or `route.ts`.
+    AppHandler {
+        file: String,
+        method: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -767,6 +785,11 @@ fn is_slug(s: &str) -> bool {
 }
 
 /// A project directory name as a plugin slug: "My Blog_2" → "my-blog-2".
+/// One input field (an action's `input`, a page's typed `search`), checked as action inputs are.
+pub fn input_column(name: &str, b: &ColBuilder, ev: &mut Evaluator<'_>, out: &mut Extracted) -> Result<Column> {
+    column(name, b, &Owner::Action(String::new()), &[], Place::Input, ev, out)
+}
+
 pub fn slugify_name(s: &str) -> String {
     let mut out = String::new();
     for c in s.chars() {

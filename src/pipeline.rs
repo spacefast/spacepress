@@ -2,6 +2,7 @@
 //! Nothing here reads or writes a project; `commands::build` does that around it for the CLI and
 //! `wasm` hands it sources from a browser.
 
+mod app;
 mod exports;
 use crate::diag::{Diag, Span};
 use crate::extract::Slot;
@@ -21,6 +22,8 @@ pub struct Built {
     /// New migration files, `(name, SQL)`; empty when the schema did not change.
     pub migrations: Vec<(String, String)>,
     pub gen_ts: String,
+    /// `first/_generated/routes.d.ts`, when the app has `first/app/` routes.
+    pub routes_ts: Option<String>,
     /// Destructive steps in the new migrations.
     pub warnings: Vec<String>,
     /// Declared WordPress plugins outside `wp_plugins/supported.json`; they still install.
@@ -159,6 +162,7 @@ pub fn build(
         extract::extract(&config, &mut ev, config_span, &dir_name).map_err(|d| d.phase(diag::Code::Schema))?;
     wp_hooks(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
+    app::register(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
@@ -249,6 +253,9 @@ pub fn build(
             Slot::WpHook { index } => schema.wp_hooks[index].handler = name,
             Slot::Component { name: component } => {
                 schema.components.insert(component, name);
+            }
+            Slot::AppPage { .. } | Slot::AppMetadata { .. } | Slot::AppGuard { .. } | Slot::AppHandler { .. } => {
+                app::fill(&mut schema, &slot, &name);
             }
             Slot::ActionHandler { action } => schema.actions.get_mut(&action).expect("action").handler = name,
             Slot::Access { owner, op } => {
@@ -368,6 +375,7 @@ pub fn build(
         snapshot,
         migrations,
         gen_ts,
+        routes_ts: crate::app::routes_d_ts(&program.app),
         warnings,
         hints: ext.hints,
         plugin_lock: settled.lock,

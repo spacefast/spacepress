@@ -851,6 +851,18 @@ impl<'p> Evaluator<'p> {
         if source == WORDPRESS_MODULE {
             return wordpress_export(name, span);
         }
+        if source == crate::loader::APP_MODULE {
+            return crate::app::export(name)
+                .map(|e| Value::Builtin(Builtin::App(e)))
+                .or_else(|| crate::app::TYPES.contains(&name).then_some(Value::Undef))
+                .ok_or_else(|| {
+                    let mut d = Diag::new(span, format!("\"first/app\" has no export named `{name}`"));
+                    if let Some(s) = suggest(name, crate::app::EXPORTS.iter().chain(crate::app::TYPES).copied()) {
+                        d = d.help(format!("did you mean `{s}`?"));
+                    }
+                    Ctl::Err(d)
+                });
+        }
         let target = self.program.resolved[&(from, source.to_string())];
         match self.exports[target].get(name) {
             Some(v) => Ok(v.clone()),
@@ -2621,6 +2633,11 @@ impl<'p> Evaluator<'p> {
             Builtin::Global(g) => call_global(g, &args, span),
             Builtin::Static(g, m) => self.call_static(g, m, args, span),
             Builtin::Require(from) => self.require(*from, &args, span),
+            Builtin::App(name) => err_help(
+                span,
+                format!("`{name}` from \"first/app\" can't run while the config is built"),
+                "call it in a page, layout or component under first/app/ or first/components/",
+            ),
         }
     }
 

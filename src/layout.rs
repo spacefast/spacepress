@@ -14,6 +14,8 @@ pub const GENERATED: &str = "first/_generated";
 /// The migration ledger lives at [`crate::pipeline::LEDGER`], beside these.
 /// The type declarations that register the app's schema with `"first"`.
 pub const DB_TYPES: &str = "first/_generated/db.d.ts";
+/// Typed links and params for `first/app/` routes.
+pub const ROUTES_TYPES: &str = "first/_generated/routes.d.ts";
 /// The typed client.
 pub const CLIENT: &str = "first/_generated/client";
 /// The pinned WordPress plugin dependencies `first build` installs.

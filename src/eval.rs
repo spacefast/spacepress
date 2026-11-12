@@ -852,6 +852,19 @@ impl<'p> Evaluator<'p> {
         if source == WORDPRESS_MODULE {
             return wordpress_export(name, span);
         }
+        if source == crate::loader::CLIENT_MODULE {
+            return crate::client_component::HOOKS
+                .iter()
+                .find(|h| **h == name)
+                .map(|h| Value::Builtin(Builtin::Client(h)))
+                .ok_or_else(|| {
+                    let mut d = Diag::new(span, format!("\"first/client\" has no export named `{name}`"));
+                    if let Some(s) = suggest(name, crate::client_component::HOOKS.iter().copied()) {
+                        d = d.help(format!("did you mean `{s}`?"));
+                    }
+                    Ctl::Err(d)
+                });
+        }
         if source == crate::loader::APP_MODULE {
             return crate::app::export(name)
                 .map(|e| Value::Builtin(Builtin::App(e)))
@@ -2642,6 +2655,13 @@ impl<'p> Evaluator<'p> {
             Builtin::Global(g) => call_global(g, &args, span),
             Builtin::Static(g, m) => self.call_static(g, m, args, span),
             Builtin::Require(from) => self.require(*from, &args, span),
+            // `export const cart = sharedState({ items: [] })`: the value is its initial state.
+            Builtin::Client("sharedState") => Ok(args.into_iter().next().unwrap_or(Value::Undef)),
+            Builtin::Client(name) => err_help(
+                span,
+                format!("`{name}` runs only inside a \"use client\" component"),
+                "call it in the component's body",
+            ),
             Builtin::App(name) => err_help(
                 span,
                 format!("`{name}` from \"first/app\" can't run while the config is built"),

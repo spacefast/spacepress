@@ -143,6 +143,9 @@ pub(crate) fn emit_generated(
         write(&directory.join("wpml-config.xml"), wpml)?;
     }
     write(&directory.join("first/app/functions.php"), &built.functions_php)?;
+    for island in built.schema.islands.values() {
+        write(&directory.join("first/app/client").join(&island.file), &island.source)?;
+    }
     copy_sql(migrations, &directory.join("first/app/migrations"))?;
     let public = project.join("public");
     if public.is_dir() {

@@ -437,8 +437,14 @@ final class Facade
         if ($code === 'unauthenticated') {
             $status = 401;
         }
+        $pointer = is_array($data) && is_string($data['pointer'] ?? null) ? $data['pointer'] : null;
+        // Core's role check refuses the `roles` the facade sent for First's `role`.
+        $pointer ??= match ((string) $error->get_error_code()) {
+            'rest_cannot_edit_roles', 'rest_user_invalid_role' => '/role',
+            default => null,
+        };
 
-        return new HttpError($status, $code, $error->get_error_message(), is_array($data) && is_string($data['pointer'] ?? null) ? $data['pointer'] : null);
+        return new HttpError($status, $code, $error->get_error_message(), $pointer);
     }
 
     // ================================================================ request parsing

@@ -47,7 +47,8 @@ export default defineConfig({
           headers: { "content-type": "application/json", authorization: "Bearer lane-token", cookie: "lane=1", host: "evil.test" },
           body: input.payload,
         });
-        const data = (await response.json()) as { hello: string; method: string; received: string };
+        // Whatever the receiver answered: the echo of a JSON post, or a redirect's echo of what it was sent.
+        const data = (await response.json()) as Record<string, string | null>;
         return { status: response.status, data };
       },
     }),

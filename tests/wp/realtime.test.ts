@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createClient } from "./app/first/_generated/client/index.ts";
-import { api, auth, ok, problem, run, wp } from "./env.ts";
+import { api, auth, core, ok, problem, run, wp } from "./env.ts";
 
 type Notice = { id: string; at: string; changes: { collection: string; ops: string[]; ids: (number | string)[] | null }[] };
 const LOG = "first-test-realtime.jsonl";
@@ -32,7 +32,7 @@ test("a write the hook rolls back fires nothing", async () => {
 test("a wp-admin save (core REST on the post type) reports through the same hook", async () => {
   const event = await ok("POST", "/events", { as: "editor", body: { title: `Editor ${run}` } });
   const before = notices().length;
-  const res = await fetch(`${api.replace("/first/v1", "/wp/v2")}/first_events/${event.id}`, {
+  const res = await fetch(`${core}/first_events/${event.id}`, {
     method: "POST",
     headers: { ...auth("editor"), "content-type": "application/json" },
     body: JSON.stringify({ title: `Edited ${run}` }),

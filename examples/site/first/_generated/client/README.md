@@ -6,7 +6,7 @@ any frontend or import it by path. Don't edit it: `first build` rewrites it.
 ```ts
 import { createClient, FirstError } from "./first/_generated/client/index.ts";
 
-const first = createClient({ url: "https://example.test/wp-json/first/v1" });
+const first = createClient({ url: "https://example.test/__first/api/v1" });
 
 const posts = await first.posts.list({ where: { tags: { has: "news" } }, orderBy: { createdAt: "desc" }, with: { author: true } });
 const post = await first.posts.create({ title: "Hello" });

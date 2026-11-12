@@ -412,7 +412,7 @@ pub fn types_ts(schema: &Schema, results: &HashMap<String, Ty>) -> String {
         }
         None => s.push_str("export interface User { id: number; name: string; role: Role }\n"),
     }
-    s.push_str("export interface Media { id: number; url: string; mime: string; size: number; width: number | null; height: number | null; alt: string | null; filename: string; createdAt: string; sizes: Record<string, { url: string; width: number; height: number }>; focal: { x: number; y: number } | null }\n");
+    s.push_str("export interface Media { id: number; url: string; mime: string; size: number; width: number | null; height: number | null; alt: string | null; filename: string; createdAt: string; sizes: Record<string, { url: string; width: number; height: number }>; focal: { x: number; y: number } | null; author: number | null; caption: string }\n");
     s.push_str("export interface PrivateFile { id: number; bucket: string; filename: string; mime: string; size: number; ownerId: number | null; createdAt: string; url: string }\n");
     s.push_str(
         "export interface RevisionSummary { id: number; at: string; user: { id: number; name: string } | null }\n",

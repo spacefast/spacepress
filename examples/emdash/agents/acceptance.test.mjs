@@ -100,7 +100,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
     catch { throw new Error(`${method} ${path}: ${response.status}, non-JSON ${text.slice(0, 250)}`); }
     return { status: response.status, type: response.headers.get('content-type'), json, headers: response.headers };
   };
-  const api = (path, options) => request('/wp-json/first/v1' + path, options);
+  const api = (path, options) => request('/__first/api/v1' + path, options);
   const ok = (response) => { assert.equal(response.status, 200, JSON.stringify(response.json)); return response.json.data; };
   const ability = (name, input, who, method = 'POST') => {
     const path = `/wp-json/wp-abilities/v1/abilities/agents/${name}/run`;
@@ -115,7 +115,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
     });
   };
 
-  const schema = ok(await api('/_schema'));
+  const schema = ok(await api(''));
   assert.equal(schema.runtime.wp.database.kind, 'sqlite');
   assert.deepEqual(schema.runtime.pendingMigrations, []);
   const plugins = JSON.parse(await wp('plugin', 'list', '--status=active', '--format=json'));

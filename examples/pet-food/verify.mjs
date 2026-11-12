@@ -11,7 +11,7 @@ assert.ok(['http:', 'https:'].includes(new URL(site).protocol), 'FIRST_SITE must
 assert.equal(new URL(site).username, '', 'Keep credentials in FIRST_AUTH, not FIRST_SITE.');
 assert.equal(new URL(site).password, '', 'Keep credentials in FIRST_AUTH, not FIRST_SITE.');
 
-const api = '/wp-json/first/v1';
+const api = '/__first/api/v1';
 
 async function request(path, { method = 'GET', body, credential = auth, key } = {}) {
   const headers = { accept: 'application/json' };

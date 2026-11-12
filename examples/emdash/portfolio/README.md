@@ -54,7 +54,7 @@ logs, and per-upload hashes are saved. Use a fresh evidence directory per run.
 Projects are native WordPress posts with First/SCF fields. In WordPress admin,
 open **Projects**, edit a title or body, change its cover, disciplines, client,
 year, website, gallery, summary, featured flag, or SEO group, then save. These
-are the same stored records returned by `/wp-json/first/v1/projects`; the public
+are the same stored records returned by `/__first/api/v1/projects`; the public
 pages read through First's database pipeline with an anonymous Viewer, so a
 signed-in editor does not accidentally publish drafts to ordinary visitors.
 Authenticated WordPress preview links show the stored draft with a preview

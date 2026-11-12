@@ -215,10 +215,10 @@ final class Db
      *
      * @return array{sql: string, params: list<int|float|string|null>}
      */
-    public function countQuery(string $collection, mixed $where = null, ?Viewer $viewer = null): array
+    public function countQuery(string $collection, mixed $where = null, ?Viewer $viewer = null, array $extra = []): array
     {
-        return $this->current(function () use ($collection, $where, $viewer): array {
-            $opts = Seam::query($collection, $where === null ? [] : ['where' => $where], $this->schema);
+        return $this->current(function () use ($collection, $where, $viewer, $extra): array {
+            $opts = Seam::query($collection, ($where === null ? [] : ['where' => $where]) + $extra, $this->schema);
             $q = $this->compileRead($collection, $opts, '', $viewer);
             $q['sql'] = 'SELECT COUNT(*) AS n FROM (' . $q['sql'] . ') first_count';
 

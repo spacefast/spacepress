@@ -487,7 +487,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `withIndex(...).order().collect/take/first/count` | `db.query.<t>.findMany` with the same order; `eq: null` matches `IS NULL` | Auto, **WP** | — |
 | `withIndex(...).paginate({ numItems, cursor })` | A keyset helper per call site: same order, `numItems` clamp 1–1000, `{ page, isDone, continueCursor }`; the cursor carries its call site and filter values | Auto, **WP** | Clients restart from page one after cutover (old cursors are refused); optional index fields |
 | Range on an optional field, `.where()`, `.orderBy()`, `.limit()`, `.offset()` | `db.query` filters exist; not mapped | Refused | Port the query |
-| `query()`, `mutation()`, `action()` | `action()` at `POST /wp-json/first/v1/actions/<name>` with named inputs | Auto, **WP** | Update callers to the v2 client |
+| `query()`, `mutation()`, `action()` | `action()` at `POST /__first/api/v1/actions/<name>` with named inputs | Auto, **WP** | Update callers to the v2 client |
 | `type PaginationOptions`, `Id<T>` | Structural types in the candidate | Auto | — |
 | `collections`, native `posts`, `content/posts/` | Collections and a post-backed `posts` collection; data copied with IDs | Auto, **WP** | Native `pages` and `media` collections; rich blocks; multiple references |
 | `sync` declarations | `first sync` (local) | Dropped with review | Hosted edits do not rebuild a frontend |
@@ -570,7 +570,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 
 | 0.8 route | v2 equivalent | Notes |
 | --- | --- | --- |
-| `/__zero/run` | `/wp-json/first/v1/actions/<name>` | Clients change; a converted client app calls it through `public/first/client.js` |
+| `/__zero/run` | `/__first/api/v1/actions/<name>` | Clients change; a converted client app calls it through `public/first/client.js` |
 | `/__zero/config` | `/__spacefast/client.js` | Clients change; the converted client app's bridge needs no config |
 | `/__zero/auth/start`, `/sign-out` | `/wp-json/first-identity/v1/*` | Identity plugin |
 | `/__zero/realtime/*` | #128 transport | |

@@ -77,7 +77,9 @@ final class Invoke
             }
             [$method, $path, $query, $body] = ($op['call'])($input);
             if ($body !== null) { $body = \First\Seam::inputToJs($body, $op['bodyShape']); }
-            $data = $app->invoke($method, $path, $query, $body, self::viewer());
+            $response = $app->invokeResponse($method, $path, $query, $body, self::viewer(), Register::headers());
+            Register::responded($response->headers);
+            $data = $response->data;
 
             return \First\Seam::toWire(isset($op['result']) ? ($op['result'])($data) : $data);
         } catch (\Throwable $e) {

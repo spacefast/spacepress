@@ -30,7 +30,7 @@ const FILE_CAPS = ["edit_files", "edit_plugins", "edit_themes"];
 const INSTALL_CAPS = ["install_plugins", "upload_plugins", "update_plugins", "delete_plugins", "install_themes", "upload_themes", "update_themes", "delete_themes", "update_core"];
 
 test("the active app lists every switch it applies", async () => {
-  const schema = (await (await fetch(`${harness.url}/wp-json/first/v1/_schema`, { headers: auth("admin") })).json()) as { data: { runtime: { wp: { hardening: string[] } } } };
+  const schema = (await (await fetch(`${harness.url}/__first/api/v1`, { headers: auth("admin") })).json()) as { data: { runtime: { wp: { hardening: string[] } } } };
   assert.deepEqual(schema.data.runtime.wp.hardening, ["xmlrpc", "pings", "emoji", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "permalinks", "timezone", "blockTheme"]);
 });
 

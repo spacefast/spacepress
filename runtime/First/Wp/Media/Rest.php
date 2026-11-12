@@ -20,6 +20,60 @@ final class Rest
     public static function boot(): void
     {
         add_filter('rest_dispatch_request', [self::class, 'dispatch'], 10, 4);
+        add_action('rest_api_init', [self::class, 'fields']);
+        // Media reads follow First's media rule (Access::MEDIA, `anyone` reads), not the parent post's
+        // visibility: core hides an attachment of a draft. For the API's dispatches only.
+        add_filter('rest_endpoints', [self::class, 'endpoints']);
+    }
+
+    /** rest_endpoints: the media item read's permission is First's media read rule on the API's dispatches. */
+    public static function endpoints(array $endpoints): array
+    {
+        foreach ($endpoints['/wp/v2/media/(?P<id>[\d]+)'] ?? [] as $i => $handler) {
+            if (!is_array($handler) || !isset($handler['permission_callback']) || !str_contains((string) ($handler['methods'] ?? ''), 'GET')
+                && !(is_array($handler['methods'] ?? null) && isset($handler['methods']['GET']))) {
+                continue;
+            }
+            $core = $handler['permission_callback'];
+            $endpoints['/wp/v2/media/(?P<id>[\d]+)'][$i]['permission_callback'] = static function (\WP_REST_Request $request) use ($core): mixed {
+                $post = get_post((int) $request['id']);
+                if (!\First\Wp\Facade::dispatching() || !$post instanceof \WP_Post || $post->post_type !== 'attachment') {
+                    return call_user_func($core, $request);
+                }
+                try {
+                    Access::require(Access::MEDIA['read'], new Viewer(WpAuth::current()), 'read', null, 'read media');
+                } catch (HttpError $e) {
+                    return CoreAccess::error($e);
+                }
+
+                return true;
+            };
+        }
+
+        return $endpoints;
+    }
+
+    /**
+     * `first_focal` on core's attachments: the focal point (`{ x, y }` from the top-left, 0..1, or null).
+     * Writing it re-renders the cover sizes, inside {@see dispatch()}'s transaction and under First's
+     * media `update` rule, so the facade's `PATCH /media/<id> { focal }` is a core media update.
+     */
+    public static function fields(): void
+    {
+        register_rest_field('attachment', 'first_focal', [
+            'schema' => ['description' => 'The focal point First crops cover sizes around.', 'type' => ['object', 'null'], 'context' => ['view', 'edit'],
+                'properties' => ['x' => ['type' => 'number', 'minimum' => 0, 'maximum' => 1], 'y' => ['type' => 'number', 'minimum' => 0, 'maximum' => 1]]],
+            'get_callback' => static fn (array $post): ?array => WpMedia::focal((int) $post['id']),
+            'update_callback' => static function (mixed $value, \WP_Post $post): ?\WP_Error {
+                try {
+                    Runtime::plugin()?->db()->media()->update($post->ID, ['focal' => \First\Media\Images::focal($value)]);
+                } catch (HttpError $e) {
+                    return CoreAccess::error($e);
+                }
+
+                return null;
+            },
+        ]);
     }
 
     public static function dispatch(mixed $result, \WP_REST_Request $request, string $route, array $handler): mixed
@@ -43,7 +97,7 @@ final class Rest
             $operation = match (true) {
                 $method === 'DELETE' => 'delete',
                 $id === null, in_array($endpoint, ['post-process', 'sideload', 'finalize'], true) => 'create',
-                $request->has_param('alt_text'), $endpoint === 'edit' => 'update',
+                $request->has_param('alt_text'), $request->has_param('first_focal'), $endpoint === 'edit' => 'update',
                 default => null, // Caption/title and other core fields retain WP's permissions.
             };
             if ($operation !== null) {
@@ -156,6 +210,10 @@ final class Rest
         try {
             $response = call_user_func($handler['callback'], $request);
             if (is_wp_error($response)) {
+                // The storage refused the file: First's 503 (retry later), not core's generic 500.
+                if (\First\Wp\Uploads::storageFailed()) {
+                    throw \First\Media\S3::unavailable();
+                }
                 throw new Refused($response);
             }
             WpMedia::requireRendered();

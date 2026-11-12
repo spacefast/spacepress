@@ -54,7 +54,7 @@ final class Islands
             wp_enqueue_script_module($handle);
             $actions = [];
             foreach ($island['actions'] as $action) {
-                $actions[$action] = rest_url('first/v1/actions/' . rawurlencode((string) $action));
+                $actions[$action] = Wp\Facade::url('/actions/' . rawurlencode((string) $action));
             }
             wp_interactivity_config($namespace, ['actions' => (object) $actions, 'nonce' => wp_create_nonce('wp_rest')]);
         }

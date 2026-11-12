@@ -84,7 +84,7 @@ final class Facade
         }
         // WordPress's CORS for the request's origin, as /wp-json sends it (rest_send_cors_headers and
         // the filters on it), and its answer to a preflight.
-        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        $method = self::method();
         rest_send_cors_headers(false);
         if ($method === 'OPTIONS') {
             header('Access-Control-Allow-Headers: ' . implode(', ', (array) apply_filters('rest_allowed_cors_headers',
@@ -438,6 +438,22 @@ final class Facade
         return substr($path, strlen(self::PREFIX));
     }
 
+    /**
+     * The request's method, with the override core's REST server honours (`?_method=`, then
+     * `X-HTTP-Method-Override`): clients behind proxies that pass only GET and POST, and WordPress's
+     * own api-fetch, which sends PATCH and DELETE that way.
+     */
+    private static function method(): string
+    {
+        $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if ($method !== 'POST') {
+            return $method;
+        }
+        $override = $_GET['_method'] ?? $_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'] ?? null;
+
+        return is_string($override) && $override !== '' ? strtoupper($override) : $method;
+    }
+
     /** Core's REST authentication, as `/wp-json` runs it: cookie + nonce, application password, bearer. */
     private static function authenticate(): ?\WP_Error
     {
@@ -458,7 +474,7 @@ final class Facade
             $out[urldecode($k)] = urldecode($v);
         }
         // Transport metadata, as core's own routes consume it: api-fetch's locale hint and the nonce.
-        unset($out['_locale'], $out['_wpnonce']);
+        unset($out['_locale'], $out['_wpnonce'], $out['_method']);
 
         return $out;
     }

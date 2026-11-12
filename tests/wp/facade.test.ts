@@ -54,6 +54,9 @@ test("items, slugs, writes and deletes map onto core and back", async () => {
   assert.equal((await f("GET", `/events/${id}`)).status, 404, "an anonymous viewer can't read the draft");
   const bad = await f("PATCH", `/events/${id}`, { as: "editor", body: { day: "2026-02-30" } });
   assert.deepEqual([bad.status, bad.json.code, bad.json.pointer], [422, "invalid_input", "/day"]);
+  // A client that sends only GET and POST (WordPress's api-fetch) overrides the method, as on core.
+  const overridden = await fetch(`${facade}/events/${id}`, { method: "POST", headers: { ...auth("editor"), "content-type": "application/json", "x-http-method-override": "PATCH" }, body: JSON.stringify({ seats: 9 }) });
+  assert.deepEqual([overridden.status, (await overridden.json()).data.seats], [200, 9]);
   const removed = await f("DELETE", `/events/${id}`, { as: "editor" });
   assert.deepEqual([removed.status, removed.json.data.id], [200, id]);
   assert.equal((await http("GET", `${legacy}/events/${id}`, { as: "editor" })).status, 404);

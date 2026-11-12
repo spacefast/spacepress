@@ -46,10 +46,19 @@ fn tree(root: &Path) -> BTreeMap<String, Vec<u8>> {
 fn ported(work: &Path) -> PathBuf {
     let app = work.join("ported");
     fs::create_dir_all(app.join("first/_generated/migrations")).unwrap();
-    fs::create_dir_all(app.join("lib")).unwrap();
+    // First loads app code only from first/, so the helper moves there (a stored capture keeps its
+    // old place: it is frozen data).
+    fs::create_dir_all(app.join("first/lib")).unwrap();
     let config = fs::read_to_string(Path::new(FIXTURE).join("app/zero.config.ts")).unwrap();
-    fs::write(app.join("first.config.ts"), config.replace("from \"zero\"", "from \"first\"")).unwrap();
-    fs::copy(Path::new(FIXTURE).join("app/lib/fields.ts"), app.join("lib/fields.ts")).unwrap();
+    let config = config
+        .replace("from \"zero\"", "from \"first\"")
+        .replace("\"./lib/fields\"", "\"./first/lib/fields\"");
+    fs::write(app.join("first.config.ts"), config).unwrap();
+    fs::copy(
+        Path::new(FIXTURE).join("app/lib/fields.ts"),
+        app.join("first/lib/fields.ts"),
+    )
+    .unwrap();
     for name in ["0001_init.sql", "snapshot.json"] {
         fs::copy(
             Path::new(FIXTURE).join("app/zero/migrations").join(name),
@@ -111,7 +120,10 @@ fn recompiling_a_zero_bundle_on_its_0_3_output_adds_no_migration() {
     let migrations = tree(&output.join("migrations"));
     // The previous tree's ledger is carried as it is, and nothing new is planned against its snapshot.
     assert_eq!(migrations.keys().collect::<Vec<_>>(), ["0001_init.sql"]);
-    assert_eq!(migrations["0001_init.sql"], fs::read(previous.join("migrations/0001_init.sql")).unwrap());
+    assert_eq!(
+        migrations["0001_init.sql"],
+        fs::read(previous.join("migrations/0001_init.sql")).unwrap()
+    );
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&fs::read(output.join("snapshot.json")).unwrap()).unwrap(),
         serde_json::from_slice::<serde_json::Value>(&fs::read(previous.join("snapshot.json")).unwrap()).unwrap()
@@ -152,10 +164,18 @@ fn a_zero_source_bundle_with_rendered_pages_is_refused_with_how_to_publish_again
     let mut manifest = manifest(&bundle);
     manifest["app_sha256"] = {
         use sha2::Digest;
-        sha2::Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect::<String>().into()
+        sha2::Sha256::digest(&bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+            .into()
     };
     fs::write(bundle.join("manifest.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
     let error = first::bundle::compile(&bundle, &work.path().join("out"), &bundle, None).unwrap_err();
     assert!(error.message.contains("TSX pages"), "{}", error.message);
-    assert!(error.help.as_deref().is_some_and(|h| h.contains("first sources")), "{:?}", error.help);
+    assert!(
+        error.help.as_deref().is_some_and(|h| h.contains("first sources")),
+        "{:?}",
+        error.help
+    );
 }

@@ -45,10 +45,15 @@ pub(crate) fn read(source: &Path, manifest: &Manifest) -> Result<SourceBundle, D
             return Err(failure(format!(
                 "a {FORMAT} bundle holds {APP_FILE} and {VENDOR_FILE}, but this one also has {name}"
             ))
-            .help("upload one capture: either the files `first sources` writes, or the ones the 0.3.0 compiler wrote"));
+            .help(
+                "upload one capture: either the files `first sources` writes, or the ones the 0.3.0 compiler wrote",
+            ));
         }
     }
-    let captured = bundle::read_bundles(source, [(APP_FILE, &manifest.app_sha256), (VENDOR_FILE, &manifest.vendor_sha256)])?;
+    let captured = bundle::read_bundles(
+        source,
+        [(APP_FILE, &manifest.app_sha256), (VENDOR_FILE, &manifest.vendor_sha256)],
+    )?;
     let mut sources = SourceBundle::default();
     for (path, text) in captured.files {
         sources.files.insert(current(&path)?, text);
@@ -61,8 +66,11 @@ pub(crate) fn read(source: &Path, manifest: &Manifest) -> Result<SourceBundle, D
 
 fn current(path: &str) -> Result<String, Diag> {
     if path == "zero/pages.json" {
-        return Err(failure("this bundle has TSX pages rendered by the 0.3.0 compiler, which First can't serve")
-            .help("publish again with a client that captures First sources (`first sources`), after `first-pages build`"));
+        return Err(
+            failure("this bundle has TSX pages rendered by the 0.3.0 compiler, which First can't serve").help(
+                "publish again with a client that captures First sources (`first sources`), after `first-pages build`",
+            ),
+        );
     }
     for (old, new) in MOVED {
         if let Some(rest) = path.strip_prefix(old) {

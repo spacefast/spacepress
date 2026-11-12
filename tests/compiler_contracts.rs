@@ -3885,7 +3885,7 @@ fn effects_on_an_object_graph_stay_bounded_and_keep_php_equal_to_node() {
         tmp.path().join("first.config.ts"),
         r#"import { action, defineConfig, text } from "first";
 import { run } from "./first/run.mjs";
-export default defineConfig({ name: "graph", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) { return { v: run(input.s) }; } }) } });
+export default defineConfig({ name: "graph", actions: { a: action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }) } });
 "#,
     )
     .unwrap();

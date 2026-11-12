@@ -6,8 +6,9 @@ Status: implemented. Follows
 
 ## Problem
 
-`first check app --json` on the files-sdk scratch tree (`/tmp/fsdk-explore`, the probe app with
-the hand patches from its `layers.md`, which bypass unrelated refusals) did not finish once the
+`first check app --json` on the files-sdk scratch tree (a local copy of `examples/files-sdk` whose
+`node_modules` carry hand patches past unrelated refusals, which other changes are fixing in the
+compiler) did not finish once the
 layers in front of the effects solver compiled. On main `dd69fc27`, which includes #263, it was
 killed at a 10 GB cap after 2:47 (`/usr/bin/time -v systemd-run --user --scope -p MemoryMax=10G
 -p MemorySwapMax=0 -- timeout 300 first check app --json`).

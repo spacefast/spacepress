@@ -176,6 +176,30 @@ Status: **supported**.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
+## commonjs-interop-helpers
+
+Status: **supported**.
+
+While a module is evaluated at build time (module top level, including CommonJS), TypeScript, esbuild and Babel interop helpers run as in Node: `Object.create(null)` and `Object.create(Object.prototype)`; `Object.defineProperty` on plain objects, `exports` and functions with `value`, `get`, `set`, `enumerable`, `writable` and `configurable` (returning the target, with JavaScript's defaults and redefinition rules); `Object.getOwnPropertyDescriptor` on objects, arrays, strings and functions; `Object.prototype.hasOwnProperty`, `propertyIsEnumerable` and `toString` through `.call`/`.apply`; module-level `this` as `module.exports`; and own properties on a function `module.exports`, including `const { name } = require(...)`. Getters run on each build-time read; non-enumerable properties are skipped by for-in, Object.keys, spread and rest. A value with a getter, setter or non-default attribute that reaches compiled code is refused (see reject-captured-getter); docs/decisions/2026-11-12-commonjs-interop-helpers.md.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## captured-property-attributes
+
+Status: **refused**. Diagnostic: `F1002`.
+
+Compiled code reads build-time objects as constants, so a getter, setter, or non-enumerable, read-only or non-configurable property made with Object.defineProperty at module level can't reach a handler yet. Assign the value as a plain property, or read it inside the function that runs in PHP.
+
+[Evidence](../tests/fixtures/reject-captured-getter)
+
+## object-create-prototype
+
+Status: **refused**. Diagnostic: `F2001`.
+
+Object.create is modeled for `null` and `Object.prototype` only, without the properties argument; use an object literal (or `{ __proto__: null }`) for other shapes.
+
+[Evidence](../tests/fixtures/reject-object-create-proto)
+
 ## boolean-function-value
 
 Status: **supported**.

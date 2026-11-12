@@ -13,7 +13,13 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('modes', ['wpContent' => $argv[1]]);
+// A must-use plugin stands in for the host's purge listener.
+$site = wpSite('modes', ['wpContent' => $argv[1], 'muPlugins' => ['host' => <<<'PHP'
+    <?php
+    add_action('first_purge_urls', static function (array $paths): void {
+        update_option('test_purges', [...get_option('test_purges', []), ...$paths], false);
+    });
+    PHP]]);
 wp_set_current_user(1);
 // WordPress's own sample post, so "a post the theme renders" exists in every mode.
 $hello = get_post(1);
@@ -79,12 +85,16 @@ $out = [
     'rest note' => $got('/wp-json/wp/v2/first_notes/' . $noteId)['status'],
     'feed' => $got('/feed/')['status'],
 ];
-// A slug change: the old URL 301s to the new one.
+// A slug change: the old URL 301s to the new one, and both URLs (with twins) are purged.
+delete_option('test_purges');
 wp_set_current_user(1);
 \First\db()->update('notes', ['slug' => 'renamed-note'], ['id' => $noteId]);
 $site->actAs(null);
 $old = $got('/notes/hello-note/');
 $out['renamed'] = [$old['status'], $strip($old['location'])];
+wp_cache_delete('test_purges', 'options');
+$purged = get_option('test_purges', []);
+$out['renamed purges'] = array_values(array_intersect(['/notes/hello-note/', '/notes/hello-note.md', '/notes/renamed-note/', '/notes/renamed-note.md'], $purged));
 $out['new url'] = $got('/notes/renamed-note/')['status'];
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

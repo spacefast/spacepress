@@ -254,7 +254,11 @@ pub fn build(
             Slot::Component { name: component } => {
                 schema.components.insert(component, name);
             }
-            Slot::AppPage { .. } | Slot::AppMetadata { .. } | Slot::AppGuard { .. } | Slot::AppHandler { .. } => {
+            Slot::AppPage { .. }
+            | Slot::AppMetadata { .. }
+            | Slot::AppGuard { .. }
+            | Slot::AppAccess { .. }
+            | Slot::AppHandler { .. } => {
                 app::fill(&mut schema, &slot, &name);
             }
             Slot::ActionHandler { action } => schema.actions.get_mut(&action).expect("action").handler = name,

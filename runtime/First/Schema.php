@@ -129,6 +129,17 @@ final class Schema
         return $this->raw['components'] ?? [];
     }
 
+    /**
+     * `first/app/`: `routes` (most specific first), `notFound`, and `files` (route file => its
+     * compiled component, metadata, guard, search fields and HTTP handlers); null without an app.
+     *
+     * @return ?array{routes: list<array>, notFound: ?array, files: array<string, array>}
+     */
+    public function app(): ?array
+    {
+        return $this->raw['app'] ?? null;
+    }
+
     /** @return list<array{hook: string, filter: bool, priority: int, args: int, handler: string}> */
     public function wpHooks(): array
     {

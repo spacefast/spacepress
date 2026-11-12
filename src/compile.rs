@@ -7,6 +7,7 @@
 //! helper. Where neither is sound, the build fails with a location and a fix.
 
 mod annotations;
+mod app;
 mod classes;
 mod effects;
 mod host;
@@ -859,6 +860,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 self.use_wordpress(WordPressKind::Hook, &hook.hook, root.closure.func.span);
             }
+            if let Slot::AppHandler { file, method } = &root.slot {
+                let ret = match self.helper_types.get(&key) {
+                    Some(Ty::Fn(_, ret)) => match &**ret {
+                        Ty::Promise(t) => (**t).clone(),
+                        t => t.clone(),
+                    },
+                    _ => Ty::Unknown,
+                };
+                if !assignable(&ret, &types::route_response()) {
+                    return err_help(
+                        root.closure.func.span,
+                        format!("{method} in {file} returns {}, not a route response", ret.describe()),
+                        "return { status?: number, headers?: Record<string, string>, body?: string }",
+                    );
+                }
+            }
             if let Slot::RouteHandler { route } = &root.slot {
                 let ret = match self.helper_types.get(&key) {
                     Some(Ty::Fn(_, ret)) => match &**ret {
@@ -921,8 +938,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .map(|(_, t)| t)
                 .collect(),
             Slot::RouteHandler { .. } => vec![types::route_request(), ctx],
-            // A component's own annotation types its props (see `compile_function`).
+            // A component's own annotation types its props (see `compile_function`); a page's
+            // `metadata` function takes the same props.
             Slot::Component { .. } => vec![],
+            Slot::AppPage { file } | Slot::AppMetadata { file } => vec![self.app_props(file)],
+            Slot::AppGuard { .. } => vec![types::hook_ctx()],
+            Slot::AppHandler { .. } => vec![types::route_request(), ctx],
             Slot::ActionHandler { action } => vec![
                 types::action_input(&self.schema.actions[action].input, &types::json_ty),
                 ctx,
@@ -1090,6 +1111,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ));
             }
             let declared = match &p.ann {
+                // `PageProps`/`LayoutProps` from "first/app" are whatever the router passes this route.
+                Some(a) if self.app_props_annotation(a, f.module) && params.is_some() => None,
                 Some(a) => Some(self.resolve_runtime_ann(a, f.module)?),
                 None => None,
             };
@@ -1099,6 +1122,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
             });
             let t = match (declared, given) {
                 (Some(d), Some(g)) => {
+                    // A route file names the props it reads; the router passes more (params,
+                    // search, children), so only the named ones are checked, as TypeScript does
+                    // for a non-literal argument.
+                    let g = match (slot, &g, &d) {
+                        (Some(Slot::AppPage { .. } | Slot::AppMetadata { .. }), Ty::Obj(given), Ty::Obj(named)) => {
+                            Ty::Obj(
+                                given
+                                    .iter()
+                                    .filter(|(k, _)| named.contains_key(*k))
+                                    .map(|(k, v)| (k.clone(), v.clone()))
+                                    .collect(),
+                            )
+                        }
+                        _ => g,
+                    };
                     check_parameter_argument(&g, &parameter_input_type(p, d.clone()), p.span)?;
                     d
                 }
@@ -1132,7 +1170,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             });
         }
         if let Some(ps) = &params
-            && !matches!(slot, Some(Slot::Component { .. }))
+            && !matches!(
+                slot,
+                Some(Slot::Component { .. } | Slot::AppPage { .. } | Slot::AppMetadata { .. })
+            )
             && ps.len()
                 < f.params
                     .iter()
@@ -1783,7 +1824,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.apply_narrowing(&narrow, true);
                 out.push_str(&self.conditional_stmts(then, indent + 1)?);
                 self.fx().scopes.pop();
-                let then_exits = ends_with_exit(then);
+                // A last statement that never completes (`notFound()`, a `never` call) exits too.
+                let then_exits = ends_with_exit(then)
+                    || matches!(then.last(), Some(Stmt::Expr(e)) if self.fx().diverging.contains(&e.span));
                 if let Some(o) = otherwise {
                     let _ = writeln!(out, "{p}}} else {{");
                     self.fx().scopes.push(HashMap::new());
@@ -6367,6 +6410,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let [ArrEl::Item(props_expr)] = args.as_slice() else {
                     unreachable!("a component call has one props object")
                 };
+                if let Some(name) = self.app_builtin(callee)? {
+                    return self.app_component(name, props_expr, span);
+                }
                 let f = self.expr(callee)?;
                 let f = self.finish_value(f, callee.span)?;
                 let Ty::Fn(params, ret) = f.ty.clone() else {
@@ -7423,6 +7469,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if let Some(out) = self.jobs_call(callee, args, span)? {
             return Ok(out);
+        }
+        if let Some(name) = self.app_builtin(callee)? {
+            return self.app_call(name, args, span);
         }
         match &callee.kind {
             ExprKind::Member {

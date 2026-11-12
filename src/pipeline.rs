@@ -366,6 +366,14 @@ pub fn build(
     if uses_wordpress {
         gen_ts += &crate::wordpress::abilities::gen_ts(&catalog);
     }
+    let routes_ts = crate::app::routes_d_ts(
+        &program.app,
+        &schema
+            .collections
+            .iter()
+            .filter_map(|(name, c)| c.url.clone().map(|u| (name.clone(), u)))
+            .collect::<Vec<_>>(),
+    );
     Ok(Built {
         plugins: ext.plugins,
         unsupported_plugins,
@@ -375,7 +383,7 @@ pub fn build(
         snapshot,
         migrations,
         gen_ts,
-        routes_ts: crate::app::routes_d_ts(&program.app),
+        routes_ts,
         warnings,
         hints: ext.hints,
         plugin_lock: settled.lock,

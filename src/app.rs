@@ -512,10 +512,10 @@ pub fn parse_segment(name: &str) -> std::result::Result<Option<Segment>, Refusal
 pub fn allowed_exports(file: &str) -> &'static [&'static str] {
     let name = Path::new(file).file_name().and_then(|n| n.to_str()).unwrap_or_default();
     match name {
-        "page.tsx" => &["default", "metadata", "search", "GET", "POST", "PUT", "PATCH", "DELETE"],
+        "page.tsx" => &["default", "metadata", "search", "access", "signature", "GET", "POST", "PUT", "PATCH", "DELETE"],
         "layout.tsx" => &["default", "metadata", "guard"],
         "not-found.tsx" | "error.tsx" => &["default", "metadata"],
-        "route.ts" => &["GET", "POST", "PUT", "PATCH", "DELETE"],
+        "route.ts" => &["access", "signature", "GET", "POST", "PUT", "PATCH", "DELETE"],
         _ => &[],
     }
 }

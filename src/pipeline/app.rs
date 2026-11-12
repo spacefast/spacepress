@@ -164,6 +164,49 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
             return Err(Diag::new(span, format!("{path} exports no HTTP handler"))
                 .help("export `GET`, `POST`, `PUT`, `PATCH` or `DELETE`"));
         }
+        // Who may call the handlers: said explicitly, as a route is public only when it says so.
+        // A signed webhook proves its sender with an HMAC over the raw body and runs as the system.
+        match (exports.get("access"), exports.get("signature")) {
+            (Some(_), Some(_)) => {
+                return Err(Diag::new(span, format!("{path} exports both `access` and `signature`"))
+                    .help("keep `signature` for a signed webhook (it authenticates the caller), or `access` for everyone else"));
+            }
+            (None, Some(s)) => file.signature = Some(extract::signature_config(s, span)?),
+            (Some(a), None) => {
+                file.access = Some(match a {
+                    Value::Str(s)
+                        if s.as_ref() == "anyone"
+                            || s.as_ref() == "authenticated"
+                            || crate::schema::ROLES.contains(&s.as_ref()) =>
+                    {
+                        crate::schema::Access::Role(s.to_string())
+                    }
+                    Value::Bool(b) => crate::schema::Access::Allow(*b),
+                    Value::Closure(c) => {
+                        ext.roots.push(Root {
+                            closure: c.clone(),
+                            slot: Slot::AppAccess { file: path.clone() },
+                            name: format!("{stem}__access"),
+                            plugin: None,
+                        });
+                        crate::schema::Access::Fn(String::new())
+                    }
+                    other => {
+                        return Err(Diag::new(span, format!("`access` is {}, not a role or a function", other.describe()))
+                            .help("use \"anyone\", \"authenticated\", a role, or `({ user }) => boolean`"));
+                    }
+                });
+            }
+            (None, None) if !file.methods.is_empty() => {
+                return Err(Diag::new(span, format!("{path} has HTTP handlers but no `access`"))
+                    .help("say who may call them: `export const access = \"anyone\"` (or a role), or `export const signature = { secret: env(\"…\"), header, scheme }` for a signed webhook"));
+            }
+            (None, None) => {}
+        }
+        if (exports.contains_key("access") || exports.contains_key("signature")) && file.methods.is_empty() {
+            return Err(Diag::new(span, format!("{path} exports `access` or `signature` but no HTTP handler"))
+                .help("they govern `GET`/`POST`/… handlers; a page's own readers are decided by its reads and its layouts' `guard`"));
+        }
         files.insert(path.clone(), file);
     }
     let kinds: Vec<(String, String)> = ext
@@ -299,6 +342,10 @@ pub fn fill(schema: &mut Schema, slot: &Slot, name: &str) -> bool {
         }
         Slot::AppMetadata { file } => {
             app.files.get_mut(file).expect("app file").metadata = Some(serde_json::json!({ "fn": name }));
+            true
+        }
+        Slot::AppAccess { file } => {
+            app.files.get_mut(file).expect("app file").access = Some(crate::schema::Access::Fn(name.to_string()));
             true
         }
         Slot::AppGuard { file } => {

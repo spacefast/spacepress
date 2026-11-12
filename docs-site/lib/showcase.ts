@@ -62,14 +62,35 @@ function sourcesOf(dir: string, rel = ""): string[] {
   return found;
 }
 
-/** An example's committed migration ledger, `first/_generated/migrations/`: the snapshot and the SQL files. */
+/** Files under `root`, by path below it, sorted. */
+function walk(root: string, rel = ""): string[] {
+  const found: string[] = [];
+  for (const name of readdirSync(path.join(root, rel)).sort()) {
+    const sub = rel ? `${rel}/${name}` : name;
+    if (lstatSync(path.join(root, sub)).isDirectory()) found.push(...walk(root, sub));
+    else found.push(sub);
+  }
+  return found;
+}
+
+/**
+ * An example's committed migration ledger, `first/_generated/migrations/` (the snapshot and the SQL
+ * files), and its `public/` files, which `first build` copies into the app plugin. The compiler
+ * takes sources as text, so a `public/` file that is not UTF-8 text fails here rather than being
+ * left out of the plugin unnoticed.
+ */
 export function ledger(dir: string): Ledger {
   const ledgerDir = path.join(dir, "first/_generated/migrations");
-  if (!existsSync(ledgerDir)) return { snapshot: null, files: {} };
+  const publicDir = path.join(dir, "public");
+  const publicFiles = existsSync(publicDir)
+    ? Object.fromEntries(walk(publicDir).map((file) => [file, new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path.join(publicDir, file)))]))
+    : {};
+  if (!existsSync(ledgerDir)) return { snapshot: null, files: {}, public: publicFiles };
   const snapshot = path.join(ledgerDir, "snapshot.json");
   return {
     snapshot: existsSync(snapshot) ? JSON.parse(readFileSync(snapshot, "utf8")) : null,
     files: Object.fromEntries(readdirSync(ledgerDir).filter((file) => file.endsWith(".sql")).sort().map((file) => [file, readFileSync(path.join(ledgerDir, file), "utf8")])),
+    public: publicFiles,
   };
 }
 

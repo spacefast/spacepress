@@ -196,18 +196,25 @@ function opens(landing: string, schemaPhp: string): boolean {
 /** Playground with the blueprint in the URL fragment, encoded once, as Playground's docs recommend. */
 export const playgroundUrl = (print: Blueprint) => `https://playground.wordpress.net/#${encodeURIComponent(JSON.stringify(print))}`;
 
-/** An example's committed migration ledger (`first/_generated/migrations/`): its snapshot and SQL files by name. */
+/**
+ * What an example has on disk beside its sources that `first build` puts in the app plugin: the
+ * committed migration ledger (`first/_generated/migrations/`, its snapshot and SQL files by name)
+ * and the project's `public/` files by path below it.
+ */
 export interface Ledger {
 	snapshot: unknown;
 	files: Record<string, string>;
+	public: Record<string, string>;
 }
 
 /**
  * The compile request for running sources in WordPress: the ledger goes along, so the compiler
  * numbers new migrations after the committed ones and the app plugin carries all of them, as
- * `first build` does in the example's folder. `files` uses the names the compiler reads.
+ * `first build` does in the example's folder. The project's `public/` goes along too, since the app
+ * plugin carries it. `files` uses the names the compiler reads.
  */
 export function runRequest(name: string, files: Record<string, string>, ledger: Ledger): Request {
 	const sql = Object.fromEntries(Object.entries(ledger.files).map(([file, text]) => [`first/_generated/migrations/${file}`, text]));
-	return { name, files: { ...files, ...sql }, previous: ledger.snapshot ?? null, migrationFiles: Object.keys(ledger.files) };
+	const publicFiles = Object.fromEntries(Object.entries(ledger.public).map(([file, text]) => [`public/${file}`, text]));
+	return { name, files: { ...files, ...publicFiles, ...sql }, previous: ledger.snapshot ?? null, migrationFiles: Object.keys(ledger.files) };
 }

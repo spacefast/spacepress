@@ -48,7 +48,7 @@ test("reads remove the columns a viewer may not read, per row and in with rows",
 test("filters on a hidden column are refused over /first/v1", async () => {
   const forbidden = (pointer: string) => ({ status: 403, code: "forbidden", pointer });
   await problem("GET", `/field_staff${where({ email: { like: "o%" } })}`, {}, forbidden("/where/email"));
-  await problem("GET", `/field_staff${where({ team: { budget: { gt: 500 } } })}`, { as: "editor" }, forbidden("/where/team/budget"));
+  await problem("GET", `/field_staff${where({ teamId: { budget: { gt: 500 } } })}`, { as: "editor" }, forbidden("/where/teamId/budget"));
 });
 
 test("a write to a column the viewer can't set is refused and saves nothing", async () => {

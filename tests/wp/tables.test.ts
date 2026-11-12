@@ -38,9 +38,9 @@ test("table relations use the generated client, SQL joins and the target's acces
     assert.deepEqual([error.status, error.code], [401, "unauthenticated"], "a relation load must enforce target read access");
     return true;
   });
-  await assert.rejects(editor.signups.list({ where: { team: { budget: 250 } } }), (error: unknown) => {
+  await assert.rejects(editor.signups.list({ where: { teamId: { budget: 250 } } }), (error: unknown) => {
     assert.ok(error instanceof FirstError);
-    assert.deepEqual([error.status, error.code, error.pointer], [403, "forbidden", "/where/team/budget"]);
+    assert.deepEqual([error.status, error.code, error.pointer], [403, "forbidden", "/where/teamId/budget"]);
     return true;
   });
   assert.deepEqual(sql(`SELECT teamId FROM wp_first_signups WHERE id = ${signup.id}`), [{ teamId: String(team.id) }]);
@@ -313,8 +313,8 @@ test("/wp/v2/<table> keeps every denial /first/v1 makes", async () => {
   const bad = await http("POST", signups, { as: "editor", body: { email: "not an email" } });
   assert.deepEqual([bad.status, bad.json.code, bad.json.data.pointer], [422, "invalid_input", "/email"]);
   // A filter through a hidden field of a related table is the same 403.
-  const hidden = await http("GET", `${signups}?` + new URLSearchParams({ where: JSON.stringify({ team: { budget: 1 } }) }), { as: "editor" });
-  assert.deepEqual([hidden.status, hidden.json.data.pointer], [403, "/where/team/budget"]);
+  const hidden = await http("GET", `${signups}?` + new URLSearchParams({ where: JSON.stringify({ teamId: { budget: 1 } }) }), { as: "editor" });
+  assert.deepEqual([hidden.status, hidden.json.data.pointer], [403, "/where/teamId/budget"]);
   // Writes need the table's rules: editor-only update and delete.
   const [row] = (await http("GET", `${signups}?` + new URLSearchParams({ where: JSON.stringify({ email }) }), { as: "editor" })).json;
   assert.equal((await http("PATCH", `${signups}/${row.id}`, { as: "subscriber", body: { email: `x-${email}` } })).status, 403);

@@ -98,7 +98,7 @@ test("relation filters only see target rows the viewer may read", async () => {
   const byGhost = await ok("POST", "/posts", { as: "editor", body: { title: `By ghost ${run}`, authorId: ghost.id } });
   await ok("POST", "/signups", { as: "editor", body: { email: `sk-live-7-${run}@example.test`, postId: byGhost.id } });
   const where = (w: object) => qs({ where: { AND: [w, { id: byGhost.id }] } });
-  const draftOracle = where({ author: { email: { like: `price-4%${run}%` } } });
+  const draftOracle = where({ authorId: { email: { like: `price-4%${run}%` } } });
   assert.deepEqual(await ok("GET", "/posts" + draftOracle), []);
   assert.deepEqual((await ok("GET", "/posts" + draftOracle, { as: "editor" })).map((p: any) => p.id), [byGhost.id]);
   // signups are editor-only: filtering through them is denied exactly like `with`.

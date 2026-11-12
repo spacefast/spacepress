@@ -11,7 +11,7 @@ export default defineConfig({
   actions: {
     probe: action({
       access: "anyone",
-      input: { key: text().notNull(), body: text().notNull() },
+      input: { key: text(), body: text() },
       async handler(input) {
         const files = new Files({ adapter: memory() });
         await files.upload(input.key, input.body, { contentType: "text/plain" });
@@ -21,7 +21,7 @@ export default defineConfig({
     }),
     roundtrip: action({
       access: "anyone",
-      input: { key: text().notNull(), body: text().notNull() },
+      input: { key: text(), body: text() },
       async handler(input) {
         return await roundtrip(input.key, input.body);
       },

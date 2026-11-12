@@ -10,7 +10,8 @@ use First\Identity\DB;
  * to First (`zero-identity`, series 0.3): its tables `{prefix}zero_identity_<name>`, its options
  * `zero_identity_*`, and its pending WP-Cron events. It runs from `Plugin::boot`, before the schema
  * step would create empty `first_identity_*` tables, under the same named lock as that step. It only
- * renames; a First name that already exists stops it with the conflict named. Sessions keep working
+ * renames; a First name that already exists stops it with the conflict named. On a site zero-identity
+ * never ran on it records that it ran and touches nothing. Sessions keep working
  * through `ZeroSession`. `first_identity_zero_names` records that it ran. The runtime's names are
  * `First\Wp\ZeroNames`'s.
  */
@@ -46,7 +47,9 @@ final class ZeroNames
             if (get_option(self::DONE) !== false) {
                 return;
             }
-            $changed = self::tables($wp) + self::options($wp) + self::cron();
+            // Only a site zero-identity ran on (its schema version option); elsewhere touch nothing.
+            $ran = $wp->get_var($wp->prepare("SELECT 1 FROM `{$wp->options}` WHERE option_name = %s", 'zero_identity_schema_version')) !== null;
+            $changed = $ran ? self::tables($wp) + self::options($wp) + self::cron() : [];
             wp_cache_flush();
             add_option(self::DONE, ['at' => gmdate('c'), 'changed' => array_filter($changed)], '', false);
         } finally {
@@ -65,13 +68,33 @@ final class ZeroNames
             if ($wp->get_var($wp->prepare('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s', $new)) !== null) {
                 throw new \RuntimeException("Cannot rename table $table: $new already exists. Keep the one with the site's accounts under $new, then reload.");
             }
-            if ($wp->query("RENAME TABLE `$table` TO `$new`") === false) {
-                throw new \RuntimeException("Cannot rename table $table to $new: " . $wp->last_error);
-            }
+            self::rename($wp, (string) $table, $new);
             $n++;
         }
 
         return ['tables' => $n];
+    }
+
+    private static function rename(\wpdb $wp, string $old, string $new): void
+    {
+        if (!$wp->dbh instanceof \PDO) {
+            if ($wp->query("RENAME TABLE `$old` TO `$new`") === false) {
+                throw new \RuntimeException("Cannot rename table $old to $new: " . $wp->last_error);
+            }
+
+            return;
+        }
+        // The SQLite driver has no RENAME TABLE: copy the table under its new name, then drop the
+        // old one, in one transaction (as First\Wp\ZeroNames and the Migrator do).
+        $create = (string) $wp->get_row("SHOW CREATE TABLE `$old`", ARRAY_N)[1];
+        $wp->query('START TRANSACTION');
+        $ok = $wp->query((string) preg_replace('/^CREATE TABLE `(?:[^`]|``)+`/', "CREATE TABLE `$new`", $create)) !== false
+            && $wp->query("INSERT INTO `$new` SELECT * FROM `$old`") !== false
+            && $wp->query("DROP TABLE `$old`") !== false;
+        $wp->query($ok ? 'COMMIT' : 'ROLLBACK');
+        if (!$ok) {
+            throw new \RuntimeException("Cannot rename table $old to $new: " . $wp->last_error);
+        }
     }
 
     /** @return array{options: int} */

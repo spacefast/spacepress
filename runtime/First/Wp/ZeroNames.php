@@ -8,8 +8,9 @@ namespace First\Wp;
  * One-time upgrade of a site that ran a build from before the rename to First (compiler 0.3.0,
  * runtime series 0.3): every name it stored as `zero…` moves to First's name for the same thing.
  *
- * It runs once, on the first boot of the runtime where the site still has the old names (see
- * `Runtime::boot` and `Loader::initialize`), under the site's migration lock, before First creates
+ * It runs once, on the first boot of the runtime on a site the 0.3 runtime ran on (see
+ * `Runtime::boot` and `Loader::initialize`); on any other site it records that it ran and touches
+ * nothing, under the site's migration lock, before First creates
  * any table or option of its own. Every step checks the database first and only renames: it never
  * drops a table, deletes a row or overwrites a value. A step that finds its First name already
  * taken stops the upgrade with the conflict named, so nothing is guessed. Re-running it after an
@@ -34,6 +35,9 @@ namespace First\Wp;
  * - the `zero_guest` role, in `{p}user_roles` and in every user's `{p}capabilities`;
  * - stored job names (`zero.mail`, `zero.webhook`, `zero.services.*`) in the jobs and outbox tables;
  * - pending Action Scheduler actions and groups under `zero_…` / `zero.…` hooks.
+ *
+ * The upgrade is one-way: a 0.3 build can't read the renamed data, so a host must not roll a site back
+ * to a 0.3 version once a First build has initialized on it.
  *
  * An editor collection whose First post type would exceed WordPress's 20 characters (`first_` is
  * one longer than `zero_`) keeps its posts under the old type, untouched; the upgrade records it in
@@ -100,7 +104,10 @@ final class ZeroNames
                 return [];
             }
             $upgrade = new self($db);
-            $changed = $upgrade->run();
+            // Only a site the 0.3 runtime ran on: it left its tables version option or its migration
+            // ledger. Anywhere else (a fresh site, one that never ran First) another plugin's `zero_`
+            // names are not ours, so nothing is touched.
+            $changed = self::ranZero($db) ? $upgrade->run() : [];
             // Options and meta read before this moved under new names: forget every cached copy, and
             // reload the roles WordPress already holds in memory (a later add_role() would write the old
             // role list back over the renamed one).
@@ -112,6 +119,14 @@ final class ZeroNames
 
             return $changed;
         });
+    }
+
+    private static function ranZero(Connection $db): bool
+    {
+        $options = $db->wpdb()->options;
+
+        return $db->run("SELECT 1 FROM `$options` WHERE option_name IN ('zero_runtime_tables', 'zero_runtime_site_id') LIMIT 1") !== []
+            || $db->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$db->prefix() . 'zero__migrations']) !== [];
     }
 
     /** Post types left under their old name. @var list<string> */

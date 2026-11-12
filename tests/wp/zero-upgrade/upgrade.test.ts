@@ -108,11 +108,25 @@ test("the job the 0.3 site queued runs under First's hooks", async () => {
   assert.ok(cron.includes("first_identity_maintenance"), cron);
 });
 
-test("the upgrade ran once and a second run changes nothing", () => {
+test("on a site no 0.3 runtime ran on, the upgrade touches nothing", () => {
+  // Another plugin's `zero_` names on a site with no 0.3 marker are not First's.
+  wp("eval", "global $wpdb; $wpdb->query(\"CREATE TABLE {$wpdb->prefix}zero_other (id INT) ENGINE=InnoDB\"); add_option('zero_other_setting', 'kept');");
+  // The first run, during activation, recorded what it moved.
   const done = JSON.parse(wp("eval", "echo wp_json_encode(get_option('first_zero_names'));"));
   assert.ok(done.changed.tables >= 10 && done.changed.posts === 1 && done.kept.length === 0, JSON.stringify(done));
+  const markers = sql("SELECT option_name AS n FROM wp_options WHERE option_name IN ('zero_runtime_tables', 'zero_runtime_site_id', 'zero_identity_schema_version')");
+  assert.deepEqual(markers, [], "the 0.3 markers were renamed by the first run");
+  wp("option", "delete", "first_zero_names");
+  wp("eval", "global $wpdb; First\\Wp\\ZeroNames::upgrade(new First\\Wp\\Connection($wpdb));");
+  assert.equal(sql("SHOW TABLES LIKE 'wp\\_zero\\_other'").length, 1);
+  assert.equal(wp("option", "get", "zero_other_setting"), "kept");
+  wp("eval", "global $wpdb; $wpdb->query(\"DROP TABLE {$wpdb->prefix}zero_other\"); delete_option('zero_other_setting');");
+});
+
+test("the upgrade ran once and a second run changes nothing", () => {
   const snapshot = contents();
-  // As if an interrupted run were retried: forget that it finished and run it again.
+  // As if a run were retried after it finished its work but before recording it: everything has
+  // moved, so there is nothing left for it to find.
   wp("option", "delete", "first_zero_names");
   wp("option", "delete", "first_identity_zero_names");
   wp("eval", "global $wpdb; First\\Wp\\ZeroNames::upgrade(new First\\Wp\\Connection($wpdb)); First\\Identity\\Legacy\\ZeroNames::upgrade(new First\\Identity\\DB($wpdb));");
@@ -127,7 +141,8 @@ test("the upgrade ran once and a second run changes nothing", () => {
 test("an upgrade that finds First's name taken stops and names the conflict, changing nothing", async () => {
   // A table, then an option: each conflict refuses before any rename.
   // In one WP-CLI process, after boot: a later boot would run the upgrade on its own first.
-  wp("eval", "global $wpdb; $wpdb->query(\"CREATE TABLE {$wpdb->prefix}zero_conflict (id INT) ENGINE=InnoDB\"); $wpdb->query(\"CREATE TABLE {$wpdb->prefix}first_conflict (id INT) ENGINE=InnoDB\"); delete_option('first_zero_names');");
+  // A table a 0.3 runtime left (its marker, the tables-version option, with it) whose First name is taken.
+  wp("eval", "global $wpdb; $wpdb->query(\"CREATE TABLE {$wpdb->prefix}zero_conflict (id INT) ENGINE=InnoDB\"); $wpdb->query(\"CREATE TABLE {$wpdb->prefix}first_conflict (id INT) ENGINE=InnoDB\"); add_option('zero_runtime_tables', '0.3+test'); delete_option('first_zero_names');");
   const out = wp("eval", "global $wpdb; try { First\\Wp\\ZeroNames::upgrade(new First\\Wp\\Connection($wpdb)); echo 'ran'; } catch (Throwable $e) { echo $e->getMessage(); }");
   assert.match(out, /Cannot rename table wp_zero_conflict: wp_first_conflict already exists/);
   assert.equal(sql("SHOW TABLES LIKE 'wp\\_zero\\_conflict'").length, 1, "the old table is kept");
@@ -135,6 +150,14 @@ test("an upgrade that finds First's name taken stops and names the conflict, cha
   const r = await http("GET", `${api}/notes`);
   assert.equal(r.status, 503, JSON.stringify(r.json));
   wp("eval", "global $wpdb; $wpdb->query(\"DROP TABLE {$wpdb->prefix}first_conflict\");");
-  await ok("GET", "/notes"); // the next request retries and finishes
+  // The next request retries and finishes. Its tables-version option can't move either while
+  // First's own exists: that conflict is named too, and resolved the same way.
+  const retry = await http("GET", `${api}/notes`);
+  assert.equal(retry.status, 503);
+  assert.match(wp("eval", "global $wpdb; try { First\\Wp\\ZeroNames::upgrade(new First\\Wp\\Connection($wpdb)); echo 'ran'; } catch (Throwable $e) { echo $e->getMessage(); }"), /Cannot rename option zero_runtime_tables: first_runtime_tables already exists/);
+  wp("option", "delete", "zero_runtime_tables");
+  wp("eval", "add_option('zero_runtime_site_id', 'marker');");
+  await ok("GET", "/notes");
   assert.equal(sql("SHOW TABLES LIKE 'wp\\_first\\_conflict'").length, 1);
+  assert.equal(sql("SHOW TABLES LIKE 'wp\\_zero\\_conflict'").length, 0);
 });

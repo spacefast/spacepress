@@ -446,6 +446,21 @@ fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value 
 #[test]
 fn frontend_modes_on_wordpress() {
     let theme = modes("theme", None, false);
+    // With no first/app/, WordPress renders the whole site with its block theme: the home page,
+    // core posts, kind URLs and its own 404 template. The app router adds nothing to any of them.
+    let by_theme = |status: u64| serde_json::json!({ "status": status, "theme": true, "router": false });
+    for (key, status) in [
+        ("home rendered", 200),
+        ("note rendered", 200),
+        ("post rendered", 200),
+        ("missing rendered", 404),
+    ] {
+        assert_eq!(theme[key], by_theme(status), "{key}: {theme}");
+    }
+    assert_eq!(
+        (&theme["post body"], &theme["missing by wordpress"]),
+        (&serde_json::json!(true), &serde_json::json!(true))
+    );
     assert_eq!(theme["note status"], 200, "{theme}");
     assert_eq!(
         (&theme["note by theme"], &theme["note by app"]),
@@ -466,6 +481,14 @@ fn frontend_modes_on_wordpress() {
     assert_eq!(theme["home"], 200);
 
     let app = modes("app", None, true);
+    // With first/app/, its page renders the note through the router; a kind URL without a page and
+    // a core post keep the theme.
+    assert_eq!(app["note rendered"]["router"], true, "{app}");
+    assert_eq!(
+        app["missing rendered"],
+        serde_json::json!({ "status": 404, "theme": false, "router": true })
+    );
+    assert_eq!(app["post rendered"], by_theme(200), "{app}");
     assert_eq!(
         (&app["note status"], &app["note by app"], &app["note body"]),
         (

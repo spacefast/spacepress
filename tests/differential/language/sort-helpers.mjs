@@ -66,6 +66,8 @@ export function sortObjects() {
   shrunk.sort((a, b) => { if (shrunk.length > 2) shrunk.pop(); return a - b; });
   return {
     ordered, counted, conversions, valued, shrunk,
+    // A generator comparator returns a generator object: ToNumber gives NaN, so no element moves.
+    generator: [[3, 1, 2].sort(function* (a, b) { return a - b; }), [{ k: 2 }, { k: 1 }].toSorted(function* (a, b) { return a.k - b.k; }).map((x) => x.k)],
     json: stableJson({ z: 1, a: [{ y: 2, b: 1 }], m: { k: null, c: "x" }, "🙂": 1, "\ue000": 2 }),
     list: list(store, "dir/"),
     plainObjects: [{ k: 1 }, [2], { k: 0 }].sort().map((x) => JSON.stringify(x)),

@@ -476,9 +476,25 @@ src/builtins.rs owns JavaScript built-in overloads, arity and phase support. Uns
 
 Status: **supported**.
 
-`Array.prototype.sort` and `toSorted` match Node in typed code, checked imported JavaScript and configuration evaluation. With no comparator, elements compare by the UTF-16 code units of their string forms, so `[10, 9, 1]` sorts to `[1, 10, 9]` and astral characters sort before U+E000..U+FFFF. Any comparator function is accepted, including inconsistent ones such as `(a, b) => a.key < b.key ? -1 : 1`; its result converts with ToNumber and NaN counts as 0. Undefined elements go last and never reach the comparator. Both the runtime and the evaluator run V8's TimSort step for step, so the comparator receives Node's pairs in Node's order and effectful comparators see the same calls. `sort` returns the same array and writes it only after sorting succeeds; `toSorted` returns a new array. A non-function comparator throws TypeError at run time. Configuration evaluation refuses objects with custom toString/valueOf in default sorting, as it does for every custom coercion. Arrays are dense, so holes do not occur. Evidence: tests/differential/language/sort.ts and sort-helpers.mjs.
+`Array.prototype.sort` and `toSorted` match Node in typed code, checked imported JavaScript and configuration evaluation. With no comparator, elements compare by the UTF-16 code units of their string forms, so `[10, 9, 1]` sorts to `[1, 10, 9]` and astral characters sort before U+E000..U+FFFF. Any comparator function is accepted, including inconsistent ones such as `(a, b) => a.key < b.key ? -1 : 1`; its result converts with ToNumber and NaN counts as 0. Undefined elements go last and never reach the comparator. Both the runtime and the evaluator run V8's TimSort step for step, so the comparator receives Node's pairs in Node's order and effectful comparators see the same calls. `sort` returns the same array and writes it only after sorting succeeds; `toSorted` returns a new array. A non-function comparator throws TypeError at run time, including a PHP callable name such as "strcmp" passed through a cast. A generator comparator sorts as Node does in compiled code and is refused during configuration evaluation (generator-comparator-build-time). Configuration evaluation refuses objects with custom toString/valueOf in default sorting, as it does for every custom coercion. Arrays are dense, so holes do not occur. Evidence: tests/differential/language/sort.ts and sort-helpers.mjs.
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## generator-comparator-build-time
+
+Status: **refused**. Diagnostic: `F2001`.
+
+A generator function returns a generator object, which ToNumber turns into NaN, so as a comparator it leaves the order unchanged. Configuration evaluation runs a generator's body as a plain call and would see its return value instead, so it refuses a generator comparator at the sort. Compiled handlers and imported JavaScript run it as Node does.
+
+[Evidence](../tests/fixtures/reject-generator-comparator)
+
+## symbol-comparator-result-build-time
+
+Status: **refused**. Diagnostic: `F2001`.
+
+A comparator result converts with ToNumber, and a symbol can't, so Node throws a TypeError. Configuration evaluation refuses the sort at the call; compiled handlers and imported JavaScript throw the TypeError.
+
+[Evidence](../tests/fixtures/reject-symbol-comparator)
 
 ## locale-collation
 

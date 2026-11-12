@@ -274,7 +274,7 @@ pub fn sort_key(f: &crate::ir::Func) -> Option<(Vec<String>, bool)> {
             _ => None,
         }
     }
-    if f.is_async || f.params.len() != 2 || f.params.iter().any(|p| p.default.is_some() || p.rest) {
+    if f.is_async || f.is_generator || f.params.len() != 2 || f.params.iter().any(|p| p.default.is_some() || p.rest) {
         return None;
     }
     let (Pat::Id(a, _), Pat::Id(b, _)) = (&f.params[0].pat, &f.params[1].pat) else {

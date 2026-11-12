@@ -51,7 +51,9 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F1201` | plugin "reach" can't import "first:db": the app's kinds belong to the app | [`reject-plugin-db`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-plugin-db) |
 | `F1201` | plugin "b" can't import "first-plugin-a": it belongs to plugin "a" | [`reject-plugin-isolation`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-plugin-isolation) |
 | `F2001` | "first" has no export named `fetch` | [`reject-first-fetch-import`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-first-fetch-import) |
+| `F2001` | a generator function can't be a comparator while the config is evaluated | [`reject-generator-comparator`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-generator-comparator) |
 | `F2001` | "node:crypto" has no `createCipheriv` in First code | [`reject-node-crypto-member`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-node-crypto-member) |
+| `F2001` | the comparator returned a symbol, which can't convert to a number | [`reject-symbol-comparator`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-symbol-comparator) |
 | `F2001` | "php/wordpress" has no export named `the_title` | [`reject-wp-function-unknown`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-wp-function-unknown) |
 | `F2101` | Date.now() | [`reject-build-time-clock`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-build-time-clock) |
 | `F3001` | a first/wp-hooks/ file needs a default-exported handler function | [`reject-wp-hook-no-default`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-wp-hook-no-default) |

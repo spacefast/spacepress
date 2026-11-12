@@ -3212,6 +3212,17 @@ impl Evaluator<'_> {
         if !matches!(compare, Value::Undef) {
             require_callable(compare, span)?;
         }
+        // The evaluator runs a generator's body as a plain call; its result would be the return
+        // value instead of a generator object, which JavaScript's ToNumber turns into NaN.
+        if let Value::Closure(c) = compare
+            && c.func.is_generator
+        {
+            return err_help(
+                span,
+                "a generator function can't be a comparator while the config is evaluated",
+                "pass an ordinary function, or sort inside a hook or action",
+            );
+        }
         let undefined = items.iter().filter(|v| matches!(v, Value::Undef)).count();
         let mut items: Vec<Value> = items.into_iter().filter(|v| !matches!(v, Value::Undef)).collect();
         if items.len() > 1 {
@@ -3233,6 +3244,13 @@ impl Evaluator<'_> {
                 crate::sort::timsort::<_, Ctl>(&mut items, |x, y| {
                     let order = self.callback(compare, vec![x.clone(), y.clone()], span)?;
                     require_static_coercion(&order, span)?;
+                    if matches!(order, Value::Symbol(_)) {
+                        return err_help(
+                            span,
+                            "the comparator returned a symbol, which can't convert to a number",
+                            "return a number from the comparator",
+                        );
+                    }
                     Ok(to_number(&order) < 0.0)
                 })?;
             }

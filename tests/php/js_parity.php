@@ -329,6 +329,9 @@ $cases[] = ['(() => { const calls = []; const a = [3, 2, 1, 5, 4].sort((x, y) =>
     $a = Js::sort(new JsArray([3, 2, 1, 5, 4]), static function ($x, $y) use ($calls) { Js::push($calls, $x . ':' . $y); return $x - $y; });
     return [$a, $calls];
 }];
+$cases[] = ['(() => { try { ["b", "c", "a"].sort("strcmp"); return "sorted"; } catch (e) { return e.name; } })()', static function () {
+    try { Js::sort(new JsArray(['b', 'c', 'a']), 'strcmp'); return 'sorted'; } catch (JsError $e) { return $e->jsName; }
+}];
 $cases[] = ['[{b: 1}, [2], {a: 0}, [10]].sort()', fn () => Js::sort(jsValue([['b' => 1], [2], ['a' => 0], [10]]))];
 $cases[] = ['[[1, NaN, 0, -Infinity].sort((x, y) => x - y), [{k: "b"}, {k: 2}, {k: "a"}].sort((x, y) => x.k - y.k).map(o => o.k)]', fn () => [
     Js::sort(new JsArray([1, NAN, 0, -INF]), Js::sortComparator(static fn ($x, $y) => $x - $y, [], false)),

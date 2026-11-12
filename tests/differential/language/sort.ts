@@ -139,6 +139,16 @@ function mutation(): unknown[] {
   return [copy, original, sorted === original, copy === original, grown, source, fresh];
 }
 
+type Compare = (a: string, b: string) => number;
+
+/** Values typed as comparators that are not functions throw TypeError, as in Node; PHP callable names never run. */
+function notFunctions(): string[] {
+  const attempt = (compare: unknown) => {
+    try { return JSON.stringify(["b", "c", "a"].sort(compare as Compare)); } catch (error) { return (error as Error).name; }
+  };
+  return ["strcmp", "max", 5, {}, [1]].map(attempt);
+}
+
 const BUILD_TIME_SORT = { defaults: defaults(), comparators: comparators(), calls: calls(), sequences: sequences(), stability: stability(), mutation: mutation(), untyped: sortUntyped(), untypedSequences: sortUntypedSequences() };
 
 export default defineConfig({
@@ -151,6 +161,7 @@ export default defineConfig({
     sortSequences: run(() => sequences()),
     sortStability: run(() => stability()),
     sortMutation: run(() => mutation()),
+    sortNotFunctions: run(() => notFunctions()),
     sortBuildTime: run(() => BUILD_TIME_SORT),
     sortUntyped: run(() => sortUntyped()),
     sortUntypedSequences: run(() => sortUntypedSequences()),

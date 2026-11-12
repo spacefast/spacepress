@@ -1653,7 +1653,7 @@ final class Js
 
     public static function toReversed(JsArray $a): JsArray { return new JsArray(array_reverse($a->a)); }
 
-    public static function sort(JsArray $a, ?callable $cmp = null): JsArray
+    public static function sort(JsArray $a, mixed $cmp = null): JsArray
     {
         $len = count($a->a);
         $sorted = self::sorted($a, $cmp);
@@ -1663,7 +1663,7 @@ final class Js
         return $a;
     }
 
-    public static function toSorted(JsArray $a, ?callable $cmp = null): JsArray { return self::sorted($a, $cmp); }
+    public static function toSorted(JsArray $a, mixed $cmp = null): JsArray { return self::sorted($a, $cmp); }
 
     private static ?\WeakMap $sortComparators = null;
 
@@ -1683,8 +1683,12 @@ final class Js
      * with V8's TimSort (JsSort), so every comparator, consistent or not, sees Node's call
      * sequence and gives Node's order.
      */
-    public static function sorted(JsArray $a, ?callable $cmp = null): JsArray
+    public static function sorted(JsArray $a, mixed $cmp = null): JsArray
     {
+        // Only a JavaScript function compares; a PHP callable string such as 'strcmp' must not run.
+        if ($cmp !== null && !$cmp instanceof \Closure) {
+            throw new JsError('The comparison function must be either a function or undefined', 'TypeError');
+        }
         $items = [];
         $undefined = 0;
         foreach ($a->a as $item) {
@@ -1694,7 +1698,6 @@ final class Js
         $tail = array_fill(0, $undefined, JsUndefined::Value);
         if (count($items) < 2) { return new JsArray([...$items, ...$tail]); }
         if ($cmp !== null) {
-            $cmp = $cmp instanceof \Closure ? $cmp : \Closure::fromCallable($cmp);
             $keyed = self::sortedByKeys($items, $cmp);
             if ($keyed !== null) { return new JsArray([...$keyed, ...$tail]); }
             $less = static function (mixed $x, mixed $y) use ($cmp): bool { return self::toNumber($cmp($x, $y)) < 0; };

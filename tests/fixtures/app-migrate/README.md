@@ -41,3 +41,9 @@ endpoints, services, site) exercise one mapping each and are not counted.
 apps (zero#138) from a handler, one `shared/<construct>.ts` per construct group.
 `language_constructs_convert_and_build` converts and builds it; the exact
 semantics are proven by `tests/differential/language`.
+
+`client-app-styles/zero.css` is the stylesheet Zero 0.8 generates for `client-app`:
+`compileZeroUtilityStylesheet` from `spacefast/monorepo`
+`legacy/zero-0.8/packages/zero-compile/src/tailwind-core.ts` (main `384d463fa4`), unchanged, with
+`tailwindcss@4.3.3`, over the capsule's `client/`, `server/` and `shared/` sources and no
+`theme.json`, as 0.8's CLI ran it. Regenerate it the same way after changing the fixture's classes.

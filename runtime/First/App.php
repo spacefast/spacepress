@@ -80,7 +80,7 @@ final class App
         }
 
         return Extensions::execute('action:' . $name, $action, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer,
-            static fn (): Response => Response::json(Timers::run(static fn (): mixed => $fn($input, $ctx))));
+            static fn (): Response => Response::json(JsBinary::refuseWire(Timers::run(static fn (): mixed => $fn($input, $ctx)), 'action ' . $name)));
     }
 
     /**

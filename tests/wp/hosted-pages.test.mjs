@@ -83,7 +83,7 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
     const errors = [];
     tab.on('pageerror', (error) => errors.push(error.message));
     const actionCalls = [];
-    tab.on('request', (request) => { if (request.url().includes('/wp-json/first/v1/actions/cheer')) actionCalls.push(request.method()); });
+    tab.on('request', (request) => { if (request.url().includes('/__first/api/v1/actions/cheer')) actionCalls.push(request.method()); });
     await tab.goto(`${base}/notes/hosted-light/`);
     assert.equal(await tab.textContent('[data-wp-text="context.count"]'), '0');
     await tab.click('button:has-text("Cheer")');

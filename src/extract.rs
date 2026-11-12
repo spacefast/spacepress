@@ -62,6 +62,10 @@ pub enum Slot {
     AppMetadata {
         file: String,
     },
+    /// `export const access = (ctx) => boolean` for a `first/app/` file's HTTP handlers.
+    AppAccess {
+        file: String,
+    },
     /// `export const guard = (ctx) => boolean` in a `first/app/` layout.
     AppGuard {
         file: String,
@@ -2400,7 +2404,7 @@ fn env_value(v: Option<&Value>, span: Span) -> Result<Json> {
     }
 }
 
-fn signature_config(v: &Value, span: Span) -> Result<Json> {
+pub(crate) fn signature_config(v: &Value, span: Span) -> Result<Json> {
     let o = object(v, span, "signature")?;
     keys(&o, &["secret", "header", "scheme"], span, "signature")?;
     let secret = env_value(o.get("secret"), span)?;

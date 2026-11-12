@@ -14,7 +14,9 @@ export default async function Note({ params }: PageProps<"notes/[slug]">) {
   );
 }
 
-// The page's own form handler: POST to the page URL.
+// The page's own form handler: POST to the page URL, for signed-in readers.
+export const access = "subscriber";
+
 export async function POST(req: RouteRequest) {
   return { status: 303, headers: { location: `/notes/${req.params.slug}?sent=1` }, body: "" };
 }

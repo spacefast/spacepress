@@ -293,7 +293,10 @@ pub fn operation(operation: &str, request: &str) -> String {
                         fs,
                         &project,
                         tables,
-                        request["users"].as_bool().unwrap_or(false),
+                        crate::config_migrate::app::Inputs {
+                            users: request["users"].as_bool().unwrap_or(false),
+                            zero_css: request["zeroCss"].as_str().map(str::to_owned),
+                        },
                     );
                     candidate.finish();
                     Ok(serde_json::to_value(candidate).unwrap())

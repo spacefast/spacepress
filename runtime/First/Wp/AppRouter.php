@@ -527,9 +527,7 @@ final class AppRouter
             });
         }
         Navigation::enqueue(plugins_url('first/Render/client/router.js', Runtime::file()));
-        if (class_exists(\First\Islands::class)) {
-            \First\Islands::enqueue();
-        }
+        \First\Islands::enqueue();
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'HEAD') {
             exit;
         }

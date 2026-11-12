@@ -301,6 +301,25 @@ pub fn analyse(
     if !returned {
         return Err(refuse(f.span, "a client component returns one element", "end the body with `return <div>…</div>;`"));
     }
+    // The server actions this component can call: their endpoints go into the store's config.
+    let mut called = BTreeSet::new();
+    let mut scan = |e: &Expr| {
+        if let ExprKind::Call { callee, .. } = &e.kind
+            && let ExprKind::Ident(n) = &callee.kind
+            && a.bindings.get(n) == Some(&Binding::ServerAction)
+        {
+            called.insert(n.clone());
+        }
+    };
+    for stmt in body {
+        stmt_exprs(stmt, &mut |e| visit_deep(e, &mut scan));
+    }
+    // An import binds a local name to an action; the endpoint uses the action's name.
+    for (local, name) in imports(module, client_module).1 {
+        if called.contains(&local) {
+            a.server_actions.insert(name);
+        }
+    }
     Ok(a)
 }
 
@@ -791,4 +810,39 @@ pub fn visit(e: &Expr, f: &mut dyn FnMut(&Expr)) {
         ExprKind::Jsx(j) => j.exprs().into_iter().for_each(&mut go),
         _ => {}
     }
+}
+
+/// Every expression a statement holds, including inside nested function bodies.
+fn stmt_exprs(s: &Stmt, f: &mut dyn FnMut(&Expr)) {
+    match s {
+        Stmt::Decl { init: Some(e), .. } | Stmt::Expr(e) | Stmt::Return(Some(e), _) | Stmt::Throw(e) => f(e),
+        Stmt::If(c, t, e) => {
+            f(c);
+            t.iter().for_each(|s| stmt_exprs(s, f));
+            e.iter().flatten().for_each(|s| stmt_exprs(s, f));
+        }
+        Stmt::Block(b) => b.iter().for_each(|s| stmt_exprs(s, f)),
+        Stmt::Try { block, handler, finalizer, .. } => {
+            block.iter().chain(handler.iter().flatten()).chain(finalizer.iter().flatten()).for_each(|s| stmt_exprs(s, f));
+        }
+        Stmt::Func(func) => func_exprs(func, f),
+        _ => {}
+    }
+}
+
+fn func_exprs(func: &Func, f: &mut dyn FnMut(&Expr)) {
+    match &func.body {
+        FnBody::Expr(e) => f(e),
+        FnBody::Block(b) => b.iter().for_each(|s| stmt_exprs(s, f)),
+    }
+}
+
+/// [`visit`], descending into function bodies too.
+fn visit_deep(e: &Expr, f: &mut dyn FnMut(&Expr)) {
+    visit(e, &mut |x| {
+        f(x);
+        if let ExprKind::Func(func) = &x.kind {
+            func_exprs(func, &mut |y| visit_deep(y, f));
+        }
+    });
 }

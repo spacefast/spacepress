@@ -686,13 +686,12 @@ test("runtime registrations extend system tables and every generated SCF field",
         echo "file\\0bytes:" . get_option('first_stream_committed', 'uncommitted');
       }, 200, ['Content-Type' => 'application/octet-stream', 'Content-Disposition' => 'attachment; filename="proof.bin"']);
     });
-    $request = new WP_REST_Request('GET', '/first/v1/download-proof');
-    $request['path'] = 'download-proof';
-    $response = \\First\\Wp\\Rest::dispatch($app, $request);
+    [$status, $headers, $body] = \\First\\Wp\\Facade::route(\\First\\Wp\\Plugin::instance(), 'GET', '/download-proof', [], '');
+    // The stream runs after the operation commits, as the facade emits it.
     ob_start();
-    $served = \\First\\Wp\\Rest::serve(false, $response);
-    $body = ob_get_clean();
-    echo wp_json_encode([$response->get_status(), $response->get_headers()['Content-Type'], $response->get_headers()['Content-Disposition'], $served, $body]);
+    \\First\\Response::emit($body);
+    $out = ob_get_clean();
+    echo wp_json_encode([$status, $headers['Content-Type'], $headers['Content-Disposition'], $body instanceof Closure, $out]);
     delete_option('first_stream_committed');
   `));
   assert.deepEqual(stream, [200, "application/octet-stream", 'attachment; filename="proof.bin"', true, "file\0bytes:committed"]);

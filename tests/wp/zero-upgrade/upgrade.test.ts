@@ -7,6 +7,8 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { api, harness, http, ok, sql, wp } from "../env.ts";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const seeded: { note: number; post: number; file: number; cookie: string } = JSON.parse(
   readFileSync(process.env.FIRST_WP_HARNESS!, "utf8"),
@@ -69,6 +71,16 @@ test("table rows, posts with their revisions, the global and the file read back 
   const bytes = await fetch(file.url).then((r) => r.text());
   assert.equal(bytes, "deck contents", "the private file moved with its directory and downloads");
   assert.equal(wp("eval", "echo is_dir(WP_CONTENT_DIR . '/uploads/zero-private') ? 'old' : 'moved';"), "moved");
+});
+
+test("the deleted /wp-json/first/v1 and the 0.3 client file are not served; an old tab's action is not run", async () => {
+  const gone = await fetch(`${site}/wp-json/first/v1/notes`);
+  assert.deepEqual([gone.status, (await gone.json()).code], [404, "rest_no_route"]);
+  assert.equal((await fetch(`${site}/__zero/client.js`)).status, 404);
+  const before = (await ok("GET", "/notes")).length;
+  const action = await fetch(`${site}/wp-json/zero/v1/actions/add`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "From an open tab" }) });
+  assert.equal(action.status, 404);
+  assert.equal((await ok("GET", "/notes")).length, before, "the action didn't run");
 });
 
 test("an editor still edits the post in wp-admin: its post type, fields and SCF field keys are First's", async () => {
@@ -160,4 +172,25 @@ test("an upgrade that finds First's name taken stops and names the conflict, cha
   await ok("GET", "/notes");
   assert.equal(sql("SHOW TABLES LIKE 'wp\\_first\\_conflict'").length, 1);
   assert.equal(sql("SHOW TABLES LIKE 'wp\\_zero\\_conflict'").length, 0);
+});
+
+test("after the upgrade, the site serves First's API and a tab still running the 0.3 client gets a clear error", async () => {
+  // The recompiled site answers on First's API; the 0.3 REST prefix is gone.
+  assert.deepEqual((await ok("GET", "/notes")).map((n: any) => n.title).sort(), ["Kept note", "Second note"]);
+  const old = await fetch(`${site}/wp-json/zero/v1/notes`);
+  assert.equal(old.status, 404, "nothing serves /wp-json/zero/v1 after the upgrade");
+  assert.equal((await old.json()).code, "rest_no_route");
+  // The client the 0.3 build generated, as an open tab still runs it: every call fails with a
+  // ZeroError carrying WordPress's 404, never a wrong answer or a silent empty list.
+  const here = dirname(fileURLToPath(import.meta.url));
+  const { createClient } = await import(join(here, "fixture/client/client.js"));
+  const client = createClient({ url: `${site}/wp-json/zero/v1` });
+  await assert.rejects(client.notes.list(), (e: any) => e.name === "ZeroError" && e.status === 404 && e.code === "rest_no_route");
+  await assert.rejects(client.actions.later({ id: seeded.note }), (e: any) => e.name === "ZeroError" && e.status === 404);
+  // The client the recompiled build serves is First's, on /__first/api/v1.
+  const built = String(process.env.FIRST_ZERO_UPGRADE_CLIENT ?? "");
+  assert.ok(built !== "", "run.sh passes the recompiled client");
+  const fresh = await import(built);
+  const rows = await fresh.createClient({ url: `${site}/__first/api/v1` }).notes.list();
+  assert.deepEqual(rows.map((n: any) => n.title).sort(), ["Kept note", "Second note"]);
 });

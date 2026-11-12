@@ -31,4 +31,6 @@ rm -rf "$here/fixture" && mkdir -p "$here/fixture/uploads"
 cp "$work/seeded.json" "$here/fixture/seeded.json"
 # The ledger the 0.3.0 build committed: the port in first.config.ts builds on it (run.sh).
 mkdir -p "$here/fixture/migrations" && cp "$work/app/zero/migrations/"* "$here/fixture/migrations/"
+# The generated client 0.3.0 served: an open browser tab keeps running it after the upgrade.
+mkdir -p "$here/fixture/client" && cp "$work/app/zero/client/client.js" "$here/fixture/client/client.js"
 echo "staged $here/fixture"

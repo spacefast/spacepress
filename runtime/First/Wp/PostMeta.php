@@ -183,7 +183,7 @@ final class PostMeta extends \WP_REST_Post_Meta_Fields
             $ptr = HttpError::seg($col);
             $v = \First\Seam::toPhp($v, $def);
             if ($def['type'] === 'group' && $viewer !== null) {
-                // A partial group keeps the stored sub-fields this viewer can't read or set, as on /first/v1.
+                // A partial group keeps the stored sub-fields this viewer can't read or set, as in First's write pipeline.
                 $before ??= $db->editorRow($this->collection, (int) $object_id) ?? [];
                 $v = $db->current(static fn () => \First\FieldAccess::effectiveGroup('update', $def, $v, $before[$col] ?? null, $viewer));
             }

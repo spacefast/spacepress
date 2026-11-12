@@ -41,23 +41,6 @@ $openNote = $db->insert('openNotes', ['title' => 'Anonymous unique slug'], true,
 eq('anonymous unique creation succeeds when password guards cannot narrow reads', $openNote['slug'], 'anonymous-unique-slug');
 eq('native unrestricted reads do not enumerate every primary key', $db->permittedKeys('openNotes', 'read', $anonymous), null);
 
-// Internal REST calls can discard their response before WordPress serves a different one.
-$internal = new \WP_REST_Request('GET', '/first/v1/posts');
-$internal->set_url_params(['path' => 'posts']);
-$discarded = \First\Wp\Rest::dispatch($app, $internal);
-unset($discarded);
-$unrelated = new \WP_REST_Response(['native' => true]);
-ob_start();
-$served = \First\Wp\Rest::serve(false, $unrelated);
-$output = ob_get_clean();
-eq('discarded First responses cannot hijack another response', [$served, $output], [false, '']);
-$response = \First\Wp\Rest::dispatch($app, $internal);
-ob_start();
-$served = \First\Wp\Rest::serve(false, $response);
-$output = ob_get_clean();
-eq('live First responses still serve their committed body', [$served, json_decode($output, true)], [true, ['data' => []]]);
-eq('a response body is consumed once', \First\Wp\Rest::serve(false, $response), false);
-
 $users = [];
 foreach (['admin', 'ed', 'alice', 'bob', 'sub'] as $name) {
     $users[$name] = $wp->user($name);
@@ -223,7 +206,7 @@ eq('valid native cookie unlocks the same viewer-bound body as WordPress', [post_
 unset($_COOKIE['wp-postpass_' . COOKIEHASH]);
 eq('removing password proof invalidates visibility', [$db->findMany('posts', ['where' => $protectedWhere], $anon), $coreRead()->get_status()], [[], 404]);
 $wp->startServer();
-$wire = json_decode(file_get_contents($wp->url() . '/wp-json/first/v1/posts/' . $protected['id'], false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 10]])), true);
+$wire = json_decode(file_get_contents($wp->url() . '/__first/api/v1/posts/' . $protected['id'], false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 10]])), true);
 eq('anonymous HTTP cannot read a native password-protected record', [$wire['status'] ?? null, $wire['code'] ?? null], [404, 'not_found']);
 $db->delete('comments', ['id' => $linked['id']]);
 $db->delete('posts', ['id' => ['in' => [$protected['id'], $public['id']]]]);

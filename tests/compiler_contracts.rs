@@ -266,7 +266,7 @@ fn uri_vectors_agree_in_node_pure_evaluation_and_generated_php() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
 import {{ collection, text, json, action, defineConfig }} from "first";
-const values = {{values}};
+const values = {values};
 const encoded = values.map(value => [encodeURI(value), encodeURIComponent(value)]);
 const notes = collection({{ title: text().optional(), result: json().default(encoded).optional() }}, {{ title: "title" }});
 export default defineConfig({{ name: "uri", collections: {{ notes }}, actions: {{ encode: action({{ input: {{}}, handler: () => values.map(value => [encodeURI(value), encodeURIComponent(value)]) }}) }} }});
@@ -539,9 +539,9 @@ fn uri_encoding_refuses_coercion_and_discarded_arguments() {
             };
             std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
 import {{ collection, text, action, defineConfig }} from "first";
-const result = {{invocation}};
+const result = {invocation};
 const notes = collection({{ title: text().optional() }}, {{ title: "title" }});
-export default defineConfig({{ collections: {{ notes }}, actions: {{ encode: action({{ input: {{}}, handler: {{handler_body}} }}) }} }});
+export default defineConfig({{ collections: {{ notes }}, actions: {{ encode: action({{ input: {{}}, handler: {handler_body} }}) }} }});
 "#, handler_body = if handler { "result".to_string() } else { "() => result".to_string() })).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
@@ -951,9 +951,9 @@ fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() 
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("first.config.ts"), format!(r#"
 import {{ collection, text, json, action, defineConfig }} from "first";
-const measured = {{expression}};
+const measured = {expression};
 const notes = collection({{ title: text().optional(), result: json().default(measured).optional() }}, {{ title: "title" }});
-export default defineConfig({{ name: "differences", collections: {{ notes }}, actions: {{ measure: action({{ input: {{}}, handler: () => {{expression}} }}) }} }});
+export default defineConfig({{ name: "differences", collections: {{ notes }}, actions: {{ measure: action({{ input: {{}}, handler: () => {expression} }}) }} }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
     let result = php(

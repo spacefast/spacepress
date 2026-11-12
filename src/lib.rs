@@ -54,3 +54,5 @@ mod runtime_files {
 }
 
 pub mod bundle;
+#[cfg(feature = "host")]
+mod zero_bundle;

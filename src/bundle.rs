@@ -320,6 +320,8 @@ fn public_assets(from: &Path, to: Option<&Path>) -> Result<(), Diag> {
 struct CapturedFs {
     root: PathBuf,
     sources: SourceBundle,
+    /// The name a pre-rename capture imports First by (`crate::zero_bundle`).
+    module_alias: Option<&'static str>,
 }
 #[cfg(feature = "host")]
 impl CapturedFs {
@@ -331,6 +333,9 @@ impl CapturedFs {
 impl Fs for CapturedFs {
     fn frozen_capture(&self) -> bool {
         true
+    }
+    fn module_alias(&self) -> Option<&'static str> {
+        self.module_alias
     }
     fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
         let prefix = self
@@ -392,6 +397,39 @@ pub fn compile(
     compile_tree(source, output, assets, previous, true).map(|compiled| compiled.manifest)
 }
 
+/// The app and vendor bundles of a captured source tree, each checked against its manifest hash on
+/// the bytes as captured, with every path validated and module ownership (app or vendor) checked.
+#[cfg(feature = "host")]
+pub(crate) fn read_bundles(source: &Path, files: [(&str, &String); 2]) -> Result<SourceBundle, Diag> {
+    let mut sources = SourceBundle::default();
+    for ((file, expected), vendor) in files.into_iter().zip([false, true]) {
+        let bytes = std::fs::read(source.join(file)).map_err(io)?;
+        if hash(&bytes) != *expected {
+            return Err(failure(format!("source bundle hash mismatch: {file}")));
+        }
+        let bundle: SourceBundle = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
+        for path in bundle
+            .files
+            .keys()
+            .chain(bundle.canonical.keys())
+            .chain(bundle.canonical.values())
+        {
+            safe_input(path)?;
+        }
+        if bundle
+            .files
+            .keys()
+            .chain(bundle.canonical.keys())
+            .any(|p| is_vendor(p) != vendor)
+        {
+            return Err(failure("app and vendor module ownership mismatch"));
+        }
+        sources.files.extend(bundle.files);
+        sources.canonical.extend(bundle.canonical);
+    }
+    Ok(sources)
+}
+
 /// What a build store records beside the compiled tree.
 #[cfg(feature = "host")]
 pub(crate) struct Compiled {
@@ -415,7 +453,8 @@ pub(crate) fn compile_tree(
 ) -> Result<Compiled, Diag> {
     let bytes = std::fs::read(source.join(MANIFEST_FILE)).map_err(io)?;
     let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
-    if manifest.format != "first.source-bundle.v1"
+    let legacy = manifest.format == crate::zero_bundle::FORMAT;
+    if !(legacy || manifest.format == "first.source-bundle.v1")
         || manifest.name.is_empty()
         || !manifest
             .name
@@ -424,47 +463,28 @@ pub(crate) fn compile_tree(
     {
         return Err(failure("invalid source bundle format or app name"));
     }
-    let mut sources = SourceBundle::default();
-    for (file, expected, vendor) in [
-        (APP_FILE, &manifest.app_sha256, false),
-        (VENDOR_FILE, &manifest.vendor_sha256, true),
-    ] {
-        let bytes = std::fs::read(source.join(file)).map_err(io)?;
-        if hash(&bytes) != *expected {
-            return Err(failure(format!("source bundle hash mismatch: {file}")));
-        }
-        let bundle: SourceBundle = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
-        for path in bundle
-            .files
-            .keys()
-            .chain(bundle.canonical.keys())
-            .chain(bundle.canonical.values())
-        {
-            safe_input(path)?;
-        }
-        if bundle
-            .files
-            .keys()
-            .chain(bundle.canonical.keys())
-            .any(|p| is_vendor(p) != vendor)
-        {
-            return Err(failure("app and vendor module ownership mismatch"));
-        }
+    let sources = if legacy {
+        crate::zero_bundle::read(source, &manifest)?
+    } else {
+        let captured = read_bundles(
+            source,
+            [(APP_FILE, &manifest.app_sha256), (VENDOR_FILE, &manifest.vendor_sha256)],
+        )?;
         // A bundle captured before `first/_generated/` names its locks and ledger at their old paths.
-        // The hashes above cover the bytes as captured; only the paths are read on this layout.
-        sources.files.extend(
-            bundle
+        // The hashes cover the bytes as captured; only the paths are read on this layout.
+        SourceBundle {
+            files: captured
                 .files
                 .into_iter()
-                .map(|(path, text)| (crate::layout::current(&path), text)),
-        );
-        sources.canonical.extend(
-            bundle
+                .map(|(path, text)| (crate::layout::current(&path), text))
+                .collect(),
+            canonical: captured
                 .canonical
                 .into_iter()
-                .map(|(path, real)| (crate::layout::current(&path), crate::layout::current(&real))),
-        );
-    }
+                .map(|(path, real)| (crate::layout::current(&path), crate::layout::current(&real)))
+                .collect(),
+        }
+    };
     let name = manifest.name;
     let root = source.join("modules");
     let source_migrations = sources
@@ -486,6 +506,7 @@ pub(crate) fn compile_tree(
     let fs = Rc::new(CapturedFs {
         root: root.clone(),
         sources,
+        module_alias: legacy.then_some(crate::zero_bundle::MODULE),
     });
     let program = loader::load_from(fs.clone(), &root.join("first.config.ts")).map_err(|mut d| d.remove(0))?;
     let snapshot = previous

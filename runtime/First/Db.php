@@ -226,6 +226,18 @@ final class Db
         });
     }
 
+    /** {@see countQuery()}, run: how many rows `findMany($collection, ['where' => $where] + $extra, $viewer)` would return. */
+    public function count(string $collection, mixed $where = null, ?Viewer $viewer = null, array $extra = []): int
+    {
+        $q = $this->countQuery($collection, $where, $viewer, $extra);
+        $store = $this->store;
+        if (!$store instanceof Wp\CompositeStore) {
+            throw new \LogicException('count() needs the WordPress store');
+        }
+
+        return (int) ($store->db->run($q['sql'], $q['params'])[0]['n'] ?? 0);
+    }
+
     /** One read compiled: query extensions, option checks, the viewer's read guards. */
     private function compileRead(string $collection, array &$opts, string $ptr, ?Viewer $viewer, ?array $partition = null, array $guards = [], ?Viewer $filterViewer = null): array
     {

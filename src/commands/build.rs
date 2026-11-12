@@ -328,15 +328,18 @@ fn php_lint(files: &[PathBuf]) -> Result<(), String> {
 }
 
 fn check_json(project: &Path, frozen: bool) -> ExitCode {
-    let (diagnostics, plugins) = match loader::load_all(&project.join("first.config.ts")) {
-        Err(diagnostics) => (diagnostics, None),
+    let (diagnostics, plugins, snapshot) = match loader::load_all(&project.join("first.config.ts")) {
+        Err(diagnostics) => (diagnostics, None, None),
         Ok(program) => match build_program(project, &program, frozen) {
-            Ok(built) => (Vec::new(), Some(built.plugin_report)),
-            Err(d) => (vec![d], None),
+            Ok(built) => (Vec::new(), Some(built.plugin_report), Some(built.snapshot)),
+            Err(d) => (vec![d], None, None),
         },
     };
-    let mut envelope =
-        serde_json::to_value(diag::envelope(&diagnostics, project)).expect("diagnostic envelope serializes");
+    let mut envelope = diag::envelope(&diagnostics, project);
+    if let Some(snapshot) = &snapshot {
+        envelope = envelope.with_indexes(snapshot);
+    }
+    let mut envelope = serde_json::to_value(envelope).expect("diagnostic envelope serializes");
     // Each plugin's package, source integrity, locked and inferred grant, and read→send flows.
     if let Some(plugins) = plugins.filter(|p| p.as_array().is_some_and(|p| !p.is_empty())) {
         envelope["plugins"] = plugins;

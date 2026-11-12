@@ -91,6 +91,8 @@ pub enum Ty {
     Db,
     DbQuery,
     QueryColl(String),
+    /// `posts.system`: a `"first:db"` kind's trusted calls (spec §3).
+    KindSystem(String),
     /// `db.globals` and `db.globals.<key>`.
     DbGlobals,
     DbGlobal(String),
@@ -327,6 +329,7 @@ impl Ty {
             Ty::Db => "db".into(),
             Ty::DbQuery => "db.query".into(),
             Ty::QueryColl(t) => format!("db.query for \"{t}\""),
+            Ty::KindSystem(t) => format!("the trusted calls of \"{t}\""),
             Ty::DbGlobals => "db.globals".into(),
             Ty::DbGlobal(g) => format!("db.globals.{g}"),
             Ty::Builder(b) => format!("an unfinished db.{:?} for \"{}\"", b.kind, b.table).to_lowercase(),

@@ -255,6 +255,138 @@ final class Seam
         $rows = Db::instance()->delete($collection, $where, $returning);
         return $rows === null ? null : new JsArray(array_map(static fn ($row) => self::rowToJs($collection, $row), $rows));
     }
+    /**
+     * The kind query API (spec §3): `posts.list/paginate/get/count/create/update/delete` from
+     * `"first:db"`, as the visitor the request runs as (access rules, field masks, draft visibility),
+     * or trusted for `posts.system.*` and where no visitor is bound (jobs, signed webhooks).
+     */
+    private static function as(bool $trusted): ?Viewer
+    {
+        return $trusted ? null : (self::$viewer ?? self::$visitor);
+    }
+
+    /** Who the kind API runs as outside a render: the caller of an action or route; null is the system. */
+    private static ?Viewer $visitor = null;
+
+    /**
+     * Runs $fn with the kind API bound to $visitor (an action's or a route's caller; `new Viewer(null)`
+     * is an anonymous one), then restores the binding before. Unlike asViewer(), `db.*` stays trusted.
+     */
+    public static function asVisitor(?Viewer $visitor, callable $fn): mixed
+    {
+        $previous = self::$visitor;
+        self::$visitor = $visitor;
+        try {
+            return $fn();
+        } finally {
+            self::$visitor = $previous;
+        }
+    }
+
+    /** `search`: a case-insensitive match on the kind's title, content and text fields the viewer may read. */
+    private static function searched(string $collection, array $opts, ?Viewer $viewer): array
+    {
+        $term = $opts['search'] ?? null;
+        unset($opts['search']);
+        if (!is_string($term) || $term === '') {
+            return $opts;
+        }
+        $spec = Db::instance()->schema()->collection($collection);
+        $fields = array_keys(array_filter($spec['columns'], static fn (array $def, $col) => $col === ($spec['title'] ?? null) || $col === ($spec['content'] ?? null)
+            || (in_array($def['type'], ['text', 'richText'], true) && !($def['system'] ?? false)), ARRAY_FILTER_USE_BOTH));
+        // A field that may be hidden from the viewer is not searched, so a search can't probe it.
+        $fields = array_values(array_filter(array_map('strval', $fields), static fn (string $col): bool => $viewer === null || !FieldAccess::mayHide($spec['columns'][$col], $viewer)));
+        $match = $fields === [] ? ['OR' => []] : ['OR' => array_map(static fn (string $col) => [$col => ['ilike' => '%' . addcslashes($term, '%_\\') . '%']], $fields)];
+        $opts['where'] = isset($opts['where']) ? ['AND' => [$opts['where'], $match]] : $match;
+
+        return $opts;
+    }
+
+    public static function kindList(string $collection, mixed $opts, bool $trusted): JsArray
+    {
+        $viewer = self::as($trusted);
+        $opts = self::searched($collection, self::query($collection, $opts), $viewer);
+
+        return new JsArray(array_map(static fn ($row) => self::rowToJs($collection, $row), Db::instance()->findMany($collection, $opts, $viewer)));
+    }
+
+    /** `{ rows, cursor }`: `limit` rows (20 by default, at most 100) after `cursor`; `cursor` is null on the last page. */
+    public static function kindPaginate(string $collection, mixed $opts, bool $trusted): JsObject
+    {
+        $viewer = self::as($trusted);
+        $opts = self::searched($collection, self::query($collection, $opts), $viewer);
+        $limit = $opts['limit'] ?? 20;
+        if (!is_int($limit) || $limit < 1) {
+            throw HttpError::invalidQuery('limit must be a positive integer', '/limit');
+        }
+        $limit = min($limit, 100);
+        $offset = 0;
+        if (($opts['cursor'] ?? null) !== null) {
+            $decoded = json_decode((string) base64_decode(strtr((string) $opts['cursor'], '-_', '+/'), true), true);
+            if (!is_array($decoded) || !is_int($decoded['offset'] ?? null) || $decoded['offset'] < 1) {
+                throw HttpError::invalidQuery('cursor is not one paginate() returned', '/cursor');
+            }
+            $offset = $decoded['offset'];
+        }
+        unset($opts['cursor']);
+        // One row past the page says whether another page follows.
+        $rows = Db::instance()->findMany($collection, ['limit' => $limit + 1, 'offset' => $offset] + $opts, $viewer);
+        $more = count($rows) > $limit;
+        $next = $offset + $limit;
+
+        return new JsObject([
+            'rows' => new JsArray(array_map(static fn ($row) => self::rowToJs($collection, $row), array_slice($rows, 0, $limit))),
+            'cursor' => $more ? rtrim(strtr(base64_encode((string) json_encode(['offset' => $next])), '+/', '-_'), '=') : null,
+        ]);
+    }
+
+    public static function kindCount(string $collection, mixed $opts, bool $trusted): int
+    {
+        $viewer = self::as($trusted);
+        $opts = self::searched($collection, self::query($collection, $opts), $viewer);
+        return Db::instance()->count($collection, $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true]));
+    }
+
+    /**
+     * One row by id or by a filter (`{ slug: "hello" }`); null when no row the visitor may read matches.
+     * A kind the visitor may not read at all is the API's 401/403, as on every list.
+     */
+    public static function kindGet(string $collection, array $selector, mixed $opts, bool $trusted): ?JsObject
+    {
+        $db = Db::instance();
+        $where = array_key_exists('id', $selector)
+            ? [$db->schema()->collection($collection)['primaryKey'] => self::toPhp($selector['id'])]
+            : $selector['where'];
+        $row = $db->findFirst($collection, ['where' => $where] + self::query($collection, $opts), self::as($trusted));
+
+        return $row === null ? null : self::rowToJs($collection, $row);
+    }
+
+    public static function kindCreate(string $collection, mixed $values, bool $trusted): JsObject
+    {
+        return self::rowToJs($collection, Db::instance()->insert($collection, $values, true, self::as($trusted))[0]);
+    }
+
+    /** The updated row; a 404 when no row has that id or the visitor's update rule doesn't cover it. */
+    public static function kindUpdate(string $collection, mixed $id, mixed $patch, bool $trusted): JsObject
+    {
+        $db = Db::instance();
+        $pk = $db->schema()->collection($collection)['primaryKey'];
+        $row = $db->update($collection, $patch, [$pk => self::toPhp($id)], true, self::as($trusted))[0] ?? null;
+
+        return self::rowToJs($collection, $row ?? throw HttpError::notFound("No $collection row with $pk " . Js::str($id)));
+    }
+
+    /** The deleted row; a 404 when no row has that id or the visitor's delete rule doesn't cover it. */
+    public static function kindDelete(string $collection, mixed $id, bool $trusted): JsObject
+    {
+        $db = Db::instance();
+        $pk = $db->schema()->collection($collection)['primaryKey'];
+        $row = $db->delete($collection, [$pk => self::toPhp($id)], true, self::as($trusted))[0] ?? null;
+
+        return self::rowToJs($collection, $row ?? throw HttpError::notFound("No $collection row with $pk " . Js::str($id)));
+    }
+
     public static function globalGet(string $name): JsObject
     {
         $db = Db::instance();

@@ -276,6 +276,18 @@ pub struct Envelope<'a> {
     position_encoding: &'static str,
     diagnostics: Vec<LocatedDiagnostic<'a>>,
     groups: Vec<DiagnosticGroup<'a>>,
+    /// Each SQL index the deploy keeps and why it exists (spec §2.9), when the check succeeded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    indexes: Option<serde_json::Value>,
+}
+
+impl Envelope<'_> {
+    /// The successful check's index list, from the schema snapshot it built.
+    pub fn with_indexes(mut self, snapshot: &serde_json::Value) -> Self {
+        let report = crate::migrate::index_report(snapshot);
+        self.indexes = report.as_array().is_some_and(|i| !i.is_empty()).then_some(report);
+        self
+    }
 }
 
 /// Both successful and failing checks write exactly one versioned envelope.
@@ -323,6 +335,7 @@ pub fn envelope<'a>(diagnostics: &'a [Diag], root: &Path) -> Envelope<'a> {
         position_encoding: "utf-16",
         diagnostics: sites,
         groups: groups.into_values().collect(),
+        indexes: None,
     }
 }
 

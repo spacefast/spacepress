@@ -424,8 +424,9 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   label?: string;
   /**
    * The item URL, one pattern for incoming URLs and outgoing links: `"/blog/:slug"`. Placeholders are
-   * `:slug`, `:id`, `:year`/`:month`/`:day`, a field (`:topic`), or a reference's slug (`:author.slug`);
-   * it must include `:slug` or `:id`. collection() only.
+   * `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field everyone can read
+   * (`:topic`), or the slug of a referenced collection item (`:byline.slug`), each used once; it must
+   * include `:slug` or `:id`, and can't overlap another kind's pattern. collection() only.
    */
   url?: `/${string}`;
   /** Native on collections; opt-in publication state on tables. */

@@ -139,5 +139,5 @@ Telemetry calls use an inert compatibility adapter: First sends no upstream
 usage events. The three upstream dashboard demonstration widgets retain their
 example data and explicitly label it as such. They do not report live traffic,
 weather or recent posts. Native plugin/theme catalog installation, update,
-mail delivery, external AI providers and hosting services need their own live
+mail delivery, external AI providers and publishing services need their own live
 provider verification; rendering their routes does not establish those effects.

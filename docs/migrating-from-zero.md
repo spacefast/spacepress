@@ -297,7 +297,7 @@ patch property from an explicit `undefined` or `null`. Empty patches still touch
 `updatedAt`. Queries and legacy actions cannot gain database writes. Mutations
 run in v2's transaction. Parameters become named action inputs; URLs, envelopes
 and error transport use v2's action API. Existing browser clients require the
-v2 generated client and the hosting integration's reserved API URL.
+v2 generated client and the Spacefast integration's reserved API URL.
 
 Content declarations use the existing config importer. Native `posts` declarations,
 or a `content/posts` directory, add a post-backed `posts` collection with title
@@ -326,7 +326,7 @@ Connector declarations produce a separate `connector-roles.json` host overlay,
 also included in the report. `owner` becomes `personal`; `team` and `visitor`
 keep their roles. The file carries no credentials or grants and is not part of
 the portable v2 config. Connector calls in handlers are refused. Spacefast's
-hosting integration owns applying this overlay and account sessions.
+integration owns applying this overlay and account sessions.
 
 Realtime declarations map: v2 announces every committed write, so `realtime`
 and `ctx.invalidate(...)` (which named the live queries a mutation refreshed)

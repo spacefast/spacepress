@@ -67,7 +67,7 @@ file, successful WP-CLI call, or expired lock is not that acknowledgment. The
 offline workspace lock below is local coordination, not the missing live-host
 supervisor. Immutable-host rollout, previews with ingress, online migration,
 rollback and production recovery remain unsupported. See the
-[publish contract](design-pages-and-agents.md#49-build-and-publish-with-hosting-constraints).
+[publish contract](design-pages-and-agents.md#49-build-and-publish-with-runtime-constraints).
 
 ## Create a disposable offline WordPress workspace
 

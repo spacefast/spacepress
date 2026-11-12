@@ -23,6 +23,14 @@ pub const RESERVED_FIRST_SEGMENTS: &[&str] = &[
     "robots.txt",
     "favicon.ico",
     "sitemap.xml",
+    // Core rewrite bases: author, term, search, paging, comment and embed archives.
+    "author",
+    "category",
+    "tag",
+    "search",
+    "page",
+    "comments",
+    "embed",
 ];
 
 /// What the pattern may refer to on its kind.
@@ -32,6 +40,40 @@ pub struct UrlKind<'a> {
     pub dated: bool,
     /// `:path` is the parent chain of a hierarchical kind.
     pub hierarchical: bool,
+    /// Whether a referenced kind (by storage name) has items with a slug, for `:field.slug`.
+    pub has_slug: &'a dyn Fn(&str) -> bool,
+}
+
+/// One segment of a checked pattern.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Segment {
+    Literal(String),
+    /// Matches one segment.
+    Placeholder,
+    /// `:path`: matches one or more segments, always last.
+    Path,
+}
+
+/// Whether two checked patterns can match the same URL: same length and every pair of segments the
+/// same literal or a placeholder on either side; `:path` matches any remaining segments.
+pub fn overlaps(a: &[Segment], b: &[Segment]) -> bool {
+    let tail = |s: &[Segment]| matches!(s.last(), Some(Segment::Path));
+    let (fa, fb) = (a.len() - usize::from(tail(a)), b.len() - usize::from(tail(b)));
+    let fixed = fa.min(fb);
+    let compatible = a[..fixed].iter().zip(&b[..fixed]).all(|pair| match pair {
+        (Segment::Literal(x), Segment::Literal(y)) => x == y,
+        _ => true,
+    });
+    if !compatible {
+        return false;
+    }
+    match (tail(a), tail(b)) {
+        (false, false) => a.len() == b.len(),
+        // `:path` needs at least one segment of its own.
+        (true, false) => b.len() > fa,
+        (false, true) => a.len() > fb,
+        (true, true) => true,
+    }
 }
 
 /// One problem with a pattern: what is wrong, and how to fix it.
@@ -48,10 +90,8 @@ fn invalid(message: impl Into<String>, help: impl Into<String>) -> Invalid {
     }
 }
 
-/// Checks `pattern` against `kind`, and returns its shape: literal segments as written and every
-/// placeholder as `:`, so `/blog/:slug` and `/blog/:id` share the shape `/blog/:`. Two kinds with
-/// one shape would claim the same URLs.
-pub fn check(pattern: &str, kind: &UrlKind<'_>) -> Result<String, Invalid> {
+/// Checks `pattern` against `kind`, and returns its segments for [`overlaps`].
+pub fn check(pattern: &str, kind: &UrlKind<'_>) -> Result<Vec<Segment>, Invalid> {
     let example = "write it like \"/blog/:slug\"";
     let Some(rest) = pattern.strip_prefix('/') else {
         return Err(invalid(
@@ -93,26 +133,34 @@ pub fn check(pattern: &str, kind: &UrlKind<'_>) -> Result<String, Invalid> {
             "start the pattern with your own segment, e.g. \"/blog/:slug\"",
         ));
     }
-    let mut shape = String::new();
+    let mut shape = Vec::new();
     let mut identifies = false;
+    let mut seen: Vec<&str> = Vec::new();
     for (i, segment) in segments.iter().enumerate() {
-        shape.push('/');
         let Some(name) = segment.strip_prefix(':') else {
-            if !segment
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'~' | b'-'))
+            if matches!(*segment, "." | "..")
+                || !segment
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'~' | b'-'))
             {
                 return Err(invalid(
                     format!(
                         "the url segment \"{segment}\" in \"{pattern}\" has a character a URL path can't keep as written"
                     ),
-                    "use lowercase letters, digits, `.`, `_`, `~` and `-`, or make the whole segment a placeholder like `:slug`",
+                    "use lowercase letters, digits, `.`, `_`, `~` and `-` (not `.` or `..` alone), or make the whole segment a placeholder like `:slug`",
                 ));
             }
-            shape.push_str(segment);
+            shape.push(Segment::Literal(segment.to_string()));
             continue;
         };
-        shape.push(':');
+        if seen.contains(&name) {
+            return Err(invalid(
+                format!("`:{name}` appears twice in \"{pattern}\""),
+                "use each placeholder once",
+            ));
+        }
+        seen.push(name);
+        shape.push(Segment::Placeholder);
         match name {
             "slug" | "id" => identifies = true,
             "path" => {
@@ -128,9 +176,10 @@ pub fn check(pattern: &str, kind: &UrlKind<'_>) -> Result<String, Invalid> {
                         "`:path` covers the parents and the item itself, so nothing can follow it",
                     ));
                 }
+                *shape.last_mut().unwrap() = Segment::Path;
                 identifies = true;
             }
-            "year" | "month" | "day" => {
+            "year" | "month" | "day" | "publishedAt" => {
                 if !kind.dated {
                     return Err(invalid(
                         format!("`:{name}` in \"{pattern}\" comes from `publishedAt`, which this kind doesn't have"),
@@ -177,12 +226,32 @@ fn placeholder(name: &str, pattern: &str, kind: &UrlKind<'_>) -> Result<(), Inva
             help,
         ));
     };
+    if col.access.contains_key("read") {
+        return Err(invalid(
+            format!("`:{name}` in \"{pattern}\" names `{field}`, which has a read rule"),
+            "a URL is public, so it can't hold a field some viewers can't read; use `:slug` or another field",
+        ));
+    }
+    if !col.not_null && col.default.is_none() {
+        return Err(invalid(
+            format!("`:{name}` in \"{pattern}\" names `{field}`, which can be empty"),
+            format!("make `{field}` required, or leave it out of the URL"),
+        ));
+    }
     match through {
         Some(through) if col.references.is_none() => Err(invalid(
             format!("`:{name}` in \"{pattern}\" reads `{through}` through `{field}`, which isn't a reference"),
             format!("use `:{field}` itself, or reference another kind from `{field}`"),
         )),
-        Some("slug") => Ok(()),
+        Some("slug") => match &col.references {
+            Some(r) if (kind.has_slug)(&r.collection) => Ok(()),
+            _ => Err(invalid(
+                format!(
+                    "`:{name}` in \"{pattern}\" reads the slug of a referenced row, but `{field}` refers to a table, whose rows have no slug"
+                ),
+                format!("use `:{field}` (the row's id), or refer to a collection"),
+            )),
+        },
         Some(through) => Err(invalid(
             format!(
                 "`:{name}` in \"{pattern}\" reads `{through}` of a referenced item; only its `slug` can be in a URL"
@@ -262,39 +331,78 @@ pub fn frontend_url(value: &str) -> Result<String, Invalid> {
             "remove everything from `?` or `#`",
         ));
     }
-    Ok(value.trim_end_matches('/').to_string())
+    // Store exactly what was checked: the parser drops whitespace and rewrites `\\`, case and dots.
+    let normalized = url.as_str().trim_end_matches('/');
+    if normalized != value.trim_end_matches('/') {
+        return Err(invalid(
+            format!("`frontend` \"{value}\" isn't written in its plain form"),
+            format!("write \"{normalized}\""),
+        ));
+    }
+    Ok(normalized.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use Segment::{Literal as L, Path, Placeholder as P};
 
-    fn columns() -> IndexMap<String, Column> {
-        let mut cols = IndexMap::new();
-        cols.insert("title".into(), Column::new("title", ColType::Text));
-        cols.insert("rank".into(), Column::new("rank", ColType::Integer));
-        cols.insert("body".into(), Column::new("body", ColType::RichText));
-        let mut author = Column::new("author", ColType::Integer);
-        author.references = Some(crate::schema::Reference {
-            collection: "authors".into(),
+    fn required(name: &str, ty: ColType) -> Column {
+        let mut col = Column::new(name, ty);
+        col.not_null = true;
+        col
+    }
+
+    fn reference(name: &str, target: &str) -> Column {
+        let mut col = required(name, ColType::Integer);
+        col.references = Some(crate::schema::Reference {
+            collection: target.into(),
             column: "id".into(),
             on_delete: None,
             on_update: None,
         });
-        cols.insert("author".into(), author);
+        col
+    }
+
+    fn columns() -> IndexMap<String, Column> {
+        let mut cols = IndexMap::new();
+        for col in [
+            required("title", ColType::Text),
+            required("rank", ColType::Integer),
+            required("body", ColType::RichText),
+            Column::new("subtitle", ColType::Text),
+            reference("author", "authors"),
+            reference("tally", "tallies"),
+        ] {
+            cols.insert(col.name.clone(), col);
+        }
+        let mut secret = required("secret", ColType::Text);
+        secret
+            .access
+            .insert("read".into(), crate::schema::Access::Role("admin".into()));
+        cols.insert("secret".into(), secret);
         cols
     }
 
-    fn post(pattern: &str) -> Result<String, Invalid> {
+    fn collection_named(table: &str) -> bool {
+        table == "authors"
+    }
+
+    fn checked(pattern: &str, dated: bool, hierarchical: bool) -> Result<Vec<Segment>, Invalid> {
         let cols = columns();
         check(
             pattern,
             &UrlKind {
                 columns: &cols,
-                dated: true,
-                hierarchical: false,
+                dated,
+                hierarchical,
+                has_slug: &collection_named,
             },
         )
+    }
+
+    fn post(pattern: &str) -> Result<Vec<Segment>, Invalid> {
+        checked(pattern, true, false)
     }
 
     fn message(pattern: &str) -> String {
@@ -302,13 +410,17 @@ mod tests {
     }
 
     #[test]
-    fn patterns_return_their_shape() {
-        assert_eq!(post("/blog/:slug").unwrap(), "/blog/:");
-        assert_eq!(post("/blog/:id").unwrap(), "/blog/:");
-        assert_eq!(post("/:year/:month/:slug").unwrap(), "/:/:/:");
-        assert_eq!(post("/by/:author.slug/:slug").unwrap(), "/by/:/:");
-        assert_eq!(post("/top/:rank/:id").unwrap(), "/top/:/:");
-        assert_eq!(post("/v1.0/~a_b-c/:slug").unwrap(), "/v1.0/~a_b-c/:");
+    fn patterns_return_their_segments() {
+        assert_eq!(post("/blog/:slug").unwrap(), [L("blog".into()), P]);
+        assert_eq!(post("/:year/:month/:slug").unwrap(), [P, P, P]);
+        assert_eq!(post("/by/:author.slug/:slug").unwrap(), [L("by".into()), P, P]);
+        assert_eq!(post("/top/:rank/:id").unwrap(), [L("top".into()), P, P]);
+        assert_eq!(
+            post("/v1.0/~a_b-c/:slug").unwrap(),
+            [L("v1.0".into()), L("~a_b-c".into()), P]
+        );
+        assert_eq!(post("/d/:publishedAt/:slug").unwrap(), [L("d".into()), P, P]);
+        assert_eq!(checked("/docs/:path", false, true).unwrap(), [L("docs".into()), Path]);
     }
 
     #[test]
@@ -320,9 +432,14 @@ mod tests {
         assert!(message("/").contains("home page"));
         assert!(message("/Blog/:slug").contains("can't keep as written"));
         assert!(message("/blog/post-:slug").contains("can't keep as written"));
+        assert!(message("/../:slug").contains("can't keep as written"));
+        assert!(message("/x/./:slug").contains("can't keep as written"));
         assert!(message("/wp-json/:slug").contains("already serves"));
         assert!(message("/__first/:slug").contains("already serves"));
+        assert!(message("/category/:slug").contains("already serves"));
         assert!(message("/blog/:title").contains("doesn't identify an item"));
+        assert!(message("/:slug/:slug").contains("appears twice"));
+        assert!(message("/x/:year/:year/:slug").contains("appears twice"));
     }
 
     #[test]
@@ -333,21 +450,17 @@ mod tests {
         assert!(message("/:body/:slug").contains("can't be a URL segment"));
         assert!(message("/:title.slug/:slug").contains("isn't a reference"));
         assert!(message("/:author.name/:slug").contains("only its `slug`"));
-        let cols = columns();
-        let undated = UrlKind {
-            columns: &cols,
-            dated: false,
-            hierarchical: true,
-        };
+        assert!(message("/:tally.slug/:slug").contains("refers to a table"));
+        assert!(message("/s/:secret/:slug").contains("has a read rule"));
+        assert!(message("/s/:subtitle/:slug").contains("can be empty"));
         assert!(
-            check("/:year/:slug", &undated)
+            checked("/:year/:slug", false, false)
                 .unwrap_err()
                 .message
                 .contains("publishedAt")
         );
-        assert_eq!(check("/docs/:path", &undated).unwrap(), "/docs/:");
         assert!(
-            check("/:path/x", &undated)
+            checked("/:path/x", false, true)
                 .unwrap_err()
                 .message
                 .contains("last segment")
@@ -355,10 +468,29 @@ mod tests {
     }
 
     #[test]
+    fn overlapping_patterns_are_found_whatever_their_placeholders() {
+        let seg = |p: &str| checked(p, true, true).unwrap();
+        let overlap = |a: &str, b: &str| overlaps(&seg(a), &seg(b)) && overlaps(&seg(b), &seg(a));
+        assert!(overlap("/blog/:slug", "/blog/:id"));
+        assert!(overlap("/blog/:slug", "/:rank/:slug"));
+        assert!(overlap("/docs/:path", "/docs/:slug"));
+        assert!(overlap("/docs/:path", "/docs/a/:slug"));
+        assert!(overlap("/:path", "/blog/:slug"));
+        assert!(!overlap("/blog/:slug", "/docs/:slug"));
+        assert!(!overlap("/blog/:slug", "/blog/:year/:slug"));
+        assert!(!overlaps(&seg("/docs/:path"), &[L("docs".into())]));
+        assert!(!overlap("/docs/:path", "/guide/:path"));
+    }
+
+    #[test]
     fn frontend_is_https_or_local_http() {
         assert_eq!(
             frontend_url("https://www.example.com/").unwrap(),
             "https://www.example.com"
+        );
+        assert_eq!(
+            frontend_url("https://www.example.com/app").unwrap(),
+            "https://www.example.com/app"
         );
         assert_eq!(frontend_url("http://localhost:3000").unwrap(), "http://localhost:3000");
         assert_eq!(frontend_url("http://127.0.0.1:4321").unwrap(), "http://127.0.0.1:4321");
@@ -377,5 +509,8 @@ mod tests {
         assert!(frontend_url("ftp://example.com").is_err());
         assert!(frontend_url("https://u:p@example.com").is_err());
         assert!(frontend_url("https://example.com/?a=1").is_err());
+        let messy = frontend_url("  https://Example.com\\x\t").unwrap_err();
+        assert!(messy.message.contains("plain form"), "{}", messy.message);
+        assert_eq!(messy.help, "write \"https://example.com/x\"");
     }
 }

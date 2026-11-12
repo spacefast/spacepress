@@ -207,7 +207,8 @@ final class Seam
     /**
      * Runs $fn with compiled reads bound to $viewer (null: trusted), then restores the viewer that
      * was bound before, also when $fn throws. A page render binds the visitor here, so drafts and
-     * hidden fields never reach its HTML.
+     * hidden fields never reach its HTML. An async body started inside keeps the viewer across its
+     * awaits (JsJobs::async). Only reads are bound: writes from code a render calls stay trusted.
      */
     public static function asViewer(?Viewer $viewer, callable $fn): mixed
     {
@@ -247,7 +248,7 @@ final class Seam
     public static function globalGet(string $name): JsObject
     {
         $db = Db::instance();
-        return self::toJs($db->globalGet($name), $db->schema()->global($name)['fields']);
+        return self::toJs($db->globalGet($name, self::$viewer), $db->schema()->global($name)['fields']);
     }
     public static function globalUpdate(string $name, mixed $patch): JsObject
     {

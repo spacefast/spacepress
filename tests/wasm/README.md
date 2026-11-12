@@ -16,7 +16,7 @@ stubs may throw because memory operations never call them.
 
 Requests take an absolute `project` and optionally `files`, a map of relative
 paths to UTF-8 source. Omitting `files` selects the host filesystem. Sources
-accepts `packages` (defaults to true for local capture; false on a hosting box).
+accepts `packages` (defaults to true for local capture; false on the Spacefast runtime).
 It returns `{app, vendor, manifest, publicFiles}`; the first three values are
 exact bundle JSON strings to write unchanged. `publicFiles` names paths relative
 to the project, including `public/`. Failures return `{check, output: null}`.

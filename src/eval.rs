@@ -688,6 +688,9 @@ impl<'p> Evaluator<'p> {
                         "use an ordinary own data property",
                     );
                 }
+                if self.assign_own(map, obj, key, value.clone(), span)? {
+                    return Ok(());
+                }
                 if map.borrow_mut().insert(key.to_string(), value).is_some() {
                     self.record_duplicates(obj, vec![(key.to_string(), span)]);
                 }
@@ -701,10 +704,40 @@ impl<'p> Evaluator<'p> {
                         "function `name`, `length`, `prototype` and `Function.prototype` members aren't modeled; use another property name",
                     );
                 }
+                if self.assign_own(&c.props, obj, key, value.clone(), span)? {
+                    return Ok(());
+                }
                 c.props.borrow_mut().insert(key.to_string(), value);
                 Ok(())
             }
             other => err(span, format!("can't set `{key}` on {}", other.describe())),
+        }
+    }
+
+    /// `[[Set]]` on an own property that `Object.defineProperty` gave attributes: an accessor
+    /// calls its setter. A write strict mode would reject with a TypeError (no setter, or
+    /// `writable: false`) is refused with a location instead.
+    /// Returns false for an ordinary or absent property, which the caller writes itself.
+    fn assign_own(&mut self, cell: &ObjCell, obj: &Value, key: &str, value: Value, span: Span) -> R<bool> {
+        let existing = cell.borrow().get(key).cloned();
+        match existing {
+            Some(Value::Accessor(accessor)) => match &accessor.set {
+                Value::Closure(setter) => {
+                    self.call_with_this(setter, obj.clone(), vec![value], span)?;
+                    Ok(true)
+                }
+                _ => err_help(
+                    span,
+                    format!("`{key}` has a getter and no setter, so assigning it throws a TypeError"),
+                    "define the property with a setter, or don't assign it",
+                ),
+            },
+            Some(_) if !cell.attrs(key).writable => err_help(
+                span,
+                format!("`{key}` is read-only (`writable: false`), so assigning it throws a TypeError"),
+                "define the property with `writable: true`, or don't assign it",
+            ),
+            _ => Ok(false),
         }
     }
 
@@ -835,8 +868,9 @@ impl<'p> Evaluator<'p> {
         if let Some((wrapper, names)) = commonjs {
             let exports = self.get_prop(&wrapper, "exports", Span::NONE)?;
             for name in names {
+                // Read as Node's ESM wrapper does: a getter export is called once, here.
                 let value = match &exports {
-                    Value::Object(object) => object.borrow().get(name).cloned().unwrap_or(Value::Undef),
+                    Value::Object(_) => self.get_prop(&exports, name, Span::NONE)?,
                     _ => Value::Undef,
                 };
                 self.exports[id].insert(name.clone(), value);
@@ -1106,18 +1140,19 @@ impl<'p> Evaluator<'p> {
                     }
                     return Ok(());
                 }
-                let Value::Object(obj) = &value else {
-                    return err(*span, format!("can't destructure {} as an object", value.describe()));
+                let obj: &ObjCell = match &value {
+                    Value::Object(obj) => obj,
+                    // A function's own properties (`const { types } = require("ret")`).
+                    Value::Closure(c) => &c.props,
+                    _ => return err(*span, format!("can't destructure {} as an object", value.describe())),
                 };
                 for (key, p) in props {
                     let v = self.get_prop(&value, key, p.span())?;
                     self.initialize_pattern(p, v, scope, declaration)?;
                 }
                 if let Some((name, _)) = rest {
-                    let mut map = obj.borrow().clone();
-                    for (key, _) in props {
-                        map.shift_remove(key);
-                    }
+                    let taken: Vec<String> = props.iter().map(|(key, _)| key.clone()).collect();
+                    let map = self.rest_properties(&value, obj, &taken, *span)?;
                     self.initialize_pattern(&Pat::Id(name.clone(), *span), Value::object(map), scope, declaration)?;
                 }
                 Ok(())
@@ -1145,11 +1180,36 @@ impl<'p> Evaluator<'p> {
 
     /// A destructuring assignment, in JavaScript order: each leaf resolves its target, then reads
     /// its value, then applies its default, then writes.
+    /// `{ a, ...rest } = object`: the own enumerable properties not named, getters called.
+    fn rest_properties(
+        &mut self,
+        value: &Value,
+        obj: &ObjCell,
+        taken: &[String],
+        span: Span,
+    ) -> R<IndexMap<String, Value>> {
+        if !obj.has_attributes() {
+            let mut map = obj.borrow().clone();
+            for key in taken {
+                map.shift_remove(key);
+            }
+            return Ok(map);
+        }
+        let mut map = IndexMap::new();
+        for key in ordered_keys(obj.enumerable_keys().iter()) {
+            if !taken.contains(&key) {
+                let v = self.get_prop(value, &key, span)?;
+                map.insert(key, v);
+            }
+        }
+        Ok(map)
+    }
+
     fn assign_pattern(&mut self, pattern: &AssignPat, value: Value, scope: &Rc<Scope>) -> R<()> {
         self.assign_pattern_from(pattern, PatternSource::Value(value), scope)
     }
 
-    fn read_source(&self, source: PatternSource, span: Span) -> R<Value> {
+    fn read_source(&mut self, source: PatternSource, span: Span) -> R<Value> {
         match source {
             PatternSource::Value(value) => Ok(value),
             PatternSource::Property(object, key) => self.get_prop(&object, &key, span),
@@ -1188,8 +1248,10 @@ impl<'p> Evaluator<'p> {
         };
         match inner {
             AssignPat::Obj { props, rest, span } => {
-                let Value::Object(obj) = &value else {
-                    return err(*span, format!("can't destructure {} as an object", value.describe()));
+                let obj: &ObjCell = match &value {
+                    Value::Object(obj) => obj,
+                    Value::Closure(c) => &c.props,
+                    _ => return err(*span, format!("can't destructure {} as an object", value.describe())),
                 };
                 let mut taken = Vec::new();
                 for (key, p) in props {
@@ -1206,10 +1268,7 @@ impl<'p> Evaluator<'p> {
                     self.assign_pattern_from(p, PatternSource::Property(value.clone(), key), scope)?;
                 }
                 if let Some(r) = rest {
-                    let mut map = obj.borrow().clone();
-                    for key in &taken {
-                        map.shift_remove(key);
-                    }
+                    let map = self.rest_properties(&value, obj, &taken, *span)?;
                     self.assign_pattern_from(r, PatternSource::Value(Value::object(map)), scope)?;
                 }
                 Ok(())
@@ -1691,7 +1750,14 @@ impl<'p> Evaluator<'p> {
                 };
                 match &object {
                     Value::Object(o) => {
-                        o.borrow_mut().shift_remove(&key);
+                        if o.borrow().contains_key(&key) && !o.attrs(&key).configurable {
+                            return err_help(
+                                e.span,
+                                format!("`{key}` is non-configurable, so deleting it throws a TypeError"),
+                                "define the property with `configurable: true`, or don't delete it",
+                            );
+                        }
+                        o.remove(&key);
                     }
                     Value::Array(a) => {
                         let in_range = key
@@ -1801,12 +1867,19 @@ impl<'p> Evaluator<'p> {
                                 if let Some((_, inherited)) = self.duplicate_keys.get(&ptr_of(&src).expect("object")) {
                                     duplicates.extend(inherited.iter().cloned());
                                 }
-                                for (k, v) in o.borrow().iter() {
-                                    if map.contains_key(k) {
+                                // CopyDataProperties: own enumerable keys, getters called.
+                                let keys = if o.has_attributes() {
+                                    ordered_keys(o.enumerable_keys().iter())
+                                } else {
+                                    o.all_keys()
+                                };
+                                for k in keys {
+                                    let v = self.get_prop(&src, &k, x.span)?;
+                                    if map.contains_key(&k) {
                                         duplicates.push((k.clone(), x.span));
                                     }
-                                    map.insert(k.clone(), v.clone());
-                                    spans.push((k.clone(), self.key_span(&src, k).unwrap_or(x.span)));
+                                    spans.push((k.clone(), self.key_span(&src, &k).unwrap_or(x.span)));
+                                    map.insert(k, v);
                                 }
                             }
                             Value::Arguments(object) => {
@@ -1965,6 +2038,7 @@ impl<'p> Evaluator<'p> {
                 type_args,
             } => {
                 let mut call_span = e.span;
+                let mut receiver = None;
                 let f = match &callee.kind {
                     ExprKind::Member {
                         obj,
@@ -1983,7 +2057,9 @@ impl<'p> Evaluator<'p> {
                                 ..e.span
                             };
                         }
-                        self.get_prop(&recv, prop, *prop_span)?
+                        let f = self.get_prop(&recv, prop, *prop_span)?;
+                        receiver = Some(recv);
+                        f
                     }
                     ExprKind::Index {
                         obj,
@@ -1995,7 +2071,9 @@ impl<'p> Evaluator<'p> {
                             return Err(Ctl::Short);
                         }
                         let index = self.eval(index, scope)?;
-                        self.get_index(&recv, &index, callee.span)?
+                        let f = self.get_index(&recv, &index, callee.span)?;
+                        receiver = Some(recv);
+                        f
                     }
                     _ => self.eval(callee, scope)?,
                 };
@@ -2034,6 +2112,9 @@ impl<'p> Evaluator<'p> {
                     && matches!(callee.kind, ExprKind::Member { .. } | ExprKind::Index { .. })
                 {
                     self.call_method(receiver, method, argv, call_span)?
+                } else if let (Some(receiver), Value::Closure(c)) = (receiver, &f) {
+                    // `o.m(...)`: an ordinary function that reads `this` receives `o`.
+                    self.call_with_this(c, receiver, argv, call_span)?
                 } else {
                     self.call(&f, argv, call_span)?
                 }
@@ -2129,7 +2210,8 @@ impl<'p> Evaluator<'p> {
                 if *optional && matches!(v, Value::Null | Value::Undef) {
                     return Err(Ctl::Short);
                 }
-                self.stored_property(self.get_prop(&v, prop, *prop_span)?, e.span)?
+                let value = self.get_prop(&v, prop, *prop_span)?;
+                self.stored_property(value, e.span)?
             }
             ExprKind::Index { obj, index, optional } => {
                 let v = self.eval(obj, scope)?;
@@ -2137,7 +2219,8 @@ impl<'p> Evaluator<'p> {
                     return Err(Ctl::Short);
                 }
                 let i = self.eval(index, scope)?;
-                self.stored_property(self.get_index(&v, &i, e.span)?, e.span)?
+                let value = self.get_index(&v, &i, e.span)?;
+                self.stored_property(value, e.span)?
             }
             ExprKind::Chain(inner) => match self.eval(inner, scope) {
                 Err(Ctl::Short) => Value::Undef,
@@ -2203,7 +2286,7 @@ impl<'p> Evaluator<'p> {
         }
     }
 
-    fn read_place(&self, place: &ValuePlace, scope: &Rc<Scope>, span: Span) -> R<Value> {
+    fn read_place(&mut self, place: &ValuePlace, scope: &Rc<Scope>, span: Span) -> R<Value> {
         match place {
             ValuePlace::Binding(name) => self.lookup(name, scope, span),
             ValuePlace::Property(object, index) => self.get_index(object, index, span),
@@ -2250,7 +2333,7 @@ impl<'p> Evaluator<'p> {
         Ok(value)
     }
 
-    fn get_index(&self, v: &Value, i: &Value, span: Span) -> R<Value> {
+    fn get_index(&mut self, v: &Value, i: &Value, span: Span) -> R<Value> {
         require_static_data(i, span)?;
         match (v, i) {
             (Value::Array(a), Value::Num(n)) => self.stored_property(
@@ -2277,7 +2360,7 @@ impl<'p> Evaluator<'p> {
         }
     }
 
-    fn get_prop(&self, v: &Value, prop: &str, span: Span) -> R<Value> {
+    fn get_prop(&mut self, v: &Value, prop: &str, span: Span) -> R<Value> {
         let bound = || {
             let surface = match v {
                 Value::Array(_) => "array",
@@ -2311,8 +2394,9 @@ impl<'p> Evaluator<'p> {
                 "restricted arguments properties aren't supported during configuration evaluation",
                 "access arguments.callee inside a runtime handler; native Error descriptors aren't modeled while building",
             ),
-            Value::Object(o) | Value::Arguments(o) => match o.borrow().get(prop) {
-                Some(value) => self.stored_property(value.clone(), span),
+            Value::Object(o) | Value::Arguments(o) => match o.borrow().get(prop).cloned() {
+                Some(Value::Accessor(accessor)) => self.call_getter(&accessor, v, span),
+                Some(value) => self.stored_property(value, span),
                 None if o.null_prototype() => Ok(Value::Undef),
                 None if crate::builtins::contract("object", prop).is_some() => err_help(
                     span,
@@ -2388,6 +2472,23 @@ impl<'p> Evaluator<'p> {
                     "move the call into a handler"
                 },
             ),
+            Value::Builtin(Builtin::Global("Object")) if prop == "prototype" => {
+                Ok(Value::Builtin(Builtin::ObjectPrototype))
+            }
+            Value::Builtin(Builtin::ObjectPrototype) => match OBJECT_PROTOTYPE_METHODS.iter().find(|m| **m == prop) {
+                Some(method) => Ok(Value::Builtin(Builtin::ObjectPrototypeMethod(method))),
+                None => err_help(
+                    span,
+                    format!("`Object.prototype.{prop}` isn't supported"),
+                    format!(
+                        "First models {} on Object.prototype, called through `.call`",
+                        OBJECT_PROTOTYPE_METHODS.join(", ")
+                    ),
+                ),
+            },
+            Value::Builtin(Builtin::ObjectPrototypeMethod(_)) if matches!(prop, "call" | "apply") => {
+                Ok(Value::Bound(Rc::new(v.clone()), Rc::from(prop)))
+            }
             Value::Builtin(Builtin::Global(g)) => match (*g, prop) {
                 ("Math", "PI") => Ok(Value::Num(std::f64::consts::PI)),
                 ("Math", "E") => Ok(Value::Num(std::f64::consts::E)),
@@ -2407,8 +2508,9 @@ impl<'p> Evaluator<'p> {
                     "use a property listed in the supported built-in contract",
                 ),
             },
-            Value::Closure(c) => match c.props.borrow().get(prop) {
-                Some(value) => self.stored_property(value.clone(), span),
+            Value::Closure(c) => match c.props.borrow().get(prop).cloned() {
+                Some(Value::Accessor(accessor)) => self.call_getter(&accessor, v, span),
+                Some(value) => self.stored_property(value, span),
                 None if crate::value::FUNCTION_BUILTIN_PROPERTIES.contains(&prop) => err_help(
                     span,
                     format!("reading `{prop}` of a function isn't supported while the config is built"),
@@ -2421,7 +2523,34 @@ impl<'p> Evaluator<'p> {
         }
     }
 
-    fn call_closure(&mut self, f: &Rc<Closure>, args: Vec<Value>, span: Span) -> R<Value> {
+    /// Calls `f` with `this` bound to `receiver`. Only an ordinary function that reads `this`
+    /// takes it, as its hidden first parameter (`Func::receives_this`); others ignore it.
+    fn call_with_this(&mut self, f: &Rc<Closure>, receiver: Value, mut args: Vec<Value>, span: Span) -> R<Value> {
+        if f.func.receives_this && !f.func.is_arrow {
+            args.insert(0, receiver);
+        }
+        self.call_closure_raw(f, args, span)
+    }
+
+    /// A plain call: an ordinary function that reads `this` receives `undefined` (strict mode).
+    fn call_closure(&mut self, f: &Rc<Closure>, mut args: Vec<Value>, span: Span) -> R<Value> {
+        if f.func.receives_this && !f.func.is_arrow {
+            args.insert(0, Value::Undef);
+        }
+        self.call_closure_raw(f, args, span)
+    }
+
+    /// An accessor property's getter, called with the object it was read from as `this`.
+    /// A property with only a setter reads as `undefined`.
+    fn call_getter(&mut self, accessor: &AccessorVal, receiver: &Value, span: Span) -> R<Value> {
+        match &accessor.get {
+            Value::Undef => Ok(Value::Undef),
+            Value::Closure(c) => self.call_with_this(c, receiver.clone(), vec![], span),
+            other => self.call(other, vec![], span),
+        }
+    }
+
+    fn call_closure_raw(&mut self, f: &Rc<Closure>, args: Vec<Value>, span: Span) -> R<Value> {
         if f.func.is_async {
             return err_help(
                 span,
@@ -2771,6 +2900,9 @@ impl<'p> Evaluator<'p> {
             Builtin::Global(g) => call_global(g, &args, span),
             Builtin::Static(g, m) => self.call_static(g, m, args, span),
             Builtin::Require(from) => self.require(*from, &args, span),
+            Builtin::ObjectPrototype => err(span, "Object.prototype isn't a function"),
+            // Called plainly, `this` is undefined, which every modeled method rejects.
+            Builtin::ObjectPrototypeMethod(m) => self.object_prototype_method(m, &Value::Undef, &args, span),
             // `export const cart = sharedState({ items: [] })`: the value is its initial state.
             Builtin::Client("sharedState") => Ok(args.into_iter().next().unwrap_or(Value::Undef)),
             Builtin::Client(name) => err_help(
@@ -3052,6 +3184,21 @@ impl<'p> Evaluator<'p> {
         {
             return define_prototype_symbol(class, &args, span);
         }
+        match (g, m) {
+            ("Object", "defineProperty") => {
+                crate::builtins::check(g, m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
+                return self.define_property(&args, span);
+            }
+            ("Object", "getOwnPropertyDescriptor") => {
+                crate::builtins::check(g, m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
+                return own_property_descriptor(&args, span);
+            }
+            ("Object", "create") => {
+                crate::builtins::check(g, m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
+                return object_create(&args, span);
+            }
+            _ => {}
+        }
         if (g, m) == ("Object", "hasOwn") {
             if let Some(receiver @ Value::Env(_)) = args.first() {
                 require_static_data(receiver, span)?;
@@ -3091,7 +3238,7 @@ impl<'p> Evaluator<'p> {
                 }
                 let mut values = Vec::new();
                 for key in enumerable_keys(&object, span)? {
-                    let read = |this: &Self| match &object {
+                    let read = |this: &mut Self| match &object {
                         Value::Str(_) => this.get_index(&object, &Value::Num(key.parse().expect("string index")), span),
                         _ => this.get_prop(&object, &key, span),
                     };
@@ -3261,6 +3408,182 @@ impl<'p> Evaluator<'p> {
         })
     }
 
+    /// `Object.prototype.<m>.call(this, ...args)` for the modeled methods.
+    fn object_prototype_method(&mut self, m: &str, this: &Value, args: &[Value], span: Span) -> R<Value> {
+        if matches!(this, Value::Undef | Value::Null) && m != "toString" {
+            return err(
+                span,
+                format!(
+                    "Object.prototype.{m} called on {}; JavaScript throws a TypeError here",
+                    this.describe()
+                ),
+            );
+        }
+        match m {
+            "hasOwnProperty" | "propertyIsEnumerable" => {
+                let key = args.first().cloned().unwrap_or(Value::Undef);
+                require_static_data(&key, span)?;
+                if !matches!(
+                    key,
+                    Value::Str(_) | Value::Num(_) | Value::Bool(_) | Value::Null | Value::Undef
+                ) {
+                    return err(
+                        span,
+                        format!("Object.prototype.{m} at build time needs a primitive property key"),
+                    );
+                }
+                let key = key.to_js_string().expect("primitive key");
+                let own = own_property(this, &key, span)?;
+                Ok(Value::Bool(match own {
+                    None => false,
+                    Some((_, attrs)) => m == "hasOwnProperty" || attrs.enumerable,
+                }))
+            }
+            _ => Ok(Value::str(&format!("[object {}]", object_tag(this)))),
+        }
+    }
+
+    /// `Object.defineProperty(target, key, descriptor)` at build time, on a plain object or a
+    /// function (its own properties). See docs/decisions/2026-11-12-commonjs-interop-helpers.md.
+    fn define_property(&mut self, args: &[Value], span: Span) -> R<Value> {
+        let target = args.first().cloned().unwrap_or(Value::Undef);
+        let cell: &ObjCell = match &target {
+            Value::Object(o) => o,
+            Value::Closure(c) => &c.props,
+            Value::Undef | Value::Null | Value::Bool(_) | Value::Num(_) | Value::Str(_) | Value::Symbol(_) => {
+                return err(
+                    span,
+                    format!(
+                        "Object.defineProperty called on {}; JavaScript throws a TypeError here",
+                        target.describe()
+                    ),
+                );
+            }
+            other => {
+                return err_help(
+                    span,
+                    format!(
+                        "Object.defineProperty at build time doesn't support {}",
+                        other.describe()
+                    ),
+                    "define properties on a plain object or a function",
+                );
+            }
+        };
+        let key = args.get(1).cloned().unwrap_or(Value::Undef);
+        let key = match key {
+            Value::Str(_) | Value::Num(_) | Value::Bool(_) | Value::Null | Value::Undef => {
+                key.to_js_string().expect("primitive key")
+            }
+            Value::Symbol(_) => {
+                return err_help(
+                    span,
+                    "symbol-keyed properties can't be defined while the config is evaluated",
+                    "define it inside a function that runs in PHP, or use a string key",
+                );
+            }
+            other => {
+                return err(
+                    span,
+                    format!(
+                        "Object.defineProperty at build time needs a primitive key, not {}",
+                        other.describe()
+                    ),
+                );
+            }
+        };
+        if let Value::Closure(_) = &target
+            && crate::value::FUNCTION_BUILTIN_PROPERTIES.contains(&key.as_str())
+        {
+            return err_help(
+                span,
+                format!("can't define `{key}` on a function while the config is built"),
+                "function `name`, `length`, `prototype` and `Function.prototype` members aren't modeled; use another property name",
+            );
+        }
+        if key == "__proto__"
+            && matches!(&target, Value::Object(o) if !o.null_prototype())
+            && !cell.borrow().contains_key(&key)
+        {
+            // defineProperty creates an own `__proto__` data property; First's objects can't hold
+            // one beside the prototype accessor.
+            return err_help(
+                span,
+                "defining an own `__proto__` property isn't supported",
+                "use another property name",
+            );
+        }
+        let descriptor = to_descriptor(args.get(2), span)?;
+        let existing = cell.borrow().get(&key).cloned();
+        let current = cell.attrs(&key);
+        let attrs = |default: bool, field: Option<bool>, old: bool| match existing {
+            Some(_) => field.unwrap_or(old),
+            None => field.unwrap_or(default),
+        };
+        let mut next = Attrs {
+            enumerable: attrs(false, descriptor.enumerable, current.enumerable),
+            configurable: attrs(false, descriptor.configurable, current.configurable),
+            writable: false,
+        };
+        let accessor = descriptor.get.is_some() || descriptor.set.is_some();
+        let slot = if accessor {
+            let (old_get, old_set) = match &existing {
+                Some(Value::Accessor(a)) => (a.get.clone(), a.set.clone()),
+                _ => (Value::Undef, Value::Undef),
+            };
+            Value::Accessor(Rc::new(AccessorVal {
+                get: descriptor.get.clone().unwrap_or(old_get),
+                set: descriptor.set.clone().unwrap_or(old_set),
+            }))
+        } else {
+            match &existing {
+                // A generic descriptor ({ enumerable }) keeps an accessor an accessor.
+                Some(Value::Accessor(a)) if descriptor.value.is_none() && descriptor.writable.is_none() => {
+                    Value::Accessor(a.clone())
+                }
+                Some(Value::Accessor(_)) | None => {
+                    next.writable = descriptor.writable.unwrap_or(false);
+                    descriptor.value.clone().unwrap_or(Value::Undef)
+                }
+                Some(old) => {
+                    next.writable = descriptor.writable.unwrap_or(current.writable);
+                    descriptor.value.clone().unwrap_or_else(|| old.clone())
+                }
+            }
+        };
+        if existing.is_some() && !current.configurable {
+            // ValidateAndApplyPropertyDescriptor: a non-configurable property accepts only a
+            // descriptor that changes nothing, or (when writable) a new value.
+            let same_kind = matches!(existing, Some(Value::Accessor(_))) == matches!(slot, Value::Accessor(_));
+            let unchanged = same_kind
+                && next.enumerable == current.enumerable
+                && !next.configurable
+                && match (&existing, &slot) {
+                    (Some(Value::Accessor(a)), Value::Accessor(b)) => {
+                        a.get.strict_eq(&b.get) && a.set.strict_eq(&b.set)
+                    }
+                    (Some(old), new) => current.writable || !next.writable && same_value(old, new),
+                    _ => false,
+                };
+            if !unchanged {
+                return err(
+                    span,
+                    format!("Cannot redefine property: {key}; JavaScript throws a TypeError here"),
+                );
+            }
+        }
+        if let Value::Accessor(a) = &slot {
+            for (name, f) in [("getter", &a.get), ("setter", &a.set)] {
+                if !matches!(f, Value::Undef | Value::Closure(_)) {
+                    return err(span, format!("{name} must be a function, not {}", f.describe()));
+                }
+            }
+        }
+        cell.borrow_mut().insert(key.clone(), slot);
+        cell.set_attrs(&key, next);
+        Ok(target)
+    }
+
     fn call_method(&mut self, recv: &Value, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
         if matches!(recv, Value::Str(_) | Value::Num(_)) {
             for value in &args {
@@ -3268,6 +3591,30 @@ impl<'p> Evaluator<'p> {
             }
         }
         match recv {
+            Value::Builtin(Builtin::ObjectPrototypeMethod(method)) => {
+                let (this, rest) = match m {
+                    "call" => (
+                        args.first().cloned().unwrap_or(Value::Undef),
+                        args.get(1..).unwrap_or_default().to_vec(),
+                    ),
+                    _ => {
+                        let this = args.first().cloned().unwrap_or(Value::Undef);
+                        let rest = match args.get(1) {
+                            None | Some(Value::Undef | Value::Null) => vec![],
+                            Some(Value::Array(a)) => a.borrow().clone(),
+                            Some(Value::Arguments(o)) => arguments_items(o, span)?,
+                            Some(other) => {
+                                return err(
+                                    span,
+                                    format!("`apply` needs an array of arguments, not {}", other.describe()),
+                                );
+                            }
+                        };
+                        (this, rest)
+                    }
+                };
+                self.object_prototype_method(method, &this, &rest, span)
+            }
             Value::Column(c) if self.legacy && legacy::MODIFIERS.contains(&m) => legacy::modifier(c, m, &args, span),
             Value::Column(c) => column_method(c, m, &args, span),
             Value::Str(s) => string_method(s, m, &args, span),
@@ -3723,13 +4070,9 @@ fn ordered_keys<'a>(keys: impl Iterator<Item = &'a String>) -> Vec<String> {
 
 fn enumerable_keys(value: &Value, span: Span) -> R<Vec<String>> {
     Ok(match value {
-        Value::Object(object) | Value::Arguments(object) => ordered_keys(
-            object
-                .borrow()
-                .keys()
-                .filter(|key| !(matches!(value, Value::Arguments(_)) && *key == "length")),
-        ),
-        Value::Closure(c) => ordered_keys(c.props.borrow().keys()),
+        Value::Object(object) => ordered_keys(object.enumerable_keys().iter()),
+        Value::Arguments(object) => ordered_keys(object.borrow().keys().filter(|key| *key != "length")),
+        Value::Closure(c) => ordered_keys(c.props.enumerable_keys().iter()),
         Value::Array(array) => (0..array.borrow().len()).map(|index| index.to_string()).collect(),
         Value::Str(value) => (0..value.encode_utf16().count())
             .map(|index| index.to_string())
@@ -4404,6 +4747,223 @@ fn define_prototype_symbol(class: &Rc<ClassValue>, args: &[Value], span: Span) -
         flag("configurable"),
     ));
     Ok(Value::Prototype(class.clone()))
+}
+
+/// A property descriptor as `ToPropertyDescriptor` reads it from a plain object: each field is
+/// `None` when absent. Mixing `get`/`set` with `value`/`writable` is a TypeError.
+#[derive(Default)]
+struct Descriptor {
+    value: Option<Value>,
+    writable: Option<bool>,
+    get: Option<Value>,
+    set: Option<Value>,
+    enumerable: Option<bool>,
+    configurable: Option<bool>,
+}
+
+fn to_descriptor(value: Option<&Value>, span: Span) -> R<Descriptor> {
+    let Some(Value::Object(o)) = value else {
+        return err(
+            span,
+            format!(
+                "Property description must be an object, not {}; JavaScript throws a TypeError here",
+                value.map_or("nothing".into(), Value::describe)
+            ),
+        );
+    };
+    if o.has_accessors() {
+        return err_help(
+            span,
+            "a property descriptor with getters isn't supported while the config is evaluated",
+            "write the descriptor as a plain object literal",
+        );
+    }
+    let map = o.borrow();
+    let flag = |name: &str| map.get(name).map(Value::truthy);
+    let descriptor = Descriptor {
+        value: map.get("value").cloned(),
+        writable: flag("writable"),
+        get: map.get("get").cloned(),
+        set: map.get("set").cloned(),
+        enumerable: flag("enumerable"),
+        configurable: flag("configurable"),
+    };
+    if (descriptor.get.is_some() || descriptor.set.is_some())
+        && (descriptor.value.is_some() || descriptor.writable.is_some())
+    {
+        return err(
+            span,
+            "Invalid property descriptor. Cannot both specify accessors and a value or writable attribute; JavaScript throws a TypeError here",
+        );
+    }
+    Ok(descriptor)
+}
+
+/// SameValue for data the evaluator compares: NaN equals NaN, +0 differs from -0.
+fn same_value(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Num(x), Value::Num(y)) if x.is_nan() && y.is_nan() => true,
+        (Value::Num(x), Value::Num(y)) => x == y && x.is_sign_negative() == y.is_sign_negative(),
+        _ => a.strict_eq(b),
+    }
+}
+
+/// The `[object <Tag>]` name `Object.prototype.toString` gives a build-time value.
+fn object_tag(value: &Value) -> &'static str {
+    match value {
+        Value::Undef => "Undefined",
+        Value::Null => "Null",
+        Value::Bool(_) => "Boolean",
+        Value::Num(_) => "Number",
+        Value::Str(_) => "String",
+        Value::Array(_) => "Array",
+        Value::Arguments(_) => "Arguments",
+        Value::Regex(..) => "RegExp",
+        Value::Symbol(_) => "Symbol",
+        Value::Coll(c) if c.set => "Set",
+        Value::Coll(_) => "Map",
+        Value::Weak(w) if w.set => "WeakSet",
+        Value::Weak(_) => "WeakMap",
+        Value::Closure(_) | Value::Class(_) | Value::Builtin(_) | Value::Bound(..) => "Function",
+        _ => "Object",
+    }
+}
+
+/// An own string-keyed property of a build-time value and its attributes, or `None`.
+fn own_property(value: &Value, key: &str, span: Span) -> R<Option<(Value, Attrs)>> {
+    let index_in = |length: usize| key.parse::<usize>().is_ok_and(|i| i.to_string() == key && i < length);
+    let fixed = |enumerable: bool, writable: bool| Attrs {
+        enumerable,
+        writable,
+        configurable: false,
+    };
+    Ok(match value {
+        Value::Object(o) => o.borrow().get(key).cloned().map(|v| (v, o.attrs(key))),
+        Value::Arguments(o) if key == "length" => o.borrow().get(key).cloned().map(|v| {
+            (
+                v,
+                Attrs {
+                    enumerable: false,
+                    ..Attrs::ORDINARY
+                },
+            )
+        }),
+        Value::Arguments(_) if key == "callee" => {
+            return err_help(
+                span,
+                "restricted arguments properties aren't supported during configuration evaluation",
+                "access arguments.callee inside a runtime handler",
+            );
+        }
+        Value::Arguments(o) => o.borrow().get(key).cloned().map(|v| (v, Attrs::ORDINARY)),
+        Value::Closure(c) => {
+            if crate::value::FUNCTION_BUILTIN_PROPERTIES.contains(&key) && !c.props.borrow().contains_key(key) {
+                return err_help(
+                    span,
+                    format!("a function's own `{key}` isn't modeled while the config is built"),
+                    "function `name`, `length` and `prototype` aren't modeled; inspect a property you assigned",
+                );
+            }
+            c.props.borrow().get(key).cloned().map(|v| (v, c.props.attrs(key)))
+        }
+        Value::Array(a) if key == "length" => Some((Value::Num(a.borrow().len() as f64), fixed(false, true))),
+        Value::Array(a) => key
+            .parse::<usize>()
+            .ok()
+            .filter(|i| i.to_string() == key)
+            .and_then(|i| a.borrow().get(i).cloned())
+            .map(|v| (v, Attrs::ORDINARY)),
+        Value::Str(s) if key == "length" => Some((Value::Num(s.encode_utf16().count() as f64), fixed(false, false))),
+        Value::Str(s) if index_in(s.encode_utf16().count()) => {
+            let unit = s.encode_utf16().nth(key.parse().expect("index")).expect("in range");
+            Some((utf16_value(&[unit], span)?, fixed(true, false)))
+        }
+        Value::Str(_) | Value::Bool(_) | Value::Num(_) | Value::Symbol(_) => None,
+        Value::Regex(..) if key == "lastIndex" => Some((Value::Num(0.0), fixed(false, true))),
+        Value::Regex(..) => None,
+        Value::Undef | Value::Null => {
+            return err(
+                span,
+                format!(
+                    "Cannot convert {} to object; JavaScript throws a TypeError here",
+                    value.describe()
+                ),
+            );
+        }
+        other => {
+            return err_help(
+                span,
+                format!(
+                    "inspecting the own properties of {} isn't supported at build time",
+                    other.describe()
+                ),
+                "inspect a plain object, array, function or primitive value",
+            );
+        }
+    })
+}
+
+/// `Object.getOwnPropertyDescriptor(value, key)`: a fresh descriptor object, or `undefined`.
+fn own_property_descriptor(args: &[Value], span: Span) -> R<Value> {
+    let target = args.first().cloned().unwrap_or(Value::Undef);
+    let key = args.get(1).cloned().unwrap_or(Value::Undef);
+    if let Value::Symbol(_) = key {
+        return err_help(
+            span,
+            "symbol-keyed descriptors can't be read while the config is evaluated",
+            "read it inside a function that runs in PHP",
+        );
+    }
+    require_static_coercion(&key, span)?;
+    let Some(key) = key.to_js_string() else {
+        return err(
+            span,
+            "Object.getOwnPropertyDescriptor at build time needs a primitive key",
+        );
+    };
+    let Some((slot, attrs)) = own_property(&target, &key, span)? else {
+        return Ok(Value::Undef);
+    };
+    let mut map = IndexMap::new();
+    match slot {
+        Value::Accessor(a) => {
+            map.insert("get".to_string(), a.get.clone());
+            map.insert("set".to_string(), a.set.clone());
+        }
+        value => {
+            map.insert("value".to_string(), value);
+            map.insert("writable".to_string(), Value::Bool(attrs.writable));
+        }
+    }
+    map.insert("enumerable".to_string(), Value::Bool(attrs.enumerable));
+    map.insert("configurable".to_string(), Value::Bool(attrs.configurable));
+    Ok(Value::object(map))
+}
+
+/// `Object.create(null)` or `Object.create(Object.prototype)`: a new empty object. Other
+/// prototypes and the second (properties) argument are refused.
+fn object_create(args: &[Value], span: Span) -> R<Value> {
+    let help =
+        "First models `Object.create(null)` and `Object.create(Object.prototype)`; use an object literal for others";
+    if args.len() > 1 && !matches!(args[1], Value::Undef) {
+        return err_help(span, "Object.create with a properties argument isn't supported", help);
+    }
+    match args.first() {
+        Some(Value::Null) => Ok(Value::null_prototype_object(IndexMap::new())),
+        Some(Value::Builtin(Builtin::ObjectPrototype)) => Ok(Value::object(IndexMap::new())),
+        Some(Value::Object(_) | Value::Closure(_) | Value::Array(_) | Value::Prototype(_)) => err_help(
+            span,
+            "Object.create with a prototype other than null or Object.prototype isn't supported",
+            help,
+        ),
+        other => err(
+            span,
+            format!(
+                "Object prototype may only be an Object or null, not {}; JavaScript throws a TypeError here",
+                other.map_or("nothing".into(), Value::describe)
+            ),
+        ),
+    }
 }
 
 fn build_time_in(key: &str, object: &Value, span: Span) -> R<bool> {

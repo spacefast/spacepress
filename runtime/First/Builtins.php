@@ -109,6 +109,8 @@ final class Builtins
         'Object.fromEntries' => [1, 1],
         'Object.hasOwn' => [2, 2],
         'Object.defineProperty' => [3, 3],
+        'Object.getOwnPropertyDescriptor' => null,
+        'Object.create' => null,
         'Object.freeze' => null,
         'Object.assign' => null,
         'Array.isArray' => [0, 1],

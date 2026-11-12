@@ -239,7 +239,7 @@ test("revisions: core's revisions of the post, First's snapshots, and a restore 
   const restored = await f("POST", `/posts/${post.id}/revisions/${oldest}/restore`, { as: "editor" });
   assert.deepEqual([restored.status, restored.json.data.excerpt], [200, at.json.data.excerpt], JSON.stringify(restored.json));
   // Denials: anonymous, a subscriber without the update rule, another post's revision, a missing row.
-  assert.equal((await f("GET", `/posts/${post.id}/revisions`)).status, 401);
+  assert.equal((await f("GET", `/posts/${post.id}/revisions`)).status, 404, "existence never leaks (§1.6)");
   assert.equal((await f("GET", `/posts/${post.id}/revisions`, { as: "subscriber" })).status, 404);
   const other = first("insert", "posts", JSON.stringify({ title: `Other ${run}` }))[0];
   const mismatch = await f("GET", `/posts/${other.id}/revisions/${oldest}`, { as: "editor" });

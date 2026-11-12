@@ -521,9 +521,10 @@ final class Facade
             throw HttpError::notFound("$collection keeps no revisions");
         }
         $viewer = CoreAccess::viewer();
+        // Revisions need the update rule on the row; a row outside it is a 404, whoever asks (§1.6:
+        // a revision list never says that a row exists).
         if ($viewer === null || !CoreAccess::covers($collection, 'update', $id, $viewer)) {
-            throw $viewer?->user === null ? new HttpError(401, 'unauthenticated', "Sign in to see the revisions of $collection rows")
-                : HttpError::notFound("No $collection row $id");
+            throw HttpError::notFound("No $collection row $id");
         }
         $route = "{$kind['route']}/" . rawurlencode((string) $id) . '/revisions';
         $db = Plugin::instance()?->db() ?? throw new \LogicException('No First app');

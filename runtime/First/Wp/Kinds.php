@@ -117,10 +117,11 @@ final class Kinds
             'table' => (static function () use ($item, $with): array {
                 unset($item['_links'], $item['with']);
 
-                return $item + $with;
+                return array_replace($item, $with);
             })(),
             // First's row for this viewer, or null: core may list a user First's read rule hides.
-            'users', 'post' => ($first = $item[self::ROW] ?? null) === null ? null : (is_object($first) ? get_object_vars($first) : (array) $first) + $with,
+            // `with` wins: a media column loaded with `with` replaces its id with the media row.
+            'users', 'post' => ($first = $item[self::ROW] ?? null) === null ? null : array_replace(is_object($first) ? get_object_vars($first) : (array) $first, $with),
             'wp-post' => self::wpPostRow($kind, $item),
             'wp-users' => self::userRow($item),
             'comments' => self::commentRow($item),

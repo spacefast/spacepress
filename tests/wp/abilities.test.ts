@@ -122,7 +122,7 @@ test("executing an ability answers each user exactly as REST does", async () => 
     ["blog/posts-update", { id: postId, patch: { excerpt: `by agent ${run}` } }, "POST", "PATCH", `/posts/${postId}`, { excerpt: `by rest ${run}` },
       async () => assert.equal((await ok("GET", `/posts/${postId}`, { as: "editor" })).excerpt, `by agent ${run}`)],
     ["blog/signups-list", { limit: 1 }, "GET", "GET", "/signups?limit=1", undefined],
-    ["blog/global-settings-update", { tagline: `agents ${run}` }, "POST", "PATCH", "/settings", { tagline: `rest ${run}` },
+    ["blog/global-settings-update", { tagline: `agents ${run}` }, "POST", "PATCH", "/globals/settings", { tagline: `rest ${run}` },
       async () => assert.equal((await ok("GET", "/settings")).tagline, `agents ${run}`)],
     ["blog/approve-comment", { id: 999999999 }, "POST", "POST", "/actions/approveComment", { id: 999999999 }],
     // Non-editors may only reset a json() value to {}: the ability's check sees `{}` as REST does, and

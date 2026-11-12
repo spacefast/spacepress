@@ -198,6 +198,19 @@ final class Register
         return $response;
     }
 
+    /** rest_request_after_callbacks: the operation's own headers (`Idempotent-Replayed`) on its response. */
+    public static function answered(mixed $response): mixed
+    {
+        if ($response instanceof \WP_REST_Response) {
+            foreach (self::$responded as $name => $value) {
+                $response->header($name, $value);
+            }
+        }
+        self::$responded = [];
+
+        return $response;
+    }
+
     /** @return array<string, string> the run request's headers, lower-cased */
     public static function headers(): array
     {

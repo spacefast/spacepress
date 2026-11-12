@@ -44,7 +44,7 @@ export const tours: Tour[] = [
         slug: "a-table",
         title: "A table becomes SQL",
         prose: [
-          "`table()` is a plain SQL table for app data; `collection()` holds editorial content as WordPress posts. An implicit `id()` is the primary key, `notNull()` and `default()` mean what they say in SQL, and `enum` is recorded in `schema.php` for the runtime to check on every write.",
+          "A table holds app data in SQL; collections hold editorial content in WordPress. An implicit `id()` is the primary key, `notNull()` and `default()` mean what they say in SQL, and `enum` is recorded in `schema.php` for the runtime to check on every write.",
           "The first build writes `0001_init.sql`; the next build diffs the schema against the committed snapshot and writes only what changed.",
         ],
         config: { file: "first.config.ts", lines: { from: 'export const locations = table(', to: "}));" } },

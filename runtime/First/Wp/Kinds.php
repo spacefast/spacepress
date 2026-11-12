@@ -293,7 +293,11 @@ final class Kinds
                 // Core's own user fields; UserMeta applies them (and `meta`) through First's pipeline.
                 match ($col) {
                     'email', 'name', 'password' => $out[$col] = $value,
-                    'role' => $out['roles'] = is_string($value) ? [WpUserStore::wpRole($value)] : $value,
+                    // A role is one of First's role names; anything else (null included) is refused as
+                    // First refuses it, never handed to core, which would read it as "no roles".
+                    'role' => $out['roles'] = is_string($value) && $value !== ''
+                        ? [WpUserStore::wpRole($value)]
+                        : throw \First\HttpError::invalidInput('role is required', '/role'),
                     default => $meta[$col] = $value,
                 };
                 continue;

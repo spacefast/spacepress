@@ -156,6 +156,29 @@
       "guidance": "`{ __proto__: null, ... }` (a non-computed, non-shorthand `__proto__` key with the literal `null`) creates a null-prototype object in typed code, imported JavaScript and configuration evaluation, including tables built at module scope and captured by handlers. Reads of keys the object doesn't own are undefined, also for Object.prototype names such as constructor, toString and hasOwnProperty; `in` sees own keys only; calling an inherited method throws TypeError; string and number conversion throw TypeError (refused during configuration evaluation); `__proto__` and other Object.prototype names are ordinary own keys when written. Object.keys, for…in, spread and JSON.stringify behave as on an ordinary object with the same own keys, and a spread copy has the ordinary prototype. TypeScript's `__proto__: null` field is not part of the literal's type. Object.getPrototypeOf, Object.create and Object.setPrototypeOf are not supported."
     },
     {
+      "id": "commonjs-interop-helpers",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "language_constructs_match_node_through_generated_php",
+      "guidance": "While a module is evaluated at build time (module top level, including CommonJS), TypeScript, esbuild and Babel interop helpers run as in Node: `Object.create(null)` and `Object.create(Object.prototype)`; `Object.defineProperty` on plain objects, `exports` and functions with `value`, `get`, `set`, `enumerable`, `writable` and `configurable` (returning the target, with JavaScript's defaults and redefinition rules); `Object.getOwnPropertyDescriptor` on objects, arrays, strings and functions; `Object.prototype.hasOwnProperty`, `propertyIsEnumerable` and `toString` through `.call`/`.apply`; module-level `this` as `module.exports`; and own properties on a function `module.exports`, including `const { name } = require(...)`. Getters run on each build-time read; non-enumerable properties are skipped by for-in, Object.keys, spread and rest. A value with a getter, setter or non-default attribute that reaches compiled code is refused (see reject-captured-getter); docs/decisions/2026-11-12-commonjs-interop-helpers.md."
+    },
+    {
+      "id": "captured-property-attributes",
+      "status": "refused",
+      "code": "F1002",
+      "fixture": "tests/fixtures/reject-captured-getter",
+      "message": "a getter defined while the module was evaluated",
+      "guidance": "Compiled code reads build-time objects as constants, so a getter, setter, or non-enumerable, read-only or non-configurable property made with Object.defineProperty at module level can't reach a handler yet. Assign the value as a plain property, or read it inside the function that runs in PHP."
+    },
+    {
+      "id": "object-create-prototype",
+      "status": "refused",
+      "code": "F2001",
+      "fixture": "tests/fixtures/reject-object-create-proto",
+      "message": "Object.create with a prototype other than null or Object.prototype",
+      "guidance": "Object.create is modeled for `null` and `Object.prototype` only, without the properties argument; use an object literal (or `{ __proto__: null }`) for other shapes."
+    },
+    {
       "id": "boolean-function-value",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",

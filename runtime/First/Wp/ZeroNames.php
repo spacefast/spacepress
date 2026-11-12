@@ -16,20 +16,29 @@ namespace First\Wp;
  * interruption picks up at the first step that has not happened yet; `first_zero_names` records
  * completion.
  *
+ * First Identity's own names (`{p}zero_identity_*` tables, `zero_identity_*` options, its WP-Cron
+ * events) are renamed by `First\Identity\Legacy\ZeroNames` when that plugin boots, before its schema
+ * step; this class leaves them alone, so either plugin can run without the other.
+ *
  * What it renames (names as 0.3.0 wrote them; `{p}` is `$wpdb->prefix`):
- * - tables: `{p}zero_<table>`, `{p}zero__<system>` and `{p}zero_identity_<name>` → `first_…`;
+ * - tables: `{p}zero_<table>` and `{p}zero__<system>` → `first_…`;
  *   foreign keys `zero_<t>_<c>_fk` follow the table (MySQL keeps the constraint name, which no First
  *   code reads by name except schema-change plans, and those name the table, so they stay valid);
  * - post types `zero_<table>` → `first_<table>` on posts and their revisions, with the SCF field
  *   references (`_<meta>` companions holding `field_zero_…`) and First's own post meta;
  * - post meta `zero_<col>` (and nested `zero_<col>_…`), `_zero_uid`, `_zero_system`, `_zero_focal`,
  *   `_zero_uploads`, `_zero_pages_*`; user meta `zero_<col>`, `zero_role`, and their SCF companions;
- * - options: `zero_<app>_schema`, `zero_<app>_refused`, `zero_runtime_*`, `zero_identity_*`,
+ * - options: `zero_<app>_schema`, `zero_<app>_refused`, `zero_runtime_*`,
  *   `zero_upload_namespace`, `zero_upload_cursor_*`, `zero_polylang_languages`, `zero_admin_rewrite`,
  *   `zero_pages_<app>` (+ `_error`), globals `zero_global_<name>_<field>` and their SCF companions;
  * - the `zero_guest` role, in `{p}user_roles` and in every user's `{p}capabilities`;
  * - stored job names (`zero.mail`, `zero.webhook`, `zero.services.*`) in the jobs and outbox tables;
- * - pending WP-Cron events and Action Scheduler actions and groups under `zero_…` / `zero.…` hooks.
+ * - pending Action Scheduler actions and groups under `zero_…` / `zero.…` hooks.
+ *
+ * An editor collection whose First post type would exceed WordPress's 20 characters (`first_` is
+ * one longer than `zero_`) keeps its posts under the old type, untouched; the upgrade records it in
+ * `first_zero_names` and every admin screen names it with the fix. The compiler refuses such a
+ * collection name with the same fix, so no First build ever reads that type.
  *
  * Kept on purpose: `_zero_resource_id`, `zero_collection` and `_zero_<resource>_<field>` (Zero 0.8
  * storage the 0.8 migration reads), `_zero_legacy_member` (its marker), the `zero-sync-file` uid
@@ -46,8 +55,6 @@ final class ZeroNames
     private const OPTIONS = [
         'zero_runtime_tables', 'zero_runtime_secret', 'zero_runtime_private_ok', 'zero_runtime_private_checked',
         'zero_runtime_site_id', 'zero_upload_namespace', 'zero_polylang_languages', 'zero_admin_rewrite',
-        'zero_identity_schema_version', 'zero_identity_webhooks', 'zero_identity_signing_keys',
-        'zero_identity_dummy_password_hash', 'zero_identity_password_profiles', 'zero_identity_password_inventory',
     ];
 
     /** Option name prefixes renamed with whatever follows (per-app and per-global names). */
@@ -59,49 +66,51 @@ final class ZeroNames
     /** Stored job names: the jobs and outbox tables key handlers by them. */
     private const JOBS = ['zero.mail' => 'first.mail', 'zero.webhook' => 'first.webhook', 'zero.services.mail' => 'first.services.mail', 'zero.services.checkout' => 'first.services.checkout'];
 
-    /** WP-Cron and Action Scheduler hooks. */
+    /** Action Scheduler hooks. */
     private const HOOKS = [
-        'zero_identity_maintenance' => 'first_identity_maintenance', 'zero_identity_password_inventory' => 'first_identity_password_inventory',
         'zero_job' => 'first_job', 'zero_jobs_maintain' => 'first_jobs_maintain', 'zero_uploads_maintain' => 'first_uploads_maintain',
         'zero.prune-guests' => 'first.prune-guests',
     ];
 
-    /** True when this site still holds names from before the rename. */
-    public static function pending(Connection $db): bool
+    /** Whether this site has not been checked yet: one cached option read once it has. */
+    public static function pending(): bool
     {
-        if (get_option(self::DONE) !== false) {
-            return false;
-        }
-        $p = $db->wpdb()->esc_like($db->prefix() . 'zero_') . '%';
-        if ($db->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE ? LIMIT 1', [$p]) !== []) {
-            return true;
-        }
-        $options = $db->wpdb()->options;
+        return get_option(self::DONE) === false;
+    }
 
-        return $db->run("SELECT 1 FROM `$options` WHERE option_name IN ('zero_runtime_tables', 'zero_identity_schema_version', 'zero_runtime_site_id') LIMIT 1") !== [];
+    /** Post types the upgrade had to leave under their old name (see the class comment). */
+    public static function kept(): array
+    {
+        $done = get_option(self::DONE);
+
+        return is_array($done) ? array_values(array_map('strval', $done['kept'] ?? [])) : [];
     }
 
     /**
-     * Rename everything, holding the site's migration lock. Returns what changed, by kind; empty
-     * when there was nothing to do (another request finished first, or a site that never ran 0.3.0).
+     * Rename everything, holding the site's migration lock, then record that it ran. Returns what
+     * changed, by kind; empty when another request finished first or the site never ran 0.3.
      *
      * @return array<string, int>
      */
     public static function upgrade(Connection $db): array
     {
-        return Migrator::locked($db, 'first__migrations', static function () use ($db): array {
+        return Migrator::locked($db, self::DONE, static function () use ($db): array {
             wp_cache_delete(self::DONE, 'options');
-            if (!self::pending($db)) {
+            if (!self::pending()) {
                 return [];
             }
-            $done = (new self($db))->run();
-            // Every cached option and post/user meta read before this moved: start over.
+            $upgrade = new self($db);
+            $changed = $upgrade->run();
+            // Options and meta read before this moved under new names: forget every cached copy.
             wp_cache_flush();
-            add_option(self::DONE, gmdate('c'), '', false);
+            add_option(self::DONE, ['at' => gmdate('c'), 'changed' => $changed, 'kept' => $upgrade->kept], '', false);
 
-            return $done;
+            return $changed;
         });
     }
+
+    /** Post types left under their old name. @var list<string> */
+    private array $kept = [];
 
     /** @var array<string, int> */
     private array $changed = [];
@@ -120,7 +129,6 @@ final class ZeroNames
         $this->options();
         $this->roles();
         $this->jobs();
-        $this->cron();
         $this->actionScheduler();
         $this->files();
 
@@ -153,6 +161,9 @@ final class ZeroNames
         $prefix = $this->db->prefix();
         $rows = $this->db->run('SELECT TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE ? ORDER BY TABLE_NAME', [$this->like($prefix . 'zero_')]);
         foreach (array_column($rows, 't') as $old) {
+            if (str_starts_with((string) $old, $prefix . 'zero_identity_')) {
+                continue; // First Identity's (Identity\Legacy\ZeroNames)
+            }
             $new = $prefix . 'first_' . substr((string) $old, strlen($prefix . 'zero_'));
             if (strlen($new) > 64) {
                 throw new \RuntimeException("Cannot rename table $old to $new: MySQL table names are limited to 64 characters. Rename it by hand to a shorter First table name, then reload.");
@@ -200,10 +211,10 @@ final class ZeroNames
         foreach ($types as $old) {
             $new = 'first_' . substr((string) $old, 5);
             if (strlen($new) > 20) {
-                // WordPress caps post types at 20 characters and `first_` is one longer than `zero_`.
-                // The content stays readable under its old type; the build that declares it refuses
-                // with a fix (a shorter collection name and a rename migration), never truncating.
-                throw new \RuntimeException("Cannot rename post type $old to $new: WordPress limits post types to 20 characters. Give the collection a name of at most 14 characters, rebuild and publish; its posts stay under $old until then.");
+                // WordPress caps post types at 20 characters. The posts stay as they are under the old
+                // type, never truncated into another collection's name (see the class comment).
+                $this->kept[] = (string) $old;
+                continue;
             }
             $n = $this->changed("UPDATE `$posts` SET post_type = ? WHERE post_type = ?", [$new, $old]);
             $this->count('posts', $n);
@@ -326,33 +337,6 @@ final class ZeroNames
             foreach (self::JOBS as $old => $new) {
                 $this->count('jobs', $this->changed("UPDATE `$prefix$table` SET `job` = ? WHERE `job` = ?", [$new, $old]));
             }
-        }
-    }
-
-    /** Pending WP-Cron events (the `cron` option, serialized): re-keyed in PHP, never by string replace. */
-    private function cron(): void
-    {
-        $cron = _get_cron_array();
-        if (!is_array($cron)) {
-            return;
-        }
-        $moved = 0;
-        foreach ($cron as $at => $hooks) {
-            if (!is_array($hooks)) {
-                continue;
-            }
-            foreach (self::HOOKS as $old => $new) {
-                if (!isset($hooks[$old])) {
-                    continue;
-                }
-                $cron[$at][$new] = ($hooks[$new] ?? []) + $hooks[$old];
-                unset($cron[$at][$old]);
-                $moved += count($hooks[$old]);
-            }
-        }
-        if ($moved > 0) {
-            _set_cron_array($cron, true) === true || throw new \RuntimeException('Cannot store the renamed WP-Cron events');
-            $this->count('cron', $moved);
         }
     }
 

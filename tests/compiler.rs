@@ -210,11 +210,6 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
         "first/components/Anim.tsx:2:27",
     );
     rejects(
-        "reject-jsx-use-client",
-        "\"use client\" components aren't compiled yet",
-        "first/components/Counter.tsx:1:1",
-    );
-    rejects(
         "reject-jsx-children-object",
         "`children` is typed { title: string }, which JSX can't pass",
         "first/components/Wrap.tsx:1:22",
@@ -223,11 +218,6 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
         "reject-jsx-config-unused",
         "JSX files can't be part of a First config",
         "first/lib/label.tsx:1:1",
-    );
-    rejects(
-        "reject-jsx-use-client-prologue",
-        "\"use client\" components aren't compiled yet",
-        "first/components/Toggle.tsx:1:1",
     );
     rejects(
         "reject-jsx-style-case",

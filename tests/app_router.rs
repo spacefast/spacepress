@@ -498,6 +498,8 @@ fn client_components_compile_to_interactivity_stores() {
         "{islands}"
     );
     assert_eq!(islands["clients/Effects"]["actions"], serde_json::json!([]));
+    // `"use client"` after another directive (`"use strict"`) still makes a client component.
+    assert!(islands["clients/Toggle"]["file"].is_string(), "{islands}");
     let drive = |namespace: &str, script: &str| -> serde_json::Value {
         let file = islands[namespace]["file"].as_str().unwrap();
         let out = Command::new("node")

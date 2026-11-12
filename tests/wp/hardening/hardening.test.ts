@@ -170,7 +170,8 @@ test("comments: closed on core posts, pages and kinds without `comments`; open w
   // First's field names, and the same refusal on a closed item.
   const facade = `${site}/__first/api/v1/comments`;
   const write = (on: number) => fetch(facade, { method: "POST", headers: { "content-type": "application/json", ...auth("editor") }, body: JSON.stringify({ on, content: `facade on ${on}` }) });
-  assert.equal((await write(ids.memo)).status, 403);
+  const closed = await write(ids.memo);
+  assert.equal(closed.status, 403, await closed.text());
   const created = await write(ids.note);
   const row = (await created.json()).data;
   assert.deepEqual([created.status, row.on, row.author, row.type, row.status], [201, ids.note, harness.users.editor.id, "comment", "approved"]);

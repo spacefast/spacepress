@@ -47,7 +47,6 @@ const CLIENT = [
   ["client source the browser build cannot compile", "client: source the browser build cannot compile"],
   ["client app over an existing public/", "client: existing public/"],
   ["client module that cannot be read", "client: unreadable module"],
-  ["client app conversion outside the native CLI", "client: needs the native CLI"],
 ];
 
 // [label, kind, test(pointer, reason)]

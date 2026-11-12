@@ -31,7 +31,9 @@ before(() => {
   // The site really is a 0.3 site: its data is under the old names and First's names are free.
   assert.ok("wp_first_notes" in before_ && sql("SHOW TABLES LIKE 'wp\\_first\\_notes'").length === 0, "the 0.3 tables are under zero_ names");
   assert.equal(count("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'zero_posts'"), 1);
-  wp("plugin", "deactivate", "zero-app-carry", "zero-identity", "zero-runtime");
+  // The site's plugins list still names the 0.3 plugins; their files are gone (this stack holds only
+  // the First build), so WordPress drops them, as when a host swaps the plugin files of a live site.
+  assert.match(sql("SELECT option_value AS v FROM wp_options WHERE option_name = 'active_plugins'")[0].v, /zero-runtime/);
   wp("plugin", "activate", "two-factor", "first-runtime", "first-identity", "first-app-carry");
 });
 
@@ -79,8 +81,9 @@ test("an editor still edits the post in wp-admin: its post type, fields and SCF 
 });
 
 test("accounts, roles and a session signed in under 0.3 carry over", async () => {
-  const members = await ok("GET", "/members", { as: "admin" });
-  assert.ok(members.some((m: any) => m.email === "editor@example.test" && m.role === "editor"), JSON.stringify(members));
+  // Members read only themselves: the editor's member row (its 0.3 user meta) reads back as First's.
+  const members = await ok("GET", "/members", { as: "editor" });
+  assert.deepEqual(members.map((m: any) => [m.email, m.role, m.plan]), [["editor@example.test", "editor", "free"]]);
   assert.equal(count("SELECT COUNT(*) AS n FROM wp_usermeta WHERE meta_key LIKE 'zero\\_%'"), 0);
   assert.ok(count("SELECT COUNT(*) AS n FROM wp_usermeta WHERE meta_key = 'first_role'") >= 4);
   const roles = JSON.parse(wp("eval", "echo wp_json_encode(array_keys(wp_roles()->roles));"));
@@ -123,8 +126,8 @@ test("the upgrade ran once and a second run changes nothing", () => {
 
 test("an upgrade that finds First's name taken stops and names the conflict, changing nothing", async () => {
   // A table, then an option: each conflict refuses before any rename.
-  wp("option", "delete", "first_zero_names");
-  wp("eval", "global $wpdb; $wpdb->query(\"CREATE TABLE {$wpdb->prefix}zero_conflict (id INT) ENGINE=InnoDB\"); $wpdb->query(\"CREATE TABLE {$wpdb->prefix}first_conflict (id INT) ENGINE=InnoDB\");");
+  // In one WP-CLI process, after boot: a later boot would run the upgrade on its own first.
+  wp("eval", "global $wpdb; $wpdb->query(\"CREATE TABLE {$wpdb->prefix}zero_conflict (id INT) ENGINE=InnoDB\"); $wpdb->query(\"CREATE TABLE {$wpdb->prefix}first_conflict (id INT) ENGINE=InnoDB\"); delete_option('first_zero_names');");
   const out = wp("eval", "global $wpdb; try { First\\Wp\\ZeroNames::upgrade(new First\\Wp\\Connection($wpdb)); echo 'ran'; } catch (Throwable $e) { echo $e->getMessage(); }");
   assert.match(out, /Cannot rename table wp_zero_conflict: wp_first_conflict already exists/);
   assert.equal(sql("SHOW TABLES LIKE 'wp\\_zero\\_conflict'").length, 1, "the old table is kept");

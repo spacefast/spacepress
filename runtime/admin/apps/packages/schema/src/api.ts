@@ -34,6 +34,7 @@ export function bootstrap() {
 	);
 	return {
 		native,
+		api: (text(b.api) ?? '/__first/api/v1').replace(/\/+$/, ''),
 		readable: strings(b.readable),
 		role: text(b.role) ?? 'subscriber',
 	};
@@ -41,17 +42,27 @@ export function bootstrap() {
 export function native(collection: string) {
 	return bootstrap().native[collection];
 }
-export function endpoint(collection: string) {
-	return (
-		native(collection)?.path ?? `/first/v1/${encodeURIComponent(collection)}`
-	);
+/**
+ * A request to First's API (`/__first/api/v1`, outside `/wp-json`): `url` instead of `path`, so
+ * api-fetch sends the nonce and the cookie and parses problems as for any core route.
+ */
+export function api(path: string): { url: string } {
+	return { url: bootstrap().api + path };
+}
+/** An api-fetch target for a collection: its core route when it has one, else First's API. */
+export function target(collection: string, suffix = ''): { path: string } | { url: string } {
+	const n = native(collection);
+	return n ? { path: n.path + suffix } : api(`/${encodeURIComponent(collection)}${suffix}`);
 }
 export function unwrap(value: unknown): unknown {
 	const r = object(value);
 	return 'data' in r ? r.data : r;
 }
 export async function schema() {
-	return parseSchema(unwrap(await apiFetch({ path: '/first/v1/_schema' })));
+	const described = object(unwrap(await apiFetch(api(''))));
+	// The facade lists kinds; the admin's model reads them as collections (those First stores).
+	const kinds = map(described.kinds);
+	return parseSchema({ ...described, collections: Object.fromEntries(Object.entries(kinds).filter(([, k]) => ['post', 'users', 'table'].includes(String(object(k).type)))) });
 }
 export async function collectionSpec(name: string) {
 	const c = (await schema()).collections[name];
@@ -222,11 +233,12 @@ export function toNative(c: Collection, values: Row, objects?: EditingObjects): 
 	return result;
 }
 export async function read(c: Collection, id: string): Promise<{ row: Row; editable: boolean }> {
-	const path = `${endpoint(c.name)}/${encodeURIComponent(id)}`;
+	const one = `/${encodeURIComponent(id)}`;
 	let editable = allowed(c.access.update, bootstrap().role);
 	if (!native(c.name)) {
-		return { row: object(unwrap(await apiFetch({ path }))), editable };
+		return { row: object(unwrap(await apiFetch(target(c.name, one)))), editable };
 	}
+	const path = (target(c.name, one) as { path: string }).path;
 	let value: unknown;
 	try {
 		value = await apiFetch({ path: `${path}?context=${editable ? 'edit' : 'view'}` });
@@ -259,16 +271,16 @@ export async function save(
 	id?: string
 ): Promise<Row> {
 	const v = await apiFetch({
-		path: `${endpoint(c.name)}${id ? '/' + encodeURIComponent(id) : ''}`,
+		...target(c.name, id ? '/' + encodeURIComponent(id) : ''),
 		method: id && !native(c.name) ? 'PATCH' : 'POST',
 		data: native(c.name) ? toNative(c, values) : values,
 	});
 	return native(c.name) ? fromNative(c, v) : object(unwrap(v));
 }
 /** parse:false keeps pagination headers; parse the same problem body on failures. */
-export async function response(path: string): Promise<Response> {
+export async function response(to: { path: string } | { url: string }): Promise<Response> {
 	try {
-		return await apiFetch({ path, parse: false });
+		return await apiFetch({ ...to, parse: false });
 	} catch (e: unknown) {
 		if (e instanceof Response) {
 			const problem: unknown = await e.json();
@@ -313,7 +325,7 @@ export async function list(
 		if (opts.orderBy)
 			q.set('orderBy', `${opts.direction === 'asc' ? '' : '-'}${opts.orderBy}`);
 	}
-	const result = await response(`${endpoint(c.name)}?${q}`);
+	const result = await response(target(c.name, `?${q}`));
 	const payload: unknown = await result.json(),
 		rows = native(c.name) ? payload : unwrap(payload);
 	if (!Array.isArray(rows)) throw new Error('Expected a list from the API.');

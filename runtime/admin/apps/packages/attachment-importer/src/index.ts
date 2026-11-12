@@ -8,8 +8,10 @@ import type { RestAttachment } from '@wordpress/media-utils';
 export async function uploadAttachment(file: File): Promise<RestAttachment> {
 	const body = new FormData();
 	body.append('file', file);
+	// First's API (window.firstAdmin.api, /__first/api/v1): the upload under First's media rules.
+	const base = (window as { firstAdmin?: { api?: unknown } }).firstAdmin?.api;
 	const result: unknown = await apiFetch({
-		path: '/first/v1/media',
+		url: `${typeof base === 'string' ? base.replace(/\/+$/, '') : '/__first/api/v1'}/media`,
 		method: 'POST',
 		body,
 	});

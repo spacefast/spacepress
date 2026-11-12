@@ -374,7 +374,7 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
     assert.deepEqual([created.role, created.plan, "password" in created], ["subscriber", "free", false]);
     const mia = await env.signIn(email, password);
     const me = await mia.auth.me();
-    assert.deepEqual([me?.id, me?.role, me?.member], [created.id, "subscriber", created], "the session is the member, with their row");
+    assert.deepEqual(me, { ...created, name: me?.name, role: "subscriber" }, "the session is the member, its row flattened onto the user");
     // A member reads and edits only their own row, and can't promote themselves.
     assert.equal((await mia.members.update(created.id, { email, name: "Mia Reader", plan: "supporter" })).plan, "supporter");
     await rejects(() => mia.members.update(created.id, { role: "editor" }), { status: 403, code: "forbidden", pointer: "/role" });

@@ -272,11 +272,17 @@ final class App
     }
 
     /** Invoke any API operation with explicit authority. No authentication, JSON envelope or error conversion. */
-    public function invoke(string $method, string $path, array $query, mixed $body, Viewer $viewer): mixed
+    public function invoke(string $method, string $path, array $query, mixed $body, Viewer $viewer, array $headers = []): mixed
+    {
+        return $this->invokeResponse($method, $path, $query, $body, $viewer, $headers)->data;
+    }
+
+    /** invoke(), with the operation's status and headers (`Idempotent-Replayed`) for a transport to pass on. */
+    public function invokeResponse(string $method, string $path, array $query, mixed $body, Viewer $viewer, array $headers = []): Response
     {
         $raw = is_string($body) ? $body : ($body === null ? '' : (Js::jsonStringify($body) ?? ''));
 
-        return $this->dispatch($method, $path, $query, $raw, $viewer)->data;
+        return $this->dispatch($method, $path, $query, $raw, $viewer, $headers);
     }
 
     /** The shared operation dispatcher; errors throw, and response emission belongs to the transport. */

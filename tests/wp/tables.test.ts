@@ -62,9 +62,9 @@ test("unique() maps to 409 with a pointer: the meta check on posts, SQL UNIQUE o
 });
 
 test("db.globals in compiled code reads and writes the WordPress-stored global", async () => {
-  const start = (await ok("GET", "/globals/settings")).postsPerPage;
+  const start = (await ok("GET", "/settings")).postsPerPage;
   assert.deepEqual(await ok("POST", "/actions/bumpPostsPerPage", { as: "editor", body: {} }), [start, start + 1]);
-  assert.equal((await ok("GET", "/globals/settings")).postsPerPage, start + 1);
+  assert.equal((await ok("GET", "/settings")).postsPerPage, start + 1);
 });
 
 test("unique fields, filtered references and restrictive deletes hide competing rows on both REST surfaces", async () => {

@@ -18,7 +18,7 @@ function first_showcase_classic_pantry_screen($section) {
     $titles = ['items' => 'Pantry items', 'locations' => 'Pantry locations', 'shopping' => 'Shopping list'];
     ?>
     <div class="wrap" id="first-classic-pantry"
-        data-api-url="<?php echo esc_url(rest_url('first/v1')); ?>"
+        data-api-url="<?php echo esc_url(home_url('/__first/api/v1')); ?>"
         data-nonce="<?php echo esc_attr(wp_create_nonce('wp_rest')); ?>"
         data-section="<?php echo esc_attr($section); ?>">
         <h1><?php echo esc_html($titles[$section]); ?></h1>

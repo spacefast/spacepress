@@ -20,7 +20,7 @@ const receipt: { url: string; users: Record<"admin" | "editor", { appPassword: s
 const wpContent = join(repo, "tests/system/.wp-content-legacy");
 const harness = join(repo, "tests/wp/harness.sh");
 const project = join(work, "legacy-app");
-const api = `${receipt.url}/wp-json/first/v1`;
+const api = `${receipt.url}/__first/api/v1`;
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const migrate = (...flags: string[]) => {
   const r = spawnSync(harness, ["wp", "first", "migrate-legacy", "-", ...flags], { input: readFileSync(join(legacy, "content-model.php")), encoding: "utf8" });

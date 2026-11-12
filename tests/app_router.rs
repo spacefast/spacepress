@@ -616,7 +616,7 @@ fn client_components_compile_to_interactivity_stores() {
     assert_eq!(like["label2"], "142 likes");
     assert_eq!(
         like["calls"],
-        serde_json::json!([{ "url": "/wp-json/first/v1/actions/like", "method": "POST", "nonce": "n0nce", "body": { "postId": 42 } }])
+        serde_json::json!([{ "url": "/__first/api/v1/actions/like", "method": "POST", "nonce": "n0nce", "body": { "postId": 42 } }])
     );
     let effects = drive("clients/Effects", "effects.mjs");
     assert_eq!(

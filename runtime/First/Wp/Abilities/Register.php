@@ -30,6 +30,10 @@ final class Register
     private static ?string $untyped = null;
     /** The REST run endpoint's JSON `input`, decoded with `{}` kept: [ability name, input]. */
     private static ?array $raw = null;
+    /** @var array<string, string> the run request's headers an operation reads (Idempotency-Key, First-Signature) */
+    private static array $headers = [];
+    /** @var array<string, string> headers the operation answered with, for the run response */
+    private static array $responded = [];
 
     public static function categories(): void
     {
@@ -117,6 +121,13 @@ final class Register
             if ($on) {
                 self::$method = self::$sanitizing;
                 self::$untyped = null;
+                self::$responded = [];
+                self::$headers = [];
+                if ($request instanceof \WP_REST_Request) {
+                    foreach ($request->get_headers() as $name => $values) {
+                        self::$headers[str_replace('_', '-', strtolower((string) $name))] = implode(', ', (array) $values);
+                    }
+                }
                 // The run body's own input, or (for the facade's GET/DELETE runs) what withSentInput set.
                 self::$raw = ($request instanceof \WP_REST_Request ? self::rawInput($request) : null) ?? self::$raw;
             }
@@ -170,14 +181,46 @@ final class Register
         return self::$raw !== null && self::$raw[0] === $name ? self::$raw[1] : $input;
     }
 
-    /** rest_post_dispatch: the request that carried the input is over. */
+    /** rest_post_dispatch: the request that carried the input is over; its operation's headers go out with it. */
     public static function dispatched(mixed $response): mixed
     {
         self::$method = null;
         self::$untyped = null;
         self::$raw = null;
+        self::$headers = [];
+        if ($response instanceof \WP_REST_Response) {
+            foreach (self::$responded as $name => $value) {
+                $response->header($name, $value);
+            }
+        }
+        self::$responded = [];
 
         return $response;
+    }
+
+    /** rest_request_after_callbacks: the operation's own headers (`Idempotent-Replayed`) on its response. */
+    public static function answered(mixed $response): mixed
+    {
+        if ($response instanceof \WP_REST_Response) {
+            foreach (self::$responded as $name => $value) {
+                $response->header($name, $value);
+            }
+        }
+        self::$responded = [];
+
+        return $response;
+    }
+
+    /** @return array<string, string> the run request's headers, lower-cased */
+    public static function headers(): array
+    {
+        return self::$headers;
+    }
+
+    /** The operation's own response headers (`Idempotent-Replayed`), for the run response. */
+    public static function responded(array $headers): void
+    {
+        self::$responded = array_filter($headers, static fn ($v, $k): bool => is_string($v) && strcasecmp((string) $k, 'Content-Type') !== 0, ARRAY_FILTER_USE_BOTH);
     }
 
     /** Whether the executing ability's input arrived as a query string (core's GET/DELETE run). */

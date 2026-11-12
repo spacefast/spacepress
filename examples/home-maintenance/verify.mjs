@@ -14,7 +14,7 @@ catch { otherId = wp("user", "create", "maintenance-neighbor", "neighbor@example
 const secondary = "Basic " + Buffer.from("maintenance-neighbor:" + password("maintenance-neighbor")).toString("base64");
 
 async function request(path, { method = "GET", body, auth = primary, status = 200, headers = {} } = {}) {
-  const response = await fetch(site + "/wp-json/first/v1/" + path, {
+  const response = await fetch(site + "/__first/api/v1/" + path, {
     method, headers: { ...(auth ? { authorization: auth } : {}), ...(body ? { "content-type": "application/json" } : {}), ...headers },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -68,7 +68,7 @@ await create("tasks", { systemId: system.id, title: "Check smoke alarm", everyDa
 async function upload(path, bytes, type, name) {
   const form = new FormData();
   form.set("file", new Blob([bytes], { type }), name);
-  const response = await fetch(site + "/wp-json/first/v1/" + path, { method: "POST", headers: { authorization: primary }, body: form });
+  const response = await fetch(site + "/__first/api/v1/" + path, { method: "POST", headers: { authorization: primary }, body: form });
   const value = await response.json();
   if (path === "files/manuals" && response.status === 503 && value.code === "files_unavailable") {
     console.log(JSON.stringify({ method: "POST", path, status: response.status, response: value }));
@@ -81,7 +81,7 @@ async function upload(path, bytes, type, name) {
 const manual = await upload("files/manuals", "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF", "application/pdf", "heat-pump-manual.pdf");
 if (manual) {
   await request("systems/" + system.id, { method: "PATCH", body: { manual: manual.id } });
-  const manualResponse = await fetch(site + "/wp-json/first/v1/files/manuals/" + manual.id, { headers: { authorization: primary } });
+  const manualResponse = await fetch(site + "/__first/api/v1/files/manuals/" + manual.id, { headers: { authorization: primary } });
   assert.equal(manualResponse.status, 200);
   const readable = (await manualResponse.json()).data;
   assert.equal((await fetch(readable.url)).status, 200);

@@ -217,7 +217,7 @@ eq('replay survives a fresh WordPress/PHP process', [proc_close($child), json_de
 
 $wp->startServer();
 $page = file_get_contents($wp->url() . '/?app-services=1');
-check('the runnable example is served by real WordPress', is_string($page) && str_contains($page, '<form id="contact">') && str_contains($page, '/first/v1/services'));
+check('the runnable example is served by real WordPress', is_string($page) && str_contains($page, '<form id="contact">') && str_contains($page, '/__first/api/v1/services'));
 $http = file_get_contents($wp->url() . '/?rest_route=/first/v1/services/search&collection=posts&q=workshop');
 eq('the real HTTP REST transport serves search results', json_decode($http, true)['data']['results'] ?? null, []);
 $context = stream_context_create(['http' => ['method' => 'POST', 'header' => "Content-Type: application/json\r\nIdempotency-Key: contact-1\r\n", 'content' => json_encode($submission)]]);

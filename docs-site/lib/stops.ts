@@ -85,7 +85,7 @@ export const tours: Tour[] = [
         slug: "an-action",
         title: "An action is an endpoint",
         prose: [
-          "An action takes typed input and returns whatever its handler returns. It is served at `/wp-json/first/v1/actions/consume`, its input is validated against the declared columns, and `access` decides who may call it.",
+          "An action takes typed input and returns whatever its handler returns. It is served at `/__first/api/v1/actions/consume`, its input is validated against the declared columns, and `access` decides who may call it.",
           "The typed client gets an `Actions` entry for it, so `first.actions.consume({ itemId })` is checked in your editor.",
         ],
         config: { file: "first.config.ts", lines: { from: "consume: action({", to: "    })," } },

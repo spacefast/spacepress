@@ -104,6 +104,8 @@ wp_add_inline_script( 'wp-api-fetch', 'window.firstAdmin = ' . wp_json_encode( a
     'readable' => first_admin_navigation(),
     'role' => \First\Wp\CoreAccess::viewer()->user['role'] ?? 'subscriber',
     'mount' => first_admin_url(),
+    // First's API (/__first/api/v1): the admin's own reads and writes go through it, as every client's do.
+    'api' => \First\Wp\Facade::url(),
 ), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ) . ';', 'after' );
 
 // Preload endpoints used by `getEntityRecord` (entity configs) and by the root route loader.

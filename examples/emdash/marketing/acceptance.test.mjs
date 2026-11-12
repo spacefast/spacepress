@@ -202,7 +202,7 @@ test(
     const client = await setup(project);
     const { base, api, request } = client;
     console.log(`Native Studio marketing: ${base}; evidence ${evidence}`);
-    const schema = await api("/_schema");
+    const schema = await api("");
     assert.equal(schema.runtime.wp.database.kind, "sqlite");
     const home = client.pages.find((page) => page.slug === "home");
     const pricing = client.pages.find((page) => page.slug === "pricing");

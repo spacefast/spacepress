@@ -23,6 +23,80 @@ Two censuses measure the converter. The production census below is the
 measure of record. The corpus census further down grades the converter on
 known source.
 
+### Production census (2026-11-12)
+
+Same bar, formula and tooling as the 2026-11-07 census below, rerun on a fresh export. The
+population is the version on each non-deleted 0.8 Space's `live` channel that carries a finalize
+payload, read from a read replica on 2026-11-12: 885 versions. The `--users` run leaves out one
+version whose converted candidate takes the v2 compiler more than ten minutes to check (884). The
+binary is `origin/main` at `ed83a588`.
+
+```sh
+node scripts/census-08/census.mjs --data <export> --zero main=target/debug/first --json summary.json
+node scripts/census-08/census.mjs --data <export> --users --zero main=target/debug/first --json summary-users.json
+```
+
+| | Without `--users` (885) | With `--users` (884) |
+| --- | ---: | ---: |
+| Accepted | 0 | 0 |
+| Refused | 570 (64.4%) | 462 (52.3%) |
+| Not recoverable | 315 (35.6%) | 422 (47.7%) |
+
+Accepted stays 0 because no live version has recoverable source. The census counts a Space as
+accepted only when its original source is supplied and matches the recorded hashes.
+
+Refusal reasons with at least 10 Spaces (Spaces with at least one error for the reason):
+
+| Reason | Without `--users` | With `--users` |
+| --- | ---: | ---: |
+| ctx.auth.userId without Space Users | 251 | — |
+| ctx.auth: profile fields or methods | 99 | 70 |
+| ctx.auth: whole object passed on | 70 | 90 |
+| ctx.db: database handle use | 82 | 89 |
+| ctx passed on or read dynamically | 73 | 75 |
+| endpoint: request API (url, bytes, headers.entries) | 48 | 51 |
+| db: paginate, filter or other operation | 48 | 48 |
+| endpoint: writing GET | 43 | 43 |
+| ctx.env | 28 | 38 |
+| client: 0.8 sign-in | 26 | 26 |
+| pages: Markdown or HTML document | 24 | 24 |
+| endpoint: path owned by WordPress or First | 19 | 19 |
+| ImageResponse (JSX on the server) | 19 | 19 |
+| client: kit components | 17 | 17 |
+| endpoint: name shared with a handler | 17 | 17 |
+| db: spread arguments | 16 | 18 |
+| db: write outside a mutation | 15 | 15 |
+| ctx.spam | 13 | 16 |
+| handler or table name | 12 | 12 |
+| language: other construct | 12 | 12 |
+| db: handle escapes a handler | 11 | 13 |
+| ctx.connectors | 10 | 10 |
+
+Not recoverable, by what is missing (without / with `--users`): page body 218 / 301, bundle shape
+135 / 160, client app body 53 / 70, erased parameter types 25 / 28, stored payload only 3 / 3.
+
+**After the migration-gap changes.** The same export, with one binary built from `origin/main`
+`55cc00b4` plus the converter changes that have since merged (writing GET endpoints that never
+read the visitor, #274; `sf.jsonc` crons at a converted GET path, #278; profile fields under Space
+Users, #275; `ctx.gravatar`, #279) and this page's per-service refusal reasons. Counts are Spaces whose report carries each converter code
+(`scripts/census-08/census.mjs` `codes`):
+
+| | Without `--users`, before → after | With `--users`, before → after |
+| --- | ---: | ---: |
+| Accepted | 0 → 0 | 0 → 0 |
+| Refused | 570 → 558 | 462 → 436 |
+| Not recoverable | 315 → 327 | 422 → 448 |
+| `Z08_ENDPOINT_WRITING_GET` | 43 → 0 | 43 → 0 |
+| `Z08_CTX_AUTH_PROFILE` | 99 → 99 | 70 → 5 |
+| `Z08_CTX_AUTH_USERS` | 251 → 251 | — |
+| `Z08_PAGE_INTERACTIVE` | 556 → 556 | 556 → 556 |
+| `Z08_CTX_SERVICE` | 126 → 126 | 78 → 78 |
+
+A Space that loses its last refusal moves to *not recoverable*, not to accepted: what is left
+needs its original source. A few codes rise (`Z08_CTX_DB`, `Z08_CTX_DYNAMIC`, `Z08_V2_COMPILE`,
+`Z08_ENDPOINT_REQUEST_API`): with an earlier refusal gone, the converter reaches code it used to
+stop before.
+
 ### Production census (2026-11-07)
 
 **The bar.** v2 can replace 0.8 on Spacefast when `first migrate app --from
@@ -413,7 +487,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `withIndex(...).order().collect/take/first/count` | `db.query.<t>.findMany` with the same order; `eq: null` matches `IS NULL` | Auto, **WP** | — |
 | `withIndex(...).paginate({ numItems, cursor })` | A keyset helper per call site: same order, `numItems` clamp 1–1000, `{ page, isDone, continueCursor }`; the cursor carries its call site and filter values | Auto, **WP** | Clients restart from page one after cutover (old cursors are refused); optional index fields |
 | Range on an optional field, `.where()`, `.orderBy()`, `.limit()`, `.offset()` | `db.query` filters exist; not mapped | Refused | Port the query |
-| `query()`, `mutation()`, `action()` | `action()` at `POST /wp-json/first/v1/actions/<name>` with named inputs | Auto, **WP** | Update callers to the v2 client |
+| `query()`, `mutation()`, `action()` | `action()` at `POST /__first/api/v1/actions/<name>` with named inputs | Auto, **WP** | Update callers to the v2 client |
 | `type PaginationOptions`, `Id<T>` | Structural types in the candidate | Auto | — |
 | `collections`, native `posts`, `content/posts/` | Collections and a post-backed `posts` collection; data copied with IDs | Auto, **WP** | Native `pages` and `media` collections; rich blocks; multiple references |
 | `sync` declarations | `first sync` (local) | Dropped with review | Hosted edits do not rebuild a frontend |
@@ -445,7 +519,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `ctx.invalidate(...)` | Committed writes announce themselves | Owned by the realtime PR (#128) | — |
 | `ctx.email.send` | `mail.send` from `"zero"` (#133), queued with the write, sent after commit | Auto once #133 lands | Spacefast engine connects `first_mail_transport` to the Space sender (#5063) |
 | `ctx.spam.check/reportSpam/reportHam` | **missing** | Refused | **Gap** |
-| `ctx.gravatar` | **missing** | Refused | **Gap** (small: an HTTP GET with the email hash) |
+| `ctx.gravatar` | `avatarUrl` is the same URL (SHA-256 of the trimmed, lower-cased address, same options); `profile` fetches Gravatar's public profile with `fetch` and projects it as 0.8 did | Auto | Bad `avatarUrl` options answer 422 `service_payload_invalid` with the 0.8 message |
 | `ctx.crypto.sha256/hmacSha256/timingSafeEqual` | `createHash`/`createHmac`/`timingSafeEqual` from `"node:crypto"`, byte for byte 0.8's output on the 452 recorded vectors; a named key reads `process.env` trimmed | Auto | — |
 | `ctx.jwt.sign` | **missing** | Refused | **Gap** |
 | `ctx.storage.list/get/delete` | [files](config-api.md#files) buckets | Refused | Port to file buckets |
@@ -496,7 +570,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 
 | 0.8 route | v2 equivalent | Notes |
 | --- | --- | --- |
-| `/__zero/run` | `/wp-json/first/v1/actions/<name>` | Clients change; a converted client app calls it through `public/first/client.js` |
+| `/__zero/run` | `/__first/api/v1/actions/<name>` | Clients change; a converted client app calls it through `public/first/client.js` |
 | `/__zero/config` | `/__spacefast/client.js` | Clients change; the converted client app's bridge needs no config |
 | `/__zero/auth/start`, `/sign-out` | `/wp-json/first-identity/v1/*` | Identity plugin |
 | `/__zero/realtime/*` | #128 transport | |

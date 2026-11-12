@@ -21,12 +21,12 @@ before(async () => {
 
 test("lists are First rows with { data, cursor }, the same rows First's pipeline returns", async () => {
   const where = { id: { in: eventIds } };
-  const first = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "2" }));
-  assert.equal(first.status, 200, JSON.stringify(first.json));
+  const page1 = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "2" }));
+  assert.equal(page1.status, 200, JSON.stringify(page1.json));
   const firstRows = first("find", "events", JSON.stringify({ where, orderBy: { seats: "desc" } }));
-  assert.deepEqual(first.json.data.map(strip), firstRows.slice(0, 2).map(strip));
-  assert.equal(typeof first.json.cursor, "string");
-  const second = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "2", cursor: first.json.cursor }));
+  assert.deepEqual(page1.json.data.map(strip), firstRows.slice(0, 2).map(strip));
+  assert.equal(typeof page1.json.cursor, "string");
+  const second = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "2", cursor: page1.json.cursor }));
   assert.deepEqual([second.json.data.map((e: any) => e.title), second.json.cursor], [[`Fa ${run}`], null]);
   assert.deepEqual(second.json.data[0].extra, { a: {} }, "a json() value keeps {}");
   const skipped = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "1", offset: "2" }));

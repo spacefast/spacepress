@@ -123,10 +123,16 @@ fn app_router_serves_pages_on_wordpress() {
     assert_eq!(seen["api"], serde_json::json!([200, "[\"Hello\"]"]));
     assert_eq!(seen["api method"], 405);
     assert_eq!(seen["page POST"], serde_json::json!([303, "/notes/hello?sent=1"]));
-    assert_eq!(seen["page POST anonymous"], 401, "a page's handlers follow its `access`");
+    assert_eq!(
+        seen["page POST anonymous"], 401,
+        "a page's handlers follow its `access`"
+    );
     // A signed webhook route: refused without a valid HMAC, run as the system with one (it reads
     // the draft too).
-    assert_eq!((&seen["webhook unsigned"], &seen["webhook bad"]), (&serde_json::json!(401), &serde_json::json!(401)));
+    assert_eq!(
+        (&seen["webhook unsigned"], &seen["webhook bad"]),
+        (&serde_json::json!(401), &serde_json::json!(401))
+    );
     // The system's read sees the draft too: 2 notes, where an anonymous visitor's sees 1.
     assert_eq!(seen["webhook"], serde_json::json!([202, "ping:2"]));
     assert_eq!(seen["HEAD"], serde_json::json!([200, ""]));
@@ -323,10 +329,34 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "first/app/api/route.ts",
-            "export async function GET() { return { status: \"ok\" }; }\n",
+            "export const access = \"anyone\";\nexport async function GET() { return { status: \"ok\" }; }\n",
         )],
         "GET in app/api/route.ts returns",
         "first/app/api/route.ts",
+    );
+    rejects(
+        &dir,
+        &[("first/app/api/route.ts", "export async function GET() { return {}; }\n")],
+        "app/api/route.ts has HTTP handlers but no `access`",
+        "first/app/api/route.ts",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/api/route.ts",
+            "import { env } from \"first\";\nexport const access = \"anyone\";\nexport const signature = { secret: env(\"S\"), header: \"x-sig\", scheme: \"hmac-sha256\" };\nexport async function POST() { return {}; }\n",
+        )],
+        "exports both `access` and `signature`",
+        "first/app/api/route.ts",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/page.tsx",
+            "export const access = \"anyone\";\nexport default function P() { return <p/>; }\n",
+        )],
+        "exports `access` or `signature` but no HTTP handler",
+        "first/app/page.tsx",
     );
     rejects(
         &dir,

@@ -192,8 +192,11 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
                         crate::schema::Access::Fn(String::new())
                     }
                     other => {
-                        return Err(Diag::new(span, format!("`access` is {}, not a role or a function", other.describe()))
-                            .help("use \"anyone\", \"authenticated\", a role, or `({ user }) => boolean`"));
+                        return Err(Diag::new(
+                            span,
+                            format!("`access` is {}, not a role or a function", other.describe()),
+                        )
+                        .help("use \"anyone\", \"authenticated\", a role, or `({ user }) => boolean`"));
                     }
                 });
             }

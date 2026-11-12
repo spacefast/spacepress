@@ -218,6 +218,9 @@ pub enum Builtin {
     Static(&'static str, Rc<str>),
     /// `require` in the CommonJS module with this id; it only runs while the config is built.
     Require(usize),
+    // "first/app": page helpers, compiled by the app router; never run while the config builds.
+    /// `notFound()`, `redirect(url, status?)`, `<Content>`, `<Html>`, `<Link>`: by export name.
+    App(&'static str),
 }
 
 #[derive(Debug, Clone)]

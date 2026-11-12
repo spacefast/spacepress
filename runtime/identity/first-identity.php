@@ -21,6 +21,7 @@ spl_autoload_register(static function (string $class): void {
 });
 register_activation_hook(__FILE__, static function (): void {
     global $wpdb;
+    \First\Identity\Legacy\ZeroNames::upgrade(new \First\Identity\DB($wpdb));
     \First\Identity\Schema::migrate(new \First\Identity\DB($wpdb));
     \First\Identity\Keys::current();
     if (!wp_next_scheduled("first_identity_maintenance")) {

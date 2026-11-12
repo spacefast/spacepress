@@ -110,7 +110,7 @@ Upload through First's authenticated file endpoint, then paste that ID into
 ```sh
 curl --fail-with-body --user "$FIRST_APP_PASSWORD" \
   -F 'file=@heat-pump-manual.pdf;type=application/pdf' \
-  http://localhost:8896/wp-json/first/v1/files/manuals
+  http://localhost:8896/__first/api/v1/files/manuals
 ```
 
 The host must block direct access to `/wp-content/uploads/first-private/`.
@@ -149,7 +149,7 @@ For a direct action call, set `FIRST_APP_PASSWORD` in your shell to
 curl --fail-with-body --user "$FIRST_APP_PASSWORD" \
   -H 'Content-Type: application/json' \
   --data '{"days":30}' \
-  http://localhost:8896/wp-json/first/v1/actions/dueNext
+  http://localhost:8896/__first/api/v1/actions/dueNext
 ```
 
 ## Customize it

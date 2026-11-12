@@ -34,7 +34,9 @@ final class PostsController extends \WP_REST_Posts_Controller
             'where' => ['description' => 'A First filter, as JSON: `{"seats":{"gte":10}}`.', 'type' => 'string'],
             'orderBy' => ['description' => 'First fields to sort by, comma-separated; `-field` sorts descending.', 'type' => 'string'],
             'with' => ['description' => 'Relations to attach under `with`: `author,comments` or a JSON object.', 'type' => 'string'],
-        ];
+        ] + ((Plugin::instance()?->schema->collection($this->collection)['localized'] ?? false)
+            ? ['locale' => ['description' => 'A First locale, or `*`: that locale\'s rows, else each translation group\'s fallback.', 'type' => 'string']]
+            : []);
     }
 
     public function get_items_permissions_check($request)
@@ -70,7 +72,9 @@ final class PostsController extends \WP_REST_Posts_Controller
         $ordered = $query !== null && $request['orderBy'] !== null;
         // Rows First's query selected already passed its read rule and draft visibility: core's own
         // status filter (published only, for most viewers) must not drop them again.
-        $statuses = $query !== null && !$request->has_param('status') ? ['post_status' => ['publish', 'future', 'draft', 'pending', 'private']] : [];
+        // Only a `status` the caller sent counts: core's own default (`publish`) is not a request.
+        $sent = $request->get_query_params() + $request->get_body_params();
+        $statuses = $query !== null && !isset($sent['status']) ? ['post_status' => ['publish', 'future', 'draft', 'pending', 'private']] : [];
         $limit = static function (array $args) use ($keys, $ordered, $statuses, $searched): array {
             $in = !empty($args['post__in']) ? array_values(array_intersect($keys, array_map('intval', (array) $args['post__in']))) : $keys;
             $args = $searched ? FirstQuery::coreArgs($args) : $args;
@@ -161,6 +165,12 @@ final class PostsController extends \WP_REST_Posts_Controller
         return CoreAccess::strip($response, $this->collection, $stored, CoreAccess::viewer());
     }
 
+    /** The API's writes are First's pipeline's to decide (firstWrite): its create rule, as the viewer. */
+    public function create_item_permissions_check($request)
+    {
+        return Facade::dispatching() ? true : parent::create_item_permissions_check($request);
+    }
+
     /**
      * An update rule that is a function may refuse without data and allow this request's data: core's
      * `edit_post` (which also guards revisions and wp-admin) stays the strict answer, and only this
@@ -169,6 +179,9 @@ final class PostsController extends \WP_REST_Posts_Controller
      */
     public function update_item_permissions_check($request)
     {
+        if (Facade::dispatching()) {
+            return true; // firstWrite: First's update rule and field rules, as the viewer
+        }
         $allowed = parent::update_item_permissions_check($request);
         if (!is_wp_error($allowed) || $allowed->get_error_code() !== 'rest_cannot_edit') {
             return $allowed;
@@ -185,7 +198,85 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function create_item($request)
     {
+        // A localized post kind's translation (its language and group are First's write); the schema
+        // says so without a running app, which a core create may come before.
+        $localized = (bool) (Plugin::instance()?->schema->collection($this->collection)['localized'] ?? false);
+        if (Facade::dispatching() || ($localized && ($request->has_param('locale') || $request->has_param('translationOf')))) {
+            return $this->firstWrite($request, null);
+        }
+
         return EditorSave::rest($this->collection, null, $request, fn () => $this->save($request, fn () => parent::create_item($request)));
+    }
+
+    /**
+     * A write through First's own pipeline (Db::insert / Db::update as the viewer, in one transaction):
+     * before hooks, defaults, draft rules, validation, field and row rules, after hooks, jobs. Used for
+     * the API's writes (spec §3a: core routes enforce First's rules; the facade only maps) and for a
+     * create that names a `locale` or `translationOf` (Polylang group membership is First's write).
+     * The answer is core's item shape, as the users route answers its creates ({@see UserMeta}).
+     */
+    private function firstWrite(\WP_REST_Request $request, ?int $id): mixed
+    {
+        $plugin = Plugin::instance() ?? throw new \LogicException('No First app');
+        $spec = $plugin->schema->collection($this->collection);
+        $data = [];
+        foreach (['title' => $spec['title'] ?? null, 'content' => $spec['content'] ?? null, 'slug' => $spec['slug'] ?? null] as $param => $col) {
+            if ($col !== null && $request->has_param($param)) {
+                $v = $request->get_param($param);
+                $data[$col] = is_array($v) ? ($v['raw'] ?? null) : $v;
+            }
+        }
+        $sent = $request->get_json_params() ?? $request->get_body_params();
+        if (is_string($status = $sent['status'] ?? null)) {
+            $data['status'] = ['publish' => 'published', 'future' => 'scheduled'][$status] ?? $status;
+        }
+        if (array_key_exists('date_gmt', (array) $sent)) {
+            $date = $sent['date_gmt'];
+            $data['publishedAt'] = is_string($date) && $date !== '' ? substr($date, 0, 19) . '.000Z' : null;
+        }
+        $meta = PostMeta::input($request);
+        if (is_array($meta)) {
+            $data += array_intersect_key($meta, PostMeta::fields($spec));
+        }
+        // The API's other fields as sent (`uid`, or a field the kind doesn't have): First decides them.
+        $body = (string) $request->get_body();
+        try {
+            $decoded = trim($body) === '' ? null : \First\Seam::container(\First\Js::decodeJson($body));
+        } catch (\JsonException) {
+            $decoded = null;
+        }
+        $extra = is_array($decoded) ? \First\Seam::container($decoded['first'] ?? null) : null;
+        $data += is_array($extra) ? $extra : [];
+        foreach (['locale', 'translationOf'] as $param) {
+            if (array_key_exists($param, (array) $sent)) {
+                $data[$param] = $sent[$param];
+            }
+        }
+        try {
+            $viewer = CoreAccess::viewer() ?? throw new \First\HttpError(403, 'suspended', 'This account is suspended');
+            $db = $plugin->db();
+            $pk = $spec['primaryKey'];
+            $row = $db->transaction(function () use ($db, $viewer, $data, $id, $pk) {
+                $previous = $db->actor();
+                $db->setActor($viewer->user);
+                try {
+                    return $id === null
+                        ? $db->insert($this->collection, $data, true, $viewer)[0]
+                        : ($db->update($this->collection, $data, [$pk => $id], true, $viewer)[0] ?? throw \First\HttpError::notFound("No {$this->collection} row with $pk $id"));
+                } finally {
+                    $db->setActor($previous);
+                }
+            });
+        } catch (\First\HttpError | \First\JsError $e) {
+            $problem = \First\App::problem($e);
+
+            return CoreAccess::error(new \First\HttpError($problem['status'], $problem['code'], $problem['detail'], $problem['pointer'] ?? null));
+        }
+        clean_post_cache((int) $row[$pk]);
+        $response = rest_ensure_response($this->prepare_item_for_response(get_post((int) $row[$pk]), $request));
+        $response->set_status($id === null ? 201 : 200);
+
+        return $response;
     }
 
     /** A hook refusing the delete is the editor's 4xx with its message (§1.7), and nothing is deleted. */
@@ -206,6 +297,14 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function update_item($request)
     {
+        if (Facade::dispatching()) {
+            $post = $this->get_post($request['id']);
+            if (!$post instanceof \WP_Post) {
+                return $post;
+            }
+
+            return $this->firstWrite($request, $post->ID);
+        }
         $post = $this->get_post($request['id']);
         $postId = $post instanceof \WP_Post ? $post->ID : null;
 

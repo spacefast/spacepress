@@ -407,7 +407,7 @@ test("a size the original now fits drops its old rendition (metadata and file)",
 });
 
 test("without Jetpack the Image CDN adapter is inert", async () => {
-  const schema = await ok("GET", "/_schema");
+  const schema = await ok("GET", "");
   assert.equal(schema.runtime.wp.imageCdn, false);
 });
 
@@ -453,7 +453,7 @@ test("activation writes the deny rules and reports a passing probe", async () =>
   assert.equal(wp("option", "get", "first_runtime_private_ok"), "1");
   assert.match(wp("eval", "echo file_get_contents(\\First\\Wp\\WpFiles::root() . '/.htaccess');"), /Require all denied/);
   assert.equal(wp("option", "get", "first_runtime_secret").length, 64);
-  assert.equal((await ok("GET", "/_schema")).runtime.privateFiles.protected, true);
+  assert.equal((await ok("GET", "")).runtime.privateFiles.protected, true);
 });
 
 test("a site already on runtime tables 0.2 gains the files table and working protection on its next admin_init", async () => {
@@ -618,7 +618,7 @@ test("without .htaccess the probe fails and uploads answer 503 until protection 
     assert.equal(r.status, 503, JSON.stringify(r.json));
     assert.equal(r.json.code, "files_unavailable");
     assert.match(r.json.detail, /deny \/wp-content\/uploads\/first-private\/ in your web server config/);
-    assert.equal((await ok("GET", "/_schema")).runtime.privateFiles.protected, false);
+    assert.equal((await ok("GET", "")).runtime.privateFiles.protected, false);
   } finally {
     wp("eval", "\\First\\Wp\\WpFiles::protect();");
   }
@@ -664,7 +664,7 @@ test("without .htaccess the probe fails and uploads answer 503 until protection 
     const manifest: Record<string, { key: string }> = JSON.parse(wp("eval", `echo wp_json_encode(\\First\\Wp\\Uploads::manifest(${image.id}));`));
     assert.ok(Object.values(manifest).length >= 3);
     assert.ok(Object.values(manifest).every((entry) => /\/media\/[a-f0-9]{48}$/.test(entry.key)));
-    const inspect = await ok("GET", "/_schema");
+    const inspect = await ok("GET", "");
     const publicJson = JSON.stringify(inspect);
     assert.equal(publicJson.includes("FIRST_TEST_UPLOAD_SECRET"), false);
     assert.equal(publicJson.includes("1111111111111111111111111111111111111111111111111111111111111111"), false);
@@ -680,7 +680,7 @@ test("without .htaccess the probe fails and uploads answer 503 until protection 
     // Poll an actual HTTP signal while the fresh image installs core/config.
     const deadline = Date.now() + 60_000;
     while (true) {
-      try { if ((await fetch(`${replicaUrl}/wp-json/first/v1/_schema`)).status === 200) break; } catch {}
+      try { if ((await fetch(`${replicaUrl}/__first/api/v1`)).status === 200) break; } catch {}
       assert.ok(Date.now() < deadline, "fresh replica reached the First route");
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
@@ -688,7 +688,7 @@ test("without .htaccess the probe fails and uploads answer 503 until protection 
     wp("option", "update", "home", replicaUrl);
     wp("option", "update", "siteurl", replicaUrl);
     compose("stop", "wordpress");
-    const replica = createClient({ url: `${replicaUrl}/wp-json/first/v1`, headers: auth("editor") });
+    const replica = createClient({ url: `${replicaUrl}/__first/api/v1`, headers: auth("editor") });
     const fresh = await replica.files.decks.get(file.id);
     assert.deepEqual(Buffer.from(await (await fetch(fresh.url)).arrayBuffer()), bytes);
     const freshImage = await replica.media.get(image.id);

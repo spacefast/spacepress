@@ -83,6 +83,10 @@ export type ListQuery<K extends CollectionKey, W = Collections[K]["with"]> = {
 
 export interface CollectionClient<K extends CollectionKey> {
   list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
+  /** One page and the `cursor` of the next (null on the last page): pass it back as `cursor`. */
+  paginate<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
+    q?: ListQuery<K, ExactWith<K, W>> & { cursor?: string | null },
+  ): Promise<{ rows: RowWith<K, W>[]; cursor: string | null }>;
   /** With `locale`, the row of `id`'s translation group in that locale (or its fallback). */
   get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Promise<RowWith<K, W>>;
   create(data: Collections[K]["insert"]): Promise<Row<K>>;
@@ -178,7 +182,7 @@ export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
   readonly actions: ActionsClient;
   readonly globals: GlobalsClient;
   readonly auth: AuthClient;
-  /** `GET /_schema`: the app's public schema description. */
+  /** `GET /__first/api/v1`: the app's schema (kinds, fields, globals, actions), as `first pull` reads it. */
   schema(): Promise<unknown>;
 };
 
@@ -232,7 +236,7 @@ export function registerRealtimeTransport(transport: RealtimeTransport): void {
 }
 
 export interface ClientOptions {
-  /** Base URL including the REST prefix: "https://x.test/wp-json/first/v1". Default: `/wp-json/first/v1` on the page's origin. */
+  /** Base URL including the API prefix: "https://x.test/__first/api/v1". Default: `/__first/api/v1` on the page's origin. */
   url?: string;
   /** WordPress cookie auth: the REST nonce; sent as `X-WP-Nonce` with `credentials: "same-origin"`. */
   nonce?: string;
@@ -378,6 +382,8 @@ interface Send {
   form?: FormData;
   /** Token and guest endpoints: no held Bearer, no refresh or guest retry. */
   anonymous?: boolean;
+  /** Return the whole `{ data, cursor }` envelope of a list instead of `data`. */
+  envelope?: boolean;
 }
 
 /** What `auth.session()` exposes, plus what refresh and sign-out need. Stored as JSON under `first.auth:<base>`. */
@@ -437,7 +443,7 @@ function authError(status: number, code: string, detail: string): FirstError {
 const refreshes = new Map<string, Promise<boolean>>();
 
 export function createClient(options: ClientOptions = {}): Client {
-  const base = (options.url ?? "/wp-json/first/v1").replace(/\/+$/, "");
+  const base = (options.url ?? "/__first/api/v1").replace(/\/+$/, "");
   const authOpts = options.auth ?? {};
   const doFetch = (input: string, init: RequestInit) => (options.fetch ?? globalThis.fetch)(input, init);
 
@@ -523,7 +529,7 @@ export function createClient(options: ClientOptions = {}): Client {
     const { res, parsed } = await call(base + path + (qs ? `?${qs}` : ""), init, `${method} ${path}`);
     if (res.ok) {
       if (!isObject(parsed) || !("data" in parsed)) throw networkError(`${method} ${path}: response has no data`);
-      return parsed.data as T;
+      return (send.envelope ? { rows: parsed.data, cursor: parsed.cursor ?? null } : parsed.data) as T;
     }
     const error = toError(res, parsed);
     if (error.status === 401 && error.code === "unauthenticated" && !send.anonymous && !retried) {
@@ -844,8 +850,14 @@ export function createClient(options: ClientOptions = {}): Client {
     const path = `/${seg(desc.path)}`;
     const one = (id: string | number) => `${path}/${seg(id)}`;
     const list = (q?: Json) => request("GET", path, { query: listParams(q) });
+    const paginate = (q?: Json) => {
+      const query = listParams(q);
+      if (typeof q?.cursor === "string") query.set("cursor", q.cursor);
+      return request("GET", path, { query, envelope: true });
+    };
     return {
       list,
+      paginate,
       watch: (q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: FirstError) => void) =>
         watchWith(realtime, dependencies(key, q?.with), () => list(q), onRows, onError),
       get: (id: string | number, q?: Json) => request("GET", one(id), { query: listParams(q ? { with: q.with, locale: q.locale } : undefined) }),
@@ -895,13 +907,13 @@ export function createClient(options: ClientOptions = {}): Client {
       SCHEMA.globals.map((name: string) => [
         name,
         {
-          get: () => request("GET", `/globals/${seg(name)}`),
-          update: (patch: unknown) => request("PATCH", `/globals/${seg(name)}`, { json: patch }),
+          get: () => request("GET", `/${seg(name)}`),
+          update: (patch: unknown) => request("PATCH", `/${seg(name)}`, { json: patch }),
         },
       ]),
     ),
     auth,
-    schema: () => request("GET", "/_schema"),
+    schema: () => request("GET", ""),
   };
   for (const key of Object.keys(SCHEMA.collections)) client[key] = collection(key as CollectionKey);
   hubs.set(client, realtime);

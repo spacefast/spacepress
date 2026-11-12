@@ -15,6 +15,7 @@ import {
 	type Columns,
 } from './model';
 import {
+	api,
 	bootstrap,
 	collectionSpec,
 	list,
@@ -413,7 +414,7 @@ export function Globals() {
 				Object.entries(s.globals).map(async ([name, g]) => {
 					try {
 						await apiFetch({
-							path: `/first/v1/globals/${encodeURIComponent(name)}`,
+							...api(`/${encodeURIComponent(name)}`),
 						});
 						return { name, label: g.label };
 					} catch (e: unknown) {
@@ -456,7 +457,7 @@ export function GlobalDocument() {
 			row: object(
 				unwrap(
 					await apiFetch({
-						path: `/first/v1/globals/${encodeURIComponent(name)}`,
+						...api(`/${encodeURIComponent(name)}`),
 					})
 				)
 			),
@@ -481,7 +482,7 @@ export function GlobalDocument() {
 					object(
 						unwrap(
 							await apiFetch({
-								path: `/first/v1/globals/${encodeURIComponent(name)}`,
+								...api(`/${encodeURIComponent(name)}`),
 								method: 'PATCH',
 								data: changes,
 							})

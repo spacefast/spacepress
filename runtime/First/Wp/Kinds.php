@@ -110,15 +110,18 @@ final class Kinds
         if (!is_array($item)) {
             return $item;
         }
-        $with = is_array($item['with'] ?? null) ? $item['with'] : [];
+        // Relations attached by FirstQuery::attach, an object so that `{}` stays one on core's wire.
+        $with = $item['with'] ?? [];
+        $with = is_object($with) ? get_object_vars($with) : (is_array($with) ? $with : []);
         return match ($kind['type']) {
             'table' => (static function () use ($item, $with): array {
                 unset($item['_links'], $item['with']);
 
-                return $item + $with;
+                return array_replace($item, $with);
             })(),
             // First's row for this viewer, or null: core may list a user First's read rule hides.
-            'users', 'post' => ($first = $item[self::ROW] ?? null) === null ? null : (is_object($first) ? get_object_vars($first) : (array) $first) + $with,
+            // `with` wins: a media column loaded with `with` replaces its id with the media row.
+            'users', 'post' => ($first = $item[self::ROW] ?? null) === null ? null : array_replace(is_object($first) ? get_object_vars($first) : (array) $first, $with),
             'wp-post' => self::wpPostRow($kind, $item),
             'wp-users' => self::userRow($item),
             'comments' => self::commentRow($item),
@@ -207,7 +210,11 @@ final class Kinds
             }
         }
 
-        return [
+        // First's own media row (its named sizes, focal point, file name and size) when First runs the
+        // site; core's fields fill the rest (spec §2.1).
+        $first = isset($item['id']) ? Plugin::instance()?->db()->mediaGet((int) $item['id']) : null;
+
+        return (is_array($first) ? $first : []) + [
             'id' => $item['id'] ?? null,
             'url' => $item['source_url'] ?? null,
             'alt' => ($item['alt_text'] ?? '') ?: null,
@@ -216,6 +223,7 @@ final class Kinds
             'width' => isset($details['width']) ? (int) $details['width'] : null,
             'height' => isset($details['height']) ? (int) $details['height'] : null,
             'sizes' => $sizes === [] ? new \stdClass() : $sizes,
+            'focal' => $item['first_focal'] ?? null,
             'author' => ($item['author'] ?? 0) ?: null,
             'createdAt' => self::gmt($item['date_gmt'] ?? null),
         ];
@@ -246,7 +254,7 @@ final class Kinds
             'comments' => self::rename($data, ['on' => 'post', 'parent' => 'parent', 'content' => 'content', 'authorName' => 'author_name',
                 'authorEmail' => 'author_email', 'type' => 'type'], isset($data['status'])
                     ? ['status' => ['approved' => 'approved', 'pending' => 'hold'][$data['status']] ?? $data['status']] : []),
-            'media' => self::rename($data, ['alt' => 'alt_text', 'caption' => 'caption']),
+            'media' => self::rename($data, ['alt' => 'alt_text', 'caption' => 'caption', 'focal' => 'first_focal']),
             'term' => self::rename($data, ['name' => 'name', 'slug' => 'slug', 'description' => 'description', 'parent' => 'parent']),
             default => throw new \First\HttpError(405, 'method_not_allowed', "{$kind['name']} is read-only here"),
         };
@@ -282,13 +290,18 @@ final class Kinds
         $spec = $kind['spec'];
         $out = [];
         $meta = [];
+        $first = [];
         foreach ($data as $col => $value) {
             $col = (string) $col;
             if ($kind['type'] === 'users') {
                 // Core's own user fields; UserMeta applies them (and `meta`) through First's pipeline.
                 match ($col) {
                     'email', 'name', 'password' => $out[$col] = $value,
-                    'role' => $out['roles'] = is_string($value) ? [WpUserStore::wpRole($value)] : $value,
+                    // A role is one of First's role names; anything else (null included) is refused as
+                    // First refuses it, never handed to core, which would read it as "no roles".
+                    'role' => $out['roles'] = is_string($value) && $value !== ''
+                        ? [WpUserStore::wpRole($value)]
+                        : throw \First\HttpError::invalidInput('role is required', '/role'),
                     default => $meta[$col] = $value,
                 };
                 continue;
@@ -305,8 +318,12 @@ final class Kinds
                 $out['status'] = ['published' => 'publish', 'scheduled' => 'future', 'draft' => 'draft', 'pending' => 'pending'][$value] ?? $value;
             } elseif ($col === 'publishedAt' && ($spec['columns']['publishedAt']['system'] ?? false)) {
                 $out['date_gmt'] = is_string($value) ? substr($value, 0, 19) : $value;
+            } elseif (in_array($col, ['locale', 'translationOf'], true) && ($spec['localized'] ?? false)) {
+                $out[$col] = $value; // a translation's language and group (PostsController::firstWrite)
             } else {
-                $meta[$col] = $value;
+                // Every other field, known or not (`uid`, a typo): First's pipeline on the core route
+                // decides it, as for any write (PostsController::firstWrite reads `first`).
+                $first[$col] = $value;
             }
         }
         if ($kind['type'] === 'post' && !isset($out['status']) && $create) {
@@ -319,6 +336,9 @@ final class Kinds
         }
         if ($meta !== []) {
             $out['meta'] = (object) $meta;
+        }
+        if ($first !== []) {
+            $out['first'] = (object) $first;
         }
 
         return $out;

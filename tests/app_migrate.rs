@@ -528,13 +528,13 @@ fn omissions_are_errors_and_static_files_carry_over() {
     // don't apply the same way: refused. A cron whose path the candidate doesn't serve is refused
     // at the entry.
     overlay["access"] = serde_json::json!({ "public": ["/docs/**"] });
-    // On v2 the app's data URLs are /wp-json/first/v1/*, which nothing reserves from redirects: a
+    // On First the app's data URLs are /__first/api/v1/* and the core routes /wp-json/*: a
     // rule whose source can reach them is refused (here a catch-all host move).
     overlay["redirects"] = serde_json::json!([
         { "source": "/old", "destination": "/new", "status": 301 },
         { "source": "/*", "destination": "https://new.example/:splat", "status": 301 }
     ]);
-    // Path rules don't survive the move: the app's data URLs move to /wp-json/first/v1/*.
+    // Path rules don't survive the move: the app's data URLs move to /__first/api/v1/*.
     overlay["firewall"] =
         serde_json::json!([{ "name": "no-rest", "action": "block", "match": { "path": "/wp-json/*" } }]);
     overlay["cache"] = serde_json::json!({ "bypass": ["/__zero/*"] });
@@ -1816,7 +1816,7 @@ fn ctx_crypto_maps_to_node_crypto_with_the_original_results() {
     let root = temp.path().join("jwt");
     project(
         &root,
-        r#"{actions:{token:action(async (ctx) => ctx.jwt.sign({ key: "K", kid: "k1", claims: {} }))}}"#,
+        r#"{actions:{token:action(async (ctx) => ctx.jwt.sign({ key: "K", kid: "k1", claims: {} })),check:action(async (ctx, content: string) => (await ctx.spam.check({ content })).spam)}}"#,
     );
     let source = std::fs::read_to_string(root.join("server/index.ts"))
         .unwrap()
@@ -1824,7 +1824,27 @@ fn ctx_crypto_maps_to_node_crypto_with_the_original_results() {
     std::fs::write(root.join("server/index.ts"), source).unwrap();
     let (ok, refused) = migrate(&root, &temp.path().join("no"), &["--dry-run"]);
     assert!(!ok);
-    assert_eq!(refused["errors"][0]["pointer"], "/actions/token/ctx/jwt");
+    // Each service with no First counterpart says what is missing and what to do instead.
+    let errors: Vec<(&str, &str, &str)> = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["pointer"].as_str().unwrap(),
+                e["code"].as_str().unwrap(),
+                e["reason"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(errors.len(), 2, "{refused:#}");
+    let reason = |pointer: &str| errors.iter().find(|e| e.0 == pointer).map(|e| (e.1, e.2)).unwrap();
+    let (code, jwt) = reason("/actions/token/ctx/jwt");
+    assert_eq!(code, "Z08_CTX_SERVICE");
+    assert!(jwt.contains("Ed25519") && jwt.contains("owner ruling"), "{jwt}");
+    let (code, spam) = reason("/actions/check/ctx/spam");
+    assert_eq!(code, "Z08_CTX_SERVICE");
+    assert!(spam.contains("Akismet") && spam.contains("owner ruling"), "{spam}");
 }
 
 #[test]
@@ -2420,7 +2440,7 @@ console.log(JSON.stringify({ sent, result }));
         .expect("node is required");
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let ran: Value = serde_json::from_slice(&node.stdout).unwrap();
-    assert_eq!(ran["sent"][0]["url"], "/wp-json/first/v1/actions/banner", "{ran}");
+    assert_eq!(ran["sent"][0]["url"], "/__first/api/v1/actions/banner", "{ran}");
     assert_eq!(ran["sent"][0]["method"], "POST");
     assert_eq!(ran["result"], "ABABAB");
     // The body the bridge sent is exactly what the generated action takes.

@@ -30,7 +30,7 @@ add_action('parse_request', static function (): void {
     status_header(200);
     header('Content-Type: text/html; charset=UTF-8');
     header('Cache-Control: no-store');
-    $api = rest_url('first/v1/services');
+    $api = home_url('/__first/api/v1/services');
     require __DIR__ . '/page.php';
     exit;
 });

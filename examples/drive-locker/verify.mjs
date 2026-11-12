@@ -27,12 +27,15 @@ function auth(user) {
 }
 
 async function request(label, path, { authorization, method = "GET", body, status = 200 } = {}) {
-  const response = await fetch(`${base}/wp-json/${path}`, {
+  // The app's API lives at /__first/api/v1; everything else (the MCP adapter) under /wp-json.
+  path = path.replace(/^first\/v1\/?/, "__first/api/v1/");
+  const url = path.startsWith("__first/") ? `${base}/${path}` : `${base}/wp-json/${path}`;
+  const response = await fetch(url, {
     method, headers: { "Content-Type": "application/json", ...(authorization ? { Authorization: authorization } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const result = await response.json();
-  console.log(`${label}: ${method} /wp-json/${path} -> ${response.status} ${JSON.stringify(result)}`);
+  console.log(`${label}: ${method} ${new URL(url).pathname} -> ${response.status} ${JSON.stringify(result)}`);
   if (Array.isArray(status)) assert.ok(status.includes(response.status), label);
   else assert.equal(response.status, status, label);
   return result.data;
@@ -49,9 +52,9 @@ try {
   const place = await request("Place create", "first/v1/places", { authorization: first, method: "POST", status: 201, body: { name: run, kind: "nas-bay" } });
   created.push(["places", place.id]);
   const driveInput = { label: run, model: "Example NVMe", serial: run, kind: "nvme", capacityGb: 1000, interface: "PCIe 4.0", placeId: place.id, status: "in-use", tags: ["verification"], warrantyUntil: new Date().toISOString().slice(0, 10) };
-  const createResponse = await fetch(`${base}/wp-json/first/v1/drives`, { method: "POST", headers: { Authorization: first, "Content-Type": "application/json" }, body: JSON.stringify(driveInput) });
+  const createResponse = await fetch(`${base}/__first/api/v1/drives`, { method: "POST", headers: { Authorization: first, "Content-Type": "application/json" }, body: JSON.stringify(driveInput) });
   const createResult = await createResponse.json();
-  console.log(`Drive create: POST /wp-json/first/v1/drives -> ${createResponse.status} ${JSON.stringify(createResult)}`);
+  console.log(`Drive create: POST /__first/api/v1/drives -> ${createResponse.status} ${JSON.stringify(createResult)}`);
   let drive = createResult.data;
   if (createResponse.status !== 201) {
     assert.equal(createResponse.status, 403);
@@ -65,8 +68,8 @@ try {
   await request("Drive edit contract", `first/v1/drives/${drive.id}`, { authorization: first, method: "PATCH", status: gaps.length ? 403 : 200, body: { label: `${run} edited` } });
   assert.equal(drive.serial, run.toUpperCase());
   if (createResponse.status === 201) assert.equal("serialKey" in drive, false);
-  const duplicate = await fetch(`${base}/wp-json/first/v1/drives`, { method: "POST", headers: { Authorization: first, "Content-Type": "application/json" }, body: JSON.stringify(driveInput) });
-  console.log(`Duplicate serial: POST /wp-json/first/v1/drives -> ${duplicate.status} ${await duplicate.text()}`);
+  const duplicate = await fetch(`${base}/__first/api/v1/drives`, { method: "POST", headers: { Authorization: first, "Content-Type": "application/json" }, body: JSON.stringify(driveInput) });
+  console.log(`Duplicate serial: POST /__first/api/v1/drives -> ${duplicate.status} ${await duplicate.text()}`);
   assert.ok(duplicate.status >= 400);
   const other = gaps.length ? trusted("locker-other", "insert", "drives", { ...driveInput, placeId: null })[0] : await request("Same serial allowed for another owner", "first/v1/drives", { authorization: second, method: "POST", status: 201, body: { ...driveInput, placeId: null } });
   console.log(`Same serial allowed for another owner: drive ${other.id}, owner ${other.ownerId}, via ${gaps.length ? "trusted CLI" : "HTTP"}`);
@@ -112,9 +115,9 @@ try {
   console.log(`VERIFIED: all five actions, contents CRUD, two-owner isolation, trend verdicts, replacement job and MCP initialization. Drive creation ${gaps.length ? "requires a trusted CLI fixture due to the recorded main gap" : "passed over HTTP"}.`);
 } finally {
   if (first) for (const [table, id] of created.reverse()) {
-    const response = await fetch(`${base}/wp-json/first/v1/${table}/${id}`, { method: "DELETE", headers: { Authorization: first } });
+    const response = await fetch(`${base}/__first/api/v1/${table}/${id}`, { method: "DELETE", headers: { Authorization: first } });
     const result = await response.json();
-    console.log(`Cleanup: DELETE /wp-json/first/v1/${table}/${id} -> ${response.status} ${JSON.stringify(result)}`);
+    console.log(`Cleanup: DELETE /__first/api/v1/${table}/${id} -> ${response.status} ${JSON.stringify(result)}`);
     if (response.status !== 200) {
       gaps.push(result.detail);
       trusted("admin", "delete", table, { id });

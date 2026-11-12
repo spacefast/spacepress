@@ -467,6 +467,9 @@ final class Db
         $drop = $included !== []
             ? array_diff(array_keys($known), $included)
             : array_keys(array_filter($columns, static fn ($on) => $on === false));
+        // A `ref()` field loaded by `with` holds the row in its id's place: `with` asked for it.
+        $with = is_array($opts['with'] ?? null) ? array_keys(array_filter($opts['with'], static fn ($on) => $on !== false && $on !== null)) : [];
+        $drop = array_diff($drop, array_map('strval', $with));
         $drop = array_flip($drop);
 
         return array_map(static fn (array $row) => array_diff_key($row, $drop), $rows);

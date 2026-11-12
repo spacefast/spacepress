@@ -824,6 +824,7 @@ pub(super) fn app(
     let mut writing_gets: Vec<(usize, String, Span)> = Vec::new();
     let mut get_paths: BTreeSet<String> = BTreeSet::new();
     let mut seen = BTreeSet::new();
+    let mut paths: BTreeMap<String, String> = BTreeMap::new();
     if let Some(group) = root.get("endpoints") {
         for (name, e) in obj(group, "/endpoints")? {
             let at = pointer("/endpoints", &name);
@@ -858,9 +859,20 @@ pub(super) fn app(
                 };
                 let route = super::endpoints::route(&method, &path, read_only, &at)?;
                 let shape = route_shape(&route.path);
-                if !seen.insert((route.method.clone(), shape)) {
+                if !seen.insert((route.method.clone(), shape.clone())) {
                     return Err(fail(&at, "two endpoints share a method and path shape"));
                 }
+                // One `first/app/` folder serves every method at a path, so its parameters have one name.
+                if let Some(other) = paths.get(&shape).filter(|p| **p != route.path) {
+                    return Err(fail(
+                        &at,
+                        format!(
+                            "two endpoints share a path shape with different parameter names ({other} and {})",
+                            route.path
+                        ),
+                    ));
+                }
+                paths.insert(shape, route.path.clone());
                 if names.contains(&name) {
                     return Err(fail(&at, "endpoint name collides with a query, mutation or action"));
                 }

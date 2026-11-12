@@ -1437,7 +1437,9 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
           hit:endpoint({method:"GET",path:"/hit",readOnly:false},(ctx)=>text(String(ctx.auth.isSignedIn))),
           bytes:endpoint({method:"POST",path:"/bytes"},async (_ctx, req)=>text(String((await req.bytes()).length))),
           one:endpoint({method:"GET",path:"/a/:x"},()=>text("")),
-          two:endpoint({method:"GET",path:"/a/:y"},()=>text(""))
+          two:endpoint({method:"GET",path:"/a/:y"},()=>text("")),
+          renamed:endpoint({method:"POST",path:"/a/:y"},()=>text("")),
+          upper:endpoint({method:"GET",path:"/API/x"},()=>text(""))
         }}"#,
     );
     let source = std::fs::read_to_string(root.join("server/index.ts"))
@@ -1463,6 +1465,10 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
             "/endpoints/root/path",
             "/endpoints/bytes/request/bytes",
             "/endpoints/two",
+            // One app folder per path: `/a/[x]` already serves GET, so POST can't name it `y`.
+            "/endpoints/renamed",
+            // App folders are lowercase.
+            "/endpoints/upper/path",
             // Decided once every helper is known: this writing GET reads the visitor.
             "/endpoints/hit"
         ]

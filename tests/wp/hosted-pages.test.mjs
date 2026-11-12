@@ -1,5 +1,5 @@
 // Run by tests/wp/hosted-pages-run.sh against a WordPress/MariaDB site that holds only the output of
-// `first compile-sources` for examples/full-site: pages, the island, the action and the custom routes.
+// `first compile-sources` for examples/full-site: pages, the island, the client component, the action and the custom routes.
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHmac } from 'node:crypto';
@@ -97,13 +97,41 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
   } finally {
     await browser.close();
   }
+  // 2b. /applause, a first/app page with a "use client" component: the server renders the stored
+  // count, and once hydrated a click calls the same action through the compiled store.
+  const applause = await http('/applause');
+  assert.equal(applause.status, 200, applause.text);
+  assert.match(applause.text, /<title>Applause · Field Notes<\/title>/);
+  assert.match(applause.text, /data-wp-interactive="clients\/CheerButton"/);
+  assert.doesNotMatch(applause.text, /Hidden draft/, 'the page reads as the visitor');
+  const clientBrowser = await chromium.launch({ executablePath: chromiumPath() });
+  try {
+    const tab = await clientBrowser.newPage();
+    const errors = [];
+    tab.on('pageerror', (error) => errors.push(error.message));
+    const actionCalls = [];
+    tab.on('request', (request) => { if (request.url().includes('/actions/cheer')) actionCalls.push(request.method()); });
+    await tab.goto(`${base}/applause`);
+    const button = 'button.cheer';
+    assert.equal(await tab.textContent(button), '2 cheers', 'the server rendered the stored count');
+    await tab.click(button);
+    await tab.waitForFunction((selector) => document.querySelector(selector)?.textContent === '3 cheers', button, { timeout: 15000 })
+      .catch(async (error) => { throw new Error(`${error.message}: ${await tab.textContent(button)} ${JSON.stringify({ actionCalls, errors })}`); });
+    assert.deepEqual(actionCalls, ['POST'], 'the hydrated component posted to the action');
+    await tab.reload();
+    assert.equal(await tab.textContent(button), '3 cheers', 'the server renders the new count');
+    assert.deepEqual(errors, []);
+  } finally {
+    await clientBrowser.close();
+  }
+
   const cheers = await api('/__first/api/v1/cheers');
-  assert.deepEqual(cheers.body.data.map((row) => [row.noteId, row.count]), [[note.body.data.id, 2]]);
+  assert.deepEqual(cheers.body.data.map((row) => [row.noteId, row.count]), [[note.body.data.id, 3]]);
 
   // 3. The action over plain HTTP, as any client calls it.
   const action = await http('/__first/api/v1/actions/cheer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ noteId: note.body.data.id }) });
   assert.equal(action.status, 200, action.text);
-  assert.deepEqual(JSON.parse(action.text), { data: { count: 3 } });
+  assert.deepEqual(JSON.parse(action.text), { data: { count: 4 } });
 
   // 4. GET /api/feed.json: a custom route outside /wp-json with its own content type.
   const feed = await http('/api/feed.json?limit=5');
@@ -127,11 +155,11 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
   assert.equal(hook.status, 202, hook.text);
   assert.equal(hook.text, `accepted ${signature.slice(0, 8)}`);
   assert.equal(hook.headers.get('content-type'), 'text/plain; charset=utf-8');
-  assert.equal((await api('/__first/api/v1/cheers')).body.data[0].count, 4, 'the signed route wrote');
+  assert.equal((await api('/__first/api/v1/cheers')).body.data[0].count, 5, 'the signed route wrote');
   const forged = await http('/webhooks/stripe', { method: 'POST', headers: { 'x-fullsite-signature': 'f'.repeat(64) }, body: event });
   assert.equal(forged.status, 401);
   assert.equal(JSON.parse(forged.text).code, 'invalid_signature');
-  assert.equal((await api('/__first/api/v1/cheers')).body.data[0].count, 4, 'a forged delivery wrote nothing');
+  assert.equal((await api('/__first/api/v1/cheers')).body.data[0].count, 5, 'a forged delivery wrote nothing');
 
   // Percent-encoded unreserved characters name the same path.
   assert.equal((await http('/%61pi/feed%2Ejson')).status, 200);
@@ -145,13 +173,12 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
   assert.equal(mismatch.status, 409, mismatch.text);
   assert.equal(JSON.parse(mismatch.text).code, 'idempotency_mismatch');
 
-  // The most specific route wins whatever the declaration order: literal segments beat `:params`
-  // segment by segment from the left. `/api/:id` and `/api/:kind/:id` are declared first.
+  // The most specific route wins: literal folders beat `[params]` segment by segment from the left.
   const body = async (path) => (await http(path)).text;
-  assert.equal(feed.headers.get('content-type'), 'application/feed+json', 'the literal feed beats /api/:id declared before it');
+  assert.equal(feed.headers.get('content-type'), 'application/feed+json', 'the literal feed beats /api/[kind]');
   assert.equal(await body('/api/other'), 'param other');
-  assert.equal(await body('/api/probe/feed.json'), 'probe literal', '/api/probe/feed.json beats /api/probe/:id and /api/:kind/:id');
-  assert.equal(await body('/api/probe/42'), 'probe param 42', '/api/probe/:id beats /api/:kind/:id');
+  assert.equal(await body('/api/probe/feed.json'), 'probe literal', '/api/probe/feed.json beats /api/probe/[id] and /api/[kind]/[id]');
+  assert.equal(await body('/api/probe/42'), 'probe param 42', '/api/probe/[id] beats /api/[kind]/[id]');
   assert.equal(await body('/api/notes/42'), 'params notes 42');
 
   // The query string as URLSearchParams parses it, not as PHP's $_GET does.
@@ -167,14 +194,14 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
   const encoded = JSON.parse(await body('/api/probe-query?a%2Eb=%31&k=one+two&k=3'));
   assert.deepEqual([encoded.dotted, encoded.first, encoded.every], ['1', 'one two', ['one two', '3']]);
 
-  // `*path` takes one or more decoded segments; literals and :params at the same position win.
+  // `[...path]` takes one or more decoded segments; literals and params at the same position win.
   assert.equal(await body('/files/a'), 'rest a');
   assert.equal(await body('/files/a/b/c.txt'), 'rest a/b/c.txt');
   assert.equal(await body('/files/a%20b/%C3%A9.txt'), 'rest a b/é.txt', 'segments are decoded');
-  assert.equal(await body('/files/readme.txt'), 'readme', 'a literal beats *path');
-  assert.equal(await body('/files/photos/latest'), 'latest photos', '/files/:bucket/latest beats *path');
+  assert.equal(await body('/files/readme.txt'), 'readme', 'a literal beats [...path]');
+  assert.equal(await body('/files/photos/latest'), 'latest photos', '/files/[bucket]/latest beats [...path]');
   assert.equal(await body('/files/photos/latest/old'), 'rest photos/latest/old');
-  assert.equal((await http('/files')).status, 404, '*path needs at least one segment');
+  assert.equal((await http('/files')).status, 404, '[...path] needs at least one segment');
   assert.equal((await http('/files/a/..%2F..%2Fwp-config.php')).status, 404, 'an encoded slash or dot segment never matches');
 
   // Unclaimed paths still belong to WordPress.

@@ -18,19 +18,19 @@ async function reads() {
   expectType<Equal<typeof plain, Post[]>>();
 
   // one (optional) → row | null; many → rows; media columns populate in place.
-  const withAuthor = await first.posts.list({ with: { author: true } });
-  expectType<Equal<Flat<(typeof withAuthor)[number]>, Flat<Post & { author: Author | null }>>>();
+  const withAuthor = await first.posts.list({ with: { authorId: true } });
+  expectType<Equal<Flat<(typeof withAuthor)[number]>, Flat<Omit<Post, "authorId"> & { authorId: Author | null }>>>();
 
   const post = await first.posts.get(1, { with: { cover: true, comments: true } });
   expectType<Equal<Flat<typeof post>, Flat<Omit<Post, "cover"> & { cover: Media | null; comments: Comment[] }>>>();
 
   // optional: false → never null; nested with recurses.
-  const comments = await first.comments.list({ with: { post: { with: { author: true }, limit: 1 } } });
-  expectType<Equal<(typeof comments)[number]["post"]["author"], Author | null>>();
+  const comments = await first.comments.list({ with: { postId: { with: { authorId: true }, limit: 1 } } });
+  expectType<Equal<(typeof comments)[number]["postId"]["authorId"], Author | null>>();
 
   // Filters: operators per column kind, `has` on list columns, relation filters; orderBy object or wire string.
   await first.posts.list({
-    where: { tags: { has: "news" }, title: { ilike: "%zero%" }, author: { userId: 3 }, OR: [{ status: "draft" }, { publishedAt: { gte: "2026-01-01" } }] },
+    where: { tags: { has: "news" }, title: { ilike: "%zero%" }, authorId: { userId: 3 }, OR: [{ status: "draft" }, { publishedAt: { gte: "2026-01-01" } }] },
     orderBy: { createdAt: "desc" },
     limit: 10,
     offset: 20,
@@ -72,8 +72,8 @@ async function writes() {
 async function mistakes() {
   // @ts-expect-error posts have no `autor` relation
   await first.posts.list({ with: { autor: true } });
-  // @ts-expect-error a relation not loaded via `with` isn't on the row
-  (await first.posts.get(1)).author;
+  // @ts-expect-error a `ref()` field holds its id until `with` loads the row
+  (await first.posts.get(1)).authorId?.name;
   // @ts-expect-error `has` is for list columns; title is a scalar
   await first.posts.list({ where: { title: { has: "x" } } });
   // @ts-expect-error "blog" is not one of the tag options

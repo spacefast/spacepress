@@ -63,7 +63,7 @@ test("table rows, posts with their revisions, the global and the file read back 
   assert.equal(count(`SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'revision' AND post_parent = ${seeded.post}`), 2);
   assert.equal(count(`SELECT COUNT(*) AS n FROM wp_postmeta m JOIN wp_posts p ON p.ID = m.post_id WHERE p.post_parent = ${seeded.post} AND m.meta_key = 'first_summary'`), 2);
   assert.equal(count("SELECT COUNT(*) AS n FROM wp_postmeta WHERE meta_key LIKE 'zero\\_%' OR meta_key LIKE '\\_zero\\_%'"), 0);
-  assert.deepEqual(await ok("GET", "/globals/settings"), { siteTitle: "Carried over" });
+  assert.deepEqual(await ok("GET", "/settings"), { siteTitle: "Carried over" });
   const file = await ok("GET", `/files/decks/${seeded.file}`, { as: "editor" });
   assert.deepEqual([file.filename, file.size], ["deck.txt", 13]);
   const bytes = await fetch(file.url).then((r) => r.text());

@@ -445,7 +445,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `ctx.invalidate(...)` | Committed writes announce themselves | Owned by the realtime PR (#128) | — |
 | `ctx.email.send` | `mail.send` from `"zero"` (#133), queued with the write, sent after commit | Auto once #133 lands | Spacefast engine connects `first_mail_transport` to the Space sender (#5063) |
 | `ctx.spam.check/reportSpam/reportHam` | **missing** | Refused | **Gap** |
-| `ctx.gravatar` | **missing** | Refused | **Gap** (small: an HTTP GET with the email hash) |
+| `ctx.gravatar` | `avatarUrl` is the same URL (SHA-256 of the trimmed, lower-cased address, same options); `profile` fetches Gravatar's public profile with `fetch` and projects it as 0.8 did | Auto | Bad `avatarUrl` options answer 422 `service_payload_invalid` with the 0.8 message |
 | `ctx.crypto.sha256/hmacSha256/timingSafeEqual` | `createHash`/`createHmac`/`timingSafeEqual` from `"node:crypto"`, byte for byte 0.8's output on the 452 recorded vectors; a named key reads `process.env` trimmed | Auto | — |
 | `ctx.jwt.sign` | **missing** | Refused | **Gap** |
 | `ctx.storage.list/get/delete` | [files](config-api.md#files) buckets | Refused | Port to file buckets |

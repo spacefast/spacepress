@@ -1,0 +1,5 @@
+{
+  "title": "Reading list",
+  "summary": "A reading log in 94 lines. Books are WordPress posts, reads are a SQL table, and each reader sees only their own.",
+  "landing": "/wp-admin/edit.php?post_type=first_books"
+}

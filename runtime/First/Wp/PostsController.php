@@ -171,8 +171,17 @@ final class PostsController extends \WP_REST_Posts_Controller
      * update is admitted when the rule, given the data it declares, may allow it. EditorSave then
      * authorizes what was actually saved, against the row as it was.
      */
+    /** The API's writes are First's pipeline's to decide (firstWrite): its create rule, as the viewer. */
+    public function create_item_permissions_check($request)
+    {
+        return Facade::dispatching() ? true : parent::create_item_permissions_check($request);
+    }
+
     public function update_item_permissions_check($request)
     {
+        if (Facade::dispatching()) {
+            return true; // firstWrite: First's update rule and field rules, as the viewer
+        }
         $allowed = parent::update_item_permissions_check($request);
         if (!is_wp_error($allowed) || $allowed->get_error_code() !== 'rest_cannot_edit') {
             return $allowed;
@@ -189,20 +198,21 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function create_item($request)
     {
-        if (\First\Locale\Module::polylang($this->collection) && ($request->has_param('locale') || $request->has_param('translationOf'))) {
-            return $this->createTranslated($request);
+        if (Facade::dispatching() || (\First\Locale\Module::polylang($this->collection) && ($request->has_param('locale') || $request->has_param('translationOf')))) {
+            return $this->firstWrite($request, null);
         }
 
         return EditorSave::rest($this->collection, null, $request, fn () => $this->save($request, fn () => parent::create_item($request)));
     }
 
     /**
-     * A create of a localized collection that names its `locale` or `translationOf` (spec §2.6 `locales`):
-     * Polylang group membership is First's write (the group lock, synced columns copied and compared),
-     * so the row is created with Db::insert as the viewer, then answered in core's shape, as the users
-     * route creates members ({@see UserMeta}).
+     * A write through First's own pipeline (Db::insert / Db::update as the viewer, in one transaction):
+     * before hooks, defaults, draft rules, validation, field and row rules, after hooks, jobs. Used for
+     * the API's writes (spec §3a: core routes enforce First's rules; the facade only maps) and for a
+     * create that names a `locale` or `translationOf` (Polylang group membership is First's write).
+     * The answer is core's item shape, as the users route answers its creates ({@see UserMeta}).
      */
-    private function createTranslated(\WP_REST_Request $request): mixed
+    private function firstWrite(\WP_REST_Request $request, ?int $id): mixed
     {
         $plugin = Plugin::instance() ?? throw new \LogicException('No First app');
         $spec = $plugin->schema->collection($this->collection);
@@ -213,39 +223,46 @@ final class PostsController extends \WP_REST_Posts_Controller
                 $data[$col] = is_array($v) ? ($v['raw'] ?? null) : $v;
             }
         }
-        if (is_string($status = $request->get_param('status'))) {
+        $sent = $request->get_json_params() ?? $request->get_body_params();
+        if (is_string($status = $sent['status'] ?? null)) {
             $data['status'] = ['publish' => 'published', 'future' => 'scheduled'][$status] ?? $status;
         }
-        if (is_string($date = $request->get_param('date_gmt'))) {
-            $data['publishedAt'] = substr($date, 0, 19) . '.000Z';
+        if (array_key_exists('date_gmt', (array) $sent)) {
+            $date = $sent['date_gmt'];
+            $data['publishedAt'] = is_string($date) && $date !== '' ? substr($date, 0, 19) . '.000Z' : null;
         }
         $meta = PostMeta::input($request);
         if (is_array($meta)) {
             $data += array_intersect_key($meta, PostMeta::fields($spec));
         }
         foreach (['locale', 'translationOf'] as $param) {
-            if ($request->has_param($param)) {
-                $data[$param] = $request->get_param($param);
+            if (array_key_exists($param, (array) $sent)) {
+                $data[$param] = $sent[$param];
             }
         }
         try {
             $viewer = CoreAccess::viewer() ?? throw new \First\HttpError(403, 'suspended', 'This account is suspended');
             $db = $plugin->db();
-            $previous = $db->actor();
-            $db->setActor($viewer->user);
-            try {
-                $row = $db->insert($this->collection, $data, true, $viewer)[0];
-            } finally {
-                $db->setActor($previous);
-            }
+            $pk = $spec['primaryKey'];
+            $row = $db->transaction(function () use ($db, $viewer, $data, $id, $pk) {
+                $previous = $db->actor();
+                $db->setActor($viewer->user);
+                try {
+                    return $id === null
+                        ? $db->insert($this->collection, $data, true, $viewer)[0]
+                        : ($db->update($this->collection, $data, [$pk => $id], true, $viewer)[0] ?? throw \First\HttpError::notFound("No {$this->collection} row with $pk $id"));
+                } finally {
+                    $db->setActor($previous);
+                }
+            });
         } catch (\First\HttpError | \First\JsError $e) {
             $problem = \First\App::problem($e);
 
             return CoreAccess::error(new \First\HttpError($problem['status'], $problem['code'], $problem['detail'], $problem['pointer'] ?? null));
         }
-        $post = get_post((int) $row[$spec['primaryKey']]);
-        $response = rest_ensure_response($this->prepare_item_for_response($post, $request));
-        $response->set_status(201);
+        clean_post_cache((int) $row[$pk]);
+        $response = rest_ensure_response($this->prepare_item_for_response(get_post((int) $row[$pk]), $request));
+        $response->set_status($id === null ? 201 : 200);
 
         return $response;
     }
@@ -268,6 +285,14 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function update_item($request)
     {
+        if (Facade::dispatching()) {
+            $post = $this->get_post($request['id']);
+            if (!$post instanceof \WP_Post) {
+                return $post;
+            }
+
+            return $this->firstWrite($request, $post->ID);
+        }
         $post = $this->get_post($request['id']);
         $postId = $post instanceof \WP_Post ? $post->ID : null;
 

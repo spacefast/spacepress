@@ -97,6 +97,19 @@ pub struct Extracted {
     pub plugins: Option<crate::wp_plugins::Config>,
     /// `defineConfig({ use })`: plugin packages, in registration order.
     pub uses: Vec<crate::plugins::Plugin>,
+    /// `ref()` fields, for their relations once every kind is extracted.
+    refs: Vec<RefField>,
+}
+
+/// One `ref()` field: its kind (storage name), name, target, nullability, the reverse name it asks
+/// for, and where it was written.
+struct RefField {
+    table: String,
+    field: String,
+    target: String,
+    optional: bool,
+    reverse: Option<String>,
+    span: Span,
 }
 
 const CONFIG_KEYS: &[&str] = &[
@@ -208,6 +221,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         roots: Vec::new(),
         collections: Vec::new(),
         hints: Vec::new(),
+        refs: Vec::new(),
         plugins: None,
         uses: Vec::new(),
     };
@@ -446,7 +460,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     phase2_collections(ev, &mut out)?;
     postmeta_hints(&mut out);
 
-    // Relations
+    // Relations: each `ref()` field and its reverse list; a 0.3.0 capture's `defineRelations`.
+    ref_relations(&mut out)?;
     if let Some(rel) = cfg_map.get("relations") {
         relations(rel, ev, &mut out, span_of(ev, config, "relations", config_span))?;
     }
@@ -1601,35 +1616,45 @@ fn column(
     };
     let references = match &b.references {
         None => None,
-        Some((f, on_delete, on_update, span)) => {
-            let target = ev.call_closure_public(f, vec![], *span)?;
-            let Value::ColRef(r) = target else {
-                return Err(Diag::new(
-                    *span,
-                    format!(
-                        "`references(() => ...)` must return a column like `locations.id`, not {}",
-                        target.describe()
-                    ),
-                ));
+        Some((target, on_delete, on_update, span)) => {
+            let (target_kind, column) = match target {
+                RefTarget::Kind(v) => (v.clone(), "id".to_string()),
+                RefTarget::Thunk(f) => (ev.call_closure_public(f, vec![], *span)?, "id".to_string()),
+                RefTarget::Column(f) => match ev.call_closure_public(f, vec![], *span)? {
+                    Value::ColRef(r) => (Value::Collection(r.collection.clone()), r.column.clone()),
+                    other => {
+                        return Err(Diag::new(
+                            *span,
+                            format!(
+                                "`references(() => ...)` must return a column like `locations.id`, not {}",
+                                other.describe()
+                            ),
+                        ));
+                    }
+                },
             };
-            if !out.collections.iter().any(|c| Rc::ptr_eq(c, &r.collection)) {
-                return Err(Diag::new(
-                    *span,
-                    format!(
-                        "`{name}` references collection \"{}\", which is not registered",
-                        r.collection.table()
+            let Value::Collection(kind) = target_kind else {
+                return Err(
+                    Diag::new(*span, format!("ref() takes a kind, not {}", target_kind.describe())).help(
+                        "write `ref(authors)`, or `ref(() => authors)` for a kind declared later or the kind itself",
                     ),
-                ));
+                );
+            };
+            if !out.collections.iter().any(|c| Rc::ptr_eq(c, &kind)) {
+                return Err(
+                    Diag::new(*span, format!("`{name}` refers to a kind that isn't exported"))
+                        .help("export the kind it refers to, e.g. `export const authors = collection({ ... })`"),
+                );
             }
-            let target_col = &r.collection.columns[&r.column];
+            let target_col = &kind.columns[&column];
             if target_col.ty != b.ty {
                 return Err(Diag::new(
                     *span,
                     format!(
                         "`{name}` is {}() but references {}.{}, which is {}()",
                         b.ty.name(),
-                        r.collection.table(),
-                        r.column,
+                        kind.table(),
+                        column,
                         target_col.ty.name()
                     ),
                 ));
@@ -1639,22 +1664,45 @@ fn column(
                     *span,
                     format!(
                         "{}.{} must be a primary key or unique to be referenced",
-                        r.collection.table(),
-                        r.column
+                        kind.table(),
+                        column
                     ),
                 ));
             }
-            if *on_delete == Some(RefAction::SetNull) && !b.optional {
+            // A `ref()` defaults to `restrict` when required and `setNull` when optional (spec §2.5).
+            let on_delete = match (on_delete, matches!(target, RefTarget::Column(_))) {
+                (Some(action), _) => Some(*action),
+                (None, true) => None,
+                (None, false) if b.optional => Some(RefAction::SetNull),
+                (None, false) => Some(RefAction::Restrict),
+            };
+            if on_delete == Some(RefAction::SetNull) && !b.optional {
                 return Err(Diag::new(
-                    *span,
-                    format!("`{name}` is required, so `onDelete: \"set null\"` can't work"),
+                    b.mods
+                        .iter()
+                        .rev()
+                        .find(|(m, _)| *m == "onDelete")
+                        .map_or(*span, |(_, s)| *s),
+                    format!("`{name}` is required, so deleting what it refers to can't set it to null"),
                 )
-                .help("make it `.optional()`, or use `onDelete: \"cascade\"` or `\"restrict\"`"));
+                .help("make it `.optional()`, or use `.onDelete(\"cascade\")` or `.onDelete(\"restrict\")`"));
+            }
+            if !matches!(target, RefTarget::Column(_))
+                && let Owner::Collection(table) = owner
+            {
+                out.refs.push(RefField {
+                    table: table.clone(),
+                    field: name.to_string(),
+                    target: kind.table().to_string(),
+                    optional: b.optional,
+                    reverse: b.reverse.clone(),
+                    span: *span,
+                });
             }
             Some(Reference {
-                collection: r.collection.table().to_string(),
-                column: r.column.clone(),
-                on_delete: *on_delete,
+                collection: kind.table().to_string(),
+                column,
+                on_delete,
                 on_update: *on_update,
             })
         }
@@ -1991,6 +2039,70 @@ fn digits(s: &str) -> Option<u32> {
         return None;
     }
     s.parse().ok()
+}
+
+/// Each `ref()` field is a one relation under its own name, and gives its target a many relation
+/// named after the referencing kind (or `.reverse("name")`) (docs/decisions/2026-11-11-authoring-surface.md,
+/// rulings 1 and 2). Two refs from one kind to the same target give no unnamed reverse: neither would
+/// say which field it follows.
+fn ref_relations(out: &mut Extracted) -> Result<()> {
+    let refs = std::mem::take(&mut out.refs);
+    for r in &refs {
+        let coll = out.schema.collections.get_mut(&r.table).expect("collection");
+        coll.relations.insert(
+            r.field.clone(),
+            Relation {
+                name: r.field.clone(),
+                kind: RelKind::One,
+                collection: r.target.clone(),
+                from: r.field.clone(),
+                to: "id".into(),
+                optional: r.optional,
+            },
+        );
+    }
+    for r in &refs {
+        let key = out.schema.collections[&r.table].key.clone();
+        let siblings = refs
+            .iter()
+            .filter(|o| o.table == r.table && o.target == r.target && o.reverse.is_none())
+            .count();
+        let name = match &r.reverse {
+            Some(name) => name.clone(),
+            None if siblings > 1 => continue,
+            None => key,
+        };
+        if !valid_ident(&name) {
+            return Err(Diag::new(r.span, format!("\"{name}\" isn't a valid reverse name"))
+                .help("use letters, digits and underscores, starting with a letter"));
+        }
+        let target = out.schema.collections.get_mut(&r.target).expect("target");
+        if target.columns.contains_key(&name) || target.relations.contains_key(&name) {
+            return Err(Diag::new(
+                r.span,
+                format!(
+                    "`{}` gives \"{}\" a reverse list named `{name}`, which \"{}\" already has",
+                    r.field, target.key, target.key
+                ),
+            )
+            .help(format!(
+                "name the reverse list: `{}: ref(...).reverse(\"otherName\")`",
+                r.field
+            )));
+        }
+        target.relations.insert(
+            name.clone(),
+            Relation {
+                name,
+                kind: RelKind::Many,
+                collection: r.table.clone(),
+                from: "id".into(),
+                to: r.field.clone(),
+                optional: false,
+            },
+        );
+    }
+    Ok(())
 }
 
 fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -> Result<()> {

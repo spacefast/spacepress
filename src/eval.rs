@@ -269,7 +269,7 @@ pub const FIRST_EXPORTS: &[&str] = &[
     "repeater",
     "blocks",
     "global",
-    "defineRelations",
+    "ref",
     "defineConfig",
     "action",
     "db",
@@ -2509,6 +2509,7 @@ impl<'p> Evaluator<'p> {
             Builtin::Id => Some("id"),
             Builtin::DefineGlobal => Some("global"),
             Builtin::DefineRelations => Some("defineRelations"),
+            Builtin::Ref => Some("ref"),
             Builtin::DefineConfig => Some("defineConfig"),
             Builtin::Env => Some("env"),
             Builtin::Files => Some("files"),
@@ -2608,6 +2609,27 @@ impl<'p> Evaluator<'p> {
                 span,
                 "`id()` is gone: every kind already has an integer `id`",
                 "delete `id: id()`; for a text key, declare `code: text().unique().max(191)` and read it with `get({ code })`",
+            ),
+            Builtin::Ref => {
+                let target = match arg(0) {
+                    k @ Value::Collection(_) => RefTarget::Kind(k),
+                    Value::Closure(f) => RefTarget::Thunk(f),
+                    other => {
+                        return err_help(
+                            span,
+                            format!("ref() takes a kind, not {}", other.describe()),
+                            "write `ref(authors)`, or `ref(() => authors)` for a kind declared later or the kind itself",
+                        );
+                    }
+                };
+                let mut c = ColBuilder::new(ColType::Integer, span);
+                c.references = Some((target, None, None, span));
+                Ok(Value::Column(Rc::new(c)))
+            }
+            Builtin::DefineRelations if !self.legacy => err_help(
+                span,
+                "`defineRelations()` is gone: a reference is a field",
+                "declare `location: ref(locations)` on the referencing kind; `with: { location: true }` loads the row, and the target gets the reverse list named after the referencing kind",
             ),
             Builtin::DefineRelations => {
                 let Value::Object(schema) = arg(0) else {
@@ -3438,6 +3460,7 @@ fn first_export(name: &str, span: Span) -> R<Value> {
         "blocks" => Builtin::Field("blocks"),
         "global" => Builtin::DefineGlobal,
         "defineRelations" => Builtin::DefineRelations,
+        "ref" => Builtin::Ref,
         "defineConfig" => Builtin::DefineConfig,
         "definePlugin" => Builtin::DefinePlugin,
         "action" => Builtin::Action,
@@ -3951,6 +3974,56 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
         }
         "$default" | "$defaultFn" => c.default = Some(now_or_fn(closure_arg()?, c.ty)),
         "$onUpdate" | "$onUpdateFn" => c.on_update = Some(now_or_fn(closure_arg()?, c.ty)),
+        "onDelete" => {
+            let Some(r) = c.references.as_mut() else {
+                return err_help(
+                    span,
+                    "`.onDelete()` is for a `ref()` field",
+                    "write `location: ref(locations).onDelete(\"cascade\")`",
+                );
+            };
+            r.1 = Some(match arg(0) {
+                Value::Str(s) => match &*s {
+                    "cascade" => RefAction::Cascade,
+                    "restrict" => RefAction::Restrict,
+                    "setNull" => RefAction::SetNull,
+                    other => {
+                        return err_help(
+                            span,
+                            format!("unknown delete action \"{other}\""),
+                            "use \"cascade\", \"restrict\" or \"setNull\"",
+                        );
+                    }
+                },
+                other => {
+                    return err(
+                        span,
+                        format!(
+                            "`.onDelete()` takes \"cascade\", \"restrict\" or \"setNull\", not {}",
+                            other.describe()
+                        ),
+                    );
+                }
+            });
+        }
+        "reverse" => {
+            if c.references.is_none() {
+                return err_help(
+                    span,
+                    "`.reverse()` is for a `ref()` field",
+                    "write `home: ref(locations).reverse(\"homeItems\")`",
+                );
+            }
+            match arg(0) {
+                Value::Str(name) => c.reverse = Some(name.to_string()),
+                other => {
+                    return err(
+                        span,
+                        format!("`.reverse()` takes the reverse list's name, not {}", other.describe()),
+                    );
+                }
+            }
+        }
         "references" => {
             let f = closure_arg()?;
             let (mut on_delete, mut on_update) = (None, None);
@@ -3990,7 +4063,7 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
                     );
                 }
             }
-            c.references = Some((f, on_delete, on_update, span));
+            c.references = Some((RefTarget::Column(f), on_delete, on_update, span));
         }
         _ => {
             let mut d = Diag::new(span, format!("columns have no method `{m}`"));
@@ -4013,7 +4086,8 @@ const MODIFIERS: &[&str] = &[
     "$defaultFn",
     "$onUpdate",
     "$onUpdateFn",
-    "references",
+    "onDelete",
+    "reverse",
     "min",
     "max",
     "pattern",
@@ -4028,6 +4102,10 @@ const MODIFIERS: &[&str] = &[
 /// A modifier the authoring surface deleted: (message, fix).
 fn removed_modifier(m: &str) -> Option<(&'static str, &'static str)> {
     Some(match m {
+        "references" => (
+            "`.references()` is gone: a reference is a `ref()` field",
+            "write `locationId: ref(locations)`; `.onDelete(\"cascade\" | \"restrict\" | \"setNull\")` sets the delete action",
+        ),
         "notNull" => (
             "`.notNull()` is gone: fields are required by default",
             "delete `.notNull()`; add `.optional()` to a field that may be empty",
@@ -4107,6 +4185,7 @@ impl ColBuilder {
             default: None,
             on_update: None,
             references: None,
+            reverse: None,
             ts_type: None,
             access: None,
             show_if: None,
@@ -4894,7 +4973,7 @@ mod legacy {
     use super::*;
 
     /// Modifiers this reading accepts besides the current ones.
-    pub const MODIFIERS: &[&str] = &["notNull", "primaryKey", "$type"];
+    pub const MODIFIERS: &[&str] = &["notNull", "primaryKey", "$type", "references"];
 
     /// The integer primary key: the implicit `id`, or `id()`.
     pub fn id(span: Span) -> ColBuilder {
@@ -4905,12 +4984,13 @@ mod legacy {
     }
 
     pub fn modifier(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<Value> {
-        if !args.is_empty() {
+        if !args.is_empty() && m != "references" {
             return err(span, format!("`.{m}()` takes no arguments"));
         }
         let mut c = (**c).clone();
         match m {
             "notNull" => c.optional = false,
+            "references" => return column_method(&Rc::new(c), m, args, span),
             "primaryKey" => {
                 c.primary_key = true;
                 c.optional = false;

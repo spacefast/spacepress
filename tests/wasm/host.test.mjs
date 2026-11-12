@@ -55,12 +55,13 @@ test('wasm converts a 0.8 client app to the same public/ files as the native CLI
   try {
     const project = path.resolve('tests/fixtures/app-migrate/client-app');
     const out = path.join(temp, 'native');
-    execFileSync(first, ['migrate', 'app', '--from', 'zero-0.8', project, '--out', out, '--space', 'spc_migrate_test', '--users']);
-    const candidate = call(exports, 'first_migrate_app', { project, space: 'spc_migrate_test', users: true });
+    const styles = path.resolve('tests/fixtures/app-migrate/client-app-styles/zero.css');
+    execFileSync(first, ['migrate', 'app', '--from', 'zero-0.8', project, '--out', out, '--space', 'spc_migrate_test', '--users', '--zero-css', styles]);
+    const candidate = call(exports, 'first_migrate_app', { project, space: 'spc_migrate_test', users: true, zeroCss: fs.readFileSync(styles, 'utf8') });
     assert.deepEqual(candidate.report.errors, []);
     assert.equal(candidate.report.status, 'candidate');
     const client = Object.keys(candidate.files).filter((name) => name.startsWith('public/')).sort();
-    assert.ok(client.includes('public/app/client/index.js') && client.includes('public/index.html'), client.join(' '));
+    assert.ok(['public/app/client/index.js', 'public/index.html', 'public/zero.css'].every((f) => client.includes(f)), client.join(' '));
     for (const name of client) assert.equal(candidate.files[name], fs.readFileSync(path.join(out, name), 'utf8'), name);
     assert.equal(candidate.files['first.config.ts'], fs.readFileSync(path.join(out, 'first.config.ts'), 'utf8'));
     assert.deepEqual(call(exports, 'first_check', { project: '/candidate', files: candidate.files }).check.diagnostics, []);

@@ -15,7 +15,7 @@ namespace First\Wp;
  * - a slug change records the old URL (core's `_wp_old_slug`), and a request for it 301s to the
  *   item's current URL.
  *
- * Front-end modes, behind the one `template_redirect` gate (priority 1, after the app router):
+ * Front-end modes, on `template_redirect` at priority -1, before the app router (1):
  * - default: WordPress renders with its theme (no `first/app/`), or the app router serves
  *   (with `first/app/`);
  * - `frontend: false`: backend only. Every public HTML URL is a 404; wp-admin, login, REST,
@@ -27,10 +27,16 @@ final class KindUrls
 {
     /** @var array<string, array{type: string, pattern: string, segments: list<string>, slug: ?string}> */
     private array $kinds = [];
+    private static ?self $instance = null;
+
+    public static function instance(): ?self
+    {
+        return self::$instance;
+    }
 
     public static function register(Plugin $plugin): void
     {
-        $self = new self($plugin);
+        $self = self::$instance = new self($plugin);
         if ($self->kinds !== []) {
             add_action('init', [$self, 'rewrites'], 1);
             add_filter('post_type_link', [$self, 'link'], 10, 2);
@@ -39,9 +45,9 @@ final class KindUrls
         }
         $frontend = $plugin->schema->frontend();
         if ($frontend === false) {
-            add_action('template_redirect', [self::class, 'backendOnly'], 1);
+            add_action('template_redirect', [self::class, 'backendOnly'], -1);
         } elseif (is_string($frontend)) {
-            add_action('template_redirect', static fn () => self::external($frontend), 1);
+            add_action('template_redirect', static fn () => self::external($frontend), -1);
             foreach (['post_link', 'page_link', 'post_type_link', 'term_link', 'attachment_link'] as $filter) {
                 add_filter($filter, static fn (string $url): string => self::rebase($url, $frontend), PHP_INT_MAX);
             }

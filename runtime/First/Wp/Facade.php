@@ -419,6 +419,8 @@ final class Facade
             [$k, $v] = array_pad(explode('=', $pair, 2), 2, '');
             $out[urldecode($k)] = urldecode($v);
         }
+        // Transport metadata, as core's own routes consume it: api-fetch's locale hint and the nonce.
+        unset($out['_locale'], $out['_wpnonce']);
 
         return $out;
     }

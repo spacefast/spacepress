@@ -21,6 +21,14 @@ export interface BlueprintInput {
 	landingPage: string;
 	/** PHP run after activation, such as sample data written through the app's REST API. */
 	seed?: string;
+	/**
+	 * Content files a synced collection reads (`sync: "content/posts/*.md"`), as the records
+	 * `first compile-sources` writes to `seed/<collection>.json`. They go in before `seed`, through the
+	 * runtime's own first-sync seed, the one `wp first seed` runs.
+	 */
+	syncSeed?: Record<string, unknown>;
+	/** Pretty permalinks (`/%postname%/`): TSX pages route on the path, as `/notes/`. */
+	prettyPermalinks?: boolean;
 }
 
 const openssl = `<?php
@@ -32,7 +40,25 @@ if (!is_file('/root/install/ssl/openssl.cnf')) {
 }
 `;
 
-export function blueprint({ zipBase, firstPlugins, wordpressPlugins, landingPage, seed }: BlueprintInput) {
+const seedDirectory = "/internal/first-seed";
+// Seeds each synced collection from the records the blueprint wrote, as `wp first seed` does. It
+// runs as a cron request: a bare wp-load.php request is not one Polylang serves on a site with no
+// languages yet, so a localized collection would have no PLL() and First wouldn't add its languages.
+const syncSeedPhp = (directory: string) => `<?php
+define('DOING_CRON', true);
+require_once '/wordpress/wp-load.php';
+\\First\\Sync\\Seed::run(\\First\\Wp\\Runtime::plugin() ?? throw new RuntimeException('No First app is active'), '${directory}');
+`;
+
+// Set once, on a site nobody has used yet; the rewrite rules are written for the new structure.
+const permalinksPhp = `<?php
+require_once '/wordpress/wp-load.php';
+global $wp_rewrite;
+$wp_rewrite->set_permalink_structure('/%postname%/');
+flush_rewrite_rules();
+`;
+
+export function blueprint({ zipBase, firstPlugins, wordpressPlugins, landingPage, seed, syncSeed = {}, prettyPermalinks = false }: BlueprintInput) {
 	const { php, sqlite } = platformVersions();
 	const wordpressOrg = (slug: string, version: string) => ({ resource: "url", url: `https://downloads.wordpress.org/plugin/${slug}.${version}.zip` });
 	return {
@@ -47,6 +73,10 @@ export function blueprint({ zipBase, firstPlugins, wordpressPlugins, landingPage
 			{ step: "writeFile", path: "/wordpress/wp-content/mu-plugins/first-playground-openssl.php", data: openssl },
 			...wordpressPlugins.map(({ slug, version }) => ({ step: "installPlugin", pluginData: wordpressOrg(slug, version) })),
 			...firstPlugins.map((slug) => ({ step: "installPlugin", pluginData: { resource: "url", url: `${zipBase}${slug}.zip` } })),
+			...(prettyPermalinks ? [{ step: "runPHP", code: permalinksPhp }] : []),
+			...(Object.keys(syncSeed).length ? [{ step: "mkdir", path: seedDirectory }] : []),
+			...Object.entries(syncSeed).map(([collection, records]) => ({ step: "writeFile", path: `${seedDirectory}/${collection}.json`, data: JSON.stringify(records) })),
+			...(Object.keys(syncSeed).length ? [{ step: "runPHP", code: syncSeedPhp(seedDirectory) }] : []),
 			...(seed ? [{ step: "runPHP", code: seed }] : []),
 		],
 	};

@@ -3,7 +3,7 @@
 # else; tests/system/wp.test.ts installs the `first build` artifact into it as a site
 # owner would and walks the whole journey and plugin lifecycle. The tests build their own copies of
 # the example under tests/system/.work, so the committed example is never rewritten. Then a second fresh WordPress
-# holds an original Zero 0.8 site, and legacy.test.ts moves it onto the new Zero as the migration
+# holds an original Zero 0.8 site, and legacy.test.ts moves it onto First as the migration
 # guide says (one First app per site, so it gets its own). A third holds examples/blog, whose
 # committed Markdown posts sync in.
 #

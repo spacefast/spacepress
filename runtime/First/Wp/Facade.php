@@ -271,7 +271,7 @@ final class Facade
     {
         $data = $error->get_error_data();
         $code = (string) $error->get_error_code();
-        $code = str_starts_with($code, 'first_') ? substr($code, 5) : $code;
+        $code = str_starts_with($code, 'first_') ? substr($code, strlen('first_')) : $code;
         $code = match ($code) {
             'rest_forbidden', 'rest_cannot_create', 'rest_cannot_edit', 'rest_cannot_delete', 'rest_cannot_read', 'rest_forbidden_context',
             'rest_cannot_create_user', 'rest_user_cannot_delete', 'rest_user_cannot_view', 'rest_cannot_edit_roles',

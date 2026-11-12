@@ -25,7 +25,7 @@ delete_option('first_rewrite_rules');
 
 // Exactly the capability names WordPress derives from this app's `capability_type` ([<type>_item,
 // <type>]): the meta caps on the singular and the primitive caps on the plural. Matched whole, so
-// another plugin's `edit_acme_zero_posts` is never touched, whoever granted what.
+// another plugin's `edit_acme_first_posts` is never touched, whoever granted what.
 $caps = [];
 foreach ((array) ($schema['collections'] ?? []) as $collection) {
     if (($collection['editor'] ?? true) && isset($collection['wp']['postType'])) {

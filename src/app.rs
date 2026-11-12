@@ -585,6 +585,27 @@ pub fn routes_d_ts(table: &Table) -> Option<String> {
     Some(out)
 }
 
+/// Whether a page's folders serve a kind's `url` pattern (spec §2.7: "an app/ route whose path
+/// matches the pattern renders with First"): the same literals in the same places, a `[x]` folder
+/// for each placeholder, and `[...x]` for `:path`. Returns the folder parameter for each pattern
+/// placeholder, in order.
+pub fn serves_kind_url(route: &Route, pattern: &str) -> Option<Vec<(String, String)>> {
+    let parts: Vec<&str> = pattern.trim_matches('/').split('/').collect();
+    if parts.len() != route.segments.len() {
+        return None;
+    }
+    let mut bound = Vec::new();
+    for (part, segment) in parts.iter().zip(&route.segments) {
+        match (part.strip_prefix(':'), segment) {
+            (None, Segment::Literal(l)) if l == part => {}
+            (Some("path"), Segment::CatchAll(p)) => bound.push(("path".to_string(), p.clone())),
+            (Some(field), Segment::Param(p)) if field != "path" => bound.push((field.to_string(), p.clone())),
+            _ => return None,
+        }
+    }
+    Some(bound)
+}
+
 /// The parameters a route file's folders bind, outermost first: (name, catch-all).
 pub fn params_of(file: &str) -> Vec<(String, bool)> {
     let mut out = Vec::new();

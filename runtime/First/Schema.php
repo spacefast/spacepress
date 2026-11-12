@@ -129,6 +129,12 @@ final class Schema
         return $this->raw['components'] ?? [];
     }
 
+    /** `frontend` (spec §5): null (WordPress or first/app/ renders), false (backend only) or the external site's URL. */
+    public function frontend(): string|false|null
+    {
+        return $this->raw['frontend'] ?? null;
+    }
+
     /**
      * `first/app/`: `routes` (most specific first), `notFound`, and `files` (route file => its
      * compiled component, metadata, guard, search fields and HTTP handlers); null without an app.

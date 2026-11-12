@@ -25,6 +25,10 @@ impl Compiler<'_, '_> {
         if file.ends_with("layout.tsx") {
             props.insert("children".to_string(), (Ty::Html, false));
         }
+        // A page that serves a kind's URL receives its item, read as the visitor (spec §2.7).
+        if let Some((kind, _)) = app.routes.iter().find(|r| r.page.as_deref() == Some(file)).and_then(|r| r.kind.as_ref()) {
+            props.insert("item".to_string(), (types::row(self.schema, kind), false));
+        }
         Ty::Obj(props)
     }
 

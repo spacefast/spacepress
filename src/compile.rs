@@ -3160,6 +3160,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "this async call isn't awaited",
                 "add `await`; First runs async calls in order",
             ),
+            Ty::KindSystem(_) => err_help(
+                span,
+                "`<kind>.system` can't be stored in a variable",
+                "call it directly: `posts.system.list(...)`",
+            ),
             Ty::Db | Ty::DbQuery | Ty::QueryColl(_) | Ty::DbGlobals | Ty::DbGlobal(_) => {
                 err(span, "`db` can't be stored in a variable; call it directly")
             }
@@ -3798,7 +3803,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         let database_receiver = match &out.ty {
-            Ty::Db | Ty::DbQuery | Ty::QueryColl(_) | Ty::DbGlobals | Ty::DbGlobal(_) => Some("\\First\\db()"),
+            Ty::Db | Ty::DbQuery | Ty::QueryColl(_) | Ty::KindSystem(_) | Ty::DbGlobals | Ty::DbGlobal(_) => {
+                Some("\\First\\db()")
+            }
             Ty::Builder(_) => Some(""),
             _ => None,
         };
@@ -6197,6 +6204,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return self.class_member(o, prop, prop_span);
         }
         match &o.ty {
+            Ty::Collection(t) if prop == "system" => return Ok(Out::atom("\\First\\db()", Ty::KindSystem(t.clone()))),
             Ty::Db if prop == "query" => return Ok(Out::atom("\\First\\db()", Ty::DbQuery)),
             Ty::Db if prop == "globals" => return Ok(Out::atom("\\First\\db()", Ty::DbGlobals)),
             Ty::DbGlobals => {
@@ -8967,6 +8975,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let recv_span = recv_expr.span;
         match recv.ty.clone() {
             Ty::QueryColl(table) => return self.query_call(&table, m, args, span, m_span),
+            Ty::Collection(table) => return self.kind_call(&table, false, m, args, span, m_span),
+            Ty::KindSystem(table) => return self.kind_call(&table, true, m, args, span, m_span),
             Ty::Db => return self.db_call(m, args, span, m_span),
             Ty::Builder(b) => return self.builder_call(*b, m, args, span, m_span),
             Ty::DbQuery => return err(m_span, format!("use `db.query.<collection>.{m}(...)`")),
@@ -9005,9 +9015,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         if let Some(family) = family {
             self.builtin_args(family, m, args, span)?;
-        }
-        if (family == Some("array") || recv.ty == Ty::Dynamic) && matches!(m, "sort" | "toSorted") {
-            crate::builtins::check_sort_callback(args)?;
         }
         let mut recv = self.finish_value(recv, recv_span)?;
         let javascript_instance = self.javascript_module(self.fx.as_ref().expect("fn").module) && family.is_some();
@@ -9623,6 +9630,221 @@ impl<'a, 'p> Compiler<'a, 'p> {
             )
         };
         Ok(Out::atom(php, Ty::Promise(Box::new(ty))))
+    }
+
+    /// `posts.list(q)`, `paginate`, `get`, `count`, `create`, `update`, `delete` on a `"first:db"`
+    /// kind (spec §3): the visitor's call, access rules and field masks applied; jobs and signed
+    /// webhooks run as the system. `posts.system.*` is the same call, trusted.
+    fn kind_call(
+        &mut self,
+        table: &str,
+        system: bool,
+        m: &str,
+        args: &[ArrEl],
+        span: Span,
+        m_span: Span,
+    ) -> Result<Out> {
+        const METHODS: [&str; 7] = ["list", "paginate", "get", "count", "create", "update", "delete"];
+        if !METHODS.contains(&m) {
+            let mut d = Diag::new(m_span, format!("kinds have no method `{m}`"));
+            if let Some(s) = suggest(m, METHODS) {
+                d = d.help(format!("did you mean `{s}`?"));
+            } else {
+                d = d.help("use list, paginate, get, count, create, update or delete");
+            }
+            return Err(d);
+        }
+        let key = self.schema.collections[table].key.clone();
+        self.uses(
+            if matches!(m, "create" | "update") {
+                "write"
+            } else if m == "delete" {
+                "delete"
+            } else {
+                "read"
+            },
+            key.clone(),
+            m_span,
+        );
+        let mut plain = Vec::new();
+        for a in args {
+            match a {
+                ArrEl::Item(x) => plain.push(x),
+                ArrEl::Spread(x) => return err(x.span, "spread arguments aren't supported here"),
+            }
+        }
+        let (least, most, want) = match m {
+            "list" | "paginate" | "count" => (0, 1, "at most one options object"),
+            "get" => (1, 2, "an id or a unique filter, then optional `{ with }`"),
+            "create" => (1, 1, "one row"),
+            "update" => (2, 2, "an id and a patch"),
+            _ => (1, 1, "an id"),
+        };
+        if plain.len() < least || plain.len() > most {
+            return err(span, format!("`{key}.{m}` takes {want}"));
+        }
+        let trusted = if system { "true" } else { "false" };
+        let row = types::row(self.schema, table);
+        let pk_ty = self.schema.collections[table]
+            .primary_key()
+            .map(|c| types::col_base(c, &types::json_ty, true))
+            .unwrap_or(Ty::Num);
+        let id = |this: &mut Self, e: &Expr| -> Result<String> {
+            let v = this.expr(e)?;
+            let v = this.finish_value(v, e.span)?;
+            if !assignable(&v.ty, &pk_ty) {
+                return err(
+                    e.span,
+                    format!(
+                        "`{key}.{m}` needs the row's id ({}), not {}",
+                        pk_ty.describe(),
+                        v.ty.describe()
+                    ),
+                );
+            }
+            Ok(v.php)
+        };
+        let (php, ty) = match m {
+            "list" | "paginate" => {
+                let (opts, row_ty) = match plain.first() {
+                    None => ("[]".to_string(), row),
+                    Some(o) => self.kind_opts(table, o, true, m == "paginate")?,
+                };
+                if m == "list" {
+                    (
+                        format!("\\First\\Seam::kindList({}, {opts}, {trusted})", php_str(table)),
+                        Ty::Array(Box::new(row_ty)),
+                    )
+                } else {
+                    let mut page = IndexMap::new();
+                    page.insert("rows".to_string(), (Ty::Array(Box::new(row_ty)), false));
+                    page.insert("cursor".to_string(), (Ty::Str.nullable(), false));
+                    (
+                        format!("\\First\\Seam::kindPaginate({}, {opts}, {trusted})", php_str(table)),
+                        Ty::Obj(page),
+                    )
+                }
+            }
+            "count" => {
+                let opts = match plain.first() {
+                    None => "[]".to_string(),
+                    Some(o) => self.kind_opts(table, o, false, false)?.0,
+                };
+                (
+                    format!("\\First\\Seam::kindCount({}, {opts}, {trusted})", php_str(table)),
+                    Ty::Num,
+                )
+            }
+            "get" => {
+                let target = plain[0];
+                let selector = if let ExprKind::Object(_) = &target.kind {
+                    format!("['where' => {}]", self.filter(table, target, true)?)
+                } else {
+                    format!("['id' => {}]", id(self, target)?)
+                };
+                let (opts, row_ty) = match plain.get(1) {
+                    None => ("[]".to_string(), row),
+                    Some(o) => self.kind_opts(table, o, false, false)?,
+                };
+                (
+                    format!(
+                        "\\First\\Seam::kindGet({}, {selector}, {opts}, {trusted})",
+                        php_str(table)
+                    ),
+                    row_ty.nullable(),
+                )
+            }
+            "create" => {
+                let values = self.write_values(table, plain[0], true)?;
+                (
+                    format!("\\First\\Seam::kindCreate({}, {values}, {trusted})", php_str(table)),
+                    row,
+                )
+            }
+            "update" => {
+                let target = id(self, plain[0])?;
+                let patch = self.write_values(table, plain[1], false)?;
+                (
+                    format!(
+                        "\\First\\Seam::kindUpdate({}, {target}, {patch}, {trusted})",
+                        php_str(table)
+                    ),
+                    row,
+                )
+            }
+            _ => {
+                let target = id(self, plain[0])?;
+                (
+                    format!("\\First\\Seam::kindDelete({}, {target}, {trusted})", php_str(table)),
+                    row,
+                )
+            }
+        };
+        Ok(Out::atom(php, Ty::Promise(Box::new(ty))))
+    }
+
+    /// The options of a kind's list/paginate/count/get: `where`, `orderBy`, `with`, `search`, `limit`,
+    /// `offset`, `columns`, `locale`, and `cursor` for paginate. `count` takes only `where`, `search`
+    /// and `locale`; `get` only `with`, `columns` and `locale`.
+    fn kind_opts(&mut self, table: &str, e: &Expr, list: bool, paginate: bool) -> Result<(String, Ty)> {
+        let ExprKind::Object(props) = &e.kind else {
+            return err_help(
+                e.span,
+                "options must be an object literal",
+                "write them inline: `posts.list({ where: { ... } })`",
+            );
+        };
+        let allowed: &[&str] = if paginate {
+            &[
+                "where", "orderBy", "with", "search", "limit", "cursor", "columns", "locale",
+            ]
+        } else if list {
+            &[
+                "where", "orderBy", "with", "search", "limit", "offset", "columns", "locale",
+            ]
+        } else if props
+            .iter()
+            .any(|p| matches!(p, Prop::KV(PropKey::Static(k), _) if k == "with" || k == "columns"))
+        {
+            &["with", "columns", "locale"]
+        } else {
+            &["where", "search", "locale", "with", "columns"]
+        };
+        let mut rest = Vec::new();
+        let mut extra = Vec::new();
+        for p in props {
+            let Prop::KV(PropKey::Static(k), v) = p else {
+                return err(e.span, "options can't be spread or computed");
+            };
+            if !allowed.contains(&k.as_str()) {
+                let mut d = Diag::new(v.span, format!("these options have no `{k}`"));
+                if let Some(s) = suggest(k, allowed.iter().copied()) {
+                    d = d.help(format!("did you mean `{s}`?"));
+                }
+                return Err(d);
+            }
+            match k.as_str() {
+                "search" | "cursor" => {
+                    let x = self.expr(v)?;
+                    if !assignable(&x.ty, &Ty::Str.nullable()) {
+                        return err(v.span, format!("`{k}` must be a string"));
+                    }
+                    extra.push(format!("{} => {}", php_str(k), x.wrapped()));
+                }
+                _ => rest.push(p.clone()),
+            }
+        }
+        let opts = Expr {
+            kind: ExprKind::Object(rest),
+            span: e.span,
+        };
+        let (php, ty) = self.query_opts(table, &opts, list)?;
+        if extra.is_empty() {
+            return Ok((php, ty));
+        }
+        let inner = php.strip_prefix('[').and_then(|x| x.strip_suffix(']')).unwrap_or("");
+        let sep = if inner.is_empty() { "" } else { ", " };
+        Ok((format!("[{inner}{sep}{}]", extra.join(", ")), ty))
     }
 
     /// Compiles a query options literal, checking names against the schema and computing the result type.
@@ -10624,6 +10846,7 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::Db
         | Ty::DbQuery
         | Ty::QueryColl(_)
+        | Ty::KindSystem(_)
         | Ty::DbGlobals
         | Ty::DbGlobal(_)
         | Ty::Builder(_) => {
@@ -10919,6 +11142,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::Db
         | Ty::DbQuery
         | Ty::QueryColl(_)
+        | Ty::KindSystem(_)
         | Ty::DbGlobals
         | Ty::DbGlobal(_)
         | Ty::Builder(_) => t.clone(),

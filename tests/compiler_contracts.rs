@@ -166,6 +166,47 @@ fn successful_json_check_and_the_reusable_recipe_write_nothing() {
     assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 2);
 }
 
+/// `first check --json` lists each SQL index the deploy keeps and why it exists (spec §2.9).
+#[test]
+fn json_check_lists_each_index_with_its_reason() {
+    let tmp = tempfile::tempdir().unwrap();
+    copy_app(
+        root().join("examples/pantry/first.config.ts"),
+        tmp.path().join("first.config.ts"),
+    )
+    .unwrap();
+    copy_app(
+        root().join("examples/pantry/first/lib/fields.ts"),
+        tmp.path().join("first/lib/fields.ts"),
+    )
+    .unwrap();
+    let (out, report) = checked(tmp.path());
+    assert!(out.status.success(), "{report}");
+    let indexes = report["indexes"].as_array().expect("an indexes list");
+    let find = |table: &str, name: &str| {
+        indexes
+            .iter()
+            .find(|i| i["table"] == table && i["name"] == name)
+            .unwrap_or_else(|| panic!("no index {table}.{name} in {indexes:?}"))
+            .clone()
+    };
+    assert_eq!(find("items", "PRIMARY")["reason"], "primary key");
+    assert_eq!(
+        find("items", "slug_unique"),
+        json!({ "table": "items", "name": "slug_unique", "unique": true, "columns": ["slug"], "reason": "`slug` is .unique()" })
+    );
+    assert_eq!(
+        find("items", "first_items_locationId_fk")["reason"],
+        "`locationId` references locations: MySQL indexes a foreign key"
+    );
+    assert!(
+        indexes
+            .iter()
+            .all(|i| i["reason"].as_str().is_some_and(|r| !r.is_empty())),
+        "{indexes:?}"
+    );
+}
+
 #[test]
 fn nested_presentation_reaches_scf_and_public_schema_without_storage_migrations() {
     let tmp = tempfile::tempdir().unwrap();
@@ -2218,6 +2259,10 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         "parseInt('14mnsu689fka', 36)",
     ] {
         for handler in [false, true] {
+            // Configuration evaluation spreads arguments; compiled handlers refuse spread calls.
+            if !handler && expression.contains("(...[") {
+                continue;
+            }
             // These contracts have different evaluator and emitter support.
             if handler
                 && (expression.starts_with("JSON.stringify")
@@ -2722,33 +2767,6 @@ fn non_iso_date_literals_are_refused_at_the_call() {
             );
             assert_eq!(report["diagnostics"][0]["location"]["file"], name);
         }
-    }
-}
-
-#[test]
-fn effectful_sorting_is_refused_at_the_callback() {
-    for name in ["first.config.ts", "first/helper.js"] {
-        let tmp = tempfile::tempdir().unwrap();
-        let expression = "(() => { let calls=0; [3,2,1].sort((a,b)=>{calls++;return a-b;}); return calls; })()";
-        let body = if name == "first/helper.js" {
-            write_app(tmp.path().join(name), format!("export const probe=()=>{expression};")).unwrap();
-            "probe()"
-        } else {
-            expression
-        };
-        let import = if name == "first/helper.js" {
-            "import {probe} from './first/helper.js';"
-        } else {
-            ""
-        };
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{import}export default defineConfig({{actions:{{probe:action({{handler:()=>{body}}})}}}});")).unwrap();
-        let (out, report) = checked(tmp.path());
-        assert_eq!(out.status.code(), Some(1), "{report}");
-        assert_eq!(
-            report["diagnostics"][0]["message"],
-            "sorting requires a numeric key-difference comparator"
-        );
-        assert_eq!(report["diagnostics"][0]["location"]["file"], name);
     }
 }
 
@@ -3653,47 +3671,46 @@ fn wordpress_own_abilities_match_the_registered_ones() {
 /// it registered without code, so the build never calls a function PHP never got.
 #[test]
 fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled() {
-    let first =
-        "function first(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; }";
-    let boxed = "class Box { constructor(public v: number) {} top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0] + this.v; } }";
-    let sort = "sorting requires a numeric key-difference comparator";
+    let first = "function first(xs: number[]): number { return xs[0]! + 'a'.localeCompare('b'); }";
+    let boxed = "class Box { constructor(public v: number) {} top(xs: number[]): number { return xs[0]! + 'a'.localeCompare('b') + this.v; } }";
+    let refused = "localeCompare() isn't supported";
     for (declarations, handler, message) in [
         (
             first,
             "() => ({ a() { return first([1, 3, 2]) + this.b(); }, b() { return this.n; }, n: 1 }).a()",
-            sort,
+            refused,
         ),
         (
             boxed,
             "() => ({ a() { return new Box(1).top([1, 3, 2]) + this.b(); }, b() { return this.n; }, n: 1 }).a()",
-            sort,
+            refused,
         ),
-        (first, "() => { if (first([1, 3, 2])) return 1; return 0; }", sort),
+        (first, "() => { if (first([1, 3, 2])) return 1; return 0; }", refused),
         (
             first,
             "async () => { let n = 0; for await (const v of [first([1, 3, 2])]) n += v; return n; }",
-            sort,
+            refused,
         ),
-        (first, "() => (first([1, 3, 2]) ? 1 : 0)", sort),
+        (first, "() => (first([1, 3, 2]) ? 1 : 0)", refused),
         (
             first,
             "() => ({ a() { if (first([1, 3, 2])) return this.n; return 0; }, n: 1 }).a()",
-            sort,
+            refused,
         ),
         (
             boxed,
             "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box) return 1; return 0; }",
-            sort,
+            refused,
         ),
         (
             format!("{boxed} function h(): number {{ return new Box(1).v; }}").as_str(),
             "() => { if (h()) return 1; return 0; }",
-            sort,
+            refused,
         ),
         (
-            "function bad(): number { return [1].sort(function (a, b) { return b > a ? 1 : -1; })[0]; } const ns = { n: 1, get(this: { n: number }): number { return this.n; }, bad };",
+            "function bad(): number { return 'a'.localeCompare('b'); } const ns = { n: 1, get(this: { n: number }): number { return this.n; }, bad };",
             "() => { if (ns.get()) return 1; return 0; }",
-            sort,
+            refused,
         ),
         (
             "const m = new Map([[\"a\", () => 1]]);",
@@ -3703,9 +3720,9 @@ fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled(
         // A module-level literal whose method reads `this` is built whole in PHP, so a member the
         // method never reads is still compiled, and its refusal is reported, not dropped.
         (
-            "class K { m(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; } } const api = { K, n: 1, f() { return this.n; } };",
+            "class K { m(xs: number[]): number { return xs[0]! + 'a'.localeCompare('b'); } } const api = { K, n: 1, f() { return this.n; } };",
             "() => [api.f(), new K().m([1, 3, 2])]",
-            sort,
+            refused,
         ),
         (
             "const api = { m: new Map([[1, () => 2]]), n: 1, f() { return this.n; } };",
@@ -3713,14 +3730,14 @@ fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled(
             "captured data contains a function, which can't be used in PHP",
         ),
         (
-            "class Box { constructor(public v: number) {} m(): number { return h().v; } ok(): boolean { return true; } top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; } } function h(): Box { return new Box(1); }",
+            "class Box { constructor(public v: number) {} m(): number { return h().v; } ok(): boolean { return true; } top(xs: number[]): number { return xs[0]! + 'a'.localeCompare('b'); } } function h(): Box { return new Box(1); }",
             "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box && h().ok()) return 1; return 0; }",
-            sort,
+            refused,
         ),
         (
-            "class Box { constructor(public v: number) {} m(): number { return new Tag().of(this); } ok(): boolean { return true; } top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; } } class Tag { of(b: Box): number { return b.v; } box(): Box | null { return null; } } function t(): Tag { return new Tag(); }",
+            "class Box { constructor(public v: number) {} m(): number { return new Tag().of(this); } ok(): boolean { return true; } top(xs: number[]): number { return xs[0]! + 'a'.localeCompare('b'); } } class Tag { of(b: Box): number { return b.v; } box(): Box | null { return null; } } function t(): Tag { return new Tag(); }",
             "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box && t().box()!.ok()) return 1; return 0; }",
-            sort,
+            refused,
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
@@ -3842,6 +3859,128 @@ fn language_constructs_match_node_through_generated_php() {
         }
         assert_eq!(php, node, "{name}: the PHP envelope is not byte-identical to Node's");
     }
+}
+
+/// Twelve objects that point at each other through six fields, then twelve member writes through
+/// them. Every write reaches every object below every short field path, and alias expansion
+/// within one pass once grew an event's place set to millions of places before the end-of-pass
+/// widening check could see it: on this program the previous solver took more than 90 s and
+/// 2.9 GB in a debug build. The solver now numbers each place once and widens a binding whose group
+/// runs away inside a pass (docs/decisions/2026-11-12-effects-event-scale.md). Debug builds count
+/// path projections (`FIRST_DEBUG_EFFECTS_WORK`); the solve must stay a small multiple of its
+/// result, widen the same bindings on every run, and the PHP must compute what Node computes.
+#[test]
+fn effects_on_an_object_graph_stay_bounded_and_keep_php_equal_to_node() {
+    let tmp = tempfile::tempdir().unwrap();
+    let nodes = 12;
+    let fields = ["a", "b", "c", "d", "e", "f"];
+    let mut body = String::from("export function run(input) {\n  const nodes = [];\n");
+    for i in 0..nodes {
+        body.push_str(&format!(
+            "  const n{i} = {{ id: {i}, label: input }};\n  nodes.push(n{i});\n"
+        ));
+    }
+    for i in 0..nodes {
+        for (j, field) in fields.iter().enumerate() {
+            body.push_str(&format!("  n{i}.{field} = n{};\n", (i * 3 + j + 1) % nodes));
+        }
+    }
+    for i in 0..nodes {
+        body.push_str(&format!("  n{i}.{}.label = input + '{i}';\n", fields[i % fields.len()]));
+    }
+    body.push_str(
+        "  let out = '';
+  for (const n of nodes) out += n.id + ':' + n.a.label + n.b.id + n.c.d.label + ',';
+  return out;
+}
+",
+    );
+    std::fs::create_dir(tmp.path().join("first")).unwrap();
+    std::fs::write(tmp.path().join("first/run.mjs"), body).unwrap();
+    std::fs::write(tmp.path().join("package.json"), r#"{"type":"module"}"#).unwrap();
+    std::fs::write(
+        tmp.path().join("first.config.ts"),
+        r#"import { action, defineConfig, text } from "first";
+import { run } from "./first/run.mjs";
+export default defineConfig({ name: "graph", actions: { a: action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }) } });
+"#,
+    )
+    .unwrap();
+
+    if cfg!(debug_assertions) {
+        let solve = |run: usize| {
+            let dump = tmp.path().join(format!("effects-{run}.txt"));
+            let work = tmp.path().join(format!("work-{run}.txt"));
+            let out = first()
+                .args(["check", "--json"])
+                .arg(tmp.path())
+                .env("FIRST_DEBUG_EFFECTS", &dump)
+                .env("FIRST_DEBUG_EFFECTS_WORK", &work)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+            (
+                std::fs::read_to_string(dump).expect("debug builds dump the solved effects"),
+                std::fs::read_to_string(work).expect("debug builds record the solver's work"),
+            )
+        };
+        let (dump, work) = solve(0);
+        let field = |name: &str| -> u64 {
+            work.split_whitespace()
+                .find_map(|part| part.strip_prefix(name)?.strip_prefix('='))
+                .and_then(|n| n.parse().ok())
+                .unwrap_or_else(|| panic!("{name} in {work:?}"))
+        };
+        let (projections, facts) = (field("projections"), field("facts"));
+        assert!(
+            dump.lines().any(|line| line.starts_with("widened ")),
+            "the program no longer reaches widening"
+        );
+        // The previous solver made 41M projections here for 28K facts at 8 nodes, and did not
+        // finish within 90 s at 12.
+        assert!(
+            projections < 5 * facts && facts < 200_000,
+            "the effects solver runs away: {projections} projections for {facts} facts"
+        );
+        assert_eq!(dump, solve(1).0, "the widened effects depend on the run");
+    }
+
+    let inputs = ["", "x", "a b"];
+    let node = Command::new("node")
+        .current_dir(tmp.path())
+        .args(["--input-type=module", "-e"])
+        .arg(format!(
+            "import {{ run }} from './first/run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
+            serde_json::to_string(&inputs).unwrap()
+        ))
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    let content = build_wp(tmp.path());
+    let actual = php(
+        &format!(
+            r#"
+require $argv[1];
+$schema = require $argv[2] . '/schema.php';
+require $argv[2] . '/functions.php';
+$fn = '\\FirstApp\\' . $schema['actions']['a']['handler'];
+$out = [];
+foreach (json_decode('{}') as $s) {{
+    $input = new \First\JsObject();
+    $input->p['s'] = $s;
+    $out[] = json_decode(\First\Js::jsonStringify($fn($input, new \First\JsObject())));
+}}
+echo json_encode($out);
+"#,
+            serde_json::to_string(&inputs).unwrap()
+        ),
+        &[
+            &content.join("plugins/first-runtime/first/bootstrap.php"),
+            &content.join("plugins/first-app-graph/first/app"),
+        ],
+    );
+    assert_eq!(actual, expected);
 }
 
 /// A token parser shaped like picomatch's `parse()`: each branch writes through `prev`,

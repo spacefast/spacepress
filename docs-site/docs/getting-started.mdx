@@ -10,7 +10,7 @@ In this guide we create a notes app, start it on a local WordPress site, add a n
 You need Node.js 22 or later and npm. You don't need Docker, PHP or a database. First downloads a local WordPress for you.
 
 :::note
-The npm packages `@spacefast/create-first` and `@spacefast/first-cli` are not published yet. Until they are, clone the [repository](https://github.com/spacefast/zero) and run `cargo build --release` there. Then run `node <repo>/packages/create-first/bin/create-first.mjs my-app` in place of `npm create`, and use `<repo>/target/release/first` as the `first` command.
+The npm packages `@spacefast/create-first` and `@spacefast/first-cli` are not published yet. Until they are, clone the [repository](https://github.com/spacefast/zero) and run `cargo build --release` there. Then run `node <repo>/packages/create-first/bin/create-first.mjs my-app --no-install` in place of `npm create` (the install would fetch the unpublished `@spacefast/first-cli`), and run `<repo>/target/release/first <command>` wherever this page says `npm run <command>` or `npx first`.
 :::
 
 ## Create the app
@@ -62,7 +62,10 @@ The first start downloads WordPress and takes about a minute. When it is ready, 
 ```text
 built 1 collections, 0 tables, 0 user projections, 0 globals, 0 hooks, 0 actions -> first/dist/wp-content (new migrations first/_generated/migrations/0001_init.sql) in 11s
 WordPress version: 7.1.4
+Plugin 'action-scheduler' activated.
+Plugin 'mcp-adapter' activated.
 Plugin 'secure-custom-fields' activated.
+Plugin 'two-factor' activated.
 Plugin 'first-runtime' activated.
 Plugin 'first-identity' activated.
 Plugin 'first-app-my-app' activated.
@@ -93,10 +96,10 @@ You can also add notes in wp-admin. Sign in with the login that `dev` printed, t
 curl http://localhost:9187/__first/api/v1/notes
 ```
 
-You should see the same note:
+You should see the same note in a list, with a `cursor` for the next page (`null`: there is none):
 
 ```json
-{"data":[{"id":5,"title":"Hello","body":null,"status":"published","publishedAt":"2026-11-09T04:26:14.000Z"}]}
+{"data":[{"id":5,"title":"Hello","body":null,"status":"published","publishedAt":"2026-11-09T04:26:14.000Z"}],"cursor":null}
 ```
 
 Now try to create a note without signing in:

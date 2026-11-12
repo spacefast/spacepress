@@ -6,7 +6,9 @@ namespace First;
 
 /**
  * Boots a generated app and serves its REST API (§4.8) and CLI. The WordPress plugin passes its
- * Store/Auth/Media and calls handle() with the path after its REST prefix (`/wp-json/first/v1`).
+ * Store/Auth/Media and calls handle() with the path after the API prefix (`/__first/api/v1`): the
+ * WordPress facade for First's own routes with no core route (sign-in, sync, services, files), and
+ * the abilities (invoke).
  */
 final class App
 {
@@ -79,8 +81,11 @@ final class App
             $ctx = Seam::ctx($ctx);
         }
 
+        // The kind API runs as the caller; a signed action's caller is the system (§6.1).
+        $visitor = ($action['signature'] ?? null) !== null ? null : $viewer;
+
         return Extensions::execute('action:' . $name, $action, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer,
-            static fn (): Response => Response::json(JsBinary::refuseWire(Timers::run(static fn (): mixed => $fn($input, $ctx)), 'action ' . $name)));
+            static fn (): Response => Response::json(JsBinary::refuseWire(Seam::asVisitor($visitor, static fn (): mixed => Timers::run(static fn (): mixed => $fn($input, $ctx))), 'action ' . $name)));
     }
 
     /**
@@ -119,8 +124,9 @@ final class App
                     ]);
                     $fn = '\\FirstApp\\' . $route['handler'];
                     // `once()` in a handler is keyed to this exact request body, as in actions.
+                    $visitor = ($route['signature'] ?? null) !== null ? null : $viewer;
                     $result = Jobs\Receipts::withFingerprint(hash('sha256', $body),
-                        fn (): mixed => Seam::container(Timers::run(fn (): mixed => $fn($request, Seam::ctx($this->db->hookCtx())))));
+                        fn (): mixed => Seam::container(Seam::asVisitor($visitor, fn (): mixed => Timers::run(fn (): mixed => $fn($request, Seam::ctx($this->db->hookCtx()))))));
                 } finally {
                     $this->db->setActor($previous);
                 }

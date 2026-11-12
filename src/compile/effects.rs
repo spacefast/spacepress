@@ -76,6 +76,46 @@ fn callable_at(value: &Place, callee: &Place) -> bool {
     value.binding == callee.binding && projected_suffix(&value.path, &callee.path).is_some_and(<[Step]>::is_empty)
 }
 
+/// A place's number in the solver's table of places. Event sets and function summaries hold
+/// numbers, because they repeat the same few thousand places millions of times. See
+/// docs/decisions/2026-11-12-effects-event-scale.md.
+type Id = u32;
+
+/// An insertion-ordered set of place numbers: the order for the solver's read cursors, and one
+/// bit per place number for membership.
+#[derive(Clone, Default)]
+struct IdSet {
+    order: Vec<Id>,
+    bits: Vec<u64>,
+}
+
+impl IdSet {
+    fn insert(&mut self, id: Id) -> bool {
+        let (word, bit) = (id as usize / 64, 1u64 << (id % 64));
+        if word >= self.bits.len() {
+            self.bits.resize(word + 1, 0);
+        }
+        if self.bits[word] & bit != 0 {
+            return false;
+        }
+        self.bits[word] |= bit;
+        self.order.push(id);
+        true
+    }
+    fn len(&self) -> usize {
+        self.order.len()
+    }
+    /// The numbers from position `from` up to `to`, in insertion order.
+    fn unread(&self, from: usize, to: usize) -> &[Id] {
+        self.order.get(from..to).unwrap_or_default()
+    }
+}
+
+/// Numbers a place, adding it to the table the first time.
+fn intern(places: &mut IndexSet<Place>, place: Place) -> Id {
+    places.insert_full(place).0 as Id
+}
+
 #[derive(Default)]
 pub(super) struct Effects {
     reassigned: IndexSet<Span>,
@@ -84,16 +124,28 @@ pub(super) struct Effects {
     numeric: IndexMap<Span, IndexSet<Vec<Step>>>,
     incoming: IndexMap<Span, IndexSet<Vec<Step>>>,
     incoming_writes: IndexMap<Span, IndexSet<Vec<Step>>>,
-    capture_writes: IndexMap<Span, Places>,
-    events: IndexMap<Span, Places>,
-    write_events: IndexMap<Span, Places>,
-    expression_writes: IndexMap<Span, Places>,
-    loop_writes: IndexMap<Span, Places>,
+    /// The places the sets below number.
+    places: IndexSet<Place>,
+    capture_writes: IndexMap<Span, Vec<Id>>,
+    events: IndexMap<Span, Vec<Id>>,
+    write_events: IndexMap<Span, Vec<Id>>,
+    expression_writes: IndexMap<Span, Vec<Id>>,
+    loop_writes: IndexMap<Span, Vec<Id>>,
     /// Every reachable write, by the binding it starts from.
     binding_writes: IndexMap<Span, IndexSet<Vec<Step>>>,
 }
 
 impl Effects {
+    /// The places of one solved set, in the order the solver found them.
+    fn places_in<'a>(
+        &'a self,
+        sets: &'a IndexMap<Span, Vec<Id>>,
+        key: Span,
+    ) -> Option<impl Iterator<Item = &'a Place>> {
+        sets.get(&key)
+            .map(|ids| ids.iter().map(|id| &self.places[*id as usize]))
+    }
+
     /// Paths written below `binding` anywhere reachable. Calls carry a helper's writes back to
     /// the argument it was given, and copies carry them across aliases, so this covers writes
     /// through helpers, closures and other names for the same value. Every callee in compiled
@@ -224,30 +276,31 @@ impl Effects {
     /// A write invalidates refinements of that location and its descendants.
     /// Sibling refinements and the authored assignment constraint remain intact.
     pub fn invalidate(&self, event: Span, binding: Span, view: &[Step], ty: &Ty, constraint: &Ty) -> Ty {
-        self.write_events.get(&event).map_or_else(
+        self.places_in(&self.write_events, event).map_or_else(
             || ty.clone(),
             |paths| invalidate_paths(paths, binding, view, ty, constraint),
         )
     }
 
     pub fn invalidate_loop(&self, event: Span, binding: Span, view: &[Step], ty: &Ty, constraint: &Ty) -> Ty {
-        self.loop_writes.get(&event).map_or_else(
+        self.places_in(&self.loop_writes, event).map_or_else(
             || ty.clone(),
             |paths| invalidate_paths(paths, binding, view, ty, constraint),
         )
     }
 
     pub fn changes_refinement(&self, expression: Span, binding: Span, view: &[Step]) -> bool {
-        self.expression_writes.get(&expression).is_some_and(|writes| {
-            writes.iter().any(|p| {
-                p.binding == binding
-                    && (projected_suffix(&p.path, view).is_some() || projected_suffix(view, &p.path).is_some())
+        self.places_in(&self.expression_writes, expression)
+            .is_some_and(|mut writes| {
+                writes.any(|p| {
+                    p.binding == binding
+                        && (projected_suffix(&p.path, view).is_some() || projected_suffix(view, &p.path).is_some())
+                })
             })
-        })
     }
 
     pub fn capture_type(&self, function: Span, binding: Span, view: &[Step], ty: &Ty, constraint: &Ty) -> Ty {
-        let ty = self.capture_writes.get(&function).map_or_else(
+        let ty = self.places_in(&self.capture_writes, function).map_or_else(
             || ty.clone(),
             |paths| invalidate_paths(paths, binding, view, ty, constraint),
         );
@@ -255,11 +308,10 @@ impl Effects {
     }
 
     pub fn write_type(&self, event: Span, binding: Span, view: &[Step], ty: &Ty) -> Ty {
-        self.events.get(&event).map_or_else(
+        self.places_in(&self.events, event).map_or_else(
             || ty.clone(),
             |paths| {
                 paths
-                    .iter()
                     .filter(|p| p.binding == binding)
                     .filter_map(|p| below_view(&p.path, view))
                     .fold(ty.clone(), |ty, path| widen(&ty, path))
@@ -282,8 +334,14 @@ fn below_view<'a>(path: &'a [Step], view: &[Step]) -> Option<&'a [Step]> {
     (cut < view.len() && path[..cut] == view[..cut]).then(|| &path[cut..])
 }
 
-fn invalidate_paths(paths: &Places, binding: Span, view: &[Step], ty: &Ty, constraint: &Ty) -> Ty {
-    paths.iter().filter(|p| p.binding == binding).fold(ty.clone(), |ty, p| {
+fn invalidate_paths<'a>(
+    paths: impl Iterator<Item = &'a Place>,
+    binding: Span,
+    view: &[Step],
+    ty: &Ty,
+    constraint: &Ty,
+) -> Ty {
+    paths.filter(|p| p.binding == binding).fold(ty.clone(), |ty, p| {
         if let Some(path) = projected_suffix(&p.path, view) {
             restore(&ty, constraint, path)
         } else if projected_suffix(view, &p.path).is_some() {
@@ -487,6 +545,14 @@ fn bounded(mut p: Place, max_depth: usize) -> Place {
 /// reaches thousands. See docs/decisions/2026-11-08-effects-widening.md.
 const WIDEN_ABOVE: usize = 64;
 
+/// The end-of-pass check sees a group only after a whole pass. Alias expansion within one pass
+/// can grow a group far past `WIDEN_ABOVE` first (360K places in one files-sdk event set), so it
+/// widens a JavaScript-owned binding as soon as one of its groups in the set being expanded
+/// passes this bound. It is far above `WIDEN_ABOVE` so it only cuts a pass that would run away;
+/// every program that finished before reaches the same widened bindings as before. See
+/// docs/decisions/2026-11-12-effects-event-scale.md.
+const RUNAWAY_ABOVE: usize = 1024;
+
 /// Coarsens a place of a widened binding to its first step and everything below it.
 fn coarsened(mut p: Place, widened: &IndexSet<Span>) -> Place {
     if p.path.len() > 1 && widened.contains(&p.binding) {
@@ -525,14 +591,28 @@ struct Solved {
     /// Reachable copies already in `aliases`, by position in `copies`.
     aliased: IndexSet<usize>,
     aliases: IndexMap<Span, Vec<(Place, Place)>>,
-    /// Places of each set already closed under aliases: numeric, writes, events, write events.
+    /// Places of each numbered set already closed under aliases, by `EffectSet` and key.
     expanded: [IndexMap<Span, usize>; 4],
     edges: IndexMap<(usize, Span), EdgeRead>,
     /// `events` and `write_events`, each event's places by binding.
     event_bindings: [IndexMap<Span, ByBinding>; 2],
+    /// Each place's alias targets, for the aliases of the current pass, by place number.
+    alias_targets: Vec<Option<Rc<[Id]>>>,
+    /// Group sizes of each numbered set (`events`, `write_events`, `function_numeric`,
+    /// `function_writes`, by position and key) and of `numeric`, `writes`, `incoming` and
+    /// `incoming_writes`.
+    groups: IndexMap<(usize, Span), Groups>,
+    plain_groups: [Groups; 4],
 }
 
-/// Positions in an insertion-ordered places set, by binding.
+/// The size of each group in one set, counted up to position `read`.
+#[derive(Default)]
+struct Groups {
+    read: usize,
+    sizes: IndexMap<Span, usize>,
+}
+
+/// Positions in an insertion-ordered set of place numbers, by binding.
 #[derive(Default)]
 struct ByBinding {
     indexed: usize,
@@ -540,10 +620,10 @@ struct ByBinding {
 }
 
 impl ByBinding {
-    fn extend(&mut self, set: &Places) {
-        for (position, place) in unread(set, self.indexed, set.len()).enumerate() {
+    fn extend(&mut self, set: &IdSet, places: &IndexSet<Place>) {
+        for (position, id) in set.unread(self.indexed, set.len()).iter().enumerate() {
             self.positions
-                .entry(place.binding)
+                .entry(places[*id as usize].binding)
                 .or_default()
                 .push(self.indexed + position);
         }
@@ -635,17 +715,49 @@ struct Graph {
     max_depth: usize,
     bindings: IndexMap<Span, Span>,
     parameter_views: IndexMap<Span, Place>,
-    function_numeric: IndexMap<Span, Places>,
-    function_writes: IndexMap<Span, Places>,
-    events: IndexMap<Span, Places>,
-    write_events: IndexMap<Span, Places>,
-    /// JavaScript-owned bindings whose effect places are coarsened; fixed for one solve.
+    /// The places that `function_numeric`, `function_writes`, `events` and `write_events` number.
+    places: IndexSet<Place>,
+    function_numeric: IndexMap<Span, IdSet>,
+    function_writes: IndexMap<Span, IdSet>,
+    events: IndexMap<Span, IdSet>,
+    write_events: IndexMap<Span, IdSet>,
+    /// JavaScript-owned bindings whose effect places are coarsened. Fixed for one solve, except
+    /// that alias expansion adds a binding whose group runs away within a pass (`RUNAWAY_ABOVE`);
+    /// that solve then ends with the binding among those to widen.
     widened: IndexSet<Span>,
+}
+
+/// What a callee's summary place means to a caller.
+enum CallerEffects {
+    /// The place the callee wrote is visible to the caller as it is.
+    Same,
+    /// The caller's places for it: arguments with the parameter's suffix, or none for the callee's locals.
+    Mapped(Vec<Place>),
+}
+
+#[derive(Clone, Copy)]
+enum EffectSet {
+    Events,
+    WriteEvents,
+    FunctionNumeric,
+    FunctionWrites,
 }
 
 type Names = Vec<IndexMap<String, Place>>;
 
 impl Graph {
+    /// Adds a place to one of the numbered effect sets.
+    fn record(&mut self, set: EffectSet, key: Span, place: Place) {
+        let id = intern(&mut self.places, place);
+        let sets = match set {
+            EffectSet::Events => &mut self.events,
+            EffectSet::WriteEvents => &mut self.write_events,
+            EffectSet::FunctionNumeric => &mut self.function_numeric,
+            EffectSet::FunctionWrites => &mut self.function_writes,
+        };
+        sets.entry(key).or_default().insert(id);
+    }
+
     fn function(&mut self, f: &Rc<Func>, outer: &[IndexMap<String, Place>], env: &Rc<Scope>) -> Place {
         let owner = f.span;
         if self.javascript_modules.contains(&f.module) {
@@ -788,16 +900,16 @@ impl Graph {
         match pattern {
             AssignPat::Target(target) => {
                 if let Some(p) = self.expr(target, names, env, owner) {
-                    self.write_events.entry(event).or_default().insert(p.clone());
-                    self.function_writes.entry(owner).or_default().insert(p.clone());
-                    self.events.entry(event).or_default().insert(p.clone());
+                    self.record(EffectSet::WriteEvents, event, p.clone());
+                    self.record(EffectSet::FunctionWrites, owner, p.clone());
+                    self.record(EffectSet::Events, event, p.clone());
                     // As for `=`: a JavaScript function may store any value into a member.
                     if self.javascript_functions.contains(&owner) && !p.path.is_empty() {
                         let dynamic = p.at(Step::DynamicValue);
-                        self.write_events.entry(event).or_default().insert(dynamic.clone());
-                        self.function_writes.entry(owner).or_default().insert(dynamic.clone());
-                        self.events.entry(event).or_default().insert(dynamic.clone());
-                        self.function_numeric.entry(owner).or_default().insert(dynamic);
+                        self.record(EffectSet::WriteEvents, event, dynamic.clone());
+                        self.record(EffectSet::FunctionWrites, owner, dynamic.clone());
+                        self.record(EffectSet::Events, event, dynamic.clone());
+                        self.record(EffectSet::FunctionNumeric, owner, dynamic);
                     }
                     self.copy(src, Some(p), owner);
                 }
@@ -1196,11 +1308,11 @@ impl Graph {
             ExprKind::Yield { arg: None, .. } => {}
             ExprKind::Update { target, .. } => {
                 if let Some(p) = self.expr(target, names, env, owner) {
-                    self.write_events.entry(e.span).or_default().insert(p.clone());
+                    self.record(EffectSet::WriteEvents, e.span, p.clone());
                     self.numeric.insert(p.clone());
-                    self.events.entry(e.span).or_default().insert(p.clone());
-                    self.function_numeric.entry(owner).or_default().insert(p.clone());
-                    self.function_writes.entry(owner).or_default().insert(p);
+                    self.record(EffectSet::Events, e.span, p.clone());
+                    self.record(EffectSet::FunctionNumeric, owner, p.clone());
+                    self.record(EffectSet::FunctionWrites, owner, p);
                 }
                 self.history.entry(owner).or_default().insert(e.span);
             }
@@ -1208,19 +1320,19 @@ impl Graph {
                 let target = self.expr(target, names, env, owner);
                 let src = self.expr(value, names, env, owner);
                 if let Some(p) = &target {
-                    self.write_events.entry(e.span).or_default().insert(p.clone());
-                    self.function_writes.entry(owner).or_default().insert(p.clone());
+                    self.record(EffectSet::WriteEvents, e.span, p.clone());
+                    self.record(EffectSet::FunctionWrites, owner, p.clone());
                     if self.javascript_functions.contains(&owner) && !p.path.is_empty() {
                         let dynamic = p.at(Step::DynamicValue);
-                        self.write_events.entry(e.span).or_default().insert(dynamic.clone());
-                        self.function_writes.entry(owner).or_default().insert(dynamic.clone());
-                        self.events.entry(e.span).or_default().insert(dynamic.clone());
-                        self.function_numeric.entry(owner).or_default().insert(dynamic);
+                        self.record(EffectSet::WriteEvents, e.span, dynamic.clone());
+                        self.record(EffectSet::FunctionWrites, owner, dynamic.clone());
+                        self.record(EffectSet::Events, e.span, dynamic.clone());
+                        self.record(EffectSet::FunctionNumeric, owner, dynamic);
                     }
                     if matches!(op, Some(AssignOp::Bin(_))) {
                         self.numeric.insert(p.clone());
-                        self.events.entry(e.span).or_default().insert(p.clone());
-                        self.function_numeric.entry(owner).or_default().insert(p.clone());
+                        self.record(EffectSet::Events, e.span, p.clone());
+                        self.record(EffectSet::FunctionNumeric, owner, p.clone());
                     }
                 }
                 self.copy(src, target.clone(), owner);
@@ -1237,9 +1349,9 @@ impl Graph {
             // `delete` writes its target place: the property becomes absent.
             ExprKind::Delete(target) => {
                 if let Some(p) = self.expr(target, names, env, owner) {
-                    self.write_events.entry(e.span).or_default().insert(p.clone());
-                    self.function_writes.entry(owner).or_default().insert(p.clone());
-                    self.events.entry(e.span).or_default().insert(p);
+                    self.record(EffectSet::WriteEvents, e.span, p.clone());
+                    self.record(EffectSet::FunctionWrites, owner, p.clone());
+                    self.record(EffectSet::Events, e.span, p);
                 }
                 self.history.entry(owner).or_default().insert(e.span);
                 return None;
@@ -1388,16 +1500,16 @@ impl Graph {
                         let target = p.at(Step::Index);
                         if self.javascript_functions.contains(&owner) {
                             let dynamic = target.at(Step::DynamicValue);
-                            self.write_events.entry(e.span).or_default().insert(dynamic.clone());
-                            self.function_writes.entry(owner).or_default().insert(dynamic.clone());
-                            self.events.entry(e.span).or_default().insert(dynamic.clone());
-                            self.function_numeric.entry(owner).or_default().insert(dynamic);
+                            self.record(EffectSet::WriteEvents, e.span, dynamic.clone());
+                            self.record(EffectSet::FunctionWrites, owner, dynamic.clone());
+                            self.record(EffectSet::Events, e.span, dynamic.clone());
+                            self.record(EffectSet::FunctionNumeric, owner, dynamic);
                         }
-                        self.write_events.entry(e.span).or_default().insert(target.clone());
-                        self.function_writes.entry(owner).or_default().insert(target);
+                        self.record(EffectSet::WriteEvents, e.span, target.clone());
+                        self.record(EffectSet::FunctionWrites, owner, target);
                         let resized = p.at(Step::Resize);
-                        self.write_events.entry(e.span).or_default().insert(resized.clone());
-                        self.function_writes.entry(owner).or_default().insert(resized);
+                        self.record(EffectSet::WriteEvents, e.span, resized.clone());
+                        self.record(EffectSet::FunctionWrites, owner, resized);
                     }
                     if let Some(mutation) = mutation
                         && let Some(recv) = &recv
@@ -1680,8 +1792,8 @@ impl Graph {
                     if init.is_some()
                         && let Some(target) = &target
                     {
-                        self.write_events.entry(*span).or_default().insert(target.clone());
-                        self.function_writes.entry(owner).or_default().insert(target.clone());
+                        self.record(EffectSet::WriteEvents, *span, target.clone());
+                        self.record(EffectSet::FunctionWrites, owner, target.clone());
                         self.history.entry(owner).or_default().insert(*span);
                     }
                     self.copy(src, target, owner);
@@ -1802,8 +1914,8 @@ impl Graph {
                         .insert(name.clone(), Place::new(target.span));
                     self.bindings.insert(target.span, owner);
                 } else if let Some(target) = self.expr(target, names, env, owner) {
-                    self.write_events.entry(*span).or_default().insert(target.clone());
-                    self.function_writes.entry(owner).or_default().insert(target);
+                    self.record(EffectSet::WriteEvents, *span, target.clone());
+                    self.record(EffectSet::FunctionWrites, owner, target);
                     self.history.entry(owner).or_default().insert(*span);
                 }
                 self.block(body, names, env, owner);
@@ -1879,32 +1991,34 @@ impl Graph {
         bindings
     }
 
-    fn caller_effects(&self, function: Span, bindings: &[(Option<Place>, Place)], effect: Place) -> Vec<Place> {
+    fn caller_effects(&self, function: Span, bindings: &[(Option<Place>, Place)], effect: &Place) -> CallerEffects {
         if self.functions[&function]
             .iter()
             .any(|param| param.binding == effect.binding)
         {
-            bindings
-                .iter()
-                .filter_map(|(argument, parameter)| {
-                    if parameter.binding != effect.binding {
-                        return None;
-                    }
-                    let suffix = projected_suffix(&effect.path, &parameter.path)?;
-                    // Assigning a parameter or a fresh rest slot cannot replace
-                    // the caller's binding.
-                    if suffix.is_empty() {
-                        return None;
-                    }
-                    let mut target = argument.as_ref()?.clone();
-                    target.path.extend_from_slice(suffix);
-                    Some(derived(target, self.max_depth, &self.widened))
-                })
-                .collect()
+            CallerEffects::Mapped(
+                bindings
+                    .iter()
+                    .filter_map(|(argument, parameter)| {
+                        if parameter.binding != effect.binding {
+                            return None;
+                        }
+                        let suffix = projected_suffix(&effect.path, &parameter.path)?;
+                        // Assigning a parameter or a fresh rest slot cannot replace
+                        // the caller's binding.
+                        if suffix.is_empty() {
+                            return None;
+                        }
+                        let mut target = argument.as_ref()?.clone();
+                        target.path.extend_from_slice(suffix);
+                        Some(derived(target, self.max_depth, &self.widened))
+                    })
+                    .collect(),
+            )
         } else if self.bindings.get(&effect.binding) != Some(&function) {
-            vec![effect]
+            CallerEffects::Same
         } else {
-            Vec::new()
+            CallerEffects::Mapped(Vec::new())
         }
     }
 
@@ -1923,30 +2037,76 @@ impl Graph {
         }
     }
 
+    /// The places one alias step reaches from `place`, numbered. Every place set closes under
+    /// the same step, so a pass computes it once per place and every set shares the result.
+    fn alias_targets(&mut self, place: Id, solved: &mut Solved) -> Rc<[Id]> {
+        let index = place as usize;
+        if let Some(Some(targets)) = solved.alias_targets.get(index) {
+            return targets.clone();
+        }
+        let p = self.places[index].clone();
+        let mut targets = Vec::new();
+        for (source, target) in solved.aliases.get(&p.binding).into_iter().flatten() {
+            let Some(suffix) = projected_suffix(&p.path, &source.path) else {
+                continue;
+            };
+            // Copying a slot retains its value's aliases, not future replacements of that slot.
+            if suffix.is_empty() || suffix == [Step::DynamicValue] {
+                continue;
+            }
+            let mut alias = target.clone();
+            alias.path.extend_from_slice(suffix);
+            targets.push(intern(&mut self.places, derived(alias, self.max_depth, &self.widened)));
+        }
+        let targets: Rc<[Id]> = targets.into();
+        if solved.alias_targets.len() <= index {
+            solved.alias_targets.resize(index + 1, None);
+        }
+        solved.alias_targets[index] = Some(targets.clone());
+        targets
+    }
+
+    /// Closes one set under aliases, starting from `pending`. A JavaScript-owned binding whose group
+    /// in this set grows past `RUNAWAY_ABOVE` here is widened on the spot, so one pass can't run away
+    /// before the end-of-pass check sees it. The places it already added stay, and the solve ends
+    /// with the binding among those to widen, so the restart computes the result without them.
     fn expand_aliases(
-        paths: &mut Places,
-        mut pending: Vec<Place>,
-        aliases: &IndexMap<Span, Vec<(Place, Place)>>,
-        max_depth: usize,
-        widened: &IndexSet<Span>,
+        &mut self,
+        set: &mut IdSet,
+        mut pending: Vec<Id>,
+        solved: &mut Solved,
+        runaway: &mut IndexSet<Span>,
     ) {
+        let mut groups: IndexMap<Span, usize> = IndexMap::new();
         while let Some(place) = pending.pop() {
-            for (source, target) in aliases.get(&place.binding).into_iter().flatten() {
-                let Some(suffix) = projected_suffix(&place.path, &source.path) else {
-                    continue;
-                };
-                // Copying a slot retains its value's aliases, not future replacements of that slot.
-                if suffix.is_empty() || suffix == [Step::DynamicValue] {
+            for &alias in self.alias_targets(place, solved).iter() {
+                if !set.insert(alias) {
                     continue;
                 }
-                let mut alias = target.clone();
-                alias.path.extend_from_slice(suffix);
-                let alias = derived(alias, max_depth, widened);
-                if paths.insert(alias.clone()) {
-                    pending.push(alias);
+                pending.push(alias);
+                let p = &self.places[alias as usize];
+                if p.path.len() > 1 && !self.widened.contains(&p.binding) {
+                    let size = groups.entry(p.binding).or_default();
+                    *size += 1;
+                    if *size > RUNAWAY_ABOVE && self.javascript_owned(p.binding) {
+                        let binding = p.binding;
+                        self.widened.insert(binding);
+                        runaway.insert(binding);
+                        // Targets computed before the binding was widened are still exact places.
+                        solved.alias_targets.clear();
+                    }
                 }
             }
         }
+    }
+
+    /// A binding owned by imported JavaScript, or the span of such a function.
+    fn javascript_owned(&self, binding: Span) -> bool {
+        self.javascript_functions.contains(&binding)
+            || self
+                .bindings
+                .get(&binding)
+                .is_some_and(|owner| self.javascript_functions.contains(owner))
     }
 
     /// Every (call, callee) pair: a call in reachable code and a function value at its callee.
@@ -2027,7 +2187,7 @@ impl Graph {
                             continue;
                         };
                         let index = indexes.entry(*event).or_default();
-                        index.extend(set);
+                        index.extend(set, &self.places);
                         let cursor = cursors.entry(*event).or_default();
                         let mut inputs = arguments
                             .iter()
@@ -2035,13 +2195,15 @@ impl Graph {
                             .collect::<IndexSet<_>>()
                             .into_iter()
                             .flat_map(|binding| index.unread(binding, *cursor))
-                            .map(|position| &set[position]);
+                            .map(|position| &self.places[set.order[position] as usize]);
                         project(&mut inputs, false, &mut views[view]);
                         *cursor = set.len();
                     }
                 }
             }
             let [incoming, incoming_writes] = views;
+            // A summary place below a parameter maps to the argument; a place the callee doesn't
+            // own passes through as the same place number.
             let mut numeric = Vec::new();
             let mut writes = Vec::new();
             for (summaries, cursor, out) in [
@@ -2049,8 +2211,11 @@ impl Graph {
                 (&self.function_writes, &mut read.function_writes, &mut writes),
             ] {
                 if let Some(summary) = summaries.get(&function) {
-                    for p in unread(summary, *cursor, summary.len()) {
-                        out.extend(self.caller_effects(function, &bindings, p.clone()));
+                    for &id in summary.unread(*cursor, summary.len()) {
+                        match self.caller_effects(function, &bindings, &self.places[id as usize]) {
+                            CallerEffects::Same => out.push(Ok(id)),
+                            CallerEffects::Mapped(places) => out.extend(places.into_iter().map(Err)),
+                        }
                     }
                     *cursor = summary.len();
                 }
@@ -2058,20 +2223,26 @@ impl Graph {
             let (span, owner) = (call.span, call.owner);
             self.incoming.extend(incoming);
             self.incoming_writes.extend(incoming_writes);
-            for target in numeric {
-                self.events.entry(span).or_default().insert(target.clone());
-                self.function_numeric.entry(owner).or_default().insert(target.clone());
-                self.numeric.insert(target);
+            let mut number = |target: std::result::Result<Id, Place>| match target {
+                Ok(id) => id,
+                Err(place) => intern(&mut self.places, place),
+            };
+            let numeric: Vec<Id> = numeric.into_iter().map(&mut number).collect();
+            let writes: Vec<Id> = writes.into_iter().map(&mut number).collect();
+            for id in numeric {
+                self.events.entry(span).or_default().insert(id);
+                self.function_numeric.entry(owner).or_default().insert(id);
+                self.numeric.insert(self.places[id as usize].clone());
             }
-            for target in writes {
-                self.write_events.entry(span).or_default().insert(target.clone());
-                self.function_writes.entry(owner).or_default().insert(target);
+            for id in writes {
+                self.write_events.entry(span).or_default().insert(id);
+                self.function_writes.entry(owner).or_default().insert(id);
             }
         }
     }
 
     fn sizes(&self) -> [usize; 13] {
-        let total = |sets: &IndexMap<Span, Places>| sets.values().map(IndexSet::len).sum::<usize>();
+        let total = |sets: &IndexMap<Span, IdSet>| sets.values().map(IdSet::len).sum::<usize>();
         [
             self.reachable.len(),
             self.incoming.len(),
@@ -2089,46 +2260,59 @@ impl Graph {
         ]
     }
 
+    /// JavaScript-owned bindings, not yet widened, whose group in some effect set is larger
+    /// than `WIDEN_ABOVE`. Sets only grow within a solve, so each group is counted once per
+    /// place, from where the previous pass stopped.
+    fn widening_candidates(&self, solved: &mut Solved) -> IndexSet<Span> {
+        let mut over = IndexSet::new();
+        let mut count = |groups: &mut Groups, places: &mut dyn Iterator<Item = &Place>| {
+            for p in places {
+                if p.path.len() > 1 {
+                    let size = groups.sizes.entry(p.binding).or_default();
+                    *size += 1;
+                    if *size > WIDEN_ABOVE && !self.widened.contains(&p.binding) && self.javascript_owned(p.binding) {
+                        over.insert(p.binding);
+                    }
+                }
+            }
+        };
+        for (kind, sets) in [
+            &self.events,
+            &self.write_events,
+            &self.function_numeric,
+            &self.function_writes,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            for (key, set) in sets {
+                let groups = solved.groups.entry((kind, *key)).or_default();
+                let read = groups.read;
+                groups.read = set.len();
+                count(
+                    groups,
+                    &mut set.unread(read, set.len()).iter().map(|id| &self.places[*id as usize]),
+                );
+            }
+        }
+        for (groups, set) in
+            solved
+                .plain_groups
+                .iter_mut()
+                .zip([&self.numeric, &self.writes, &self.incoming, &self.incoming_writes])
+        {
+            let read = groups.read;
+            groups.read = set.len();
+            count(groups, &mut unread(set, read, set.len()));
+        }
+        over
+    }
+
     /// Applies every rule until none adds a fact. Each rule only adds facts, and adds more when
     /// its inputs grow, so the result is the least fixpoint whatever the order and grouping of
     /// rule applications. That lets each pass skip work an earlier pass already did: places
     /// sets are insertion-ordered, and `Solved` records how much of each set a rule has read.
     /// See docs/decisions/2026-11-08-effects-solver-scale.md.
-    /// JavaScript-owned bindings, not yet widened, whose group in some effect set is larger
-    /// than `WIDEN_ABOVE`.
-    fn widening_candidates(&self) -> IndexSet<Span> {
-        let javascript = |binding: &Span| {
-            self.javascript_functions.contains(binding)
-                || self
-                    .bindings
-                    .get(binding)
-                    .is_some_and(|owner| self.javascript_functions.contains(owner))
-        };
-        let sets = self
-            .events
-            .values()
-            .chain(self.write_events.values())
-            .chain(self.function_numeric.values())
-            .chain(self.function_writes.values())
-            .chain([&self.numeric, &self.writes, &self.incoming, &self.incoming_writes]);
-        let mut over = IndexSet::new();
-        for set in sets {
-            let mut groups: IndexMap<Span, usize> = IndexMap::new();
-            for p in set {
-                if p.path.len() > 1 && !self.widened.contains(&p.binding) {
-                    *groups.entry(p.binding).or_default() += 1;
-                }
-            }
-            over.extend(
-                groups
-                    .into_iter()
-                    .filter(|(binding, size)| *size > WIDEN_ABOVE && javascript(binding))
-                    .map(|(binding, _)| binding),
-            );
-        }
-        over
-    }
-
     /// Solves with `self.widened` fixed, or returns the bindings that must be widened as well.
     fn solve(mut self) -> std::result::Result<Effects, IndexSet<Span>> {
         self.max_depth = self
@@ -2136,22 +2320,37 @@ impl Graph {
             .iter()
             .flat_map(|(a, b, _)| [a.path.len(), b.path.len()])
             .chain(self.numeric.iter().map(|p| p.path.len()))
-            .chain(self.function_writes.values().flatten().map(|p| p.path.len()))
+            .chain(
+                self.function_writes
+                    .values()
+                    .flat_map(|set| &set.order)
+                    .map(|id| self.places[*id as usize].path.len()),
+            )
             .max()
             .unwrap_or(0)
             + 1;
         let max_depth = self.max_depth;
         if !self.widened.is_empty() {
             let widened = &self.widened;
-            let coarsen = |set: &mut Places| *set = set.drain(..).map(|p| coarsened(p, widened)).collect();
+            let places = &mut self.places;
+            let coarse: Vec<Id> = (0..places.len())
+                .map(|id| intern(places, coarsened(places[id].clone(), widened)))
+                .collect();
             for sets in [
                 &mut self.events,
                 &mut self.write_events,
                 &mut self.function_numeric,
                 &mut self.function_writes,
             ] {
-                sets.values_mut().for_each(coarsen);
+                for set in sets.values_mut() {
+                    let mut out = IdSet::default();
+                    for id in &set.order {
+                        out.insert(coarse[*id as usize]);
+                    }
+                    *set = out;
+                }
             }
+            let coarsen = |set: &mut Places| *set = set.drain(..).map(|p| coarsened(p, widened)).collect();
             for set in [&mut self.incoming, &mut self.incoming_writes, &mut self.writes] {
                 coarsen(set);
             }
@@ -2255,7 +2454,12 @@ impl Graph {
                 for (owner, paths) in sets {
                     if self.reachable.contains(owner) {
                         let read = read.entry(*owner).or_default();
-                        union.extend(unread(paths, *read, paths.len()).cloned());
+                        union.extend(
+                            paths
+                                .unread(*read, paths.len())
+                                .iter()
+                                .map(|id| self.places[*id as usize].clone()),
+                        );
                         *read = paths.len();
                     }
                 }
@@ -2278,15 +2482,19 @@ impl Graph {
             }
             self.escaped.extend(escaped);
             let end = self.escaped.len();
+            let invalidated: Vec<(Option<Span>, Id)> = unread(&self.escaped, solved.invalidated, end)
+                .map(|p| {
+                    let id = intern(&mut self.places, coarsened(p.at(Step::Descendants), &self.widened));
+                    (self.bindings.get(&p.binding).copied(), id)
+                })
+                .collect();
             for (event, owner) in &self.call_events {
-                let invalidated = unread(&self.escaped, solved.invalidated, end)
-                    .filter(|p| {
-                        self.bindings
-                            .get(&p.binding)
-                            .is_none_or(|binding_owner| binding_owner == owner)
-                    })
-                    .map(|p| coarsened(p.at(Step::Descendants), &self.widened));
-                self.write_events.entry(*event).or_default().extend(invalidated);
+                let set = self.write_events.entry(*event).or_default();
+                for (binding_owner, id) in &invalidated {
+                    if binding_owner.is_none_or(|binding_owner| binding_owner == *owner) {
+                        set.insert(*id);
+                    }
+                }
             }
             solved.invalidated = end;
             let mut by_binding: IndexMap<Span, Vec<(usize, &Place)>> = IndexMap::new();
@@ -2300,23 +2508,31 @@ impl Graph {
                         .any(|(index, e)| *index >= from && projected_suffix(&p.path, &e.path).is_some())
                 })
             };
+            let places = &mut self.places;
             for (event, paths) in &mut self.write_events {
                 if solved.external_added.contains(event) {
                     continue;
                 }
                 // Earlier passes checked the places they saw against the escapes they saw.
                 let (places_seen, escapes_seen) = solved.external_checked.get(event).copied().unwrap_or_default();
-                let changes_external = unread(paths, places_seen, paths.len())
+                let place = |id: &Id| &places[*id as usize];
+                let changes_external = paths
+                    .unread(places_seen, paths.len())
+                    .iter()
+                    .map(place)
                     .any(|p| !p.path.is_empty() && (self.external.contains(&p.binding) || escaped(p, 0)))
-                    || unread(paths, 0, places_seen).any(|p| !p.path.is_empty() && escaped(p, escapes_seen));
+                    || paths
+                        .unread(0, places_seen)
+                        .iter()
+                        .map(place)
+                        .any(|p| !p.path.is_empty() && escaped(p, escapes_seen));
                 if changes_external {
                     let owner = self.event_owners.get(event);
-                    let external = self
-                        .external
-                        .iter()
-                        .filter(|binding| owner.is_some() && self.bindings.get(*binding) == owner)
-                        .map(|binding| Place::new(*binding).at(Step::Descendants));
-                    paths.extend(external);
+                    for binding in &self.external {
+                        if owner.is_some() && self.bindings.get(binding) == owner {
+                            paths.insert(intern(places, Place::new(*binding).at(Step::Descendants)));
+                        }
+                    }
                     solved.external_added.insert(*event);
                 } else {
                     solved.external_checked.insert(*event, (paths.len(), end));
@@ -2338,30 +2554,53 @@ impl Graph {
                     aliased.extend([a.binding, b.binding]);
                 }
             }
-            for (sets, expanded) in [
-                &mut self.function_numeric,
-                &mut self.function_writes,
-                &mut self.events,
-                &mut self.write_events,
-            ]
-            .into_iter()
-            .zip(&mut solved.expanded)
-            {
-                for (key, paths) in sets.iter_mut() {
+            // New alias edges change what a place aliases.
+            if !aliased.is_empty() {
+                solved.alias_targets.clear();
+            }
+            let mut runaway = IndexSet::new();
+            for set in [
+                EffectSet::FunctionNumeric,
+                EffectSet::FunctionWrites,
+                EffectSet::Events,
+                EffectSet::WriteEvents,
+            ] {
+                let sets = match set {
+                    EffectSet::FunctionNumeric => &mut self.function_numeric,
+                    EffectSet::FunctionWrites => &mut self.function_writes,
+                    EffectSet::Events => &mut self.events,
+                    EffectSet::WriteEvents => &mut self.write_events,
+                };
+                let mut taken = std::mem::take(sets);
+                for (key, paths) in taken.iter_mut() {
                     // Places seen before are closed under the aliases seen before.
-                    let seen = expanded.get(key).copied().unwrap_or_default();
-                    let pending = unread(paths, seen, paths.len())
-                        .chain(unread(paths, 0, seen).filter(|p| aliased.contains(&p.binding)))
-                        .cloned()
+                    let seen = solved.expanded[set as usize].get(key).copied().unwrap_or_default();
+                    let pending = paths
+                        .unread(seen, paths.len())
+                        .iter()
+                        .chain(
+                            paths
+                                .unread(0, seen)
+                                .iter()
+                                .filter(|id| aliased.contains(&self.places[**id as usize].binding)),
+                        )
+                        .copied()
                         .collect();
-                    Self::expand_aliases(paths, pending, &solved.aliases, max_depth, &self.widened);
-                    expanded.insert(*key, paths.len());
+                    self.expand_aliases(paths, pending, &mut solved, &mut runaway);
+                    solved.expanded[set as usize].insert(*key, paths.len());
                 }
+                *match set {
+                    EffectSet::FunctionNumeric => &mut self.function_numeric,
+                    EffectSet::FunctionWrites => &mut self.function_writes,
+                    EffectSet::Events => &mut self.events,
+                    EffectSet::WriteEvents => &mut self.write_events,
+                } = taken;
             }
             // Entry views only flow from a caller's prior events into that
             // invocation. Expanding them back through callback aliases would
             // move writes performed inside a function before its own entry.
-            let over = self.widening_candidates();
+            let mut over = self.widening_candidates(&mut solved);
+            over.extend(runaway);
             if !over.is_empty() {
                 return Err(over);
             }
@@ -2418,24 +2657,28 @@ impl Graph {
             }
             creation_entries = next;
         }
-        // Event histories share most of their events, so union them by place number.
-        let mut known: IndexSet<&Place> = IndexSet::new();
-        let numbered: IndexMap<Span, Vec<usize>> = self
-            .write_events
-            .iter()
-            .map(|(event, places)| (*event, places.iter().map(|p| known.insert_full(p).0).collect()))
-            .collect();
-        let union = |events: &mut dyn Iterator<Item = &Span>, out: &mut Places| {
-            let mut seen = IndexSet::new();
-            for event in events {
-                for &id in numbered.get(event).into_iter().flatten() {
-                    if seen.insert(id) && !out.contains(known[id]) {
-                        out.insert(known[id].clone());
-                    }
+        // Event histories share most of their events; union them by place number, with one
+        // membership bitset reused (and cleared) across every result set.
+        let mut seen = IdSet::default();
+        let mut union = |start: &[Id], events: &mut dyn Iterator<Item = &Span>| -> Vec<Id> {
+            let mut out = Vec::new();
+            let sets = events.filter_map(|event| self.write_events.get(event));
+            for &id in start.iter().chain(sets.flat_map(|set| &set.order)) {
+                if seen.insert(id) {
+                    out.push(id);
                 }
             }
+            for id in &out {
+                seen.bits[*id as usize / 64] = 0;
+            }
+            seen.order.clear();
+            out
         };
-        let mut capture_writes = self.function_writes.clone();
+        let mut capture_writes: IndexMap<Span, Vec<Id>> = self
+            .function_writes
+            .iter()
+            .map(|(function, set)| (*function, set.order.clone()))
+            .collect();
         for (function, prior) in &entry_history {
             let mut created = self.created_prior.get(function).cloned().unwrap_or_default();
             created.retain(|event| !repeating.contains(event));
@@ -2444,17 +2687,14 @@ impl Graph {
             }
             let mut events = prior.difference(&created).peekable();
             if events.peek().is_some() {
-                union(&mut events, capture_writes.entry(*function).or_default());
+                let places = capture_writes.entry(*function).or_default();
+                *places = union(places, &mut events);
             }
         }
-        let summaries = |histories: &IndexMap<Span, IndexSet<Span>>| {
+        let mut summaries = |histories: &IndexMap<Span, IndexSet<Span>>| {
             histories
                 .iter()
-                .map(|(span, events)| {
-                    let mut places = Places::default();
-                    union(&mut events.iter(), &mut places);
-                    (*span, places)
-                })
+                .map(|(span, events)| (*span, union(&[], &mut events.iter())))
                 .collect()
         };
         let expression_writes = summaries(&self.expression_events);
@@ -2462,17 +2702,20 @@ impl Graph {
         let mut binding_writes: IndexMap<Span, IndexSet<Vec<Step>>> = IndexMap::new();
         for (owner, paths) in &self.function_writes {
             if self.reachable.contains(owner) {
-                for p in paths {
+                for id in &paths.order {
+                    let p = &self.places[*id as usize];
                     binding_writes.entry(p.binding).or_default().insert(p.path.clone());
                 }
             }
         }
+        let numbered = |sets: IndexMap<Span, IdSet>| sets.into_iter().map(|(key, set)| (key, set.order)).collect();
         let mut effects = Effects {
             binding_writes,
             reassigned: self
                 .write_events
                 .values()
-                .flatten()
+                .flat_map(|set| &set.order)
+                .map(|id| &self.places[*id as usize])
                 .filter(|place| place.path.is_empty())
                 .map(|place| place.binding)
                 .collect(),
@@ -2482,10 +2725,11 @@ impl Graph {
             incoming: IndexMap::new(),
             incoming_writes: IndexMap::new(),
             capture_writes,
-            events: self.events,
-            write_events: self.write_events,
+            events: numbered(self.events),
+            write_events: numbered(self.write_events),
             expression_writes,
             loop_writes,
+            places: self.places,
         };
         for p in self.numeric {
             effects.numeric.entry(p.binding).or_default().insert(p.path);
@@ -2516,7 +2760,7 @@ fn debug_dump(effects: &Effects, projections: u64, widened: &IndexSet<Span>) {
             .expect("the effects debug file is writable")
     };
     if let Some(path) = std::env::var_os("FIRST_DEBUG_EFFECTS_WORK") {
-        let places = |map: &IndexMap<Span, Places>| map.values().map(IndexSet::len).sum::<usize>();
+        let places = |map: &IndexMap<Span, Vec<Id>>| map.values().map(Vec::len).sum::<usize>();
         let paths = |map: &IndexMap<Span, IndexSet<Vec<Step>>>| map.values().map(IndexSet::len).sum::<usize>();
         let facts = places(&effects.capture_writes)
             + places(&effects.events)
@@ -2575,7 +2819,7 @@ fn debug_dump(effects: &Effects, projections: u64, widened: &IndexSet<Span>) {
     ] {
         for (s, places) in map {
             lines.insert(format!("{name} {} {}", span(s), places.len()));
-            for p in places {
+            for p in places.iter().map(|id| &effects.places[*id as usize]) {
                 lines.insert(format!("{name} {} {}", span(s), place(p)));
             }
         }
@@ -2656,10 +2900,14 @@ mod tests {
             end: 4,
         };
         let mut effects = Effects::default();
-        effects.events.entry(event).or_default().insert(Place {
-            binding,
-            path: vec![field("a"), Step::DynamicDescendants],
-        });
+        let id = intern(
+            &mut effects.places,
+            Place {
+                binding,
+                path: vec![field("a"), Step::DynamicDescendants],
+            },
+        );
+        effects.events.entry(event).or_default().push(id);
         let view = [field("a"), field("b")];
         assert_eq!(effects.write_type(event, binding, &view, &Ty::NumLit(1.0)), Ty::Dynamic);
         let unrelated = Span {

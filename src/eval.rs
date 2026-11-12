@@ -3739,8 +3739,76 @@ impl<'p> Evaluator<'p> {
                 a.borrow_mut().extend(args);
                 Value::Num(a.borrow().len() as f64)
             }
+            "sort" | "toSorted" => {
+                let length = items.len();
+                let mut sorted = self.sorted(items, &f, span)?;
+                if m == "toSorted" {
+                    return Ok(Value::array(sorted));
+                }
+                // As in V8, the sorted elements overwrite the first `length` slots of the array
+                // as the comparator left it; anything it appended stays after them.
+                sorted.extend(a.borrow().iter().skip(length).cloned());
+                *a.borrow_mut() = sorted;
+                Value::Array(a.clone())
+            }
             _ => return err(span, format!("arrays have no method `{m}` at build time")),
         })
+    }
+}
+
+impl Evaluator<'_> {
+    /// `toSorted` as Node runs it: undefined last and never compared, the rest through V8's
+    /// TimSort (crate::sort) with the comparator's result converted by ToNumber, or by UTF-16
+    /// code units of each element's string form.
+    fn sorted(&mut self, items: Vec<Value>, compare: &Value, span: Span) -> R<Vec<Value>> {
+        if !matches!(compare, Value::Undef) {
+            require_callable(compare, span)?;
+        }
+        // The evaluator runs a generator's body as a plain call; its result would be the return
+        // value instead of a generator object, which JavaScript's ToNumber turns into NaN.
+        if let Value::Closure(c) = compare
+            && c.func.is_generator
+        {
+            return err_help(
+                span,
+                "a generator function can't be a comparator while the config is evaluated",
+                "pass an ordinary function, or sort inside a hook or action",
+            );
+        }
+        let undefined = items.iter().filter(|v| matches!(v, Value::Undef)).count();
+        let mut items: Vec<Value> = items.into_iter().filter(|v| !matches!(v, Value::Undef)).collect();
+        if items.len() > 1 {
+            if matches!(compare, Value::Undef) {
+                let mut keyed = Vec::with_capacity(items.len());
+                for (index, item) in items.iter().enumerate() {
+                    require_static_coercion(item, span)?;
+                    let Some(text) = item.to_js_string() else {
+                        return err(
+                            span,
+                            format!("can't convert {} to a string to sort it", item.describe()),
+                        );
+                    };
+                    keyed.push((text.encode_utf16().collect::<Vec<u16>>(), index));
+                }
+                crate::sort::timsort::<_, Ctl>(&mut keyed, |x, y| Ok(x.0 < y.0))?;
+                items = keyed.into_iter().map(|(_, index)| items[index].clone()).collect();
+            } else {
+                crate::sort::timsort::<_, Ctl>(&mut items, |x, y| {
+                    let order = self.callback(compare, vec![x.clone(), y.clone()], span)?;
+                    require_static_coercion(&order, span)?;
+                    if matches!(order, Value::Symbol(_)) {
+                        return err_help(
+                            span,
+                            "the comparator returned a symbol, which can't convert to a number",
+                            "return a number from the comparator",
+                        );
+                    }
+                    Ok(to_number(&order) < 0.0)
+                })?;
+            }
+        }
+        items.extend(std::iter::repeat_n(Value::Undef, undefined));
+        Ok(items)
     }
 }
 

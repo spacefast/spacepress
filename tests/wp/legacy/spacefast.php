@@ -155,11 +155,11 @@ if ($phase === 'nested') {
                         proof($e->kind === 'storage_unavailable' && $e->status === 503 && !str_contains($e->getMessage(), $table), 'canonical and legacy reads propagate sanitized storage failures');
                     }
                     $_COOKIE['__Host-sfi_session'] = 'old-token';
-                    $GLOBALS['wp']->query_vars['rest_route'] = '/first/v1/me';
+                    $_SERVER['REQUEST_URI'] = '/__first/api/v1/me';
                     $_SERVER['REQUEST_METHOD'] = 'GET';
                     wp_set_current_user(0);
                     $error = apply_filters('rest_authentication_errors', null);
-                    proof(is_wp_error($error) && $error->get_error_code() === 'storage_unavailable' && $error->get_error_data()['status'] === 503, 'REST alias returns storage failure instead of anonymous success');
+                    proof(is_wp_error($error) && $error->get_error_code() === 'storage_unavailable' && $error->get_error_data()['status'] === 503, 'the API returns storage failure instead of anonymous success');
                     proof(!isset($_COOKIE[Sessions::COOKIE]) && get_current_user_id() === 0, 'failed lookup issues no canonical cookie and authenticates nobody');
                 } finally {
                     proof($wpdb->query("ALTER TABLE $table RENAME COLUMN unavailable TO $column") !== false, 'identity lookup column restored');
@@ -182,11 +182,11 @@ if ($phase === 'nested') {
             proof($e->kind === 'storage_conflict' && $e->status === 409, 'upgrade write failure propagates');
         }
         $_COOKIE['__Host-sfi_session'] = 'old-token';
-        $GLOBALS['wp']->query_vars['rest_route'] = '/first/v1/me';
+        $_SERVER['REQUEST_URI'] = '/__first/api/v1/me';
         $_SERVER['REQUEST_METHOD'] = 'GET';
         wp_set_current_user(0);
         $error = apply_filters('rest_authentication_errors', null);
-        proof(is_wp_error($error) && $error->get_error_code() === 'storage_conflict' && $error->get_error_data()['status'] === 409, 'REST alias refuses an upgrade failure instead of authenticating or serving a guest');
+        proof(is_wp_error($error) && $error->get_error_code() === 'storage_conflict' && $error->get_error_data()['status'] === 409, 'the API refuses an upgrade failure instead of authenticating or serving a guest');
     } finally {
         $wpdb->query('DROP TRIGGER first_upgrade_failure');
         $wpdb->suppress_errors($suppress);
@@ -290,8 +290,10 @@ if ($phase === 'nested') {
     proof(get_user_meta($uid, 'first_spacefastSubject', true) === $subject && count(get_user_meta($uid, 'first_spacefastSubject')) === 1, 'Space Users subject copied once to the hidden member column');
     $member = \First\Wp\Runtime::plugin()->db()->findFirst('members', ['where' => ['id' => $uid], 'columns' => ['spacefastSubject' => true]]);
     proof(($member['spacefastSubject'] ?? null) === $subject, 'trusted member reads return the 0.8 subject');
-    $mask = rest_do_request(new WP_REST_Request('GET', '/first/v1/members/' . $uid));
-    proof(!array_key_exists('spacefastSubject', (array) ($mask->get_data()['data'] ?? [])), 'REST never exposes the migrated subject');
+    wp_set_current_user($uid);
+    [, , $mask] = \First\Wp\Facade::route(\First\Wp\Runtime::plugin(), 'GET', '/members/' . $uid, [], '');
+    wp_set_current_user(0);
+    proof(!array_key_exists('spacefastSubject', (array) (json_decode((string) $mask, true)['data'] ?? [])), 'the API never exposes the migrated subject');
     proof((int)get_term($child)->parent===$parent && get_term_meta($child,'fixture',true)==='retained' && wp_get_object_terms($post,'category',['fields'=>'ids'])===[$child], 'taxonomy hierarchy, metadata and relationships retained');
     proof(get_post($project)->post_type==='first_projects' && get_post_meta($project,'first_budget',true)==='42.5' && get_post_meta($project,'first_active',true)==='1', 'collection tag maps to candidate type and typed metadata');
     proof(get_post_meta($projectRevision,'first_budget',true)==='12.5' && get_post_meta($projectRevision,'first_active',true)==='0', 'collection revision fields use parent mapping');

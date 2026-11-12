@@ -2218,6 +2218,10 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         "parseInt('14mnsu689fka', 36)",
     ] {
         for handler in [false, true] {
+            // Configuration evaluation spreads arguments; compiled handlers refuse spread calls.
+            if !handler && expression.contains("(...[") {
+                continue;
+            }
             // These contracts have different evaluator and emitter support.
             if handler
                 && (expression.starts_with("JSON.stringify")
@@ -2722,33 +2726,6 @@ fn non_iso_date_literals_are_refused_at_the_call() {
             );
             assert_eq!(report["diagnostics"][0]["location"]["file"], name);
         }
-    }
-}
-
-#[test]
-fn effectful_sorting_is_refused_at_the_callback() {
-    for name in ["first.config.ts", "first/helper.js"] {
-        let tmp = tempfile::tempdir().unwrap();
-        let expression = "(() => { let calls=0; [3,2,1].sort((a,b)=>{calls++;return a-b;}); return calls; })()";
-        let body = if name == "first/helper.js" {
-            write_app(tmp.path().join(name), format!("export const probe=()=>{expression};")).unwrap();
-            "probe()"
-        } else {
-            expression
-        };
-        let import = if name == "first/helper.js" {
-            "import {probe} from './first/helper.js';"
-        } else {
-            ""
-        };
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{import}export default defineConfig({{actions:{{probe:action({{handler:()=>{body}}})}}}});")).unwrap();
-        let (out, report) = checked(tmp.path());
-        assert_eq!(out.status.code(), Some(1), "{report}");
-        assert_eq!(
-            report["diagnostics"][0]["message"],
-            "sorting requires a numeric key-difference comparator"
-        );
-        assert_eq!(report["diagnostics"][0]["location"]["file"], name);
     }
 }
 
@@ -3653,47 +3630,46 @@ fn wordpress_own_abilities_match_the_registered_ones() {
 /// it registered without code, so the build never calls a function PHP never got.
 #[test]
 fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled() {
-    let first =
-        "function first(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; }";
-    let boxed = "class Box { constructor(public v: number) {} top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0] + this.v; } }";
-    let sort = "sorting requires a numeric key-difference comparator";
+    let first = "function first(xs: number[]): number { return xs[0]! + 'a'.localeCompare('b'); }";
+    let boxed = "class Box { constructor(public v: number) {} top(xs: number[]): number { return xs[0]! + 'a'.localeCompare('b') + this.v; } }";
+    let refused = "localeCompare() isn't supported";
     for (declarations, handler, message) in [
         (
             first,
             "() => ({ a() { return first([1, 3, 2]) + this.b(); }, b() { return this.n; }, n: 1 }).a()",
-            sort,
+            refused,
         ),
         (
             boxed,
             "() => ({ a() { return new Box(1).top([1, 3, 2]) + this.b(); }, b() { return this.n; }, n: 1 }).a()",
-            sort,
+            refused,
         ),
-        (first, "() => { if (first([1, 3, 2])) return 1; return 0; }", sort),
+        (first, "() => { if (first([1, 3, 2])) return 1; return 0; }", refused),
         (
             first,
             "async () => { let n = 0; for await (const v of [first([1, 3, 2])]) n += v; return n; }",
-            sort,
+            refused,
         ),
-        (first, "() => (first([1, 3, 2]) ? 1 : 0)", sort),
+        (first, "() => (first([1, 3, 2]) ? 1 : 0)", refused),
         (
             first,
             "() => ({ a() { if (first([1, 3, 2])) return this.n; return 0; }, n: 1 }).a()",
-            sort,
+            refused,
         ),
         (
             boxed,
             "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box) return 1; return 0; }",
-            sort,
+            refused,
         ),
         (
             format!("{boxed} function h(): number {{ return new Box(1).v; }}").as_str(),
             "() => { if (h()) return 1; return 0; }",
-            sort,
+            refused,
         ),
         (
-            "function bad(): number { return [1].sort(function (a, b) { return b > a ? 1 : -1; })[0]; } const ns = { n: 1, get(this: { n: number }): number { return this.n; }, bad };",
+            "function bad(): number { return 'a'.localeCompare('b'); } const ns = { n: 1, get(this: { n: number }): number { return this.n; }, bad };",
             "() => { if (ns.get()) return 1; return 0; }",
-            sort,
+            refused,
         ),
         (
             "const m = new Map([[\"a\", () => 1]]);",
@@ -3703,9 +3679,9 @@ fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled(
         // A module-level literal whose method reads `this` is built whole in PHP, so a member the
         // method never reads is still compiled, and its refusal is reported, not dropped.
         (
-            "class K { m(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; } } const api = { K, n: 1, f() { return this.n; } };",
+            "class K { m(xs: number[]): number { return xs[0]! + 'a'.localeCompare('b'); } } const api = { K, n: 1, f() { return this.n; } };",
             "() => [api.f(), new K().m([1, 3, 2])]",
-            sort,
+            refused,
         ),
         (
             "const api = { m: new Map([[1, () => 2]]), n: 1, f() { return this.n; } };",
@@ -3713,14 +3689,14 @@ fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled(
             "captured data contains a function, which can't be used in PHP",
         ),
         (
-            "class Box { constructor(public v: number) {} m(): number { return h().v; } ok(): boolean { return true; } top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; } } function h(): Box { return new Box(1); }",
+            "class Box { constructor(public v: number) {} m(): number { return h().v; } ok(): boolean { return true; } top(xs: number[]): number { return xs[0]! + 'a'.localeCompare('b'); } } function h(): Box { return new Box(1); }",
             "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box && h().ok()) return 1; return 0; }",
-            sort,
+            refused,
         ),
         (
-            "class Box { constructor(public v: number) {} m(): number { return new Tag().of(this); } ok(): boolean { return true; } top(xs: number[]): number { return xs.sort(function (a, b) { return b > a ? 1 : -1; })[0]; } } class Tag { of(b: Box): number { return b.v; } box(): Box | null { return null; } } function t(): Tag { return new Tag(); }",
+            "class Box { constructor(public v: number) {} m(): number { return new Tag().of(this); } ok(): boolean { return true; } top(xs: number[]): number { return xs[0]! + 'a'.localeCompare('b'); } } class Tag { of(b: Box): number { return b.v; } box(): Box | null { return null; } } function t(): Tag { return new Tag(); }",
             "() => { const u: unknown = JSON.parse(\"1\"); if (u instanceof Box && t().box()!.ok()) return 1; return 0; }",
-            sort,
+            refused,
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();

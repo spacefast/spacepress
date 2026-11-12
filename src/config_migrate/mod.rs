@@ -108,7 +108,7 @@ struct Report<'a> {
 
 #[cfg(feature = "cli")]
 const USAGE: &str =
-    "usage: first migrate config --from emdash|payload|sanity|first <input.ts|input.json> --out <new/first.config.ts>";
+    "usage: first migrate config --from emdash|payload|sanity|zero <input.ts|input.json> --out <new/first.config.ts>";
 
 #[cfg(feature = "cli")]
 struct Args {

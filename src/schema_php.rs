@@ -263,6 +263,9 @@ fn collection(out: &mut String, c: &Collection) {
         "            'api' => ['list' => {}, 'get' => {}, 'create' => {}, 'update' => {}, 'delete' => {}],",
         c.api.list, c.api.get, c.api.create, c.api.update, c.api.delete
     );
+    if let Some(url) = &c.url {
+        let _ = writeln!(out, "            'url' => {},", php_str(url));
+    }
     if c.editor {
         let t = &c.table;
         let _ = writeln!(
@@ -291,6 +294,13 @@ pub fn render(schema: &Schema) -> String {
     let _ = writeln!(out, "    'runtime' => '{}',", crate::platform::SERIES);
     let _ = writeln!(out, "    'name' => {},", php_str(&schema.name));
     let _ = writeln!(out, "    'admin' => {},", schema.admin);
+    match &schema.frontend {
+        None => {}
+        Some(crate::kind_url::Frontend::Off) => out.push_str("    'frontend' => false,\n"),
+        Some(crate::kind_url::Frontend::External(url)) => {
+            let _ = writeln!(out, "    'frontend' => {},", php_str(url));
+        }
+    }
     out.push_str("    'site' => ['uidPrefix' => 'zr_'],\n");
     let _ = writeln!(
         out,

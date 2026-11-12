@@ -64,7 +64,7 @@ VITE_ZERO_APP_ID=app_subscriptions_vite npm --prefix examples/subscriptions/web 
 Keep `first dev examples/subscriptions --port 8794` running in another terminal
 without `--no-watch` to rebuild backend changes. Vite proxies `/wp-json` to
 `http://localhost:8794`; set `FIRST_DEV_URL` if Studio uses another address. Vite
-builds into `../public/` with relative asset URLs for plugin and Space hosting.
+builds into `../public/` with relative asset URLs for plugin and Space publishing.
 React, React DOM, Vite, and the TypeScript editor dependencies have exact pins
 and an npm lockfile.
 

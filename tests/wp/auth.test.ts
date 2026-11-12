@@ -126,7 +126,7 @@ test("guests: created on first write, below subscriber, upgraded in place with t
   const me = await call("GET", "/me", { token: guest.accessToken });
   assert.equal(me.json.data.role, "guest");
   const id = me.json.data.id as number;
-  assert.equal(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${id} AND meta_key = 'wp_capabilities'`)[0].meta_value, 'a:1:{s:10:"first_guest";b:1;}');
+  assert.equal(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${id} AND meta_key = 'wp_capabilities'`)[0].meta_value, 'a:1:{s:11:"first_guest";b:1;}');
   assert.ok(entry.id, "the write went through as the guest");
   assert.deepEqual([me.json.data.member.plan, me.json.data.member.points, me.json.data.member.tags], ["free", 0, []], "a guest member gets the collection's defaults");
   const review = await call("POST", "/reviews", { token: guest.accessToken, body: { body: "five stars" } });

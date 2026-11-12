@@ -121,6 +121,9 @@ const KEEP = [
   // Zero 0.8 values inside the converter: the `--from zero` source kind and the 0.8 physical
   // table-name fallback.
   /"zero" => Self::Zero/g,
+  /(?<=request\["source"\]\.as_str\(\)\.unwrap_or\()"zero"/g, // the wasm migrateConfig default
+  /\bsanity\|zero\b/g, // the source list in the `migrate config` usage line
+  /(?<="--from", )"zero"/g,
   /if s\.is_empty\(\) \{ "zero"\.into\(\) \}/g,
   // A hash input: changing it would change every derived file uid (tests/fixtures/sync-file-uid.json).
   /\bzero-sync-file\b/g,

@@ -159,7 +159,7 @@ paths to WordPress rather than answering 404 at the edge. Serve the plugin's
 Unscoped cron and WP-CLI must load no app. Each scoped job needs the Space,
 environment, and version before entering the same database and cache scope as
 HTTP. Multisite, hosted Pages, and Atomic SQLite are outside this
-hosting contract. Qualify MU-plugin ordering, persistent object-cache isolation,
+publish contract. Qualify MU-plugin ordering, persistent object-cache isolation,
 auth-salt continuity, and action routing on the actual provider before rollout.
 
 ## Verify the compiler and migration

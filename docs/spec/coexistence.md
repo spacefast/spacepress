@@ -14,7 +14,7 @@ one of them at a time, never both in the same version.
   on a new Space it starts with fresh ones.
 - **Otherwise the publish ships as 0.8** and returns every refusal as
   `{ code, file, line, column, feature, v2, fix }`, so the owner or their agent
-  can fix it and publish again. Until v2 hosting and the hosted data copy land,
+  can fix it and publish again. Until v2 publishing and the hosted data copy land,
   that includes every app with a frontend, pages, static files, posts, users or
   Functions (the `Z08_LOCAL_*` and `Z08_FUNCTIONS` refusals). A clean candidate on
   a 0.8 Space whose runtime doesn't run v2 yet also ships as 0.8, with status

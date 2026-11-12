@@ -873,6 +873,29 @@ $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'n
         $ids('comments', ['article' => ['secret' => ['like' => 'price=4%']]], $editor),
         $ids('comments', $key + ['article' => ['secret' => 'price=42']], null),
     ], [[1], [1]]);
+    // A render binds its visitor (Seam::asViewer): compiled reads then skip drafts, also after an
+    // await inside an async body, which resumes after asViewer itself has returned.
+    $titles = static fn (): array => array_map(static fn ($row) => $row->p['secret'], \First\Seam::findMany('articles', ['orderBy' => ['id' => 'asc']])->a);
+    eq('compiled reads see drafts when trusted and skip them for a bound visitor', $db->current(static fn () => [
+        $titles(),
+        \First\Seam::asViewer($anon, $titles),
+        \First\Seam::asViewer($editor, $titles),
+    ]), [['price=42', 'open'], ['open'], ['price=42', 'open']]);
+    $render = \First\JsJobs::asyncFunction(static function () use ($titles): array {
+        $before = $titles();
+        \First\JsJobs::await(\First\JsPromise::from(1));
+        $after = $titles();
+        $inner = \First\Seam::asViewer(null, static function () use ($titles): array {
+            \First\JsJobs::await(\First\JsPromise::from(2));
+            return $titles();
+        });
+        return [$before, $after, \First\JsJobs::await($inner), $titles()];
+    });
+    eq('an async render keeps its visitor across awaits, and a nested binding only inside', $db->current(static fn () => \First\JsJobs::run(
+        static fn () => \First\Seam::asViewer($anon, $render),
+        [],
+    )), [['open'], ['open'], ['price=42', 'open'], ['open']]);
+    eq('nothing stays bound after the render', \First\Seam::viewer(), null);
     problem('a viewer\'s update selector is denied the unreadable target', fn () => $db->update('comments', ['ownerId' => 1], $key, true, $anon), 401, 'unauthenticated');
     eq('… and a viewer\'s delete selector matches no draft target', $db->delete('comments', ['article' => ['secret' => ['like' => 'price=4%']]], true, $anon), []);
 })();
@@ -940,6 +963,19 @@ eq('a readable column filters normally; trusted filters see everything', [
     array_column($as('fa_ed', 'GET', '/profiles', query: ['where' => '{"email":"bob@example.test"}'])[1], 'name'),
     array_column($db->findMany('teams', ['where' => ['budget' => 1000]]), 'name'),
 ], [['Bob'], ['Core']]);
+
+// Compiled reads (Seam) are trusted unless a caller binds a visitor, as a page render does.
+$hasEmail = static fn (): array => array_values(array_unique(array_map(static fn ($row) => array_key_exists('email', $row->p), \First\Seam::findMany('profiles')->a)));
+$editor = new \First\Viewer(['id' => 1, 'name' => 'ed', 'role' => 'editor']);
+eq('Seam reads are trusted outside asViewer', [\First\Seam::viewer(), $hasEmail()], [null, [true]]);
+eq('asViewer binds an anonymous visitor: hidden fields stay out', \First\Seam::asViewer(new \First\Viewer(null), static fn () => [
+    array_key_exists('email', \First\Seam::findFirst('profiles')->p),
+    $hasEmail(),
+]), [false, [false]]);
+eq('asViewer binds an editor, who reads the field', \First\Seam::asViewer($editor, $hasEmail), [true]);
+problem('a visitor-bound read refuses a hidden column', fn () => \First\Seam::asViewer(new \First\Viewer(null), static fn () => \First\Seam::findMany('profiles', ['columns' => ['email' => true]])), 403, 'forbidden', '/columns/email');
+eq('the previous viewer is restored after a throw', \First\Seam::viewer(), null);
+eq('nested asViewer restores the outer viewer', \First\Seam::asViewer($editor, static fn () => [\First\Seam::asViewer(null, static fn () => \First\Seam::viewer()), \First\Seam::viewer() === $editor]), [null, true]);
 
 // Writes: a supplied key the viewer can't set → 403 at its pointer. Defaults and hooks are trusted.
 $faProblem('update rule (admin) refuses the owner', $as('fa_alice', 'PATCH', "/profiles/{$mine['id']}", ['salary' => 99]), 403, 'forbidden', '/salary');
@@ -1104,6 +1140,16 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         putenv('FIRST_NOW');
     }
     eq('a global update stores its now defaults at one instant', [$site['createdAt'], $site['audit']['at']], ['2030-01-01T00:00:00.000Z', '2030-01-01T00:00:00.000Z']);
+    // A render's bound visitor applies to compiled global reads too: this global is editor-read.
+    $guarded = new \First\Schema(['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => [], 'globals' => ['desk' => [
+        'label' => 'desk', 'agents' => true, 'access' => ['read' => ['role' => 'editor'], 'update' => ['role' => 'editor']],
+        'wp' => ['postId' => 'first_global_desk', 'menuSlug' => 'first-global-desk', 'groupKey' => 'group_first_global_desk', 'fieldKeyPrefix' => 'field_first_global_desk_', 'optionPrefix' => 'first_global_desk_'],
+        'fields' => ['note' => ['type' => 'text', 'default' => ['value' => 'shh']]],
+    ]]]);
+    \First\Wp\Scf::register($guarded);
+    $desk = new \First\Db(\First\Wp\CompositeStore::create($guarded, $wp->connection()), $guarded, \First\db()->media());
+    eq('a trusted compiled global read sees an editor-only global', $desk->current(static fn () => \First\Seam::globalGet('desk')->p['note']), 'shh');
+    problem('a visitor-bound compiled global read is refused', static fn () => $desk->current(static fn () => \First\Seam::asViewer(new \First\Viewer(null), static fn () => \First\Seam::globalGet('desk'))), 401, 'unauthenticated');
 })();
 
 // ================================================================ JSON identity at query boundaries

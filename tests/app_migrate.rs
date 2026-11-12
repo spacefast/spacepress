@@ -505,6 +505,8 @@ fn omissions_are_errors_and_static_files_carry_over() {
         // The string form has no path patterns, and v2's /wp-json lane enforces it the same way.
         "access": "public",
         "build": { "outputDirectory": "dist" },
+        // The host keeps calling a cron's path with GET; a carried static file still answers it.
+        "crons": [{ "key": "humans", "path": "/humans.txt", "schedule": "0 * * * *" }],
     });
     let mut config = settings.clone();
     config["runtime"] = serde_json::json!({ "kind": "zero", "server": "server/index.ts" });
@@ -522,8 +524,9 @@ fn omissions_are_errors_and_static_files_carry_over() {
     // they would take over the app's URLs: refused.
     overlay["rewrites"] = serde_json::json!([{ "source": "/(.*)", "destination": "/index.html" }]);
     overlay["listing"] = true.into();
-    // access path patterns, crons (no CRON_SECRET on v2) and sell (its product file and paid
-    // assets would be swept into public/) don't apply the same way: refused.
+    // access path patterns and sell (its product file and paid assets would be swept into public/)
+    // don't apply the same way: refused. A cron whose path the candidate doesn't serve is refused
+    // at the entry.
     overlay["access"] = serde_json::json!({ "public": ["/docs/**"] });
     // On v2 the app's data URLs are /wp-json/first/v1/*, which nothing reserves from redirects: a
     // rule whose source can reach them is refused (here a catch-all host move).
@@ -535,7 +538,10 @@ fn omissions_are_errors_and_static_files_carry_over() {
     overlay["firewall"] =
         serde_json::json!([{ "name": "no-rest", "action": "block", "match": { "path": "/wp-json/*" } }]);
     overlay["cache"] = serde_json::json!({ "bypass": ["/__zero/*"] });
-    overlay["crons"] = serde_json::json!([{ "path": "/api/nightly", "schedule": "daily" }]);
+    overlay["crons"] = serde_json::json!([
+        { "key": "humans", "path": "/humans.txt", "schedule": "0 * * * *" },
+        { "key": "nightly", "path": "/api/nightly", "schedule": "0 3 * * *" }
+    ]);
     overlay["sell"] = serde_json::json!({ "mode": "test", "products": "sell/products.json" });
     // Header rules apply to response-table entries only, so on v2 they would skip the app's
     // WordPress-rendered pages: refused.
@@ -561,17 +567,17 @@ fn omissions_are_errors_and_static_files_carry_over() {
     assert_eq!(
         refused,
         [
-            // Keys keep their place in the file: redirects (a rule can reach /wp-json), then access
-            // (path patterns).
+            // Keys keep their place in the file: redirects (a rule can reach /wp-json), access
+            // (path patterns), then the one cron whose path nothing serves.
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/redirects"),
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/access"),
+            ("Z08_OMITTED_CRON", "/sf.jsonc/crons/1"),
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/dataSources"),
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/network"),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/rewrites"),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/listing"),
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/firewall"),
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/cache"),
-            ("Z08_OMITTED_CONFIG", "/sf.jsonc/crons"),
             ("Z08_OMITTED_CONFIG", "/sf.jsonc/sell"),
             ("Z08_OMITTED_SERVE", "/sf.jsonc/headers"),
         ]
@@ -2769,6 +2775,77 @@ fn a_writing_get_that_never_reads_the_visitor_becomes_a_writing_get_route() {
     );
     // Every GET wrote its row, as 0.8 did.
     assert_eq!(got["rows"], serde_json::json!(["a", "a", "b"]), "{got}");
+}
+
+/// An sf.jsonc cron that calls a converted GET endpoint travels unchanged in the candidate's
+/// sf.jsonc: the Spacefast host keeps calling the same path with GET, now a v2 route. A cron
+/// pointing at a POST endpoint is refused at that entry (the host only sends GET).
+#[test]
+fn crons_calling_converted_get_endpoints_are_carried() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("hits");
+    copy_dir(&fixture("hits"), &root);
+    let source = std::fs::read_to_string(root.join("server/index.ts")).unwrap().replace(
+        "  endpoints: {\n",
+        "  endpoints: {\n    sweep: endpoint({ method: \"GET\", path: \"/api/sweep\", readOnly: false }, async (ctx) => { await ctx.db.hits.insert({ tag: \"sweep\" }); return text(\"swept\"); }),\n    post: endpoint({ method: \"POST\", path: \"/api/post\" }, () => text(\"posted\")),\n",
+    );
+    std::fs::write(root.join("server/index.ts"), source).unwrap();
+    let crons = serde_json::json!([{ "key": "sweep", "path": "/api/sweep", "schedule": "*/15 * * * *" }]);
+    let config = |crons: &Value| serde_json::json!({ "name": "Hits", "runtime": { "kind": "zero", "server": "server/index.ts" }, "crons": crons });
+    std::fs::write(root.join("sf.jsonc"), config(&crons).to_string()).unwrap();
+    let out = temp.path().join("out");
+    let (ok, report) = migrate(&root, &out, &[]);
+    assert!(ok, "{report:#}");
+    let carried: Value = serde_json::from_str(&std::fs::read_to_string(out.join("sf.jsonc")).unwrap()).unwrap();
+    assert_eq!(carried["crons"], crons);
+    build(&out);
+    // The host calls the cron's path with GET; the converted route answers it and writes.
+    let run = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(out.join("first/dist/wp-content"))
+        .arg(
+            r#"$r = $app->serveRoute($app->matchRoute("GET", "/api/sweep"), "GET", "/api/sweep", "", "", ["x-spacefast-cron" => "sweep.1.x"], null, "https://hits.example/api/sweep");
+               global $wpdb;
+               $table = $wpdb->get_var("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%hits%'");
+               echo json_encode(["status" => $r[0], "body" => $r[2], "rows" => $wpdb->get_col("SELECT tag FROM `$table`")]), "\n";"#,
+        )
+        .arg("null")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    let got: Value = serde_json::from_str(stdout.lines().next_back().unwrap_or(""))
+        .unwrap_or_else(|_| panic!("{stdout}{}", String::from_utf8_lossy(&run.stderr)));
+    assert_eq!(
+        got,
+        serde_json::json!({ "status": 200, "body": "swept", "rows": ["sweep"] })
+    );
+
+    // A cron at a POST endpoint: the host's GET never reached it, so it is refused at the entry.
+    let posting =
+        serde_json::json!([crons[0].clone(), { "key": "post", "path": "/api/post", "schedule": "0 * * * *" }]);
+    std::fs::write(root.join("sf.jsonc"), config(&posting).to_string()).unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("refused"), &["--dry-run"]);
+    assert!(!ok);
+    let errors: Vec<(&str, &str, &str)> = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["code"].as_str().unwrap(),
+                e["pointer"].as_str().unwrap(),
+                e["file"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        errors,
+        [("Z08_OMITTED_CRON", "/sf.jsonc/crons/1", "sf.jsonc")],
+        "{refused:#}"
+    );
+    assert!(refused["errors"][0]["reason"].as_str().unwrap().contains("`/api/post`"));
 }
 
 /// A finalize payload that kept its `zero.css` bytes (older 0.8 publishes did) supplies the

@@ -9,11 +9,18 @@ export const SCHEMA = {
 			"drafts": true,
 			"revisions": true,
 			"localized": false,
-			"relations": { "tasks": {
-				"kind": "many",
-				"collection": "tasks",
-				"optional": false
-			} },
+			"relations": {
+				"tasks": {
+					"kind": "many",
+					"collection": "tasks",
+					"optional": false
+				},
+				"doneLogs": {
+					"kind": "many",
+					"collection": "doneLogs",
+					"optional": false
+				}
+			},
 			"media": [],
 			"mediaList": [],
 			"files": ["manual"]
@@ -25,10 +32,10 @@ export const SCHEMA = {
 			"revisions": true,
 			"localized": false,
 			"relations": {
-				"system": {
+				"systemId": {
 					"kind": "one",
 					"collection": "systems",
-					"optional": true
+					"optional": false
 				},
 				"doneLogs": {
 					"kind": "many",
@@ -46,11 +53,18 @@ export const SCHEMA = {
 			"drafts": true,
 			"revisions": true,
 			"localized": false,
-			"relations": { "task": {
-				"kind": "one",
-				"collection": "tasks",
-				"optional": true
-			} },
+			"relations": {
+				"taskId": {
+					"kind": "one",
+					"collection": "tasks",
+					"optional": false
+				},
+				"systemId": {
+					"kind": "one",
+					"collection": "systems",
+					"optional": false
+				}
+			},
 			"media": ["photo"],
 			"mediaList": [],
 			"files": []

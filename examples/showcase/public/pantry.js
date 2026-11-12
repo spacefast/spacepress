@@ -81,7 +81,7 @@ function storyCover(story) {
 function render() {
   const selected = element("pantry-location").value;
   const visible = items.filter(
-    (item) => !selected || String(item.locationId) === selected,
+    (item) => !selected || String(item.locationId?.id) === selected,
   );
   element("pantry-count").textContent = `(${visible.length})`;
   const cards = visible.map((item) => {
@@ -94,7 +94,7 @@ function render() {
     );
     const low = item.quantity <= item.lowStockAt;
     const details = [
-      item.location?.name || "No location",
+      item.locationId?.name || "No location",
       `Low at ${item.lowStockAt} ${item.unit}`,
     ];
     if (item.expiresOn) details.push(`Expires ${item.expiresOn}`);
@@ -111,28 +111,28 @@ function render() {
     for (const [label, value] of [
       ["Brand", item.brand || "Not specified"],
       ["Pack", item.opened ? "Opened" : "Unopened"],
-      ["Storage", item.location?.name || "No location"],
+      ["Storage", item.locationId?.name || "No location"],
     ]) facts.append(node("dt", "", label), node("dd", "", value));
     description.append(facts);
     if (item.notes) description.append(node("p", "pantry-notes", item.notes));
-    if (item.story) {
+    if (item.storyId) {
       const story = node("div", "pantry-story");
-      const cover = storyCover(item.story);
+      const cover = storyCover(item.storyId);
       if (cover) story.append(cover);
-      story.append(node("h5", "", item.story.title));
-      if (item.story.details?.subtitle)
-        story.append(node("p", "", item.story.details.subtitle));
+      story.append(node("h5", "", item.storyId.title));
+      if (item.storyId.details?.subtitle)
+        story.append(node("p", "", item.storyId.details.subtitle));
       const read = node("a", "", "Read cooking notes ↓");
-      read.href = `#story-${encodeURIComponent(item.story.id)}`;
+      read.href = `#story-${encodeURIComponent(item.storyId.id)}`;
       read.addEventListener("click", () => {
-        const storyCard = document.getElementById(`story-${item.story.id}`);
+        const storyCard = document.getElementById(`story-${item.storyId.id}`);
         const disclosure = storyCard?.matches("details")
           ? storyCard
           : storyCard?.querySelector("details");
         if (disclosure) disclosure.open = true;
       });
       const native = node("a", "", "Edit story in WordPress ↗");
-      native.href = `/wp-admin/post.php?post=${encodeURIComponent(item.story.id)}&action=edit`;
+      native.href = `/wp-admin/post.php?post=${encodeURIComponent(item.storyId.id)}&action=edit`;
       story.append(read, document.createTextNode(" · "), native);
       description.append(story);
     } else
@@ -186,10 +186,10 @@ function render() {
   const list = node("ul", "shopping-list");
   for (const entry of pending) {
     const row = node("li");
-    row.append(editLink("items", entry.itemId, entry.name));
-    if (entry.item)
+    row.append(editLink("items", entry.itemId?.id, entry.name));
+    if (entry.itemId)
       row.append(
-        node("small", "", `${entry.item.quantity} ${entry.item.unit} left`),
+        node("small", "", `${entry.itemId.quantity} ${entry.itemId.unit} left`),
       );
     list.append(row);
   }
@@ -228,9 +228,9 @@ async function listAll(collection, options = {}) {
 
 async function load() {
   const [newItems, locations, newShopping] = await Promise.all([
-    listAll(publicClient.items, { with: { location: true, story: true } }),
+    listAll(publicClient.items, { with: { locationId: true, storyId: true } }),
     listAll(publicClient.locations),
-    listAll(publicClient.shoppingList, { with: { item: true } }),
+    listAll(publicClient.shoppingList, { with: { itemId: true } }),
   ]);
   items = newItems;
   shopping = newShopping;

@@ -310,12 +310,19 @@ export interface PostPatch {
 	uid?: string | null;
 }
 export interface PostWith {
-	author?: true | {
+	authorId?: true | {
 		where?: AuthorFilter;
 		orderBy?: AuthorOrder;
 		limit?: number;
 		offset?: number;
 		with?: AuthorWith;
+	};
+	comments?: true | {
+		where?: CommentFilter;
+		orderBy?: CommentOrder;
+		limit?: number;
+		offset?: number;
+		with?: CommentWith;
 	};
 	subscribers?: true | {
 		where?: SubscriberFilter;
@@ -324,12 +331,12 @@ export interface PostWith {
 		offset?: number;
 		with?: SubscriberWith;
 	};
-	comments?: true | {
-		where?: CommentFilter;
-		orderBy?: CommentOrder;
+	announcements?: true | {
+		where?: AnnouncementFilter;
+		orderBy?: AnnouncementOrder;
 		limit?: number;
 		offset?: number;
-		with?: CommentWith;
+		with?: AnnouncementWith;
 	};
 	cover?: true;
 	manuscript?: true;
@@ -480,7 +487,7 @@ export interface PostFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | AuthorFilter;
 	seo?: {
 		noindex: boolean;
 		metaTitle: string | null;
@@ -613,9 +620,9 @@ export interface PostFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	author?: true | AuthorFilter;
-	subscribers?: true | SubscriberFilter;
 	comments?: true | CommentFilter;
+	subscribers?: true | SubscriberFilter;
+	announcements?: true | AnnouncementFilter;
 	AND?: PostFilter[];
 	OR?: PostFilter[];
 	NOT?: PostFilter;
@@ -644,7 +651,7 @@ export interface CommentPatch {
 	createdAt?: string;
 }
 export interface CommentWith {
-	post?: true | {
+	postId?: true | {
 		where?: PostFilter;
 		orderBy?: PostOrder;
 		limit?: number;
@@ -676,7 +683,7 @@ export interface CommentFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | PostFilter;
 	name?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -733,7 +740,6 @@ export interface CommentFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	post?: true | PostFilter;
 	AND?: CommentFilter[];
 	OR?: CommentFilter[];
 	NOT?: CommentFilter;
@@ -756,7 +762,7 @@ export interface SubscriberPatch {
 	createdAt?: string;
 }
 export interface SubscriberWith {
-	post?: true | {
+	postId?: true | {
 		where?: PostFilter;
 		orderBy?: PostOrder;
 		limit?: number;
@@ -804,7 +810,7 @@ export interface SubscriberFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | PostFilter;
 	createdAt?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -817,7 +823,6 @@ export interface SubscriberFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	post?: true | PostFilter;
 	AND?: SubscriberFilter[];
 	OR?: SubscriberFilter[];
 	NOT?: SubscriberFilter;
@@ -840,7 +845,7 @@ export interface AnnouncementPatch {
 	attempt?: number;
 }
 export interface AnnouncementWith {
-	post?: true | {
+	postId?: true | {
 		where?: PostFilter;
 		orderBy?: PostOrder;
 		limit?: number;
@@ -872,7 +877,7 @@ export interface AnnouncementFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | PostFilter;
 	recipients?: number | null | {
 		eq?: number | null;
 		ne?: number | null;
@@ -897,7 +902,6 @@ export interface AnnouncementFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	post?: true | PostFilter;
 	AND?: AnnouncementFilter[];
 	OR?: AnnouncementFilter[];
 	NOT?: AnnouncementFilter;
@@ -1156,19 +1160,24 @@ export declare const SCHEMA: {
 			readonly revisions: true;
 			readonly localized: true;
 			readonly relations: {
-				readonly author: {
+				readonly authorId: {
 					readonly kind: "one";
 					readonly collection: "authors";
 					readonly optional: true;
+				};
+				readonly comments: {
+					readonly kind: "many";
+					readonly collection: "comments";
+					readonly optional: false;
 				};
 				readonly subscribers: {
 					readonly kind: "many";
 					readonly collection: "subscribers";
 					readonly optional: false;
 				};
-				readonly comments: {
+				readonly announcements: {
 					readonly kind: "many";
-					readonly collection: "comments";
+					readonly collection: "announcements";
 					readonly optional: false;
 				};
 			};
@@ -1194,7 +1203,7 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly post: {
+				readonly postId: {
 					readonly kind: "one";
 					readonly collection: "posts";
 					readonly optional: false;
@@ -1211,7 +1220,7 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly post: {
+				readonly postId: {
 					readonly kind: "one";
 					readonly collection: "posts";
 					readonly optional: true;
@@ -1228,10 +1237,10 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly post: {
+				readonly postId: {
 					readonly kind: "one";
 					readonly collection: "posts";
-					readonly optional: true;
+					readonly optional: false;
 				};
 			};
 			readonly media: readonly [];

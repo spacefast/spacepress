@@ -158,12 +158,19 @@ export interface ItemPatch {
 	updatedAt?: string;
 }
 export interface ItemWith {
-	location?: true | {
+	locationId?: true | {
 		where?: LocationFilter;
 		orderBy?: LocationOrder;
 		limit?: number;
 		offset?: number;
 		with?: LocationWith;
+	};
+	shoppingList?: true | {
+		where?: ShoppingListFilter;
+		orderBy?: ShoppingListOrder;
+		limit?: number;
+		offset?: number;
+		with?: ShoppingListWith;
 	};
 }
 export interface ItemFilter {
@@ -286,7 +293,7 @@ export interface ItemFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | LocationFilter;
 	tags?: string[] | null | {
 		eq?: string[] | null;
 		ne?: string[] | null;
@@ -317,7 +324,7 @@ export interface ItemFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	location?: true | LocationFilter;
+	shoppingList?: true | ShoppingListFilter;
 	AND?: ItemFilter[];
 	OR?: ItemFilter[];
 	NOT?: ItemFilter;
@@ -349,7 +356,7 @@ export interface ShoppingListPatch {
 	updatedAt?: string;
 }
 export interface ShoppingListWith {
-	item?: true | {
+	itemId?: true | {
 		where?: ItemFilter;
 		orderBy?: ItemOrder;
 		limit?: number;
@@ -381,7 +388,7 @@ export interface ShoppingListFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | ItemFilter;
 	name?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -446,7 +453,6 @@ export interface ShoppingListFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	item?: true | ItemFilter;
 	AND?: ShoppingListFilter[];
 	OR?: ShoppingListFilter[];
 	NOT?: ShoppingListFilter;
@@ -532,10 +538,15 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly location: {
+				readonly locationId: {
 					readonly kind: "one";
 					readonly collection: "locations";
 					readonly optional: true;
+				};
+				readonly shoppingList: {
+					readonly kind: "many";
+					readonly collection: "shoppingList";
+					readonly optional: false;
 				};
 			};
 			readonly media: readonly [];
@@ -549,7 +560,7 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly item: {
+				readonly itemId: {
 					readonly kind: "one";
 					readonly collection: "items";
 					readonly optional: true;

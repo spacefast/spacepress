@@ -24,11 +24,18 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": { "location": {
-				"kind": "one",
-				"collection": "locations",
-				"optional": true
-			} },
+			"relations": {
+				"locationId": {
+					"kind": "one",
+					"collection": "locations",
+					"optional": true
+				},
+				"shoppingList": {
+					"kind": "many",
+					"collection": "shoppingList",
+					"optional": false
+				}
+			},
 			"media": [],
 			"mediaList": [],
 			"files": []
@@ -39,7 +46,7 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": { "item": {
+			"relations": { "itemId": {
 				"kind": "one",
 				"collection": "items",
 				"optional": true

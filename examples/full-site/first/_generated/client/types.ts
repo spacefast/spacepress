@@ -19,8 +19,8 @@ export type NoteOrder = Partial<Record<"id" | "title" | "slug" | "dek" | "body" 
 export interface Cheer { id: number; noteId: number; count: number }
 export interface CheerInsert { noteId: number; count?: number }
 export interface CheerPatch { noteId?: number; count?: number }
-export interface CheerWith { note?: true | { where?: NoteFilter; orderBy?: NoteOrder; limit?: number; offset?: number; with?: NoteWith } }
-export interface CheerFilter { id?: number | null | { eq?: number | null; ne?: number | null; gt?: number; gte?: number; lt?: number; lte?: number; in?: number[]; notIn?: number[]; isNull?: true; isNotNull?: true }; noteId?: number | null | { eq?: number | null; ne?: number | null; gt?: number; gte?: number; lt?: number; lte?: number; in?: number[]; notIn?: number[]; isNull?: true; isNotNull?: true }; count?: number | null | { eq?: number | null; ne?: number | null; gt?: number; gte?: number; lt?: number; lte?: number; in?: number[]; notIn?: number[]; isNull?: true; isNotNull?: true }; note?: true | NoteFilter; AND?: CheerFilter[]; OR?: CheerFilter[]; NOT?: CheerFilter }
+export interface CheerWith { noteId?: true | { where?: NoteFilter; orderBy?: NoteOrder; limit?: number; offset?: number; with?: NoteWith } }
+export interface CheerFilter { id?: number | null | { eq?: number | null; ne?: number | null; gt?: number; gte?: number; lt?: number; lte?: number; in?: number[]; notIn?: number[]; isNull?: true; isNotNull?: true }; noteId?: number | null | { eq?: number | null; ne?: number | null; gt?: number; gte?: number; lt?: number; lte?: number; in?: number[]; notIn?: number[]; isNull?: true; isNotNull?: true } | NoteFilter; count?: number | null | { eq?: number | null; ne?: number | null; gt?: number; gte?: number; lt?: number; lte?: number; in?: number[]; notIn?: number[]; isNull?: true; isNotNull?: true }; AND?: CheerFilter[]; OR?: CheerFilter[]; NOT?: CheerFilter }
 export type CheerOrder = Partial<Record<"id" | "noteId" | "count", "asc" | "desc">> | string;
 
 export interface CheerInput { noteId: number }

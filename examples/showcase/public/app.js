@@ -287,7 +287,7 @@ async function refresh() {
       listAll(first.stories, {
         with: { tasks: true, cover: true },
       }),
-      listAll(first.tasks, { with: { story: true } }),
+      listAll(first.tasks, { with: { storyId: true } }),
     ]);
     element("site-title").textContent = settings.title;
     element("description").textContent = settings.description;
@@ -300,7 +300,7 @@ async function refresh() {
       ...stories.map((story) => storyCard(story, openStories)),
     );
     element("tasks").replaceChildren(
-      ...tasks.map((task) => taskRow(task, task.story?.title)),
+      ...tasks.map((task) => taskRow(task, task.storyId?.title)),
     );
     if (!tasks.length)
       element("tasks").append(

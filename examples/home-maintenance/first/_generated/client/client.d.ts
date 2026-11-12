@@ -89,6 +89,13 @@ export interface SystemWith {
 		offset?: number;
 		with?: TaskWith;
 	};
+	doneLogs?: true | {
+		where?: DoneLogFilter;
+		orderBy?: DoneLogOrder;
+		limit?: number;
+		offset?: number;
+		with?: DoneLogWith;
+	};
 	manual?: true;
 }
 export interface SystemFilter {
@@ -249,6 +256,7 @@ export interface SystemFilter {
 		isNotNull?: true;
 	};
 	tasks?: true | TaskFilter;
+	doneLogs?: true | DoneLogFilter;
 	AND?: SystemFilter[];
 	OR?: SystemFilter[];
 	NOT?: SystemFilter;
@@ -292,7 +300,7 @@ export interface TaskPatch {
 	publishedAt?: string | null;
 }
 export interface TaskWith {
-	system?: true | {
+	systemId?: true | {
 		where?: SystemFilter;
 		orderBy?: SystemOrder;
 		limit?: number;
@@ -359,7 +367,7 @@ export interface TaskFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | SystemFilter;
 	everyDays?: number | null | {
 		eq?: number | null;
 		ne?: number | null;
@@ -452,7 +460,6 @@ export interface TaskFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	system?: true | SystemFilter;
 	doneLogs?: true | DoneLogFilter;
 	AND?: TaskFilter[];
 	OR?: TaskFilter[];
@@ -497,12 +504,19 @@ export interface DoneLogPatch {
 	publishedAt?: string | null;
 }
 export interface DoneLogWith {
-	task?: true | {
+	taskId?: true | {
 		where?: TaskFilter;
 		orderBy?: TaskOrder;
 		limit?: number;
 		offset?: number;
 		with?: TaskWith;
+	};
+	systemId?: true | {
+		where?: SystemFilter;
+		orderBy?: SystemOrder;
+		limit?: number;
+		offset?: number;
+		with?: SystemWith;
 	};
 	photo?: true;
 }
@@ -558,7 +572,7 @@ export interface DoneLogFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | TaskFilter;
 	systemId?: number | null | {
 		eq?: number | null;
 		ne?: number | null;
@@ -570,7 +584,7 @@ export interface DoneLogFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | SystemFilter;
 	doneOn?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -651,7 +665,6 @@ export interface DoneLogFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	task?: true | TaskFilter;
 	AND?: DoneLogFilter[];
 	OR?: DoneLogFilter[];
 	NOT?: DoneLogFilter;
@@ -741,6 +754,11 @@ export declare const SCHEMA: {
 					readonly collection: "tasks";
 					readonly optional: false;
 				};
+				readonly doneLogs: {
+					readonly kind: "many";
+					readonly collection: "doneLogs";
+					readonly optional: false;
+				};
 			};
 			readonly media: readonly [];
 			readonly mediaList: readonly [];
@@ -753,10 +771,10 @@ export declare const SCHEMA: {
 			readonly revisions: true;
 			readonly localized: false;
 			readonly relations: {
-				readonly system: {
+				readonly systemId: {
 					readonly kind: "one";
 					readonly collection: "systems";
-					readonly optional: true;
+					readonly optional: false;
 				};
 				readonly doneLogs: {
 					readonly kind: "many";
@@ -775,10 +793,15 @@ export declare const SCHEMA: {
 			readonly revisions: true;
 			readonly localized: false;
 			readonly relations: {
-				readonly task: {
+				readonly taskId: {
 					readonly kind: "one";
 					readonly collection: "tasks";
-					readonly optional: true;
+					readonly optional: false;
+				};
+				readonly systemId: {
+					readonly kind: "one";
+					readonly collection: "systems";
+					readonly optional: false;
 				};
 			};
 			readonly media: readonly ["photo"];

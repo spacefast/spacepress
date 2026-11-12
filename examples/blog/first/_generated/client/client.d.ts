@@ -329,7 +329,7 @@ export interface PostPatch {
 	uid?: string | null;
 }
 export interface PostWith {
-	author?: true | {
+	authorId?: true | {
 		where?: AuthorFilter;
 		orderBy?: AuthorOrder;
 		limit?: number;
@@ -452,7 +452,7 @@ export interface PostFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | AuthorFilter;
 	seo?: {
 		metaTitle: string | null;
 		metaDescription: string | null;
@@ -612,7 +612,6 @@ export interface PostFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	author?: true | AuthorFilter;
 	comments?: true | CommentFilter;
 	AND?: PostFilter[];
 	OR?: PostFilter[];
@@ -645,7 +644,7 @@ export interface CommentPatch {
 	createdAt?: string;
 }
 export interface CommentWith {
-	post?: true | {
+	postId?: true | {
 		where?: PostFilter;
 		orderBy?: PostOrder;
 		limit?: number;
@@ -677,7 +676,7 @@ export interface CommentFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | PostFilter;
 	name?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -746,7 +745,6 @@ export interface CommentFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	post?: true | PostFilter;
 	AND?: CommentFilter[];
 	OR?: CommentFilter[];
 	NOT?: CommentFilter;
@@ -959,7 +957,7 @@ export declare const SCHEMA: {
 			readonly revisions: true;
 			readonly localized: true;
 			readonly relations: {
-				readonly author: {
+				readonly authorId: {
 					readonly kind: "one";
 					readonly collection: "authors";
 					readonly optional: true;
@@ -988,7 +986,7 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly post: {
+				readonly postId: {
 					readonly kind: "one";
 					readonly collection: "posts";
 					readonly optional: false;

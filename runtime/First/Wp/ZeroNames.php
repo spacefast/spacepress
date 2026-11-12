@@ -101,8 +101,13 @@ final class ZeroNames
             }
             $upgrade = new self($db);
             $changed = $upgrade->run();
-            // Options and meta read before this moved under new names: forget every cached copy.
+            // Options and meta read before this moved under new names: forget every cached copy, and
+            // reload the roles WordPress already holds in memory (a later add_role() would write the old
+            // role list back over the renamed one).
             wp_cache_flush();
+            if (function_exists('wp_roles')) {
+                wp_roles()->for_site();
+            }
             add_option(self::DONE, ['at' => gmdate('c'), 'changed' => $changed, 'kept' => $upgrade->kept], '', false);
 
             return $changed;

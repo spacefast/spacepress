@@ -51,7 +51,7 @@ final class Runtime
         // As with app migrations: a runtime updated by copying files in sets up its tables on the
         // first request of any kind, once, under a lock.
         add_action('init', static function (): void {
-            if (self::$managed || self::$unavailable !== null || get_option('first_runtime_tables') === self::tablesVersion() || Platform::problems() !== []) {
+            if (self::$managed || ZeroNames::pending() || get_option('first_runtime_tables') === self::tablesVersion() || Platform::problems() !== []) {
                 return;
             }
             global $wpdb;

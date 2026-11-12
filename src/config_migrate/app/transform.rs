@@ -339,6 +339,19 @@ function __z08RequireIdentity(user: __z08User | null, subject: string | null) {
 }
 "#;
 
+/// The profile fields a 0.8 Space Users session left unset, typed as 0.8 typed them (optional).
+const ABSENT_PROFILE: &str = "function __z08AbsentText(): string | undefined { return undefined; }\nfunction __z08AbsentFlag(): boolean | undefined { return undefined; }\nfunction __z08AbsentList(): string[] | undefined { return undefined; }\n";
+
+/// The 0.8 `ctx.auth` profile fields (`AuthProfile` plus `provider`).
+const PROFILE: &[&str] = &[
+    "email",
+    "emailVerified",
+    "picture",
+    "subject",
+    "identityAliases",
+    "provider",
+];
+
 /// v2 compiles `console.*` to the PHP error log; the declaration types it for editors.
 /// The 401 a writing handler answers without a caller when it (or a helper) reads the subject.
 const SUBJECT_GATE: &str =
@@ -368,6 +381,9 @@ pub(super) struct Transformed {
     /// The capsule declared `collections.posts` itself, so 0.8 built no posts from content/posts/
     /// (zero-compile skips its structural default for a declared collection).
     pub declares_posts: bool,
+    /// The 0.8 path of each GET endpoint the candidate serves as a route at the same path: what an
+    /// sf.jsonc cron can keep calling.
+    pub get_paths: BTreeSet<String>,
 }
 
 /// The v2 input names `handler` gives a 0.8 handler's parameters after the context, in order.
@@ -800,6 +816,9 @@ pub(super) fn app(
     }
     let mut routes: Vec<(String, String)> = Vec::new();
     let mut prefixes: Vec<(String, String, String, String)> = Vec::new();
+    // Writing GET endpoints, by index in `routes`: refused if they turn out to read the visitor.
+    let mut writing_gets: Vec<(usize, String, Span)> = Vec::new();
+    let mut get_paths: BTreeSet<String> = BTreeSet::new();
     let mut seen = BTreeSet::new();
     if let Some(group) = root.get("endpoints") {
         for (name, e) in obj(group, "/endpoints")? {
@@ -859,10 +878,13 @@ pub(super) fn app(
                         functions: &functions,
                     },
                 )
-                .map(|h| (h, route))
+                .map(|h| (h, route, path))
             })();
             match result {
-                Ok(((code, generated, ctx_calls), route)) => {
+                Ok(((code, generated, ctx_calls), route, path)) => {
+                    if route.method == "GET" {
+                        get_paths.insert(path);
+                    }
                     calls.extend(ctx_calls);
                     let (prefixed, generated): (Vec<_>, Vec<_>) =
                         generated.into_iter().partition(|g| g.starts_with(PREFIX_MARK));
@@ -874,6 +896,9 @@ pub(super) fn app(
                             at.clone(),
                             code[PREFIX_MARK.len()..].to_string(),
                         ));
+                    }
+                    if route.writes && route.method == "GET" {
+                        writing_gets.push((routes.len(), at.clone(), e.span));
                     }
                     routes.push((route.path.clone(), code));
                     entries.push(entry(
@@ -996,6 +1021,23 @@ pub(super) fn app(
     }
     for (_, _, _, code) in &mut prefixes {
         *code = settle(code);
+    }
+    // Once the 401 gates are settled, a writing GET reads the visitor exactly when its code names
+    // the user or subject (a helper's read brings the subject gate along).
+    for (index, at, span) in writing_gets {
+        let code = &routes[index].1;
+        if ["__z08ctx.user", "__z08subject", "__z08Subject"]
+            .iter()
+            .any(|name| code.contains(name))
+        {
+            errors.push(fail(&at, super::endpoints::WRITING_GET).spanned(span, Path::new("")));
+        } else {
+            entries.push(entry(
+                &at,
+                "review",
+                "a GET route that writes, as in 0.8; it never reads the visitor, so a request from another site can do no more than an anonymous visit already can",
+            ));
+        }
     }
     for (function, (ctx, request)) in converted_helpers.keys() {
         entries.push(entry(
@@ -1158,6 +1200,7 @@ pub(super) fn app(
         connector_roles: Value::Object(connector_roles),
         handlers: client_handlers,
         declares_posts,
+        get_paths,
     })
 }
 
@@ -2330,11 +2373,27 @@ impl Rewrite<'_> {
                     "(__z08ctx.user === null ? \"Signed out\" : String(__z08ctx.user.role) === \"guest\" ? \"Guest\" : __z08ctx.user?.name ?? \"Signed out\")"
                 }
                 "userId" if self.subjects => &self.subject()?,
+                // A Space Users session gave 0.8 only userId and displayName, with provider
+                // "space-users"; email, picture, subject and aliases were never set for it, and a
+                // guest or signed-out caller had none either.
+                "provider" if self.subjects => {
+                    "(__z08ctx.user === null ? null : String(__z08ctx.user.role) === \"guest\" ? \"guest\" : \"space-users\")"
+                }
+                "email" | "emailVerified" | "picture" | "subject" | "identityAliases" if self.subjects => {
+                    self.helpers.push(ABSENT_PROFILE.into());
+                    match prop.as_str() {
+                        "emailVerified" => "__z08AbsentFlag()",
+                        "identityAliases" => "__z08AbsentList()",
+                        _ => "__z08AbsentText()",
+                    }
+                }
                 _ => {
                     return Err(fail(
                         &pointer(&pointer(&pointer(self.at, "ctx"), "auth"), prop),
                         if prop == "userId" {
                             "ctx.auth.userId maps only for Space Users (pass --users): its usr_ subjects are copied with each user. Without Space Users, 0.8 answered a Spacefast account (account:<id>) or a guest (guest:<id>), and which First user each becomes waits on an owner decision: how Sign in with Spacefast signs visitors in to a First Space, and whether guest:<id> rows get guest users. Until then the app stays on 0.8"
+                        } else if PROFILE.contains(&prop.as_str()) {
+                            "ctx.auth profile fields map only for Space Users (pass --users), whose 0.8 sessions carried no email, picture, subject or aliases. Without Space Users they came from the visitor's Spacefast account or sign-in provider, and what a First user carries for them waits on the same owner decision as ctx.auth.userId (Sign in with Spacefast)"
                         } else {
                             "legacy profiles and auth methods require an explicit identity mapping"
                         },

@@ -67,7 +67,8 @@ Each feature is decided from whichever of these can decide it:
 
 | Feature | Decided from | Without the original source |
 | --- | --- | --- |
-| Endpoint method, path, mode (writing GET, reserved paths, OPTIONS) | `artifact.server.endpoints` | Decided |
+| Endpoint method, path, mode (reserved paths, OPTIONS) | `artifact.server.endpoints` | Decided |
+| Writing GET endpoint | `artifact.server.endpoints` lists it; whether its body reads the visitor decides it | Needs the source |
 | Document pages (`.md`, `.html`) | `artifact.pages[].render`, `file` | Decided (refused) |
 | Client app with no pages | `artifact.pages` empty, client entry in `sourceManifest`; what it imports from the uploaded `client.js` | Converted; refused only for imports with no v2 bridge (census rule), else its body needs the source |
 | `ctx` services, request APIs, database calls, handler shapes | The bundle, run through the converter | Decided when refused |
@@ -431,7 +432,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `ctx.auth.userId` with Space Users | The member's hidden `spacefastSubject`, which `migrate-spacefast` copies from `spacefast_app_subject_<id>_<space>` | Auto with `--users`, **WP** | New users answer `wp:<id>`; rows owned by `guest:<id>` or `account:<id>` principals have no v2 user |
 | `ctx.auth.requireSignedIn()`, `requireIdentity()` | Same refusal (401), same returned fields | Auto with `--users` | — |
 | `ctx.auth.userId` without Space Users (Spacefast accounts, guests) | **open owner decision**: v2 users are WordPress users, and how a Spacefast account or a 0.8 `guest:<id>` becomes one waits on Sign in with Spacefast | Refused (`Z08_CTX_AUTH_USERS`, which names the decision) | Keep the app on 0.8 until the decision lands |
-| `ctx.auth.email`, `picture`, `provider`, `subject`, `identityAliases` | **missing** in handler context | Refused | Read the member row, or port |
+| `ctx.auth.email`, `emailVerified`, `picture`, `provider`, `subject`, `identityAliases` | With Space Users: what 0.8 gave a Space Users session, `provider` `"space-users"` (`"guest"` for a guest, `null` signed out) and the rest unset. Without them: **open owner decision**, tied to Sign in with Spacefast | Auto with `--users`; otherwise refused (`Z08_CTX_AUTH_PROFILE`, naming the decision) | Keep the app on 0.8 until the decision lands |
 | Users, passwords, sessions, Google bindings, Space Users subjects | `wp first migrate-spacefast`; a users receipt without the candidate's subjects refuses (`first_spacefast_subjects_missing`) and `--verify` reports `incomplete` | Data command, **WP** | Original auth salt and cookie alias on the host |
 | `verifyUser()` (server SDK) | `GET /wp-json/first-identity/v1/account` | Not applicable (runs outside the capsule) | Port callers |
 

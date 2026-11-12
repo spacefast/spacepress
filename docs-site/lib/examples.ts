@@ -53,6 +53,12 @@ export function sources(dir: string): Request["files"] {
 
 let compiler: Promise<Compiler> | undefined;
 
+/** The browser build of the compiler, loaded once. */
+export function loadCompiler(): Promise<Compiler> {
+  compiler ??= Compiler.load(readFileSync(path.join(site, "public/compiler.wasm")));
+  return compiler;
+}
+
 /** Sources compiled from memory, with the compiler's diagnostics whether or not they compile. */
 export async function compileFiles(name: string, files: Record<string, string>): Promise<Compiled> {
   compiler ??= Compiler.load(readFileSync(path.join(site, "public/compiler.wasm")));

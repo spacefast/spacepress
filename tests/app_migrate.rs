@@ -372,7 +372,7 @@ fn omissions_are_errors_and_static_files_carry_over() {
     let (ok, report) = migrate(
         &fixture("client-elsewhere"),
         &elsewhere,
-        &["--space", "spc_migrate_test"],
+        &["--space", "spc_migrate_test", "--zero-css", styles()],
     );
     assert!(ok, "{report:#}");
     let shell = std::fs::read_to_string(elsewhere.join("public/index.html")).unwrap();
@@ -1363,7 +1363,7 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
           mid:endpoint({method:"GET",path:"/a/:splat/b"},()=>text("")),
           admin:endpoint({method:"GET",path:"/wp-admin/x"},()=>text("")),
           root:endpoint({method:"GET",path:"/"},()=>text("")),
-          hit:endpoint({method:"GET",path:"/hit",readOnly:false},()=>text("")),
+          hit:endpoint({method:"GET",path:"/hit",readOnly:false},(ctx)=>text(String(ctx.auth.isSignedIn))),
           bytes:endpoint({method:"POST",path:"/bytes"},async (_ctx, req)=>text(String((await req.bytes()).length))),
           one:endpoint({method:"GET",path:"/a/:x"},()=>text("")),
           two:endpoint({method:"GET",path:"/a/:y"},()=>text(""))
@@ -1390,9 +1390,10 @@ fn endpoints_become_routes_and_unroutable_ones_refuse() {
             "/endpoints/mid/path",
             "/endpoints/admin/path",
             "/endpoints/root/path",
-            "/endpoints/hit",
             "/endpoints/bytes/request/bytes",
-            "/endpoints/two"
+            "/endpoints/two",
+            // Decided once every helper is known: this writing GET reads the visitor.
+            "/endpoints/hit"
         ]
     );
 }
@@ -2040,7 +2041,7 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
         [
             "/sockets/chat",
             "/endpoints/GET ~1wp-admin~1x/path",
-            "/endpoints/GET ~1hit",
+            // A writing GET is decided by its body (does it read the visitor?), which needs the source.
             "/pages/0",
             "/source"
         ]
@@ -2189,6 +2190,14 @@ fn default_rest_and_destructured_handler_parameters_become_inputs() {
     }
 }
 
+/// The zero.css Zero 0.8 compiled for the client-app fixture (fixtures README).
+fn styles() -> &'static str {
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/app-migrate/client-app-styles/zero.css"
+    )
+}
+
 /// A 0.8 client app without pages converts: actions and tables into first.config.ts, the client
 /// into public/, and the candidate checks with no diagnostics.
 #[test]
@@ -2198,11 +2207,12 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
     let (ok, report) = migrate(
         &fixture("client-app"),
         &out,
-        &["--space", "spc_migrate_test", "--users"],
+        &["--space", "spc_migrate_test", "--users", "--zero-css", styles()],
     );
     assert!(ok, "{report:#}");
     for file in [
         "first.config.ts",
+        "public/zero.css",
         "public/index.html",
         "public/first/main.js",
         "public/first/client.js",
@@ -2214,6 +2224,38 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
     ] {
         assert!(out.join(file).is_file(), "{file}");
     }
+    // 0.8's generated stylesheet comes along byte for byte, linked before the authored one as 0.8's
+    // shell linked it.
+    assert_eq!(
+        std::fs::read(out.join("public/zero.css")).unwrap(),
+        std::fs::read(styles()).unwrap()
+    );
+    let shell = std::fs::read_to_string(out.join("public/index.html")).unwrap();
+    let links: Vec<&str> = shell
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("<link rel=\"stylesheet\" href=\""))
+        .collect();
+    assert_eq!(links, ["./zero.css\">", "./client/styles.css\">"], "{shell}");
+    // Without it the app is refused at the client entry, never published unstyled.
+    let (ok, unstyled) = migrate(
+        &fixture("client-app"),
+        &temp.path().join("unstyled"),
+        &["--space", "spc_migrate_test", "--users", "--dry-run"],
+    );
+    assert!(!ok);
+    let errors: Vec<(&str, &str, u64)> = unstyled["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["code"].as_str().unwrap(),
+                e["file"].as_str().unwrap(),
+                e["line"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(errors, [("Z08_CLIENT_STYLES", "client/index.tsx", 1)], "{unstyled:#}");
     let review = report["entries"]
         .as_array()
         .unwrap()
@@ -2255,7 +2297,14 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
     let (ok, refused) = migrate(
         &moved,
         &temp.path().join("client-app-redirect-out"),
-        &["--space", "spc_migrate_test", "--users", "--dry-run"],
+        &[
+            "--space",
+            "spc_migrate_test",
+            "--users",
+            "--dry-run",
+            "--zero-css",
+            styles(),
+        ],
     );
     assert!(!ok);
     let errors: Vec<(&str, &str)> = refused["errors"]
@@ -2279,7 +2328,7 @@ fn the_client_bridge_calls_the_generated_v2_action() {
     let (ok, report) = migrate(
         &fixture("client-app"),
         &out,
-        &["--space", "spc_migrate_test", "--users"],
+        &["--space", "spc_migrate_test", "--users", "--zero-css", styles()],
     );
     assert!(ok, "{report:#}");
     // 0.8's `useAction("banner")("ab", 3)`, through the converted module, against a recording fetch.
@@ -2332,7 +2381,7 @@ fn a_client_import_without_a_bridge_refuses_with_a_located_code() {
     let (ok, report) = migrate(
         &root,
         &temp.path().join("out"),
-        &["--space", "s", "--users", "--dry-run"],
+        &["--space", "s", "--users", "--dry-run", "--zero-css", styles()],
     );
     assert!(!ok);
     let errors = report["errors"].as_array().unwrap();
@@ -2370,7 +2419,7 @@ fn a_client_import_without_a_bridge_refuses_with_a_located_code() {
     let (ok, report) = migrate(
         &root,
         &temp.path().join("out2"),
-        &["--space", "s", "--users", "--dry-run"],
+        &["--space", "s", "--users", "--dry-run", "--zero-css", styles()],
     );
     assert!(!ok);
     let codes: Vec<(&str, &str)> = report["errors"]
@@ -2396,7 +2445,7 @@ fn a_client_import_without_a_bridge_refuses_with_a_located_code() {
     let (ok, report) = migrate(
         &root,
         &temp.path().join("out3"),
-        &["--space", "s", "--users", "--dry-run"],
+        &["--space", "s", "--users", "--dry-run", "--zero-css", styles()],
     );
     assert!(!ok);
     let errors = report["errors"].as_array().unwrap();
@@ -2448,7 +2497,7 @@ fn the_client_bridge_maps_paginated_queries_onto_the_handler_inputs() {
     let (ok, report) = migrate(
         &fixture("client-app"),
         &out,
-        &["--space", "spc_migrate_test", "--users"],
+        &["--space", "spc_migrate_test", "--users", "--zero-css", styles()],
     );
     assert!(ok, "{report:#}");
     let ran = bridge(
@@ -2488,7 +2537,7 @@ fn the_client_bridge_keeps_a_guest_identity_across_token_expiry() {
     let (ok, report) = migrate(
         &fixture("client-app"),
         &out,
-        &["--space", "spc_migrate_test", "--users"],
+        &["--space", "spc_migrate_test", "--users", "--zero-css", styles()],
     );
     assert!(ok, "{report:#}");
     // A server that issues guest-1 once, expires its first access token, and refreshes it.
@@ -2556,7 +2605,7 @@ fn the_client_bridge_keeps_the_session_when_a_refresh_fails_on_the_network() {
     let (ok, report) = migrate(
         &fixture("client-app"),
         &out,
-        &["--space", "spc_migrate_test", "--users"],
+        &["--space", "spc_migrate_test", "--users", "--zero-css", styles()],
     );
     assert!(ok, "{report:#}");
     let ran = bridge(
@@ -2609,4 +2658,118 @@ console.log(JSON.stringify({ failed, kept, retried, guests, me: renewedMe, auth:
     assert_eq!(ran["me"], serde_json::json!(["Bearer a2"]), "{ran:#}");
     assert_eq!(ran["auth"], "7", "/me renewed instead of reporting a guest: {ran:#}");
     assert_eq!(ran["session"]["refreshToken"], "r2");
+}
+
+/// A writing GET endpoint that never reads the visitor converts to a GET route that writes, as 0.8
+/// ran it: a cross-site request can do no more than an anonymous one. One that reads `ctx.auth`
+/// stays refused (`endpoints_become_routes_and_unroutable_ones_refuse`).
+#[test]
+fn a_writing_get_that_never_reads_the_visitor_becomes_a_writing_get_route() {
+    let temp = tempfile::tempdir().unwrap();
+    let out = temp.path().join("hits");
+    let (ok, report) = migrate(&fixture("hits"), &out, &[]);
+    assert!(ok, "{report:#}");
+    assert!(
+        report["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["pointer"] == "/endpoints/seen" && e["outcome"] == "review"),
+        "{report:#}"
+    );
+    build(&out);
+    let run = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(out.join("first/dist/wp-content"))
+        .arg(
+            r#"$get = fn ($tag) => $app->serveRoute($app->matchRoute("GET", "/api/seen/$tag"), "GET", "/api/seen/$tag", "", "", [], null, "https://hits.example/api/seen/$tag");
+               $first = $get("a"); $get("a"); $get("b");
+               global $wpdb;
+               $table = $wpdb->get_var("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%hits%'");
+               $rows = $wpdb->get_col("SELECT tag FROM `$table` ORDER BY id");
+               echo json_encode(["status" => $first[0], "body" => $first[2], "rows" => $rows]), "\n";"#,
+        )
+        .arg("null")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    let got: Value = serde_json::from_str(stdout.lines().next_back().unwrap_or(""))
+        .unwrap_or_else(|_| panic!("{stdout}{}", String::from_utf8_lossy(&run.stderr)));
+    assert_eq!(
+        (got["status"].as_i64(), got["body"].as_str()),
+        (Some(200), Some("seen")),
+        "{got}"
+    );
+    // Every GET wrote its row, as 0.8 did.
+    assert_eq!(got["rows"], serde_json::json!(["a", "a", "b"]), "{got}");
+}
+
+/// A finalize payload that kept its `zero.css` bytes (older 0.8 publishes did) supplies the
+/// stylesheet itself: converting with `--manifest` needs no `--zero-css`.
+#[test]
+fn a_finalize_manifest_supplies_the_published_zero_css() {
+    fn base64(bytes: &[u8]) -> String {
+        const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::new();
+        for chunk in bytes.chunks(3) {
+            let n = chunk
+                .iter()
+                .enumerate()
+                .fold(0u32, |n, (i, b)| n | (*b as u32) << (16 - 8 * i));
+            for i in 0..4 {
+                out.push(if i <= chunk.len() {
+                    A[(n >> (18 - 6 * i) & 63) as usize] as char
+                } else {
+                    '='
+                });
+            }
+        }
+        out
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let source = fixture("client-app");
+    let files: Vec<Value> = walk(&source)
+        .into_iter()
+        .map(|path| {
+            let bytes = std::fs::read(&path).unwrap();
+            let relative = path.strip_prefix(&source).unwrap().to_string_lossy().replace('\\', "/");
+            let sha = sha2::Sha256::digest(&bytes)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>();
+            serde_json::json!({ "path": relative, "sha256": sha, "size": bytes.len() })
+        })
+        .filter(|f| f["path"] != "sf.jsonc")
+        .collect();
+    let css = std::fs::read(styles()).unwrap();
+    let payload = serde_json::json!({
+        "artifact": {
+            "format": "stattic.zero.capsule.v1",
+            "server": { "endpoints": [] },
+            "pages": [],
+            "sourceManifest": { "entries": { "client": "client/index.tsx", "server": "server/index.ts" }, "files": files },
+        },
+        "staticFiles": [{ "path": "zero.css", "size": css.len(), "contentBase64": base64(&css) }],
+    });
+    let manifest = temp.path().join("finalize.json");
+    std::fs::write(&manifest, payload.to_string()).unwrap();
+    // The fixture's sf.jsonc is not recorded, as a real manifest never records it.
+    let published = temp.path().join("source");
+    copy_dir(&source, &published);
+    std::fs::remove_file(published.join("sf.jsonc")).unwrap();
+    let out = temp.path().join("out");
+    let output = Command::new(env!("CARGO_BIN_EXE_first"))
+        .args(["migrate", "app", "--from", "zero-0.8", "--manifest"])
+        .arg(&manifest)
+        .arg(&published)
+        .arg("--out")
+        .arg(&out)
+        .args(["--space", "spc_migrate_test", "--users"])
+        .output()
+        .unwrap();
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(output.status.success(), "{report:#}");
+    assert_eq!(std::fs::read(out.join("public/zero.css")).unwrap(), css);
 }

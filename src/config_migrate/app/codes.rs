@@ -278,6 +278,14 @@ pub static RULES: &[Rule] = &[
         example: ("/public", "client app over an existing public/: x"),
     },
     Rule {
+        code: "Z08_CLIENT_STYLES",
+        feature: "client app styled by 0.8's generated zero.css",
+        v2: "public/zero.css, linked from public/index.html as 0.8 linked it",
+        fix: "Pass the published zero.css: --zero-css <file> (zeroCss in wasm), or --manifest with a payload that kept its bytes.",
+        test: |_, r| r.starts_with(client::TAG_STYLES),
+        example: ("/client/index.tsx", "client app without its 0.8 zero.css: x"),
+    },
+    Rule {
         code: "Z08_CLIENT_UNREADABLE",
         feature: "client module that cannot be read",
         v2: "a UTF-8 TypeScript, JavaScript or CSS file in the capsule",
@@ -376,11 +384,14 @@ pub static RULES: &[Rule] = &[
     },
     Rule {
         code: "Z08_ENDPOINT_WRITING_GET",
-        feature: "writing GET endpoint",
+        feature: "writing GET endpoint that reads the visitor",
         v2: "a POST route",
-        fix: "Make the endpoint POST (or another unsafe method) and update its callers.",
+        fix: "Make the endpoint POST (or another unsafe method) and update its callers, or stop reading ctx.auth in it.",
         test: |_, r| r.contains("writing GET"),
-        example: ("/endpoints/hit", "a writing GET endpoint needs a manual port"),
+        example: (
+            "/endpoints/hit",
+            "a writing GET endpoint that reads the visitor needs a manual port",
+        ),
     },
     Rule {
         code: "Z08_ENDPOINT_RESERVED_PATH",

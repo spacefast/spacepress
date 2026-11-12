@@ -688,6 +688,7 @@ impl Lowerer {
             let mut names = std::collections::HashSet::new();
             let mut accessors = Vec::new();
             let mut accessor_names = std::collections::HashSet::new();
+            let mut symbol_methods = Vec::new();
             for element in &c.body.body {
                 match element {
                     // Erased members have no runtime form: abstract members,
@@ -742,6 +743,65 @@ impl Lowerer {
                             ann: self.annotation(p.type_annotation.as_ref())?,
                             init: p.value.as_ref().map(|e| self.expr(e)).transpose()?,
                             span: self.sp(p.span),
+                        });
+                    }
+                    a::ClassElement::MethodDefinition(m) if m.computed && class_member_name(&m.key).is_none() => {
+                        // `[key](...) {}`: the evaluator requires the key to be a symbol.
+                        if m.kind != a::MethodDefinitionKind::Method
+                            || !m.decorators.is_empty()
+                            || type_only(m.accessibility.is_some_and(|a| a != a::TSAccessibility::Public))
+                        {
+                            return self.unsupported(
+                                m.span,
+                                "computed class accessors or decorated computed methods",
+                                "use a symbol-keyed method or a named accessor",
+                            );
+                        }
+                        if type_only(m.value.type_parameters.is_some()) || m.value.params.rest.is_some() {
+                            return self.unsupported(
+                                m.span,
+                                "generic or rest class methods",
+                                "use explicitly typed ordinary parameters",
+                            );
+                        }
+                        if m.value
+                            .params
+                            .items
+                            .iter()
+                            .any(|p| p.accessibility.is_some() || p.readonly)
+                        {
+                            return self.unsupported(
+                                m.span,
+                                "parameter properties outside constructors",
+                                "declare the field in the class body and assign it in the constructor",
+                            );
+                        }
+                        let Some(key) = m.key.as_expression() else {
+                            return self.unsupported(m.span, "computed class methods", "use named methods");
+                        };
+                        let key = self.expr(key)?;
+                        let mut func = self.function_inner(&m.value)?;
+                        Rc::get_mut(&mut func).expect("new function").params.insert(
+                            0,
+                            Param {
+                                pat: Pat::Id(
+                                    "this".into(),
+                                    Span {
+                                        end: m.span.start,
+                                        ..self.sp(m.span)
+                                    },
+                                ),
+                                ann: None,
+                                default: None,
+                                optional: false,
+                                rest: false,
+                                span: self.sp(m.span),
+                            },
+                        );
+                        symbol_methods.push(SymbolMethod {
+                            key,
+                            is_static: m.r#static,
+                            func,
                         });
                     }
                     a::ClassElement::MethodDefinition(m) => {
@@ -959,6 +1019,7 @@ impl Lowerer {
                 methods,
                 constructor,
                 accessors,
+                symbol_methods,
                 span: self.sp(c.span),
             }))
         })();

@@ -28,7 +28,10 @@ final class Timers
         if ($ms > 2147483647) { $ms = 1; }
         $ms = max(1, (int) floor($ms));
         $id = self::$next++;
-        self::$pending[$id] = ['due' => self::clock() + $ms, 'seq' => $id, 'callback' => $callback, 'args' => $args, 'site' => $site, 'internal' => $internal];
+        // The callback reads as the viewer bound when the timer was set, whenever it fires.
+        $viewer = Seam::viewer();
+        $bound = static fn (mixed ...$args): mixed => Seam::asViewer($viewer, static fn () => $callback(...$args));
+        self::$pending[$id] = ['due' => self::clock() + $ms, 'seq' => $id, 'callback' => $bound, 'args' => $args, 'site' => $site, 'internal' => $internal];
         return $id;
     }
 

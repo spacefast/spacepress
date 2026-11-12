@@ -10,7 +10,14 @@ test("the landing page links to the guide, the playground and the examples", asy
 test("the examples index lists only the site's examples", async ({ page }) => {
 	await page.goto("./examples");
 	const links = page.locator("main table").getByRole("link");
-	await expect(links).toHaveText(["Reading list", "Pantry", "Kitchen sink", "Reusable fields", "WordPress plugins"]);
+	await expect(links).toHaveText(["Reading list", "Pantry", "Blog", "Full site"]);
+});
+
+test("the pages of examples the site no longer features redirect to the examples index", async ({ page }) => {
+	for (const name of ["kitchen-sink", "recipes", "wp-plugins"]) {
+		await page.goto(`./examples/${name}`);
+		await expect(page).toHaveURL(/\/examples\/?$/);
+	}
 });
 
 test("the plugin list names every plugin first build installs", async ({ page }) => {

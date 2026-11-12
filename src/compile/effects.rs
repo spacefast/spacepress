@@ -1033,6 +1033,33 @@ impl Graph {
             };
             self.copy(Some(function), Some(receiver.at(Step::Field(name.clone()))), Span::NONE);
         }
+        // Symbol-keyed methods are reached only through checked JavaScript dispatch
+        // (`obj[symbol](...)`), so their place holds the function under a name no source can spell.
+        for (index, method) in class.class.symbol_methods.iter().enumerate() {
+            self.methods.insert(method.func.span);
+            let method_env = Scope::new(Some(env.clone()), env.module);
+            method_env.vars.borrow_mut().insert(
+                ":static".into(),
+                Binding {
+                    initialized: true,
+                    value: Value::Bool(method.is_static),
+                    mutable: false,
+                    module_level: false,
+                    ann: None,
+                },
+            );
+            let function = self.function(&method.func, &[], &method_env);
+            let receiver = if method.is_static {
+                place.clone()
+            } else {
+                place.at(Step::Field(":prototype".into()))
+            };
+            self.copy(
+                Some(function),
+                Some(receiver.at(Step::Field(format!(":symbol{index}")))),
+                Span::NONE,
+            );
+        }
         if let Some(f) = &class.class.constructor {
             self.methods.insert(f.span);
             let function = self.function(f, &[], &env);

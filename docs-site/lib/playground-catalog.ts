@@ -1,5 +1,4 @@
 import { toFirst } from "./names.ts";
-import { siteExamples } from "./site-examples.ts";
 
 // The names the compiler on main reads for the entry file, the app folder and the module a config
 // imports. The playground shows First names and hands the compiler these. After the rename lands on
@@ -24,13 +23,6 @@ export function compilerFiles(files: Record<string, string>): Record<string, str
       .replace(/(["'])((?:\.\.?\/)+)first\//g, `$1$2${compilerRoot}/`),
   ]));
 }
-
-// The site's examples (lib/site-examples.ts), the first one opened by default, plus the blog,
-// which the tour walks through.
-export const playgroundExamples = [
-  ...siteExamples.map(({ name, title, summary }) => ({ name, label: title, description: summary })),
-  { name: "blog", label: "Blog", description: "A publication with authors, localized posts, comments, moderation and member accounts." },
-] as const;
 
 export const wordpressFiles = [
   { path: "runtime/First/Wp/Plugin.php", label: "Post types & hooks", find: "register_post_type(", description: "Shared WordPress runtime. Registers native post types, editor support, revisions and WordPress hooks from the generated schema." },

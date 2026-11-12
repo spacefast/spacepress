@@ -7,6 +7,7 @@ import path from "node:path";
 
 import { repo, site } from "./examples.ts";
 import { compilerEntry } from "./playground-catalog.ts";
+import { siteFiles } from "./site-examples.ts";
 
 export const showcaseRoot = path.join(site, ".showcase");
 export const filesRoot = path.join(site, "public/files");
@@ -47,7 +48,7 @@ function sourcesOf(dir: string, rel = ""): string[] {
   for (const name of readdirSync(path.join(dir, rel))) {
     const sub = rel ? `${rel}/${name}` : name;
     // Build output: `first build` writes first/_generated/ and first/dist/. App code under first/ counts.
-    if ([".first", "node_modules", "first/_generated", "first/dist"].includes(sub)) continue;
+    if ([".first", "node_modules", "first/_generated", "first/dist", ...siteFiles].includes(sub)) continue;
     if (lstatSync(path.join(dir, sub)).isDirectory()) found.push(...sourcesOf(dir, sub));
     else found.push(sub);
   }

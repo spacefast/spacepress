@@ -916,10 +916,19 @@ export interface AccessCtx<TData = Record<string, unknown>> {
 
 /**
  * A filter an access function may return: column conditions of the collection, plus relation
- * conditions (`{ author: { userId: ctx.user?.id } }`). Relation names aren't known where the
- * collection is defined, so the compiler checks those.
+ * conditions (`{ author: { userId: ctx.user?.id } }`). A `ref()` field is an integer column and its
+ * relation at once, so an integer column also takes a filter on the row it refers to. Relation names
+ * and targets aren't known where the collection is defined, so the compiler checks those.
  */
-export type AccessFilter<T extends AnyCollection> = TableFilter<T> & { [relation: string]: unknown };
+export type AccessFilter<T extends AnyCollection> = {
+  [K in keyof ColumnsOf<T>]?: ColumnKindOf<ColumnsOf<T>[K]> extends "integer"
+    ? ColumnFilter<ColumnsOf<T>[K]> | { [field: string]: unknown }
+    : ColumnFilter<ColumnsOf<T>[K]>;
+} & {
+  OR?: AccessFilter<T>[];
+  AND?: AccessFilter<T>[];
+  NOT?: AccessFilter<T>;
+} & { [relation: string]: unknown };
 
 /** `"anyone"` includes unauthenticated callers; `"authenticated"` is any user; a role admits itself and above. */
 export type AccessShorthand = boolean | "anyone" | "authenticated" | "self" | Role;

@@ -158,8 +158,10 @@ final class JsonSchema
                 $props[(string) $name] = $f;
             }
         }
+        // A `ref()` field is its column and its relation: the column's operators describe it, and an
+        // object of the target's fields still validates against them (no additionalProperties).
         foreach ($relations as $name) {
-            $props[(string) $name] = self::UNTYPED;
+            $props[(string) $name] ??= self::UNTYPED;
         }
         $nested = $depth > 0 ? self::filterObject($columns, $depth - 1, $relations) : self::UNTYPED;
         $props['AND'] = ['type' => 'array', 'items' => $nested];

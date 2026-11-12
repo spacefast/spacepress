@@ -104,7 +104,7 @@ test("First's explicit status applies to its own write, not to posts written fro
 test("a cross-origin First response carries WordPress's CORS headers", async () => {
   const origin = JSON.parse(wp("eval", "echo wp_json_encode(get_allowed_http_origins());"))[0] as string;
   for (const [method, path, init] of [
-    ["GET", "/_schema", {}],
+    ["GET", "", {}],
     ["GET", "/posts", {}],
     ["POST", "/posts", { headers: { ...auth("editor"), "content-type": "application/json" }, body: JSON.stringify({ title: `CORS ${run}` }) }],
   ] as const) {

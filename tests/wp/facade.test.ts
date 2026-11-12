@@ -203,7 +203,7 @@ test("menus: a menu in a theme location is public; its items are a tree", async 
 
 test("globals run through their Abilities on core's run route: the global's own rules, { data }", async () => {
   const before = await f("GET", "/settings");
-  assert.deepEqual(before.json.data, await ok("GET", "/globals/settings"), "the app's `settings` global answers, not the built-in");
+  assert.deepEqual(before.json.data, await ok("GET", "/settings"), "the app's `settings` global answers, not the built-in");
   const tagline = `Facade global ${run}`;
   assert.equal((await f("PATCH", "/settings", { as: "subscriber", body: { tagline } })).status, 403);
   const set = await f("PATCH", "/settings", { as: "admin", body: { tagline } });

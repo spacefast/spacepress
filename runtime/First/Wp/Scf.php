@@ -104,6 +104,9 @@ final class Scf
         add_filter('acf/update_value', [self::class, 'prepareValue'], 5, 3);
         add_filter('acf/update_value', [self::class, 'updateValue'], 20, 3);
         add_filter('acf/load_value', [self::class, 'loadValue'], 20, 3);
+        // A `ref().many()` field on a post reads and writes First's join table, never postmeta.
+        add_filter('acf/pre_load_value', [self::class, 'loadLinks'], 10, 3);
+        add_filter('acf/pre_update_value', [self::class, 'updateLinks'], 10, 4);
         // First's validator is the one authority on core REST: drop the schema's own bounds so a too-long
         // value reports First's message (the same one /first/v1 returns), not core's.
         add_filter('acf/rest/get_field_schema', [self::class, 'restSchema'], 20, 2);
@@ -145,6 +148,7 @@ final class Scf
             $type === 'text' => ['type' => 'text', 'maxlength' => $rules['max'] ?? ''],
             $type === 'select' => ['type' => 'select', 'choices' => $choices($def['enum'] ?? []), 'allow_null' => 1, 'multiple' => 1, 'return_format' => 'value', 'ui' => 1],
             $type === 'integer' && isset($def['references']) => self::reference($schema, $def['references']),
+            $type === 'refList' => self::reference($schema, $def['references'], true),
             $type === 'integer' => ['type' => 'number', 'step' => 1, 'min' => $rules['min'] ?? '', 'max' => $rules['max'] ?? ''],
             $type === 'file' => ['type' => 'number', 'step' => 1, 'min' => 1, 'instructions' => 'A private file id (bucket ' . ($def['bucket'] ?? '') . ').'],
             $type === 'real' => ['type' => 'number', 'step' => 'any', 'min' => $rules['min'] ?? '', 'max' => $rules['max'] ?? ''],
@@ -180,11 +184,14 @@ final class Scf
         return $field;
     }
 
-    private static function reference(Schema $schema, array $ref): array
+    private static function reference(Schema $schema, array $ref, bool $many = false): array
     {
         $target = $schema->collection($ref['collection']);
         if (($target['editor'] ?? true) && ($target['wp'] ?? null) !== null) {
-            return ['type' => 'post_object', 'post_type' => [$target['wp']['postType']], 'taxonomy' => [], 'allow_null' => 1, 'multiple' => 0, 'return_format' => 'id', 'ui' => 1];
+            return ['type' => 'post_object', 'post_type' => [$target['wp']['postType']], 'taxonomy' => [], 'allow_null' => 1, 'multiple' => $many ? 1 : 0, 'return_format' => 'id', 'ui' => 1];
+        }
+        if ($many) {
+            return ['type' => 'text', 'instructions' => 'IDs of ' . ($target['label'] ?? $ref['collection']) . ', comma-separated, in order'];
         }
 
         return ['type' => 'number', 'step' => 1, 'instructions' => 'ID of a ' . ($target['label'] ?? $ref['collection'])];
@@ -346,6 +353,54 @@ final class Scf
         return $value;
     }
 
+    /** The post and many-ref column an SCF value is for, or null. @return ?array{string, int, array, string} */
+    private static function linksField(mixed $postId, mixed $field): ?array
+    {
+        $def = is_array($field) ? ($field['first'] ?? null) : null;
+        if (!is_array($def) || ($def['type'] ?? null) !== 'refList' || empty($field['first_top']) || !is_numeric($postId)
+            || ($collection = CoreAccess::collection((string) get_post_type((int) $postId))) === null) {
+            return null;
+        }
+
+        return [$collection, (int) $postId, $def, (string) $def['name']];
+    }
+
+    /** acf/pre_load_value: the editor shows the post's links, in position order. */
+    public static function loadLinks(mixed $value, mixed $postId, mixed $field): mixed
+    {
+        if ($value !== null || ($at = self::linksField($postId, $field)) === null) {
+            return $value;
+        }
+        [$collection, $id, $def] = $at;
+        $ids = array_column(\First\Db::instance()->store() instanceof \First\Links
+            ? \First\Db::instance()->store()->links($def['references']['join'], 'owner_id', [$id]) : [], 'target_id');
+
+        return self::refListScf($def, $ids);
+    }
+
+    /**
+     * acf/pre_update_value: an editor save of a many-ref replaces the post's links. The ids are checked
+     * as every write checks them (existence, and visibility to a signed-in editor); SCF writes no meta.
+     */
+    public static function updateLinks(mixed $check, mixed $value, mixed $postId, mixed $field): mixed
+    {
+        if ($check !== null || self::$io > 0 || ($at = self::linksField($postId, $field)) === null) {
+            return $check;
+        }
+        [$collection, $id, $def, $col] = $at;
+        $db = \First\Db::instance();
+        try {
+            $norm = Schema::normalize($def, self::fromScf($def, wp_unslash($value), (string) $field['key']), $col, HttpError::seg($col));
+            $viewer = get_current_user_id() === 0 ? null : (CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended'));
+            $db->validateWriteReferences($collection, [$col => $norm], $viewer);
+            $db->writeLinks([$col => $def], $id, [$col => $norm ?? []]);
+        } catch (HttpError $e) {
+            EditorSave::fail($e);
+        }
+
+        return true;
+    }
+
     public static function restSchema(mixed $schema, mixed $field): mixed
     {
         if (!is_array($schema) || !is_array($field) || !isset($field['first'])) {
@@ -401,6 +456,7 @@ final class Scf
             'timestamp' => substr((string) $v, 0, 10) . ' ' . substr((string) $v, 11, 8),
             'json' => Js::jsonStringify($v),
             'mediaList' => array_map('intval', $v),
+            'refList' => self::refListScf($def, $v),
             'group' => self::scfFields($def['fields'] ?? [], $v, $key . '_'),
             'repeater' => array_map(static fn ($row) => self::scfFields($def['fields'] ?? [], $row, $key . '_'), $v),
             'blocks' => array_map(
@@ -409,6 +465,15 @@ final class Scf
             ),
             default => $v,
         };
+    }
+
+    /** A many-ref as its editor field shows it: a list for post_object, comma-separated text otherwise. */
+    private static function refListScf(array $def, array $ids): array|string
+    {
+        $db = \First\Db::instance();
+        $target = $db->schema()->collection($def['references']['collection']);
+
+        return ($target['editor'] ?? true) && ($target['wp'] ?? null) !== null ? array_map('intval', $ids) : implode(',', $ids);
     }
 
     private static function scfFields(array $fields, array $obj, string $prefix): array
@@ -430,7 +495,7 @@ final class Scf
     {
         $type = $def['type'];
         if ($v === null || $v === '' || ($v === false && $type !== 'boolean')) {
-            return in_array($type, ['select', 'mediaList'], true) && ($def['notNull'] ?? false) ? [] : null;
+            return in_array($type, ['select', 'mediaList', 'refList'], true) && ($def['notNull'] ?? false) || $type === 'refList' ? [] : null;
         }
 
         return match ($type) {
@@ -447,6 +512,12 @@ final class Scf
             'json' => is_string($v) ? self::json($v, $strictJson) : $v,
             'select' => is_array($v) ? array_values(array_map('strval', $v)) : (is_string($v) && is_serialized($v) ? array_values((array) unserialize($v, ['allowed_classes' => false])) : [$v]),
             'mediaList' => is_array($v) ? array_values(array_map('intval', $v)) : $v,
+            // post_object (multiple) posts a list of ids; the text field a comma-separated one.
+            'refList' => match (true) {
+                is_array($v) => array_values(array_map(static fn ($id) => is_numeric($id) ? (int) $id : $id, array_filter($v, static fn ($id) => $id !== ''))),
+                is_string($v) && preg_match('/^\s*\d+(\s*,\s*\d+)*\s*$/D', $v) === 1 => array_map('intval', explode(',', $v)),
+                default => $v,
+            },
             'group' => is_array($v) ? self::jsFields($def['fields'] ?? [], $v, $key . '_') : $v,
             'repeater' => is_array($v) ? array_values(array_map(
                 static fn ($row) => is_array($row) ? self::jsFields($def['fields'] ?? [], $row, $key . '_') : $row,

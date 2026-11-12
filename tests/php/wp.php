@@ -518,6 +518,7 @@ function wpDdl(array $schema): string
     }
     $autoPk = static fn (string $c) => (bool) ($collections[$c]['columns'][$collections[$c]['primaryKey'] ?? 'id']['autoIncrement'] ?? false);
     $statements = [];
+    $joins = [];
     $revisions = false;
     foreach ($tables as $name => $table) {
         $spec = $collections[$name];
@@ -527,6 +528,15 @@ function wpDdl(array $schema): string
         $fks = [];
         foreach ($spec['columns'] as $col => $def) {
             if ($def['derived'] ?? false) {
+                continue;
+            }
+            if (($def['type'] ?? null) === 'refList') {
+                // A many-ref's links live in its join table, with cascading keys between two custom tables.
+                $join = $def['references']['join'];
+                $fk = static fn (string $side, string $c) => isset($tables[$c]) && isset($tables[$def['references']['collection']])
+                    ? ",\n\tCONSTRAINT `first_{$join}_{$side}_fk` FOREIGN KEY (`$side`) REFERENCES `{prefix}{$tables[$c]}` (`id`) ON DELETE CASCADE" : '';
+                $joins[] = "CREATE TABLE `{prefix}first_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
+                    . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)" . $fk('owner_id', $name) . $fk('target_id', $def['references']['collection']) . "\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
                 continue;
             }
             $type = $def['type'] ?? 'text';
@@ -584,6 +594,20 @@ function wpDdl(array $schema): string
         $lines[] = 'PRIMARY KEY (`' . ($spec['primaryKey'] ?? 'id') . '`)';
         $statements[] = "CREATE TABLE `{prefix}$table` (\n\t" . implode(",\n\t", [...$lines, ...$keys, ...$fks]) . "\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
     }
+    // Post-backed owners' many-refs too: the join table is First's own whatever stores the sides.
+    foreach ($collections as $name => $spec) {
+        if (isset($tables[$name])) {
+            continue;
+        }
+        foreach ($spec['columns'] ?? [] as $def) {
+            if (($def['type'] ?? null) === 'refList') {
+                $join = $def['references']['join'];
+                $joins[] = "CREATE TABLE `{prefix}first_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
+                    . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+            }
+        }
+    }
+    array_push($statements, ...$joins);
     if ($revisions) {
         $statements[] = "CREATE TABLE `{prefix}first__revisions` (\n\t`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n\t`collection` VARCHAR(64) NOT NULL,\n\t`pk` VARCHAR(64) NOT NULL,"
             . "\n\t`at` CHAR(24) NOT NULL,\n\t`userId` BIGINT,\n\t`row` LONGTEXT NOT NULL,\n\tPRIMARY KEY (`id`),\n\tKEY `row` (`collection`, `pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";

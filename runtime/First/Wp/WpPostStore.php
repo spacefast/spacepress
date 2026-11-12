@@ -202,6 +202,7 @@ final class WpPostStore implements Store
                 $type === 'date' => new ColumnRef($this->dialect->isoDate($v), $m($col), $v, 'scalar'),
                 $type === 'json' => new ColumnRef($v, $m($col), '', 'json'),
                 $type === 'select', $type === 'mediaList' => new ColumnRef($v, $m($col), '{j}.meta_value', 'serialized-list'),
+                $type === 'refList' => new ColumnRef('NULL', '', '', 'serialized-list'), // read from the join table
                 in_array($type, ['group', 'repeater', 'blocks'], true) => new ColumnRef('NULL', $m($col), "NULLIF(NULLIF({j}.meta_value, ''), '0')", 'json'),
                 default => new ColumnRef($v, $m($col), $v, 'scalar'),
             };
@@ -498,7 +499,8 @@ final class WpPostStore implements Store
             return false;
         }
 
-        return !($spec['columns'][$col]['system'] ?? false);
+        // A many-ref's links live in First's join table, not in postmeta.
+        return !($spec['columns'][$col]['system'] ?? false) && ($spec['columns'][$col]['type'] ?? null) !== 'refList';
     }
 
     /**

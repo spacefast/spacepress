@@ -3,7 +3,7 @@ import type { Collections } from "../../first/_generated/client/types.ts";
 
 const page = new URL(window.location.pathname, window.location.origin);
 const options = {
-  url: "/wp-json/first/v1",
+  url: "/__first/api/v1",
   auth: {
     clientId: import.meta.env.VITE_ZERO_APP_ID ?? "app_subscriptions",
     redirectUri: page.origin + page.pathname,

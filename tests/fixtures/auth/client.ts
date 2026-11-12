@@ -2,7 +2,7 @@
 // allow and refuse for an auth collection (§6.2).
 import { createClient, type Member, type Role, type User } from "./first/_generated/client/index.ts";
 
-const first = createClient({ url: "http://localhost/wp-json/first/v1" });
+const first = createClient({ url: "http://localhost/__first/api/v1" });
 const roles: Role[] = ["guest", "subscriber", "author", "editor", "admin"];
 const me: User | null = await first.auth.me();
 const member: Member | null | undefined = me?.member;

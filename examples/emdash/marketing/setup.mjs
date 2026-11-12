@@ -67,7 +67,7 @@ export async function connect(project) {
     base,
     authorization,
     request,
-    api: (path, options) => request("/wp-json/first/v1" + path, options),
+    api: (path, options) => request("/__first/api/v1" + path, options),
     dispose: async () => {
       const list = JSON.parse(
         await wp(

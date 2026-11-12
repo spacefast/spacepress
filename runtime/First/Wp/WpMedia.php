@@ -221,6 +221,12 @@ final class WpMedia implements Media
         return $out;
     }
 
+    /** The attachment's focal point, or null (core REST's `first_focal`). */
+    public static function focal(int $id): ?array
+    {
+        return self::focalOf($id);
+    }
+
     private static function focalOf(int $id): ?array
     {
         $raw = get_post_meta($id, self::FOCAL, true);
@@ -370,7 +376,7 @@ final class WpMedia implements Media
         });
     }
 
-    /** media row: { id, url, mime, size, width, height, alt, filename, createdAt, sizes, focal } */
+    /** media row: { id, url, mime, size, width, height, alt, filename, createdAt, sizes, focal, author, caption } */
     private function row(int $id): array
     {
         $post = get_post($id);
@@ -412,6 +418,9 @@ final class WpMedia implements Media
             'createdAt' => str_replace(' ', 'T', (string) $post?->post_date_gmt) . '.000Z',
             'sizes' => $sizes === [] ? new \stdClass() : $sizes,
             'focal' => $focal,
+            // spec §2.1's media fields beyond First's own: who uploaded it, and its caption.
+            'author' => (int) $post?->post_author > 0 ? (int) $post->post_author : null,
+            'caption' => (string) $post?->post_excerpt,
         ];
     }
 }

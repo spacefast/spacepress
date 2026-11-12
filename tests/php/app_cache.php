@@ -1,0 +1,73 @@
+<?php
+
+declare(strict_types=1);
+
+/*
+ * Cache policy and URL purges for first/app/ pages over HTTP (tests/app_router.rs
+ * `app_pages_cache_and_purge_by_what_they_read`): the app-router fixture with a must-use plugin
+ * standing in for the host, recording each `first_purge_urls` announcement. Prints JSON.
+ *
+ *   FIRST_WP_THEMES=1 php tests/php/app_cache.php <wp-content dir>
+ */
+
+require __DIR__ . '/wp.php';
+
+$site = wpSite('app-cache', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor'], 'muPlugins' => [
+    'host' => <<<'PHP'
+        <?php
+        add_action('first_purge_urls', static function (array $paths): void {
+            $seen = get_option('test_purges', []);
+            $seen[] = $paths;
+            update_option('test_purges', $seen, false);
+        });
+        PHP,
+]]);
+wp_set_current_user(1);
+$hello = \First\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published'], true)[0];
+$other = \First\db()->insert('notes', ['title' => 'Other', 'slug' => 'other', 'status' => 'published'], true)[0];
+$site->actAs(null);
+$site->startServer();
+$url = $site->url();
+
+function fetch(string $url, array $headers = []): array
+{
+    $ch = curl_init($url);
+    $out = [];
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$out): int {
+            if (str_contains($line, ':')) {
+                [$name, $value] = explode(':', $line, 2);
+                $out[strtolower(trim($name))][] = trim($value);
+            }
+            return strlen($line);
+        },
+    ]);
+    curl_exec($ch);
+    return ['status' => (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), 'cache' => $out['cache-control'][0] ?? null];
+}
+$cookie = static function (string $user) use ($site): string {
+    $id = $site->userId($user);
+    return 'Cookie: ' . LOGGED_IN_COOKIE . '=' . rawurlencode(wp_generate_auth_cookie($id, time() + 3600, 'logged_in'));
+};
+
+$out = [
+    // Every page reads differently: home lists notes, /notes/hello reads one, /about reads nothing.
+    'home' => fetch("$url/"),
+    'note' => fetch("$url/notes/hello"),
+    'other note' => fetch("$url/notes/other"),
+    'about' => fetch("$url/about"),
+    'as editor' => fetch("$url/notes/hello", [$cookie('chief')]),
+    'guarded' => fetch("$url/account", [$cookie('chief')]),
+    'missing' => fetch("$url/notes/nope"),
+];
+global $wpdb;
+$out['index'] = array_map(static fn ($r) => "{$r['kind']} {$r['item']} {$r['url']}", $wpdb->get_results("SELECT kind, item, url FROM {$wpdb->prefix}first__app_reads ORDER BY url, kind, item", ARRAY_A));
+// An edit to one note purges the URLs that read it and the ones that listed notes, nothing else.
+delete_option('test_purges');
+wp_set_current_user(1);
+\First\db()->update('notes', ['title' => 'Hello again'], ['id' => (int) $hello['id']]);
+wp_cache_delete('test_purges', 'options');
+$out['purged'] = get_option('test_purges', []);
+echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
+$site->destroy();

@@ -22,6 +22,7 @@ import {
 	type Row,
 } from './model';
 import {
+	api,
 	bootstrap,
 	collectionSpec,
 	list,
@@ -192,16 +193,14 @@ function FileField({
 }) {
 	const [busy, setBusy] = useState(false),
 		[error, setError] = useState('');
-	const path = `/first/v1/files/${encodeURIComponent(column.bucket ?? '')}`;
+	const path = `/files/${encodeURIComponent(column.bucket ?? '')}`;
 	const state = useLoad(
 		async () =>
 			value == null
 				? null
 				: object(
 						unwrap(
-							await apiFetch({
-								path: `${path}/${encodeURIComponent(String(value))}`,
-							})
+							await apiFetch(api(`${path}/${encodeURIComponent(String(value))}`))
 						)
 					),
 		[path, value]
@@ -235,7 +234,7 @@ function FileField({
 					body.append('file', file);
 					setBusy(true);
 					setError('');
-					apiFetch({ path, method: 'POST', body })
+					apiFetch({ ...api(path), method: 'POST', body })
 						.then((v: unknown) => {
 							const row = object(unwrap(v));
 							if (typeof row.id !== 'number')

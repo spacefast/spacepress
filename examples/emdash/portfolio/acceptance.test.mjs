@@ -15,7 +15,7 @@ test('official portfolio runs on native Studio: uploads, native editing, public 
     if (process.env.FIRST_PORTFOLIO_KEEP === '1') console.log(`Retained exact disposable project: ${studio.project}\nSite: ${base}\nCleanup: ${evidence}/studio.json`);
     else await studio.cleanup();
   });
-  const schema = await api('/_schema');
+  const schema = await api('');
   assert.equal(schema.runtime.wp.database.kind, 'sqlite');
   assert.deepEqual(schema.runtime.pendingMigrations, []);
   const pluginsBefore = JSON.parse(await wp('plugin', 'list', '--status=active', '--format=json'));
@@ -146,7 +146,7 @@ test('official portfolio runs on native Studio: uploads, native editing, public 
   await get('/work/private-acceptance-draft', 404);
   assert.doesNotMatch((await get('/work')).text, /Private acceptance draft/);
   assert.doesNotMatch((await get('/rss.xml')).text, /Private acceptance draft/);
-  const anonymousDraft = await fetch(`${base}/wp-json/first/v1/projects/${draft.id}`);
+  const anonymousDraft = await fetch(`${base}/__first/api/v1/projects/${draft.id}`);
   assert.equal(anonymousDraft.status, 404);
   const session = JSON.parse(await wp('eval', 'echo wp_json_encode(["name" => LOGGED_IN_COOKIE, "value" => wp_generate_auth_cookie(1, time()+3600, "logged_in"), "authName" => AUTH_COOKIE, "authValue" => wp_generate_auth_cookie(1, time()+3600, "auth")]);'));
   const cookie = `${session.name}=${session.value}; ${session.authName}=${session.authValue}`;

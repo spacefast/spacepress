@@ -1,4 +1,4 @@
-//! The site side of sync: `/_schema` and `/sync/*` over HTTP (design §5.3), blocking.
+//! The site side of sync: the facade's schema (`GET /__first/api/v1`) and `/sync/*` over HTTP (design §5.3), blocking.
 
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -41,9 +41,12 @@ impl Problem {
     }
 }
 
+/// The facade's path below the site's URL (spec §3a).
+pub const API: &str = "/__first/api/v1";
+
 impl Client {
-    /// `site` is the site's URL (scheme, host and an optional path prefix); `/wp-json/first/v1` is
-    /// appended to its path unless the path already ends in it. A query or fragment is refused: the
+    /// `site` is the site's URL (scheme, host and an optional path prefix); the facade's prefix
+    /// `/__first/api/v1` (spec §3a) is appended to its path unless the path already ends in it. A query or fragment is refused: the
     /// endpoint paths are appended to the URL's path, so neither has a place to go.
     pub fn new(site: &str, credential: Credential) -> Result<Client, String> {
         let url = url::Url::parse(site).map_err(|e| format!("--site: {e}"))?;
@@ -65,8 +68,8 @@ impl Client {
             .into();
         let mut url = url;
         let path = url.path().trim_end_matches('/').to_string();
-        if !path.ends_with("/wp-json/first/v1") {
-            url.set_path(&format!("{path}/wp-json/first/v1"));
+        if !path.ends_with(API) {
+            url.set_path(&format!("{path}{API}"));
         } else {
             url.set_path(&path);
         }
@@ -146,15 +149,15 @@ mod tests {
     }
 
     #[test]
-    fn the_rest_prefix_joins_the_sites_path_and_is_never_doubled() {
-        assert_eq!(base("https://x.test").unwrap(), "https://x.test/wp-json/first/v1");
+    fn the_facade_prefix_joins_the_sites_path_and_is_never_doubled() {
+        assert_eq!(base("https://x.test").unwrap(), "https://x.test/__first/api/v1");
         assert_eq!(
             base("https://x.test/blog/").unwrap(),
-            "https://x.test/blog/wp-json/first/v1"
+            "https://x.test/blog/__first/api/v1"
         );
         assert_eq!(
-            base("https://x.test/blog/wp-json/first/v1/").unwrap(),
-            "https://x.test/blog/wp-json/first/v1"
+            base("https://x.test/blog/__first/api/v1/").unwrap(),
+            "https://x.test/blog/__first/api/v1"
         );
     }
 
@@ -162,7 +165,7 @@ mod tests {
     fn a_site_with_a_query_fragment_or_credentials_is_refused() {
         for site in [
             "https://x.test/#section",
-            "https://x.test/?rest_route=/first/v1",
+            "https://x.test/?q=1",
             "https://user@x.test",
             "ftp://x.test",
         ] {

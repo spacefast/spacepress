@@ -78,7 +78,7 @@ test("activation registers the post types, field groups and options page, and cr
   const diagnosis: unknown = JSON.parse(execFileSync(firstBinary(), [
     "doctor", fileURLToPath(new URL("app", import.meta.url)),
     "--out", fileURLToPath(new URL(".wp-content", import.meta.url)),
-    "--site", `${harness.url}/?rest_route=/first/v1`, "--json",
+    "--site", harness.url, "--json",
   ], { encoding: "utf8" }));
   assert.partialDeepStrictEqual(diagnosis, { data: { ok: true } });
 });

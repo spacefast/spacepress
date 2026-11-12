@@ -21,7 +21,7 @@ Create an application password for `admin`, then call the API with it:
 
 ```sh
 PW=$(./target/release/first wp --site examples/reading-list user application-password create admin docs --porcelain)
-API=http://localhost:8911/wp-json/first/v1
+API=http://localhost:8911/__first/api/v1
 curl -u "admin:$PW" -H 'content-type: application/json' -X POST $API/books -d '{"title":"The Left Hand of Darkness"}'
 curl -u "admin:$PW" -H 'content-type: application/json' -X POST $API/actions/logRead -d '{"bookId":5,"minutes":25}'
 ./target/release/first wp --site examples/reading-list action-scheduler run

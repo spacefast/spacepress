@@ -806,6 +806,8 @@ function wpDefine(string $dir, string $url): void
     define('WP_DEBUG_LOG', "$dir/content/debug.log");
     // The front end (template_redirect, the theme) runs only for suites that serve pages.
     define('WP_USE_THEMES', getenv('FIRST_WP_THEMES') === '1');
+    // The unminified Interactivity runtime, which is the only build that logs hydration warnings.
+    define('SCRIPT_DEBUG', getenv('FIRST_WP_SCRIPT_DEBUG') === '1');
     define('WP_SITEURL', $url);
     define('WP_HOME', $url);
     define('DISABLE_WP_CRON', true);

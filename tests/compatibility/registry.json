@@ -980,12 +980,27 @@
       "guidance": "SVG `animate`/`set` can rewrite their target's attributes: they never target URL or event attributes, and `values`/`to`/`from`/`by`/`attributeName` must be literal."
     },
     {
-      "id": "jsx-use-client-pending",
+      "id": "jsx-use-client",
+      "status": "supported",
+      "evidence": "tests/app_router.rs",
+      "test": "client_components_compile_to_interactivity_stores",
+      "guidance": "A .tsx file under first/components/ that starts with \"use client\" (after comments and other directives such as \"use strict\") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState and server action calls compile; lists and reactive conditionals are refused for now."
+    },
+    {
+      "id": "jsx-use-client-npm",
       "status": "refused",
       "code": "F1003",
-      "fixture": "tests/fixtures/reject-jsx-use-client",
-      "message": "\"use client\" components aren't compiled yet",
-      "guidance": "Interactive components arrive with the Interactivity API output; until then, remove the directive to render on the server."
+      "fixture": "tests/fixtures/reject-client-npm",
+      "message": "a \"use client\" component can't import \"dayjs\"",
+      "guidance": "Client components run in the browser without a bundler: import \"first/client\" and relative modules only."
+    },
+    {
+      "id": "jsx-use-client-root",
+      "status": "refused",
+      "code": "F4001",
+      "fixture": "tests/fixtures/reject-client-root",
+      "message": "a client component returns one element",
+      "guidance": "The root element carries the Interactivity directives: wrap fragments, components and conditionals in one element."
     },
     {
       "id": "jsx-children-type",
@@ -1002,14 +1017,6 @@
       "fixture": "tests/fixtures/reject-jsx-config-unused",
       "message": "JSX files can't be part of a First config",
       "guidance": "A `.tsx` module the config imports is refused even when its JSX never runs; components live in `first/components/`."
-    },
-    {
-      "id": "jsx-use-client-after-prologue",
-      "status": "refused",
-      "code": "F1003",
-      "fixture": "tests/fixtures/reject-jsx-use-client-prologue",
-      "message": "\"use client\" components aren't compiled yet",
-      "guidance": "The directive is found anywhere in the file's directive prologue, after comments and other directives such as `\"use strict\"`."
     },
     {
       "id": "jsx-children-type-local",

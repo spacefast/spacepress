@@ -7,7 +7,11 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { api, auth, harness, http, ok, run, wp, wpTry, first, type Role } from "./env.ts";
+import { auth, harness, http, ok, run, wp, wpTry, first, type Role } from "./env.ts";
+
+// Abilities run First's own pipeline (App::invoke), the one the old namespace served; until they run
+// through the core routes too, they are compared with it.
+const api = `${harness.url}/wp-json/first/v1`;
 
 type Who = Role | "anonymous";
 const here = dirname(fileURLToPath(import.meta.url));

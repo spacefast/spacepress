@@ -92,7 +92,7 @@ test("actions run through their Ability: { data }, GET for readonly, the action'
   const invalid = await f("POST", "/actions/agentNote", { as: "editor", body: {} });
   assert.deepEqual([invalid.status, invalid.json.code, invalid.json.pointer], [422, "invalid_input", "/note"]);
   assert.equal((await f("GET", "/actions/agentNote")).status, 405);
-  assert.equal((await f("POST", "/actions/jobsInbound", { body: {} })).status, 404, "a signed webhook isn't an action");
+  assert.equal((await f("POST", "/actions/jobsInbound", { body: {} })).status, 401, "a signed webhook without its signature is refused (jobs.test.ts covers the signature)");
 });
 
 test("the facade denies what core and /first/v1 deny", async () => {

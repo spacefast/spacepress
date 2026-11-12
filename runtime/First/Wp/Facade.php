@@ -273,12 +273,20 @@ final class Facade
     {
         $action = $plugin->schema->actions()[$name] ?? throw HttpError::notFound("Unknown action '$name'");
         if (($action['signature'] ?? null) !== null) {
-            throw HttpError::notFound("Unknown action '$name'"); // a signed webhook is a route, not an action
+            // An inbound webhook signs the raw body, which an Ability input can't carry: First's own
+            // action path verifies the signature (the caller is anonymous after it). It moves to
+            // `app/**/route.ts` with the authoring cutover, and this branch goes with the option.
+            \First\App::allow($method, ['POST']);
+
+            return $plugin->app()->handle('POST', '/actions/' . rawurlencode($name), [], $body, self::headers());
         }
         \First\App::allow($method, ($action['readonly'] ?? false) ? ['GET', 'HEAD', 'POST'] : ['POST']);
         $input = $method === 'POST' ? $body : (string) Js::jsonStringify(self::queryInput($query));
 
-        return self::json(200, ['data' => self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'")]);
+        self::$passed = [];
+        [$status, $headers, $out] = self::json(200, ['data' => self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'")]);
+
+        return [$status, self::$passed + $headers, $out];
     }
 
     /** `GET`/`PATCH /<global>` (spec §3a): the global's read and update Abilities through the run route. */
@@ -306,10 +314,21 @@ final class Facade
         } else {
             $request->set_query_params(['input' => json_decode(trim($input) === '' ? '{}' : $input, true)]);
         }
+        foreach (['idempotency-key'] as $header) {
+            $value = $_SERVER['HTTP_' . strtoupper(str_replace('-', '_', $header))] ?? null;
+            if (is_string($value)) {
+                $request->set_header($header, $value);
+            }
+        }
         $response = Abilities\Register::withSentInput($name, $input, static fn () => self::run($request));
+        $data = self::unwrap($response);
+        self::$passed = array_intersect_key($response->get_headers(), ['Idempotent-Replayed' => true]);
 
-        return self::unwrap($response);
+        return $data;
     }
+
+    /** @var array<string, string> response headers of the last ability run the facade passes on */
+    private static array $passed = [];
 
     // ================================================================ dispatch
 

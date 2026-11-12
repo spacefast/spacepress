@@ -105,6 +105,8 @@ export const oracleParents = collection({ title: text() },
   { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 export const oracleKids = collection({
   title: text(), parentId: ref(oracleParents).optional().onDelete("cascade"),
+  // A many-ref between two post-backed kinds: links in First's join table, a post_object (multiple) in the editor.
+  mentors: ref(oracleParents).many().optional().reverse("mentees"),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 export const oracleGrandchildren = collection({
   title: text(), childId: ref(oracleKids).optional().onDelete("restrict"),

@@ -52,4 +52,5 @@ import json,sys
 print(json.dumps({"url":sys.argv[1],"wp":"","scf":"","plugin":"first-app-carry","users":json.loads(sys.argv[2]),"seeded":json.load(open(sys.argv[3]))}))
 PY
 FIRST_WP_HARNESS="$work/receipt.json" FIRST_ZERO_UPGRADE_APP="$work/app/first/dist/wp-content" \
+  FIRST_ZERO_UPGRADE_CLIENT="$work/app/first/_generated/client/client.js" \
   node --test --test-concurrency=1 "$here/upgrade.test.ts"

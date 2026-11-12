@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { classify } from "./classify.mjs";
-import { converterReport, outcome, payloadCensus, verifySource } from "./census.mjs";
+import { converterReport, outcome, payloadCensus, summarize, verifySource } from "./census.mjs";
 import { ERASED, pageStub, PAGE_MARKER, serverSource, writeCapsule } from "./reconstruct.mjs";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
@@ -93,7 +93,15 @@ test("a client app without pages is refused only for what its client.js shows", 
     outcome: "not recoverable",
     refusals: [],
     missing: ["client app body"],
+    codes: [],
   });
+  // Each Space counts once per converter code, whatever the code's kind.
+  const refused = outcome({ verified: false, report: { status: "refused", errors: [
+    { pointer: "/queries/q/ctx/auth/userId", reason: "ctx.auth.userId maps only for Space Users (pass --users)", code: "Z08_CTX_AUTH_USERS" },
+    { pointer: "/queries/r/ctx/auth/userId", reason: "ctx.auth.userId maps only for Space Users (pass --users)", code: "Z08_CTX_AUTH_USERS" },
+  ] }, census: [] });
+  assert.deepEqual(refused.codes, ["Z08_CTX_AUTH_USERS"]);
+  assert.deepEqual(summarize("x", [refused, refused]).codes, [{ code: "Z08_CTX_AUTH_USERS", spaces: 2 }]);
 });
 
 test("the converter's client refusals classify as client reasons, not bundle shape", () => {
@@ -115,7 +123,7 @@ test("only verified source can be accepted", () => {
   assert.equal(outcome({ verified: true, report: clean, census: [] }).outcome, "accepted");
   assert.equal(outcome({ verified: true, report: clean, census: ["x"] }).outcome, "refused");
   const erased = { status: "refused", errors: [{ pointer: "", reason: "generated application refused by v2 compiler: error: this argument is unknown, but the function expects string" }] };
-  assert.deepEqual(outcome({ verified: false, report: erased, census: [] }), { outcome: "not recoverable", refusals: [], missing: ["erased parameter types"] });
+  assert.deepEqual(outcome({ verified: false, report: erased, census: [] }), { outcome: "not recoverable", refusals: [], missing: ["erased parameter types"], codes: [] });
 });
 
 test("a crashed or truncated converter run is a tool failure, not a census outcome", () => {

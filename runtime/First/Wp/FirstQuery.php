@@ -28,9 +28,10 @@ final class FirstQuery
     {
         $searched = false;
         $given = self::given($request, ['where', 'orderBy']);
+        $locale = self::locale($collection, $request);
         $db = Plugin::instance()?->db() ?? throw new \LogicException('No First app');
         $search = $search ? self::search($collection, $request, $viewer) : null;
-        if ($given === [] && $search === null) {
+        if ($given === [] && $search === null && $locale === null) {
             return null;
         }
         $opts = App::listOptions($given);
@@ -40,7 +41,7 @@ final class FirstQuery
             $searched = true;
         }
         $pk = $db->schema()->collection($collection)['primaryKey'];
-        $rows = $db->findMany($collection, $opts + ['columns' => [$pk => true]] + self::allLocales($collection), $viewer);
+        $rows = $db->findMany($collection, $opts + ['columns' => [$pk => true]] + ($locale ?? self::allLocales($collection)), $viewer);
 
         return array_map(static fn (array $r): int => (int) $r[$pk], $rows);
     }
@@ -79,7 +80,11 @@ final class FirstQuery
             $with = App::listOptions($given)['with'];
             // A media field in `with` is a column (populated in place); relations ride along anyway.
             $columns = [$pk => true] + array_fill_keys(array_keys(array_intersect_key($with, $db->schema()->collection($collection)['columns'])), true);
-            $rows = $db->findMany($collection, ['where' => [$pk => ['in' => $ids]], 'with' => $with, 'columns' => $columns] + self::allLocales($collection), $viewer);
+            // The parents are the items core answered (any locale); a `many` relation follows the
+            // requested locale, as the pipeline resolves it per parent (Locale\Read).
+            $locale = self::locale($collection, $request);
+            $rows = $db->findMany($collection, ['where' => [$pk => ['in' => $ids]], 'with' => $with, 'columns' => $columns]
+                + ($locale !== null && $locale['locale'] !== '*' && \First\Locale\Module::localized($collection) ? ['locale' => '*'] : self::allLocales($collection)), $viewer);
         } catch (\First\HttpError $e) {
             return CoreAccess::error($e);
         }
@@ -131,6 +136,18 @@ final class FirstQuery
         $query = $request->get_query_params();
 
         return array_intersect_key($query, array_flip($names));
+    }
+
+    /**
+     * First's `locale` argument (`fr`, or `*`): the rows of that locale, else each group's fallback, as
+     * First's read pipeline picks them. Without it a core list holds every language (Polylang's `lang`
+     * narrows it). An item read takes it too: the group member in that locale.
+     */
+    public static function locale(string $collection, \WP_REST_Request $request): ?array
+    {
+        $locale = $request->get_query_params()['locale'] ?? null;
+
+        return $locale === null ? null : ['locale' => $locale];
     }
 
     /** A core list holds every language (Polylang's `lang` narrows it), not only the default locale. */

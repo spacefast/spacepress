@@ -34,7 +34,9 @@ final class PostsController extends \WP_REST_Posts_Controller
             'where' => ['description' => 'A First filter, as JSON: `{"seats":{"gte":10}}`.', 'type' => 'string'],
             'orderBy' => ['description' => 'First fields to sort by, comma-separated; `-field` sorts descending.', 'type' => 'string'],
             'with' => ['description' => 'Relations to attach under `with`: `author,comments` or a JSON object.', 'type' => 'string'],
-        ];
+        ] + (\First\Locale\Module::localized($this->collection)
+            ? ['locale' => ['description' => 'A First locale, or `*`: that locale\'s rows, else each translation group\'s fallback.', 'type' => 'string']]
+            : []);
     }
 
     public function get_items_permissions_check($request)

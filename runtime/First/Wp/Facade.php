@@ -71,8 +71,6 @@ final class Facade
 
             return $parse;
         }, 0);
-        // Core accepts application passwords on REST requests only; the facade is one.
-        add_filter('application_password_is_api_request', static fn (bool $api): bool => $api || self::path() !== null);
     }
 
     private static function serve(Plugin $plugin): void
@@ -191,7 +189,13 @@ final class Facade
 
             return self::json(200, ['data' => Kinds::row($kind, $out['previous'] ?? $out)]);
         }
-        $row = self::dispatch('GET', $item, self::context($kind) + array_intersect_key($query, Kinds::first($kind) ? ['with' => true, 'locale' => true] : ['password' => true]));
+        if ($kind['type'] === 'post' && isset($query['locale']) && $query['locale'] !== '*') {
+            // `?locale=fr` on an item: the member of its translation group in that locale (else the
+            // group's fallback), as First's read pipeline resolves it for this viewer.
+            $member = self::dispatch('GET', $base, ['where' => (string) Js::jsonStringify([$kind['spec']['primaryKey'] => $id]), 'locale' => $query['locale'], '_fields' => 'id']);
+            $item = "$base/" . rawurlencode((string) ($member[0]['id'] ?? throw HttpError::notFound("No {$kind['name']} row with id $id")));
+        }
+        $row = self::dispatch('GET', $item, self::context($kind) + array_intersect_key($query, Kinds::first($kind) ? ['with' => true] : ['password' => true]));
         if (Kinds::first($kind) && Kinds::row($kind, $row) === null) {
             throw HttpError::notFound("No {$kind['name']} row with id $id"); // First's read rule doesn't cover it
         }

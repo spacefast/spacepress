@@ -43,6 +43,8 @@ final class Plugin
             self::$security,
             new Mfa(self::$db, self::$security),
         );
+        // A site that ran zero-identity (before the rename to First) keeps its accounts and sessions.
+        Legacy\ZeroNames::upgrade(self::$db);
         if ((int) get_option("first_identity_schema_version", 0) < Schema::VERSION) {
             Schema::migrate(self::$db);
         }

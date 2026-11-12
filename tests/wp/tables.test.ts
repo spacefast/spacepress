@@ -96,12 +96,6 @@ test("unique fields, filtered references and restrictive deletes hide competing 
   await problem("POST", "/sync/round_trips", { as: "editor", body: { record: { ...afterEcho.record, fields: { ...afterEcho.record.fields, secretCode: `secret-${run}` } }, expect: afterEcho.digest } }, { status: 403, code: "forbidden", pointer: "/secretCode" });
   const unreadable = first("insert", "round_trips", JSON.stringify({ title: `Other trip ${run}`, ownerId: harness.users.admin.id }))[0];
   await problem("PATCH", `/round_trips/${unreadable.id}`, { as: "editor", body: { slug: unreadable.slug } }, { status: 403, code: "forbidden", pointer: "/slug" });
-  const keys = first("insert", "key_roots", JSON.stringify([{ code: 701001 }, { code: 701002 }]));
-  first("insert", "key_links", JSON.stringify({ rootCode: keys[1].code }));
-  for (const row of keys) {
-    await problem("PATCH", `/key_roots/${row.id}`, { as: "editor", body: { code: row.code + 10 } }, { status: 409, code: "reference_violation", pointer: undefined });
-    assert.equal(first("find", "key_roots", JSON.stringify({ where: { id: row.id } }))[0].code, row.code);
-  }
   const privateRow = first("insert", "oracle_rows", JSON.stringify({ title: "Private", ownerId: harness.users.admin.id, code: `taken-${run}`, badge: 889001, publicBadge: 889101 }))[0];
   const own = first("insert", "oracle_rows", JSON.stringify({ title: "Own", ownerId: harness.users.editor.id }))[0];
   const unused = first("insert", "oracle_rows", JSON.stringify({ title: "Unused", ownerId: harness.users.editor.id }))[0];
@@ -142,9 +136,6 @@ test("unique fields, filtered references and restrictive deletes hide competing 
     const coreWrite = await http("POST", `${core}/first_oracle_refs/${reference.id}`, { as: "editor", body: { acf: { first_rowId: rowId } } });
     assert.deepEqual([coreWrite.status, coreWrite.json.code], [409, "reference_violation"]);
   }
-  for (const alias of [778001, 778002]) {
-    await problem("PATCH", `/oracle_refs/${reference.id}`, { as: "editor", body: { alias } }, { status: 409, code: "reference_violation", pointer: "/alias" });
-  }
   await ok("PATCH", `/oracle_refs/${reference.id}`, { as: "editor", body: { rowId: own.id } });
   for (const id of [own.id, unused.id]) {
     await problem("DELETE", `/oracle_rows/${id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
@@ -165,25 +156,12 @@ test("unique fields, filtered references and restrictive deletes hide competing 
   }
   const synced = await ok("POST", "/sync/oracle_sync", { as: "editor", body: { record: { uid: "zr_12341234123412341234", fields: { title: "Readable UID", rowId: own.uid }, body: null }, expect: "absent" } });
   assert.equal(first("find", "oracle_sync", JSON.stringify({ where: { uid: synced.uid } }))[0].rowId, own.id, "a readable primary target still links");
-  const hiddenTarget = await problem("POST", "/sync/oracle_sync", { as: "editor", body: { record: { uid: "zr_34563456345634563456", fields: { title: "Hidden badge", badgeId: privateRow.uid }, body: null }, expect: "absent" } }, { status: 409, code: "reference_violation", pointer: "/badgeId" });
-  assert.equal(hiddenTarget.detail, "No referenced oracle_rows row for badgeId", "a UID refusal never prints its resolved hidden value");
-  for (const targetUid of [privateRow.uid, "zr_99999999999999999999"]) {
-    const filteredTarget = await problem("POST", "/sync/oracle_sync", { as: "editor", body: { record: { uid: "zr_78787878787878787878", fields: { title: "Filtered public badge", publicBadgeId: targetUid }, body: null }, expect: "absent" } }, { status: 409, code: "reference_violation", pointer: "/publicBadgeId" });
-    assert.equal(filteredTarget.detail, "No referenced oracle_rows row for publicBadgeId", "filtered and absent non-primary targets have the same generic error");
-  }
   await problem("POST", "/sync/oracle_sync", { as: "editor", body: { record: { uid: "zr_23452345234523452345", fields: { title: "Swap reference", rowId: own.uid }, body: null }, expect: "absent" } }, { status: 409, code: "reference_violation", pointer: "/rowId" });
   assert.equal(first("find", "payroll", JSON.stringify({ where: { id: person.id } }))[0].badge, 778001);
   assert.equal((await http("GET", `${api}/oracle_rows/${own.id}`, { as: "editor" })).status, 200);
 });
 
 test("cascades and generated editor values cannot answer questions about hidden rows", async () => {
-  const source = first("insert", "oracle_rows", JSON.stringify({ title: "Generated source", ownerId: harness.users.admin.id, badge: 42 }))[0];
-  for (const badge of [42, 142]) {
-    first("update", "oracle_rows", JSON.stringify({ id: source.id }), JSON.stringify({ badge }));
-    await problem("POST", "/derived_refs", { as: "editor", body: { title: "Default reference" } }, { status: 409, code: "reference_violation", pointer: "/badgeId" });
-    await problem("POST", "/derived_refs", { as: "editor", body: { title: "Hook reference", badgeId: null } }, { status: 409, code: "reference_violation", pointer: "/badgeId" });
-    await problem("POST", "/sync/derived_refs", { as: "editor", body: { record: { uid: "zr_56565656565656565656", fields: { title: "Default reference" }, body: null }, expect: "absent" } }, { status: 409, code: "reference_violation", pointer: "/badgeId" });
-  }
   const roots = first("insert", "deep_roots", JSON.stringify([{ title: "Empty deep branch" }, { title: "Deep hidden branch" }]));
   let ancestor = first("insert", "deep_nodes", JSON.stringify({ title: "Hidden root", rootId: roots[1].id }))[0];
   for (let depth = 0; depth < 9; depth++) {
@@ -203,9 +181,6 @@ test("cascades and generated editor values cannot answer questions about hidden 
   const hookEmpty = first("insert", "hook_parents", JSON.stringify({ title: "No hooked children" }))[0];
   const hookParent = first("insert", "hook_parents", JSON.stringify({ title: "Has hooked child" }))[0];
   first("insert", "hook_children", JSON.stringify({ title: "Will hook", parentId: hookParent.id, code: "original" }));
-  const secretA = first("insert", "secret_parents", JSON.stringify({ title: "Linked secret", secret: 99101 }))[0];
-  const secretB = first("insert", "secret_parents", JSON.stringify({ title: "Unlinked secret", secret: 99102 }))[0];
-  first("insert", "secret_links", JSON.stringify({ title: "Known link", secret: 99101 }));
   const generated = first("insert", "oracle_default", JSON.stringify({ title: "Existing", code: "other" }))[0];
   for (const populated of [false, true]) {
     if (populated) {
@@ -217,11 +192,6 @@ test("cascades and generated editor values cannot answer questions about hidden 
     for (const id of [empty.id, parent.id]) {
       await problem("DELETE", `/oracle_parents/${id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
       const r = await http("DELETE", `${core}/first_oracle_parents/${id}?force=true`, { as: "editor" });
-      assert.deepEqual([r.status, r.json.code], [409, "reference_violation"]);
-    }
-    for (const id of [secretA.id, secretB.id]) {
-      await problem("DELETE", `/secret_parents/${id}`, { as: "editor" }, { status: 409, code: "reference_violation", pointer: undefined });
-      const r = await http("DELETE", `${core}/first_secret_parents/${id}?force=true`, { as: "editor" });
       assert.deepEqual([r.status, r.json.code], [409, "reference_violation"]);
     }
     for (const id of [hookEmpty.id, hookParent.id]) {

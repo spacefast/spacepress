@@ -175,6 +175,8 @@ fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
         "islands/cheer.client.ts",
         "styles/global.css",
         "pages/about/compass.svg",
+        "first/app/applause/page.tsx",
+        "first/components/CheerButton.tsx",
     ] {
         assert!(app["files"][file].is_string(), "{file} is captured");
     }
@@ -193,7 +195,7 @@ fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
     );
     assert_eq!(
         manifest["pagePaths"],
-        serde_json::json!(["/", "/about", "/notes", "/notes/:item", "/notes/featured"])
+        serde_json::json!(["/", "/about", "/applause", "/notes", "/notes/:item", "/notes/featured"])
     );
     let plugin = tree(&compiled.join("plugins/first-pages-fullsite"));
     let artifact: serde_json::Value = serde_json::from_str(app["files"]["first/pages.json"].as_str().unwrap()).unwrap();

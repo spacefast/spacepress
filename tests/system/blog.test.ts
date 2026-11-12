@@ -37,7 +37,7 @@ test("the blog's committed posts sync into a fresh WordPress, once", async () =>
   assert.deepEqual({ applied, written, refused, conflicts, failed }, { applied: 0, written: [], refused: [], conflicts: [], failed: [] });
 
   // Both posts, as the files say: the published one public, the draft only for staff.
-  const api = `${receipt.url}/wp-json/first/v1`;
+  const api = `${receipt.url}/__first/api/v1`;
   const editor = { Authorization: "Basic " + btoa(`editor:${receipt.users.editor.appPassword}`) };
   const posts = (await (await fetch(`${api}/posts?orderBy=title`, { headers: editor })).json()).data;
   assert.deepEqual(posts.map((p: { title: string; status: string; locale: string; tags: string[] }) => [p.title, p.status, p.locale, p.tags]), [

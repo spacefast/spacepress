@@ -24,20 +24,17 @@ import { browser, serveFiles } from "./helpers.ts";
 
 const files = path.join(site, "public/files");
 
-// Writes an item through the app's REST API as the admin. First's REST responses carry their body
-// outside get_data(), so the list is read over HTTP below, as a visitor's browser reads it.
+// Writes an item through the app's API as the admin (in process), then reads the list over HTTP below,
+// as a visitor's browser reads it.
 const create = `<?php
 require_once '/wordpress/wp-load.php';
 wp_set_current_user(1);
-$create = new WP_REST_Request('POST', '/first/v1/items');
-$create->set_header('content-type', 'application/json');
-$create->set_body(wp_json_encode(['name' => 'Oat milk', 'quantity' => 3, 'unit' => 'l', 'lowStockAt' => 1, 'note' => 'top shelf']));
-echo rest_do_request($create)->get_status();
+echo \\First\\Wp\\Facade::route(\\First\\Wp\\Runtime::plugin(), 'POST', '/items', [], wp_json_encode(['name' => 'Oat milk', 'quantity' => 3, 'unit' => 'l', 'lowStockAt' => 1, 'note' => 'top shelf']))[0];
 `;
 
-/** The items the REST API lists, over HTTP, as the signed-in visitor. */
+/** The items the API lists, over HTTP, as the signed-in visitor. */
 async function items(): Promise<Record<string, unknown>[]> {
-	const response = await get("/wp-json/first/v1/items");
+	const response = await get("/__first/api/v1/items");
 	assert.equal(response.status, 200, response.body);
 	const json = JSON.parse(response.body) as { data?: Record<string, unknown>[] } | Record<string, unknown>[];
 	const rows = Array.isArray(json) ? json : json.data;

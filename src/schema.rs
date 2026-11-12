@@ -649,6 +649,10 @@ pub struct AppFile {
     pub search: Option<AppSearch>,
     /// HTTP method → compiled handler.
     pub methods: IndexMap<String, String>,
+    /// Who may call the handlers (`export const access`), or the signature that authenticates
+    /// them (`export const signature`, a raw signed webhook). Exactly one when there are handlers.
+    pub access: Option<Access>,
+    pub signature: Option<Json>,
 }
 
 #[derive(Debug, Clone)]

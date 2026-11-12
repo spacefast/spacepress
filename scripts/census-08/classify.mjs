@@ -47,6 +47,7 @@ const CLIENT = [
   ["client source the browser build cannot compile", "client: source the browser build cannot compile"],
   ["client app over an existing public/", "client: existing public/"],
   ["client module that cannot be read", "client: unreadable module"],
+  ["client app without its 0.8 zero.css", "client: no zero.css supplied"],
 ];
 
 // [label, kind, test(pointer, reason)]

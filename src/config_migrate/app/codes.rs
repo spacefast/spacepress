@@ -278,6 +278,14 @@ pub static RULES: &[Rule] = &[
         example: ("/public", "client app over an existing public/: x"),
     },
     Rule {
+        code: "Z08_CLIENT_STYLES",
+        feature: "client app styled by 0.8's generated zero.css",
+        v2: "public/zero.css, linked from public/index.html as 0.8 linked it",
+        fix: "Pass the published zero.css: --zero-css <file> (zeroCss in wasm), or --manifest with a payload that kept its bytes.",
+        test: |_, r| r.starts_with(client::TAG_STYLES),
+        example: ("/client/index.tsx", "client app without its 0.8 zero.css: x"),
+    },
+    Rule {
         code: "Z08_CLIENT_UNREADABLE",
         feature: "client module that cannot be read",
         v2: "a UTF-8 TypeScript, JavaScript or CSS file in the capsule",

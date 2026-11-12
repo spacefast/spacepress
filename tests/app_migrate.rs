@@ -372,7 +372,7 @@ fn omissions_are_errors_and_static_files_carry_over() {
     let (ok, report) = migrate(
         &fixture("client-elsewhere"),
         &elsewhere,
-        &["--space", "spc_migrate_test"],
+        &["--space", "spc_migrate_test", "--zero-css", styles()],
     );
     assert!(ok, "{report:#}");
     let shell = std::fs::read_to_string(elsewhere.join("public/index.html")).unwrap();
@@ -2254,6 +2254,14 @@ fn default_rest_and_destructured_handler_parameters_become_inputs() {
     }
 }
 
+/// The zero.css Zero 0.8 compiled for the client-app fixture (fixtures README).
+fn styles() -> &'static str {
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/app-migrate/client-app-styles/zero.css"
+    )
+}
+
 /// A 0.8 client app without pages converts: actions and tables into first.config.ts, the client
 /// into public/, and the candidate checks with no diagnostics.
 #[test]
@@ -2263,11 +2271,12 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
     let (ok, report) = migrate(
         &fixture("client-app"),
         &out,
-        &["--space", "spc_migrate_test", "--users"],
+        &["--space", "spc_migrate_test", "--users", "--zero-css", styles()],
     );
     assert!(ok, "{report:#}");
     for file in [
         "first.config.ts",
+        "public/zero.css",
         "public/index.html",
         "public/first/main.js",
         "public/first/client.js",
@@ -2279,6 +2288,38 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
     ] {
         assert!(out.join(file).is_file(), "{file}");
     }
+    // 0.8's generated stylesheet comes along byte for byte, linked before the authored one as 0.8's
+    // shell linked it.
+    assert_eq!(
+        std::fs::read(out.join("public/zero.css")).unwrap(),
+        std::fs::read(styles()).unwrap()
+    );
+    let shell = std::fs::read_to_string(out.join("public/index.html")).unwrap();
+    let links: Vec<&str> = shell
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("<link rel=\"stylesheet\" href=\""))
+        .collect();
+    assert_eq!(links, ["./zero.css\">", "./client/styles.css\">"], "{shell}");
+    // Without it the app is refused at the client entry, never published unstyled.
+    let (ok, unstyled) = migrate(
+        &fixture("client-app"),
+        &temp.path().join("unstyled"),
+        &["--space", "spc_migrate_test", "--users", "--dry-run"],
+    );
+    assert!(!ok);
+    let errors: Vec<(&str, &str, u64)> = unstyled["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["code"].as_str().unwrap(),
+                e["file"].as_str().unwrap(),
+                e["line"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(errors, [("Z08_CLIENT_STYLES", "client/index.tsx", 1)], "{unstyled:#}");
     let review = report["entries"]
         .as_array()
         .unwrap()
@@ -2320,7 +2361,14 @@ fn a_client_app_without_pages_becomes_public_files_and_checks_clean() {
     let (ok, refused) = migrate(
         &moved,
         &temp.path().join("client-app-redirect-out"),
-        &["--space", "spc_migrate_test", "--users", "--dry-run"],
+        &[
+            "--space",
+            "spc_migrate_test",
+            "--users",
+            "--dry-run",
+            "--zero-css",
+            styles(),
+        ],
     );
     assert!(!ok);
     let errors: Vec<(&str, &str)> = refused["errors"]
@@ -2344,7 +2392,7 @@ fn the_client_bridge_calls_the_generated_v2_action() {
     let (ok, report) = migrate(
         &fixture("client-app"),
         &out,
-        &["--space", "spc_migrate_test", "--users"],
+        &["--space", "spc_migrate_test", "--users", "--zero-css", styles()],
     );
     assert!(ok, "{report:#}");
     // 0.8's `useAction("banner")("ab", 3)`, through the converted module, against a recording fetch.
@@ -2397,7 +2445,7 @@ fn a_client_import_without_a_bridge_refuses_with_a_located_code() {
     let (ok, report) = migrate(
         &root,
         &temp.path().join("out"),
-        &["--space", "s", "--users", "--dry-run"],
+        &["--space", "s", "--users", "--dry-run", "--zero-css", styles()],
     );
     assert!(!ok);
     let errors = report["errors"].as_array().unwrap();
@@ -2435,7 +2483,7 @@ fn a_client_import_without_a_bridge_refuses_with_a_located_code() {
     let (ok, report) = migrate(
         &root,
         &temp.path().join("out2"),
-        &["--space", "s", "--users", "--dry-run"],
+        &["--space", "s", "--users", "--dry-run", "--zero-css", styles()],
     );
     assert!(!ok);
     let codes: Vec<(&str, &str)> = report["errors"]
@@ -2461,7 +2509,7 @@ fn a_client_import_without_a_bridge_refuses_with_a_located_code() {
     let (ok, report) = migrate(
         &root,
         &temp.path().join("out3"),
-        &["--space", "s", "--users", "--dry-run"],
+        &["--space", "s", "--users", "--dry-run", "--zero-css", styles()],
     );
     assert!(!ok);
     let errors = report["errors"].as_array().unwrap();
@@ -2513,7 +2561,7 @@ fn the_client_bridge_maps_paginated_queries_onto_the_handler_inputs() {
     let (ok, report) = migrate(
         &fixture("client-app"),
         &out,
-        &["--space", "spc_migrate_test", "--users"],
+        &["--space", "spc_migrate_test", "--users", "--zero-css", styles()],
     );
     assert!(ok, "{report:#}");
     let ran = bridge(
@@ -2553,7 +2601,7 @@ fn the_client_bridge_keeps_a_guest_identity_across_token_expiry() {
     let (ok, report) = migrate(
         &fixture("client-app"),
         &out,
-        &["--space", "spc_migrate_test", "--users"],
+        &["--space", "spc_migrate_test", "--users", "--zero-css", styles()],
     );
     assert!(ok, "{report:#}");
     // A server that issues guest-1 once, expires its first access token, and refreshes it.
@@ -2621,7 +2669,7 @@ fn the_client_bridge_keeps_the_session_when_a_refresh_fails_on_the_network() {
     let (ok, report) = migrate(
         &fixture("client-app"),
         &out,
-        &["--space", "spc_migrate_test", "--users"],
+        &["--space", "spc_migrate_test", "--users", "--zero-css", styles()],
     );
     assert!(ok, "{report:#}");
     let ran = bridge(
@@ -2674,4 +2722,72 @@ console.log(JSON.stringify({ failed, kept, retried, guests, me: renewedMe, auth:
     assert_eq!(ran["me"], serde_json::json!(["Bearer a2"]), "{ran:#}");
     assert_eq!(ran["auth"], "7", "/me renewed instead of reporting a guest: {ran:#}");
     assert_eq!(ran["session"]["refreshToken"], "r2");
+}
+
+/// A finalize payload that kept its `zero.css` bytes (older 0.8 publishes did) supplies the
+/// stylesheet itself: converting with `--manifest` needs no `--zero-css`.
+#[test]
+fn a_finalize_manifest_supplies_the_published_zero_css() {
+    fn base64(bytes: &[u8]) -> String {
+        const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::new();
+        for chunk in bytes.chunks(3) {
+            let n = chunk
+                .iter()
+                .enumerate()
+                .fold(0u32, |n, (i, b)| n | (*b as u32) << (16 - 8 * i));
+            for i in 0..4 {
+                out.push(if i <= chunk.len() {
+                    A[(n >> (18 - 6 * i) & 63) as usize] as char
+                } else {
+                    '='
+                });
+            }
+        }
+        out
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let source = fixture("client-app");
+    let files: Vec<Value> = walk(&source)
+        .into_iter()
+        .map(|path| {
+            let bytes = std::fs::read(&path).unwrap();
+            let relative = path.strip_prefix(&source).unwrap().to_string_lossy().replace('\\', "/");
+            let sha = sha2::Sha256::digest(&bytes)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>();
+            serde_json::json!({ "path": relative, "sha256": sha, "size": bytes.len() })
+        })
+        .filter(|f| f["path"] != "sf.jsonc")
+        .collect();
+    let css = std::fs::read(styles()).unwrap();
+    let payload = serde_json::json!({
+        "artifact": {
+            "format": "stattic.zero.capsule.v1",
+            "server": { "endpoints": [] },
+            "pages": [],
+            "sourceManifest": { "entries": { "client": "client/index.tsx", "server": "server/index.ts" }, "files": files },
+        },
+        "staticFiles": [{ "path": "zero.css", "size": css.len(), "contentBase64": base64(&css) }],
+    });
+    let manifest = temp.path().join("finalize.json");
+    std::fs::write(&manifest, payload.to_string()).unwrap();
+    // The fixture's sf.jsonc is not recorded, as a real manifest never records it.
+    let published = temp.path().join("source");
+    copy_dir(&source, &published);
+    std::fs::remove_file(published.join("sf.jsonc")).unwrap();
+    let out = temp.path().join("out");
+    let output = Command::new(env!("CARGO_BIN_EXE_first"))
+        .args(["migrate", "app", "--from", "zero-0.8", "--manifest"])
+        .arg(&manifest)
+        .arg(&published)
+        .arg("--out")
+        .arg(&out)
+        .args(["--space", "spc_migrate_test", "--users"])
+        .output()
+        .unwrap();
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(output.status.success(), "{report:#}");
+    assert_eq!(std::fs::read(out.join("public/zero.css")).unwrap(), css);
 }

@@ -89,11 +89,11 @@ export const oracleRows = collection({
 export const oracleRefs = collection({
   title: text(),
   rowId: ref(oracleRows).optional().onDelete("restrict"),
-  alias: integer().references(() => payroll.badge).optional(),
+  alias: integer().optional(),
 }, { access: { read: "admin", create: "editor", update: "editor", delete: "admin" } });
 
 export const oracleSync = collection({
-  title: text(), rowId: ref(oracleRows).optional().onDelete("restrict"), badgeId: integer().references(() => oracleRows.badge).min(889002).optional(), publicBadgeId: integer().references(() => oracleRows.publicBadge).optional(),
+  title: text(), rowId: ref(oracleRows).optional().onDelete("restrict"), badgeId: integer().min(889002).optional(), publicBadgeId: integer().optional(),
 }, { sync: "content/oracle-sync/*.json", access: { read: "admin", create: "editor", update: "editor", delete: "admin" } });
 export const oraclePeers = collection({
   title: text().localized(), ownerId: integer().optional(),
@@ -132,7 +132,7 @@ export const secretParents = collection({
   title: text(), secret: integer().unique().access({ read: "admin" }).optional(),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 export const secretLinks = collection({
-  title: text(), secret: integer().references(() => secretParents.secret).optional(),
+  title: text(), secret: integer().optional(),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
 export const refDefaults = collection({
@@ -145,7 +145,7 @@ export const defaultOnly = collection({
 
 export const derivedRefs = collection({
   title: text(),
-  badgeId: integer().references(() => oracleRows.badge).min(100).$default(async () => {
+  badgeId: integer().min(100).$default(async () => {
     const row = await db.query.oracleRows.findFirst({ where: { title: "Generated source" } });
     return row?.badge ?? null;
   }).optional(),
@@ -171,15 +171,13 @@ export const roundTrips = collection({
 
 export const keyRoots = table({ code: integer().unique().optional() },
   { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
-export const keyLinks = table({ rootCode: integer().references(() => keyRoots.code).optional() },
+export const keyLinks = table({ rootCode: integer().optional() },
   { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
 
 export const collections = { vault, ledger, payroll, gated, dossier, claims, fuses, oracleRows, oracleRefs, oracleSync, oraclePeers, oracleParents, oracleKids, oracleGrand: oracleGrandchildren, oracleDefault, nullParents, nullChildren, hookParents, hookChildren, secretParents, secretLinks, refDefaults, defaultOnly, deepRoots, deepNodes, derivedRefs, roundTrips };
 export const tables = { fuseLog, keyRoots, keyLinks };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
-/** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
-export const relations = (r: unknown) => ({});
 export const actions = {};
 export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */

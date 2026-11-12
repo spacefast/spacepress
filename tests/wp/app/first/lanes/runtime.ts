@@ -30,10 +30,6 @@ export const collections = { legs };
 export const tables = { guestCarts, guestNotes, bigCounts };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
-/** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
-export const relations = (r: any) => ({
-  tours: { legs: r.many.legs({ from: r.tours.id, to: r.legs.tourId }) },
-});
 export const actions = {
   nativeHandler: action({
     input: { title: text(), count: integer() },

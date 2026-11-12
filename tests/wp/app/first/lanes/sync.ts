@@ -37,8 +37,6 @@ export const collections = { writers, guides, briefs, memos };
 export const tables = {  };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
-/** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
-export const relations = (r: unknown) => ({});
 export const actions = {};
 export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */

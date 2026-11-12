@@ -55,11 +55,6 @@ export const collections = {  };
 export const tables = { guestbook, reviews, memberUpdates };
 export const users = { members };
 export const entities = { ...collections, ...tables, ...users };
-/** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
-export const relations = (r: any) => ({
-  guestbook: { member: r.one.members({ from: r.guestbook.memberId, to: r.members.id }) },
-  members: { entries: r.many.guestbook() },
-});
 export const actions = {};
 export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */

@@ -49,11 +49,6 @@ export const collections = { fieldStaff };
 export const tables = { fieldTeams };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
-/** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
-export const relations = (r: any) => ({
-  fieldStaff: { team: r.one.fieldTeams({ from: r.fieldStaff.teamId, to: r.fieldTeams.id }) },
-  fieldTeams: { members: r.many.fieldStaff(), signups: r.many.signups() },
-});
 export const actions = {};
 export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */

@@ -3,18 +3,18 @@
 	"info": {
 		"title": "First REST API",
 		"version": "0.3.0",
-		"description": "Every First app serves these routes under `/wp-json/first/v1` on its WordPress site. The paths with `{collection}`, `{name}` and `{bucket}` exist once for each collection, table, action, global and file bucket your config defines.\n\nA successful response is JSON with the result under `data`. An error is an RFC 9457 problem document with `type`, `title`, `status`, `code` and `detail`, served as `application/problem+json`.\n\nRequests use the signed-in WordPress user: a cookie with a REST nonce, an application password, or a First Identity access token. Each collection's `access` rules decide what that user may do. The generated client in `first/_generated/client/` calls every route on this page for you."
+		"description": "Every First app serves these routes under `/__first/api/v1` on its WordPress site. Each one is dispatched to the matching WordPress REST route (`/wp-json/wp/v2/...`, the Abilities run route), which enforces your config's rules; this API only gives the shapes a clean form. The paths with `{collection}`, `{name}` and `{bucket}` exist once for each kind, table, action, global and file bucket your config defines, and for WordPress's own kinds (`posts`, `pages`, `comments`, `media`, `categories`, `tags`, `users`).\n\nA successful response is JSON with the result under `data`; a list also has `cursor`, the next page's cursor or null. An error is an RFC 9457 problem document with `type`, `title`, `status`, `code` and `detail`, served as `application/problem+json`.\n\nRequests use the signed-in WordPress user: a cookie with a REST nonce, an application password, or a First Identity access token. Each collection's `access` rules decide what that user may do. The generated client in `first/_generated/client/` calls every route on this page for you."
 	},
 	"servers": [
 		{
-			"url": "https://example.space.fast/wp-json/first/v1",
+			"url": "https://example.space.fast/__first/api/v1",
 			"description": "Your app's WordPress site"
 		}
 	],
 	"tags": [
 		{
 			"name": "Collections",
-			"description": "One set of routes for each collection and table in your config."
+			"description": "One set of routes for each kind and table in your config, and for WordPress's own kinds."
 		},
 		{
 			"name": "Revisions",
@@ -31,6 +31,14 @@
 		{
 			"name": "Media",
 			"description": "WordPress media library uploads."
+		},
+		{
+			"name": "Settings",
+			"description": "WordPress site settings."
+		},
+		{
+			"name": "Menus",
+			"description": "WordPress menus in theme locations."
 		},
 		{
 			"name": "Files",
@@ -61,7 +69,7 @@
 				],
 				"operationId": "listRows",
 				"summary": "List rows",
-				"description": "Rows the user may read. `limit` defaults to 50 and is at most 200.",
+				"description": "Rows the user may read. `limit` defaults to 50 and is at most 100.",
 				"responses": {
 					"200": {
 						"description": "The result, under `data`.",
@@ -133,6 +141,33 @@
 						}
 					},
 					{
+						"name": "cursor",
+						"in": "query",
+						"required": false,
+						"description": "The `cursor` of the previous page, to read the next one.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "search",
+						"in": "query",
+						"required": false,
+						"description": "Text to find in the searchable fields.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "locale",
+						"in": "query",
+						"required": false,
+						"description": "For localized collections: one locale, or `*` for every row.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
 						"name": "with",
 						"in": "query",
 						"required": false,
@@ -197,7 +232,7 @@
 				],
 				"operationId": "getRow",
 				"summary": "Get a row",
-				"description": "One row by its primary key.",
+				"description": "One row by its primary key, or `slug:<slug>`. `?format=md` answers with the post as Markdown, as its Markdown twin renders it.",
 				"responses": {
 					"200": {
 						"description": "The result, under `data`.",
@@ -237,6 +272,15 @@
 						"in": "query",
 						"required": false,
 						"description": "Relations to load, as on the list route.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "format",
+						"in": "query",
+						"required": false,
+						"description": "`md` for Markdown (post kinds).",
 						"schema": {
 							"type": "string"
 						}
@@ -304,7 +348,7 @@
 				],
 				"operationId": "deleteRow",
 				"summary": "Delete a row",
-				"description": "Deletes the row and returns it.",
+				"description": "Deletes the row for good and returns it.",
 				"responses": {
 					"200": {
 						"description": "The result, under `data`.",
@@ -502,7 +546,7 @@
 				],
 				"operationId": "callAction",
 				"summary": "Call an action",
-				"description": "Runs the action with the input you send and returns its result. The action's `access` rule decides who may call it.",
+				"description": "Runs the action's Ability through WordPress's Abilities run route with the input you send and returns its result. The action's `access` rule decides who may call it. A `readonly` action also answers `GET` with `?input=<json>`.",
 				"responses": {
 					"200": {
 						"description": "The result, under `data`.",
@@ -543,7 +587,7 @@
 				}
 			}
 		},
-		"/globals/{name}": {
+		"/{global}": {
 			"get": {
 				"tags": [
 					"Globals"
@@ -568,7 +612,7 @@
 				},
 				"parameters": [
 					{
-						"name": "name",
+						"name": "global",
 						"in": "path",
 						"required": true,
 						"description": "The global key from your config.",
@@ -602,7 +646,7 @@
 				},
 				"parameters": [
 					{
-						"name": "name",
+						"name": "global",
 						"in": "path",
 						"required": true,
 						"description": "The global key from your config.",
@@ -655,7 +699,7 @@
 				],
 				"operationId": "uploadMedia",
 				"summary": "Upload media",
-				"description": "Uploads one file to the WordPress media library.",
+				"description": "Uploads one file to the WordPress media library, with optional `alt`.",
 				"responses": {
 					"201": {
 						"description": "The new media item.",
@@ -734,7 +778,7 @@
 				],
 				"operationId": "updateMedia",
 				"summary": "Update a media item",
-				"description": "Changes `alt`, the alt text, or `focal`, the focal point. Any other field is refused.",
+				"description": "Changes `alt` (the alt text), `caption` or `focal` (the focal point). Any other field is refused.",
 				"responses": {
 					"200": {
 						"description": "The result, under `data`.",
@@ -763,7 +807,7 @@
 				],
 				"requestBody": {
 					"required": true,
-					"description": "`alt`, `focal`, or both.",
+					"description": "`alt`, `caption`, `focal`.",
 					"content": {
 						"application/json": {
 							"schema": {
@@ -1016,7 +1060,7 @@
 				],
 				"operationId": "me",
 				"summary": "The signed-in user",
-				"description": "The user, with their member row when the config has a `users` projection. `data` is null when nobody is signed in.",
+				"description": "The user's `id`, `name` and `role`, with their users row merged in. `data` is null when nobody is signed in.",
 				"responses": {
 					"200": {
 						"description": "The result, under `data`.",
@@ -1032,6 +1076,127 @@
 						"$ref": "#/components/responses/Problem"
 					}
 				}
+			}
+		},
+		"/settings": {
+			"get": {
+				"tags": [
+					"Settings"
+				],
+				"operationId": "getSettings",
+				"summary": "Site settings",
+				"description": "The site's title, tagline, timezone, locale, icon, logo and front page. A global named `settings` in your config answers here instead.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				}
+			},
+			"patch": {
+				"tags": [
+					"Settings"
+				],
+				"operationId": "updateSettings",
+				"summary": "Update site settings",
+				"description": "Changes the fields you send. Administrators only.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"description": "The fields to change.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/menus": {
+			"get": {
+				"tags": [
+					"Menus"
+				],
+				"operationId": "listMenus",
+				"summary": "Menus",
+				"description": "The menu in each theme location, as a tree of `label`, `url`, `item` and `children`. Public.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				}
+			}
+		},
+		"/menus/{location}": {
+			"get": {
+				"tags": [
+					"Menus"
+				],
+				"operationId": "getMenu",
+				"summary": "One menu",
+				"description": "The menu in one theme location.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "location",
+						"in": "path",
+						"required": true,
+						"description": "The theme location, for example `primary`.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
 			}
 		},
 		"/auth/config": {
@@ -1612,14 +1777,14 @@
 				]
 			}
 		},
-		"/_schema": {
+		"/": {
 			"get": {
 				"tags": [
 					"Schema"
 				],
 				"operationId": "schema",
 				"summary": "Describe the app",
-				"description": "The app's collections, globals and actions, with their columns and access rules.",
+				"description": "The app's kinds (with the WordPress route behind each), globals and actions, with their fields and access rules. `first pull` and `first sync` read it.",
 				"responses": {
 					"200": {
 						"description": "The result, under `data`.",

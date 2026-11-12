@@ -90,7 +90,7 @@ You can also add notes in wp-admin. Sign in with the login that `dev` printed, t
 ## Read it through the API
 
 ```sh
-curl http://localhost:9187/wp-json/first/v1/notes
+curl http://localhost:9187/__first/api/v1/notes
 ```
 
 You should see the same note:
@@ -102,7 +102,7 @@ You should see the same note:
 Now try to create a note without signing in:
 
 ```sh
-curl -X POST http://localhost:9187/wp-json/first/v1/notes \
+curl -X POST http://localhost:9187/__first/api/v1/notes \
 	-H 'Content-Type: application/json' \
 	--data '{"title":"From curl"}'
 ```

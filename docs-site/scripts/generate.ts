@@ -509,21 +509,21 @@ This page is read from [\`types/first/index.d.ts\`](${github}/types/first/index.
 );
 
 // ---------------------------------------------------------------------------------------------
-// REST API: one OpenAPI document for the routes every First app serves, read from the dispatchers
-// in runtime/First (App::route and the modules registered with Extensions::route). Blume renders it.
+// REST API: one OpenAPI document for the routes every First app serves at /__first/api/v1 (spec
+// §3a), read from the dispatchers in runtime/First (the facade and the modules registered with
+// Extensions::route). Blume renders it.
 // ---------------------------------------------------------------------------------------------
 
-const appPhp = read("runtime/First/App.php");
 const authPhp = read("runtime/First/Auth/Module.php");
 const filesPhp = read("runtime/First/Media/FileRoutes.php");
 const mediaPhp = read("runtime/First/Media/Module.php");
 const syncPhp = read("runtime/First/Sync/Routes.php");
 const servicesPhp = read("runtime/First/Services/Module.php");
-const restPhp = read("runtime/First/Wp/Rest.php");
-const namespace = toFirst(/NAMESPACE = '([^']+)'/.exec(restPhp)?.[1] ?? "");
-if (!namespace) throw new Error("runtime/First/Wp/Rest.php: no NAMESPACE");
-const listLimit = /LIST_LIMIT = (\d+)/.exec(appPhp)?.[1];
-const maxListLimit = /MAX_LIST_LIMIT = (\d+)/.exec(appPhp)?.[1];
+const facadePhp = read("runtime/First/Wp/Facade.php");
+const prefix = /PREFIX = '([^']+)'/.exec(facadePhp)?.[1] ?? "";
+if (!prefix) throw new Error("runtime/First/Wp/Facade.php: no PREFIX");
+const listLimit = /private const LIMIT = (\d+)/.exec(facadePhp)?.[1];
+const maxListLimit = /MAX_LIMIT = (\d+)/.exec(facadePhp)?.[1];
 
 /** Checks that a dispatcher still allows exactly these methods for a route, so the spec can't drift. */
 function expectAllow(php: string, where: string, near: string, methods: string[]) {
@@ -533,18 +533,16 @@ function expectAllow(php: string, where: string, near: string, methods: string[]
 	const found = allow ? [...allow.matchAll(/'([A-Z]+)'/g)].map((m) => m[1]) : [];
 	if (found.join(",") !== methods.join(",")) throw new Error(`${where} near "${near}": methods are ${found.join(",")}, the spec says ${methods.join(",")}`);
 }
-expectAllow(appPhp, "App::route", "$name === '_schema'", ["GET"]);
-expectAllow(appPhp, "App::route", "$name === 'me'", ["GET"]);
-expectAllow(appPhp, "App::route", "$name === 'actions'", ["POST"]);
-expectAllow(appPhp, "App::route", "$name === 'globals'", ["GET", "PATCH"]);
-expectAllow(appPhp, "App::route", "if ($n === 1) {", ["GET", "POST"]);
-expectAllow(appPhp, "App::route", "if ($n === 2) {", ["GET", "PATCH", "DELETE"]);
-expectAllow(appPhp, "App::route", "if ($segments[4] !== 'restore')", ["POST"]);
+expectAllow(facadePhp, "Facade::route", "if ($name === null) {", ["GET", "HEAD"]);
+expectAllow(facadePhp, "Facade::route", "$name === 'me'", ["GET", "HEAD"]);
+expectAllow(facadePhp, "Facade::global", "private static function global(", ["GET", "HEAD", "PATCH"]);
+expectAllow(facadePhp, "Facade::route", "if (count($segments) === 1) {", ["GET", "HEAD", "POST"]);
+expectAllow(facadePhp, "Facade::route", "$id = self::id($kind, $segments[1]);", ["GET", "HEAD", "PATCH", "DELETE"]);
+expectAllow(facadePhp, "Facade::revisions", "if ($rest[1] !== 'restore'", ["POST"]);
 expectAllow(authPhp, "Auth\\Module::route", "case 'auth/config'", ["GET"]);
 expectAllow(authPhp, "Auth\\Module::route", "case 'auth/guest'", ["POST"]);
 expectAllow(authPhp, "Auth\\Module::route", "case 'auth/session'", ["DELETE"]);
 expectAllow(filesPhp, "FileRoutes::dispatch", "if ($n === 2) {", ["POST"]);
-expectAllow(mediaPhp, "Media\\Module::dispatch", "if ($n === 1) {", ["GET", "POST"]);
 expectAllow(syncPhp, "Sync\\Routes::dispatch", "if ($action === null) {", ["GET", "POST"]);
 /** Checks that a handler still contains this text, so a route or status the spec names can't drift. */
 function expectText(php: string, where: string, text: string) {
@@ -555,9 +553,8 @@ expectText(servicesPhp, "Services\\Module::route", "return [202, Payments::check
 for (const route of ["'search'", "checkout/(", "stripe/webhook", "submissions/("]) expectText(servicesPhp, "Services\\Module::route", route);
 for (const action of ["'trash' =>", "'convert' =>", "'merge' =>"]) expectText(syncPhp, "Sync\\Routes::dispatch", action);
 expectText(mediaPhp, "Media\\Module::dispatch", "$segments[2] === 'file'");
-// PATCH /media/{id} accepts these fields and refuses any other.
-expectText(mediaPhp, "Media\\Module", "'alt' =>");
-expectText(mediaPhp, "Media\\Module", "'focal' =>");
+// PATCH /media/{id} accepts these fields and refuses any other (the facade maps them onto core's media route).
+expectText(read("runtime/First/Wp/Kinds.php"), "Kinds::input", "'media' => self::rename($data, ['alt' => 'alt_text', 'caption' => 'caption', 'focal' => 'first_focal'])");
 expectText(read("runtime/First/Media/Files.php"), "Media\\Files::download", "$query['sig']");
 
 const problem = { $ref: "#/components/responses/Problem" };
@@ -584,20 +581,22 @@ const openapi = {
 		title: "First REST API",
 		version: json<{ version: string }>("packages/cli/package.json").version,
 		description: [
-			`Every First app serves these routes under \`/wp-json/${namespace}\` on its WordPress site. The paths with \`{collection}\`, \`{name}\` and \`{bucket}\` exist once for each collection, table, action, global and file bucket your config defines.`,
+			`Every First app serves these routes under \`${prefix}\` on its WordPress site. Each one is dispatched to the matching WordPress REST route (\`/wp-json/wp/v2/...\`, the Abilities run route), which enforces your config's rules; this API only gives the shapes a clean form. The paths with \`{collection}\`, \`{name}\` and \`{bucket}\` exist once for each kind, table, action, global and file bucket your config defines, and for WordPress's own kinds (\`posts\`, \`pages\`, \`comments\`, \`media\`, \`categories\`, \`tags\`, \`users\`).`,
 			"",
-			"A successful response is JSON with the result under `data`. An error is an RFC 9457 problem document with `type`, `title`, `status`, `code` and `detail`, served as `application/problem+json`.",
+			"A successful response is JSON with the result under `data`; a list also has `cursor`, the next page's cursor or null. An error is an RFC 9457 problem document with `type`, `title`, `status`, `code` and `detail`, served as `application/problem+json`.",
 			"",
 			"Requests use the signed-in WordPress user: a cookie with a REST nonce, an application password, or a First Identity access token. Each collection's `access` rules decide what that user may do. The generated client in `first/_generated/client/` calls every route on this page for you.",
 		].join("\n"),
 	},
-	servers: [{ url: `https://example.space.fast/wp-json/${namespace}`, description: "Your app's WordPress site" }],
+	servers: [{ url: `https://example.space.fast${prefix}`, description: "Your app's WordPress site" }],
 	tags: [
-		{ name: "Collections", description: "One set of routes for each collection and table in your config." },
+		{ name: "Collections", description: "One set of routes for each kind and table in your config, and for WordPress's own kinds." },
 		{ name: "Revisions", description: "Saved versions of a row, for collections with revisions." },
 		{ name: "Actions", description: "Named server functions from `actions` in your config." },
 		{ name: "Globals", description: "Single records, such as site settings, from `globals` in your config." },
 		{ name: "Media", description: "WordPress media library uploads." },
+		{ name: "Settings", description: "WordPress site settings." },
+		{ name: "Menus", description: "WordPress menus in theme locations." },
 		{ name: "Files", description: "Private files in the buckets from `files` in your config." },
 		{ name: "Auth", description: "The signed-in user and First Identity sessions." },
 		{ name: "Sync", description: "Content files that sync with rows, for collections with `sync`." },
@@ -614,6 +613,9 @@ const openapi = {
 					query("orderBy", "Comma-separated columns. Put `-` before a column to sort it in descending order, for example `-publishedAt,title`."),
 					query("limit", "How many rows to return.", { type: "integer" }),
 					query("offset", "How many rows to skip.", { type: "integer" }),
+					query("cursor", "The `cursor` of the previous page, to read the next one."),
+					query("search", "Text to find in the searchable fields."),
+					query("locale", "For localized collections: one locale, or `*` for every row."),
 					query("with", "Relations to load: `author,comments`, or a JSON object such as `{\"author\":true}`."),
 				],
 			}),
@@ -624,9 +626,9 @@ const openapi = {
 			}),
 		},
 		"/{collection}/{id}": {
-			get: op("Collections", "getRow", "Get a row", "One row by its primary key.", { parameters: [collection, id, query("with", "Relations to load, as on the list route.")] }),
+			get: op("Collections", "getRow", "Get a row", "One row by its primary key, or `slug:<slug>`. `?format=md` answers with the post as Markdown, as its Markdown twin renders it.", { parameters: [collection, id, query("with", "Relations to load, as on the list route."), query("format", "`md` for Markdown (post kinds).")] }),
 			patch: op("Collections", "updateRow", "Update a row", "Changes the fields you send and returns the row.", { parameters: [collection, id], ...body("The fields to change.") }),
-			delete: op("Collections", "deleteRow", "Delete a row", "Deletes the row and returns it.", { parameters: [collection, id] }),
+			delete: op("Collections", "deleteRow", "Delete a row", "Deletes the row for good and returns it.", { parameters: [collection, id] }),
 		},
 		"/{collection}/{id}/revisions": {
 			get: op("Revisions", "listRevisions", "List revisions", "Each saved version of the row, with its time and author. Needs update access.", { parameters: [collection, id] }),
@@ -638,22 +640,22 @@ const openapi = {
 			post: op("Revisions", "restoreRevision", "Restore a revision", "Makes the revision the current row.", { parameters: [collection, id, param("revision", "The revision ID.", { type: "integer" })] }),
 		},
 		"/actions/{name}": {
-			post: op("Actions", "callAction", "Call an action", "Runs the action with the input you send and returns its result. The action's `access` rule decides who may call it.", {
+			post: op("Actions", "callAction", "Call an action", "Runs the action's Ability through WordPress's Abilities run route with the input you send and returns its result. The action's `access` rule decides who may call it. A `readonly` action also answers `GET` with `?input=<json>`.", {
 				parameters: [param("name", "The action key from your config.")],
 				...body("The action's input."),
 			}),
 		},
-		"/globals/{name}": {
-			get: op("Globals", "getGlobal", "Read a global", "The global's fields. Fields you never set read as their defaults.", { parameters: [param("name", "The global key from your config.")] }),
-			patch: op("Globals", "updateGlobal", "Update a global", "Changes the fields you send.", { parameters: [param("name", "The global key from your config.")], ...body("The fields to change.") }),
+		"/{global}": {
+			get: op("Globals", "getGlobal", "Read a global", "The global's fields. Fields you never set read as their defaults.", { parameters: [param("global", "The global key from your config.")] }),
+			patch: op("Globals", "updateGlobal", "Update a global", "Changes the fields you send.", { parameters: [param("global", "The global key from your config.")], ...body("The fields to change.") }),
 		},
 		"/media": {
 			get: op("Media", "listMedia", "List media", "Media library items the user may read."),
-			post: op("Media", "uploadMedia", "Upload media", "Uploads one file to the WordPress media library.", { ...body("The file, as the multipart field `file`.", "multipart/form-data"), responses: { "201": ok("The new media item."), default: problem } }),
+			post: op("Media", "uploadMedia", "Upload media", "Uploads one file to the WordPress media library, with optional `alt`.", { ...body("The file, as the multipart field `file`.", "multipart/form-data"), responses: { "201": ok("The new media item."), default: problem } }),
 		},
 		"/media/{id}": {
 			get: op("Media", "getMedia", "Get a media item", "One media item.", { parameters: [id] }),
-			patch: op("Media", "updateMedia", "Update a media item", "Changes `alt`, the alt text, or `focal`, the focal point. Any other field is refused.", { parameters: [id], ...body("`alt`, `focal`, or both.") }),
+			patch: op("Media", "updateMedia", "Update a media item", "Changes `alt` (the alt text), `caption` or `focal` (the focal point). Any other field is refused.", { parameters: [id], ...body("`alt`, `caption`, `focal`.") }),
 			delete: op("Media", "deleteMedia", "Delete a media item", "Deletes the item. Fields that pointed at it become null.", { parameters: [id] }),
 		},
 		"/files/{bucket}": {
@@ -674,7 +676,13 @@ const openapi = {
 				responses: { "200": { description: "The file." }, default: problem },
 			}),
 		},
-		"/me": { get: op("Auth", "me", "The signed-in user", "The user, with their member row when the config has a `users` projection. `data` is null when nobody is signed in.") },
+		"/me": { get: op("Auth", "me", "The signed-in user", "The user's `id`, `name` and `role`, with their users row merged in. `data` is null when nobody is signed in.") },
+		"/settings": {
+			get: op("Settings", "getSettings", "Site settings", "The site's title, tagline, timezone, locale, icon, logo and front page. A global named `settings` in your config answers here instead."),
+			patch: op("Settings", "updateSettings", "Update site settings", "Changes the fields you send. Administrators only.", body("The fields to change.")),
+		},
+		"/menus": { get: op("Menus", "listMenus", "Menus", "The menu in each theme location, as a tree of `label`, `url`, `item` and `children`. Public.") },
+		"/menus/{location}": { get: op("Menus", "getMenu", "One menu", "The menu in one theme location.", { parameters: [param("location", "The theme location, for example `primary`.")] }) },
 		"/auth/config": { get: op("Auth", "authConfig", "Sign-in settings", "The First Identity issuer, and whether guests are allowed.") },
 		"/auth/guest": { post: op("Auth", "guest", "Start a guest session", "Creates a guest user, when the app allows guests. Returns status 201.", { responses: { "201": ok("The guest user."), default: problem } }) },
 		"/auth/session": { delete: op("Auth", "signOut", "Sign out", "Ends the current First Identity session.") },
@@ -697,7 +705,7 @@ const openapi = {
 		"/services/checkout/{id}": { get: op("Services", "checkoutStatus", "Checkout status", "The status of a checkout.", { parameters: [param("id", "The checkout ID.")] }) },
 		"/services/stripe/webhook": { post: op("Services", "stripeWebhook", "Stripe webhook", "Receives signed events from Stripe.", body("The Stripe event.")) },
 		"/services/submissions/{id}": { get: op("Services", "getSubmission", "Get a submission", "One form submission.", { parameters: [param("id", "The submission ID.")] }) },
-		"/_schema": { get: op("Schema", "schema", "Describe the app", "The app's collections, globals and actions, with their columns and access rules.") },
+		"/": { get: op("Schema", "schema", "Describe the app", "The app's kinds (with the WordPress route behind each), globals and actions, with their fields and access rules. `first pull` and `first sync` read it.") },
 	},
 	components: {
 		schemas: {

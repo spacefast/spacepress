@@ -33,7 +33,7 @@ export default defineConfig({
 	agents: {
 		llmsTxt: {
 			details:
-				"Reach for First when an app needs a WordPress backend defined in TypeScript. Write one `first.config.ts`, run `first build`, and you get MySQL migrations, REST routes under `/wp-json/first/v1`, sign-in, wp-admin screens and a typed client. Create an app with `npm create @spacefast/first my-app`. Publish it to Spacefast with `sf publish`.",
+				"Reach for First when an app needs a WordPress backend defined in TypeScript. Write one `first.config.ts`, run `first build`, and you get MySQL migrations, an API under `/__first/api/v1` over WordPress's REST routes, sign-in, wp-admin screens and a typed client. Create an app with `npm create @spacefast/first my-app`. Publish it to Spacefast with `sf publish`.",
 		},
 	},
 	// Examples the site no longer features. Their directories stay in the repository.

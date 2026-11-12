@@ -14,7 +14,7 @@ First (formerly Zero v2) is a framework for building app backends in TypeScript.
 | A `collection()` | Posts in WordPress, with the editor, drafts and revisions |
 | A `table()` | A MySQL table and a migration file |
 | `access` rules | Checks that run on every read and write |
-| An `action()` | A REST route at `POST /wp-json/first/v1/actions/<name>` |
+| An `action()` | An API route at `POST /__first/api/v1/actions/<name>` |
 | A hook or an action handler | PHP code. The compiler turns your TypeScript into PHP. |
 | All of it | A typed JavaScript client in `first/_generated/client/` |
 
@@ -30,7 +30,7 @@ This is [`examples/reading-list`](https://github.com/spacefast/zero/tree/main/ex
 | `reads`, a `table()` | A MySQL table, created by the migration in `first/_generated/migrations/` |
 | `access` and `first/lib/owner.ts` | Anyone reads books. Each signed-in user sees only their own reads, and a client can't set `ownerId` |
 | `beforeCreate` and `afterCreate` | PHP that runs inside the write. Throwing rejects it with a 422 and rolls it back |
-| `logRead`, an `action()` | `POST /wp-json/first/v1/actions/logRead`, typed in the generated client |
+| `logRead`, an `action()` | `POST /__first/api/v1/actions/logRead`, typed in the generated client |
 | `tally`, a `job()` | Runs after the request on Action Scheduler and stores each book's total |
 | `shelf`, a `route()` | `GET /shelf.html`, a public page outside `/wp-json` |
 | `escape-html` and `ms` | npm packages. The compiler turns their JavaScript into PHP with the rest of the app |

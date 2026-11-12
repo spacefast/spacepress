@@ -198,7 +198,10 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function create_item($request)
     {
-        if (Facade::dispatching() || (\First\Locale\Module::polylang($this->collection) && ($request->has_param('locale') || $request->has_param('translationOf')))) {
+        // A localized post kind's translation (its language and group are First's write); the schema
+        // says so without a running app, which a core create may come before.
+        $localized = (bool) (Plugin::instance()?->schema->collection($this->collection)['localized'] ?? false);
+        if (Facade::dispatching() || ($localized && ($request->has_param('locale') || $request->has_param('translationOf')))) {
             return $this->firstWrite($request, null);
         }
 

@@ -125,8 +125,8 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 /// - `redirects`: the rules stage runs before entries, pages and WordPress, and a redirect doesn't
 ///   yield to an existing path (monorepo runtime/engine/runtime/serve.php, redirects.php). Only
 ///   when no rule can reach a URL the v2 app answers that 0.8 kept out of the redirect stage:
-///   WordPress's and Zero's paths (v2's `/wp-json/first/v1/*` isn't reserved from redirects as 0.8's
-///   data URLs were) and the folders the candidate serves (see `redirect_reaches_app`).
+///   WordPress's and First's paths (`/__first/api/v1/*` and `/wp-json/*`; reserved first segments,
+///   as 0.8's data URLs were) and the folders the candidate serves (see `redirect_reaches_app`).
 /// - `cleanUrls`, `index`: compiled over the static files, which v2 publishes from public/.
 /// - `analytics`, `system`: frozen from the file config whatever the runtime.
 /// - `build`, `placement`: read from the repository or the Space at build or creation time, never
@@ -135,7 +135,7 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 ///   `/wp-json` lane enforces it through the same access engine (see `carries`).
 ///
 /// Every other key is refused. Path rules don't survive the move, because the app's data URLs
-/// move from 0.8's `/__zero/*` to v2's `/wp-json/first/v1/*`: so `access` path patterns, `cache`
+/// move from 0.8's `/__zero/*` to First's `/__first/api/v1/*`: so `access` path patterns, `cache`
 /// and `firewall` are refused, as are `crons` (no `CRON_SECRET` on v2) and `sell` (its product file
 /// and paid assets would be swept into public/).
 pub(super) const PLATFORM_KEYS: &[&str] = &[

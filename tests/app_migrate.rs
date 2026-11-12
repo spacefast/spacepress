@@ -525,13 +525,13 @@ fn omissions_are_errors_and_static_files_carry_over() {
     // access path patterns, crons (no CRON_SECRET on v2) and sell (its product file and paid
     // assets would be swept into public/) don't apply the same way: refused.
     overlay["access"] = serde_json::json!({ "public": ["/docs/**"] });
-    // On v2 the app's data URLs are /wp-json/first/v1/*, which nothing reserves from redirects: a
+    // On First the app's data URLs are /__first/api/v1/* and the core routes /wp-json/*: a
     // rule whose source can reach them is refused (here a catch-all host move).
     overlay["redirects"] = serde_json::json!([
         { "source": "/old", "destination": "/new", "status": 301 },
         { "source": "/*", "destination": "https://new.example/:splat", "status": 301 }
     ]);
-    // Path rules don't survive the move: the app's data URLs move to /wp-json/first/v1/*.
+    // Path rules don't survive the move: the app's data URLs move to /__first/api/v1/*.
     overlay["firewall"] =
         serde_json::json!([{ "name": "no-rest", "action": "block", "match": { "path": "/wp-json/*" } }]);
     overlay["cache"] = serde_json::json!({ "bypass": ["/__zero/*"] });
@@ -2300,7 +2300,7 @@ console.log(JSON.stringify({ sent, result }));
         .expect("node is required");
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let ran: Value = serde_json::from_slice(&node.stdout).unwrap();
-    assert_eq!(ran["sent"][0]["url"], "/wp-json/first/v1/actions/banner", "{ran}");
+    assert_eq!(ran["sent"][0]["url"], "/__first/api/v1/actions/banner", "{ran}");
     assert_eq!(ran["sent"][0]["method"], "POST");
     assert_eq!(ran["result"], "ABABAB");
     // The body the bridge sent is exactly what the generated action takes.

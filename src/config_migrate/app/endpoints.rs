@@ -35,6 +35,7 @@ pub(super) const RESERVED: &[&str] = &[
     ".well-known",
     "__spacefast",
     "__zero",
+    "__first",
     "identity",
     "index.php",
     "wp-config.php",

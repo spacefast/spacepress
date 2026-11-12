@@ -38,8 +38,9 @@ use First\Viewer;
  * `not-found.tsx` (or WordPress's own 404 page when there is none). Kind URLs WordPress itself
  * resolves (a post, a term archive) keep rendering with the theme until an app route matches them.
  *
- * Every response sends `Cache-Control: private, no-store` for now; per-route cache policy is
- * workstream 8, and the render records what it read for it (`Reads`).
+ * An anonymous visitor's render of a page outside any guarded layout is cacheable (Batcache and
+ * the edge, `First\Render\Cache::policy`); everything else is `private, no-store`. Each cacheable
+ * render records the rows it read, so a write purges exactly the URLs that showed it.
  */
 final class AppRouter
 {
@@ -61,6 +62,8 @@ final class AppRouter
     }
 
     private bool $serving = false;
+    /** This response's `Cache-Control`: private unless serve() found it shareable. */
+    private string $cacheControl = 'private, no-store, max-age=0';
 
     /** @param array<string, mixed> $app */
     private function __construct(private readonly Plugin $plugin, array $app)
@@ -323,8 +326,13 @@ final class AppRouter
         } catch (\Throwable $error) {
             $this->failed($route, $error, $viewer);
         }
-        // What this render read, by kind and id: the seam per-URL cache purges build on
-        // (docs/spec/rendering.md §6.2). Nothing consumes it yet.
+        // Cache policy and purges (rendering.md §6.1, §6.2): an anonymous visitor's render of a
+        // page no layout guards is shared; what it read decides which writes purge its URL.
+        $guarded = array_filter($layouts, static fn (array $l): bool => ($l['guard'] ?? null) !== null) !== [];
+        [$this->cacheControl, $shared] = \First\Render\Cache::policy($status, $viewer->user === null, $guarded);
+        if ($shared) {
+            \First\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
+        }
         do_action('first_app_rendered', (string) $route['id'], (string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         $this->document($status, $head, $body);
     }
@@ -511,8 +519,13 @@ final class AppRouter
     private function document(int $status, array $head, string $body): never
     {
         status_header($status);
-        nocache_headers();
-        header('Cache-Control: private, no-store, max-age=0');
+        if (str_starts_with($this->cacheControl, 'private')) {
+            nocache_headers();
+            if (function_exists('batcache_cancel')) {
+                batcache_cancel();
+            }
+        }
+        header('Cache-Control: ' . $this->cacheControl);
         header('Content-Type: text/html; charset=' . get_option('blog_charset'));
         // First writes the only <title> and canonical for its pages.
         remove_action('wp_head', '_wp_render_title_tag', 1);

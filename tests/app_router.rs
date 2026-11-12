@@ -510,3 +510,58 @@ fn frontend_modes_on_wordpress() {
         );
     }
 }
+
+/// rendering.md §6.1 and §6.2 for `first/app/` pages, on WordPress with a stand-in host listening
+/// on `first_purge_urls`: an anonymous visitor's page is cacheable at the edge, a signed-in,
+/// guarded or missing one is private; each cacheable render records what it read; an edit to one
+/// row purges exactly the URLs that read it or listed its kind, with their `.md` twins.
+#[test]
+fn app_pages_cache_and_purge_by_what_they_read() {
+    let project = fixture("app-router", "cache");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_cache.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let shared = "public, s-maxage=300, max-age=0, must-revalidate";
+    let private = "private, no-store, max-age=0";
+    for key in ["home", "note", "other note", "about"] {
+        assert_eq!(
+            seen[key],
+            serde_json::json!({ "status": 200, "cache": shared }),
+            "{key}"
+        );
+    }
+    assert_eq!(seen["as editor"]["cache"], private);
+    assert_eq!(seen["guarded"]["cache"], private);
+    assert_eq!(seen["missing"], serde_json::json!({ "status": 404, "cache": private }));
+    // The index: `/` listed notes (and read both), each note page read its own row, /about nothing.
+    let index: Vec<String> = seen["index"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    assert!(index.contains(&"notes * /".to_string()), "{index:?}");
+    assert_eq!(
+        index.iter().filter(|r| r.ends_with(" /notes/hello")).count(),
+        1,
+        "{index:?}"
+    );
+    assert!(!index.iter().any(|r| r.ends_with(" /about")), "{index:?}");
+    assert_eq!(
+        seen["purged"],
+        serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])
+    );
+}

@@ -165,18 +165,18 @@ final class PostsController extends \WP_REST_Posts_Controller
         return CoreAccess::strip($response, $this->collection, $stored, CoreAccess::viewer());
     }
 
-    /**
-     * An update rule that is a function may refuse without data and allow this request's data: core's
-     * `edit_post` (which also guards revisions and wp-admin) stays the strict answer, and only this
-     * update is admitted when the rule, given the data it declares, may allow it. EditorSave then
-     * authorizes what was actually saved, against the row as it was.
-     */
     /** The API's writes are First's pipeline's to decide (firstWrite): its create rule, as the viewer. */
     public function create_item_permissions_check($request)
     {
         return Facade::dispatching() ? true : parent::create_item_permissions_check($request);
     }
 
+    /**
+     * An update rule that is a function may refuse without data and allow this request's data: core's
+     * `edit_post` (which also guards revisions and wp-admin) stays the strict answer, and only this
+     * update is admitted when the rule, given the data it declares, may allow it. EditorSave then
+     * authorizes what was actually saved, against the row as it was.
+     */
     public function update_item_permissions_check($request)
     {
         if (Facade::dispatching()) {

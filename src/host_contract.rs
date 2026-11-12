@@ -15,11 +15,23 @@ pub const HOST_CONTRACT: u32 = 1;
 /// Paths below the site root that First answers itself; a host routes them to WordPress and keeps
 /// its own paths out of them.
 pub const RESERVED_PATHS: &[(&str, &str)] = &[
-    ("/__first/*", "First's HTTP API (`/__first/api/v1/*`): kinds, globals, actions, files, `/me`; served before the theme, outside `/wp-json`. Route it to WordPress and never cache it: every answer is `Cache-Control: private, no-store` with `Vary: Cookie, Authorization`, except file streams"),
-    ("/wp-json/first/v1/*", "the app's REST API under WordPress's REST prefix, until its routes move to `/__first/api/v1`"),
-    ("/identity/*", "First Identity's issuer and pages, when the app mounts identity"),
+    (
+        "/__first/*",
+        "First's HTTP API (`/__first/api/v1/*`): kinds, globals, actions, files, `/me`; served before the theme, outside `/wp-json`. Route it to WordPress and never cache it: every answer is `Cache-Control: private, no-store` with `Vary: Cookie, Authorization`, except file streams",
+    ),
+    (
+        "/wp-json/first/v1/*",
+        "the app's REST API under WordPress's REST prefix, until its routes move to `/__first/api/v1`",
+    ),
+    (
+        "/identity/*",
+        "First Identity's issuer and pages, when the app mounts identity",
+    ),
     ("/wp-json/first-identity/v1/*", "First Identity's REST API"),
-    ("/first-admin/*", "the optional admin screens, when the app sets `admin: true`"),
+    (
+        "/first-admin/*",
+        "the optional admin screens, when the app sets `admin: true`",
+    ),
 ];
 
 /// The app API (`First\Wp\Facade::PREFIX`), and the path prefix of actions under it.
@@ -28,21 +40,62 @@ pub const ACTION_PREFIX: &str = "/__first/api/v1/actions/";
 
 /// Live updates: what a host's transport and publisher deal in.
 pub const LIVE_UPDATES: &[(&str, &str)] = &[
-    ("first_realtime_changes", "WordPress action fired once per committed transaction with its change notice `{id, at, changes: [{collection, ops, ids}]}`"),
-    ("First\\Realtime\\Publisher", "PHP interface a host implements to send each notice to its realtime transport (`First\\Realtime\\Module::publish`)"),
-    ("__firstRealtime", "the page-wide registry on `globalThis` that every generated client on a page shares; a host script calls `registerRealtimeTransport` from the client to set it"),
+    (
+        "first_realtime_changes",
+        "WordPress action fired once per committed transaction with its change notice `{id, at, changes: [{collection, ops, ids}]}`",
+    ),
+    (
+        "First\\Realtime\\Publisher",
+        "PHP interface a host implements to send each notice to its realtime transport (`First\\Realtime\\Module::publish`)",
+    ),
+    (
+        "__firstRealtime",
+        "the page-wide registry on `globalThis` that every generated client on a page shares; a host script calls `registerRealtimeTransport` from the client to set it",
+    ),
 ];
 
 /// Filters and actions a host implements or listens to. Every one is called by the runtime.
 pub const HOOKS: &[(&str, &str, &str)] = &[
-    ("first_mail_transport", "filter", "delivers `mail.send` messages; without it, the app's mail is refused"),
-    ("first_purge_urls", "action", "the root-relative URLs a committed content write changed, for a host's page cache"),
-    ("first_private_probe_url", "filter", "the URL the private-files probe fetches, when the public URL is not reachable from the server"),
-    ("first_identity_providers", "filter", "OpenID Connect sign-in providers First Identity offers"),
-    ("first_identity_rest_cookie_auth", "filter", "lets the identity session cookie authenticate the app's REST API (a host serving its own frontend)"),
-    ("first_identity_session_cookie_aliases", "filter", "other cookie names whose session a migrated site keeps"),
-    ("first_fetch_allow_address", "filter", "allows an outgoing `fetch` to an address First denies by default"),
-    ("first_runtime_loaded", "action", "the runtime has booted; register commands and seams after it"),
+    (
+        "first_mail_transport",
+        "filter",
+        "delivers `mail.send` messages; without it, the app's mail is refused",
+    ),
+    (
+        "first_purge_urls",
+        "action",
+        "the root-relative URLs a committed content write changed, for a host's page cache",
+    ),
+    (
+        "first_private_probe_url",
+        "filter",
+        "the URL the private-files probe fetches, when the public URL is not reachable from the server",
+    ),
+    (
+        "first_identity_providers",
+        "filter",
+        "OpenID Connect sign-in providers First Identity offers",
+    ),
+    (
+        "first_identity_rest_cookie_auth",
+        "filter",
+        "lets the identity session cookie authenticate the app's REST API (a host serving its own frontend)",
+    ),
+    (
+        "first_identity_session_cookie_aliases",
+        "filter",
+        "other cookie names whose session a migrated site keeps",
+    ),
+    (
+        "first_fetch_allow_address",
+        "filter",
+        "allows an outgoing `fetch` to an address First denies by default",
+    ),
+    (
+        "first_runtime_loaded",
+        "action",
+        "the runtime has booted; register commands and seams after it",
+    ),
 ];
 
 /// The one site command a host's worker runs, and what it prints.
@@ -50,9 +103,18 @@ pub const JOBS_COMMAND: &str = "wp first jobs tick [--limit=<1..100>] [--budget-
 
 /// The PHP entry points a host calls, in order.
 pub const MOUNT: &[(&str, &str)] = &[
-    ("First\\Loader\\Loader::load($root, $build, $options)", "before WordPress initializes, with the build the host selected for this request"),
-    ("First\\Loader\\Loader::initialize($root, $build)", "once per build per site, before the host exposes it: storage upgrades, migrations, identity maintenance, the content seed"),
-    ("First\\Loader\\Store::gc($root, $keep)", "after the host deletes a version: keeps exactly the builds it still serves"),
+    (
+        "First\\Loader\\Loader::load($root, $build, $options)",
+        "before WordPress initializes, with the build the host selected for this request",
+    ),
+    (
+        "First\\Loader\\Loader::initialize($root, $build)",
+        "once per build per site, before the host exposes it: storage upgrades, migrations, identity maintenance, the content seed",
+    ),
+    (
+        "First\\Loader\\Store::gc($root, $keep)",
+        "after the host deletes a version: keeps exactly the builds it still serves",
+    ),
 ];
 
 /// The table-prefix rule.
@@ -80,7 +142,9 @@ pub fn manifest_host() -> Value {
 /// The generated part of docs/host-contract.md (between its markers).
 pub fn render_doc() -> String {
     let mut out = String::new();
-    out.push_str(&format!("Host contract version: **{HOST_CONTRACT}** (`hostContract` in the manifest).\n\n"));
+    out.push_str(&format!(
+        "Host contract version: **{HOST_CONTRACT}** (`hostContract` in the manifest).\n\n"
+    ));
     out.push_str("### Reserved paths\n\n| Path | What |\n|---|---|\n");
     for (path, what) in RESERVED_PATHS {
         out.push_str(&format!("| `{path}` | {what} |\n"));

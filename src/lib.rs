@@ -39,11 +39,11 @@ pub mod cli;
 #[cfg(feature = "cli")]
 mod commands;
 pub mod config_migrate;
-pub mod host_contract;
 #[cfg(feature = "host")]
 mod emit;
 #[cfg(feature = "host")]
 pub mod host;
+pub mod host_contract;
 #[cfg(feature = "host")]
 pub mod store;
 #[cfg(any(feature = "cli", feature = "host"))]

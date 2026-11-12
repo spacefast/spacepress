@@ -16,9 +16,20 @@ fn host_capture_matches_native_bundle_bytes_and_compiles() {
     // What a host reads without opening First's generated files (docs/host-contract.md).
     assert_eq!(result["hostContract"], first::host_contract::HOST_CONTRACT);
     assert_eq!(result["summary"]["name"], "pantry");
-    assert_eq!(result["summary"]["tables"], serde_json::json!(["items", "locations", "shopping_list"]));
+    assert_eq!(
+        result["summary"]["tables"],
+        serde_json::json!(["items", "locations", "shopping_list"])
+    );
     assert_eq!(result["summary"]["collections"], result["summary"]["tables"]);
-    assert!(result["summary"]["actions"].as_array().unwrap().iter().any(|a| a == "consume"), "{}", result["summary"]);
+    assert!(
+        result["summary"]["actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a == "consume"),
+        "{}",
+        result["summary"]
+    );
     assert_eq!(result["host"]["mount"], "First\\Loader\\Loader::load");
     assert_eq!(result["host"]["jobsCommand"], "wp first jobs tick");
     let written: serde_json::Value =

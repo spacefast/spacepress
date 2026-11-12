@@ -32,9 +32,15 @@ Besides `format`, `hostContract`, `compiler` and the platform versions (`wordpre
 
 ## Lifecycle
 
+Builds come from the build store: `first compile-to-store <sources> <store> <assets> [previous-build]`
+writes one and prints its id (see `docs/decisions/2026-11-07-build-store.md`). `Loader::load` mounts store
+builds only; a `compile-sources` tree is for hosts that mount it themselves and is not part of this
+contract. The compiled app tree's `manifest.json` (under `app/<hash>/`) is the manifest above.
+
 1. Select the build for the request, then call `Loader::load` before WordPress initializes. It mounts
    the runtime, identity when the app needs it (or `users: true`), the app, the admin and pages plugins.
-2. Before exposing a new version, call `Loader::initialize` once. It brings this site's storage up to
+2. Before exposing a new version, call `Loader::initialize` once. (It does not take the schema check's
+   `--drop` confirmations yet: a version that drops data is refused there until it does.) It brings this site's storage up to
    the build (including the one-time upgrade of a site that ran a build from before the rename), applies
    pending migrations forward only, schedules identity maintenance, seeds content, and writes the ready
    marker. A ready build returns its receipt and changes nothing.

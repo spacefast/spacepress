@@ -221,6 +221,8 @@ pub enum Builtin {
     // "first/app": page helpers, compiled by the app router; never run while the config builds.
     /// `notFound()`, `redirect(url, status?)`, `<Content>`, `<Html>`, `<Link>`: by export name.
     App(&'static str),
+    // "first/client": hooks for "use client" components, compiled to the Interactivity API.
+    Client(&'static str),
 }
 
 #[derive(Debug, Clone)]

@@ -446,6 +446,21 @@ fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value 
 #[test]
 fn frontend_modes_on_wordpress() {
     let theme = modes("theme", None, false);
+    // With no first/app/, WordPress renders the whole site with its block theme: the home page,
+    // core posts, kind URLs and its own 404 template. The app router adds nothing to any of them.
+    let by_theme = |status: u64| serde_json::json!({ "status": status, "theme": true, "router": false });
+    for (key, status) in [
+        ("home rendered", 200),
+        ("note rendered", 200),
+        ("post rendered", 200),
+        ("missing rendered", 404),
+    ] {
+        assert_eq!(theme[key], by_theme(status), "{key}: {theme}");
+    }
+    assert_eq!(
+        (&theme["post body"], &theme["missing by wordpress"]),
+        (&serde_json::json!(true), &serde_json::json!(true))
+    );
     assert_eq!(theme["note status"], 200, "{theme}");
     assert_eq!(
         (&theme["note by theme"], &theme["note by app"]),
@@ -466,6 +481,14 @@ fn frontend_modes_on_wordpress() {
     assert_eq!(theme["home"], 200);
 
     let app = modes("app", None, true);
+    // With first/app/, its page renders the note through the router; a kind URL without a page and
+    // a core post keep the theme.
+    assert_eq!(app["note rendered"]["router"], true, "{app}");
+    assert_eq!(
+        app["missing rendered"],
+        serde_json::json!({ "status": 404, "theme": false, "router": true })
+    );
+    assert_eq!(app["post rendered"], by_theme(200), "{app}");
     assert_eq!(
         (&app["note status"], &app["note by app"], &app["note body"]),
         (
@@ -509,4 +532,214 @@ fn frontend_modes_on_wordpress() {
             "{name}: {mode}"
         );
     }
+}
+
+/// Generator B (docs/decisions/2026-11-08-tsx-to-php.md): each `"use client"` component compiles
+/// to a store module that runs in the browser without a bundler. Driven here under Node against a
+/// stand-in `@wordpress/interactivity` (tests/differential/client): state getters recompute from
+/// context, an async handler awaits a server action through `fetch` with the REST nonce, setters
+/// with an updater, effects, mount, window events, `withSyncEvent` for `preventDefault`, and
+/// shared state.
+#[test]
+fn client_components_compile_to_interactivity_stores() {
+    let project = fixture("client-components", "stores");
+    build(&project);
+    let plugin = project.join("first/dist/wp-content/plugins/first-app-clients");
+    let schema = Command::new("php")
+        .args(["-r", "echo json_encode((require $argv[1])['islands']);"])
+        .arg(plugin.join("first/app/schema.php"))
+        .output()
+        .unwrap();
+    let islands: serde_json::Value = serde_json::from_slice(&schema.stdout).unwrap();
+    assert_eq!(
+        islands["clients/LikeButton"]["actions"],
+        serde_json::json!(["like"]),
+        "{islands}"
+    );
+    assert_eq!(islands["clients/Effects"]["actions"], serde_json::json!([]));
+    // `"use client"` after another directive (`"use strict"`) still makes a client component.
+    assert!(islands["clients/Toggle"]["file"].is_string(), "{islands}");
+    let drive = |namespace: &str, script: &str| -> serde_json::Value {
+        let file = islands[namespace]["file"].as_str().unwrap();
+        let out = Command::new("node")
+            .arg(root().join("tests/differential/client/drive.mjs"))
+            .arg(plugin.join("first/app/client").join(file))
+            .arg(root().join("tests/differential/client").join(script))
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        serde_json::from_slice(&out.stdout).unwrap()
+    };
+    let like = drive("clients/LikeButton", "likebutton.mjs");
+    assert_eq!(like["label1"], "1 like");
+    assert_eq!(like["busyDuring"], serde_json::json!([true]));
+    assert_eq!(
+        like["after"],
+        serde_json::json!({ "count": 142, "busy": false, "postId": 42 })
+    );
+    assert_eq!(like["label2"], "142 likes");
+    assert_eq!(
+        like["calls"],
+        serde_json::json!([{ "url": "/wp-json/first/v1/actions/like", "method": "POST", "nonce": "n0nce", "body": { "postId": 42 } }])
+    );
+    let effects = drive("clients/Effects", "effects.mjs");
+    assert_eq!(
+        effects,
+        serde_json::json!({ "mounted": -1, "n": 10, "items": 2, "shown": 2, "seen": 100, "width": 777, "submitted": { "n": 0, "prevented": true } })
+    );
+    // The server HTML carries the directives the store answers to.
+    let functions = std::fs::read_to_string(plugin.join("first/app/functions.php")).unwrap();
+    for directive in [
+        "'data-wp-interactive' => 'clients/LikeButton'",
+        "'data-wp-bind--disabled' => 'context.busy'",
+        "'data-wp-on--click' => 'actions.click1'",
+        "'data-wp-on-window--resize' => 'actions.onResize3'",
+        "'data-wp-watch---effect1' => 'callbacks.effect1'",
+        "'data-wp-init---mount2' => 'callbacks.mount2'",
+        "'data-wp-on--submit' => 'actions.submit'",
+    ] {
+        assert!(functions.contains(directive), "{directive}");
+    }
+    let _ = std::fs::remove_dir_all(project);
+}
+
+/// What generator B can't compile is a build error at the line, with the subset's alternative.
+#[test]
+fn refuses_client_code_outside_the_subset() {
+    let dir = std::env::temp_dir().join(format!("first-client-reject-{}", std::process::id()));
+    let component = |body: &str| format!("\"use client\";\nimport {{ useState }} from \"first/client\";\n{body}\n");
+    rejects(
+        &dir,
+        &[(
+            "first/components/A.tsx",
+            &component("export function A() { const [n] = useState(0); return <><b>{n}</b></>; }"),
+        )],
+        "a client component returns one element",
+        "first/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/components/A.tsx",
+            &component("import dayjs from \"dayjs\";\nexport function A() { return <b/>; }"),
+        )],
+        "a \"use client\" component can't import \"dayjs\"",
+        "first/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/components/A.tsx",
+            &component(
+                "export function A() { const [n, setN] = useState(0); return <b onClick={() => { n = 2; }}>{n}</b>; }",
+            ),
+        )],
+        "`n` changes through `setN`",
+        "first/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/components/A.tsx",
+            &component(
+                "const secret = 1;\nexport function A() { const [n, setN] = useState(0); return <b onClick={() => setN(secret)}>{n}</b>; }",
+            ),
+        )],
+        "`secret` isn't available in the browser",
+        "first/components/A.tsx:4:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/components/A.tsx",
+            &component("export function A() { const [n, setN] = useState(0); return <b onClick=\"go()\">{n}</b>; }"),
+        )],
+        "with a string is inline script",
+        "first/components/A.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[
+            (
+                "first/components/A.tsx",
+                &component("export function Same() { return <b/>; }"),
+            ),
+            (
+                "first/components/B.tsx",
+                &component("export function Same() { return <i/>; }"),
+            ),
+        ],
+        "two \"use client\" components are named `Same`",
+        "first/components/B.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/components/A.tsx",
+            &component("export function A() { const [n, setN] = useState(0); if (n) { setN(1); } return <b>{n}</b>; }"),
+        )],
+        "returns its element",
+        "first/components/A.tsx:3:",
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// The record's browser check: compiled client components on a real WordPress page, in Chromium
+/// with `SCRIPT_DEBUG` (the Interactivity runtime's development build, the one that warns).
+/// Hydration changes nothing in the server HTML, the runtime logs no warnings, a click calls the
+/// server action and updates the label, and effects and shared state follow state changes.
+#[test]
+fn client_components_hydrate_in_the_browser() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let project = fixture("client-components", "browser");
+    build(&project);
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .env("FIRST_WP_SCRIPT_DEBUG", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/browser.mjs"))
+        .arg(format!("{url}/"))
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["hydration"], serde_json::json!([]), "{seen}");
+    assert_eq!(seen["warnings"], serde_json::json!([]), "{seen}");
+    assert_eq!(
+        (&seen["before"], &seen["after"]),
+        (&serde_json::json!("♥ 1 like"), &serde_json::json!("♥ 141 likes"))
+    );
+    assert_eq!(
+        (&seen["output"], &seen["items"], &seen["seen"]),
+        (
+            &serde_json::json!("4"),
+            &serde_json::json!("2"),
+            &serde_json::json!("40")
+        )
+    );
 }

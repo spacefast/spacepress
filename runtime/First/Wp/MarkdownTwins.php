@@ -173,6 +173,12 @@ final class MarkdownTwins
             }
             self::section($lines, (string) $type->labels->name, (string) $type->description, $entries);
         }
+        // The app's own pages (`first/app/`): every page route without parameters or a guard.
+        $pages = [];
+        foreach (AppRouter::instance()?->pages() ?? [] as [$path, $title]) {
+            $pages[] = '- ' . self::link(self::plain($title), self::twin(home_url($path)));
+        }
+        self::section($lines, 'Site pages', '', $pages);
         foreach (get_taxonomies(['public' => true, 'publicly_queryable' => true], 'objects') as $taxonomy) {
             if ($taxonomy->name === 'post_format') {
                 continue;
@@ -248,7 +254,9 @@ final class MarkdownTwins
             return;
         }
         if (self::$twin !== null) {
-            [$status, $body] = self::document();
+            // A `first/app/` page renders its own twin, from its compiled output (rendering.md §5).
+            $app = AppRouter::instance()?->twin(self::htmlUrl());
+            [$status, $body] = $app ?? self::document();
             $headers = self::headers();
             if ($status === 200) {
                 $headers['Link'] = '<' . self::canonical() . '>; rel="canonical"';
@@ -263,7 +271,7 @@ final class MarkdownTwins
         if (headers_sent()) {
             return;
         }
-        if (self::kind() !== null) {
+        if (self::kind() !== null || AppRouter::instance()?->serves(self::htmlUrl())) {
             header('Link: <' . self::twin(self::htmlUrl()) . '>; rel="alternate"; type="text/markdown"', false);
         }
         $signal = self::contentSignal();
@@ -365,7 +373,7 @@ final class MarkdownTwins
     /** wp_head: the `<link rel="alternate" type="text/markdown">` matching the `Link` header. */
     public static function linkTag(): void
     {
-        if (self::kind() === null) {
+        if (self::kind() === null && !AppRouter::instance()?->serves(self::htmlUrl())) {
             return;
         }
         printf('<link rel="alternate" type="text/markdown" href="%s" />' . "\n", esc_url(self::twin(self::htmlUrl())));

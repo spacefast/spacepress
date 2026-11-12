@@ -3976,6 +3976,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Resolved::Global("NaN") => Ok(Out::atom("NAN", Ty::Num)),
             Resolved::Global("Infinity") => Ok(Out::atom("INF", Ty::Num)),
             Resolved::Global("Math") => Ok(Out::atom("\\First\\Js::dynamicNamespace('Math')", Ty::Dynamic)),
+            Resolved::Global("Boolean") => Ok(boolean_function()),
             Resolved::Global("AbortSignal") if self.javascript_module(self.fx.as_ref().expect("fn").module) => {
                 Ok(Out::atom("\\First\\Js::dynamicNamespace('AbortSignal')", Ty::Dynamic))
             }
@@ -4160,6 +4161,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Value::Builtin(Builtin::Static("Number", method)) if method.as_ref() == "isFinite" => {
                 Ok(number_is_finite_function())
             }
+            Value::Builtin(Builtin::Global("Boolean")) => Ok(boolean_function()),
             Value::Builtin(_)
             | Value::Column(_)
             | Value::ColRef(_)
@@ -4884,14 +4886,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
 
     /// Compiles a callback argument with its parameters typed from context.
     fn callback(&mut self, e: &Expr, params: &[Ty]) -> Result<Out> {
-        if let ExprKind::Ident(name) = &e.kind
-            && matches!(self.resolve(name, e.span), Ok(Resolved::Global("Boolean")))
-        {
-            return Ok(Out::atom(
-                "fn($value) => \\First\\Js::truthy($value)",
-                Ty::Fn(vec![Ty::Unknown], Box::new(Ty::Bool)),
-            ));
-        }
         if let ExprKind::Func(f) = &e.kind {
             return self.closure_with_types(f, Some(params));
         }
@@ -5948,6 +5942,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     crate::eval::GlobalMember::Absent => Ok(Out::atom("\\First\\Js::undefined()", Ty::Undefined)),
                     crate::eval::GlobalMember::Provided("NaN") => Ok(Out::atom("NAN", Ty::Num)),
                     crate::eval::GlobalMember::Provided("Infinity") => Ok(Out::atom("INF", Ty::Num)),
+                    crate::eval::GlobalMember::Provided("Boolean") => Ok(boolean_function()),
                     crate::eval::GlobalMember::Provided(g) => err_help(
                         span,
                         format!("`globalThis.{g}` can't be used as a value"),
@@ -6944,6 +6939,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 })
             }
             Resolved::Global(g) if ERROR_CONSTRUCTORS.contains(&g) => self.error_constructor(g, args),
+            Resolved::Global(g @ ("Boolean" | "String" | "Number")) => {
+                Err(crate::builtins::wrapper_object_refusal(g, span))
+            }
             Resolved::Value(Value::Builtin(Builtin::HttpError), _) => err(
                 span,
                 "create HttpError directly in a `throw`: `throw new HttpError(404, \"not_found\", \"...\")`",
@@ -10270,6 +10268,15 @@ fn logical_result_type(op: LogOp, left: &Ty, right: &Ty) -> Ty {
     } else {
         Ty::union([retained, right.clone()])
     }
+}
+
+/// The global `Boolean` read as a value: one shared closure that returns ToBoolean of its
+/// first argument (docs/decisions/2026-11-10-boolean-global.md).
+fn boolean_function() -> Out {
+    Out::atom(
+        "\\First\\Js::booleanFunction()",
+        Ty::Fn(vec![Ty::Unknown], Box::new(Ty::Bool)),
+    )
 }
 
 fn number_is_finite_function() -> Out {

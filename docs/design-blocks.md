@@ -678,7 +678,7 @@ core PR outside the listed contract paths never runs either job.
 - App frontends, islands, hydration, any browser JavaScript the package
   emits. Not "later": the WordPress Interactivity API would be the way to add
   behaviour to a block theme and would be a separate design.
-- Platform system pages, Tailwind/`zero.css`, a hosting runtime. The
+- Platform system pages, Tailwind/`zero.css`, a Spacefast runtime. The
   package renders nothing; WordPress is the only renderer of its output.
 - HTML/blocks → TSX (decompilation), two-way editing, live collaboration.
 - Markdown (First's sync owns it), classic themes, child themes (a `parent`

@@ -368,6 +368,8 @@ pub struct Collection {
     pub auth: bool,
     pub agents: bool,
     pub localized: bool,
+    /// `url: "/blog/:slug"`: the pattern as written (spec §2.7). Checked by [`crate::kind_url`].
+    pub url: Option<String>,
 }
 
 impl Collection {
@@ -487,6 +489,8 @@ pub struct Schema {
     pub locales: Option<Json>,
     /// `defineConfig({ admin: true })`: the build ships the optional admin screens plugin.
     pub admin: bool,
+    /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `first/app`.
+    pub frontend: Option<crate::kind_url::Frontend>,
 }
 
 impl Default for Schema {
@@ -507,6 +511,7 @@ impl Default for Schema {
             uploads: None,
             locales: None,
             admin: false,
+            frontend: None,
         }
     }
 }

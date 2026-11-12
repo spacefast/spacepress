@@ -262,6 +262,10 @@ $cases = [
 ];
 
 $deviations = [
+    ['new Boolean through a stored reference throws the wrapper-object message', function () {
+        try { Js::dynamicConstruct(Js::booleanFunction(), new JsArray([false])); return 'no throw'; }
+        catch (JsError $e) { return [$e->jsName, str_contains($e->getMessage(), 'creates a wrapper object')]; }
+    }, ['TypeError', true]],
     ['dynamic JSON replacer fails explicitly', fn () => Js::dynamicStaticCall('JSON', 'stringify', new JsArray([new JsObject(['public' => 1, 'private' => 2]), new JsArray(['public'])])), ['$err' => 'TypeError']],
     ['dynamic JSON reviver fails explicitly', fn () => Js::dynamicStaticCall('JSON', 'parse', new JsArray(['{}', static fn ($k, $v) => $v])), ['$err' => 'TypeError']],
     ['dynamic Date component overload fails explicitly', fn () => Js::dynamicConstruct('Date', new JsArray([2020, 0])), ['$err' => 'TypeError']],

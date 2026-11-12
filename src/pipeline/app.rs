@@ -180,7 +180,11 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         layouts: r.layouts.clone(),
         error: r.error.clone(),
         kind: (r.kind == RouteKind::Page)
-            .then(|| kinds.iter().find_map(|(k, u)| app::serves_kind_url(r, u).map(|b| (k.clone(), b))))
+            .then(|| {
+                kinds
+                    .iter()
+                    .find_map(|(k, u)| app::serves_kind_url(r, u).map(|b| (k.clone(), b)))
+            })
             .flatten(),
     };
     ext.schema.app = Some(crate::schema::App {

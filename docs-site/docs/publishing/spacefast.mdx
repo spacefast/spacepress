@@ -72,7 +72,7 @@ Each version runs the code it was compiled from. These work with no extra setup:
 - The typed client at `/__first/client.js`, with its types at `/__first/client.d.ts`.
 - Live updates. `watch()` in the client gets every committed change over Spacefast's realtime connection.
 
-TSX pages from `pages/` publish too, but Spacefast compiles your app without Node, so it can't render them. Run `first build` and `first-pages build` on your machine first, then `sf publish`. [TSX pages](/pages) has the details.
+TSX pages from `pages/` publish too, but Spacefast compiles your app without Node, so it can't render them. Run `first build` and `first-pages build` on your machine first, then `sf publish`. [Pages](/pages) has the details. `first/app/` pages are compiled with the rest of the app and need no separate step.
 
 ## Sign people in with Spacefast
 

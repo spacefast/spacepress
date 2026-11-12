@@ -11,7 +11,7 @@ The runtime registers the services module, its built-in jobs and its system tabl
 ```ts
 import { collection, defineConfig, env, text } from "first";
 
-const posts = collection({ title: text().notNull(), excerpt: text() }, {
+const posts = collection({ title: text(), excerpt: text().optional() }, {
   title: "title", drafts: true, access: { read: "anyone" },
 });
 

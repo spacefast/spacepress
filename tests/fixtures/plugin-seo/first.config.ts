@@ -1,7 +1,7 @@
-import { collection, defineConfig, id, text } from "first";
+import { collection, defineConfig, text } from "first";
 import seo from "first-plugin-seo";
 
-const posts = collection({ id: id(), title: text().notNull(), summary: text(), body: text() }, { title: "title" });
+const posts = collection({ title: text(), summary: text().optional(), body: text().optional() }, { title: "title" });
 
 export default defineConfig({
   name: "plugins",

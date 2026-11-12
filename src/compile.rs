@@ -9,6 +9,7 @@
 mod annotations;
 mod app;
 mod classes;
+mod client;
 mod effects;
 mod host;
 mod javascript;
@@ -372,6 +373,10 @@ pub struct Compiler<'a, 'p> {
     used_names: HashSet<String>,
     pending: Vec<(Rc<Closure>, String, Option<Vec<Ty>>)>,
     pub output: String,
+    /// The `"use client"` component being compiled (generator B), if any.
+    client: Option<client::ClientCtx>,
+    /// Compiled `"use client"` components: namespace → (analysis, server actions).
+    pub islands: Vec<crate::client_component::Analysis>,
     fx: Option<FnCtx>,
     /// Inferred result type of each action handler (for the typed client).
     pub action_results: HashMap<String, Ty>,
@@ -483,6 +488,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             plugin_names: ext.uses.iter().map(|p| p.name.clone()).collect(),
             abilities: crate::wordpress::abilities::Catalog::default(),
             wordpress_uses: Vec::new(),
+            client: None,
+            islands: Vec::new(),
         }
     }
 
@@ -815,12 +822,56 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.plugin = root.plugin.map(|i| (i, self.plugin_names[i].clone()));
             let params = self.root_params(&root.slot);
             let name = self.unique_name(&root.name);
+            // A `"use client"` component: analyse it for generator B before its server body compiles.
+            self.client = None;
+            if let Slot::Component { name: component } = &root.slot
+                && self.ev_program().modules[root.closure.func.module].use_client
+            {
+                let module = &self.ev_program().modules[root.closure.func.module];
+                let export = component.rsplit('#').next().unwrap_or_default();
+                let export = if export == "default" {
+                    root.closure.func.name.clone().unwrap_or_else(|| "Component".into())
+                } else {
+                    export.to_string()
+                };
+                let namespace = format!("{}/{export}", self.schema.name);
+                if let Some(other) = self.islands.iter().find(|a| a.namespace == namespace) {
+                    let _ = other;
+                    return err_help(
+                        root.closure.func.span,
+                        format!("two \"use client\" components are named `{export}`"),
+                        "give each client component its own name; the name is its Interactivity store namespace",
+                    );
+                }
+                let actions: std::collections::BTreeSet<String> = self.schema.actions.keys().cloned().collect();
+                let analysis = crate::client_component::analyse(
+                    namespace,
+                    &root.closure.func,
+                    module,
+                    crate::loader::CLIENT_MODULE,
+                    &actions,
+                )?;
+                self.client = Some(client::ClientCtx {
+                    analysis,
+                    root_pending: true,
+                });
+            }
             self.current = name.clone();
             self.root_capabilities(root);
             // A hook given by reference (`afterCreate: restock`) reuses the helper's compiled body.
             let key = closure_key(&root.closure);
             let no_db = matches!(root.slot, Slot::Access { .. } | Slot::FieldAccess { .. });
             self.compile_function(&root.closure, &name, Some(params), Some(&root.slot), no_db)?;
+            if let Some(ctx) = self.client.take() {
+                if ctx.root_pending {
+                    return err_help(
+                        root.closure.func.span,
+                        "a client component returns one element",
+                        "wrap what it returns in an element, e.g. `<div>…</div>`; React's fragments and components can't carry the Interactivity directives",
+                    );
+                }
+                self.islands.push(ctx.analysis);
+            }
             if let Slot::ActionHandler { action } = &root.slot
                 && let Some(Ty::Fn(_, ret)) = self.helper_types.get(&key)
             {
@@ -1358,6 +1409,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let v = self.return_value(e)?;
                 self.note_return(&v.ty, e.span)?;
                 let _ = writeln!(body, "    return {};", v.php);
+            }
+            FnBody::Block(stmts) if self.client.is_some() => {
+                let rewritten = Self::client_server_body(stmts, &self.client.as_ref().expect("client").analysis);
+                body.push_str(&self.block(&rewritten, 1)?);
+                self.note_fallthrough(&rewritten, f.span)?;
+                body.push_str("    return \\First\\Js::undefined();\n");
             }
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 1)?);
@@ -6317,7 +6374,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return err_help(
                     span,
                     format!("can't read `{prop}` of a value with unknown shape"),
-                    "give it a type, e.g. `json().$type<{ ... }>()`",
+                    "give it a type, e.g. `json<{ ... }>()`",
                 );
             }
             _ => return err(prop_span, format!("{} has no property `{prop}`", base.describe())),
@@ -6676,6 +6733,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         ExprKind::Str(text) => Some(text.as_str()),
                         _ => None,
                     };
+                    // In a client component, handlers and refs exist only in the browser: the
+                    // directives below carry them, and the server HTML has no attribute for them.
+                    let folded = name.to_ascii_lowercase();
+                    if self.client.is_some()
+                        && (name == "ref"
+                            || (folded.starts_with("on")
+                                && folded.len() > 2
+                                && literal.is_none()
+                                && !matches!(value.kind, ExprKind::Template(..))))
+                    {
+                        continue;
+                    }
+                    if self.client.is_some() && name.to_ascii_lowercase().starts_with("data-wp-") {
+                        return err_help(
+                            *span,
+                            format!("`{name}` is a directive First writes"),
+                            "use state, props and handlers; the compiler adds the directives",
+                        );
+                    }
                     self.jsx_attribute_rule(&folded_tag, name, literal, value, *span)?;
                     let v = self.expr(value)?;
                     let v = self.finish_value(v, value.span)?;
@@ -6738,6 +6814,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             }
         }
+        entries.extend(self.client_directives(jsx)?);
+        // A client element's dynamic text: `data-wp-text` on the element when it is the only
+        // child, otherwise a compiler `<span>` around it (generator B).
+        let mut client_children = None;
+        if self.client.is_some() && !RAW_TEXT_TAGS.contains(&folded_tag.as_str()) {
+            let alone = jsx.children.len() == 1;
+            let mut out = Vec::new();
+            for child in &jsx.children {
+                if let ExprKind::Str(text) = &child.kind {
+                    out.push(format!("\\First\\Html::raw({})", php_str(&jsx_escape(text))));
+                    continue;
+                }
+                let v = self.expr(child)?;
+                let v = self.finish_value(v, child.span)?;
+                self.jsx_child_type(&v.ty, child.span)?;
+                let (php, directive) = self.client_text(child, v.php, alone)?;
+                if let Some(r) = directive {
+                    entries.push(format!("'data-wp-text' => {}", php_str(&r)));
+                }
+                out.push(php);
+            }
+            client_children = Some(out);
+        }
         let attrs = if spread {
             // A later attribute replaces an earlier spread key, as object spread does.
             format!(
@@ -6766,14 +6865,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut args = vec![php_str(&output_tag), attrs];
         // A literal string child stays a string, so `Html::element` can apply React's rules that
         // depend on it (the doubled leading newline in `<pre>`).
-        match jsx.children.as_slice() {
-            [
-                Expr {
-                    kind: ExprKind::Str(text),
-                    ..
-                },
-            ] => args.push(php_str(text)),
-            children => args.extend(self.jsx_children(children)?),
+        match (jsx.children.as_slice(), client_children) {
+            (
+                [
+                    Expr {
+                        kind: ExprKind::Str(text),
+                        ..
+                    },
+                ],
+                _,
+            ) => args.push(php_str(text)),
+            (_, Some(children)) => args.extend(children),
+            (children, None) => args.extend(self.jsx_children(children)?),
         }
         Ok(Out::atom(
             format!("\\First\\Html::element({})", args.join(", ")),
@@ -9973,7 +10076,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             format!("globals.{name}"),
             m_span,
         );
-        // Typed like collection rows: `json().$type<T>()` fields read and write as T.
+        // Typed like collection rows: `json<T>()` fields read and write as T.
         let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
             ("get", []) => format!("\\First\\Seam::globalGet({})", php_str(name)),
@@ -10889,7 +10992,7 @@ fn same_type(a: &Ty, b: &Ty) -> bool {
     assignable(a, b) && assignable(b, a)
 }
 
-fn stmt_span(s: &Stmt) -> Span {
+pub fn stmt_span(s: &Stmt) -> Span {
     match s {
         Stmt::Decl { span, .. } | Stmt::Return(_, span) | Stmt::Break(_, span) | Stmt::Continue(_, span) => *span,
         Stmt::Expr(e) | Stmt::Throw(e) | Stmt::If(e, ..) | Stmt::While(e, _) | Stmt::DoWhile(_, e) => e.span,

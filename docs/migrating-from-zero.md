@@ -410,12 +410,12 @@ field becomes a column:
 
 | Original field | New column |
 | --- | --- |
-| `text` (`multiline`, `maxLength`) | `text()` with the same bound |
-| `number` | `real()` |
+| `text` (`multiline`, `maxLength`) | `text()` with the same bound; `.optional()` unless `required` |
+| `number` | `number()` |
 | `boolean` | `boolean()` |
 | `datetime` | `timestamp()` |
-| `enum` / `enum` + `multiple` | `select()` |
-| `media` / `media` + `multiple` | `media()` / `media({ multiple: true })` |
+| `enum` / `enum` + `multiple` | `select([...])` / `select([...]).many()` |
+| `media` / `media` + `multiple` | `media()` / `media().many()` |
 | `reference` to `projects` | `projectId: integer().references(...)` plus a `project` relation |
 
 Original Zero kept a deleted target's id in a reference. The new Zero doesn't

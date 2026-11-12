@@ -247,6 +247,12 @@ final class Plugin
         return $this->connection ??= new Connection($wpdb);
     }
 
+    /** A URL inside the app plugin's directory (its compiled client modules). */
+    public function url(string $path): string
+    {
+        return plugins_url($path, $this->mainFile);
+    }
+
     public function app(): App
     {
         if ($this->app === null) {

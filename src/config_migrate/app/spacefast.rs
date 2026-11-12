@@ -12,7 +12,7 @@ pub(super) fn posts(value: &Value, entries: &mut Vec<Entry>) -> Result<String, F
             return Err(fail(&pointer(at, key), "native posts option needs an explicit port"));
         }
     }
-    let mut title = "__z08Text().notNull()".to_string();
+    let mut title = "__z08Text()".to_string();
     if let Some(fields) = options.get("fields") {
         let fields = fields
             .as_object()
@@ -63,6 +63,6 @@ pub(super) fn posts(value: &Value, entries: &mut Vec<Entry>) -> Result<String, F
         ));
     }
     Ok(format!(
-        "const __z08Posts = __z08Collection({{title: {title}, content: __z08RichText()}}, {{title: \"title\", content: \"content\", access: {{read: {public}, create: false, update: false, delete: false}}}});\n"
+        "const __z08Posts = __z08Collection({{title: {title}, content: __z08RichText().optional()}}, {{title: \"title\", content: \"content\", access: {{read: {public}, create: false, update: false, delete: false}}}});\n"
     ))
 }

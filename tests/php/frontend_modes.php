@@ -46,7 +46,23 @@ function fetch(string $url, string $method = 'GET'): array
 $strip = static fn (?string $u): ?string => $u === null ? null : str_replace($url, '', $u);
 $got = static fn (string $path) => fetch($url . $path);
 $note1 = $got('/notes/hello-note/');
+// Who rendered a page: the block theme's template (First's default theme, `first-default`), or the
+// app router (its router region and module).
+$rendered = static function (array $r): array {
+    return [
+        'status' => $r['status'],
+        'theme' => str_contains($r['body'], 'wp-theme-first-default') && str_contains($r['body'], 'wp-block-template-part'),
+        'router' => str_contains($r['body'], 'data-wp-router-region') || str_contains($r['body'], 'first/Render/client/router.js'),
+    ];
+};
+$hello = $got('/hello-world/');
 $out = [
+    'home rendered' => $rendered($got('/')),
+    'note rendered' => $rendered($note1),
+    'post rendered' => $rendered($hello),
+    'post body' => str_contains($hello['body'], 'Welcome to WordPress'),
+    'missing rendered' => $rendered($got('/no-such-page/')),
+    'missing by wordpress' => str_contains($got('/no-such-page/')['body'], 'class="error404'),
     'note status' => $note1['status'],
     'note by theme' => str_contains($note1['body'], 'wp-block-post-title') || str_contains($note1['body'], 'Hello note'),
     'note by app' => str_contains($note1['body'], 'class="app-note"'),

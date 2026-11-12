@@ -52,7 +52,7 @@ declare const envBrand: unique symbol;
 export type ColumnKind =
   | "id"
   | "integer"
-  | "real"
+  | "number"
   | "text"
   | "boolean"
   | "date"
@@ -85,13 +85,13 @@ type GeneratedValue<TKind extends ColumnKind, TData> =
 // Which modifiers each kind allows (design §1.2). Enforced here through `this` parameters, and by
 // the compiler regardless ("`.max()` isn't valid on a boolean column").
 /** `.min/.max`: numeric bounds, string length in code points, or item count. */
-type BoundedKind = "integer" | "real" | "text" | "email" | "url" | "slug" | "richText" | "mediaList" | "select" | "repeater" | "blocks";
+type BoundedKind = "integer" | "number" | "text" | "email" | "url" | "slug" | "richText" | "mediaList" | "select" | "repeater" | "blocks";
 /** `.pattern`: strings only. */
 type PatternKind = "text" | "email" | "url" | "slug";
 /** `.unique()`. */
-type UniqueKind = "id" | "integer" | "real" | "text" | "email" | "url" | "slug" | "boolean" | "date" | "timestamp";
+type UniqueKind = "id" | "integer" | "number" | "text" | "email" | "url" | "slug" | "boolean" | "date" | "timestamp";
 /** `.references()`. */
-type ReferenceKind = "id" | "integer" | "real";
+type ReferenceKind = "id" | "integer" | "number";
 /** `.default()` and friends: every kind but media. */
 type DefaultKind = Exclude<ColumnKind, "media">;
 
@@ -116,10 +116,10 @@ export interface FieldUi {
  * A column definition inside `collection(...)`, `global(...)`, a structured field, or `action({ input })`.
  * Builders are immutable: each modifier returns a new builder.
  *
- * - `TData`       — the TS value type (enum union, `$type<T>()`, sub-field shapes, ...)
- * - `TNotNull`    — `.notNull()` / `.primaryKey()` / `id()`
- * - `THasDefault` — any default (`.default`, `.defaultNow`, `$default`, `$onUpdate`, `id()`)
- * - `TPrimary`    — `.primaryKey()` / `id()`: row ids (`translationOf`, `translations`) take its type
+ * - `TData`       — the TS value type (select union, `json<T>()`, sub-field shapes, ...)
+ * - `TNotNull`    — required: every field is, unless `.optional()`
+ * - `THasDefault` — any default (`.default`, `.defaultNow`, `$default`, `$onUpdate`): omittable on create
+ * - `TPrimary`    — only the implicit `id`: row ids (`translationOf`, `translations`) take its type
  */
 export interface ColumnBuilder<
   TKind extends ColumnKind = ColumnKind,
@@ -156,8 +156,14 @@ export interface ColumnBuilder<
     this: ColumnBuilder<"text" | "richText" | "json" | "select" | "group" | "repeater" | "blocks", TData, TNotNull, THasDefault, TLocalized, TPrimary>,
   ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, true, TPrimary>;
 
-  /** On a sub-field: required in every item. */
-  notNull(): ColumnBuilder<TKind, TData, true, THasDefault, TLocalized, TPrimary>;
+  /** The value may be null or left out. Fields are required otherwise. */
+  optional(): ColumnBuilder<TKind, TData, false, THasDefault, TLocalized, TPrimary>;
+  /** A list: any number of distinct `select()` options, or of `media()` ids. */
+  many(
+    this: ColumnBuilder<"text" | "media", TData, TNotNull, THasDefault, TLocalized, TPrimary>,
+  ): TKind extends "media"
+    ? ColumnBuilder<"mediaList", number[], TNotNull, THasDefault, TLocalized, TPrimary>
+    : ColumnBuilder<"select", TData[], TNotNull, THasDefault, TLocalized, TPrimary>;
   /** Declares a rename: this field was stored as `old`. The deploy renames the column and keeps its values. */
   was(old: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** SQL `DEFAULT value` (a constant; arrays/objects for list and structured columns). */
@@ -194,23 +200,12 @@ export interface ColumnBuilder<
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /** Unique text columns also need `.max(n)` with n ≤ 191 (MySQL index limit). Not allowed on sub-fields or globals. */
   unique(this: ColumnBuilder<UniqueKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
-  /** Primary key: implies NOT NULL; an integer primary key is auto-assigned. */
-  primaryKey(): ColumnBuilder<
-    TKind,
-    TData,
-    true,
-    TKind extends "integer" | "id" ? true : THasDefault,
-    TLocalized,
-    true
-  >;
   /** Foreign key. The target column's type must match this column's type. */
   references(
     this: ColumnBuilder<ReferenceKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     ref: () => Column<ColumnKind, NonNullable<TData>>,
     options?: ReferenceOptions,
   ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
-  /** Narrows the TS type only (no runtime effect), e.g. `json().$type<string[]>()`. */
-  $type<T>(): ColumnBuilder<TKind, T, TNotNull, THasDefault, TLocalized, TPrimary>;
 
   /** Numbers: inclusive lower bound. text/email/url/slug/richText: length in code points. repeater/mediaList/select(multiple)/blocks: item count. */
   min(this: ColumnBuilder<BoundedKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>, n: number): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
@@ -257,73 +252,60 @@ export interface Column<
 
 export type AnyColumn = Column<ColumnKind, unknown, boolean, boolean, string, string>;
 
-/** INTEGER PRIMARY KEY AUTOINCREMENT. */
-export declare function id(): ColumnBuilder<"id", number, true, true, false, true>;
-export declare function integer(): ColumnBuilder<"integer", number, false, false>;
-export declare function real(): ColumnBuilder<"real", number, false, false>;
+/** Every field is required unless `.optional()`; `.default()` or `.defaultNow()` make it omittable on create. */
+export declare function integer(): ColumnBuilder<"integer", number, true, false>;
+/** Any finite number (a double). */
+export declare function number(): ColumnBuilder<"number", number, true, false>;
 /** Single line by default; `multiline: true` is a textarea in editors. */
-export declare function text(config?: { multiline?: boolean }): ColumnBuilder<"text", string, false, false>;
-/** `text({ enum: ["a", "b"] })` types the column as `"a" | "b"`. */
-export declare function text<const TEnum extends readonly [string, ...string[]]>(config: {
-  enum: TEnum;
-  multiline?: boolean;
-}): ColumnBuilder<"text", TEnum[number], false, false>;
+export declare function text(config?: { multiline?: boolean }): ColumnBuilder<"text", string, true, false>;
 /** Stored as INTEGER 0/1. */
-export declare function boolean(): ColumnBuilder<"boolean", boolean, false, false>;
+export declare function boolean(): ColumnBuilder<"boolean", boolean, true, false>;
 /** TEXT `YYYY-MM-DD`. */
-export declare function date(): ColumnBuilder<"date", string, false, false>;
+export declare function date(): ColumnBuilder<"date", string, true, false>;
 /** TEXT, UTC ISO-8601 with milliseconds. */
-export declare function timestamp(): ColumnBuilder<"timestamp", string, false, false>;
-/** TEXT holding JSON; `unknown` until narrowed with `.$type<T>()`. */
-export declare function json(): ColumnBuilder<"json", unknown, false, false>;
+export declare function timestamp(): ColumnBuilder<"timestamp", string, true, false>;
+/** TEXT holding JSON of type `T`: `json<string[]>()`. */
+export declare function json<T = unknown>(): ColumnBuilder<"json", T, true, false>;
 
 /** An email address (validated). TEXT. */
-export declare function email(): ColumnBuilder<"email", string, false, false>;
+export declare function email(): ColumnBuilder<"email", string, true, false>;
 /** An absolute `http(s)://` URL (validated). TEXT. */
-export declare function url(): ColumnBuilder<"url", string, false, false>;
+export declare function url(): ColumnBuilder<"url", string, true, false>;
 /**
  * URL-safe identifier: `^[a-z0-9]+(?:-[a-z0-9]+)*$`, at most 200 characters, unique. With `source`
  * (a text column of the same collection), an omitted slug is derived from it ("-2", "-3" ... until
  * unique). At most one per collection; not allowed in sub-fields or globals.
  */
-export declare function slug(config?: { source?: undefined }): ColumnBuilder<"slug", string, false, false>;
-/** With `source`, an omitted slug is derived, so it is optional on insert even when `.notNull()`. */
-export declare function slug(config: { source: string }): ColumnBuilder<"slug", string, false, true>;
+export declare function slug(config?: { source?: undefined }): ColumnBuilder<"slug", string, true, false>;
+/** With `source`, an omitted slug is derived, so it may be left out on create. */
+export declare function slug(config: { source: string }): ColumnBuilder<"slug", string, true, true>;
 /** A private-file id in the named bucket. */
-export declare function file(config: { bucket: string }): ColumnBuilder<"file", number, false, false>;
+export declare function file(config: { bucket: string }): ColumnBuilder<"file", number, true, false>;
 
 /** HTML. On WordPress the `content`-designated richText is the block editor's post_content. */
-export declare function richText(): ColumnBuilder<"richText", string, false, false>;
-/** A media id (the built-in `media` collection). `with: { <col>: true }` populates it in place. */
-export declare function media(config?: { accept?: "image" | "any"; multiple?: false }): ColumnBuilder<"media", number, false, false>;
-/** A list of media ids. */
-export declare function media(config: { accept?: "image" | "any"; multiple: true }): ColumnBuilder<"mediaList", number[], false, false>;
-/** One of `options`: exactly `text({ enum: options })`. */
-export declare function select<const TOptions extends readonly [string, ...string[]]>(config: {
-  options: TOptions;
-  multiple?: false;
-}): ColumnBuilder<"text", TOptions[number], false, false>;
-/** Any number of distinct `options`, stored as a JSON array. Filter with `{ has: option }`. */
-export declare function select<const TOptions extends readonly [string, ...string[]]>(config: {
-  options: TOptions;
-  multiple: true;
-}): ColumnBuilder<"select", TOptions[number][], false, false>;
+export declare function richText(): ColumnBuilder<"richText", string, true, false>;
+/** A media id (the built-in `media` collection); `.many()` for a list. `with: { <col>: true }` populates it in place. */
+export declare function media(config?: { accept?: "image" | "any" }): ColumnBuilder<"media", number, true, false>;
+/** One of `options`; `.many()` for any number of them, stored as a JSON array and filtered with `{ has: option }`. */
+export declare function select<const TOptions extends readonly [string, ...string[]]>(
+  options: TOptions,
+): ColumnBuilder<"text", TOptions[number], true, false>;
 
 /**
  * Sub-fields of `group`/`repeater`/`blocks` layouts and globals. Builders are the column builders;
- * the compiler rejects id(), slug(), blocks(), .primaryKey(), .unique(), .references() and
- * .$onUpdate() inside them, and nesting deeper than 3.
+ * the compiler rejects slug(), blocks(), .unique(), .references() and .$onUpdate() inside them,
+ * and nesting deeper than 3.
  */
 export type FieldsConfig = Record<string, AnyColumnBuilder>;
 
 /** One object with fixed sub-fields (absent optional sub-fields read as null). */
-export declare function group<F extends FieldsConfig>(config: { fields: F }): ColumnBuilder<"group", SelectShape<F>, false, false, HasLocalized<F>>;
+export declare function group<F extends FieldsConfig>(fields: F): ColumnBuilder<"group", SelectShape<F>, true, false, HasLocalized<F>>;
 /** A list of objects with the same sub-fields. `.min/.max` count items. */
-export declare function repeater<F extends FieldsConfig>(config: { fields: F }): ColumnBuilder<"repeater", SelectShape<F>[], false, false, HasLocalized<F>>;
-/** Flexible content: a list of items, each `{ layout, ...that layout's fields }`. */
-export declare function blocks<L extends Record<string, FieldsConfig>>(config: {
-  layouts: L;
-}): ColumnBuilder<"blocks", BlockValue<L>[], false, false, HasLocalized<L[keyof L]>>;
+export declare function repeater<F extends FieldsConfig>(fields: F): ColumnBuilder<"repeater", SelectShape<F>[], true, false, HasLocalized<F>>;
+/** Flexible content: a list of items, each `{ layout, ...that layout's fields }`, one entry per layout. */
+export declare function blocks<L extends Record<string, FieldsConfig>>(
+  layouts: L,
+): ColumnBuilder<"blocks", BlockValue<L>[], true, false, HasLocalized<L[keyof L]>>;
 
 /** One `blocks()` item: discriminated by `layout`. */
 export type BlockValue<L extends Record<string, FieldsConfig>> = {
@@ -505,12 +487,12 @@ type TranslationInsert<TCols> =
         InsertShape<Pick<TCols, PerRowKeys<TCols>>> &
         Partial<InsertShape<Omit<TCols, LocalizedKeys<TCols> | PerRowKeys<TCols> | "locale" | "translations">>> & { translationOf: RowId<TCols> }
     >;
-/** The primary key column of `TCols` (`id()` or `.primaryKey()`, whatever its name). */
+/** The primary key column of `TCols`: the implicit `id`. */
 type PrimaryKeyOf<TCols> = {
   [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { primaryKey: true } } ? K : never;
 }[keyof TCols];
 /**
- * The row id type of a collection: its primary key's (a number for `id()`). A builder annotated without
+ * The row id type of a collection: its primary key's (a number for the implicit `id`). A builder annotated without
  * the primary-key flag hides which column it is, so then an `id` column's type, else number; `unknown`
  * for an unknown collection.
  */
@@ -530,7 +512,7 @@ type IdentityColumns<TUid extends boolean, TSync extends string | undefined> = T
   : TSync extends string ? { uid: ColumnBuilder<"text", string, true, true> } : {};
 type TranslatedColumns<TCols> = HasLocalized<TCols> extends true ? LocaleColumns<TCols> : {};
 
-/** `id: id()` is supplied unless a primary key (or an explicit id) is authored. */
+/** The implicit integer `id` every kind has. */
 type WithId<TCols extends ColumnsConfig> = [PrimaryKeyOf<TCols>] extends [never]
   ? "id" extends keyof TCols ? TCols : TCols & { id: ColumnBuilder<"id", number, true, true, false, true> }
   : TCols;
@@ -1084,7 +1066,7 @@ export type AnyGlobal = Global<string, FieldsConfig>;
 
 /**
  * Defines a global. Fields use the column builders with the sub-field restrictions, and no
- * `.unique()`/`id()`/`slug()`/`blocks()`; NOT NULL fields need a default. Default access:
+ * `.unique()`/`slug()`/`blocks()`; a required field needs a default. Default access:
  * `read: "anyone"`, `update: "editor"`.
  */
 export declare function global<const TName extends string, TFields extends FieldsConfig>(

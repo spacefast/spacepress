@@ -51,9 +51,9 @@ test('TSX pages serve a full site from native WordPress with viewer-bound data',
   }
   const config = join(project, 'first.config.ts');
   await writeFile(config, (await readFile(config, 'utf8'))
-    .replace('title: text().notNull().min(1).max(120),', 'title: text().notNull().min(1).max(120),\n  kind: text(),\n  then: text(),')
-    .replace('body: richText(),', 'body: richText().access({ read: (ctx) => ctx.user?.role === "admin" || ctx.data.slug !== "masked-body" }),')
-    .replace('count: integer().notNull().default(0),', 'count: integer().notNull().default(0),\n  label: text().notNull().default(""),'));
+    .replace('title: text().min(1).max(120),', 'title: text().min(1).max(120),\n  kind: text().optional(),\n  then: text().optional(),')
+    .replace('body: richText().optional(),', 'body: richText().optional().access({ read: (ctx) => ctx.user?.role === "admin" || ctx.data.slug !== "masked-body" }),')
+    .replace('count: integer().default(0),', 'count: integer().default(0),\n  label: text().default(""),'));
   const detailSource = join(project, 'pages/notes/[slug]/page.tsx');
   await writeFile(detailSource, (await readFile(detailSource, 'utf8'))
     .replace('return { cheers };', 'const fallbackNote = content.query.notes.findFirst({ where: { dek: orElse(item.dek, "Fallback query sentinel") } });\n  return { cheers, fallbackNote, then: item.then };')

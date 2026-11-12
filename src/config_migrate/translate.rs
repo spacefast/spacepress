@@ -133,7 +133,7 @@ pub(super) fn config(input: Value, source: Source, report: &mut Vec<Entry>) -> R
     }
     let mut names = HashSet::new();
     let mut code = String::from(
-        "import { collection, table, defineConfig, defineRelations, text, integer, real, boolean, timestamp, url, email, json, select, media, type Column, type ColumnKind } from \"first\";\n\n",
+        "import { collection, table, defineConfig, defineRelations, text, integer, number, boolean, timestamp, url, email, json, select, media, type Column, type ColumnKind } from \"first\";\n\n",
     );
     let mut content = Vec::new();
     let mut tables = Vec::new();
@@ -345,7 +345,7 @@ fn collection(
         if names.contains("createdAt") || names.contains("updatedAt") {
             return Err(fail(at, "timestamp fields collide with Payload automatic timestamps"));
         }
-        fields.push_str("  createdAt: timestamp().notNull().defaultNow(),\n  updatedAt: timestamp().notNull().defaultNow().$onUpdate(() => new Date()),\n");
+        fields.push_str("  createdAt: timestamp().defaultNow(),\n  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()),\n");
         report.push(entry(
             &pointer(at, "timestamps"),
             "mapped",
@@ -393,11 +393,11 @@ fn reference(
     ident(&column, at)?;
     let mut builder = if required {
         format!(
-            "integer().notNull().references((): Column<ColumnKind, number> => imported{target}.id, {{ onDelete: \"restrict\" }})"
+            "integer().references((): Column<ColumnKind, number> => imported{target}.id, {{ onDelete: \"restrict\" }})"
         )
     } else {
         format!(
-            "integer().references((): Column<ColumnKind, number> => imported{target}.id, {{ onDelete: \"set null\" }})"
+            "integer().optional().references((): Column<ColumnKind, number> => imported{target}.id, {{ onDelete: \"set null\" }})"
         )
     };
     if let Some(label) = o.get("label") {
@@ -490,7 +490,7 @@ fn field(
         }
         "number" | "integer" => {
             allowed.extend(["min", "max"]);
-            if kind == "integer" { "integer()" } else { "real()" }.into()
+            if kind == "integer" { "integer()" } else { "number()" }.into()
         }
         "boolean" | "checkbox" => "boolean()".into(),
         "datetime" | "date" => "timestamp()".into(),
@@ -501,7 +501,7 @@ fn field(
         "media" if matches!(source, Source::Zero) => {
             allowed.push("multiple");
             if boolean(o, "multiple", at)?.unwrap_or(false) {
-                "media({ multiple: true })"
+                "media().many()"
             } else {
                 "media()"
             }
@@ -547,7 +547,6 @@ fn field(
             .flatten()
             .unwrap_or(false);
     if required {
-        builder.push_str(".notNull()");
         if (matches!(source, Source::Payload)
             && (matches!(kind, "text" | "textarea")
                 || (kind == "select" && boolean(o, "hasMany", at)?.unwrap_or(false))))
@@ -713,6 +712,9 @@ fn field(
     if !ui.is_empty() {
         builder.push_str(&format!(".ui({})", Value::Object(ui)));
     }
+    if !required {
+        builder.push_str(".optional()");
+    }
     report.push(entry(at, "mapped", format!("{kind} -> {builder}")));
     Ok((builder, required && matches!(kind, "string" | "text" | "textarea")))
 }
@@ -735,7 +737,8 @@ fn select(values: &[Value], multiple: bool, at: &str) -> Result<String, Failure>
         return Err(fail(at, "select options cannot be empty"));
     }
     Ok(format!(
-        "select({{ options: {}, multiple: {multiple} }})",
-        serde_json::to_string(&out).expect("options JSON")
+        "select({}){}",
+        serde_json::to_string(&out).expect("options JSON"),
+        if multiple { ".many()" } else { "" }
     ))
 }

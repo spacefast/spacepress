@@ -4,7 +4,7 @@ export const config = defineConfig({
   name: "fns",
   actions: {
     note: action({
-      input: { title: text().notNull() },
+      input: { title: text() },
       access: "anyone",
       handler(input) {
         if (!current_user_can("edit_posts")) return { allowed: false };

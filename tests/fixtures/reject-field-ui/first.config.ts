@@ -1,3 +1,3 @@
-import { collection, id, text, defineConfig } from "first";
-const notes = collection({ id: id(), title: text().ui({ width: 101 }) }, { title: "title" });
+import { collection, text, defineConfig } from "first";
+const notes = collection({ title: text().ui({ width: 101 }).optional() }, { title: "title" });
 export default defineConfig({ collections: { notes } });

@@ -1,8 +1,7 @@
 # The authoring surface: rulings for the cutover
 
-Date: 2026-11-11. Decided for the First authoring lane (a design subagent, Fable 5.2, at medium
-effort) where `docs/spec/spec.md` (2026-11-08, third revision) leaves a choice open or contradicts
-itself. Later owner or coordinator rulings override these. Each PR in the cutover cites the rulings it
+Date: 2026-11-11. Where `docs/spec/spec.md` (2026-11-08, third revision) leaves a choice open or
+contradicts itself, these are the choices the cutover makes. Later owner or coordinator rulings override these. Each PR in the cutover cites the rulings it
 implements.
 
 Owner and coordinator rulings already in force: kind `label` stays as the one named override for the

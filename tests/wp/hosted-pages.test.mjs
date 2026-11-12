@@ -102,7 +102,7 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
   const applause = await http('/applause');
   assert.equal(applause.status, 200, applause.text);
   assert.match(applause.text, /<title>Applause · Field Notes<\/title>/);
-  assert.match(applause.text, /data-wp-interactive="clients\/CheerButton"/);
+  assert.match(applause.text, /data-wp-interactive="fullsite\/CheerButton"/);
   assert.doesNotMatch(applause.text, /Hidden draft/, 'the page reads as the visitor');
   const clientBrowser = await chromium.launch({ executablePath: chromiumPath() });
   try {

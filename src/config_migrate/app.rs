@@ -58,7 +58,7 @@ pub struct Report {
 }
 
 #[cfg(feature = "cli")]
-const USAGE: &str = "usage: first migrate app --from zero-0.8 [--manifest <finalize.json>] [<capsule-dir>] --out <new-dir> [--space <space-id> | --fresh] [--users] [--dry-run] [--json]";
+const USAGE: &str = "usage: first migrate app --from zero-0.8 [--manifest <finalize.json>] [<capsule-dir>] --out <new-dir> [--space <space-id> | --fresh] [--users] [--zero-css <zero.css>] [--dry-run] [--json]";
 
 #[cfg(feature = "cli")]
 struct Args {
@@ -69,6 +69,7 @@ struct Args {
     fresh: bool,
     dry_run: bool,
     users: bool,
+    zero_css: Option<PathBuf>,
 }
 
 #[cfg(feature = "cli")]
@@ -81,6 +82,7 @@ fn args(raw: &[String]) -> Result<Args, String> {
     let mut dry_run = false;
     let mut fresh = false;
     let mut users = false;
+    let mut zero_css = None;
     let mut json = false;
     let mut it = raw.iter();
     while let Some(arg) = it.next() {
@@ -90,6 +92,7 @@ fn args(raw: &[String]) -> Result<Args, String> {
             "--out" if out.is_none() => out = Some(PathBuf::from(it.next().ok_or(USAGE)?)),
             "--space" if space.is_none() => space = Some(it.next().ok_or(USAGE)?.clone()),
             "--users" if !users => users = true,
+            "--zero-css" if zero_css.is_none() => zero_css = Some(PathBuf::from(it.next().ok_or(USAGE)?)),
             "--fresh" if !fresh => fresh = true,
             "--dry-run" if !dry_run => dry_run = true,
             "--json" if !json => json = true,
@@ -117,6 +120,7 @@ fn args(raw: &[String]) -> Result<Args, String> {
         fresh,
         dry_run,
         users,
+        zero_css,
     })
 }
 
@@ -129,12 +133,23 @@ pub(crate) fn cli(raw: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    let zero_css = match args.zero_css.as_deref().map(std::fs::read_to_string).transpose() {
+        Ok(css) => css,
+        Err(e) => {
+            eprintln!("cannot read --zero-css: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let inputs = Inputs {
+        users: args.users,
+        zero_css,
+    };
     let mut candidate = match &args.manifest {
         None => migrate(
             Rc::new(loader::Disk),
             args.input.as_deref().expect("input"),
             Tables::from(args.space.as_deref(), args.fresh),
-            args.users,
+            inputs,
         ),
         Some(path) => match std::fs::read_to_string(path) {
             Ok(text) => migrate_manifest(
@@ -142,7 +157,7 @@ pub(crate) fn cli(raw: &[String]) -> ExitCode {
                 &text,
                 args.input.as_deref(),
                 Tables::from(args.space.as_deref(), args.fresh),
-                args.users,
+                inputs,
             ),
             Err(e) => Candidate::refused(fail("", format!("cannot read finalize manifest: {e}"))),
         },
@@ -175,6 +190,16 @@ pub(crate) fn cli(raw: &[String]) -> ExitCode {
     } else {
         ExitCode::from(1)
     }
+}
+
+/// What the caller knows about the published 0.8 app beyond its source tree.
+#[derive(Default)]
+pub struct Inputs {
+    /// The Space used Space Users: `ctx.auth.userId` maps to each member's copied subject.
+    pub users: bool,
+    /// The `zero.css` 0.8 compiled for this source (its Tailwind utilities, theme and baseline).
+    /// A converted client app links it as 0.8's shell did; without it the app is refused.
+    pub zero_css: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -222,7 +247,13 @@ impl Report {
 /// the original files must match the manifest's hashes and then convert as a source run does.
 /// Without it, the manifest's own refusals are reported, and the app is refused at `/source`:
 /// bundled endpoint JavaScript has no types, so it cannot become authored TypeScript.
-pub fn migrate_manifest(fs: Rc<dyn Fs>, text: &str, source: Option<&Path>, tables: Tables, users: bool) -> Candidate {
+pub fn migrate_manifest(
+    fs: Rc<dyn Fs>,
+    text: &str,
+    source: Option<&Path>,
+    tables: Tables,
+    mut inputs: Inputs,
+) -> Candidate {
     let manifest = match manifest::parse(text) {
         Ok(m) => m,
         Err(e) => return Candidate::refused(e),
@@ -275,7 +306,11 @@ pub fn migrate_manifest(fs: Rc<dyn Fs>, text: &str, source: Option<&Path>, table
             ),
         ));
     }
-    let mut candidate = migrate(memory, &published, tables, users);
+    // The published version's own zero.css, when the payload kept its bytes.
+    if inputs.zero_css.is_none() {
+        inputs.zero_css = manifest.zero_css();
+    }
+    let mut candidate = migrate(memory, &published, tables, inputs);
     // The manifest records the capsule's source, not the static files served beside it.
     let recorded = verified.keys().cloned().collect();
     let mut unverified = vec![];
@@ -290,7 +325,7 @@ pub fn migrate_manifest(fs: Rc<dyn Fs>, text: &str, source: Option<&Path>, table
     candidate
 }
 
-pub fn migrate(fs: Rc<dyn Fs>, input: &Path, tables: Tables, users: bool) -> Candidate {
+pub fn migrate(fs: Rc<dyn Fs>, input: &Path, tables: Tables, inputs: Inputs) -> Candidate {
     let mut report = Report {
         version: 1,
         source: "zero-0.8",
@@ -306,7 +341,7 @@ pub fn migrate(fs: Rc<dyn Fs>, input: &Path, tables: Tables, users: bool) -> Can
         connector_roles: serde_json::json!({}),
     };
     let mut files = BTreeMap::new();
-    if let Err(e) = convert(fs, input, tables, users, &mut report, &mut files) {
+    if let Err(e) = convert(fs, input, tables, inputs, &mut report, &mut files) {
         report.errors.push(e);
     }
     if !report.errors.is_empty() {
@@ -325,7 +360,7 @@ fn convert(
     fs: Rc<dyn Fs>,
     input: &Path,
     tables: Tables,
-    users: bool,
+    inputs: Inputs,
     report: &mut Report,
     files: &mut BTreeMap<String, String>,
 ) -> Result<(), Failure> {
@@ -351,7 +386,7 @@ fn convert(
             .get(&entry)
             .ok_or_else(|| fail("", "entry source must resolve to server/index.ts inside the capsule"))?,
         tables,
-        users,
+        inputs.users,
         fs.is_dir(&root.join("content/posts")),
         &mut report.entries,
         &mut report.errors,
@@ -373,8 +408,11 @@ fn convert(
                 &*fs,
                 &root,
                 file,
-                &transformed.title,
-                &transformed.handlers,
+                client::App {
+                    title: &transformed.title,
+                    zero_css: inputs.zero_css.as_deref(),
+                    handlers: &transformed.handlers,
+                },
                 &mut report.entries,
                 &mut report.errors,
             )

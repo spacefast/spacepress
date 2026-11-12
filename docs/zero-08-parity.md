@@ -75,10 +75,10 @@ Refusal reasons with at least 10 Spaces (Spaces with at least one error for the 
 Not recoverable, by what is missing (without / with `--users`): page body 218 / 301, bundle shape
 135 / 160, client app body 53 / 70, erased parameter types 25 / 28, stored payload only 3 / 3.
 
-**After the migration-gap PRs.** The same export, with one binary built from `origin/main`
-`55cc00b4` plus the open converter changes (writing GET endpoints that never read the visitor,
-`sf.jsonc` crons at a converted GET path, profile fields under Space Users, `ctx.gravatar`, and the
-per-service refusal reasons). Counts are Spaces whose report carries each converter code
+**After the migration-gap changes.** The same export, with one binary built from `origin/main`
+`55cc00b4` plus the converter changes that have since merged (writing GET endpoints that never
+read the visitor, #274; `sf.jsonc` crons at a converted GET path, #278; profile fields under Space
+Users, #275; `ctx.gravatar`, #279) and this page's per-service refusal reasons. Counts are Spaces whose report carries each converter code
 (`scripts/census-08/census.mjs` `codes`):
 
 | | Without `--users`, before → after | With `--users`, before → after |

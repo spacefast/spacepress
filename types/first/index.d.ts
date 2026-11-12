@@ -70,13 +70,6 @@ export type ColumnKind =
   | "repeater"
   | "blocks";
 
-export type ReferentialAction = "cascade" | "restrict" | "set null" | "no action";
-
-export interface ReferenceOptions {
-  onDelete?: ReferentialAction;
-  onUpdate?: ReferentialAction;
-}
-
 /** Values a `$onUpdate`/`$default` function may return: `Date` is accepted on time columns. */
 type GeneratedValue<TKind extends ColumnKind, TData> =
   | TData
@@ -90,8 +83,6 @@ type BoundedKind = "integer" | "number" | "text" | "email" | "url" | "slug" | "r
 type PatternKind = "text" | "email" | "url" | "slug";
 /** `.unique()`. */
 type UniqueKind = "id" | "integer" | "number" | "text" | "email" | "url" | "slug" | "boolean" | "date" | "timestamp";
-/** `.references()`. */
-type ReferenceKind = "id" | "integer" | "number";
 /** `.default()` and friends: every kind but media. */
 type DefaultKind = Exclude<ColumnKind, "media">;
 
@@ -558,12 +549,6 @@ export type Schema = Record<string, AnyCollection>;
 // 4. Relations
 // ---------------------------------------------------------------------------
 
-/** `r.<collectionKey>.<column>` inside `defineRelations`. */
-export interface RelationColumn<TKey extends string = string> {
-  readonly [relationBrand]: { collection: TKey };
-}
-
-type RelationColumns = RelationColumn | readonly [RelationColumn, ...RelationColumn[]];
 
 export interface One<TTarget extends string = string, TOptional extends boolean = boolean> {
   readonly [relationBrand]: { kind: "one"; target: TTarget; optional: TOptional };
@@ -575,44 +560,13 @@ export interface Many<TTarget extends string = string> {
 
 export type AnyRelation = One | Many;
 
-export interface OneConfig {
-  from: RelationColumns;
-  to: RelationColumns;
-  /** `false` when the related row always exists; the result then isn't nullable. Default `true`. */
-  optional?: boolean;
-}
 
-export interface ManyConfig {
-  from: RelationColumns;
-  to: RelationColumns;
-}
-
-/** Overloads (not a generic) so `optional` isn't inferred from the contextual return type. */
-export interface OneFn<TTarget extends string> {
-  (config: OneConfig & { optional: false }): One<TTarget, false>;
-  (config: OneConfig & { optional?: true }): One<TTarget, true>;
-  (config: OneConfig): One<TTarget, boolean>;
-}
-
-export interface ManyFn<TTarget extends string> {
-  /** With no config, inferred from the single `one` relation pointing back. */
-  (config?: ManyConfig): Many<TTarget>;
-}
-
-export type RelationsBuilder<TSchema extends Schema> = {
-  readonly [K in keyof TSchema & string]: {
-    readonly [C in keyof ColumnsOf<TSchema[K]>]: RelationColumn<K>;
-  };
-} & {
-  readonly one: { readonly [K in keyof TSchema & string]: OneFn<K> };
-  readonly many: { readonly [K in keyof TSchema & string]: ManyFn<K> };
-};
 
 export type RelationsConfig<TSchema extends Schema> = {
   [K in keyof TSchema]?: Record<string, AnyRelation>;
 };
 
-/** Result of `defineRelations`. */
+/** The kinds and their relations, as `first build` registers them in first/_generated/db.d.ts. */
 export interface Relations<
   TSchema extends Schema = Schema,
   TConfig extends RelationsConfig<TSchema> = RelationsConfig<TSchema>,
@@ -620,13 +574,6 @@ export interface Relations<
   readonly [relationsBrand]: { schema: TSchema; config: TConfig };
 }
 
-export declare function defineRelations<TSchema extends Schema>(
-  schema: TSchema,
-): Relations<TSchema, {}>;
-export declare function defineRelations<
-  TSchema extends Schema,
-  TConfig extends RelationsConfig<TSchema>,
->(schema: TSchema, relations: (r: RelationsBuilder<TSchema>) => TConfig): Relations<TSchema, TConfig>;
 
 /** Relations declared for collection `K` (empty when none). */
 type RelationsOf<TRels, K> = K extends keyof TRels

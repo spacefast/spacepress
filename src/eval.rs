@@ -4024,47 +4024,6 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
                 }
             }
         }
-        "references" => {
-            let f = closure_arg()?;
-            let (mut on_delete, mut on_update) = (None, None);
-            match arg(1) {
-                Value::Undef => {}
-                Value::Object(o) => {
-                    for (k, v) in o.borrow().iter() {
-                        let action = match v {
-                            Value::Str(s) => match &**s {
-                                "cascade" => RefAction::Cascade,
-                                "restrict" => RefAction::Restrict,
-                                "set null" => RefAction::SetNull,
-                                "no action" => RefAction::NoAction,
-                                other => {
-                                    return err_help(
-                                        span,
-                                        format!("unknown reference action \"{other}\""),
-                                        "use \"cascade\", \"restrict\", \"set null\", or \"no action\"",
-                                    );
-                                }
-                            },
-                            other => {
-                                return err(span, format!("reference actions are strings, not {}", other.describe()));
-                            }
-                        };
-                        match k.as_str() {
-                            "onDelete" => on_delete = Some(action),
-                            "onUpdate" => on_update = Some(action),
-                            other => return err(span, format!("references() has no option `{other}`")),
-                        }
-                    }
-                }
-                other => {
-                    return err(
-                        span,
-                        format!("references() options must be an object, not {}", other.describe()),
-                    );
-                }
-            }
-            c.references = Some((RefTarget::Column(f), on_delete, on_update, span));
-        }
         _ => {
             let mut d = Diag::new(span, format!("columns have no method `{m}`"));
             if let Some(s) = suggest(m, MODIFIERS.iter().copied()) {
@@ -4103,8 +4062,8 @@ const MODIFIERS: &[&str] = &[
 fn removed_modifier(m: &str) -> Option<(&'static str, &'static str)> {
     Some(match m {
         "references" => (
-            "`.references()` is gone: a reference is a `ref()` field",
-            "write `locationId: ref(locations)`; `.onDelete(\"cascade\" | \"restrict\" | \"setNull\")` sets the delete action",
+            "`.references()` is gone: a reference is a `ref()` field, which refers to the target's `id`",
+            "write `locationId: ref(locations)`, with `.onDelete(\"cascade\" | \"restrict\" | \"setNull\")` for the delete action; a reference to another column isn't supported, so keep that value as a plain field",
         ),
         "notNull" => (
             "`.notNull()` is gone: fields are required by default",
@@ -4990,7 +4949,7 @@ mod legacy {
         let mut c = (**c).clone();
         match m {
             "notNull" => c.optional = false,
-            "references" => return column_method(&Rc::new(c), m, args, span),
+            "references" => return references(&Rc::new(c), args, span),
             "primaryKey" => {
                 c.primary_key = true;
                 c.optional = false;
@@ -4999,6 +4958,57 @@ mod legacy {
             // `$type<T>()` is a call with a type argument, handled where calls are evaluated.
             _ => return err(span, format!("`.{m}()` isn't valid here")),
         }
+        Ok(Value::Column(Rc::new(c)))
+    }
+
+    pub fn references(c: &Rc<ColBuilder>, args: &[Value], span: Span) -> R<Value> {
+        let mut c = (**c).clone();
+        let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
+        let Value::Closure(f) = arg(0) else {
+            return err(
+                span,
+                format!("`references` needs a function, not {}", arg(0).describe()),
+            );
+        };
+        let (mut on_delete, mut on_update) = (None, None);
+        match arg(1) {
+            Value::Undef => {}
+            Value::Object(o) => {
+                for (k, v) in o.borrow().iter() {
+                    let action = match v {
+                        Value::Str(s) => match &**s {
+                            "cascade" => RefAction::Cascade,
+                            "restrict" => RefAction::Restrict,
+                            "set null" => RefAction::SetNull,
+                            "no action" => RefAction::NoAction,
+                            other => {
+                                return err_help(
+                                    span,
+                                    format!("unknown reference action \"{other}\""),
+                                    "use \"cascade\", \"restrict\", \"set null\", or \"no action\"",
+                                );
+                            }
+                        },
+                        other => {
+                            return err(span, format!("reference actions are strings, not {}", other.describe()));
+                        }
+                    };
+                    match k.as_str() {
+                        "onDelete" => on_delete = Some(action),
+                        "onUpdate" => on_update = Some(action),
+                        other => return err(span, format!("references() has no option `{other}`")),
+                    }
+                }
+            }
+            other => {
+                return err(
+                    span,
+                    format!("references() options must be an object, not {}", other.describe()),
+                );
+            }
+        }
+        c.references = Some((RefTarget::Column(f), on_delete, on_update, span));
+        c.mods.push(("references", span));
         Ok(Value::Column(Rc::new(c)))
     }
 

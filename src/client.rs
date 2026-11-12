@@ -609,7 +609,12 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     let mut filter: Vec<String> = columns()
         .filter(|col| !col.derived)
         .map(|col| match c.relations.get(&col.name) {
-            Some(r) => format!("{}?: {} | {}Filter", key(&col.name), filter_ts(col), names[&r.collection]),
+            Some(r) => format!(
+                "{}?: {} | {}Filter",
+                key(&col.name),
+                filter_ts(col),
+                names[&r.collection]
+            ),
             None => format!("{}?: {}", key(&col.name), filter_ts(col)),
         })
         .collect();

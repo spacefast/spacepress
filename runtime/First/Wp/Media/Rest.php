@@ -21,6 +21,36 @@ final class Rest
     {
         add_filter('rest_dispatch_request', [self::class, 'dispatch'], 10, 4);
         add_action('rest_api_init', [self::class, 'fields']);
+        // Media reads follow First's media rule (Access::MEDIA, `anyone` reads), not the parent post's
+        // visibility: core hides an attachment of a draft. For the API's dispatches only.
+        add_filter('rest_endpoints', [self::class, 'endpoints']);
+    }
+
+    /** rest_endpoints: the media item read's permission is First's media read rule on the API's dispatches. */
+    public static function endpoints(array $endpoints): array
+    {
+        foreach ($endpoints['/wp/v2/media/(?P<id>[\d]+)'] ?? [] as $i => $handler) {
+            if (!is_array($handler) || !isset($handler['permission_callback']) || !str_contains((string) ($handler['methods'] ?? ''), 'GET')
+                && !(is_array($handler['methods'] ?? null) && isset($handler['methods']['GET']))) {
+                continue;
+            }
+            $core = $handler['permission_callback'];
+            $endpoints['/wp/v2/media/(?P<id>[\d]+)'][$i]['permission_callback'] = static function (\WP_REST_Request $request) use ($core): mixed {
+                $post = get_post((int) $request['id']);
+                if (!\First\Wp\Facade::dispatching() || !$post instanceof \WP_Post || $post->post_type !== 'attachment') {
+                    return call_user_func($core, $request);
+                }
+                try {
+                    Access::require(Access::MEDIA['read'], new Viewer(WpAuth::current()), 'read', null, 'read media');
+                } catch (HttpError $e) {
+                    return CoreAccess::error($e);
+                }
+
+                return true;
+            };
+        }
+
+        return $endpoints;
     }
 
     /**

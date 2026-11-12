@@ -542,7 +542,7 @@ pub fn export(name: &str) -> Option<&'static str> {
 /// `first/_generated/routes.d.ts`: every page and handler route, so `<Link href>` and `PageProps<…>`
 /// are checked against the app's own URLs. Each route's `path` is a template literal type: a
 /// `[slug]` folder is any segment, a catch-all any rest of the path.
-pub fn routes_d_ts(table: &Table) -> Option<String> {
+pub fn routes_d_ts(table: &Table, kinds: &[(String, String)]) -> Option<String> {
     if table.routes.is_empty() {
         return None;
     }
@@ -576,13 +576,44 @@ pub fn routes_d_ts(table: &Table) -> Option<String> {
             path.push('/');
         }
         let id = serde_json::to_string(&route.id()).expect("JSON string");
+        // A page serving a kind's URL also gets that kind's item (spec §2.7).
+        let item = match kinds
+            .iter()
+            .find(|(_, url)| route.kind == RouteKind::Page && serves_kind_url(route, url).is_some())
+        {
+            Some((kind, _)) => format!(
+                "; item: import(\"first\").RegisteredKinds extends {{ {kind}: {{ $inferSelect: infer R }} }} ? R : Record<string, unknown>"
+            ),
+            None => String::new(),
+        };
         out.push_str(&format!(
-            "    {id}: {{ path: `{path}`; params: {{ {} }} }};\n",
+            "    {id}: {{ path: `{path}`; params: {{ {} }}{item} }};\n",
             params.join("; ")
         ));
     }
     out.push_str("  }\n}\n");
     Some(out)
+}
+
+/// Whether a page's folders serve a kind's `url` pattern (spec §2.7: "an app/ route whose path
+/// matches the pattern renders with First"): the same literals in the same places, a `[x]` folder
+/// for each placeholder, and `[...x]` for `:path`. Returns the folder parameter for each pattern
+/// placeholder, in order.
+pub fn serves_kind_url(route: &Route, pattern: &str) -> Option<Vec<(String, String)>> {
+    let parts: Vec<&str> = pattern.trim_matches('/').split('/').collect();
+    if parts.len() != route.segments.len() {
+        return None;
+    }
+    let mut bound = Vec::new();
+    for (part, segment) in parts.iter().zip(&route.segments) {
+        match (part.strip_prefix(':'), segment) {
+            (None, Segment::Literal(l)) if l == part => {}
+            (Some("path"), Segment::CatchAll(p)) => bound.push(("path".to_string(), p.clone())),
+            (Some(field), Segment::Param(p)) if field != "path" => bound.push((field.to_string(), p.clone())),
+            _ => return None,
+        }
+    }
+    Some(bound)
 }
 
 /// The parameters a route file's folders bind, outermost first: (name, catch-all).

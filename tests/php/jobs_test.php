@@ -351,4 +351,45 @@ try {
     \First\Jobs\Outbox::useQueue($originalQueue);
 }
 
+// ---- `jobs tick`: the host worker's one bounded pass ---------------------------------------------------------------
+// Every job is due; the outbox holds tickets; a stuck runner and an expired receipt wait. A tick does at
+// most `limit` units of each kind and says whether work remains; the next one finishes it.
+putenv('FIRST_NOW=' . $at(8 * 86400));
+$wp->exec('DELETE FROM {prefix}first__jobs');
+$wp->exec('DELETE FROM {prefix}first__outbox');
+$wp->exec("UPDATE {prefix}actionscheduler_actions SET `status` = 'canceled' WHERE `status` = 'pending'");
+$tickId = static fn (int $n): string => sprintf('20000000-0000-4000-8000-%012d', $n);
+for ($n = 1; $n <= 9; $n++) {
+    $wp->exec('INSERT INTO {prefix}first__jobs (`id`, `job`, `input`, `state`, `attempts`, `runAt`, `createdAt`) VALUES (?, ?, ?, ?, 0, ?, ?)',
+        [$tickId($n), 'notify', json_encode(['postId' => $pid, 'note' => $n === 9 ? 'fail' : null]), 'pending', $at(8 * 86400 - 60 + $n), $at(8 * 86400 - 60 + $n)]);
+}
+$wp->exec('INSERT INTO {prefix}first__outbox VALUES (?, ?, ?, NULL, ?, ?)', [$tickId(1), 'notify', json_encode(['postId' => $pid]), $at(8 * 86400 - 59), $at(8 * 86400 - 59)]);
+$wp->exec('INSERT INTO {prefix}first__jobs (`id`, `job`, `input`, `state`, `attempts`, `runAt`, `lockedAt`, `createdAt`) VALUES (?, ?, ?, ?, 1, ?, ?, ?)',
+    [$tickId(10), 'notify', json_encode(['postId' => $pid]), 'running', $at(0), $at(8 * 86400 - 3600), $at(0)]);
+$wp->exec("INSERT INTO {prefix}first__receipts VALUES ('action:remember', 'old', 0, ?, 'done', 'null', ?)", [hash('sha256', '{}'), $at(0)]);
+$done = static fn (): int => (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}first__jobs WHERE `state` = 'done'");
+
+[$code, $first] = $cli('jobs', 'tick', '--limit', '4');
+eq('a tick exits 0 and prints its counts', $code, 0);
+$pass = $first['data'];
+check('the first tick stays within its limit and says more is left', $pass['remaining'] === true && $pass['processed'] <= 4
+    && $pass['outboxDispatched'] === 1 && $pass['requeued'] === 1 && $pass['receiptsExpired'] === 1, $pass);
+eq('due jobs ran directly: at most half the limit', $done(), 2);
+eq('the stuck job is pending again', $wp->scalar('SELECT `state` FROM {prefix}first__jobs WHERE `id` = ?', [$tickId(10)]), 'pending');
+eq('the expired receipt is gone', (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}first__receipts WHERE CAST(`key` AS CHAR) = 'old'"), 0);
+$ticks = 1;
+do {
+    $result = $cli('jobs', 'tick', '--limit', '4')[1]['data'];
+    $ticks++;
+} while ($result['remaining'] && $ticks < 20);
+eq('later ticks finish the queue: every job but the failing one is done', $done(), 9);
+$failing = $job($tickId(9));
+check('a failing job counts as a failure and is kept for its retry, with its error', $failing['state'] === 'failed' && (int) $failing['attempts'] === 1
+    && str_contains((string) $failing['lastError'], 'notify failed on attempt 1'), $failing);
+eq('a tick with nothing due does nothing', array_intersect_key($cli('jobs', 'tick')[1]['data'], ['processed' => 0, 'remaining' => 0]), ['processed' => 0, 'remaining' => false]);
+putenv('FIRST_NOW=' . $at(8 * 86400 + 120));
+$retry = $cli('jobs', 'tick')[1]['data'];
+check('once its backoff has passed, a tick retries it (and counts the failure again)', $retry['failures'] >= 1 && (int) $job($tickId(9))['attempts'] === 2, [$retry, $job($tickId(9))]);
+eq('a limit outside 1..100 is clamped, not refused', $cli('jobs', 'tick', '--limit', '0')[0], 0);
+
 finish('jobs');

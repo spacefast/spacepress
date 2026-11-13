@@ -207,8 +207,10 @@ includes structured fields, collection/table relations, image delivery, a
 compiled class/action and a repeatable HTTP smoke check. Its separate
 `node examples/showcase/run.mjs` launcher still uses Docker; `first dev` does not.
 
-Use your collections and actions from Claude Code, Claude Desktop, or Codex with
-the [agent connection guide](docs/agents.md).
+Working on a project with a coding agent? `first mcp` serves its schema,
+compiler diagnostics, First's documentation and the dev site as MCP tools. To use
+your collections and actions from Claude Code, Claude Desktop or Codex, connect
+to the site's own MCP endpoint. Both are in the [agent guide](docs/agents.md).
 
 ## Use it from a frontend
 
@@ -374,6 +376,7 @@ sure WP-Cron or a real cron reaches the site.
 - [`docs/examples.md`](docs/examples.md): the examples, how to run each, and the suites that prove them
 - [`docs/wp-plugins.md`](docs/wp-plugins.md): declaring and pinning WordPress plugins
 - [`docs/services.md`](docs/services.md): native forms, queued email, publication search and Stripe checkout
+- [`docs/agents.md`](docs/agents.md): `first mcp` for coding agents, and the site's MCP endpoint for agents that use the app
 - [`docs/realtime.md`](docs/realtime.md): live updates with `watch`, the change hook and pluggable transports
 - [`docs/deployment.md`](docs/deployment.md): artifact preflight and offline WordPress backup and recovery
 - [`docs/pages.md`](docs/pages.md): optional TSX routes, layouts and viewer-bound pages, with a complete site example

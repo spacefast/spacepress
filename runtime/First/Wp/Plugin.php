@@ -106,6 +106,7 @@ final class Plugin
         MarkdownTwins::register();
         Purges::register($this);
         Staged::register($this);
+        add_filter('rest_pre_dispatch', [Rev::class, 'restLock'], 20, 3);
         Hooks::register($this);
         add_action('admin_menu', [$this, 'adminMenu'], 9);
         // A plugin updated by copying files in has no activation; the first request of any kind

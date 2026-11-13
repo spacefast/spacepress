@@ -199,7 +199,7 @@ final class Facade
             if ($method === 'POST') {
                 $row = self::dispatch('POST', $base, self::context($kind), Kinds::input($kind, self::body($body), create: true), 201);
 
-                return self::json(201, ['data' => Kinds::row($kind, $row)]);
+                return self::json(201, ['data' => self::rev($kind, Kinds::row($kind, $row))]);
             }
 
             return self::list($kind, $query);
@@ -207,7 +207,7 @@ final class Facade
         if ($kind['type'] === 'post' && ($segments[2] ?? null) === 'revisions' && count($segments) <= 5) {
             self::gate($kind, 'update');
 
-            return self::revisions($kind, $method, self::id($kind, $segments[1]), array_slice($segments, 3));
+            return self::revisions($kind, $method, self::id($kind, $segments[1]), array_slice($segments, 3), $body);
         }
         if ($kind['type'] === 'post' && ($segments[2] ?? null) === 'staged' && count($segments) <= 4) {
             // A kind's staged versions ({@see Staged}): First's own, with no core route to map.
@@ -224,10 +224,12 @@ final class Facade
         self::gate($kind, ['PATCH' => 'update', 'DELETE' => 'delete'][$method] ?? 'get');
         $item = "$base/" . rawurlencode((string) $id);
         if ($method === 'PATCH') {
-            $patch = self::body($body);
-            $row = self::outside($kind, 'update', $id, fn () => self::dispatch('POST', $item, self::context($kind), Kinds::input($kind, $patch)), $patch);
+            // `_rev` and `takeover` are the write's conditions ({@see Rev}), not fields.
+            [$patch, $rev, $takeover] = $kind['type'] === 'post' ? Rev::split(self::body($body)) : [self::body($body), null, false];
+            $row = Rev::guarded((string) $kind['name'], $id, $rev, $takeover, CoreAccess::viewer(),
+                fn () => self::outside($kind, 'update', $id, fn () => self::dispatch('POST', $item, self::context($kind), Kinds::input($kind, $patch)), $patch), $patch);
 
-            return self::json(200, ['data' => Kinds::row($kind, $row)]);
+            return self::json(200, ['data' => self::rev($kind, Kinds::row($kind, $row))]);
         }
         if ($method === 'DELETE') {
             // First's delete is permanent: core trashes posts without `force`, and refuses users without it.
@@ -244,7 +246,8 @@ final class Facade
 
                 return self::json(200, ['data' => $before]);
             }
-            $out = self::outside($kind, 'delete', $id, fn () => self::dispatch('DELETE', $item, $params));
+            $out = Rev::guarded((string) $kind['name'], $id, $query[Rev::FIELD] ?? null, ($query[Rev::TAKEOVER] ?? '') === '1', CoreAccess::viewer(),
+                fn () => self::outside($kind, 'delete', $id, fn () => self::dispatch('DELETE', $item, $params)));
 
             return self::json(200, ['data' => Kinds::row($kind, $out['previous'] ?? $out)]);
         }
@@ -264,7 +267,7 @@ final class Facade
             return [200, ['Content-Type' => MarkdownTwins::CONTENT_TYPE, 'X-Content-Type-Options' => 'nosniff'] + self::PRIVATE, $markdown];
         }
 
-        return self::json(200, ['data' => Kinds::row($kind, $row)]);
+        return self::json(200, ['data' => self::rev($kind, Kinds::row($kind, $row))]);
     }
 
     /** A list: First's `where`/`orderBy`/`with`/`search`, `limit` and an opaque `cursor` (the next page). */
@@ -313,7 +316,7 @@ final class Facade
         $next = $offset + $limit;
         $cursor = $next < $total ? rtrim(strtr(base64_encode((string) json_encode(['offset' => $next])), '+/', '-_'), '=') : null;
 
-        $rows = array_values(array_filter(Kinds::rows($kind, $rows), static fn ($r) => $r !== null));
+        $rows = array_values(array_filter(array_map(static fn (mixed $r): mixed => self::rev($kind, $r), Kinds::rows($kind, $rows)), static fn ($r) => $r !== null));
 
         return self::json(200, ['data' => $rows, 'cursor' => $cursor]);
     }
@@ -591,6 +594,12 @@ final class Facade
         return $decoded;
     }
 
+    /** An item of a post kind as the API answers it: with its live `_rev` ({@see Rev}). */
+    private static function rev(array $kind, mixed $row): mixed
+    {
+        return $kind['type'] === 'post' ? Rev::attach((string) $kind['name'], $row) : $row;
+    }
+
     /**
      * A write core's permission check refused, on a post kind's row its $op rule doesn't cover for this
      * viewer: First's answer for such a row, a 404 (a row outside the rule is not found, §1.6). Core's
@@ -661,7 +670,7 @@ final class Facade
      * A restore is the revision's row as an update of the post through its core route, so the update
      * rule, validation and hooks decide it exactly as any other edit. Needs First's update rule.
      */
-    private static function revisions(array $kind, string $method, int|string $id, array $rest): array
+    private static function revisions(array $kind, string $method, int|string $id, array $rest, string $body = ''): array
     {
         $collection = (string) $kind['name'];
         $spec = $kind['spec'];
@@ -719,9 +728,11 @@ final class Facade
                 $patch[(string) $name] = $row[$name];
             }
         }
-        $updated = self::dispatch('POST', "{$kind['route']}/" . rawurlencode((string) $id), self::context($kind), Kinds::input($kind, $patch));
+        [, $rev, $takeover] = Rev::split(self::body($body));
+        $updated = Rev::guarded($collection, $id, $rev, $takeover, $viewer,
+            fn () => self::dispatch('POST', "{$kind['route']}/" . rawurlencode((string) $id), self::context($kind), Kinds::input($kind, $patch)), $patch);
 
-        return self::json(200, ['data' => Kinds::row($kind, $updated)]);
+        return self::json(200, ['data' => self::rev($kind, Kinds::row($kind, $updated))]);
     }
 
     private static function isoGmt(string $gmt): string

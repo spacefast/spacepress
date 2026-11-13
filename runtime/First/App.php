@@ -489,6 +489,9 @@ final class App
             'detail' => $detail,
         ];
 
+        if ($e instanceof Wp\StaleRevision || $e instanceof Wp\Locked) {
+            $problem += $e->details(); // the current _rev and what changed; or who holds the lock
+        }
         if ($e instanceof Wp\SchemaRefused) {
             // Each refusal has its own stable code, the live count, and the fix; `drop` lists the
             // `--drop` arguments that accept today's counts, for a publisher to offer.

@@ -92,21 +92,24 @@ final class Staged
     public static function stage(string $collection, int|string $pk, mixed $patch, ?Viewer $viewer): array
     {
         [$db, $posts, $spec] = self::kind($collection);
-        $patch = Seam::toPhp(Seam::container($patch), $spec['columns']);
+        $patch = Seam::container($patch);
         if (!is_array($patch) || ($patch !== [] && array_is_list($patch))) {
             throw HttpError::invalidInput('Body must be a JSON object', '');
         }
+        [$patch, $rev, $takeover] = Rev::split($patch);
+        $patch = Seam::toPhp($patch, $spec['columns']);
         if ($patch === []) {
             throw HttpError::invalidInput('Name at least one field to stage', '');
         }
 
-        return $db->transaction(static fn (): array => Js::atInstant(static function () use ($db, $posts, $spec, $collection, $pk, $patch, $viewer): array {
+        return $db->transaction(static fn (): array => Js::atInstant(static function () use ($db, $posts, $spec, $collection, $pk, $patch, $rev, $takeover, $viewer): array {
             $live = self::item($db, $spec, $collection, $pk);
             $id = (int) $pk;
             if ($viewer !== null && !$db->permits($collection, 'update', $id, $viewer, $patch)) {
                 throw self::missing($spec, $collection, $pk);
             }
             $rid = $posts->stagedLock($id);
+            Rev::require($collection, $id, $rev, $takeover, $viewer, staged: true, data: $patch);
             $state = self::state($posts, $spec, $collection, $id, $rid);
             $norm = self::checked($db, $spec, $collection, $patch, $live, array_replace($live, $state['values'] ?? []), $viewer);
             // Every staged field in storage form, in schema order: what was staged before, then this patch over it.
@@ -142,18 +145,19 @@ final class Staged
                 }
             }
 
-            return ['id' => $state['id'], 'changes' => $changes] + self::who($state);
+            return ['id' => $state['id'], 'changes' => $changes] + self::who($state) + [Rev::FIELD => Rev::staged($collection, (int) $pk)];
         });
     }
 
     /** End the staged version without promoting it. Its revision stays in the item's history. */
-    public static function discard(string $collection, int|string $pk, ?Viewer $viewer): array
+    public static function discard(string $collection, int|string $pk, ?Viewer $viewer, mixed $rev = null, bool $takeover = false): array
     {
         [$db, $posts, $spec] = self::kind($collection);
 
-        return $db->transaction(static function () use ($db, $posts, $spec, $collection, $pk, $viewer): array {
+        return $db->transaction(static function () use ($db, $posts, $spec, $collection, $pk, $viewer, $rev, $takeover): array {
             self::open($db, $posts, $spec, $collection, $pk, $viewer);
             $rid = $posts->stagedLock((int) $pk) ?? throw self::nothing($collection, $pk);
+            Rev::require($collection, (int) $pk, $rev, $takeover, $viewer, staged: true);
             self::retire($posts, (int) $pk, $rid, 'discarded', $viewer);
 
             return ['revision' => $rid];
@@ -164,14 +168,15 @@ final class Staged
      * Make the staged version live: its staged fields are an update of the item by $viewer, and the
      * staged version ends in the same transaction. Returns the updated row as $viewer reads it.
      */
-    public static function promote(string $collection, int|string $pk, ?Viewer $viewer): array
+    public static function promote(string $collection, int|string $pk, ?Viewer $viewer, mixed $rev = null, bool $takeover = false): array
     {
         [$db, $posts, $spec] = self::kind($collection);
 
-        return $db->transaction(static function () use ($db, $posts, $spec, $collection, $pk, $viewer): array {
+        return $db->transaction(static function () use ($db, $posts, $spec, $collection, $pk, $viewer, $rev, $takeover): array {
             [$live] = self::open($db, $posts, $spec, $collection, $pk, $viewer);
             $id = (int) $pk;
             $rid = $posts->stagedLock($id) ?? throw self::nothing($collection, $pk);
+            Rev::require($collection, $id, $rev, $takeover, $viewer, staged: true);
             $state = self::state($posts, $spec, $collection, $id, $rid) ?? throw self::nothing($collection, $pk);
             $patch = self::patch($spec, $collection, $state, $live, $viewer);
             $previous = $db->actor();
@@ -193,7 +198,7 @@ final class Staged
      * Promote at $at (ISO-8601, in the future), or with null cancel a scheduled promote. $viewer
      * must be able to promote now; the promote itself is decided again when it runs ({@see due()}).
      */
-    public static function schedule(string $collection, int|string $pk, mixed $at, ?Viewer $viewer): array
+    public static function schedule(string $collection, int|string $pk, mixed $at, ?Viewer $viewer, mixed $rev = null, bool $takeover = false): array
     {
         [$db, $posts, $spec] = self::kind($collection);
         $time = null;
@@ -207,10 +212,11 @@ final class Staged
             }
         }
 
-        return $db->transaction(static function () use ($db, $posts, $spec, $collection, $pk, $time, $viewer): array {
+        return $db->transaction(static function () use ($db, $posts, $spec, $collection, $pk, $time, $viewer, $rev, $takeover): array {
             [$live] = self::open($db, $posts, $spec, $collection, $pk, $viewer);
             $id = (int) $pk;
             $rid = $posts->stagedLock($id) ?? throw self::nothing($collection, $pk);
+            Rev::require($collection, $id, $rev, $takeover, $viewer, staged: true);
             $state = self::state($posts, $spec, $collection, $id, $rid) ?? throw self::nothing($collection, $pk);
             $meta = array_diff_key($state['meta'], ['promoteAt' => true, 'promoteBy' => true, 'error' => true]);
             if ($time !== null) {
@@ -303,7 +309,7 @@ final class Staged
                     return [200, $staged(self::stage($collection, $pk, $body, $viewer))];
                 }
                 if ($method === 'DELETE') {
-                    return [200, self::discard($collection, $pk, $viewer)];
+                    return [200, self::discard($collection, $pk, $viewer, $query[Rev::FIELD] ?? null, ($query[Rev::TAKEOVER] ?? '') === '1')];
                 }
                 $token = $query['preview'] ?? null;
 
@@ -320,7 +326,11 @@ final class Staged
             case 'promote':
                 \First\App::allow($method, ['POST']);
 
-                return [200, array_key_exists('at', $body) ? $staged(self::schedule($collection, $pk, $body['at'], $viewer)) : $wire(self::promote($collection, $pk, $viewer))];
+                [$body, $rev, $takeover] = Rev::split($body);
+
+                return [200, array_key_exists('at', $body)
+                    ? $staged(self::schedule($collection, $pk, $body['at'], $viewer, $rev, $takeover))
+                    : $wire(Rev::attach($collection, self::promote($collection, $pk, $viewer, $rev, $takeover)))];
             case 'preview':
                 \First\App::allow($method, ['POST']);
 
@@ -591,7 +601,7 @@ final class Staged
         $row = self::masked($spec, $collection, array_replace($live, $state['values']), $viewer);
 
         return ['id' => $state['id'], 'row' => $row, 'fields' => array_values(array_filter($state['fields'], static fn (string $name): bool => array_key_exists($name, $row)))]
-            + self::who($state);
+            + self::who($state) + [Rev::FIELD => Rev::staged($collection, (int) $live[$spec['primaryKey']])];
     }
 
     /** Who staged last and when, and the scheduled promote (or why it did not run). */

@@ -3,7 +3,7 @@
 //
 // Lane B (field access + conditional fields, phase 2 §4): a post-backed collection whose columns
 // carry `.access` and `.showIf`, linked to a `table()` table with an admin-only column.
-import { boolean, collection, email, group, integer, text, table, select } from "first";
+import { boolean, collection, email, group, integer, text, table, select, ref } from "first";
 import { posts } from "../blog/first.config.ts";
 
 export const fieldTeams = table({
@@ -29,12 +29,12 @@ export const fieldStaff = collection({
   // A reference to a post-backed collection renders as SCF post_object, whose inequality is '!=='.
   postNote: text().showIf({ postId: { ne: 1 } }).validate((v, ctx) => v !== "pro only" || ctx.data.kind === "pro" || "Only pro staff take this note").optional(),
   always: text().showIf({ OR: [{}, { kind: "pro" }] }).optional(),
-  postId: integer().references(() => posts.id, { onDelete: "set null" }).optional(),
+  postId: ref(() => posts).optional(),
   notes: group({
     public: text().validate((value, ctx) => ctx.data.notes?.public === value || "Invalid note").optional(),
     private: text().access({ read: "editor" }).showIf({ public: { isNotNull: true } }).optional(),
   }).optional(),
-  teamId: integer().references(() => fieldTeams.id, { onDelete: "set null" }).optional(),
+  teamId: ref(fieldTeams).optional(),
 }, {
   title: "name",
   access: {
@@ -49,11 +49,6 @@ export const collections = { fieldStaff };
 export const tables = { fieldTeams };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
-/** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
-export const relations = (r: any) => ({
-  fieldStaff: { team: r.one.fieldTeams({ from: r.fieldStaff.teamId, to: r.fieldTeams.id }) },
-  fieldTeams: { members: r.many.fieldStaff(), signups: r.many.signups() },
-});
 export const actions = {};
 export const globals = {};
 /** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */

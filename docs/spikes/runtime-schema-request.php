@@ -45,6 +45,8 @@ $wp = wpSite('rtschema-spike', [
             }
             [$loader, $fields] = explode(':', $mode);
             $compiled = glob(WP_PLUGIN_DIR . '/first-app-*/first/app/schema.php')[0];
+            // The file the loader requires: the compiled schema, or the generated merged one.
+            $required = $loader === 'file' ? "$site/merged-$fields.php" : $compiled;
             $start = hrtime(true);
             if ($loader === 'compiled') {
                 $loaded = require $compiled;
@@ -60,9 +62,9 @@ $wp = wpSite('rtschema-spike', [
             }
             $took = hrtime(true) - $start;
             $columns = array_sum(array_map(static fn (array $c): int => count($c['columns']), $loaded['collections']));
-            register_shutdown_function(static function () use ($site, $mode, $took, $columns, $compiled): void {
+            register_shutdown_function(static function () use ($site, $mode, $took, $columns, $required): void {
                 $line = [$mode, $took / 1000, (microtime(true) - $_SERVER['REQUEST_TIME_FLOAT']) * 1000, $columns,
-                    function_exists('opcache_is_script_cached') && opcache_is_script_cached($compiled)];
+                    function_exists('opcache_is_script_cached') && opcache_is_script_cached($required)];
                 file_put_contents("$site/spike.log", json_encode($line) . "\n", FILE_APPEND | LOCK_EX);
             });
         })();
@@ -85,7 +87,7 @@ $defs = [
 ];
 $modes = ['compiled:0'];
 $baseColumns = array_sum(array_map(static fn (array $c): int => count($c['columns']), $compiled['collections']));
-foreach ([1, 20, 200] as $fields) {
+foreach ([1, 20, 200, 450] as $fields) {
     $overlay = [];
     for ($i = 0; $i < $fields; $i++) {
         $overlay[$kinds[$i % 2]]["runtime_field_$i"] = $defs[$i % count($defs)];

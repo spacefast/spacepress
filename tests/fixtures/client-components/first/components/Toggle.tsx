@@ -2,8 +2,9 @@
 "use strict";
 "use client";
 import { useState } from "first/client";
+import styles from "./toggle.module.css";
 
 export function Toggle() {
   const [on, setOn] = useState(false);
-  return <button onClick={() => setOn(!on)}>{on ? "on" : "off"}</button>;
+  return <button className={on ? styles.on : styles.off} onClick={() => setOn(!on)}>{on ? "on" : "off"}</button>;
 }

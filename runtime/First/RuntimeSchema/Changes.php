@@ -44,10 +44,11 @@ final class Changes
     /**
      * @param array $compiled the build's `schema.php` ({@see Loader::compiled()})
      * @param array $state the site's newest version ({@see Loader::state()})
+     * @param array $declared the stored types every build on the site declared ({@see Loader::declared()})
      * @return array{changes: list<array>, state: array} the changes in stored form and the state after them
      * @throws Refused
      */
-    public static function resolve(array $compiled, array $state, mixed $changeSet): array
+    public static function resolve(array $compiled, array $state, mixed $changeSet, array $declared = []): array
     {
         if (!is_array($changeSet) || ($changeSet['format'] ?? null) !== Loader::FORMAT) {
             throw new Refused('schema_format', 'A change set is { "format": ' . Loader::FORMAT . ', "changes": [...] }; this runtime reads format ' . Loader::FORMAT, null, '/format');
@@ -69,7 +70,7 @@ final class Changes
                 throw new Refused('schema_format', 'A change is an object with an `op`', null, $pointer);
             }
             try {
-                $one = self::one(Loader::apply($compiled, $state), $compiled, $state, $change, $pointer);
+                $one = self::one(Loader::apply($compiled, $state), $compiled, $state, $change, $pointer, $declared);
             } catch (Refused $refused) {
                 // A rule from the validator has no pointer of its own: it is about this change's definition.
                 throw $refused->pointer !== null ? $refused : new Refused($refused->errorCode, $refused->getMessage(), $refused->diagnostic, "$pointer/definition");
@@ -89,7 +90,7 @@ final class Changes
      *
      * @param array $schema the schema as it stands before this change: the build plus the state
      */
-    private static function one(array $schema, array $compiled, array $state, array $change, string $pointer): array
+    private static function one(array $schema, array $compiled, array $state, array $change, string $pointer, array $declared): array
     {
         $shape = static function (array $keys) use ($change, $pointer): void {
             if (array_diff(array_keys($change), ['op', ...$keys]) !== [] || array_diff($keys, array_keys($change)) !== []) {
@@ -114,7 +115,7 @@ final class Changes
                 $shape(['kind', 'field', 'definition']);
                 [$kind, $field] = [$name('kind'), $name('field')];
                 $stored = Validator::field($kind, $schema['collections'][$kind] ?? null, $field, $change['definition']);
-                self::addable($schema, $state, false, $kind, $field, $stored, $pointer);
+                self::addable($schema, $state, false, $kind, $field, $stored, $pointer, $declared);
 
                 return ['op' => 'addField', 'kind' => $kind, 'field' => $field, 'definition' => $stored];
 
@@ -125,7 +126,7 @@ final class Changes
                     throw Refused::rule('F3001', $kind, 'this app declares no global with that name');
                 }
                 $stored = Validator::definition("$kind.$field", $field, $change['definition'], Validator::GLOBAL);
-                self::addable($schema, $state, true, $kind, $field, $stored, $pointer);
+                self::addable($schema, $state, true, $kind, $field, $stored, $pointer, $declared);
 
                 return ['op' => 'addGlobalField', 'global' => $kind, 'field' => $field, 'definition' => $stored];
 
@@ -231,7 +232,7 @@ final class Changes
     }
 
     /** The running site's own rules for a field joining a kind that exists. */
-    private static function addable(array $schema, array $state, bool $global, string $kind, string $field, array $stored, string $pointer): void
+    private static function addable(array $schema, array $state, bool $global, string $kind, string $field, array $stored, string $pointer, array $declared): void
     {
         [$section, $inner] = $global ? ['globals', 'fields'] : ['collections', 'columns'];
         $spec = $schema[$section][$kind];
@@ -254,6 +255,12 @@ final class Changes
         $was = $state['removed'][$section][$kind]['fields'][$field] ?? null;
         if ($was !== null && $was !== $stored['type']) {
             throw new Refused('schema_retype', "$kind.$field: `$field` was removed as a $was field and its values are still stored. Add it as $was again, or use another name", null, "$pointer/definition/type");
+        }
+        $other = $declared[$section][$kind][$field] ?? null;
+        if ($other !== null && $other !== $stored['type']) {
+            // Another build on this site (one the host still serves, or an older one) stores this
+            // field as another type; giving it a second meaning would garble values for one of them.
+            throw new Refused('schema_retype', "$kind.$field: a build that ran on this site stores `$field` as $other. Add it as $other, or give the field another name", null, "$pointer/definition/type");
         }
         if (!$global && ($stored['notNull'] ?? false) && !isset($stored['default'])) {
             throw new Refused('schema_required', "$kind.$field: a field added at runtime is optional or has a default, because existing items have no value for it. Leave out `notNull`, or add `default`", null, "$pointer/definition/notNull");

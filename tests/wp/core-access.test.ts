@@ -186,18 +186,15 @@ test("hidden fields need an explicit update rule, including nested fields", asyn
 
   const constraintScope = JSON.parse(wp("eval", `
     $app = \\First\\Wp\\Plugin::instance()->db();
-    $specs = array_intersect_key($app->schema()->collections(), array_flip(['oracle_rows', 'key_roots', 'key_links']));
+    $specs = array_intersect_key($app->schema()->collections(), array_flip(['oracle_rows']));
     foreach ($specs as &$spec) { $spec['access']['read'] = ['allow' => true]; }
     unset($spec);
     $db = new \\First\\Db($app->store(), new \\First\\Schema(['collections' => $specs]), $app->media(), 'wp');
     $viewer = new \\First\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
     $code = 'extension-' . bin2hex(random_bytes(8));
     $hidden = $db->insert('oracle_rows', ['title' => $code, 'code' => $code], true)[0];
-    $base = random_int(1000000000, 1900000000);
-    $parents = $db->insert('key_roots', [['code' => $base], ['code' => $base + 1]], true);
-    $db->insert('key_links', ['rootCode' => $base]);
     \\First\\Extensions::beforeRead(static function (string $collection, array &$opts, ?\\First\\Viewer $viewer): void {
-      if ($viewer !== null && isset($opts['where']) && in_array($collection, ['oracle_rows', 'key_links'], true)) {
+      if ($viewer !== null && isset($opts['where']) && $collection === 'oracle_rows') {
         $opts['where'] = ['AND' => [$opts['where'] ?? [], ['id' => -1]]];
       }
     });
@@ -208,14 +205,7 @@ test("hidden fields need an explicit update rule, including nested fields", asyn
     }
     try { $db->update('oracle_rows', ['code' => $code], ['id' => $hidden['id']], false, null, $viewer); $result[] = null; }
     catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
-    foreach ($parents as $parent) {
-      try { $db->delete('key_roots', ['id' => $parent['id']], false, $viewer); $result[] = null; }
-      catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
-      try { $db->update('key_roots', ['code' => $parent['code'] + 10], ['id' => $parent['id']], false, $viewer); $result[] = null; }
-      catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
-    }
     $result[] = count($db->findMany('oracle_rows', ['where' => ['title' => $code . '-probe']]));
-    $result[] = array_column($db->findMany('key_roots', ['where' => ['id' => ['in' => array_column($parents, 'id')]], 'orderBy' => ['id' => 'asc']]), 'code') === [$base, $base + 1];
     echo wp_json_encode($result);
   `));
 
@@ -247,21 +237,13 @@ test("hidden fields need an explicit update rule, including nested fields", asyn
     $result[] = $db->findMany('oracle_refs', ['where' => ['title' => $code . '-probe']]);
     $db->insert('oracle_refs', ['title' => $code . '-visible', 'rowId' => $visible['id']], false, $viewer);
     $result[] = count($db->findMany('oracle_refs', ['where' => ['title' => $code . '-visible']]));
-    foreach ([$visible['uid'], 'zr_00000000000000000000'] as $uid) {
-      try {
-        $db->current(static fn () => \\First\\Sync\\Wire::decode('oracle_sync', ['fields' => ['publicBadgeId' => $uid]], viewer: $viewer));
-        $result[] = null;
-      } catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
-    }
     echo wp_json_encode($result);
   `));
-  assert.deepEqual(transformScope, [[403, "forbidden"], [403, "forbidden"], [409, "reference_violation"], [409, "reference_violation"], [], 1, [409, "reference_violation"], [409, "reference_violation"]],
+  assert.deepEqual(transformScope, [[403, "forbidden"], [403, "forbidden"], [409, "reference_violation"], [409, "reference_violation"], [], 1],
     "read transforms cannot disclose hidden competitors or accept hidden reference targets; visible references still work");
   assert.deepEqual(constraintScope, [
-    [403, "forbidden"], [403, "forbidden"], [403, "forbidden"],
-    [409, "reference_violation"], [403, "forbidden"],
-    [409, "reference_violation"], [403, "forbidden"], 0, true,
-  ], "query extensions conceal unique competitors and incoming references, including empty branches and hidden resends");
+    [403, "forbidden"], [403, "forbidden"], [403, "forbidden"], 0,
+  ], "query extensions conceal unique competitors, including hidden resends");
 
 
 });

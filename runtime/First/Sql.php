@@ -16,7 +16,7 @@ namespace First;
 final class Sql
 {
     private const CMP = ['eq' => '=', 'ne' => '<>', 'gt' => '>', 'gte' => '>=', 'lt' => '<', 'lte' => '<='];
-    private const FIELD_OPS = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'notLike', 'ilike', 'notIlike', 'isNull', 'isNotNull', 'has', 'NOT', 'OR', 'AND'];
+    private const FIELD_OPS = Schema::FIELD_OPS;
 
     private readonly Dialect $d;
     private int $aliases = 0;
@@ -248,10 +248,10 @@ final class Sql
                 $parts[] = $this->combine($key, $value, $kptr, fn ($f, $p) => $this->filter($collection, $f, $alias, $p));
             } elseif ($key === 'NOT') {
                 $parts[] = 'NOT (' . $this->filter($collection, $value, $alias, $kptr) . ')';
+            } elseif (Schema::filtersRelation($spec, $key, $value)) {
+                $parts[] = $this->relationFilter($collection, $spec['relations'][$key], $value, $alias, $kptr);
             } elseif (isset($spec['columns'][$key])) {
                 $parts[] = $this->fieldFilter($collection, $key, $value, $alias, $kptr);
-            } elseif (isset($spec['relations'][$key])) {
-                $parts[] = $this->relationFilter($collection, $spec['relations'][$key], $value, $alias, $kptr);
             } else {
                 throw HttpError::invalidQuery("Unknown column or relation '$key'", $kptr);
             }

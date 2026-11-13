@@ -30,19 +30,24 @@ export const SCHEMA = {
       "revisions": true,
       "localized": true,
       "relations": {
-        "author": {
+        "authorId": {
           "kind": "one",
           "collection": "authors",
           "optional": true
+        },
+        "comments": {
+          "kind": "many",
+          "collection": "comments",
+          "optional": false
         },
         "subscribers": {
           "kind": "many",
           "collection": "subscribers",
           "optional": false
         },
-        "comments": {
+        "announcements": {
           "kind": "many",
-          "collection": "comments",
+          "collection": "announcements",
           "optional": false
         }
       },
@@ -72,7 +77,7 @@ export const SCHEMA = {
       "revisions": false,
       "localized": false,
       "relations": {
-        "post": {
+        "postId": {
           "kind": "one",
           "collection": "posts",
           "optional": false
@@ -89,7 +94,7 @@ export const SCHEMA = {
       "revisions": false,
       "localized": false,
       "relations": {
-        "post": {
+        "postId": {
           "kind": "one",
           "collection": "posts",
           "optional": true
@@ -106,10 +111,10 @@ export const SCHEMA = {
       "revisions": false,
       "localized": false,
       "relations": {
-        "post": {
+        "postId": {
           "kind": "one",
           "collection": "posts",
-          "optional": true
+          "optional": false
         }
       },
       "media": [],

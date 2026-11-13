@@ -310,7 +310,8 @@ route's policy and the reason.
 ### 6.3 Inside PHP
 
 - Query results are memoized per request.
-- The route table, kinds, fields and roles are compiled arrays.
+- The route table, kinds, fields and roles are compiled arrays. With `runtimeSchema`
+  (spec.md §2.10), one autoloaded option adds the site's own changes to them.
 - OPcache holds the compiled pages.
 - No JSON parsing or reflection happens at request time.
 

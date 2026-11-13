@@ -57,7 +57,7 @@ final class SchemaVersions
     public function propose(mixed $changeSet): array
     {
         $state = Loader::state($this->plugin->schema->name());
-        $resolved = Changes::resolve(Loader::compiled(), $state, $changeSet);
+        $resolved = Changes::resolve($this->compiled(), $state, $changeSet, Loader::declared($this->plugin->schema->name()));
 
         return ['parent' => (int) $state['version'], 'changes' => $resolved['changes'], 'effects' => $this->effects($resolved['changes'], $resolved['state'])];
     }
@@ -91,7 +91,7 @@ final class SchemaVersions
             if ((int) ($state['version'] ?? 0) !== $newest['version'] || ($state['format'] ?? null) !== Loader::FORMAT) {
                 $state = $this->replay($rows);
             }
-            $resolved = Changes::resolve(Loader::compiled(), $state, $changeSet);
+            $resolved = Changes::resolve($this->compiled(), $state, $changeSet, Loader::declared($this->plugin->schema->name()));
             $row = ['app' => $app, 'version' => $parent + 1, 'parent' => $parent, 'format' => Loader::FORMAT, 'build' => $this->plugin->buildHash(),
                 'actor' => $actor, 'changes' => $resolved['changes'], 'createdAt' => gmdate('Y-m-d\TH:i:s.000\Z')];
             $row['hash'] = self::hashOf($newest['hash'], $row);
@@ -123,6 +123,12 @@ final class SchemaVersions
         unset($row['hash']);
 
         return hash('sha256', $parentHash . "\n" . self::json($row));
+    }
+
+    /** The build this request runs, as compiled: what every change is checked against. */
+    private function compiled(): array
+    {
+        return Loader::compiled() ?? throw new \LogicException('The app was loaded without its compiled schema');
     }
 
     /** Every version, oldest first. Empty before the first change. */
@@ -194,7 +200,7 @@ final class SchemaVersions
     /** What each change does to stored data, for a person or an agent to read before applying. */
     private function effects(array $changes, array $after): array
     {
-        $schema = Loader::apply(Loader::compiled(), $after);
+        $schema = Loader::apply($this->compiled(), $after);
         // Counted by type name, so a collection that isn't registered (not added yet, or removed) is counted too.
         $items = static fn (string $postType): int => (int) $GLOBALS['wpdb']->get_var($GLOBALS['wpdb']->prepare(
             "SELECT COUNT(*) FROM {$GLOBALS['wpdb']->posts} WHERE post_type = %s AND post_status NOT IN ('auto-draft', 'inherit')", $postType));

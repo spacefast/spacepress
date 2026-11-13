@@ -712,8 +712,8 @@ test("hidden columns never leave the runtime: list, get, with, write results, ab
   const get = await call("GET", `/members/${ed.id}`, asSelf);
   const update = await call("PATCH", `/members/${ed.id}`, { ...asSelf, body: { points: 1 } });
   await call("POST", "/guestbook", { ...asSelf, body: { message: "mine", memberId: ed.id } });
-  const withMember = await call("GET", "/guestbook", { ...asSelf, query: { with: "member" } });
-  assert.ok(withMember.json.data.some((e: any) => e.member?.id === ed.id));
+  const withMember = await call("GET", "/guestbook", { ...asSelf, query: { with: "memberId" } });
+  assert.ok(withMember.json.data.some((e: any) => e.memberId?.id === ed.id));
   const ability = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/members-get/run?input[id]=${ed.id}`, { headers: { authorization: `Bearer ${self.json.access_token}` } });
   const abilityText = await ability.text();
   assert.equal(ability.status, 200, abilityText);
@@ -727,8 +727,8 @@ test("hidden columns can't be filtered or ordered on, also through relations; ro
   const asSelf = { token: (await signIn(fy.email, fy.password)).json.access_token };
   const hiddenFilter = await call("GET", "/members", { ...asSelf, query: { where: JSON.stringify({ passwordHash: { isNotNull: true } }) } });
   assert.deepEqual([hiddenFilter.status, hiddenFilter.json.code, hiddenFilter.json.pointer], [403, "forbidden", "/where/passwordHash"]);
-  const throughRelation = await call("GET", "/guestbook", { query: { where: JSON.stringify({ member: { suspendedAt: null } }) } });
-  assert.deepEqual([throughRelation.status, throughRelation.json.pointer], [403, "/where/member/suspendedAt"]);
+  const throughRelation = await call("GET", "/guestbook", { query: { where: JSON.stringify({ memberId: { suspendedAt: null } }) } });
+  assert.deepEqual([throughRelation.status, throughRelation.json.pointer], [403, "/where/memberId/suspendedAt"]);
   const promote = await call("PATCH", `/members/${fy.id}`, { ...asSelf, body: { role: "admin" } });
   assert.equal(promote.status, 403, "role is admin-only");
   const cleared = await http("PATCH", `${api}/members/1`, { as: "admin", body: { role: null } });

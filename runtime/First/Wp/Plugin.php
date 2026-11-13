@@ -104,6 +104,7 @@ final class Plugin
         ContentPages::register($this);
         KindUrls::register($this);
         MarkdownTwins::register();
+        Sitemap::register($this);
         Purges::register($this);
         Hooks::register($this);
         add_action('admin_menu', [$this, 'adminMenu'], 9);

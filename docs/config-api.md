@@ -6,6 +6,44 @@ Everything below is exported from the `"first"` module. Shapes follow Drizzle
 ORM 1.0 (beta.22): column builders, relational-query `findMany`/`findFirst` with
 object filters.
 
+## Content and database
+
+A First app has two halves. Each builder always stores in the same place, and
+nothing else chooses storage: not a field, not an option.
+
+| | Content | Database |
+|---|---|---|
+| Builders | `collection()`, `userProjection()`, `global()`, `media()` | `table()` |
+| Stored as | WordPress's own objects: posts and post meta, users and user meta, attachments, options | one SQL table per kind, `wp_first_<name>` |
+| Edited in | wp-admin and the WordPress editor, with drafts and revisions | your app, through the API and the typed client (and the optional `admin: true` screens) |
+| Other plugins | work on the same posts, users and media | don't know these tables |
+| Field types | post meta: text, cast to the field's type when read | typed columns (`BIGINT`, `DOUBLE`, `VARCHAR`, ...) |
+| References | checked by First when it writes | a SQL foreign key between two tables; checked by First when the target is content |
+| Filter or sort on a field | one join on `wp_postmeta` per field, and no index on the value | the column itself, with the indexes `first check --json` lists |
+| Schema changes | no migration: fields are meta | a migration `first build` writes, checked against live rows at deploy |
+
+Use a `collection()` for what people write and publish. Use a `table()` for
+the data your app works on: rows it filters, sorts, counts or joins, rows with
+no editor, and anything that needs a real foreign key or a unique column that
+the database enforces. Both kinds share the field builders, access rules,
+`ref()`, hooks, the API and the typed client, so one app can use both and a
+table row can belong to a post.
+
+A new project from `npm create @spacefast/first` is content only. `first add
+db` adds the database half: an example `first/tables.ts`, typed client calls
+for it and a note on migrations. It only creates files that are missing.
+
+A collection can't be stored in a table. The earlier `editor: false` option is
+gone and `collection()` refuses it at the option; write `table()` instead. A
+site that deployed such a collection keeps its rows where they are: see
+[Upgrading authoring](#upgrading-authoring).
+
+| Read about | In |
+|---|---|
+| fields, options and access rules both halves share | [Columns](#columns), [Collections, tables and user projections](#collections-tables-and-user-projections) |
+| globals, media and files, locales, sign-in, sync, WordPress plugins | [Content](#content) |
+| relations, tables First didn't create, schema changes at deploy, transactions, queries | [Database](#database) |
+
 ## Project layout
 
 `first.config.ts` sits at the project root. Your own modules live under `first/`
@@ -85,46 +123,6 @@ await posts.system.list();   // trusted: no access rules, every draft
 - Jobs and signed webhooks have no visitor and run as the system.
   `<kind>.system.*` makes the same calls trusted anywhere.
 - `db.query` and `db.insert/update/delete` stay trusted.
-
-## WordPress plugins
-
-Use a top-level package map in `defineConfig`:
-
-```ts
-plugins: { "classic-editor": "1.6.7" }
-```
-
-Values are exact WordPress.org versions or resource objects with `version`,
-`pluginData`, optional `requires`, and a checksum (required for direct URLs).
-See [plugin dependencies](wp-plugins.md) for resources, locks and assembly.
-
-## Opinionated WordPress
-
-While a First app is the active app, it runs WordPress the way spec.md §6
-describes. The app plugin applies every switch below at runtime
-(`runtime/First/Wp/Hardening.php`). Nothing is written to `wp-config.php`,
-mu-plugins or the site's stored settings. Deactivate the app and WordPress
-behaves as it ships again. A site with the runtime plugin but no active app
-isn't changed either. None of these switches can be turned off in
-`first.config.ts`.
-
-| switch | effect |
-|---|---|
-| `xmlrpc` | `xmlrpc.php` answers 403 to every call, including `system.*` and `?rsd`; no EditURI link or `X-Pingback` header. One exception: while Jetpack's connection is loaded, its requests (`?for=jetpack`, on `xmlrpc.php` or Jetpack's `?jetpack=comms` endpoint) reach Jetpack's `jetpack.*` methods and nothing else, so a Jetpack connection (and the Akismet it sets up) keeps working. Jetpack's own `wp.getOptions` override isn't among them, and nothing of Jetpack's needs it: it serves core's password-based XML-RPC on plain `xmlrpc.php`, stock Jetpack already drops it from a signed `?for=jetpack` request, and connection checks, heartbeat and sync call only `jetpack.*` methods |
-| `pings` | pingbacks and trackbacks closed in and out; outgoing pings never sent |
-| `emoji` | no emoji detection script or styles on the front end, wp-admin or embeds; no emoji images in feeds or mail |
-| `fileEditors` | the plugin and theme file editors are refused to everyone |
-| `pluginAndThemeInstalls` | installing, uploading, updating and deleting plugins, themes and core are refused in wp-admin and REST; activation and translations stay |
-| `autoUpdates` | no automatic core, plugin or theme updates |
-| `customizer` | `customize` is refused, so `customize.php` and its links are gone |
-| `comments` | comments closed on every post type except collections with `comments: true` |
-| `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
-| `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
-| `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
-
-`GET /__first/api/v1` lists the switches in `runtime.wp.hardening`. The object cache
-is whatever the host's `object-cache.php` drop-in provides. A plugin can't
-install a drop-in, so the host supplies it (on Spacefast, the box image does).
 
 ## Mixed content and app data
 
@@ -286,22 +284,6 @@ Collections need a title and physical names of at most 14 characters (WordPress
 prefixes `first_`). Built-in route names are reserved. User projections retain
 WordPress identity storage; see [Sign-in](#sign-in).
 
-An `existingTable` binding accepts an ASCII SQL identifier of at most 64 characters.
-It is distinct from `storageName`, which still identifies the logical resource's
-migration history. The binding is committed in the snapshot and cannot change
-on later builds. Later column, index and foreign-key migrations use the exact
-bound name. The existing columns must already have compatible storage; the first
-check establishes column existence, not type equivalence. Adoption statements carry
-`-- first-adopt` metadata that the WordPress migrator validates before recording the
-step. Pending adoption checks run before any migration DDL or ledger writes.
-Declared unique indexes, primary keys and foreign keys must already have the
-compiler's names, columns, uniqueness and reference actions. Prefix-only unique
-indexes are refused. Other existing indexes are retained and remain unmanaged.
-This keeps later constraint removals consistent with the committed snapshot. Database
-engine checks include these tables. Uninstall retains their rows like normal tables.
-An [adopted application table](migrating-from-zero.md#application-source-migration)
-keeps its TEXT/DOUBLE storage and string response IDs.
-
 ### Files that moved into `first/_generated/`
 
 A checkout from before `first/_generated/` is refused until its committed
@@ -364,6 +346,274 @@ A build that removes existing storage while adding new storage is refused as
 an ambiguous replacement, even when both names are snake_case. Declare `was`
 on the new table to rename it, or remove the old one in its own deploy.
 
+### Access
+
+`access: { read, create, update, delete }`, each one of `true`/`false`,
+`"anyone"`, `"authenticated"` (signed in, guests included), a role (`"guest" <
+"subscriber" < "author" < "editor" < "admin"`, that role or higher), `"self"`
+(on a user projection: the signed-in user's own row), or
+`(ctx) => boolean | filter` with `ctx = {
+user, op, data? }`. Functions are compiled to PHP like hooks; they
+can't use `db`. A returned filter is checked against the collection like any
+literal filter and is ANDed into reads, updates and deletes; create rules
+return a boolean. Actions take `access` too (default `"editor"`).
+
+On WordPress these rules are the only gate, on every path into the data:
+First's API, core `/wp/v2`, wp-admin (lists, the editor, quick edit,
+revisions, autosaves, search) and abilities. A post type's capabilities
+(`edit_first_posts`, `edit_others_first_posts`, ...) are answered from its rules
+through `map_meta_cap`, and no role is granted them, so granting one by hand
+changes nothing. Core reads apply the read rule and field access; core writes
+and editor saves apply the create, update and field rules, and are authorized
+on the saved data before they commit.
+
+Core `/wp/v2/<post type>` speaks First's fields and queries too:
+
+- Every field is registered post meta (`register_post_meta`, `show_in_rest`,
+  with its JSON Schema) under its own name. `meta.seats` reads and writes the
+  value as First does: a group or repeater is one value, a date is
+  `YYYY-MM-DD`. Writes go through First's codec and rules, and a field hidden
+  from the viewer is dropped from `meta` like everywhere else.
+- List routes take First's query arguments next to core's own:
+  `where` (JSON), `orderBy` (`-seats,title`), `with` (`author,comments` or
+  JSON; each item gets the relations under `with`) and `search` (every text
+  and richText field the viewer may read). They run as the viewer, so a filter
+  or sort on a hidden field is the same 403 as on First's API. Core keeps
+  pagination (`page`, `per_page`, `X-WP-Total`) and `_fields`.
+- The users kind does the same on core `/wp/v2/users`: member fields are
+  registered user meta under `meta`, shown only to a viewer whose read rule
+  covers the member. A `meta` write runs First's update as the viewer (rules,
+  validation, hooks) in one transaction with core's own user save, so a
+  refusal keeps nothing. The list takes `where` and `orderBy`.
+- A `table()` kind gets core-shaped `/wp/v2/<storage name>` (for example
+  `/wp/v2/first_signups`): list, get, create, update (`POST`/`PUT`/`PATCH`) and
+  delete, with `per_page`/`page`, `X-WP-Total`, `_fields`, a JSON Schema on
+  `OPTIONS`, and `where`/`orderBy`/`with`. Every call is First's pipeline as
+  the viewer, so it answers what First's API answers.
+
+## Content
+
+Kinds stored as WordPress's own objects. A `collection()` is a custom post
+type, a `userProjection()` is WordPress users, a `global()` is options,
+`media()` is attachments, and translations are Polylang's. wp-admin, the
+editor, core `/wp/v2` and other plugins all work on the same rows First does.
+The sections here are the content half; [Collections, tables and user
+projections](#collections-tables-and-user-projections) has the options a
+collection takes. Private file buckets are described here beside media; their
+rows are First's own and their bytes are in the upload backend.
+
+### Globals
+
+`global(name, fields, { label?, access?: { read?, update? } })`, registered in
+`defineConfig({ globals: { name } })`. One record per global; fields use the
+sub-field rules, and a required field needs a default. `GET`/`PATCH
+/__first/api/v1/<name>`.
+
+### Media and files
+
+`media: { sizes: { card: { width: 600, height: 400, fit: "cover" } } }` makes
+each named size for every uploaded image. `cover` crops around the image's
+focal point (`PATCH /media/<id>` with `{ focal: { x, y } }`, editors only;
+centre by default); `inside` scales to fit. Media rows carry
+`sizes.<name>.url`.
+
+<a id="files"></a>Private files live in logical file resources:
+
+```ts
+files: { decks: files("decks", { accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "owner", delete: "editor" } }) },
+```
+
+and a `file({ bucket: "decks" })` column holds one by id. Files never get a
+public URL: `GET /files/<bucket>/<id>` returns the row with a signed `url`
+valid for five minutes, and that link streams the bytes through PHP. `"owner"` means the uploader. Uploads outside
+`accept` are refused (422 at `/file`); uploads over `maxBytes` get 413
+`payload_too_large`.
+
+Configure durable uploads once for the app:
+
+```ts
+uploads: {
+  backend: "s3",
+  bucket: env("UPLOAD_BUCKET"),
+  region: "us-east-1",
+  // endpoint: env("UPLOAD_ENDPOINT"), pathStyle: true, // compatible providers
+  prefix: "my-app",
+  credentials: {
+    accessKeyId: env("UPLOAD_ACCESS_KEY_ID"),
+    secretAccessKey: env("UPLOAD_SECRET_ACCESS_KEY"),
+  },
+},
+```
+
+This backend stores private files, media originals and generated sizes, including
+standard WordPress editor uploads. `client.files.decks` and `file({ bucket: "decks" })`
+keep naming the logical resource; `uploads.bucket` is the physical provider bucket.
+Collections and tables can both reference files and media. Credentials resolve
+only at runtime; the compiler requires `env()` references. An optional
+`sessionToken: env("UPLOAD_SESSION_TOKEN")` supports temporary credentials.
+
+`uploads: { backend: "local" }` selects the existing local development behavior
+(also the default when omitted). S3 never falls back to durable local storage.
+See [upload storage](uploads.md) for provider permissions, failure recovery,
+existing-data cutover and the WordPress plugin boundary.
+
+### Locales
+
+```ts
+locales: { default: "en", all: ["en", "de"] },   // fallback: true by default
+```
+
+A collection with a `.localized()` field stores one row per locale. Every
+other field is shared by a post's translations and kept equal across them,
+except what each row generates for itself: `status`, `publishedAt`, `slug`,
+`uid`, and columns filled by `defaultNow()`, `$default(...)` or `$onUpdate(...)`
+(so `createdAt`/`updatedAt` are per translation). Each translation publishes
+on its own. Create a translation with
+`{ locale: "de", translationOf: <id> }`; rows carry `locale` and
+`translations` (locale → id). Reads take `?locale=de`, which returns German
+rows and, with `fallback`, the default-locale row of any group without one;
+`locale=*` returns every row. On WordPress, Polylang owns languages and
+translation groups, and the app plugin ships a `wpml-config.xml` saying which
+fields translate.
+
+### Sign-in
+
+Register one `userProjection(fields, options?)` under `users: { members }`.
+It projects existing WordPress users and usermeta, preserving their IDs and
+authentication; it creates no second user table or post type. It needs
+`email: email().unique()`, gets a write-only `password` and an
+admin-only `role`, and cannot have drafts, revisions, slugs or localization. Members sign in
+through the typed client: `auth.signIn()` and `auth.handleCallback()` redirect
+through the first-identity screens (register the frontend once with
+`first identity app add --name=<name> --id=<app_id> --redirect=<url> --origin=<origin>`).
+`GET /me` returns the user with their `member` row.
+
+Anonymous visitors can write as guests (`createClient({ auth: { guests: true } })`):
+the first rejected write starts a guest session, and `auth.upgrade()` keeps the
+guest's rows when they sign up.
+
+### Sync
+
+Every publish seeds synced files: missing records are created, trashed records stay deleted, and no records are removed.
+Existing editable records keep their site content; the publish reports `first_seed_skipped_existing` for differing files, and `first sync` merges them.
+For `editor: false` collections the file wins; files without a `uid` use a stable identity derived from the collection and basename, so republishes and later syncs match the same record.
+
+```ts
+{ sync: "content/posts/*.md" }
+```
+
+`first sync [--site <url>]`, with `FIRST_APP_PASSWORD=user:pass` (or `FIRST_TOKEN=<jwt>`) in the environment, keeps
+`content/posts/<slug>.md` and the site in step: front matter for fields, the
+body as Markdown for the `content` column. Both sides may change; it merges
+per field, and writes `.first/conflicts/<uid>.md` when the same field changed on
+both (`first sync resolve <uid>` applies your edit of it).
+`--check` exits 2 when anything would change. The first sync with a site
+matches records and deletes nothing. It commits the files it wrote unless
+`--no-commit`. `first build` adds `.first/*` and `!.first/sync-base.json` to
+`.gitignore`, because the sync base is committed.
+
+What sync leaves out: `$onUpdate` columns, derived and hidden system columns,
+and fields the viewer's field access hides. References to a `uid` collection are written as that
+row's uid. When required references form a cycle that no order of writes can
+satisfy, sync reports it and writes nothing.
+
+### WordPress plugins
+
+Use a top-level package map in `defineConfig`:
+
+```ts
+plugins: { "classic-editor": "1.6.7" }
+```
+
+Values are exact WordPress.org versions or resource objects with `version`,
+`pluginData`, optional `requires`, and a checksum (required for direct URLs).
+See [plugin dependencies](wp-plugins.md) for resources, locks and assembly.
+
+### Opinionated WordPress
+
+While a First app is the active app, it runs WordPress the way spec.md §6
+describes. The app plugin applies every switch below at runtime
+(`runtime/First/Wp/Hardening.php`). Nothing is written to `wp-config.php`,
+mu-plugins or the site's stored settings. Deactivate the app and WordPress
+behaves as it ships again. A site with the runtime plugin but no active app
+isn't changed either. None of these switches can be turned off in
+`first.config.ts`.
+
+| switch | effect |
+|---|---|
+| `xmlrpc` | `xmlrpc.php` answers 403 to every call, including `system.*` and `?rsd`; no EditURI link or `X-Pingback` header. One exception: while Jetpack's connection is loaded, its requests (`?for=jetpack`, on `xmlrpc.php` or Jetpack's `?jetpack=comms` endpoint) reach Jetpack's `jetpack.*` methods and nothing else, so a Jetpack connection (and the Akismet it sets up) keeps working. Jetpack's own `wp.getOptions` override isn't among them, and nothing of Jetpack's needs it: it serves core's password-based XML-RPC on plain `xmlrpc.php`, stock Jetpack already drops it from a signed `?for=jetpack` request, and connection checks, heartbeat and sync call only `jetpack.*` methods |
+| `pings` | pingbacks and trackbacks closed in and out; outgoing pings never sent |
+| `emoji` | no emoji detection script or styles on the front end, wp-admin or embeds; no emoji images in feeds or mail |
+| `fileEditors` | the plugin and theme file editors are refused to everyone |
+| `pluginAndThemeInstalls` | installing, uploading, updating and deleting plugins, themes and core are refused in wp-admin and REST; activation and translations stay |
+| `autoUpdates` | no automatic core, plugin or theme updates |
+| `customizer` | `customize` is refused, so `customize.php` and its links are gone |
+| `comments` | comments closed on every post type except collections with `comments: true` |
+| `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
+| `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
+| `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
+
+`GET /__first/api/v1` lists the switches in `runtime.wp.hardening`. The object cache
+is whatever the host's `object-cache.php` drop-in provides. A plugin can't
+install a drop-in, so the host supplies it (on Spacefast, the box image does).
+
+## Database
+
+`table()` kinds: one SQL table each, with typed columns, foreign keys and
+indexes. `first add db` writes a starting point into a project that has none.
+[Collections, tables and user projections](#collections-tables-and-user-projections)
+has the options a table takes, and [Columns](#columns) the SQL type of each
+field.
+
+### Relations
+
+`ref(kind)` is a field holding the `id` of a row of another kind; `ref(() => kind)`
+refers to one declared later or to itself. The field name is the stored column,
+the relation name and the `with` key: `with: { post: true }` replaces the id with
+the row under the same key, and `where: { post: { title: "Hello" } }` filters by
+the target's fields (`where: { post: 7 }` still matches the id).
+
+```ts
+const authors = collection({ name: text() });
+const posts = collection({
+  title: text(),
+  author: ref(authors),                                  // required: delete is restricted
+  editor: ref(authors).optional().reverse("edited"),     // optional: delete sets null
+});
+```
+
+The target gets a reverse many relation named after the referencing kind's key
+(`first.authors.list({ with: { posts: true } })`), or `.reverse("name")` names it.
+Two refs from one kind to the same target get no default reverse; both need
+`.reverse()`, and the build error names them. A reverse named like a field of
+the target is a build error. `.onDelete()` takes `"cascade"`, `"restrict"` or
+`"setNull"`; the default is `"restrict"` on a required ref and `"setNull"` on an
+optional one. `ref()` refers to `id` only: a kind that links by a natural key
+stores the value as a plain field and queries by it.
+
+One graph covers collection↔collection, table↔table and both directions across
+storage kinds. Relation filters and `with` loads use the same runtime machinery
+and target row/field access rules. Hidden target fields stay masked; relation
+filters cannot probe them. Media and private file references work on both kinds.
+
+### Tables First didn't create
+
+An `existingTable` binding accepts an ASCII SQL identifier of at most 64 characters.
+It is distinct from `storageName`, which still identifies the logical resource's
+migration history. The binding is committed in the snapshot and cannot change
+on later builds. Later column, index and foreign-key migrations use the exact
+bound name. The existing columns must already have compatible storage; the first
+check establishes column existence, not type equivalence. Adoption statements carry
+`-- first-adopt` metadata that the WordPress migrator validates before recording the
+step. Pending adoption checks run before any migration DDL or ledger writes.
+Declared unique indexes, primary keys and foreign keys must already have the
+compiler's names, columns, uniqueness and reference actions. Prefix-only unique
+indexes are refused. Other existing indexes are retained and remain unmanaged.
+This keeps later constraint removals consistent with the committed snapshot. Database
+engine checks include these tables. Uninstall retains their rows like normal tables.
+An [adopted application table](migrating-from-zero.md#application-source-migration)
+keeps its TEXT/DOUBLE storage and string response IDs.
+
 ### Schema changes at deploy
 
 `first check --json` lists each SQL index the deploy keeps, and why it exists,
@@ -421,50 +671,44 @@ Renames run once: after the deploy, `.was()` is inert and can stay or go. Only a
 `table()`'s own fields take `.was()`: a collection's fields live in post meta,
 and a field inside a group, repeater or blocks has no column of its own.
 
-### Access
+### Transactions
 
-`access: { read, create, update, delete }`, each one of `true`/`false`,
-`"anyone"`, `"authenticated"` (signed in, guests included), a role (`"guest" <
-"subscriber" < "author" < "editor" < "admin"`, that role or higher), `"self"`
-(on a user projection: the signed-in user's own row), or
-`(ctx) => boolean | filter` with `ctx = {
-user, op, data? }`. Functions are compiled to PHP like hooks; they
-can't use `db`. A returned filter is checked against the collection like any
-literal filter and is ANDed into reads, updates and deletes; create rules
-return a boolean. Actions take `access` too (default `"editor"`).
+Tables and content share one database connection, so one transaction spans
+table rows, posts, post meta and options.
 
-On WordPress these rules are the only gate, on every path into the data:
-First's API, core `/wp/v2`, wp-admin (lists, the editor, quick edit,
-revisions, autosaves, search) and abilities. A post type's capabilities
-(`edit_first_posts`, `edit_others_first_posts`, ...) are answered from its rules
-through `map_meta_cap`, and no role is granted them, so granting one by hand
-changes nothing. Core reads apply the read rule and field access; core writes
-and editor saves apply the create, update and field rules, and are authorized
-on the saved data before they commit.
+- A request to the API, an action and a job each run in one transaction. A
+  throw rolls back every write in it, to tables and to content alike.
+- A job enqueued from a hook or an action runs after the request commits,
+  never inside it.
+- Handlers in `first/wp-hooks/` run in WordPress's own request and are not in
+  a First transaction: each write commits on its own.
 
-Core `/wp/v2/<post type>` speaks First's fields and queries too:
+### Database API (hooks and actions only)
 
-- Every field is registered post meta (`register_post_meta`, `show_in_rest`,
-  with its JSON Schema) under its own name. `meta.seats` reads and writes the
-  value as First does: a group or repeater is one value, a date is
-  `YYYY-MM-DD`. Writes go through First's codec and rules, and a field hidden
-  from the viewer is dropped from `meta` like everywhere else.
-- List routes take First's query arguments next to core's own:
-  `where` (JSON), `orderBy` (`-seats,title`), `with` (`author,comments` or
-  JSON; each item gets the relations under `with`) and `search` (every text
-  and richText field the viewer may read). They run as the viewer, so a filter
-  or sort on a hidden field is the same 403 as on First's API. Core keeps
-  pagination (`page`, `per_page`, `X-WP-Total`) and `_fields`.
-- The users kind does the same on core `/wp/v2/users`: member fields are
-  registered user meta under `meta`, shown only to a viewer whose read rule
-  covers the member. A `meta` write runs First's update as the viewer (rules,
-  validation, hooks) in one transaction with core's own user save, so a
-  refusal keeps nothing. The list takes `where` and `orderBy`.
-- A `table()` kind gets core-shaped `/wp/v2/<storage name>` (for example
-  `/wp/v2/first_signups`): list, get, create, update (`POST`/`PUT`/`PATCH`) and
-  delete, with `per_page`/`page`, `X-WP-Total`, `_fields`, a JSON Schema on
-  `OPTIONS`, and `where`/`orderBy`/`with`. Every call is First's pipeline as
-  the viewer, so it answers what First's API answers.
+```ts
+await db.query.items.findMany({ where, orderBy, limit, offset, columns, with });
+await db.query.items.findFirst({ where, ... });
+await db.insert(items).values(row | rows).returning?();
+await db.update(items).set(patch).where(filter).returning?();
+await db.delete(items).where(filter).returning?();
+```
+
+`where` is the Drizzle 1.0 object filter: `{ col: value }`, `{ col: { eq, ne,
+gt, gte, lt, lte, in, notIn, like, ilike, notLike, notIlike, isNull,
+isNotNull, OR, AND, NOT } }`, top-level `OR`/`AND`/`NOT`, relation keys
+(`{ location: { kind: "fridge" } }` or `{ location: true }`). `orderBy` is
+`{ col: "asc" | "desc" }`. Column, relation, and operator names in literal
+filters are checked at build time.
+
+List columns (`select([...]).many()`, `media().many()`) take `has`,
+`isNull`/`isNotNull` and `eq: []`; JSON columns (`json`, `group`, `repeater`,
+`blocks`) take `eq`/`ne` on the whole value and `isNull`/`isNotNull`, and
+neither can be ordered by. On editor collections `group`/`repeater`/`blocks`
+can't be compared at all (their WordPress meta is spread over many rows).
+These are build errors with the same message the runtime returns.
+`with: { cover: true }` on a media column puts the media row in place of the id.
+
+`await` on these calls compiles to plain blocking PHP calls.
 
 ## The `/__first/api/v1` API
 
@@ -487,13 +731,6 @@ Rows are First rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
 with `X-WP-Nonce`, an application password, or a First Identity bearer token.
 The API is served before the theme loads; it never uses 0.8's `/__zero/config`,
 `/__zero/run`, `/__zero/auth/*` or `/__zero/realtime/events`.
-
-## Globals
-
-`global(name, fields, { label?, access?: { read?, update? } })`, registered in
-`defineConfig({ globals: { name } })`. One record per global; fields use the
-sub-field rules, and a required field needs a default. `GET`/`PATCH
-/__first/api/v1/<name>`.
 
 ## defineConfig
 
@@ -582,37 +819,6 @@ locked and inferred grants, and `flows`, the handlers that both read data
 (rows or environment values) and send it out (`fetch`, `mail.send`). It's a
 report, not a refusal. A granted read plus a granted host can send data out.
 There are no CPU or memory limits.
-
-## Relations
-
-`ref(kind)` is a field holding the `id` of a row of another kind; `ref(() => kind)`
-refers to one declared later or to itself. The field name is the stored column,
-the relation name and the `with` key: `with: { post: true }` replaces the id with
-the row under the same key, and `where: { post: { title: "Hello" } }` filters by
-the target's fields (`where: { post: 7 }` still matches the id).
-
-```ts
-const authors = collection({ name: text() });
-const posts = collection({
-  title: text(),
-  author: ref(authors),                                  // required: delete is restricted
-  editor: ref(authors).optional().reverse("edited"),     // optional: delete sets null
-});
-```
-
-The target gets a reverse many relation named after the referencing kind's key
-(`first.authors.list({ with: { posts: true } })`), or `.reverse("name")` names it.
-Two refs from one kind to the same target get no default reverse; both need
-`.reverse()`, and the build error names them. A reverse named like a field of
-the target is a build error. `.onDelete()` takes `"cascade"`, `"restrict"` or
-`"setNull"`; the default is `"restrict"` on a required ref and `"setNull"` on an
-optional one. `ref()` refers to `id` only: a kind that links by a natural key
-stores the value as a plain field and queries by it.
-
-One graph covers collection↔collection, table↔table and both directions across
-storage kinds. Relation filters and `with` loads use the same runtime machinery
-and target row/field access rules. Hidden target fields stay masked; relation
-filters cannot probe them. Media and private file references work on both kinds.
 
 ## Hooks
 
@@ -1137,141 +1343,6 @@ in the `first-signature` header as `t=<unix>,v1=hex(HMAC-SHA256(secret, "t.body"
 Deliveries are jobs, so a failing endpoint is retried. `env(name)` is resolved
 when the webhook is sent: the process environment first, then a
 `wp-config.php` constant of that name.
-
-## Media and files
-
-`media: { sizes: { card: { width: 600, height: 400, fit: "cover" } } }` makes
-each named size for every uploaded image. `cover` crops around the image's
-focal point (`PATCH /media/<id>` with `{ focal: { x, y } }`, editors only;
-centre by default); `inside` scales to fit. Media rows carry
-`sizes.<name>.url`.
-
-<a id="files"></a>Private files live in logical file resources:
-
-```ts
-files: { decks: files("decks", { accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "owner", delete: "editor" } }) },
-```
-
-and a `file({ bucket: "decks" })` column holds one by id. Files never get a
-public URL: `GET /files/<bucket>/<id>` returns the row with a signed `url`
-valid for five minutes, and that link streams the bytes through PHP. `"owner"` means the uploader. Uploads outside
-`accept` are refused (422 at `/file`); uploads over `maxBytes` get 413
-`payload_too_large`.
-
-Configure durable uploads once for the app:
-
-```ts
-uploads: {
-  backend: "s3",
-  bucket: env("UPLOAD_BUCKET"),
-  region: "us-east-1",
-  // endpoint: env("UPLOAD_ENDPOINT"), pathStyle: true, // compatible providers
-  prefix: "my-app",
-  credentials: {
-    accessKeyId: env("UPLOAD_ACCESS_KEY_ID"),
-    secretAccessKey: env("UPLOAD_SECRET_ACCESS_KEY"),
-  },
-},
-```
-
-This backend stores private files, media originals and generated sizes, including
-standard WordPress editor uploads. `client.files.decks` and `file({ bucket: "decks" })`
-keep naming the logical resource; `uploads.bucket` is the physical provider bucket.
-Collections and tables can both reference files and media. Credentials resolve
-only at runtime; the compiler requires `env()` references. An optional
-`sessionToken: env("UPLOAD_SESSION_TOKEN")` supports temporary credentials.
-
-`uploads: { backend: "local" }` selects the existing local development behavior
-(also the default when omitted). S3 never falls back to durable local storage.
-See [upload storage](uploads.md) for provider permissions, failure recovery,
-existing-data cutover and the WordPress plugin boundary.
-
-## Locales
-
-```ts
-locales: { default: "en", all: ["en", "de"] },   // fallback: true by default
-```
-
-A collection with a `.localized()` field stores one row per locale. Every
-other field is shared by a post's translations and kept equal across them,
-except what each row generates for itself: `status`, `publishedAt`, `slug`,
-`uid`, and columns filled by `defaultNow()`, `$default(...)` or `$onUpdate(...)`
-(so `createdAt`/`updatedAt` are per translation). Each translation publishes
-on its own. Create a translation with
-`{ locale: "de", translationOf: <id> }`; rows carry `locale` and
-`translations` (locale → id). Reads take `?locale=de`, which returns German
-rows and, with `fallback`, the default-locale row of any group without one;
-`locale=*` returns every row. On WordPress, Polylang owns languages and
-translation groups, and the app plugin ships a `wpml-config.xml` saying which
-fields translate.
-
-## Sign-in
-
-Register one `userProjection(fields, options?)` under `users: { members }`.
-It projects existing WordPress users and usermeta, preserving their IDs and
-authentication; it creates no second user table or post type. It needs
-`email: email().unique()`, gets a write-only `password` and an
-admin-only `role`, and cannot have drafts, revisions, slugs or localization. Members sign in
-through the typed client: `auth.signIn()` and `auth.handleCallback()` redirect
-through the first-identity screens (register the frontend once with
-`first identity app add --name=<name> --id=<app_id> --redirect=<url> --origin=<origin>`).
-`GET /me` returns the user with their `member` row.
-
-Anonymous visitors can write as guests (`createClient({ auth: { guests: true } })`):
-the first rejected write starts a guest session, and `auth.upgrade()` keeps the
-guest's rows when they sign up.
-
-## Sync
-
-Every publish seeds synced files: missing records are created, trashed records stay deleted, and no records are removed.
-Existing editable records keep their site content; the publish reports `first_seed_skipped_existing` for differing files, and `first sync` merges them.
-For `editor: false` collections the file wins; files without a `uid` use a stable identity derived from the collection and basename, so republishes and later syncs match the same record.
-
-```ts
-{ sync: "content/posts/*.md" }
-```
-
-`first sync [--site <url>]`, with `FIRST_APP_PASSWORD=user:pass` (or `FIRST_TOKEN=<jwt>`) in the environment, keeps
-`content/posts/<slug>.md` and the site in step: front matter for fields, the
-body as Markdown for the `content` column. Both sides may change; it merges
-per field, and writes `.first/conflicts/<uid>.md` when the same field changed on
-both (`first sync resolve <uid>` applies your edit of it).
-`--check` exits 2 when anything would change. The first sync with a site
-matches records and deletes nothing. It commits the files it wrote unless
-`--no-commit`. `first build` adds `.first/*` and `!.first/sync-base.json` to
-`.gitignore`, because the sync base is committed.
-
-What sync leaves out: `$onUpdate` columns, derived and hidden system columns,
-and fields the viewer's field access hides. References to a `uid` collection are written as that
-row's uid. When required references form a cycle that no order of writes can
-satisfy, sync reports it and writes nothing.
-
-## Database API (hooks and actions only)
-
-```ts
-await db.query.items.findMany({ where, orderBy, limit, offset, columns, with });
-await db.query.items.findFirst({ where, ... });
-await db.insert(items).values(row | rows).returning?();
-await db.update(items).set(patch).where(filter).returning?();
-await db.delete(items).where(filter).returning?();
-```
-
-`where` is the Drizzle 1.0 object filter: `{ col: value }`, `{ col: { eq, ne,
-gt, gte, lt, lte, in, notIn, like, ilike, notLike, notIlike, isNull,
-isNotNull, OR, AND, NOT } }`, top-level `OR`/`AND`/`NOT`, relation keys
-(`{ location: { kind: "fridge" } }` or `{ location: true }`). `orderBy` is
-`{ col: "asc" | "desc" }`. Column, relation, and operator names in literal
-filters are checked at build time.
-
-List columns (`select([...]).many()`, `media().many()`) take `has`,
-`isNull`/`isNotNull` and `eq: []`; JSON columns (`json`, `group`, `repeater`,
-`blocks`) take `eq`/`ne` on the whole value and `isNull`/`isNotNull`, and
-neither can be ordered by. On editor collections `group`/`repeater`/`blocks`
-can't be compared at all (their WordPress meta is spread over many rows).
-These are build errors with the same message the runtime returns.
-`with: { cover: true }` on a media column puts the media row in place of the id.
-
-`await` on these calls compiles to plain blocking PHP calls.
 
 ## Known gaps
 

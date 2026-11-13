@@ -222,10 +222,10 @@ fn tree(root: &Path) -> std::collections::BTreeMap<String, Vec<u8>> {
     out
 }
 
-/// The committed render artifact of examples/full-site (`first-pages build`) travels in the app bundle,
-/// and the host compiler turns it into the pages plugin without JavaScript, after the project is gone.
+/// examples/full-site's `first/app/` pages, components, stylesheets and SVG travel in the app bundle as
+/// sources, and the host compiler renders them from the app plugin after the project is gone.
 #[test]
-fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
+fn host_capture_of_a_pages_site_matches_native_and_renders_from_the_app_plugin() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("site");
     copy_tree(Path::new("examples/full-site"), &project);
@@ -242,20 +242,25 @@ fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
     }
     let app: serde_json::Value = serde_json::from_slice(&fs::read(host.join("app.first.json")).unwrap()).unwrap();
     for file in [
-        "first/pages.json",
-        "pages/notes/[slug]/page.tsx",
-        "islands/cheer.client.ts",
-        "styles/global.css",
-        "pages/about/compass.svg",
+        "first/app/layout.tsx",
+        "first/app/notes/[slug]/page.tsx",
+        "first/app/notes/[slug]/note.module.css",
+        "first/app/global.css",
+        "first/app/about/compass.svg",
         "first/app/applause/page.tsx",
         "first/components/CheerButton.tsx",
+        "first/components/NoteCard.tsx",
     ] {
         assert!(app["files"][file].is_string(), "{file} is captured");
     }
     fs::remove_dir_all(&project).unwrap();
     let compiled = work.path().join("compiled");
     let manifest = first::host::compile_sources(&host, &compiled, &host, None).unwrap();
-    assert_eq!(manifest["pages"], "first-pages-fullsite");
+    assert_eq!(
+        manifest.get("pages"),
+        None,
+        "no pages plugin: the app plugin renders first/app/"
+    );
     // The URLs outside /wp-json the app answers, so the host can hand them to WordPress: each
     // route with its method, and each page (GET and HEAD) in the same path grammar.
     assert_eq!(
@@ -267,147 +272,78 @@ fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
     );
     assert_eq!(
         manifest["pagePaths"],
-        serde_json::json!(["/", "/about", "/applause", "/notes", "/notes/:item", "/notes/featured"])
+        serde_json::json!(["/", "/about", "/applause", "/notes", "/notes/:slug", "/notes/featured"])
     );
-    let plugin = tree(&compiled.join("plugins/first-pages-fullsite"));
-    let artifact: serde_json::Value = serde_json::from_str(app["files"]["first/pages.json"].as_str().unwrap()).unwrap();
+    let plugins: Vec<String> = fs::read_dir(compiled.join("plugins"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("first-pages"))
+        .collect();
+    assert_eq!(plugins, Vec::<String>::new());
+    let app_plugin = tree(&compiled.join("plugins/first-app-fullsite/first/app"));
+    let assets: Vec<String> = app_plugin
+        .keys()
+        .filter_map(|k| k.strip_prefix("assets/"))
+        .map(|k| k.split('-').next().unwrap().to_string())
+        .collect();
     assert_eq!(
-        plugin["manifest.json"],
-        artifact["manifest"].as_str().unwrap().as_bytes()
+        assets,
+        [".htaccess", "compass", "global", "note"],
+        "{:?}",
+        app_plugin.keys()
     );
-    for name in artifact["files"].as_object().unwrap().keys() {
-        assert!(plugin.contains_key(name), "{name}");
-    }
-    for php in [
-        "first-pages-fullsite.php",
-        "first-pages/Plugin.php",
-        "first-pages/Routes.php",
-        "first-pages/Renderer.php",
-        "first-pages/Request.php",
-        "first-pages/bootstrap.php",
-    ] {
-        assert!(plugin.contains_key(php), "{php}");
-    }
-    assert_eq!(
-        plugin["first-pages/Plugin.php"],
-        fs::read("runtime/pages/Plugin.php").unwrap(),
-        "the pages runtime is the embedded runtime/pages"
-    );
-    let schema =
-        String::from_utf8(fs::read(compiled.join("plugins/first-app-fullsite/first/app/schema.php")).unwrap()).unwrap();
+    let schema = String::from_utf8(app_plugin["schema.php"].clone()).unwrap();
     assert!(
         schema.contains("'app/api/feed.json/route.ts' => ['component' => null"),
         "{schema}"
     );
+    assert!(
+        schema.contains("'app/notes/[slug]/page.tsx' => ['component' =>"),
+        "{schema}"
+    );
 }
 
-fn pages_project(work: &Path) -> std::path::PathBuf {
-    let project = work.join("site");
+/// A capture taken before `first/app/`, holding TSX pages for the old renderer (`pages/` and
+/// `first/pages.json`), is refused on the host: compiling the rest would publish a site with no pages.
+#[test]
+fn a_capture_with_old_renderer_pages_is_refused_on_the_host() {
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path().join("site");
     copy_tree(Path::new("examples/full-site"), &project);
-    project
-}
-
-fn refused(project: &Path, out: &Path) -> first::diag::Diag {
-    first::host::sources(project, out).err().expect("capture refuses")
-}
-
-#[test]
-fn a_stale_or_missing_render_artifact_is_refused_before_publishing() {
-    let work = tempfile::tempdir().unwrap();
-    let project = pages_project(work.path());
-    let page = project.join("pages/about/page.tsx");
-    let original = fs::read_to_string(&page).unwrap();
-    fs::write(&page, original.replace("About", "About us")).unwrap();
-    let error = refused(&project, &work.path().join("a"));
-    assert_eq!(error.code, first::diag::Code::SourceNeedsLocalCapture);
-    assert!(
-        error.message.contains("pages/about/page.tsx changed"),
-        "{}",
-        error.message
-    );
-    fs::write(&page, original).unwrap();
-
-    fs::create_dir_all(project.join("pages/contact")).unwrap();
-    fs::write(
-        project.join("pages/contact/page.tsx"),
-        "export default () => <p>Hi</p>;\n",
-    )
-    .unwrap();
-    assert!(
-        refused(&project, &work.path().join("b"))
-            .message
-            .contains("pages/contact/page.tsx was added")
-    );
-    fs::remove_dir_all(project.join("pages/contact")).unwrap();
-
-    let config = project.join("first.config.ts");
-    let text = fs::read_to_string(&config).unwrap();
-    fs::write(
-        &config,
-        text.replace(
-            "dek: text({ multiline: true }).max(240).optional(),",
-            "dek: text({ multiline: true }).max(240).optional(),\n  mood: text().optional(),",
-        ),
-    )
-    .unwrap();
-    assert!(
-        refused(&project, &work.path().join("c"))
-            .message
-            .contains("different schema")
-    );
-    fs::write(&config, text).unwrap();
-
-    fs::remove_file(project.join("first/pages.json")).unwrap();
-    assert_eq!(
-        refused(&project, &work.path().join("d")).code,
-        first::diag::Code::SourceNeedsLocalCapture
-    );
-    assert!(!work.path().join("d").exists());
-}
-
-#[test]
-fn a_tampered_render_artifact_cannot_carry_php_or_escape_the_plugin() {
-    let work = tempfile::tempdir().unwrap();
-    let project = pages_project(work.path());
-    let path = project.join("first/pages.json");
-    let original: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    for (name, contents) in [
-        ("assets/x.php", "PD9waHA="),
-        ("first-pages/Plugin.php", "PD9waHA="),
-        ("assets/../../x.css", "eA=="),
-        ("assets/a.css", "!!"),
-    ] {
-        let mut artifact = original.clone();
-        artifact["files"][name] = contents.into();
-        fs::write(&path, serde_json::to_vec(&artifact).unwrap()).unwrap();
-        let error = refused(&project, &work.path().join("out"));
+    let captured = work.path().join("captured");
+    first::host::sources(&project, &captured).unwrap();
+    for carried in ["first/pages.json", "pages/page.tsx"] {
+        let bundle = work.path().join(carried.replace('/', "-"));
+        copy_tree(&captured, &bundle);
+        let mut app: serde_json::Value =
+            serde_json::from_slice(&fs::read(bundle.join("app.first.json")).unwrap()).unwrap();
+        app["files"][carried] = "{}".into();
+        let bytes = serde_json::to_vec(&app).unwrap();
+        fs::write(bundle.join("app.first.json"), &bytes).unwrap();
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(bundle.join("manifest.json")).unwrap()).unwrap();
+        manifest["app_sha256"] = {
+            use sha2::Digest;
+            sha2::Sha256::digest(&bytes)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
+                .into()
+        };
+        fs::write(bundle.join("manifest.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
+        let out = work.path().join(format!("{}-out", carried.replace('/', "-")));
+        let error = first::host::compile_sources(&bundle, &out, &bundle, None).unwrap_err();
         assert!(
-            error.message.contains("invalid first/pages.json"),
-            "{name}: {}",
+            error.message.contains("old pages renderer"),
+            "{carried}: {}",
             error.message
         );
+        assert!(
+            error.help.as_deref().is_some_and(|h| h.contains("first/app/")),
+            "{carried}"
+        );
+        assert!(!out.exists(), "{carried}: nothing is written");
     }
-    let mut artifact = original.clone();
-    let mut manifest: serde_json::Value = serde_json::from_str(artifact["manifest"].as_str().unwrap()).unwrap();
-    manifest["routes"][0]["id"] = "first:not-found".into();
-    manifest["routes"][0]["pattern"] = "/category/news".into();
-    artifact["manifest"] = manifest.to_string().into();
-    fs::write(&path, serde_json::to_vec(&artifact).unwrap()).unwrap();
-    assert!(
-        refused(&project, &work.path().join("out"))
-            .message
-            .contains("not-found identity")
-    );
-    let mut artifact = original.clone();
-    let mut manifest: serde_json::Value = serde_json::from_str(artifact["manifest"].as_str().unwrap()).unwrap();
-    manifest["routes"][0]["pattern"] = "/wp-admin".into();
-    artifact["manifest"] = manifest.to_string().into();
-    fs::write(&path, serde_json::to_vec(&artifact).unwrap()).unwrap();
-    assert!(
-        refused(&project, &work.path().join("out"))
-            .message
-            .contains("route pattern")
-    );
 }
 
 /// A `first/app/` route captures from source with no page artifact, and the host compile lists it

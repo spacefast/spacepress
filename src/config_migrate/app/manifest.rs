@@ -64,7 +64,7 @@ impl Manifest {
             .static_files
             .iter()
             .find(|f| f.get("path").and_then(Value::as_str) == Some(super::client::ZERO_CSS))?;
-        let bytes = crate::pages::base64_decode(file.get("contentBase64")?.as_str()?)?;
+        let bytes = base64_decode(file.get("contentBase64")?.as_str()?)?;
         String::from_utf8(bytes).ok()
     }
 
@@ -240,4 +240,37 @@ impl Manifest {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Standard base64 with padding, as 0.8's finalize manifest stores file contents.
+fn base64_decode(text: &str) -> Option<Vec<u8>> {
+    let value = |c: u8| -> Option<u32> {
+        Some(match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        } as u32)
+    };
+    let bytes = text.as_bytes();
+    if !bytes.len().is_multiple_of(4) {
+        return None;
+    }
+    let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
+    for (index, chunk) in bytes.chunks(4).enumerate() {
+        let last = index == bytes.len() / 4 - 1;
+        let pad = chunk.iter().rev().take_while(|b| **b == b'=').count();
+        if pad > 2 || (pad > 0 && !last) {
+            return None;
+        }
+        let mut n = 0u32;
+        for (i, b) in chunk.iter().enumerate() {
+            let v = if i >= 4 - pad { 0 } else { value(*b)? };
+            n |= v << (18 - 6 * i);
+        }
+        out.extend_from_slice(&n.to_be_bytes()[1..4 - pad]);
+    }
+    Some(out)
 }

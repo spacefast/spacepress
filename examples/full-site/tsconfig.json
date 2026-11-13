@@ -1,46 +1,24 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "ES2022",
-      "DOM"
-    ],
+    "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
     "noEmit": true,
     "types": [],
     "jsx": "react-jsx",
-    "jsxImportSource": "@spacefast/first-pages",
+    "jsxImportSource": "first",
     "paths": {
-      "first": [
-        "../../types/first/index.d.ts"
-      ],
-      "@spacefast/first-pages": [
-        "../../packages/pages/src/index.ts"
-      ],
-      "@spacefast/first-pages/*": [
-        "../../packages/pages/src/*.ts"
-      ],
-      "@spacefast/first-blocks": [
-        "../../packages/blocks/src/index.ts"
-      ],
-      "@spacefast/first-blocks/*": [
-        "../../packages/blocks/src/*.ts"
-      ],
-      "@wordpress/interactivity": [
-        "./islands/interactivity.d.ts"
-      ]
+      "first": ["../../types/first/index.d.ts"],
+      "first/app": ["../../types/first/app.d.ts"],
+      "first/client": ["../../types/first/client.d.ts"],
+      "first/jsx-runtime": ["../../types/first/jsx-runtime.d.ts"],
+      "first/jsx-dev-runtime": ["../../types/first/jsx-dev-runtime.d.ts"]
     },
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": [
-    "first.config.ts",
-    "first/_generated/db.d.ts",
-    "pages",
-    "components",
-    "islands",
-    "pages.d.ts"
-  ]
+  "include": ["first.config.ts", "first/**/*.ts", "first/**/*.tsx"],
+  "exclude": ["first/dist"]
 }

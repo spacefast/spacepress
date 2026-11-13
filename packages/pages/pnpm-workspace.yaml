@@ -1,3 +1,0 @@
-# esbuild's postinstall places its platform binary; pnpm 12 reads the allowlist from `allowBuilds`.
-allowBuilds:
-  esbuild: true

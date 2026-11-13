@@ -1,7 +1,9 @@
 // Server components content may use as blocks: in a Markdown file, `<Callout type="warning">…</Callout>`.
+import type { ReactNode } from "first/app";
+
 export const blocks = ["Callout", "Badge"];
 
-export function Callout({ type, title, children }: { type: "note" | "warning"; title?: string; children?: JSX.Element }) {
+export function Callout({ type, title, children }: { type: "note" | "warning"; title?: string; children?: ReactNode }) {
   return (
     <aside className={`callout callout-${type}`} role="note">
       {title && <p className="callout-title">{title}</p>}

@@ -746,6 +746,7 @@
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/publishing/content-in-git.mdx",
 			"toc": [
 				"the-pull-request",
+				"the-github-workflow",
 				"conflicts",
 				"permissions"
 			],

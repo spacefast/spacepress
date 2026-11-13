@@ -453,6 +453,25 @@ final class AppRouter
         return $route !== null;
     }
 
+    /**
+     * Whether a `first/app/` page under a layout `guard` serves this path (below the home URL): a
+     * signed-out visitor is sent to sign in there, so the address is not public.
+     */
+    public function guarded(string $path): bool
+    {
+        $match = $this->reserved($path) ? null : self::match($this->app['routes'], $path);
+        if ($match === null || ($match['route']['page'] ?? null) === null) {
+            return false;
+        }
+        foreach ($match['route']['layouts'] as $layout) {
+            if (($this->file($layout)['guard'] ?? null) !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** @return ?array{route: array, params: array} */
     private function twinRoute(string $url): ?array
     {

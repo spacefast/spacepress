@@ -500,6 +500,16 @@ pub struct Schema {
     pub admin: bool,
     /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `first/app`.
     pub frontend: Option<crate::kind_url::Frontend>,
+    /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
+    /// while it runs. Holds what the build read from the lock `first pull` writes.
+    pub runtime_schema: Option<RuntimeSchema>,
+}
+
+/// The site schema version a build contains: zero and no hash before any `first pull`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RuntimeSchema {
+    pub version: u64,
+    pub hash: String,
 }
 
 impl Default for Schema {
@@ -524,6 +534,7 @@ impl Default for Schema {
             locales: None,
             admin: false,
             frontend: None,
+            runtime_schema: None,
         }
     }
 }

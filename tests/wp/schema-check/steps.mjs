@@ -93,6 +93,8 @@ export const steps = {
     `const tasks = table({ name: text().optional(), rank: text().optional() }, { existingTable: "sf_spc_schema_check_retype" });`], "memos, tags, tasks"),
   // 17. Storage follows the builder: memos, a table() with rows, is declared with collection().
   //     The build plans the table's drop and moves no rows; the deploy refuses it with the count.
+  //     The project's ledger now ends with that drop while the site stays at readoptRetype's:
+  //     a step added after this one is planned on top of the drop.
   memosAsCollection: `import { boolean, collection, defineConfig, number, ref, table, text } from "first";
 const memos = collection({ title: text(), text: text().max(5).optional() });
 const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: ref(memos).optional() });

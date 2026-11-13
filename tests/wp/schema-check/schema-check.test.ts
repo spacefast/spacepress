@@ -430,7 +430,9 @@ test("a table() declared with collection() keeps its rows where they are: the de
   assert.equal(posts(), 0, "no row was copied into posts");
   // The reference tags.memo held is still there: its constraint is dropped by the same refused file.
   assert.equal(rows("information_schema.TABLE_CONSTRAINTS", "TABLE_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'first_tags_memo_fk'"), 1);
-  // The fix is the declaration: the previous build (table()) installs again and nothing is pending.
+  // Undoing the redeclaration: the last deployed build (table()) installs again. The refused file
+  // isn't in it, so nothing is pending and every row is still there. (A table() built on top of the
+  // drop would carry the drop too; docs/config-api.md says to restore the ledger instead.)
   install("readoptRetype");
   assert.ok(!applied().some((id) => id > "0019_update" && !id.startsWith("9")), "nothing ran");
   assert.deepEqual(sql("SELECT id, text FROM wp_first_memos ORDER BY id"), memos);

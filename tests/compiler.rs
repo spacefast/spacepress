@@ -403,6 +403,11 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "collection() has no option `editor`",
         "first.config.ts:2:60",
     );
+    rejects(
+        "reject-collection-editor-false",
+        "help: storage follows the builder: collection() is always WordPress posts; use table() for a SQL table",
+        "first.config.ts:2:60",
+    );
     rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:15");
     rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:15");
     rejects(

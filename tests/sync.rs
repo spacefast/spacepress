@@ -251,6 +251,11 @@ fn git(project: &Path, args: &[&str]) -> String {
 }
 
 fn setup() -> (PathBuf, Site) {
+    setup_with(&[])
+}
+
+/// `setup()`, with `env` in the served site's environment (its `php -S` reads it).
+fn setup_with(env: &[(&str, &str)]) -> (PathBuf, Site) {
     static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let project = std::env::temp_dir().join(format!("first-sync-{}-{n}", std::process::id()));
@@ -274,6 +279,7 @@ fn setup() -> (PathBuf, Site) {
         .arg("serve")
         .arg(project.join("first/dist/wp-content"))
         .args(["ed=editor", "au=author", "root=admin"])
+        .envs(env.iter().copied())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
@@ -2279,6 +2285,8 @@ fn a_component_block_in_markdown_syncs_both_ways() {
 #[derive(Default)]
 struct FakeGitHub {
     pulls: Vec<serde_json::Value>,
+    /// The `repository_dispatch` bodies the site sent.
+    dispatches: Vec<serde_json::Value>,
     comments: Vec<(u64, String)>,
     calls: Vec<String>,
 }
@@ -2320,7 +2328,15 @@ fn fake_github(repo: &'static str) -> (String, std::sync::Arc<std::sync::Mutex<F
             s.calls.push(format!("{method} {target}"));
             let path = target.split('?').next().unwrap().to_string();
             let prefix = format!("/repos/{repo}");
-            let (status, answer) = if auth != "Bearer test-token" {
+            let dispatch = method == "POST" && path == format!("/repos/{repo}/dispatches");
+            let (status, answer) = if dispatch {
+                if auth == "Bearer dispatch-token" {
+                    s.dispatches.push(body.clone());
+                    (204, serde_json::Value::Null)
+                } else {
+                    (401, serde_json::json!({"message": "Bad credentials"}))
+                }
+            } else if auth != "Bearer test-token" {
                 (401, serde_json::json!({"message": "Bad credentials"}))
             } else {
                 match (method.as_str(), path.strip_prefix(&prefix).unwrap_or("?")) {
@@ -2356,7 +2372,11 @@ fn fake_github(repo: &'static str) -> (String, std::sync::Arc<std::sync::Mutex<F
                 }
             };
             drop(s);
-            let text = answer.to_string();
+            let text = if status == 204 {
+                String::new()
+            } else {
+                answer.to_string()
+            };
             let _ = client.write_all(
                 format!(
                     "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
@@ -2636,4 +2656,229 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
     for dir in [&project, &origin, &clone, &other] {
         let _ = std::fs::remove_dir_all(dir);
     }
+}
+
+/// The loop end to end, with nothing real but WordPress: an edit saved in wp-admin (core's REST
+/// route, as the block editor saves) sends the site's debounced `repository_dispatch`; the run the
+/// workflow starts for it (`first sync --pr`) puts the edit on the sync pull request's branch; a
+/// file change merged into the default branch reaches the site on the next run (a push).
+#[test]
+fn an_edit_in_wp_admin_reaches_a_pull_request_and_a_merged_file_reaches_the_site() {
+    let (api, github) = fake_github("acme/docs");
+    let (project, site) = setup_with(&[
+        ("FIRST_GITHUB_REPOSITORY", "acme/docs"),
+        ("FIRST_GITHUB_DISPATCH_TOKEN", "dispatch-token"),
+        ("FIRST_GITHUB_API_URL", api.as_str()),
+        ("FIRST_GITHUB_DISPATCH_WINDOW", "0"),
+    ]);
+    let origin = project.with_extension("origin.git");
+    let _ = std::fs::remove_dir_all(&origin);
+    assert!(
+        Command::new("git")
+            .args(["init", "-q", "--bare", "-b", "main"])
+            .arg(&origin)
+            .status()
+            .unwrap()
+            .success()
+    );
+    git(&project, &["checkout", "-q", "-B", "main"]);
+    std::fs::create_dir_all(project.join("content/docs")).unwrap();
+    std::fs::write(
+        project.join("content/docs/intro.md"),
+        "---\ntitle: Intro\n---\nFrom git.\n",
+    )
+    .unwrap();
+    git(
+        &project,
+        &["add", "first.config.ts", "first/components", ".gitignore", "content"],
+    );
+    git_as_person(&project, &["commit", "-q", "-m", "docs"]);
+    git(&project, &["remote", "add", "origin", origin.to_str().unwrap()]);
+    git(&project, &["push", "-q", "origin", "main"]);
+    // What the workflow runs, in a fresh clone each time, as Actions does.
+    let workflow_run = || -> serde_json::Value {
+        let clone = tempfile::tempdir().unwrap();
+        assert!(
+            Command::new("git")
+                .args(["clone", "-q"])
+                .arg(&origin)
+                .arg(clone.path())
+                .status()
+                .unwrap()
+                .success()
+        );
+        let out = first()
+            .args(["sync", "--pr", "--only", "docs"])
+            .arg(clone.path())
+            .args(["--site", &site.url(), "--json"])
+            .env("FIRST_APP_PASSWORD", &site.token)
+            .env("GITHUB_TOKEN", "test-token")
+            .env("GITHUB_API_URL", &api)
+            .env("GITHUB_REPOSITORY", "acme/docs")
+            .env("GITHUB_ACTIONS", "true")
+            // A runner has no git identity of its own.
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        data(&out)
+    };
+    // The site's background work, as WordPress cron or the host's tick runs it.
+    let tick = || {
+        let out = Command::new("php")
+            .args(["-d", "memory_limit=512M", "-r"])
+            .arg("require $argv[1]; wpLoad($argv[2]); [$code, $out] = \\First\\Wp\\Runtime::plugin()->app()->cli(['jobs', 'tick']); echo $out;")
+            .arg(root().join("tests/php/wp.php"))
+            .arg(&site.dir)
+            .envs([
+                ("FIRST_GITHUB_REPOSITORY", "acme/docs"),
+                ("FIRST_GITHUB_DISPATCH_TOKEN", "dispatch-token"),
+                ("FIRST_GITHUB_API_URL", api.as_str()),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+
+    // Merge a pull request's branch into main, as its reviewer does.
+    let merge = |branch: &str| {
+        let clone = tempfile::tempdir().unwrap();
+        assert!(
+            Command::new("git")
+                .args(["clone", "-q"])
+                .arg(&origin)
+                .arg(clone.path())
+                .status()
+                .unwrap()
+                .success()
+        );
+        git_as_person(
+            clone.path(),
+            &[
+                "merge",
+                "-q",
+                "--no-ff",
+                "-m",
+                "Merge the sync",
+                &format!("origin/{branch}"),
+            ],
+        );
+        git(clone.path(), &["push", "-q", "origin", "main"]);
+        for pr in github.lock().unwrap().pulls.iter_mut() {
+            if pr["head"]["ref"] == branch {
+                pr["state"] = "closed".into();
+            }
+        }
+    };
+
+    // The first run pushes git's docs to the site; the file gains its uid, which comes back as a
+    // pull request. Merged, the next run finds nothing to do.
+    let first_run = workflow_run();
+    assert_eq!(first_run["pr"]["action"], "opened", "{first_run}");
+    merge(first_run["pr"]["branch"].as_str().unwrap());
+    assert_eq!(workflow_run()["pr"]["action"], "none");
+    tick();
+    assert!(
+        github.lock().unwrap().dispatches.is_empty(),
+        "first sync's own writes send no dispatch"
+    );
+    let intro = site
+        .rows("docs")
+        .into_iter()
+        .find(|r| r["title"] == "Intro")
+        .expect("the file reached the site");
+
+    // An editor saves the page in wp-admin: one dispatch, of the type the workflow listens for.
+    let (s, saved) = core_call(
+        &site,
+        "POST",
+        &format!("/wp/v2/first_docs/{}", intro["id"]),
+        serde_json::json!({"title": "Intro, edited in wp-admin"}),
+    );
+    assert_eq!(s, 200, "{saved}");
+    tick();
+    let dispatches = github.lock().unwrap().dispatches.clone();
+    assert_eq!(dispatches.len(), 1, "{dispatches:?}");
+    assert_eq!(dispatches[0]["event_type"], "first-content-changed");
+
+    // The run that dispatch starts: a pull request whose branch has the edit.
+    let run = workflow_run();
+    assert_eq!(run["pr"]["action"], "opened", "{run}");
+    let branch = run["pr"]["branch"].as_str().unwrap();
+    let file = git(&origin, &["show", &format!("{branch}:content/docs/intro.md")]);
+    assert!(file.contains("title: \"Intro, edited in wp-admin\""), "{file}");
+    let commit = git(&origin, &["log", "-1", "--format=%an <%ae>", branch]);
+    assert!(
+        commit.starts_with("github-actions[bot]"),
+        "the Actions bot commits in Actions: {commit}"
+    );
+
+    // The pull request is merged, then someone edits the file in git and pushes to main: the push
+    // run sends it to the site.
+    merge(branch);
+    let clone = tempfile::tempdir().unwrap();
+    assert!(
+        Command::new("git")
+            .args(["clone", "-q"])
+            .arg(&origin)
+            .arg(clone.path())
+            .status()
+            .unwrap()
+            .success()
+    );
+    let path = clone.path().join("content/docs/intro.md");
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, text.replace("From git.", "Rewritten in git.")).unwrap();
+    git_as_person(clone.path(), &["commit", "-q", "-am", "Rewrite the intro"]);
+    git(clone.path(), &["push", "-q", "origin", "main"]);
+    let pushed = workflow_run();
+    assert_eq!(pushed["pr"]["action"], "base", "{pushed}");
+    let row = site.rows("docs").into_iter().find(|r| r["id"] == intro["id"]).unwrap();
+    assert!(
+        row["content"]
+            .as_str()
+            .or(row["body"].as_str())
+            .unwrap_or("")
+            .contains("Rewritten in git."),
+        "{row}"
+    );
+    assert_eq!(row["title"], "Intro, edited in wp-admin");
+    tick();
+    assert_eq!(
+        github.lock().unwrap().dispatches.len(),
+        1,
+        "a push run's writes send no dispatch"
+    );
+    let _ = std::fs::remove_dir_all(&project);
+    let _ = std::fs::remove_dir_all(&origin);
+}
+
+/// A call to one of WordPress core's REST routes (`/wp-json<path>`) as the editor.
+fn core_call(site: &Site, method: &str, path: &str, body: serde_json::Value) -> (u16, serde_json::Value) {
+    let mut s = TcpStream::connect(("127.0.0.1", site.port)).unwrap();
+    let body = body.to_string();
+    let request = format!(
+        "{method} /wp-json{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nAuthorization: Basic {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        base64(site.token.as_bytes()),
+        body.len()
+    );
+    s.write_all(request.as_bytes()).unwrap();
+    let mut raw = String::new();
+    s.read_to_string(&mut raw).unwrap();
+    let status = raw[9..12].parse().unwrap();
+    let json = raw.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
+    let json = json.find('{').map_or("", |i| &json[i..]);
+    (status, serde_json::from_str(json).unwrap_or(serde_json::Value::Null))
 }

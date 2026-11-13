@@ -207,6 +207,10 @@ fn collection(out: &mut String, c: &Collection) {
     let _ = writeln!(out, "            'editor' => {},", c.editor);
     let _ = writeln!(out, "            'drafts' => {},", c.drafts);
     let _ = writeln!(out, "            'revisions' => {},", c.revisions);
+    if c.editor && !c.staged {
+        // Staged versions are on for every collection; only the opt-out is written.
+        let _ = writeln!(out, "            'staged' => false,");
+    }
     let _ = writeln!(out, "            'comments' => {},", c.comments);
     let _ = writeln!(out, "            'uid' => {},", c.uid);
     let _ = writeln!(
@@ -344,6 +348,9 @@ pub fn render(schema: &Schema) -> String {
         for (name, function) in &schema.components {
             let _ = writeln!(out, "        {} => {},", php_str(name), php_str(function));
         }
+    }
+    if !schema.blocks.is_empty() {
+        out.push_str(&crate::content_blocks::schema_php(&schema.blocks));
     }
     if !schema.islands.is_empty() {
         out.push_str("    ],\n    'islands' => [\n");

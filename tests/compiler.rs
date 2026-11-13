@@ -540,6 +540,18 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "only collection() kinds take comments",
         ),
         (
+            "tables: { notes: table({ title: text().optional() }, { staged: true }) }",
+            "only collection() kinds have staged versions",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }, { staged: 1 }) }",
+            "`staged` must be true or false",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }), notesStaged: collection({ title: text() }) }",
+            "ability kebab collision: notes-staged-get",
+        ),
+        (
             "collections: { notes: collection({ title: text() }, { comments: 'yes' }) }",
             "`comments` must be true or false",
         ),
@@ -2401,8 +2413,8 @@ fn builds_wordpress_and_knows_no_target_option() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
-/// A kind's `url` and the config's `frontend` (docs/spec/spec.md §2.7, §5): checked at build time and
-/// emitted into schema.php, where the router and link filters read them.
+/// A kind's `url` and `staged` and the config's `frontend` (docs/spec/spec.md §2.7, §5): checked at
+/// build time and emitted into schema.php, where the runtime reads them.
 #[test]
 fn kind_urls_and_the_frontend_mode_reach_the_schema() {
     rejects(
@@ -2474,6 +2486,16 @@ export default defineConfig({ name: "kindurls" });
 "#,
     );
     assert!(built.get("frontend").is_none(), "{built}");
+    // `staged: false` is the one staged setting the schema carries: collections stage unless it is there.
+    let built = schema(
+        r#"import { collection, defineConfig, text } from "first";
+export const notes = collection({ title: text() });
+export const fixed = collection({ title: text() }, { staged: false });
+export default defineConfig({ name: "kindurls", collections: { notes, fixed } });
+"#,
+    );
+    assert!(built["collections"]["notes"].get("staged").is_none(), "{built}");
+    assert_eq!(built["collections"]["fixed"]["staged"], false);
 }
 
 /// A project whose ledger is still at `first/migrations/` is refused, never read as a first build:
@@ -2654,6 +2676,92 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
 }
 
 /// The auth-collection fixture the PHP suites run on is exactly what the compiler emits for it.
+/// Storage follows the builder (docs/config-api.md, "Schema changes at deploy"). A kind the ledger
+/// holds as a SQL table, declared again with collection(), is refused at its declaration before any
+/// migration is written: building it would plan the table's drop. Declared with table() again it
+/// builds with no migration. The other way, posts declared as a table() still build, with a warning.
+#[test]
+fn a_stored_table_declared_with_collection_is_refused_before_anything_is_written() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path();
+    std::fs::create_dir_all(project.join("first")).unwrap();
+    std::fs::write(
+        project.join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"stored\" });\n",
+    )
+    .unwrap();
+    let schema = |builder: &str| {
+        std::fs::write(
+            project.join("first/schema.ts"),
+            format!(
+                "import {{ {builder}, text }} from \"first\";\nexport const memos = {builder}({{ title: text() }});\n"
+            ),
+        )
+        .unwrap();
+    };
+    let ledger = || {
+        let dir = project.join("first/_generated/migrations");
+        let mut files: Vec<(String, Vec<u8>)> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| {
+                let e = e.unwrap();
+                (
+                    e.file_name().to_string_lossy().into_owned(),
+                    std::fs::read(e.path()).unwrap(),
+                )
+            })
+            .collect();
+        files.sort();
+        files
+    };
+    schema("table");
+    let built = first().args(["build", "--quiet"]).arg(project).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let deployed = ledger();
+
+    schema("collection");
+    for command in ["check", "build"] {
+        let out = first().arg(command).arg(project).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{command}: {stderr}");
+        assert!(
+            stderr.contains("`memos` is stored as a SQL table, and collection() is always WordPress posts"),
+            "{stderr}"
+        );
+        assert!(stderr.contains("--> first/schema.ts:2:22"), "{stderr}");
+        assert!(stderr.contains("help: declare it with table() again"), "{stderr}");
+        assert_eq!(ledger(), deployed, "{command} wrote nothing to the ledger");
+    }
+
+    schema("table");
+    let again = first().args(["build", "--quiet"]).arg(project).output().unwrap();
+    assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
+    assert_eq!(ledger(), deployed, "table() again needs no migration");
+
+    // Posts declared as a table() lose nothing (they stay in wp_posts), so that builds and warns.
+    let posts = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(posts.path().join("first")).unwrap();
+    std::fs::copy(project.join("first.config.ts"), posts.path().join("first.config.ts")).unwrap();
+    let declare = |builder: &str| {
+        std::fs::write(
+            posts.path().join("first/schema.ts"),
+            format!(
+                "import {{ {builder}, text }} from \"first\";\nexport const memos = {builder}({{ title: text() }});\n"
+            ),
+        )
+        .unwrap();
+        first().args(["build"]).arg(posts.path()).output().unwrap()
+    };
+    assert!(declare("collection").status.success());
+    let warned = declare("table");
+    assert!(warned.status.success(), "{}", String::from_utf8_lossy(&warned.stderr));
+    assert!(
+        String::from_utf8_lossy(&warned.stderr).contains("creates an empty SQL table for \"memos\""),
+        "{}",
+        String::from_utf8_lossy(&warned.stderr)
+    );
+}
+
 #[test]
 fn auth_fixture_matches_the_compiler() {
     let tmp = std::env::temp_dir().join(format!("first-auth-fixture-{}", std::process::id()));
@@ -3414,6 +3522,49 @@ fn the_openapi_document_describes_what_the_api_answers() {
         "First note"
     );
     check("GET", &format!("/notes/{id}/revisions"), Some("author"), &[], b"", 404);
+    // A staged version (docs/staged.md) of each collection: stage, read, compare, preview, schedule,
+    // promote, discard. The promoted title keeps "First", which the search below looks for.
+    for (path, field, value) in [
+        (format!("/notes/{id}"), "title", "First note, staged"),
+        (format!("/authors/{author}"), "name", "Ann, staged"),
+    ] {
+        let staged = check(
+            "PATCH",
+            &format!("{path}/staged"),
+            Some("editor"),
+            &[],
+            &json(json!({ field: value })),
+            200,
+        );
+        assert_eq!(staged["data"]["row"][field], value);
+        check("GET", &format!("{path}/staged"), Some("editor"), &[], b"", 200);
+        check("GET", &format!("{path}/staged"), Some("author"), &[], b"", 404);
+        let compared = check("GET", &format!("{path}/staged/compare"), Some("editor"), &[], b"", 200);
+        assert_eq!(compared["data"]["changes"][0]["field"], field);
+        let link = check("POST", &format!("{path}/staged/preview"), Some("editor"), &[], b"", 200);
+        assert!(link["data"]["token"].is_string());
+        let at = json!({ "at": "2099-01-01T00:00:00Z" });
+        check(
+            "POST",
+            &format!("{path}/staged/promote"),
+            Some("editor"),
+            &[],
+            &json(at),
+            200,
+        );
+        let promoted = check("POST", &format!("{path}/staged/promote"), Some("editor"), &[], b"", 200);
+        assert_eq!(promoted["data"][field], value);
+        check(
+            "PATCH",
+            &format!("{path}/staged"),
+            Some("editor"),
+            &[],
+            &json(json!({ field: "Gone" })),
+            200,
+        );
+        check("DELETE", &format!("{path}/staged"), Some("editor"), &[], b"", 200);
+        check("DELETE", &format!("{path}/staged"), Some("editor"), &[], b"", 404);
+    }
     check(
         "GET",
         &format!("/authors/{author}/revisions/999999"),

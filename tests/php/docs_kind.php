@@ -146,5 +146,64 @@ $out['headings beside a gallery'] = [$gallery['toc'], $gallery['anchors']];
 // The query API reads the same tree.
 $out['api'] = array_map(static fn (array $r): array => [$r['slug'], $r['parent'] === null ? null : $byId[$r['parent']] ?? $r['parent'], $r['order']], \First\Seam::toPhp(\First\Seam::kindList('docs', ['orderBy' => ['order' => 'asc'], 'where' => ['parent' => null]], true)));
 
+// Components in Markdown: the file's tags are the app's blocks, stored as blocks, rendered through
+// the components on the route, and written back as the same tags.
+$installPost = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'install'", $type));
+$stored = (string) get_post_field('post_content', $installPost);
+$out['blocks stored'] = array_values(array_map(static fn (array $b): array => [$b['blockName'], $b['attrs'], array_map(static fn (array $i): ?string => $i['blockName'], $b['innerBlocks'])], array_filter(parse_blocks($stored), static fn (array $b): bool => $b['blockName'] !== null)));
+$out['blocks registered'] = array_values(array_filter(array_keys(WP_Block_Type_Registry::get_instance()->get_all_registered()), static fn (string $n): bool => str_starts_with($n, 'docskind/')));
+$page = fetch("$url/docs/guides/install");
+preg_match('#<aside class="callout callout-warning".*?</aside>#s', $page['body'], $callout);
+preg_match('#<span class="badge">.*?</span>#s', $page['body'], $badge);
+$out['blocks rendered'] = [$page['status'], preg_replace('/\s+/', ' ', $callout[0] ?? ''), $badge[0] ?? null];
+$out['blocks back'] = \First\Sync\Markdown::fromBlocks($stored);
+$out['blocks twin'] = fetch("$url/docs/guides/install.md")['body'];
+// An editor changes a prop in the block editor: the file's tag follows.
+$changed = str_replace('{"type":"warning","title":"Before you start"}', '{"type":"note","title":"Before you start"}', $stored);
+$out['blocks edited back'] = \First\Sync\Markdown::fromBlocks($changed);
+// What a Markdown file can't say about a block is refused with the reason, never stored half.
+foreach ([
+    'unknown tag' => "<Tabs>\nx\n</Tabs>\n",
+    'unknown prop' => "<Callout type=\"note\" colour=\"red\">\nx\n</Callout>\n",
+    'enum' => "<Callout type=\"danger\">\nx\n</Callout>\n",
+    'required' => "<Callout>\nx\n</Callout>\n",
+    'number' => "<Badge label=\"x\" count=\"three\" />\n",
+    'unclosed' => "<Callout type=\"note\">\nx\n",
+] as $case => $markdown) {
+    try {
+        \First\Sync\Markdown::toBlocks($markdown);
+        $out['blocks refused'][$case] = null;
+    } catch (\First\HttpError $e) {
+        $out['blocks refused'][$case] = $e->getMessage();
+    }
+}
+// A tag inside a code fence is code, not a block.
+$out['blocks fenced'] = \First\Sync\Markdown::toBlocks("```md\n<Callout type=\"note\">\n```\n");
+
+// Code blocks (docs/decisions/2026-11-13-code-blocks.md): highlighted on the route, with titles,
+// marked lines and a tab group, no script; written back as the same fences.
+$setup = fetch("$url/docs/guides/setup");
+$html = new DOMDocument();
+@$html->loadHTML('<?xml encoding="utf-8"?>' . $setup['body']);
+$x = new DOMXPath($html);
+$text = static fn (?DOMNode $n): ?string => $n === null ? null : trim($n->textContent);
+$out['code'] = [
+    'status' => $setup['status'],
+    'titles' => array_map($text, iterator_to_array($x->query('//figcaption[@class="first-code-title"]'))),
+    'keywords' => array_map($text, iterator_to_array($x->query('//pre[contains(@class, "language-ts")]//span[@class="hljs-keyword"]'))),
+    'marked' => array_map($text, iterator_to_array($x->query('//span[contains(@class, "first-code-marked")]'))),
+    'tabs' => array_map($text, iterator_to_array($x->query('//div[@class="first-code-group"]/label'))),
+    'tab inputs' => $x->query('//div[@class="first-code-group"]/input[@type="radio"]')->length,
+    'panels' => array_map(static fn (DOMNode $n): string => trim($n->textContent), iterator_to_array($x->query('//div[@class="first-code-group"]/figure'))),
+    'plain' => $text($x->query('//pre[contains(@class, "language-text")]')->item(0)),
+    'plain spans' => $x->query('//pre[contains(@class, "language-text")]//span[starts-with(@class, "hljs")]')->length,
+    'stylesheet' => $x->query('//link[@id="first-code-css"]')->length,
+    'scripts' => array_values(array_filter(array_map(static fn (DOMNode $n): string => (string) $n->getAttribute('src'), iterator_to_array($x->query('//script[@src]'))), static fn (string $s): bool => str_contains($s, 'code'))),
+];
+$css = fetch($x->query('//link[@id="first-code-css"]')->item(0)?->getAttribute('href') ?? "$url/none");
+$out['code css'] = [$css['status'], str_contains($css['body'], '@media (prefers-color-scheme: dark)'), str_contains($css['body'], '.first-code .hljs-keyword')];
+$setupPost = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'setup'", $type));
+$out['code back'] = \First\Sync\Markdown::fromBlocks((string) get_post_field('post_content', $setupPost));
+
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

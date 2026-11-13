@@ -277,16 +277,44 @@ fn page_md_is_a_wordpress_page() {
     )
     .unwrap();
     build(&third);
+    // A fourth: the guide, still `status: draft`, moves to another route group (same URL) and
+    // gets a typo fixed; /colophon is now a page.tsx route.
+    let fourth = fixture("app-router", "content-fourth");
+    std::fs::remove_dir_all(fourth.join("first/app")).unwrap();
+    copy(&third.join("first/app"), &fourth.join("first/app"));
+    let app = fourth.join("first/app");
+    std::fs::create_dir_all(app.join("(docs)")).unwrap();
+    std::fs::rename(app.join("(site)/guide"), app.join("(docs)/guide")).unwrap();
+    let guide = app.join("(docs)/guide/page.md");
+    std::fs::write(
+        &guide,
+        std::fs::read_to_string(&guide)
+            .unwrap()
+            .replace("one per walk", "one per walk, again"),
+    )
+    .unwrap();
+    std::fs::create_dir_all(app.join("colophon")).unwrap();
+    std::fs::write(
+        app.join("colophon/page.tsx"),
+        "export default function Colophon() { return <h1>Colophon, now code</h1>; }\n",
+    )
+    .unwrap();
+    assert!(
+        std::fs::read_to_string(&guide).unwrap().contains("one per walk, again"),
+        "the fourth build changes the guide"
+    );
+    build(&fourth);
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_content.php"))
         .arg(project.join("first/dist/wp-content"))
         .arg(second.join("first/dist/wp-content"))
         .arg(third.join("first/dist/wp-content"))
+        .arg(fourth.join("first/dist/wp-content"))
         .env("FIRST_WP_THEMES", "1")
         .output()
         .unwrap();
-    for dir in [&project, &second, &third] {
+    for dir in [&project, &second, &third, &fourth] {
         let _ = std::fs::remove_dir_all(dir);
     }
     assert!(
@@ -327,7 +355,8 @@ fn page_md_is_a_wordpress_page() {
     );
     assert!(body.contains(r#"<a href="https://example.com/map">map</a>"#), "{body}");
     assert!(
-        body.contains(r#"<pre class="wp-block-code language-sh"><code>first build"#),
+        // Rendered as First renders every code block (First\Content\Code).
+        body.contains(r#"<pre class="first-code language-sh"><code><span class="first-code-line">first build</span>"#),
         "{body}"
     );
     let stored = &seen["guide stored"];
@@ -476,7 +505,25 @@ fn page_md_is_a_wordpress_page() {
     assert_eq!(seen["while locked"]["news"], 404, "{}", seen["while locked"]);
     assert_eq!(seen["while locked"]["news stored"], serde_json::json!({ "count": 0 }));
     assert!(text(&seen["while locked"]["colophon stored"]).contains("Set in a system font."));
-    // Six routes over the three builds, one Page each.
+    // The fourth build: the guide page an editor published by hand stays published though its
+    // file still says draft and changed (only a page the file newly takes away is unpublished),
+    // and moving its file to another route group keeps the same Page.
+    // The record keeps what the last applied file said, so the next file is compared with it.
+    assert_eq!(seen["third record"], "draft");
+    assert_eq!(seen["fourth guide"], 200);
+    assert_eq!(seen["fourth guide stored"]["id"], seen["guide stored"]["id"]);
+    assert_eq!(seen["fourth guide stored"]["status"], "publish");
+    // WordPress's own address for the old colophon Page (slug `colophon`) never redirects away
+    // from the page.tsx route that serves /colophon now.
+    assert_eq!(seen["fourth colophon route"]["status"], 200);
+    assert!(text(&seen["fourth colophon route"]["body"]).contains("Colophon, now code"));
+    // A query string through WordPress's address arrives unslashed.
+    assert!(
+        text(&seen["fourth by id"]).ends_with("/guide?q=it%27s"),
+        "{}",
+        seen["fourth by id"]
+    );
+    // Six routes over the four builds, one Page each.
     assert_eq!(seen["pages"], serde_json::json!([1, 1, 1, 1, 1, 1]));
 }
 
@@ -1605,6 +1652,85 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             ["h2#why", "h3#small-print", "h2#why-2"]
         ])
     );
+    // Components in Markdown (docs/decisions/2026-11-13-components-in-markdown.md): the file's
+    // tags are stored as the app's blocks, their Markdown as inner blocks.
+    assert_eq!(
+        seen["blocks registered"],
+        serde_json::json!(["docskind/callout", "docskind/badge"])
+    );
+    assert_eq!(
+        seen["blocks stored"],
+        serde_json::json!([
+            ["core/paragraph", [], []],
+            ["docskind/callout", { "type": "warning", "title": "Before you start" }, ["core/paragraph", "core/list"]],
+            ["docskind/badge", { "label": "New", "count": 3 }, []],
+            ["core/paragraph", [], []],
+        ])
+    );
+    // The route renders each block through its component, the inner content as its children.
+    assert_eq!(
+        seen["blocks rendered"],
+        serde_json::json!([
+            200,
+            "<aside class=\"callout callout-warning\" role=\"note\"><p class=\"callout-title\">Before you start</p><div class=\"callout-body\"> <p class=\"wp-block-paragraph\">Back up the <b>database</b>.</p> <ul class=\"wp-block-list\"> <li>Export it</li> <li>Keep a copy</li> </ul> </div></aside>",
+            "<span class=\"badge\">New<b> 3</b></span>",
+        ])
+    );
+    // Written back, the blocks are the file's tags again, and an editor's change to a prop is too.
+    let file = "Run the installer.\n\n<Callout type=\"warning\" title=\"Before you start\">\nBack up the **database**.\n\n- Export it\n- Keep a copy\n</Callout>\n\n<Badge label=\"New\" count={3} />\n\nThen continue.\n";
+    assert_eq!(seen["blocks back"], file);
+    assert_eq!(
+        seen["blocks edited back"],
+        file.replace("type=\"warning\"", "type=\"note\"")
+    );
+    // The Markdown twin is what a reader sees: the components' text, never their tags.
+    let twin = seen["blocks twin"].as_str().unwrap();
+    assert!(
+        twin.contains("Before you start\n\nBack up the **database**.") && !twin.contains("<Callout"),
+        "{twin}"
+    );
+    // What a file can't say about a block is refused with the reason; a tag in a code fence is code.
+    assert_eq!(
+        seen["blocks refused"],
+        serde_json::json!({
+            "unknown tag": "<Tabs> isn't a block this site has; list it in its component file's `export const blocks`",
+            "unknown prop": "<Callout> has no prop `colour`; it takes type, title",
+            "enum": "<Callout type> takes \"note\" | \"warning\"",
+            "required": "<Callout> needs `type`",
+            "number": "<Badge count> takes number",
+            "unclosed": "<Callout> is never closed: put </Callout> on a line of its own",
+        })
+    );
+    assert!(seen["blocks fenced"].as_str().unwrap().starts_with("<!-- wp:code"));
+    // Code blocks: highlighted on the route, titled, line 2 marked, the `install` pair as tabs,
+    // plain text escaped and unhighlighted, one stylesheet with a dark theme, and no script.
+    let code = &seen["code"];
+    assert_eq!(code["status"], 200);
+    assert_eq!(code["titles"], serde_json::json!(["first.config.ts", "pnpm"]));
+    assert_eq!(
+        code["keywords"],
+        serde_json::json!(["import", "from", "export", "default"])
+    );
+    assert_eq!(
+        code["marked"],
+        serde_json::json!(["export default defineConfig({ name: \"docs\" });"])
+    );
+    assert_eq!(code["tabs"], serde_json::json!(["sh", "pnpm"]));
+    assert_eq!(code["tab inputs"], 2);
+    assert_eq!(
+        code["panels"],
+        serde_json::json!(["npm install first", "pnpmpnpm add first"])
+    );
+    assert_eq!(code["plain"], "plain <b>text</b>");
+    assert_eq!(code["plain spans"], 0);
+    assert_eq!(code["stylesheet"], 1);
+    assert_eq!(code["scripts"], serde_json::json!([]));
+    assert_eq!(seen["code css"], serde_json::json!([200, true, true]));
+    // Written back, each fence keeps its title, marked lines and group.
+    assert_eq!(
+        seen["code back"],
+        "Edit the config.\n\n```ts title=\"first.config.ts\" {2}\nimport { defineConfig } from \"first\";\nexport default defineConfig({ name: \"docs\" });\n```\n\n```sh group=\"install\"\nnpm install first\n```\n\n```sh title=\"pnpm\" group=\"install\"\npnpm add first\n```\n\n```text\nplain <b>text</b>\n```\n"
+    );
     // The query API reads parent and order like any field.
     assert_eq!(
         seen["api"],
@@ -1704,6 +1830,42 @@ fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
             !out.status.success() && stderr.contains(message),
             "expected {message:?} in:\n{stderr}"
         );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A component listed as a block must have props a Markdown tag can write, and the list must name
+/// the file's own components; each refusal is at the component file.
+#[test]
+fn content_blocks_refuse_props_a_tag_cannot_write() {
+    let dir = std::env::temp_dir().join(format!("first-blocks-reject-{}", std::process::id()));
+    for (component, message) in [
+        (
+            "export const blocks = [\"Card\"];\nexport function Card({ links }: { links: string[] }) { return <div>{links.length}</div>; }\n",
+            "<Card>'s prop `links` is string[], which a Markdown tag can't write",
+        ),
+        (
+            "export const blocks = [\"Missing\"];\nexport function Card() { return <div />; }\n",
+            "`blocks` names `Missing`, which components/Card.tsx doesn't export as a component",
+        ),
+        (
+            "export const blocks = \"Card\";\nexport function Card() { return <div />; }\n",
+            "`blocks` is a list of this file's component names",
+        ),
+    ] {
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("first/components")).unwrap();
+        std::fs::write(
+            dir.join("first.config.ts"),
+            "import { defineConfig } from \"first\";\nexport default defineConfig({});\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("first/components/Card.tsx"), component).unwrap();
+        let out = first().arg("check").arg(&dir).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{message}: should fail:\n{stderr}");
+        assert!(stderr.contains(message), "expected {message:?} in:\n{stderr}");
+        assert!(stderr.contains("--> first/components/Card.tsx"), "{stderr}");
     }
     let _ = std::fs::remove_dir_all(&dir);
 }

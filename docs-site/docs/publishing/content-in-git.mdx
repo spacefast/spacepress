@@ -1,0 +1,62 @@
+---
+title: Content in git
+description: Edits made on a First site come back to the repository as a pull request, and content merged in git goes to the site, through first sync.
+sidebar:
+  order: 3
+---
+
+A kind with `sync` keeps its records as files in the repository (`content/<kind>/**/*.md` or `*.json`) and as posts or rows on the site. [`first sync`](https://github.com/spacefast/zero/blob/main/docs/config-api.md#sync) merges the two both ways, field by field. Run from a scheduler, it closes the loop between the people who edit in wp-admin and the people who edit in git:
+
+- an edit saved on the site comes back to the repository as **one pull request**, which someone reviews and merges;
+- a file change merged into the default branch goes to the site.
+
+## The pull request
+
+```sh
+FIRST_APP_PASSWORD=sync-bot:xxxx GITHUB_TOKEN=ghp_… first sync --pr --site https://docs.example.com
+```
+
+`--pr` runs the ordinary two-way sync, but not on the branch you have checked out. It fetches the default branch from `origin` into a temporary worktree and syncs there:
+
+1. Files on the default branch that changed since the last sync go to the site, as `first sync` always does.
+2. Records changed on the site are written to their files.
+3. What differs from the default branch is pushed to a branch named `first-sync/<site host>[/<site path>]/<time>`, and a pull request is opened from it into the default branch. Its description lists the files it writes or deletes (the first 200).
+
+Running it again is safe:
+
+| The site and the default branch… | `--pr` |
+|---|---|
+| agree | does nothing; an open sync pull request is closed with a comment, since there is nothing left in it |
+| differ in the same way the open sync pull request already carries | does nothing |
+| differ, and a sync pull request is open | adds one commit to its branch (a merge of the default branch and the new tree, so the push never rewrites history) and updates its description |
+| differ, and none is open | opens one |
+| differ only in `.first/sync-base.json` (a file change reached the site and nothing came back), and no sync pull request is open | pushes that commit to the target branch as a fast-forward; if the branch is protected or moved, it opens a pull request instead |
+
+There is one sync pull request per site. Edit content on the default branch or on the site, not on the sync branch: a commit there that `first sync` didn't make stops later runs, which say which commit it is, until the pull request is merged or closed. Merges, such as GitHub's *Update branch*, are fine.
+
+The checkout you run `--pr` from is never committed on or changed.
+
+`--repo owner/name` and `--base branch` choose the repository and the target branch. By default they are `GITHUB_REPOSITORY` (or `origin`'s GitHub URL) and the repository's default branch; `origin` must be that repository. `GITHUB_API_URL` points at GitHub Enterprise. The pull request, its description and comments go through GitHub's REST API with `GITHUB_TOKEN`; the command doesn't need the `gh` CLI. The branches are pushed with `git push origin`, so git needs credentials for `origin` too: in GitHub Actions, `actions/checkout` leaves the workflow's token for it; elsewhere, use a credential helper or an `origin` URL git can push to.
+
+`--pr` syncs every synced kind (it takes no `--only`), since the pull request is rebuilt from all of them. Synced folders must not be ignored by git: a file the sync writes there can't go in the pull request, and the run stops instead.
+
+## Conflicts
+
+When the same field of the same record changed in git and on the site since they last agreed, `first sync` writes neither side. It writes `.first/conflicts/<uid>.md` with both versions and the version they started from, between git's conflict markers.
+
+With `--pr`, the conflict files are committed to the sync pull request, the description counts them, and a comment lists them each time the set of conflicts changes. Nothing is resolved for you: the conflict file shows both versions, and you make the record the same on both sides.
+
+1. Pick the version to keep from the conflict file.
+2. Edit the record on the site into it, or edit its file on the default branch into it (or both).
+3. The next `first sync --pr` finds the two sides equal, records that in the sync base, and drops the conflict file from the pull request.
+
+`first sync resolve <uid>` is for a checkout you sync with plain `first sync`; the sync base it writes is local to that checkout, so with `--pr` use the steps above.
+
+## Permissions
+
+| Credential | Needs |
+|---|---|
+| `FIRST_APP_PASSWORD` (or `FIRST_TOKEN`) | A user whose role may read and update the synced kinds. Create an application password for sync alone: `first identity agent add <user> --name=sync --write`. A [scoped agent credential](https://github.com/spacefast/zero/blob/main/docs/agents.md#create-an-application-password) is read-only unless given `--write`; read-only, the run pulls site edits into the pull request, but every file change it would push to the site is refused (exit 4) and nothing is pushed to GitHub. Fields a user may not read are left out of the files, never cleared. |
+| `GITHUB_TOKEN` | `pull-requests: write` (open, update, comment, close) and `contents: write` (delete a branch it pushed when GitHub refused its pull request) on the repository. The pushes need `contents: write` for git's own credentials. In GitHub Actions the workflow's own token is both, once the workflow's `permissions` grant them. |
+
+Pull requests opened with a workflow's own `GITHUB_TOKEN` don't start other workflows, so checks that run on `pull_request` don't run on the sync pull request. Use a fine-grained token or a GitHub App's token in its place if they must.

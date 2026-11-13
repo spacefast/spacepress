@@ -240,10 +240,12 @@ both types and the fix.
 ## Surfaces
 
 - Abilities `<app>/schema-read`, `<app>/schema-propose` (validates, returns the diff and effects,
-  writes nothing) and `<app>/schema-apply`. Apply needs its own capability, `first_apply_schema`,
-  which administrators hold; a user without it, or an application password an administrator has
-  denied, can read and propose but not apply.
-- Site commands `first schema list | diff | apply | rollback`, one row each in `commands.json`.
+  writes nothing) and `<app>/schema-apply`. Reading and proposing need `manage_options`. Apply needs
+  its own capability, `first_apply_schema`, which administrators hold unless a role or user record
+  takes it away; an application password is denied by listing its UUID in the option
+  `first_<app>_schema_apply_denied`. A user without the capability, or with a denied password, can
+  read and propose but not apply.
+- Site command `first schema list | diff | apply | rollback`: one row in `commands.json`.
 - `GET /__first/api/v1` describes the active schema and its version; `first pull` regenerates the
   typed client's types from it.
 - A wp-admin screen that lists versions with their diffs.

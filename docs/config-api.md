@@ -621,19 +621,24 @@ content/docs/
   the editor's page attributes edit them, and `:path` in the url is the parent chain.
 - A file's name is its slug and its folder its parent; front matter never holds either. Put
   `order: 2` in front matter to sort; siblings with the same order sort by title.
-- Slugs are unique in the kind, so two folders can't both hold an `install.md`.
+- A folder tree's file slugs are unique, so two folders can't both hold an `install.md`; a file
+  without a `uid` is identified by its slug, so moving it keeps its page. On the site, as in
+  WordPress, a slug is unique among siblings, and URLs resolve the whole path.
 - `first sync` moves a file when its page moves on the site, and turns a page that gains children
-  into its folder's `index.md`.
+  into its folder's `index.md`; an `index.md` you wrote stays one, and moving a folder moves its
+  pages.
+- Pages edited in wp-admin can come back to the repository as a pull request, and Markdown merged
+  in git can go to the site, on a schedule: [Content in git](../docs-site/docs/publishing/content-in-git.mdx).
 
 A page reads the navigation from `"first/content"`, as the visitor:
 
 ```tsx
-// first/app/docs/[...path]/page.tsx
+// first/app/docs/[[...path]]/page.tsx  (or [...path]; /docs itself is first/app/docs/page.tsx)
 import { docs } from "first:db";
 import { Content, type PageProps } from "first/app";
 import { nav, pager, headings } from "first/content";
 
-export default async function Doc({ item }: PageProps<"docs/[...path]">) {
+export default async function Doc({ item }: PageProps<"docs/[[...path]]">) {
   const tree = await nav(docs, item);           // [{ id, title, href, current, open, children }]
   const { prev, next } = await pager(docs, item);
   const toc = headings(item);                   // [{ depth: 2 | 3, text, id }]
@@ -643,6 +648,58 @@ export default async function Doc({ item }: PageProps<"docs/[...path]">) {
 
 The tree is the published items the visitor may read, siblings by order then title, four levels
 deep. `headings()` gives the ids the page renders its headings with.
+
+### Components in Markdown
+
+A component in `first/components/` can be used in synced Markdown as a block
+([decision](decisions/2026-11-13-components-in-markdown.md)). Its file lists it:
+
+```tsx
+// first/components/Callout.tsx
+export const blocks = ["Callout"];
+export function Callout({ type, title, children }: { type: "note" | "warning"; title?: string; children?: JSX.Element }) {
+  return <aside className={`callout callout-${type}`}>{title && <p>{title}</p>}{children}</aside>;
+}
+```
+
+```md
+<Callout type="warning" title="Before you start">
+Back up the **database**.
+</Callout>
+
+<Badge label="New" count={3} />
+```
+
+- In WordPress it is a block (`<app>/callout`) the editor inserts and edits; the site renders it
+  through the component, with the inner content as `children`.
+- In the file it is the tag, on lines of its own. Values are `"text"`, `{true}`, `{false}` or
+  `{number}`; the content between the tags is Markdown. `first sync` writes the block back as the
+  same tag.
+- Props are text, a choice of text literals, numbers and booleans; anything else is a build error.
+  A tag the site doesn't know, an unknown prop, a wrong value or an unclosed tag is refused.
+
+### Code blocks
+
+A fenced code block is highlighted when its page renders, in light and dark themes, with no
+script on the page ([decision](decisions/2026-11-13-code-blocks.md)). The fence takes a title,
+lines to mark and a group; blocks with one group show as tabs:
+
+````md
+```ts title="first.config.ts" {2,4-5}
+import { defineConfig } from "first";
+```
+
+```sh group="install"
+npm install first
+```
+
+```sh title="pnpm" group="install"
+pnpm add first
+```
+````
+
+It is WordPress's own code block underneath, so the block editor edits it, and `first sync` writes
+the same fence back. 185 languages; `text` (or any unknown language) shows the code as written.
 
 ### Seeding and `first sync`
 
@@ -663,6 +720,12 @@ both (`first sync resolve <uid>` applies your edit of it).
 matches records and deletes nothing. It commits the files it wrote unless
 `--no-commit`. `first build` adds `.first/*` and `!.first/sync-base.json` to
 `.gitignore`, because the sync base is committed.
+
+`first sync --pr [--repo owner/name] [--base branch]`, with `GITHUB_TOKEN` as well, runs the sync on
+a temporary worktree of the default branch instead of the checkout, and opens one pull request (or
+updates the open one) with the site's changes; conflict files go in it, listed in a comment. It
+needs no `gh`. [Content in git](../docs-site/docs/publishing/content-in-git.mdx) describes the loop,
+the permissions it needs and the conflicts.
 
 What sync leaves out: `$onUpdate` columns, derived and hidden system columns,
 and fields the viewer's field access hides. References to a `uid` collection are written as that
@@ -832,7 +895,7 @@ the live rows before it runs any of them:
 | A field becomes required with `.default(v)` | rows without a value get `v`, then it applies |
 | A field becomes required, no default, and rows lack it | refused: `required_field_missing` with the count |
 | A kind or field is removed and holds rows | refused: `drop_has_rows` with the count, until the deploy passes `--drop=name=rows` |
-| A `table()` that holds rows is declared with `collection()` | refused: `drop_has_rows` with the count. Storage follows the builder, so the build plans the table's drop and moves no rows. To keep the rows, don't pass `--drop`: delete every migration file numbered after the last deployed one, restore `snapshot.json` from the last deployed build (`git checkout`), declare `table()` again and build. The build writes no migration for this kind and plans your other changes again. Building `table()` on top of the drop instead writes a second migration that recreates the table, and the drop before it is still refused |
+| A `table()` is declared with `collection()` | refused by `first build` and `first check` at the declaration, before a migration is written: storage follows the builder. Declare it with `table()` again; its rows stay where they are and no migration is written. A ledger that already holds the table's drop (built before this refusal) is refused at deploy with `drop_has_rows`; to keep the rows, don't pass `--drop`: delete every migration file numbered after the last deployed one, restore `snapshot.json` from the last deployed build (`git checkout`), declare `table()` again and build |
 | A `collection()` that holds posts is declared with `table()` | the build creates an empty SQL table and warns. The posts stay in `wp_posts` and the app no longer reads them; nothing moves them. If a `table()` refers to the kind and holds post IDs, the new foreign key can't be added and the deploy fails with that database error |
 | A field's type or length narrows (`.max(100)`, `.unique()`, text to integer, ...) and values wouldn't fit | refused: `value_does_not_fit` with the count; MySQL would truncate or convert them |
 | `--drop=name=rows` doesn't match the live count | refused: `drop_count_mismatch` with the live count |
@@ -1000,8 +1063,24 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   a runtime name, or a removed one, with another stored type is refused before any table changes,
   with the fix (usually: `first pull`, then build).
 
-Applying a change is `First\Wp\SchemaVersions::of($plugin)->apply($parent, $changeSet, $actor)`
-from PHP; the Abilities, the `first schema` commands and the admin screen are not built yet.
+- **Agents (Abilities and MCP).** `<app>/schema-read` returns the active version, every stored
+  version with its changes, and what a deploy of the running build would keep.
+  `<app>/schema-propose` takes `{ changes }` and returns them in stored form with their effect on
+  stored data; it writes nothing. `<app>/schema-apply` takes `{ parent, changes }` and stores the
+  next version. Read and propose run over GET, so `changes` may also be one JSON string there. All
+  three are tools on the app's MCP server. Reading and proposing need `manage_options`. Applying
+  needs `first_apply_schema`, which administrators hold by default: take it from a role or user
+  (`wp cap remove administrator first_apply_schema`) to stop them applying, or deny one
+  application password by listing its UUID in the option `first_<app>_schema_apply_denied`. Each
+  version records the user and, when one signed the request, the application password's UUID and
+  name (never the secret).
+- **Commands.** `first schema list | diff <version> | apply <file|-> [--parent=<n>] | rollback
+  <version> [--parent=<n>]` (`wp first schema …` on a server). `apply` takes a JSON list of changes
+  (or a whole change set) and applies it on the newest version unless `--parent` says otherwise.
+  `rollback` applies the reverse of a version as a new version.
+- **wp-admin.** Tools → Schema versions lists every version, newest first, with who made it and
+  each change in words, and says which runtime changes the running build doesn't contain yet.
+
 Taxonomies can't be added at runtime: `taxonomy()` is not in this First version.
 
 ## Plugin packages

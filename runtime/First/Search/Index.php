@@ -194,16 +194,32 @@ final class Index
         self::put($collection, (string) $id, $fields, $stored);
     }
 
-    /** @param list<string> $fields */
+    /**
+     * The row's entries, replaced: each field with text is written in place (an upsert on the row's
+     * own key), then the entries of the fields that have none now are deleted by key.
+     *
+     * Deleting the row's whole key range first and inserting after deadlocked under concurrent
+     * creates on InnoDB: a DELETE that matches no rows takes a gap lock, and two new rows whose ids
+     * fall in the same gap then each waited on the other's INSERT. Every statement here names an
+     * exact key, so no gap is locked.
+     *
+     * @param list<string> $fields
+     */
     private static function put(string $collection, string $id, array $fields, array $row): void
     {
-        Storage::run('DELETE FROM {search} WHERE "kind" = ? AND "item" = ?', [Storage::bytes($collection), Storage::bytes($id)]);
+        $kind = Storage::bytes($collection);
+        $item = Storage::bytes($id);
         foreach ($fields as $field) {
             $text = self::text($row[$field] ?? null);
-            if ($text !== '') {
-                Storage::run('INSERT INTO {search} ("kind", "item", "field", "body") VALUES (?, ?, ?, ?)', [Storage::bytes($collection), Storage::bytes($id), Storage::bytes($field), $text]);
+            if ($text === '') {
+                Storage::run('DELETE FROM {search} WHERE "kind" = ? AND "item" = ? AND "field" = ?', [$kind, $item, Storage::bytes($field)]);
+            } else {
+                Storage::run(Storage::upsert(), [$kind, $item, Storage::bytes($field), $text]);
             }
         }
+        // Entries of a field that is no longer searchable (a build changed the kind's fields).
+        $keep = array_map(static fn (string $f) => Storage::bytes($f), $fields);
+        Storage::run('DELETE FROM {search} WHERE "kind" = ? AND "item" = ?' . ($keep === [] ? '' : ' AND "field" NOT IN (' . implode(', ', array_fill(0, count($keep), '?')) . ')'), [$kind, $item, ...$keep]);
     }
 
     /** A stored value as the words a reader sees: markup and block comments gone, entities decoded. */

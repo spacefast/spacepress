@@ -1045,7 +1045,15 @@ export type InferActionInput<TInput extends ColumnsConfig> = Simplify<
 
 export interface Action<TInput extends ColumnsConfig = ColumnsConfig, TResult = unknown> {
   readonly [actionBrand]: { input: TInput; result: TResult };
+  /**
+   * From a `"use client"` component: a `fetch` to the action's endpoint, with the REST nonce. The
+   * parameter is checked through `ClientInput`, so an action of any input stays an `AnyAction`.
+   */
+  <I extends ClientInput<TInput>>(input: I): Promise<Awaited<TResult>>;
 }
+
+/** The input a client call passes: the action's input, or anything for `AnyAction`. */
+type ClientInput<TInput extends ColumnsConfig> = ColumnsConfig extends TInput ? Record<string, unknown> : InferActionInput<TInput>;
 
 export type AnyAction = Action<ColumnsConfig, unknown>;
 

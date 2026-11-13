@@ -101,7 +101,12 @@ fn key_line(text: &str, key: &str) -> usize {
 fn leading_heading(body: &str) -> Option<(String, String)> {
     let trimmed = body.trim_start_matches('\n');
     let (first, rest) = trimmed.split_once('\n').unwrap_or((trimmed, ""));
-    let text = first.strip_prefix("# ")?.trim().trim_end_matches('#').trim();
+    let text = first.strip_prefix("# ")?.trim();
+    // A closing `#` sequence is one after a space (CommonMark): `# Learn C#` keeps its `#`.
+    let text = match text.trim_end_matches('#') {
+        rest if rest.len() < text.len() && (rest.is_empty() || rest.ends_with(' ')) => rest.trim(),
+        _ => text,
+    };
     (!text.is_empty()).then(|| (text.to_string(), rest.trim_start_matches('\n').to_string()))
 }
 
@@ -216,9 +221,20 @@ pub fn register(program: &loader::Program, ext: &mut extract::Extracted) -> Resu
             Some(Segment::Literal(l)) => l.clone(),
             _ => "home".into(),
         };
-        let stem = stem(&route.file);
+        // `a-b/` and `a_b/` spell one stem; the path's hash keeps their functions apart.
+        let stem = format!(
+            "{}_{}",
+            stem(&route.file),
+            Sha256::digest(route.file.as_bytes())
+                .iter()
+                .take(4)
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
+        );
+        // Keyed by URL: the Page stands for the address, so moving the file between route groups
+        // (`(site)/guide` → `(docs)/guide`) keeps its Page.
         pages.push((
-            route.id(),
+            route.pattern(),
             route.layouts.clone(),
             Page {
                 file: route.file.clone(),
@@ -327,6 +343,10 @@ mod tests {
             leading_heading("\n# About us #\n\nText.\n"),
             Some(("About us".into(), "Text.\n".into()))
         );
+        assert_eq!(
+            leading_heading("# Learn C#\n"),
+            Some(("Learn C#".into(), String::new()))
+        );
         assert_eq!(leading_heading("Intro.\n\n# Later\n"), None);
         assert_eq!(leading_heading("## Section\n"), None);
     }
@@ -334,5 +354,10 @@ mod tests {
     #[test]
     fn stems_keep_page_md_apart_from_page_tsx() {
         assert_eq!(stem("app/(site)/about/page.md"), "app_site_about_page_md");
+        assert_eq!(
+            stem("app/a-b/page.md"),
+            stem("app/a_b/page.md"),
+            "why the hash is added"
+        );
     }
 }

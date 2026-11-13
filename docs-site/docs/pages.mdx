@@ -1,6 +1,6 @@
 ---
 title: Pages in TSX and the Interactivity API
-description: Render a First app's front end from first/app/ in TSX, compiled to PHP and rendered by WordPress; and the pages/ pipeline it replaces.
+description: Render a First app's front end from first/app/ in TSX, compiled to PHP and rendered by WordPress.
 sidebar:
   order: 3
 ---
@@ -79,9 +79,13 @@ Many Markdown pages are a kind, synced from a folder tree and rendered by one ca
 
 - `hierarchical: true` adds `parent` and `order`, stored as WordPress stores a Page's parent and menu order, so the block editor's page attributes edit them.
 - `sync: "content/docs/**/*.md"` reads the folder tree. A file's name is its slug and its folder its parent; a folder's `index.md` is the page the folder stands for. Put `order` in front matter; siblings with the same order sort by title.
-- `first sync` carries it both ways: a page moved in wp-admin moves its file.
+- `first sync` carries it both ways: a page moved in wp-admin moves its file. [Content in git](/publishing/content-in-git) runs it from a scheduler, so edits made in wp-admin come back to the repository as a pull request.
 
-<RepoFile path="tests/fixtures/docs-kind/first/app/docs/[...path]/page.tsx" />
+<RepoFile path="tests/fixtures/docs-kind/first/app/docs/[[...path]]/page.tsx" />
+
+A component can be used inside the Markdown as a block: its file lists it with `export const blocks = ["Callout"]`, and the Markdown writes `<Callout type="warning">…</Callout>` on lines of its own. In WordPress it is a block the editor inserts and edits, rendered through the component; `first sync` writes it back as the same tag. The test app's [`Callout.tsx`](https://github.com/spacefast/zero/blob/main/tests/fixtures/docs-kind/first/components/Callout.tsx) has two.
+
+Code fences are highlighted on the server when the page renders, in light and dark themes, with no script: ```` ```ts title="first.config.ts" {2} ```` titles the block and marks line 2, and blocks that share `group="install"` show as tabs. They are WordPress code blocks underneath, so the editor edits them and `first sync` writes the fence back.
 
 `"first/content"` gives the page its navigation, read as the visitor from the published tree: `nav(kind, item)` (the tree, with the current page and its ancestors marked), `pager(kind, item)` (previous and next, reading the tree top to bottom) and `headings(item)` (the `##` and `###` headings, with the ids the page renders them with).
 
@@ -119,11 +123,21 @@ A component file under `first/components/` that starts with `"use client"` runs 
 - `useEffect`, `useMount`, `useEvent` and `useRef` come from `"first/client"`, and `sharedState()` gives state every instance shares.
 - npm imports, module-level helpers the browser doesn't have, and assigning state directly are build errors at the line, with the alternative.
 
-The server HTML matches what React renders for the same component, which the parity tests check. These files come from [`tests/fixtures/client-components`](https://github.com/spacefast/zero/tree/main/tests/fixtures/client-components), which the test suite serves on WordPress and clicks in a browser.
+The server HTML matches what React renders for the same component, which the parity tests check. These files come from [`tests/fixtures/client-components`](https://github.com/spacefast/zero/tree/main/tests/fixtures/client-components), which the test suite serves on WordPress and clicks in a browser. [`examples/full-site`](/examples/full-site) uses one for its cheer button.
+
+### Stylesheets and images
+
+```tsx
+import "./global.css";                       // linked on every page that imports it
+import styles from "./note.module.css";      // styles.dek is "note_dek"
+import compass from "./compass.svg";         // the file's URL
+```
+
+A page links the stylesheets its layouts and the page import, each once, in import order. CSS module classes are renamed `<file stem>_<class>`, and a `"use client"` component may switch them with state. Every file is copied into the app plugin under a name hashed from its bytes and cached for a year. `@import`, a relative `url(...)`, `:global` and `composes` are build errors with the fix; binary images and fonts go in `public/`.
 
 ### On WordPress
 
-The router answers on `template_redirect`, before the theme. wp-admin, login, `/wp-json`, feeds, robots and First's own paths never reach it. When `first/app/` exists, a URL no route serves renders `not-found.tsx`. URLs WordPress itself resolves (a post, a category archive) keep the theme until a route serves them. Responses are `private, no-store` for now.
+The router answers on `template_redirect`, before the theme. wp-admin, login, `/wp-json`, feeds, robots and First's own paths never reach it. When `first/app/` exists, a URL no route serves renders `not-found.tsx`. URLs WordPress itself resolves (a post, a category archive) keep the theme until a route serves them. An anonymous visitor's page that no layout guards is cached at the edge for five minutes and purged when a row it read changes; everything else is `private, no-store`.
 
 Without `first/app/`, nothing here loads and WordPress renders the whole site with its theme.
 
@@ -131,133 +145,17 @@ Every page also has a Markdown twin at the same URL plus `.md` (or with `Accept:
 
 The site's sitemap is WordPress's own, at `/wp-sitemap.xml`. It lists the same pages, unless a page's metadata says `robots: { index: false }`, and the items of every kind with a `url` that a signed-out visitor may read. Drafts, rows an access rule hides and password-protected items are never in it.
 
-## The `pages/` pipeline (being replaced)
+## From the old `pages/` renderer
 
-Until the cutover finishes, a root `pages/` folder still builds through the separate Node `first-pages build` described below, and `examples/full-site` uses it. `first/app/` replaces it; this pipeline and its helpers (`load()`, `<Show>`, `orElse()`, `<Island>`) go away in the same change set.
+The separate `pages/` renderer (`@spacefast/first-pages`, `first-pages build` and `first/pages.json`) is gone. A project that still has `pages/` beside `first.config.ts` fails to build with the move as the fix, and a host refuses a capture that carries old-renderer pages.
 
-With `pages/`, `first-pages build` runs each route and layout **once, at build time**, and writes Gutenberg block markup. WordPress renders that markup on every request, filling in the visitor's own data. The only JavaScript a page sends is the module for each island, which runs on the WordPress Interactivity API.
-
-[`examples/full-site`](https://github.com/spacefast/zero/tree/main/examples/full-site) is a complete site on this pipeline, and every file in this section comes from it.
-
-### Files and routes
-
-```text
-full-site/
-├── first.config.ts             collections, access rules, actions
-├── pages/
-│   ├── layout.tsx              wraps every page
-│   ├── page.tsx                /
-│   ├── not-found.tsx           the body of a 404
-│   ├── about/page.tsx          /about
-│   └── notes/
-│       ├── page.tsx            /notes, a listing
-│       ├── featured/page.tsx   /notes/featured, wins over [slug]
-│       └── [slug]/page.tsx     /notes/<slug>, one note
-├── components/NoteCard.tsx
-├── islands/cheer.client.ts     the browser module of one island
-└── styles/global.css
-```
-
-| File | What it does |
-| --- | --- |
-| `page.tsx` | A route. Only this name makes one |
-| `layout.tsx` | Wraps every page below it, outermost first |
-| `not-found.tsx` | At the root only: the body of a 404 |
-| `(group)/` | Groups files without adding a URL segment |
-| `[param]/` | One segment, last in the path. Needs `collectionPage()` |
-| Anything else | A module the pages import. Never a route |
-
-A static page next to an item route wins: `/notes/featured` is served by `featured/page.tsx`, and the collection refuses the slug `featured`. Paths WordPress owns, such as `/wp-admin` and `/wp-json`, can't be routes. Each static page is a hidden WordPress Page that First keeps in sync, so menus, SEO plugins and `get_permalink()` see a normal page. An item route serves the collection's existing posts.
-
-### A page, before and after
-
-The layout wraps every page. It imports a global stylesheet and sets a title template:
-
-<RepoFile path="examples/full-site/pages/layout.tsx" />
-
-The note page is an item route. `collectionPage("notes")` binds `[slug]` to the `notes` collection. `load()` declares one more query, and `generateMetadata()` sets the title, description and canonical URL:
-
-<RepoFile path="examples/full-site/pages/notes/[slug]/page.tsx" />
-
-`first-pages build` turns the layout and the page into one template of block markup. Request values become placeholders, shown here as `⟨v1⟩`. `<Show>`, `<RichText>` and `<Island>` become blocks that PHP renders per request:
-
-<PagesArtifact example="full-site" route="pages/notes/[slug]/page.tsx" name="note page template" />
-
-### Data comes per request
-
-A page runs once, at build time, when no request exists. So `item`, `params` and what `load()` returns are placeholders, filled in per request as the visitor:
-
-| You write | It becomes |
-| --- | --- |
-| `{item.title}`, `href={note.href}`, `` `${item.title}!` `` | Escaped text or an attribute value |
-| `rows.map((row) => …)` | A loop rendered on the server |
-| `<Show when={v}>`, `<Show when={v} not>`, `<Show when={v} is="x">` | A condition decided on the server |
-| `orElse(v, "fallback")` | `v ?? "fallback"`, decided per request |
-| `<RichText value={item.body} />` | The item's stored body, through `the_content` |
-| `link("/notes")` | That page's URL under the site's home URL |
-| `content.query.<name>.findMany/findFirst(…)` | One query, run as the visitor |
-
-Every query runs through the app's access rules with the visitor's account, like the REST API. An anonymous visitor never sees a draft or a staff-only field. A missing or unreadable item is a real 404 with the not-found page. Every response is sent with `Cache-Control: private, no-store`, because it depends on who is asking.
-
-Code that would need the request at build time is refused, with the file, line and column:
-
-| Refused | Code | Use instead |
-| --- | --- | --- |
-| `item.dek ? a : b`, `&&`, `\|\|`, `??`, `if`, `!` on request data | `dynamic_region` | `<Show>`, `orElse()` |
-| `item.title + "!"`, comparisons, arithmetic | `dynamic_operator` | Template strings, `<Show is>` |
-| `item.title.toUpperCase()` and other calls | `dynamic_call` | Render the stored value |
-| A request value in `className`, `id`, `style`, `on*` or `data-wp-*` | `dynamic_attribute` | Branch with `<Show>` |
-| `item.titel` | `unknown_field`, with a suggestion | The schema's field name |
-| `import { db } from "first"` | `trusted_db` | `load({ content })` |
-| `Date.now()`, `Math.random()`, browser globals, async components | `dynamic_call`, `browser_global`, `async_component` | `load()`, stored fields, an island |
-
-### Metadata, CSS and assets
-
-Export `metadata` or `generateMetadata(props)`, not both. They set `title`, `description`, `canonical` and `robots`. A layout's `title: { default, template }` applies once. First writes the only `<title>` and canonical link on its routes.
-
-`import "./x.css"` adds a global stylesheet. `import styles from "./x.module.css"` gives a class map with names fixed at build time. Images and fonts a page imports become hashed files. Each route's CSS is enqueued before `wp_head`.
-
-### Islands and the Interactivity API
-
-An island is the only part of a page that runs in the browser. `<Island>` wraps plain HTML that uses `data-wp-*` directives. It names a store, a browser module, the app actions the module may call, and a starting context. This is the cheer button from the note page above:
-
-<RepoFile path="examples/full-site/islands/cheer.client.ts" />
-
-What happens to it:
-
-1. **At build time**, the module is bundled for the browser with `@wordpress/interactivity` left out, because WordPress provides it.
-2. **On the server**, the island's context is filled from the request (`noteId`, the current `count`). PHP runs `wp_interactivity_process_directives()` on the island, so the first paint already shows the right count.
-3. **WordPress** registers the module as a script module that depends on `@wordpress/interactivity`. Through `wp_interactivity_config()` it gives the store each action's REST URL and a REST nonce. That is what `getConfig("fullsite/cheer")` reads.
-4. **In the browser**, a click runs `actions.cheer`. It posts to the app's `cheer` action with the nonce, so a signed-in visitor calls it as themselves and an anonymous visitor as anonymous. The action's own access rule decides.
-
-This is the bundle the build wrote for the store:
-
-<PagesArtifact example="full-site" file="assets/island-" name="island bundle" />
-
-Island children are escaped HTML. `on*` attributes, `style` and raw-text elements are refused. Two routes may share a store name only if they use the same module.
-
-### Escaping
-
-Request values never go through the block parser. After WordPress renders the blocks, PHP walks the HTML with WordPress's HTML API and fills each placeholder: text with `set_modifiable_text`, attributes with `set_attribute`, which applies `esc_url` to URL attributes. Only `http`, `https`, `mailto`, root-relative and fragment URLs are kept. A value can never become markup, a block delimiter or another placeholder.
-
-### Build
-
-```sh
-first build site          # the backend, and the schema the pages are checked against
-first-pages build site    # first/dist/wp-content/plugins/first-pages-<app>/
-```
-
-`first-pages build` exits `0` when it built, or when there is no `pages/`. It exits `1` with diagnostics, and `2` for a usage error. On an error it writes nothing, and the previous plugin stays. Install the `first-pages-<app>` plugin next to the app plugin.
-
-The build also writes `first/pages.json`: every template, body and asset, the schema the pages were checked against, and a SHA-256 of each input. It holds no PHP. Commit it. When you publish to Spacefast, the host can't run your TSX, so it checks that `first/pages.json` matches your sources and refuses to publish when a page, layout, island or stylesheet changed after the last `first-pages build`.
-
-### Not in this release
-
-- React builds of the same components. Pages compile only to block markup today.
-- Pages owned by content (`page.md`, `page.blocks.html`), and syncing them.
-- Block themes (`theme.config.ts`). Layouts render inside the plugin's canvas.
-- Post passwords on routed items. Such items are not served.
-- Sitemaps of item routes, SEO plugin adapters, and redirects for moved routes.
-- `first build` building pages. Run `first-pages build` after it.
-- Full-page HTML caching. Routes skip shared caches.
-- Arbitrary TSX or React behavior. Only the subset above compiles.
+| Before | Now |
+|---|---|
+| `pages/<path>/page.tsx` | `first/app/<path>/page.tsx` |
+| `load({ content })` returning queries | `await db.query.<kind>…` in the page; reads run as the visitor |
+| `collectionPage("notes")` | `url: "/notes/:slug"` on the kind and `first/app/notes/[slug]/page.tsx`, which receives `item` |
+| `<Show when={x}>`, `orElse(x, d)`, `count(list)` | `{x && …}`, `x ?? d`, `list.length` |
+| `<RichText value>` | `<Content value>` from `"first/app"` |
+| `<Island>` with a hand-written store | a `"use client"` component |
+| `link("/x")` | `<Link href="/x">` from `"first/app"` |
+| `generateMetadata` | `export const metadata = (props) => ({ … })` |

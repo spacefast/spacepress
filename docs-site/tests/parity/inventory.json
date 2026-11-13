@@ -1,0 +1,6918 @@
+{
+	"pages": {
+		"/agents": {
+			"title": "Agents - First",
+			"h1": "Agents",
+			"description": "Set a project up for coding agents with first init and first mcp, and connect an agent to a running app's MCP endpoint.",
+			"canonical": "/agents",
+			"markdown": "/agents.md",
+			"ogImage": "/og/agents.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/agents.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Agents - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/agents.mdx",
+			"toc": [
+				"set-a-project-up-for-coding-agents-first-init",
+				"develop-a-project-with-a-coding-agent-first-mcp",
+				"run-the-dev-site-from-an-agent",
+				"use-the-running-app-the-sites-mcp-endpoint",
+				"find-the-endpoint-and-tools",
+				"who-the-agent-is",
+				"scoped-agent-credentials",
+				"connect-a-client",
+				"check-an-endpoint-by-hand",
+				"read-pages-as-markdown"
+			],
+			"prev": "/pages",
+			"next": "/publishing/spacefast",
+			"sidebar": true
+		},
+		"/changelog/blocks": {
+			"title": "@spacefast/first-blocks - First",
+			"h1": "@spacefast/first-blocks",
+			"description": "Changes to @spacefast/first-blocks, from its CHANGELOG.md.",
+			"canonical": "/changelog/blocks",
+			"markdown": "/changelog/blocks.md",
+			"ogImage": "/og/changelog/blocks.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/changelog/blocks.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "@spacefast/first-blocks - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/changelog/blocks.mdx",
+			"toc": [
+				"unreleased",
+				"added"
+			],
+			"prev": "/changelog",
+			"next": null,
+			"sidebar": true
+		},
+		"/changelog": {
+			"title": "Changelogs - First",
+			"h1": "Changelogs",
+			"description": "The changes in each First package.",
+			"canonical": "/changelog",
+			"markdown": "/changelog.md",
+			"ogImage": "/og/changelog.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/changelog.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Changelogs - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/changelog/index.mdx",
+			"toc": [],
+			"prev": "/publishing/content-in-git",
+			"next": "/changelog/blocks",
+			"sidebar": true
+		},
+		"/compiler": {
+			"title": "TypeScript to PHP - First",
+			"h1": "TypeScript to PHP",
+			"description": "How first build turns your hooks, actions, jobs, routes, access rules and the npm code they import into PHP that runs inside WordPress.",
+			"canonical": "/compiler",
+			"markdown": "/compiler.md",
+			"ogImage": "/og/compiler.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/compiler.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "TypeScript to PHP - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/compiler.mdx",
+			"toc": [
+				"what-gets-compiled",
+				"the-steps",
+				"a-hook-before-and-after",
+				"npm-packages",
+				"the-php-runtime",
+				"where-php-differs-from-javascript",
+				"what-is-refused"
+			],
+			"prev": "/getting-started",
+			"next": "/pages",
+			"sidebar": true
+		},
+		"/examples/blog": {
+			"title": "Blog - First",
+			"h1": "Blog",
+			"description": "A publication. Posts in two languages, authors, moderated comments, member accounts, image sizes, private files and signed webhooks.",
+			"canonical": "/examples/blog",
+			"markdown": "/examples/blog.md",
+			"ogImage": "/og/examples/blog.png",
+			"tab": "/examples",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/examples/blog.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Blog - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/examples/blog.mdx",
+			"toc": [],
+			"prev": "/examples",
+			"next": "/examples/full-site",
+			"sidebar": true
+		},
+		"/examples/full-site": {
+			"title": "Full site - First",
+			"h1": "Full site",
+			"description": "A small editorial site. Pages written in TSX, rendered by WordPress, with one button that runs on the Interactivity API.",
+			"canonical": "/examples/full-site",
+			"markdown": "/examples/full-site.md",
+			"ogImage": "/og/examples/full-site.png",
+			"tab": "/examples",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/examples/full-site.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Full site - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/examples/full-site.mdx",
+			"toc": [
+				"readme"
+			],
+			"prev": "/examples/blog",
+			"next": "/examples/pantry",
+			"sidebar": true
+		},
+		"/examples": {
+			"title": "Examples - First",
+			"h1": "Examples",
+			"description": "Small First apps, each with every file it is built from and every file first build writes for it.",
+			"canonical": "/examples",
+			"markdown": "/examples.md",
+			"ogImage": "/og/examples.png",
+			"tab": "/examples",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/examples.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Examples - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/examples/index.mdx",
+			"toc": [],
+			"prev": null,
+			"next": "/examples/blog",
+			"sidebar": true
+		},
+		"/examples/pantry": {
+			"title": "Pantry - First",
+			"h1": "Pantry",
+			"description": "A pantry tracker. Three SQL tables, a hook that writes the shopping list, two actions and a background job.",
+			"canonical": "/examples/pantry",
+			"markdown": "/examples/pantry.md",
+			"ogImage": "/og/examples/pantry.png",
+			"tab": "/examples",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/examples/pantry.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Pantry - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/examples/pantry.mdx",
+			"toc": [],
+			"prev": "/examples/full-site",
+			"next": "/examples/reading-list",
+			"sidebar": true
+		},
+		"/examples/reading-list": {
+			"title": "Reading list - First",
+			"h1": "Reading list",
+			"description": "A reading log in 94 lines. Books are WordPress posts, reads are a SQL table, and each reader sees only their own.",
+			"canonical": "/examples/reading-list",
+			"markdown": "/examples/reading-list.md",
+			"ogImage": "/og/examples/reading-list.png",
+			"tab": "/examples",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/examples/reading-list.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Reading list - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/examples/reading-list.mdx",
+			"toc": [
+				"readme",
+				"run-it",
+				"try-each-part"
+			],
+			"prev": "/examples/pantry",
+			"next": null,
+			"sidebar": true
+		},
+		"/getting-started": {
+			"title": "Get started - First",
+			"h1": "Get started",
+			"description": "Create a First app, run it on WordPress on your machine, and call its REST API.",
+			"canonical": "/getting-started",
+			"markdown": "/getting-started.md",
+			"ogImage": "/og/getting-started.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/getting-started.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get started - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/getting-started.mdx",
+			"toc": [
+				"create-the-app",
+				"check-the-config",
+				"start-the-site",
+				"add-a-note",
+				"read-it-through-the-api",
+				"stop-the-site",
+				"what-to-commit",
+				"add-a-database",
+				"next-steps"
+			],
+			"prev": "/",
+			"next": "/compiler",
+			"sidebar": true
+		},
+		"/": {
+			"title": "First",
+			"h1": "First",
+			"description": "First turns one TypeScript file into a WordPress backend. You get database tables, a REST API, sign-in, an admin and a typed client.",
+			"canonical": "/",
+			"markdown": "/index.md",
+			"ogImage": "/og/index.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/index.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/index.mdx",
+			"toc": [
+				"what-you-get-from-one-file",
+				"content-and-database",
+				"one-app-every-file",
+				"who-it-is-for",
+				"start-here",
+				"status"
+			],
+			"prev": null,
+			"next": "/getting-started",
+			"sidebar": true
+		},
+		"/pages": {
+			"title": "Pages in TSX and the Interactivity API - First",
+			"h1": "Pages in TSX and the Interactivity API",
+			"description": "Render a First app's front end from first/app/ in TSX, compiled to PHP and rendered by WordPress.",
+			"canonical": "/pages",
+			"markdown": "/pages.md",
+			"ogImage": "/og/pages.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/pages.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Pages in TSX and the Interactivity API - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/pages.mdx",
+			"toc": [
+				"firstapp",
+				"a-layout",
+				"a-page-with-its-own-form-handler",
+				"markdown-pages",
+				"a-docs-section-a-folder-of-markdown-as-a-kind",
+				"typed-search-a-guard-http-handlers",
+				"interactive-components-use-client",
+				"stylesheets-and-images",
+				"on-wordpress",
+				"from-the-old-pages-renderer"
+			],
+			"prev": "/compiler",
+			"next": "/agents",
+			"sidebar": true
+		},
+		"/playground": {
+			"title": "Playground · First",
+			"h1": "Playground",
+			"description": "Edit a First config and see the PHP, SQL migrations and TypeScript client it compiles to. The compiler runs in your browser.",
+			"canonical": "/playground",
+			"markdown": null,
+			"ogImage": "/og/playground.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Playground · First",
+				"card": "summary_large_image"
+			},
+			"stops": [
+				"wordpress"
+			],
+			"edit": null,
+			"toc": [],
+			"prev": null,
+			"next": null
+		},
+		"/publishing/other-platforms": {
+			"title": "Other platforms - First",
+			"h1": "Other platforms",
+			"description": "Running a First app on a WordPress host other than Spacefast.",
+			"canonical": "/publishing/other-platforms",
+			"markdown": "/publishing/other-platforms.md",
+			"ogImage": "/og/publishing/other-platforms.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/publishing/other-platforms.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Other platforms - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/publishing/other-platforms.mdx",
+			"toc": [],
+			"prev": "/publishing/spacefast",
+			"next": "/publishing/content-in-git",
+			"sidebar": true
+		},
+		"/publishing/content-in-git": {
+			"title": "Content in git - First",
+			"h1": "Content in git",
+			"description": "Edits made on a First site come back to the repository as a pull request, and content merged in git goes to the site, through first sync.",
+			"canonical": "/publishing/content-in-git",
+			"markdown": "/publishing/content-in-git.md",
+			"ogImage": "/og/publishing/content-in-git.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/publishing/content-in-git.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Content in git - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/publishing/content-in-git.mdx",
+			"toc": [
+				"the-pull-request",
+				"conflicts",
+				"permissions"
+			],
+			"prev": "/publishing/other-platforms",
+			"next": "/changelog",
+			"sidebar": true
+		},
+		"/publishing/spacefast": {
+			"title": "Publish on Spacefast - First",
+			"h1": "Publish on Spacefast",
+			"description": "Put a First app online on Spacefast with sf publish.",
+			"canonical": "/publishing/spacefast",
+			"markdown": "/publishing/spacefast.md",
+			"ogImage": "/og/publishing/spacefast.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/publishing/spacefast.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Publish on Spacefast - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/publishing/spacefast.mdx",
+			"toc": [
+				"before-you-start",
+				"publish-the-app",
+				"what-runs-on-the-space",
+				"sign-people-in-with-spacefast",
+				"if-publish-fails"
+			],
+			"prev": "/agents",
+			"next": "/publishing/other-platforms",
+			"sidebar": true
+		},
+		"/reference/cli": {
+			"title": "CLI - First",
+			"h1": "CLI",
+			"description": "Every first command and every wp first command, with its arguments.",
+			"canonical": "/reference/cli",
+			"markdown": "/reference/cli.md",
+			"ogImage": "/og/reference/cli.png",
+			"tab": "/reference",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/reference/cli.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "CLI - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/cli.mdx",
+			"toc": [
+				"build-commands",
+				"site-commands",
+				"create-an-app"
+			],
+			"prev": "/reference/client",
+			"next": "/reference/language-support",
+			"sidebar": true
+		},
+		"/reference/client": {
+			"title": "JavaScript client - First",
+			"h1": "JavaScript client",
+			"description": "The typed client first build writes to first/_generated/client/, and every function it exports.",
+			"canonical": "/reference/client",
+			"markdown": "/reference/client.md",
+			"ogImage": "/og/reference/client.png",
+			"tab": "/reference",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/reference/client.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "JavaScript client - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/client.mdx",
+			"toc": [
+				"use-it",
+				"exports",
+				"a-collection",
+				"media",
+				"sign-in",
+				"options",
+				"the-readme-that-build-writes",
+				"signing-in",
+				"live-updates"
+			],
+			"prev": "/reference/config",
+			"next": "/reference/cli",
+			"sidebar": true
+		},
+		"/reference/config": {
+			"title": "Config API - First",
+			"h1": "Config API",
+			"description": "Every option of defineConfig and every function first.config.ts can import from \"first\".",
+			"canonical": "/reference/config",
+			"markdown": "/reference/config.md",
+			"ogImage": "/og/reference/config.png",
+			"tab": "/reference",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/reference/config.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Config API - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/config.mdx",
+			"toc": [
+				"defineconfig-options",
+				"columns",
+				"ref",
+				"integer",
+				"number",
+				"text",
+				"boolean",
+				"date",
+				"timestamp",
+				"json",
+				"email",
+				"url",
+				"slug",
+				"file",
+				"richtext",
+				"media",
+				"select",
+				"group",
+				"repeater",
+				"blocks",
+				"collections",
+				"collection",
+				"table",
+				"userprojection",
+				"hooks-actions-globals-config",
+				"action",
+				"global",
+				"defineconfig",
+				"defineplugin",
+				"errors",
+				"job",
+				"once",
+				"env",
+				"files",
+				"reusable-fields"
+			],
+			"prev": "/reference",
+			"next": "/reference/client",
+			"sidebar": true
+		},
+		"/reference/diagnostics": {
+			"title": "Diagnostic codes - First",
+			"h1": "Diagnostic codes",
+			"description": "Every code first check can report, and the refusals the test suite runs for each one.",
+			"canonical": "/reference/diagnostics",
+			"markdown": "/reference/diagnostics.md",
+			"ogImage": "/og/reference/diagnostics.png",
+			"tab": "/reference",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/reference/diagnostics.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Diagnostic codes - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/diagnostics.mdx",
+			"toc": [
+				"codes",
+				"tested-refusals"
+			],
+			"prev": "/reference/language-support",
+			"next": "/reference/wordpress-plugins",
+			"sidebar": true
+		},
+		"/reference": {
+			"title": "Reference - First",
+			"h1": "Reference",
+			"description": "Every API First provides, generated from the code.",
+			"canonical": "/reference",
+			"markdown": "/reference.md",
+			"ogImage": "/og/reference.png",
+			"tab": "/reference",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/reference.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Reference - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/index.mdx",
+			"toc": [],
+			"prev": null,
+			"next": "/reference/config",
+			"sidebar": true
+		},
+		"/reference/language-support": {
+			"title": "Language support - First",
+			"h1": "Language support",
+			"description": "Every TypeScript and JavaScript construct the compiler has a test for: what compiles, what differs from JavaScript, and what is refused.",
+			"canonical": "/reference/language-support",
+			"markdown": "/reference/language-support.md",
+			"ogImage": "/og/reference/language-support.png",
+			"tab": "/reference",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/reference/language-support.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Language support - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/language-support.mdx",
+			"toc": [
+				"compiles-47",
+				"compiles-and-differs-from-javascript-2",
+				"refused-92"
+			],
+			"prev": "/reference/cli",
+			"next": "/reference/diagnostics",
+			"sidebar": true
+		},
+		"/reference/wordpress-plugins": {
+			"title": "WordPress plugins - First",
+			"h1": "WordPress plugins",
+			"description": "The WordPress plugins First installs, and the plugins it supports.",
+			"canonical": "/reference/wordpress-plugins",
+			"markdown": "/reference/wordpress-plugins.md",
+			"ogImage": "/og/reference/wordpress-plugins.png",
+			"tab": "/reference",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/reference/wordpress-plugins.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "WordPress plugins - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/wordpress-plugins.mdx",
+			"toc": [
+				"plugins-first-supports",
+				"add-another-plugin",
+				"pinned-checksums"
+			],
+			"prev": "/reference/diagnostics",
+			"next": null,
+			"sidebar": true
+		},
+		"/rest/account/auth-config": {
+			"title": "Sign-in settings - First",
+			"h1": "Sign-in settings",
+			"description": "Where First Identity signs users in (null without it), and whether guests are allowed. Reference for the GET /auth/config endpoint in the First REST API.",
+			"canonical": "/rest/account/auth-config",
+			"markdown": "/rest/account/auth-config.md",
+			"ogImage": "/og/rest/account/auth-config.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/account/auth-config.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Sign-in settings - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/account/auth-me",
+			"next": "/rest/account/auth-guest",
+			"operation": "GET /auth/config",
+			"sidebar": true
+		},
+		"/rest/account/auth-guest": {
+			"title": "Start a guest session - First",
+			"h1": "Start a guest session",
+			"description": "Creates a guest user and signs them in. A 404 when First Identity is not installed or… Reference for the POST /auth/guest endpoint in the First REST API.",
+			"canonical": "/rest/account/auth-guest",
+			"markdown": "/rest/account/auth-guest.md",
+			"ogImage": "/og/rest/account/auth-guest.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/account/auth-guest.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Start a guest session - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/account/auth-config",
+			"next": "/rest/account/auth-sign-out",
+			"operation": "POST /auth/guest",
+			"sidebar": true
+		},
+		"/rest/account/auth-me": {
+			"title": "The signed-in user - First",
+			"h1": "The signed-in user",
+			"description": "The user making the request, with their role; null when nobody is signed in. Reference for the GET /me endpoint in the First REST API.",
+			"canonical": "/rest/account/auth-me",
+			"markdown": "/rest/account/auth-me.md",
+			"ogImage": "/og/rest/account/auth-me.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/account/auth-me.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "The signed-in user - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/media/media-delete",
+			"next": "/rest/account/auth-config",
+			"operation": "GET /me",
+			"sidebar": true
+		},
+		"/rest/account/auth-sign-out": {
+			"title": "Sign out - First",
+			"h1": "Sign out",
+			"description": "Ends the First Identity session the request's access token belongs to. A cookie or… Reference for the DELETE /auth/session endpoint in the First REST API.",
+			"canonical": "/rest/account/auth-sign-out",
+			"markdown": "/rest/account/auth-sign-out.md",
+			"ogImage": "/og/rest/account/auth-sign-out.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/account/auth-sign-out.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Sign out - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/account/auth-guest",
+			"next": "/rest/search/search",
+			"operation": "DELETE /auth/session",
+			"sidebar": true
+		},
+		"/rest/actions/actions-approve-comment": {
+			"title": "Call approveComment - First",
+			"h1": "Call approveComment",
+			"description": "Runs the approveComment action with the input sent and returns its result. Reference for the POST /actions/approveComment endpoint in the First REST API.",
+			"canonical": "/rest/actions/actions-approve-comment",
+			"markdown": "/rest/actions/actions-approve-comment.md",
+			"ogImage": "/og/rest/actions/actions-approve-comment.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/actions/actions-approve-comment.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Call approveComment - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/globals/globals-settings-update",
+			"next": "/rest/actions/actions-published-count",
+			"operation": "POST /actions/approveComment",
+			"sidebar": true
+		},
+		"/rest/actions/actions-published-count": {
+			"title": "Call publishedCount - First",
+			"h1": "Call publishedCount",
+			"description": "Runs the publishedCount action with the input sent and returns its result. Reference for the POST /actions/publishedCount endpoint in the First REST API.",
+			"canonical": "/rest/actions/actions-published-count",
+			"markdown": "/rest/actions/actions-published-count.md",
+			"ogImage": "/og/rest/actions/actions-published-count.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/actions/actions-published-count.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Call publishedCount - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/actions/actions-approve-comment",
+			"next": "/rest/files/files-decks-upload",
+			"operation": "POST /actions/publishedCount",
+			"sidebar": true
+		},
+		"/rest/authors/authors-compare": {
+			"title": "Compare staged and live authors - First",
+			"h1": "Compare staged and live authors",
+			"description": "The staged fields whose value differs from the live row, with both values,… Reference for the GET /authors/{id}/staged/compare endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-compare",
+			"markdown": "/rest/authors/authors-compare.md",
+			"ogImage": "/og/rest/authors/authors-compare.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-compare.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Compare staged and live authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-discard",
+			"next": "/rest/authors/authors-promote",
+			"operation": "GET /authors/{id}/staged/compare",
+			"sidebar": true
+		},
+		"/rest/authors/authors-create": {
+			"title": "Create in authors - First",
+			"h1": "Create in authors",
+			"description": "Creates one authors row and returns it. Reference for the POST /authors endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-create",
+			"markdown": "/rest/authors/authors-create.md",
+			"ogImage": "/og/rest/authors/authors-create.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-create.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Create in authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-list",
+			"next": "/rest/authors/authors-get",
+			"operation": "POST /authors",
+			"sidebar": true
+		},
+		"/rest/authors/authors-delete": {
+			"title": "Delete from authors - First",
+			"h1": "Delete from authors",
+			"description": "Deletes one authors row for good and returns the row as it was. Reference for the DELETE /authors/{id} endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-delete",
+			"markdown": "/rest/authors/authors-delete.md",
+			"ogImage": "/og/rest/authors/authors-delete.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-delete.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Delete from authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-update",
+			"next": "/rest/authors/authors-revisions-list",
+			"operation": "DELETE /authors/{id}",
+			"sidebar": true
+		},
+		"/rest/authors/authors-discard": {
+			"title": "Discard the staged version of authors - First",
+			"h1": "Discard the staged version of authors",
+			"description": "Ends the staged version. The live row is untouched; the discarded version stays… Reference for the DELETE /authors/{id}/staged endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-discard",
+			"markdown": "/rest/authors/authors-discard.md",
+			"ogImage": "/og/rest/authors/authors-discard.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-discard.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Discard the staged version of authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-stage",
+			"next": "/rest/authors/authors-compare",
+			"operation": "DELETE /authors/{id}/staged",
+			"sidebar": true
+		},
+		"/rest/authors/authors-get": {
+			"title": "Get one of authors - First",
+			"h1": "Get one of authors",
+			"description": "One authors row. Reference for the GET /authors/{id} endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-get",
+			"markdown": "/rest/authors/authors-get.md",
+			"ogImage": "/og/rest/authors/authors-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get one of authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-create",
+			"next": "/rest/authors/authors-update",
+			"operation": "GET /authors/{id}",
+			"sidebar": true
+		},
+		"/rest/authors/authors-list": {
+			"title": "List authors - First",
+			"h1": "List authors",
+			"description": "The authors rows the caller may read, one page at a time. limit is 50 unless given, and at… Reference for the GET /authors endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-list",
+			"markdown": "/rest/authors/authors-list.md",
+			"ogImage": "/og/rest/authors/authors-list.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-list.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "List authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest",
+			"next": "/rest/authors/authors-create",
+			"operation": "GET /authors",
+			"sidebar": true
+		},
+		"/rest/authors/authors-preview-link": {
+			"title": "Preview link for staged authors - First",
+			"h1": "Preview link for staged authors",
+			"description": "A signed link to the staged version that works without signing in until… Reference for the POST /authors/{id}/staged/preview endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-preview-link",
+			"markdown": "/rest/authors/authors-preview-link.md",
+			"ogImage": "/og/rest/authors/authors-preview-link.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-preview-link.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Preview link for staged authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-promote",
+			"next": "/rest/posts/posts-list",
+			"operation": "POST /authors/{id}/staged/preview",
+			"sidebar": true
+		},
+		"/rest/authors/authors-promote": {
+			"title": "Promote the staged version of authors - First",
+			"h1": "Promote the staged version of authors",
+			"description": "Makes the staged version live, as an update of the row by the caller: its… Reference for the POST /authors/{id}/staged/promote endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-promote",
+			"markdown": "/rest/authors/authors-promote.md",
+			"ogImage": "/og/rest/authors/authors-promote.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-promote.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Promote the staged version of authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-compare",
+			"next": "/rest/authors/authors-preview-link",
+			"operation": "POST /authors/{id}/staged/promote",
+			"sidebar": true
+		},
+		"/rest/authors/authors-revisions-get": {
+			"title": "Get a revision of authors - First",
+			"h1": "Get a revision of authors",
+			"description": "The row as this revision saved it. Reference for the GET /authors/{id}/revisions/{revision} endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-revisions-get",
+			"markdown": "/rest/authors/authors-revisions-get.md",
+			"ogImage": "/og/rest/authors/authors-revisions-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-revisions-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get a revision of authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-revisions-list",
+			"next": "/rest/authors/authors-revisions-restore",
+			"operation": "GET /authors/{id}/revisions/{revision}",
+			"sidebar": true
+		},
+		"/rest/authors/authors-revisions-list": {
+			"title": "Revisions of authors - First",
+			"h1": "Revisions of authors",
+			"description": "Each saved version of the row, with its time and who saved it. Reference for the GET /authors/{id}/revisions endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-revisions-list",
+			"markdown": "/rest/authors/authors-revisions-list.md",
+			"ogImage": "/og/rest/authors/authors-revisions-list.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-revisions-list.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Revisions of authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-delete",
+			"next": "/rest/authors/authors-revisions-get",
+			"operation": "GET /authors/{id}/revisions",
+			"sidebar": true
+		},
+		"/rest/authors/authors-revisions-restore": {
+			"title": "Restore a revision of authors - First",
+			"h1": "Restore a revision of authors",
+			"description": "Makes the revision the current row, as an update of the row. Reference for the POST /authors/{id}/revisions/{revision}/restore endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-revisions-restore",
+			"markdown": "/rest/authors/authors-revisions-restore.md",
+			"ogImage": "/og/rest/authors/authors-revisions-restore.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-revisions-restore.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Restore a revision of authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-revisions-get",
+			"next": "/rest/authors/authors-staged",
+			"operation": "POST /authors/{id}/revisions/{revision}/restore",
+			"sidebar": true
+		},
+		"/rest/authors/authors-stage": {
+			"title": "Stage a change to authors - First",
+			"h1": "Stage a change to authors",
+			"description": "Saves the fields sent into the row's staged version. The live row stays as it is… Reference for the PATCH /authors/{id}/staged endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-stage",
+			"markdown": "/rest/authors/authors-stage.md",
+			"ogImage": "/og/rest/authors/authors-stage.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-stage.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Stage a change to authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-staged",
+			"next": "/rest/authors/authors-discard",
+			"operation": "PATCH /authors/{id}/staged",
+			"sidebar": true
+		},
+		"/rest/authors/authors-staged": {
+			"title": "Staged version of authors - First",
+			"h1": "Staged version of authors",
+			"description": "The row as it would be once promoted, the fields that are staged, and who staged… Reference for the GET /authors/{id}/staged endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-staged",
+			"markdown": "/rest/authors/authors-staged.md",
+			"ogImage": "/og/rest/authors/authors-staged.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-staged.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Staged version of authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-revisions-restore",
+			"next": "/rest/authors/authors-stage",
+			"operation": "GET /authors/{id}/staged",
+			"sidebar": true
+		},
+		"/rest/authors/authors-update": {
+			"title": "Update in authors - First",
+			"h1": "Update in authors",
+			"description": "Changes the fields sent on one authors row and returns the row. Reference for the PATCH /authors/{id} endpoint in the First REST API.",
+			"canonical": "/rest/authors/authors-update",
+			"markdown": "/rest/authors/authors-update.md",
+			"ogImage": "/og/rest/authors/authors-update.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/authors/authors-update.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Update in authors - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-get",
+			"next": "/rest/authors/authors-delete",
+			"operation": "PATCH /authors/{id}",
+			"sidebar": true
+		},
+		"/rest/comments/comments-create": {
+			"title": "Create in comments - First",
+			"h1": "Create in comments",
+			"description": "Creates one comments row and returns it. Reference for the POST /comments endpoint in the First REST API.",
+			"canonical": "/rest/comments/comments-create",
+			"markdown": "/rest/comments/comments-create.md",
+			"ogImage": "/og/rest/comments/comments-create.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/comments/comments-create.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Create in comments - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/comments/comments-list",
+			"next": "/rest/comments/comments-get",
+			"operation": "POST /comments",
+			"sidebar": true
+		},
+		"/rest/comments/comments-delete": {
+			"title": "Delete from comments - First",
+			"h1": "Delete from comments",
+			"description": "Deletes one comments row for good and returns the row as it was. Reference for the DELETE /comments/{id} endpoint in the First REST API.",
+			"canonical": "/rest/comments/comments-delete",
+			"markdown": "/rest/comments/comments-delete.md",
+			"ogImage": "/og/rest/comments/comments-delete.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/comments/comments-delete.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Delete from comments - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/comments/comments-update",
+			"next": "/rest/members/members-list",
+			"operation": "DELETE /comments/{id}",
+			"sidebar": true
+		},
+		"/rest/comments/comments-get": {
+			"title": "Get one of comments - First",
+			"h1": "Get one of comments",
+			"description": "One comments row. Reference for the GET /comments/{id} endpoint in the First REST API.",
+			"canonical": "/rest/comments/comments-get",
+			"markdown": "/rest/comments/comments-get.md",
+			"ogImage": "/og/rest/comments/comments-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/comments/comments-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get one of comments - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/comments/comments-create",
+			"next": "/rest/comments/comments-update",
+			"operation": "GET /comments/{id}",
+			"sidebar": true
+		},
+		"/rest/comments/comments-list": {
+			"title": "List comments - First",
+			"h1": "List comments",
+			"description": "The comments rows the caller may read, one page at a time. limit is 50 unless given, and at… Reference for the GET /comments endpoint in the First REST API.",
+			"canonical": "/rest/comments/comments-list",
+			"markdown": "/rest/comments/comments-list.md",
+			"ogImage": "/og/rest/comments/comments-list.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/comments/comments-list.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "List comments - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/sync/sync-posts-merge",
+			"next": "/rest/comments/comments-create",
+			"operation": "GET /comments",
+			"sidebar": true
+		},
+		"/rest/comments/comments-update": {
+			"title": "Update in comments - First",
+			"h1": "Update in comments",
+			"description": "Changes the fields sent on one comments row and returns the row. Reference for the PATCH /comments/{id} endpoint in the First REST API.",
+			"canonical": "/rest/comments/comments-update",
+			"markdown": "/rest/comments/comments-update.md",
+			"ogImage": "/og/rest/comments/comments-update.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/comments/comments-update.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Update in comments - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/comments/comments-get",
+			"next": "/rest/comments/comments-delete",
+			"operation": "PATCH /comments/{id}",
+			"sidebar": true
+		},
+		"/rest/files/files-decks-delete": {
+			"title": "Delete a decks file - First",
+			"h1": "Delete a decks file",
+			"description": "Deletes the file. Fields that held it become null. Reference for the DELETE /files/decks/{id} endpoint in the First REST API.",
+			"canonical": "/rest/files/files-decks-delete",
+			"markdown": "/rest/files/files-decks-delete.md",
+			"ogImage": "/og/rest/files/files-decks-delete.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/files/files-decks-delete.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Delete a decks file - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/files/files-decks-get",
+			"next": "/rest/files/files-decks-download",
+			"operation": "DELETE /files/decks/{id}",
+			"sidebar": true
+		},
+		"/rest/files/files-decks-download": {
+			"title": "Download a decks file - First",
+			"h1": "Download a decks file",
+			"description": "The file's bytes. The link is the permission: exp and sig come from the… Reference for the GET /files/decks/{id}/download endpoint in the First REST API.",
+			"canonical": "/rest/files/files-decks-download",
+			"markdown": "/rest/files/files-decks-download.md",
+			"ogImage": "/og/rest/files/files-decks-download.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/files/files-decks-download.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Download a decks file - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/files/files-decks-delete",
+			"next": "/rest/word-press/pages-list",
+			"operation": "GET /files/decks/{id}/download",
+			"sidebar": true
+		},
+		"/rest/files/files-decks-get": {
+			"title": "Get a decks file - First",
+			"h1": "Get a decks file",
+			"description": "The file's details, with a fresh signed link in url. Reference for the GET /files/decks/{id} endpoint in the First REST API.",
+			"canonical": "/rest/files/files-decks-get",
+			"markdown": "/rest/files/files-decks-get.md",
+			"ogImage": "/og/rest/files/files-decks-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/files/files-decks-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get a decks file - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/files/files-decks-upload",
+			"next": "/rest/files/files-decks-delete",
+			"operation": "GET /files/decks/{id}",
+			"sidebar": true
+		},
+		"/rest/files/files-decks-upload": {
+			"title": "Upload to decks - First",
+			"h1": "Upload to decks",
+			"description": "Stores one file of at most 20000000 bytes in the decks bucket. Accepts application/pdf. Reference for the POST /files/decks endpoint in the First REST API.",
+			"canonical": "/rest/files/files-decks-upload",
+			"markdown": "/rest/files/files-decks-upload.md",
+			"ogImage": "/og/rest/files/files-decks-upload.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/files/files-decks-upload.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Upload to decks - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/actions/actions-published-count",
+			"next": "/rest/files/files-decks-get",
+			"operation": "POST /files/decks",
+			"sidebar": true
+		},
+		"/rest/globals/globals-settings-get": {
+			"title": "Read Site settings - First",
+			"h1": "Read Site settings",
+			"description": "The global's values. A field never set reads as its default. Reference for the GET /settings endpoint in the First REST API.",
+			"canonical": "/rest/globals/globals-settings-get",
+			"markdown": "/rest/globals/globals-settings-get.md",
+			"ogImage": "/og/rest/globals/globals-settings-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/globals/globals-settings-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Read Site settings - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/members/users-delete",
+			"next": "/rest/globals/globals-settings-update",
+			"operation": "GET /settings",
+			"sidebar": true
+		},
+		"/rest/globals/globals-settings-update": {
+			"title": "Update Site settings - First",
+			"h1": "Update Site settings",
+			"description": "Changes the fields sent and returns every value. Reference for the PATCH /settings endpoint in the First REST API.",
+			"canonical": "/rest/globals/globals-settings-update",
+			"markdown": "/rest/globals/globals-settings-update.md",
+			"ogImage": "/og/rest/globals/globals-settings-update.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/globals/globals-settings-update.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Update Site settings - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/globals/globals-settings-get",
+			"next": "/rest/actions/actions-approve-comment",
+			"operation": "PATCH /settings",
+			"sidebar": true
+		},
+		"/rest": {
+			"title": "First REST API - First",
+			"h1": "First REST API",
+			"description": "This is the API of the blog example, as first build describes it. Every First app gets the same routes for its own kinds, globals, actions and file buckets,…",
+			"canonical": "/rest",
+			"markdown": "/rest.md",
+			"ogImage": "/og/rest.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "First REST API - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [
+				"authors",
+				"posts",
+				"sync",
+				"comments",
+				"members",
+				"globals",
+				"actions",
+				"files",
+				"wordpress",
+				"media",
+				"account",
+				"search",
+				"schema"
+			],
+			"prev": null,
+			"next": "/rest/authors/authors-list",
+			"sidebar": true
+		},
+		"/rest/media/media-delete": {
+			"title": "Delete a media item - First",
+			"h1": "Delete a media item",
+			"description": "Deletes the item and its files. Fields that pointed at it become null. Reference for the DELETE /media/{id} endpoint in the First REST API.",
+			"canonical": "/rest/media/media-delete",
+			"markdown": "/rest/media/media-delete.md",
+			"ogImage": "/og/rest/media/media-delete.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/media/media-delete.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Delete a media item - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/media/media-update",
+			"next": "/rest/account/auth-me",
+			"operation": "DELETE /media/{id}",
+			"sidebar": true
+		},
+		"/rest/media/media-get": {
+			"title": "Get a media item - First",
+			"h1": "Get a media item",
+			"description": "One media item. Reference for the GET /media/{id} endpoint in the First REST API.",
+			"canonical": "/rest/media/media-get",
+			"markdown": "/rest/media/media-get.md",
+			"ogImage": "/og/rest/media/media-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/media/media-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get a media item - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/media/media-upload",
+			"next": "/rest/media/media-update",
+			"operation": "GET /media/{id}",
+			"sidebar": true
+		},
+		"/rest/media/media-list": {
+			"title": "List media - First",
+			"h1": "List media",
+			"description": "Media library items, one page at a time. Reference for the GET /media endpoint in the First REST API.",
+			"canonical": "/rest/media/media-list",
+			"markdown": "/rest/media/media-list.md",
+			"ogImage": "/og/rest/media/media-list.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/media/media-list.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "List media - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/menus-get",
+			"next": "/rest/media/media-upload",
+			"operation": "GET /media",
+			"sidebar": true
+		},
+		"/rest/media/media-update": {
+			"title": "Update a media item - First",
+			"h1": "Update a media item",
+			"description": "Changes the alt text, the caption or the focal point. Any other field is refused. Reference for the PATCH /media/{id} endpoint in the First REST API.",
+			"canonical": "/rest/media/media-update",
+			"markdown": "/rest/media/media-update.md",
+			"ogImage": "/og/rest/media/media-update.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/media/media-update.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Update a media item - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/media/media-get",
+			"next": "/rest/media/media-delete",
+			"operation": "PATCH /media/{id}",
+			"sidebar": true
+		},
+		"/rest/media/media-upload": {
+			"title": "Upload media - First",
+			"h1": "Upload media",
+			"description": "Uploads one file to the media library. Reference for the POST /media endpoint in the First REST API.",
+			"canonical": "/rest/media/media-upload",
+			"markdown": "/rest/media/media-upload.md",
+			"ogImage": "/og/rest/media/media-upload.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/media/media-upload.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Upload media - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/media/media-list",
+			"next": "/rest/media/media-get",
+			"operation": "POST /media",
+			"sidebar": true
+		},
+		"/rest/members/members-create": {
+			"title": "Create in members - First",
+			"h1": "Create in members",
+			"description": "Creates one members row and returns it. Reference for the POST /members endpoint in the First REST API.",
+			"canonical": "/rest/members/members-create",
+			"markdown": "/rest/members/members-create.md",
+			"ogImage": "/og/rest/members/members-create.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/members/members-create.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Create in members - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/members/members-list",
+			"next": "/rest/members/members-get",
+			"operation": "POST /members",
+			"sidebar": true
+		},
+		"/rest/members/members-delete": {
+			"title": "Delete from members - First",
+			"h1": "Delete from members",
+			"description": "Deletes one members row for good and returns the row as it was. Reference for the DELETE /members/{id} endpoint in the First REST API.",
+			"canonical": "/rest/members/members-delete",
+			"markdown": "/rest/members/members-delete.md",
+			"ogImage": "/og/rest/members/members-delete.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/members/members-delete.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Delete from members - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/members/members-update",
+			"next": "/rest/members/users-list",
+			"operation": "DELETE /members/{id}",
+			"sidebar": true
+		},
+		"/rest/members/members-get": {
+			"title": "Get one of members - First",
+			"h1": "Get one of members",
+			"description": "One members row. Reference for the GET /members/{id} endpoint in the First REST API.",
+			"canonical": "/rest/members/members-get",
+			"markdown": "/rest/members/members-get.md",
+			"ogImage": "/og/rest/members/members-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/members/members-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get one of members - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/members/members-create",
+			"next": "/rest/members/members-update",
+			"operation": "GET /members/{id}",
+			"sidebar": true
+		},
+		"/rest/members/members-list": {
+			"title": "List members - First",
+			"h1": "List members",
+			"description": "The members rows the caller may read, one page at a time. limit is 50 unless given, and at… Reference for the GET /members endpoint in the First REST API.",
+			"canonical": "/rest/members/members-list",
+			"markdown": "/rest/members/members-list.md",
+			"ogImage": "/og/rest/members/members-list.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/members/members-list.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "List members - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/comments/comments-delete",
+			"next": "/rest/members/members-create",
+			"operation": "GET /members",
+			"sidebar": true
+		},
+		"/rest/members/members-update": {
+			"title": "Update in members - First",
+			"h1": "Update in members",
+			"description": "Changes the fields sent on one members row and returns the row. Reference for the PATCH /members/{id} endpoint in the First REST API.",
+			"canonical": "/rest/members/members-update",
+			"markdown": "/rest/members/members-update.md",
+			"ogImage": "/og/rest/members/members-update.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/members/members-update.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Update in members - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/members/members-get",
+			"next": "/rest/members/members-delete",
+			"operation": "PATCH /members/{id}",
+			"sidebar": true
+		},
+		"/rest/members/users-create": {
+			"title": "Create in members - First",
+			"h1": "Create in members",
+			"description": "Creates one members row and returns it. Reference for the POST /users endpoint in the First REST API.",
+			"canonical": "/rest/members/users-create",
+			"markdown": "/rest/members/users-create.md",
+			"ogImage": "/og/rest/members/users-create.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/members/users-create.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Create in members - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/members/users-list",
+			"next": "/rest/members/users-get",
+			"operation": "POST /users",
+			"sidebar": true
+		},
+		"/rest/members/users-delete": {
+			"title": "Delete from members - First",
+			"h1": "Delete from members",
+			"description": "Deletes one members row for good and returns the row as it was. Reference for the DELETE /users/{id} endpoint in the First REST API.",
+			"canonical": "/rest/members/users-delete",
+			"markdown": "/rest/members/users-delete.md",
+			"ogImage": "/og/rest/members/users-delete.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/members/users-delete.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Delete from members - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/members/users-update",
+			"next": "/rest/globals/globals-settings-get",
+			"operation": "DELETE /users/{id}",
+			"sidebar": true
+		},
+		"/rest/members/users-get": {
+			"title": "Get one of members - First",
+			"h1": "Get one of members",
+			"description": "One members row. Reference for the GET /users/{id} endpoint in the First REST API.",
+			"canonical": "/rest/members/users-get",
+			"markdown": "/rest/members/users-get.md",
+			"ogImage": "/og/rest/members/users-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/members/users-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get one of members - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/members/users-create",
+			"next": "/rest/members/users-update",
+			"operation": "GET /users/{id}",
+			"sidebar": true
+		},
+		"/rest/members/users-list": {
+			"title": "List members - First",
+			"h1": "List members",
+			"description": "The members rows the caller may read, one page at a time. limit is 50 unless given, and at most… Reference for the GET /users endpoint in the First REST API.",
+			"canonical": "/rest/members/users-list",
+			"markdown": "/rest/members/users-list.md",
+			"ogImage": "/og/rest/members/users-list.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/members/users-list.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "List members - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/members/members-delete",
+			"next": "/rest/members/users-create",
+			"operation": "GET /users",
+			"sidebar": true
+		},
+		"/rest/members/users-update": {
+			"title": "Update in members - First",
+			"h1": "Update in members",
+			"description": "Changes the fields sent on one members row and returns the row. Reference for the PATCH /users/{id} endpoint in the First REST API.",
+			"canonical": "/rest/members/users-update",
+			"markdown": "/rest/members/users-update.md",
+			"ogImage": "/og/rest/members/users-update.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/members/users-update.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Update in members - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/members/users-get",
+			"next": "/rest/members/users-delete",
+			"operation": "PATCH /users/{id}",
+			"sidebar": true
+		},
+		"/rest/posts/posts-compare": {
+			"title": "Compare staged and live posts - First",
+			"h1": "Compare staged and live posts",
+			"description": "The staged fields whose value differs from the live row, with both values,… Reference for the GET /posts/{id}/staged/compare endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-compare",
+			"markdown": "/rest/posts/posts-compare.md",
+			"ogImage": "/og/rest/posts/posts-compare.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-compare.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Compare staged and live posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-discard",
+			"next": "/rest/posts/posts-promote",
+			"operation": "GET /posts/{id}/staged/compare",
+			"sidebar": true
+		},
+		"/rest/posts/posts-create": {
+			"title": "Create in posts - First",
+			"h1": "Create in posts",
+			"description": "Creates one posts row and returns it. Reference for the POST /posts endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-create",
+			"markdown": "/rest/posts/posts-create.md",
+			"ogImage": "/og/rest/posts/posts-create.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-create.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Create in posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-list",
+			"next": "/rest/posts/posts-get",
+			"operation": "POST /posts",
+			"sidebar": true
+		},
+		"/rest/posts/posts-delete": {
+			"title": "Delete from posts - First",
+			"h1": "Delete from posts",
+			"description": "Deletes one posts row for good and returns the row as it was. Reference for the DELETE /posts/{id} endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-delete",
+			"markdown": "/rest/posts/posts-delete.md",
+			"ogImage": "/og/rest/posts/posts-delete.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-delete.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Delete from posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-update",
+			"next": "/rest/posts/posts-revisions-list",
+			"operation": "DELETE /posts/{id}",
+			"sidebar": true
+		},
+		"/rest/posts/posts-discard": {
+			"title": "Discard the staged version of posts - First",
+			"h1": "Discard the staged version of posts",
+			"description": "Ends the staged version. The live row is untouched; the discarded version stays… Reference for the DELETE /posts/{id}/staged endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-discard",
+			"markdown": "/rest/posts/posts-discard.md",
+			"ogImage": "/og/rest/posts/posts-discard.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-discard.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Discard the staged version of posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-stage",
+			"next": "/rest/posts/posts-compare",
+			"operation": "DELETE /posts/{id}/staged",
+			"sidebar": true
+		},
+		"/rest/posts/posts-get": {
+			"title": "Get one of posts - First",
+			"h1": "Get one of posts",
+			"description": "One posts row. Reference for the GET /posts/{id} endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-get",
+			"markdown": "/rest/posts/posts-get.md",
+			"ogImage": "/og/rest/posts/posts-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get one of posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-create",
+			"next": "/rest/posts/posts-update",
+			"operation": "GET /posts/{id}",
+			"sidebar": true
+		},
+		"/rest/posts/posts-list": {
+			"title": "List posts - First",
+			"h1": "List posts",
+			"description": "The posts rows the caller may read, one page at a time. limit is 50 unless given, and at most… Reference for the GET /posts endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-list",
+			"markdown": "/rest/posts/posts-list.md",
+			"ogImage": "/og/rest/posts/posts-list.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-list.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "List posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/authors/authors-preview-link",
+			"next": "/rest/posts/posts-create",
+			"operation": "GET /posts",
+			"sidebar": true
+		},
+		"/rest/posts/posts-preview-link": {
+			"title": "Preview link for staged posts - First",
+			"h1": "Preview link for staged posts",
+			"description": "A signed link to the staged version that works without signing in until it… Reference for the POST /posts/{id}/staged/preview endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-preview-link",
+			"markdown": "/rest/posts/posts-preview-link.md",
+			"ogImage": "/og/rest/posts/posts-preview-link.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-preview-link.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Preview link for staged posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-promote",
+			"next": "/rest/sync/sync-posts-read",
+			"operation": "POST /posts/{id}/staged/preview",
+			"sidebar": true
+		},
+		"/rest/posts/posts-promote": {
+			"title": "Promote the staged version of posts - First",
+			"h1": "Promote the staged version of posts",
+			"description": "Makes the staged version live, as an update of the row by the caller: its… Reference for the POST /posts/{id}/staged/promote endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-promote",
+			"markdown": "/rest/posts/posts-promote.md",
+			"ogImage": "/og/rest/posts/posts-promote.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-promote.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Promote the staged version of posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-compare",
+			"next": "/rest/posts/posts-preview-link",
+			"operation": "POST /posts/{id}/staged/promote",
+			"sidebar": true
+		},
+		"/rest/posts/posts-revisions-get": {
+			"title": "Get a revision of posts - First",
+			"h1": "Get a revision of posts",
+			"description": "The row as this revision saved it. Reference for the GET /posts/{id}/revisions/{revision} endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-revisions-get",
+			"markdown": "/rest/posts/posts-revisions-get.md",
+			"ogImage": "/og/rest/posts/posts-revisions-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-revisions-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get a revision of posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-revisions-list",
+			"next": "/rest/posts/posts-revisions-restore",
+			"operation": "GET /posts/{id}/revisions/{revision}",
+			"sidebar": true
+		},
+		"/rest/posts/posts-revisions-list": {
+			"title": "Revisions of posts - First",
+			"h1": "Revisions of posts",
+			"description": "Each saved version of the row, with its time and who saved it. Reference for the GET /posts/{id}/revisions endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-revisions-list",
+			"markdown": "/rest/posts/posts-revisions-list.md",
+			"ogImage": "/og/rest/posts/posts-revisions-list.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-revisions-list.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Revisions of posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-delete",
+			"next": "/rest/posts/posts-revisions-get",
+			"operation": "GET /posts/{id}/revisions",
+			"sidebar": true
+		},
+		"/rest/posts/posts-revisions-restore": {
+			"title": "Restore a revision of posts - First",
+			"h1": "Restore a revision of posts",
+			"description": "Makes the revision the current row, as an update of the row. Reference for the POST /posts/{id}/revisions/{revision}/restore endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-revisions-restore",
+			"markdown": "/rest/posts/posts-revisions-restore.md",
+			"ogImage": "/og/rest/posts/posts-revisions-restore.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-revisions-restore.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Restore a revision of posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-revisions-get",
+			"next": "/rest/posts/posts-staged",
+			"operation": "POST /posts/{id}/revisions/{revision}/restore",
+			"sidebar": true
+		},
+		"/rest/posts/posts-stage": {
+			"title": "Stage a change to posts - First",
+			"h1": "Stage a change to posts",
+			"description": "Saves the fields sent into the row's staged version. The live row stays as it is… Reference for the PATCH /posts/{id}/staged endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-stage",
+			"markdown": "/rest/posts/posts-stage.md",
+			"ogImage": "/og/rest/posts/posts-stage.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-stage.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Stage a change to posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-staged",
+			"next": "/rest/posts/posts-discard",
+			"operation": "PATCH /posts/{id}/staged",
+			"sidebar": true
+		},
+		"/rest/posts/posts-staged": {
+			"title": "Staged version of posts - First",
+			"h1": "Staged version of posts",
+			"description": "The row as it would be once promoted, the fields that are staged, and who staged… Reference for the GET /posts/{id}/staged endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-staged",
+			"markdown": "/rest/posts/posts-staged.md",
+			"ogImage": "/og/rest/posts/posts-staged.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-staged.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Staged version of posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-revisions-restore",
+			"next": "/rest/posts/posts-stage",
+			"operation": "GET /posts/{id}/staged",
+			"sidebar": true
+		},
+		"/rest/posts/posts-update": {
+			"title": "Update in posts - First",
+			"h1": "Update in posts",
+			"description": "Changes the fields sent on one posts row and returns the row. Reference for the PATCH /posts/{id} endpoint in the First REST API.",
+			"canonical": "/rest/posts/posts-update",
+			"markdown": "/rest/posts/posts-update.md",
+			"ogImage": "/og/rest/posts/posts-update.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/posts/posts-update.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Update in posts - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-get",
+			"next": "/rest/posts/posts-delete",
+			"operation": "PATCH /posts/{id}",
+			"sidebar": true
+		},
+		"/rest/schema/openapi": {
+			"title": "This document - First",
+			"h1": "This document",
+			"description": "The app's API as an OpenAPI 3.1 document: what first build wrote to… Reference for the GET /openapi.json endpoint in the First REST API.",
+			"canonical": "/rest/schema/openapi",
+			"markdown": "/rest/schema/openapi.md",
+			"ogImage": "/og/rest/schema/openapi.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/schema/openapi.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "This document - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/schema/schema",
+			"next": null,
+			"operation": "GET /openapi.json",
+			"sidebar": true
+		},
+		"/rest/schema/schema": {
+			"title": "Describe the app - First",
+			"h1": "Describe the app",
+			"description": "The app's kinds with the WordPress route behind each, their fields and access rules, its globals and… Reference for the GET / endpoint in the First REST API.",
+			"canonical": "/rest/schema/schema",
+			"markdown": "/rest/schema/schema.md",
+			"ogImage": "/og/rest/schema/schema.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/schema/schema.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Describe the app - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/search/search",
+			"next": "/rest/schema/openapi",
+			"operation": "GET /",
+			"sidebar": true
+		},
+		"/rest/search/search": {
+			"title": "Search the site - First",
+			"h1": "Search the site",
+			"description": "Runs the kinds' search on every kind with a searchable field, as the caller. A kind the caller… Reference for the GET /search endpoint in the First REST API.",
+			"canonical": "/rest/search/search",
+			"markdown": "/rest/search/search.md",
+			"ogImage": "/og/rest/search/search.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/search/search.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Search the site - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/account/auth-sign-out",
+			"next": "/rest/schema/schema",
+			"operation": "GET /search",
+			"sidebar": true
+		},
+		"/rest/sync/sync-posts-apply": {
+			"title": "Apply a posts sync record - First",
+			"h1": "Apply a posts sync record",
+			"description": "Creates or updates one row from a content file, when the row still matches expect. A row… Reference for the POST /sync/posts endpoint in the First REST API.",
+			"canonical": "/rest/sync/sync-posts-apply",
+			"markdown": "/rest/sync/sync-posts-apply.md",
+			"ogImage": "/og/rest/sync/sync-posts-apply.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/sync/sync-posts-apply.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Apply a posts sync record - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/sync/sync-posts-read",
+			"next": "/rest/sync/sync-posts-trash",
+			"operation": "POST /sync/posts",
+			"sidebar": true
+		},
+		"/rest/sync/sync-posts-convert": {
+			"title": "Convert posts content between formats - First",
+			"h1": "Convert posts content between formats",
+			"description": "Converts a body between block markup, Markdown and HTML, as the site's own… Reference for the POST /sync/posts/convert endpoint in the First REST API.",
+			"canonical": "/rest/sync/sync-posts-convert",
+			"markdown": "/rest/sync/sync-posts-convert.md",
+			"ogImage": "/og/rest/sync/sync-posts-convert.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/sync/sync-posts-convert.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Convert posts content between formats - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/sync/sync-posts-trash",
+			"next": "/rest/sync/sync-posts-merge",
+			"operation": "POST /sync/posts/convert",
+			"sidebar": true
+		},
+		"/rest/sync/sync-posts-merge": {
+			"title": "Three-way merge posts content - First",
+			"h1": "Three-way merge posts content",
+			"description": "Merges two versions of a body over their common base. One item, or up to a batch… Reference for the POST /sync/posts/merge endpoint in the First REST API.",
+			"canonical": "/rest/sync/sync-posts-merge",
+			"markdown": "/rest/sync/sync-posts-merge.md",
+			"ogImage": "/og/rest/sync/sync-posts-merge.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/sync/sync-posts-merge.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Three-way merge posts content - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/sync/sync-posts-convert",
+			"next": "/rest/comments/comments-list",
+			"operation": "POST /sync/posts/merge",
+			"sidebar": true
+		},
+		"/rest/sync/sync-posts-read": {
+			"title": "Read posts for sync - First",
+			"h1": "Read posts for sync",
+			"description": "Rows as sync records with their digests, in pages by id. Reference for the GET /sync/posts endpoint in the First REST API.",
+			"canonical": "/rest/sync/sync-posts-read",
+			"markdown": "/rest/sync/sync-posts-read.md",
+			"ogImage": "/og/rest/sync/sync-posts-read.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/sync/sync-posts-read.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Read posts for sync - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/posts/posts-preview-link",
+			"next": "/rest/sync/sync-posts-apply",
+			"operation": "GET /sync/posts",
+			"sidebar": true
+		},
+		"/rest/sync/sync-posts-trash": {
+			"title": "Trash a synced posts row - First",
+			"h1": "Trash a synced posts row",
+			"description": "Moves the row of a deleted content file to the trash, when the row still matches… Reference for the POST /sync/posts/trash endpoint in the First REST API.",
+			"canonical": "/rest/sync/sync-posts-trash",
+			"markdown": "/rest/sync/sync-posts-trash.md",
+			"ogImage": "/og/rest/sync/sync-posts-trash.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/sync/sync-posts-trash.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Trash a synced posts row - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/sync/sync-posts-apply",
+			"next": "/rest/sync/sync-posts-convert",
+			"operation": "POST /sync/posts/trash",
+			"sidebar": true
+		},
+		"/rest/word-press/categories-create": {
+			"title": "Create in categories - First",
+			"h1": "Create in categories",
+			"description": "Creates one of WordPress's categories and returns it. Reference for the POST /categories endpoint in the First REST API.",
+			"canonical": "/rest/word-press/categories-create",
+			"markdown": "/rest/word-press/categories-create.md",
+			"ogImage": "/og/rest/word-press/categories-create.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/categories-create.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Create in categories - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/categories-list",
+			"next": "/rest/word-press/categories-get",
+			"operation": "POST /categories",
+			"sidebar": true
+		},
+		"/rest/word-press/categories-delete": {
+			"title": "Delete one of categories - First",
+			"h1": "Delete one of categories",
+			"description": "Deletes the row for good and returns it as it was. Reference for the DELETE /categories/{id} endpoint in the First REST API.",
+			"canonical": "/rest/word-press/categories-delete",
+			"markdown": "/rest/word-press/categories-delete.md",
+			"ogImage": "/og/rest/word-press/categories-delete.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/categories-delete.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Delete one of categories - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/categories-update",
+			"next": "/rest/word-press/tags-list",
+			"operation": "DELETE /categories/{id}",
+			"sidebar": true
+		},
+		"/rest/word-press/categories-get": {
+			"title": "Get one of categories - First",
+			"h1": "Get one of categories",
+			"description": "One of WordPress's categories. Reference for the GET /categories/{id} endpoint in the First REST API.",
+			"canonical": "/rest/word-press/categories-get",
+			"markdown": "/rest/word-press/categories-get.md",
+			"ogImage": "/og/rest/word-press/categories-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/categories-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get one of categories - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/categories-create",
+			"next": "/rest/word-press/categories-update",
+			"operation": "GET /categories/{id}",
+			"sidebar": true
+		},
+		"/rest/word-press/categories-list": {
+			"title": "List categories - First",
+			"h1": "List categories",
+			"description": "WordPress's categories, one page at a time. The route's other WordPress filters (status,… Reference for the GET /categories endpoint in the First REST API.",
+			"canonical": "/rest/word-press/categories-list",
+			"markdown": "/rest/word-press/categories-list.md",
+			"ogImage": "/og/rest/word-press/categories-list.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/categories-list.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "List categories - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/pages-delete",
+			"next": "/rest/word-press/categories-create",
+			"operation": "GET /categories",
+			"sidebar": true
+		},
+		"/rest/word-press/categories-update": {
+			"title": "Update one of categories - First",
+			"h1": "Update one of categories",
+			"description": "Changes the fields sent and returns the row. Reference for the PATCH /categories/{id} endpoint in the First REST API.",
+			"canonical": "/rest/word-press/categories-update",
+			"markdown": "/rest/word-press/categories-update.md",
+			"ogImage": "/og/rest/word-press/categories-update.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/categories-update.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Update one of categories - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/categories-get",
+			"next": "/rest/word-press/categories-delete",
+			"operation": "PATCH /categories/{id}",
+			"sidebar": true
+		},
+		"/rest/word-press/menus-get": {
+			"title": "Get a menu - First",
+			"h1": "Get a menu",
+			"description": "The menu in one theme location. Reference for the GET /menus/{location} endpoint in the First REST API.",
+			"canonical": "/rest/word-press/menus-get",
+			"markdown": "/rest/word-press/menus-get.md",
+			"ogImage": "/og/rest/word-press/menus-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/menus-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get a menu - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/menus-list",
+			"next": "/rest/media/media-list",
+			"operation": "GET /menus/{location}",
+			"sidebar": true
+		},
+		"/rest/word-press/menus-list": {
+			"title": "List menus - First",
+			"h1": "List menus",
+			"description": "The menu in each theme location, as a tree. Reference for the GET /menus endpoint in the First REST API.",
+			"canonical": "/rest/word-press/menus-list",
+			"markdown": "/rest/word-press/menus-list.md",
+			"ogImage": "/og/rest/word-press/menus-list.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/menus-list.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "List menus - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/tags-delete",
+			"next": "/rest/word-press/menus-get",
+			"operation": "GET /menus",
+			"sidebar": true
+		},
+		"/rest/word-press/pages-create": {
+			"title": "Create in pages - First",
+			"h1": "Create in pages",
+			"description": "Creates one of WordPress's pages and returns it. Reference for the POST /pages endpoint in the First REST API.",
+			"canonical": "/rest/word-press/pages-create",
+			"markdown": "/rest/word-press/pages-create.md",
+			"ogImage": "/og/rest/word-press/pages-create.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/pages-create.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Create in pages - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/pages-list",
+			"next": "/rest/word-press/pages-get",
+			"operation": "POST /pages",
+			"sidebar": true
+		},
+		"/rest/word-press/pages-delete": {
+			"title": "Delete one of pages - First",
+			"h1": "Delete one of pages",
+			"description": "Deletes the row for good and returns it as it was. Reference for the DELETE /pages/{id} endpoint in the First REST API.",
+			"canonical": "/rest/word-press/pages-delete",
+			"markdown": "/rest/word-press/pages-delete.md",
+			"ogImage": "/og/rest/word-press/pages-delete.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/pages-delete.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Delete one of pages - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/pages-update",
+			"next": "/rest/word-press/categories-list",
+			"operation": "DELETE /pages/{id}",
+			"sidebar": true
+		},
+		"/rest/word-press/pages-get": {
+			"title": "Get one of pages - First",
+			"h1": "Get one of pages",
+			"description": "One of WordPress's pages. Reference for the GET /pages/{id} endpoint in the First REST API.",
+			"canonical": "/rest/word-press/pages-get",
+			"markdown": "/rest/word-press/pages-get.md",
+			"ogImage": "/og/rest/word-press/pages-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/pages-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get one of pages - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/pages-create",
+			"next": "/rest/word-press/pages-update",
+			"operation": "GET /pages/{id}",
+			"sidebar": true
+		},
+		"/rest/word-press/pages-list": {
+			"title": "List pages - First",
+			"h1": "List pages",
+			"description": "WordPress's pages, one page at a time. The route's other WordPress filters (status, author,… Reference for the GET /pages endpoint in the First REST API.",
+			"canonical": "/rest/word-press/pages-list",
+			"markdown": "/rest/word-press/pages-list.md",
+			"ogImage": "/og/rest/word-press/pages-list.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/pages-list.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "List pages - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/files/files-decks-download",
+			"next": "/rest/word-press/pages-create",
+			"operation": "GET /pages",
+			"sidebar": true
+		},
+		"/rest/word-press/pages-update": {
+			"title": "Update one of pages - First",
+			"h1": "Update one of pages",
+			"description": "Changes the fields sent and returns the row. Reference for the PATCH /pages/{id} endpoint in the First REST API.",
+			"canonical": "/rest/word-press/pages-update",
+			"markdown": "/rest/word-press/pages-update.md",
+			"ogImage": "/og/rest/word-press/pages-update.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/pages-update.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Update one of pages - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/pages-get",
+			"next": "/rest/word-press/pages-delete",
+			"operation": "PATCH /pages/{id}",
+			"sidebar": true
+		},
+		"/rest/word-press/tags-create": {
+			"title": "Create in tags - First",
+			"h1": "Create in tags",
+			"description": "Creates one of WordPress's tags and returns it. Reference for the POST /tags endpoint in the First REST API.",
+			"canonical": "/rest/word-press/tags-create",
+			"markdown": "/rest/word-press/tags-create.md",
+			"ogImage": "/og/rest/word-press/tags-create.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/tags-create.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Create in tags - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/tags-list",
+			"next": "/rest/word-press/tags-get",
+			"operation": "POST /tags",
+			"sidebar": true
+		},
+		"/rest/word-press/tags-delete": {
+			"title": "Delete one of tags - First",
+			"h1": "Delete one of tags",
+			"description": "Deletes the row for good and returns it as it was. Reference for the DELETE /tags/{id} endpoint in the First REST API.",
+			"canonical": "/rest/word-press/tags-delete",
+			"markdown": "/rest/word-press/tags-delete.md",
+			"ogImage": "/og/rest/word-press/tags-delete.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/tags-delete.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Delete one of tags - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/tags-update",
+			"next": "/rest/word-press/menus-list",
+			"operation": "DELETE /tags/{id}",
+			"sidebar": true
+		},
+		"/rest/word-press/tags-get": {
+			"title": "Get one of tags - First",
+			"h1": "Get one of tags",
+			"description": "One of WordPress's tags. Reference for the GET /tags/{id} endpoint in the First REST API.",
+			"canonical": "/rest/word-press/tags-get",
+			"markdown": "/rest/word-press/tags-get.md",
+			"ogImage": "/og/rest/word-press/tags-get.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/tags-get.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Get one of tags - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/tags-create",
+			"next": "/rest/word-press/tags-update",
+			"operation": "GET /tags/{id}",
+			"sidebar": true
+		},
+		"/rest/word-press/tags-list": {
+			"title": "List tags - First",
+			"h1": "List tags",
+			"description": "WordPress's tags, one page at a time. The route's other WordPress filters (status, author,… Reference for the GET /tags endpoint in the First REST API.",
+			"canonical": "/rest/word-press/tags-list",
+			"markdown": "/rest/word-press/tags-list.md",
+			"ogImage": "/og/rest/word-press/tags-list.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/tags-list.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "List tags - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/categories-delete",
+			"next": "/rest/word-press/tags-create",
+			"operation": "GET /tags",
+			"sidebar": true
+		},
+		"/rest/word-press/tags-update": {
+			"title": "Update one of tags - First",
+			"h1": "Update one of tags",
+			"description": "Changes the fields sent and returns the row. Reference for the PATCH /tags/{id} endpoint in the First REST API.",
+			"canonical": "/rest/word-press/tags-update",
+			"markdown": "/rest/word-press/tags-update.md",
+			"ogImage": "/og/rest/word-press/tags-update.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/word-press/tags-update.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Update one of tags - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/word-press/tags-get",
+			"next": "/rest/word-press/tags-delete",
+			"operation": "PATCH /tags/{id}",
+			"sidebar": true
+		},
+		"/tour/blog": {
+			"title": "The blog: access, sync, members, media, jobs and translations · First",
+			"h1": "The blog: access, sync, members, media, jobs and translations",
+			"description": "examples/blog is the CMS tour: every feature a content site needs, in one config. The stops below pick out the parts that go beyond tables and hooks.",
+			"canonical": "/tour/blog",
+			"markdown": null,
+			"ogImage": null,
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "The blog: access, sync, members, media, jobs and translations · First",
+				"card": "summary"
+			},
+			"stops": [
+				"field-access",
+				"sync",
+				"members",
+				"media-and-files",
+				"webhooks",
+				"translations"
+			],
+			"edit": null,
+			"toc": [],
+			"prev": null,
+			"next": null
+		},
+		"/tour": {
+			"title": "Tour · First",
+			"h1": "Tour",
+			"description": "Each piece of an example's first.config.ts next to what first build turns it into.",
+			"canonical": "/tour",
+			"markdown": null,
+			"ogImage": "/og/tour.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Tour · First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": null,
+			"next": null
+		},
+		"/tour/pantry": {
+			"title": "The pantry: tables, hooks, actions and a job · First",
+			"h1": "The pantry: tables, hooks, actions and a job",
+			"description": "examples/pantry is the quick start: three tables, a hook that cleans up a row before it is stored, two actions and a background job. This page shows each piece of its first.config.ts next to what first build turned it into.",
+			"canonical": "/tour/pantry",
+			"markdown": null,
+			"ogImage": null,
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "The pantry: tables, hooks, actions and a job · First",
+				"card": "summary"
+			},
+			"stops": [
+				"a-table",
+				"composition",
+				"a-hook",
+				"an-action",
+				"a-job",
+				"the-client"
+			],
+			"edit": null,
+			"toc": [],
+			"prev": null,
+			"next": null
+		}
+	},
+	"sidebars": {
+		"/": [
+			{
+				"label": "Introduction",
+				"href": "/",
+				"group": null
+			},
+			{
+				"label": "Get started",
+				"href": "/getting-started",
+				"group": null
+			},
+			{
+				"label": "TypeScript to PHP",
+				"href": "/compiler",
+				"group": null
+			},
+			{
+				"label": "Pages in TSX and the Interactivity API",
+				"href": "/pages",
+				"group": null
+			},
+			{
+				"label": "Agents",
+				"href": "/agents",
+				"group": null
+			},
+			{
+				"label": "Publish on Spacefast",
+				"href": "/publishing/spacefast",
+				"group": "Publishing"
+			},
+			{
+				"label": "Other platforms",
+				"href": "/publishing/other-platforms",
+				"group": "Publishing"
+			},
+			{
+				"label": "Content in git",
+				"href": "/publishing/content-in-git",
+				"group": "Publishing"
+			},
+			{
+				"label": "Changelogs",
+				"href": "/changelog",
+				"group": "Changelog"
+			},
+			{
+				"label": "@spacefast/first-blocks",
+				"href": "/changelog/blocks",
+				"group": "Changelog"
+			}
+		],
+		"/examples": [
+			{
+				"label": "Examples",
+				"href": "/examples",
+				"group": null
+			},
+			{
+				"label": "Blog",
+				"href": "/examples/blog",
+				"group": null
+			},
+			{
+				"label": "Full site",
+				"href": "/examples/full-site",
+				"group": null
+			},
+			{
+				"label": "Pantry",
+				"href": "/examples/pantry",
+				"group": null
+			},
+			{
+				"label": "Reading list",
+				"href": "/examples/reading-list",
+				"group": null
+			}
+		],
+		"/reference": [
+			{
+				"label": "Reference",
+				"href": "/reference",
+				"group": null
+			},
+			{
+				"label": "Config API",
+				"href": "/reference/config",
+				"group": null
+			},
+			{
+				"label": "JavaScript client",
+				"href": "/reference/client",
+				"group": null
+			},
+			{
+				"label": "CLI",
+				"href": "/reference/cli",
+				"group": null
+			},
+			{
+				"label": "Language support",
+				"href": "/reference/language-support",
+				"group": null
+			},
+			{
+				"label": "Diagnostic codes",
+				"href": "/reference/diagnostics",
+				"group": null
+			},
+			{
+				"label": "WordPress plugins",
+				"href": "/reference/wordpress-plugins",
+				"group": null
+			}
+		],
+		"/rest": [
+			{
+				"label": "Overview",
+				"href": "/rest",
+				"group": null
+			},
+			{
+				"label": "List authorsGET",
+				"href": "/rest/authors/authors-list",
+				"group": "Authors"
+			},
+			{
+				"label": "Create in authorsPOST",
+				"href": "/rest/authors/authors-create",
+				"group": "Authors"
+			},
+			{
+				"label": "Get one of authorsGET",
+				"href": "/rest/authors/authors-get",
+				"group": "Authors"
+			},
+			{
+				"label": "Update in authorsPATCH",
+				"href": "/rest/authors/authors-update",
+				"group": "Authors"
+			},
+			{
+				"label": "Delete from authorsDELETE",
+				"href": "/rest/authors/authors-delete",
+				"group": "Authors"
+			},
+			{
+				"label": "Revisions of authorsGET",
+				"href": "/rest/authors/authors-revisions-list",
+				"group": "Authors"
+			},
+			{
+				"label": "Get a revision of authorsGET",
+				"href": "/rest/authors/authors-revisions-get",
+				"group": "Authors"
+			},
+			{
+				"label": "Restore a revision of authorsPOST",
+				"href": "/rest/authors/authors-revisions-restore",
+				"group": "Authors"
+			},
+			{
+				"label": "Staged version of authorsGET",
+				"href": "/rest/authors/authors-staged",
+				"group": "Authors"
+			},
+			{
+				"label": "Stage a change to authorsPATCH",
+				"href": "/rest/authors/authors-stage",
+				"group": "Authors"
+			},
+			{
+				"label": "Discard the staged version of authorsDELETE",
+				"href": "/rest/authors/authors-discard",
+				"group": "Authors"
+			},
+			{
+				"label": "Compare staged and live authorsGET",
+				"href": "/rest/authors/authors-compare",
+				"group": "Authors"
+			},
+			{
+				"label": "Promote the staged version of authorsPOST",
+				"href": "/rest/authors/authors-promote",
+				"group": "Authors"
+			},
+			{
+				"label": "Preview link for staged authorsPOST",
+				"href": "/rest/authors/authors-preview-link",
+				"group": "Authors"
+			},
+			{
+				"label": "List postsGET",
+				"href": "/rest/posts/posts-list",
+				"group": "Posts"
+			},
+			{
+				"label": "Create in postsPOST",
+				"href": "/rest/posts/posts-create",
+				"group": "Posts"
+			},
+			{
+				"label": "Get one of postsGET",
+				"href": "/rest/posts/posts-get",
+				"group": "Posts"
+			},
+			{
+				"label": "Update in postsPATCH",
+				"href": "/rest/posts/posts-update",
+				"group": "Posts"
+			},
+			{
+				"label": "Delete from postsDELETE",
+				"href": "/rest/posts/posts-delete",
+				"group": "Posts"
+			},
+			{
+				"label": "Revisions of postsGET",
+				"href": "/rest/posts/posts-revisions-list",
+				"group": "Posts"
+			},
+			{
+				"label": "Get a revision of postsGET",
+				"href": "/rest/posts/posts-revisions-get",
+				"group": "Posts"
+			},
+			{
+				"label": "Restore a revision of postsPOST",
+				"href": "/rest/posts/posts-revisions-restore",
+				"group": "Posts"
+			},
+			{
+				"label": "Staged version of postsGET",
+				"href": "/rest/posts/posts-staged",
+				"group": "Posts"
+			},
+			{
+				"label": "Stage a change to postsPATCH",
+				"href": "/rest/posts/posts-stage",
+				"group": "Posts"
+			},
+			{
+				"label": "Discard the staged version of postsDELETE",
+				"href": "/rest/posts/posts-discard",
+				"group": "Posts"
+			},
+			{
+				"label": "Compare staged and live postsGET",
+				"href": "/rest/posts/posts-compare",
+				"group": "Posts"
+			},
+			{
+				"label": "Promote the staged version of postsPOST",
+				"href": "/rest/posts/posts-promote",
+				"group": "Posts"
+			},
+			{
+				"label": "Preview link for staged postsPOST",
+				"href": "/rest/posts/posts-preview-link",
+				"group": "Posts"
+			},
+			{
+				"label": "Read posts for syncGET",
+				"href": "/rest/sync/sync-posts-read",
+				"group": "Sync"
+			},
+			{
+				"label": "Apply a posts sync recordPOST",
+				"href": "/rest/sync/sync-posts-apply",
+				"group": "Sync"
+			},
+			{
+				"label": "Trash a synced posts rowPOST",
+				"href": "/rest/sync/sync-posts-trash",
+				"group": "Sync"
+			},
+			{
+				"label": "Convert posts content between formatsPOST",
+				"href": "/rest/sync/sync-posts-convert",
+				"group": "Sync"
+			},
+			{
+				"label": "Three-way merge posts contentPOST",
+				"href": "/rest/sync/sync-posts-merge",
+				"group": "Sync"
+			},
+			{
+				"label": "List commentsGET",
+				"href": "/rest/comments/comments-list",
+				"group": "Comments"
+			},
+			{
+				"label": "Create in commentsPOST",
+				"href": "/rest/comments/comments-create",
+				"group": "Comments"
+			},
+			{
+				"label": "Get one of commentsGET",
+				"href": "/rest/comments/comments-get",
+				"group": "Comments"
+			},
+			{
+				"label": "Update in commentsPATCH",
+				"href": "/rest/comments/comments-update",
+				"group": "Comments"
+			},
+			{
+				"label": "Delete from commentsDELETE",
+				"href": "/rest/comments/comments-delete",
+				"group": "Comments"
+			},
+			{
+				"label": "List membersGET",
+				"href": "/rest/members/members-list",
+				"group": "Members"
+			},
+			{
+				"label": "Create in membersPOST",
+				"href": "/rest/members/members-create",
+				"group": "Members"
+			},
+			{
+				"label": "Get one of membersGET",
+				"href": "/rest/members/members-get",
+				"group": "Members"
+			},
+			{
+				"label": "Update in membersPATCH",
+				"href": "/rest/members/members-update",
+				"group": "Members"
+			},
+			{
+				"label": "Delete from membersDELETE",
+				"href": "/rest/members/members-delete",
+				"group": "Members"
+			},
+			{
+				"label": "List membersGET",
+				"href": "/rest/members/users-list",
+				"group": "Members"
+			},
+			{
+				"label": "Create in membersPOST",
+				"href": "/rest/members/users-create",
+				"group": "Members"
+			},
+			{
+				"label": "Get one of membersGET",
+				"href": "/rest/members/users-get",
+				"group": "Members"
+			},
+			{
+				"label": "Update in membersPATCH",
+				"href": "/rest/members/users-update",
+				"group": "Members"
+			},
+			{
+				"label": "Delete from membersDELETE",
+				"href": "/rest/members/users-delete",
+				"group": "Members"
+			},
+			{
+				"label": "Read Site settingsGET",
+				"href": "/rest/globals/globals-settings-get",
+				"group": "Globals"
+			},
+			{
+				"label": "Update Site settingsPATCH",
+				"href": "/rest/globals/globals-settings-update",
+				"group": "Globals"
+			},
+			{
+				"label": "Call approveCommentPOST",
+				"href": "/rest/actions/actions-approve-comment",
+				"group": "Actions"
+			},
+			{
+				"label": "Call publishedCountPOST",
+				"href": "/rest/actions/actions-published-count",
+				"group": "Actions"
+			},
+			{
+				"label": "Upload to decksPOST",
+				"href": "/rest/files/files-decks-upload",
+				"group": "Files"
+			},
+			{
+				"label": "Get a decks fileGET",
+				"href": "/rest/files/files-decks-get",
+				"group": "Files"
+			},
+			{
+				"label": "Delete a decks fileDELETE",
+				"href": "/rest/files/files-decks-delete",
+				"group": "Files"
+			},
+			{
+				"label": "Download a decks fileGET",
+				"href": "/rest/files/files-decks-download",
+				"group": "Files"
+			},
+			{
+				"label": "List pagesGET",
+				"href": "/rest/word-press/pages-list",
+				"group": "WordPress"
+			},
+			{
+				"label": "Create in pagesPOST",
+				"href": "/rest/word-press/pages-create",
+				"group": "WordPress"
+			},
+			{
+				"label": "Get one of pagesGET",
+				"href": "/rest/word-press/pages-get",
+				"group": "WordPress"
+			},
+			{
+				"label": "Update one of pagesPATCH",
+				"href": "/rest/word-press/pages-update",
+				"group": "WordPress"
+			},
+			{
+				"label": "Delete one of pagesDELETE",
+				"href": "/rest/word-press/pages-delete",
+				"group": "WordPress"
+			},
+			{
+				"label": "List categoriesGET",
+				"href": "/rest/word-press/categories-list",
+				"group": "WordPress"
+			},
+			{
+				"label": "Create in categoriesPOST",
+				"href": "/rest/word-press/categories-create",
+				"group": "WordPress"
+			},
+			{
+				"label": "Get one of categoriesGET",
+				"href": "/rest/word-press/categories-get",
+				"group": "WordPress"
+			},
+			{
+				"label": "Update one of categoriesPATCH",
+				"href": "/rest/word-press/categories-update",
+				"group": "WordPress"
+			},
+			{
+				"label": "Delete one of categoriesDELETE",
+				"href": "/rest/word-press/categories-delete",
+				"group": "WordPress"
+			},
+			{
+				"label": "List tagsGET",
+				"href": "/rest/word-press/tags-list",
+				"group": "WordPress"
+			},
+			{
+				"label": "Create in tagsPOST",
+				"href": "/rest/word-press/tags-create",
+				"group": "WordPress"
+			},
+			{
+				"label": "Get one of tagsGET",
+				"href": "/rest/word-press/tags-get",
+				"group": "WordPress"
+			},
+			{
+				"label": "Update one of tagsPATCH",
+				"href": "/rest/word-press/tags-update",
+				"group": "WordPress"
+			},
+			{
+				"label": "Delete one of tagsDELETE",
+				"href": "/rest/word-press/tags-delete",
+				"group": "WordPress"
+			},
+			{
+				"label": "List menusGET",
+				"href": "/rest/word-press/menus-list",
+				"group": "WordPress"
+			},
+			{
+				"label": "Get a menuGET",
+				"href": "/rest/word-press/menus-get",
+				"group": "WordPress"
+			},
+			{
+				"label": "List mediaGET",
+				"href": "/rest/media/media-list",
+				"group": "Media"
+			},
+			{
+				"label": "Upload mediaPOST",
+				"href": "/rest/media/media-upload",
+				"group": "Media"
+			},
+			{
+				"label": "Get a media itemGET",
+				"href": "/rest/media/media-get",
+				"group": "Media"
+			},
+			{
+				"label": "Update a media itemPATCH",
+				"href": "/rest/media/media-update",
+				"group": "Media"
+			},
+			{
+				"label": "Delete a media itemDELETE",
+				"href": "/rest/media/media-delete",
+				"group": "Media"
+			},
+			{
+				"label": "The signed-in userGET",
+				"href": "/rest/account/auth-me",
+				"group": "Account"
+			},
+			{
+				"label": "Sign-in settingsGET",
+				"href": "/rest/account/auth-config",
+				"group": "Account"
+			},
+			{
+				"label": "Start a guest sessionPOST",
+				"href": "/rest/account/auth-guest",
+				"group": "Account"
+			},
+			{
+				"label": "Sign outDELETE",
+				"href": "/rest/account/auth-sign-out",
+				"group": "Account"
+			},
+			{
+				"label": "Search the siteGET",
+				"href": "/rest/search/search",
+				"group": "Search"
+			},
+			{
+				"label": "Describe the appGET",
+				"href": "/rest/schema/schema",
+				"group": "Schema"
+			},
+			{
+				"label": "This documentGET",
+				"href": "/rest/schema/openapi",
+				"group": "Schema"
+			}
+		]
+	},
+	"redirects": {
+		"/examples/kitchen-sink": {
+			"to": "/examples",
+			"status": 301
+		},
+		"/examples/kitchen-sink.md": {
+			"to": "/examples.md",
+			"status": 301
+		},
+		"/examples/kitchen-sink.mdx": {
+			"to": "/examples.mdx",
+			"status": 301
+		},
+		"/examples/recipes": {
+			"to": "/examples",
+			"status": 301
+		},
+		"/examples/recipes.md": {
+			"to": "/examples.md",
+			"status": 301
+		},
+		"/examples/recipes.mdx": {
+			"to": "/examples.mdx",
+			"status": 301
+		},
+		"/examples/wp-plugins": {
+			"to": "/examples",
+			"status": 301
+		},
+		"/examples/wp-plugins.md": {
+			"to": "/examples.md",
+			"status": 301
+		},
+		"/examples/wp-plugins.mdx": {
+			"to": "/examples.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/pages-list": {
+			"to": "/rest/word-press/pages-list",
+			"status": 301
+		},
+		"/rest/wordpress/pages-list.md": {
+			"to": "/rest/word-press/pages-list.md",
+			"status": 301
+		},
+		"/rest/wordpress/pages-list.mdx": {
+			"to": "/rest/word-press/pages-list.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/pages-create": {
+			"to": "/rest/word-press/pages-create",
+			"status": 301
+		},
+		"/rest/wordpress/pages-create.md": {
+			"to": "/rest/word-press/pages-create.md",
+			"status": 301
+		},
+		"/rest/wordpress/pages-create.mdx": {
+			"to": "/rest/word-press/pages-create.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/pages-get": {
+			"to": "/rest/word-press/pages-get",
+			"status": 301
+		},
+		"/rest/wordpress/pages-get.md": {
+			"to": "/rest/word-press/pages-get.md",
+			"status": 301
+		},
+		"/rest/wordpress/pages-get.mdx": {
+			"to": "/rest/word-press/pages-get.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/pages-delete": {
+			"to": "/rest/word-press/pages-delete",
+			"status": 301
+		},
+		"/rest/wordpress/pages-delete.md": {
+			"to": "/rest/word-press/pages-delete.md",
+			"status": 301
+		},
+		"/rest/wordpress/pages-delete.mdx": {
+			"to": "/rest/word-press/pages-delete.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/pages-update": {
+			"to": "/rest/word-press/pages-update",
+			"status": 301
+		},
+		"/rest/wordpress/pages-update.md": {
+			"to": "/rest/word-press/pages-update.md",
+			"status": 301
+		},
+		"/rest/wordpress/pages-update.mdx": {
+			"to": "/rest/word-press/pages-update.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/categories-list": {
+			"to": "/rest/word-press/categories-list",
+			"status": 301
+		},
+		"/rest/wordpress/categories-list.md": {
+			"to": "/rest/word-press/categories-list.md",
+			"status": 301
+		},
+		"/rest/wordpress/categories-list.mdx": {
+			"to": "/rest/word-press/categories-list.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/categories-create": {
+			"to": "/rest/word-press/categories-create",
+			"status": 301
+		},
+		"/rest/wordpress/categories-create.md": {
+			"to": "/rest/word-press/categories-create.md",
+			"status": 301
+		},
+		"/rest/wordpress/categories-create.mdx": {
+			"to": "/rest/word-press/categories-create.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/categories-get": {
+			"to": "/rest/word-press/categories-get",
+			"status": 301
+		},
+		"/rest/wordpress/categories-get.md": {
+			"to": "/rest/word-press/categories-get.md",
+			"status": 301
+		},
+		"/rest/wordpress/categories-get.mdx": {
+			"to": "/rest/word-press/categories-get.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/categories-delete": {
+			"to": "/rest/word-press/categories-delete",
+			"status": 301
+		},
+		"/rest/wordpress/categories-delete.md": {
+			"to": "/rest/word-press/categories-delete.md",
+			"status": 301
+		},
+		"/rest/wordpress/categories-delete.mdx": {
+			"to": "/rest/word-press/categories-delete.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/categories-update": {
+			"to": "/rest/word-press/categories-update",
+			"status": 301
+		},
+		"/rest/wordpress/categories-update.md": {
+			"to": "/rest/word-press/categories-update.md",
+			"status": 301
+		},
+		"/rest/wordpress/categories-update.mdx": {
+			"to": "/rest/word-press/categories-update.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/tags-list": {
+			"to": "/rest/word-press/tags-list",
+			"status": 301
+		},
+		"/rest/wordpress/tags-list.md": {
+			"to": "/rest/word-press/tags-list.md",
+			"status": 301
+		},
+		"/rest/wordpress/tags-list.mdx": {
+			"to": "/rest/word-press/tags-list.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/tags-create": {
+			"to": "/rest/word-press/tags-create",
+			"status": 301
+		},
+		"/rest/wordpress/tags-create.md": {
+			"to": "/rest/word-press/tags-create.md",
+			"status": 301
+		},
+		"/rest/wordpress/tags-create.mdx": {
+			"to": "/rest/word-press/tags-create.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/tags-get": {
+			"to": "/rest/word-press/tags-get",
+			"status": 301
+		},
+		"/rest/wordpress/tags-get.md": {
+			"to": "/rest/word-press/tags-get.md",
+			"status": 301
+		},
+		"/rest/wordpress/tags-get.mdx": {
+			"to": "/rest/word-press/tags-get.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/tags-delete": {
+			"to": "/rest/word-press/tags-delete",
+			"status": 301
+		},
+		"/rest/wordpress/tags-delete.md": {
+			"to": "/rest/word-press/tags-delete.md",
+			"status": 301
+		},
+		"/rest/wordpress/tags-delete.mdx": {
+			"to": "/rest/word-press/tags-delete.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/tags-update": {
+			"to": "/rest/word-press/tags-update",
+			"status": 301
+		},
+		"/rest/wordpress/tags-update.md": {
+			"to": "/rest/word-press/tags-update.md",
+			"status": 301
+		},
+		"/rest/wordpress/tags-update.mdx": {
+			"to": "/rest/word-press/tags-update.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/menus-list": {
+			"to": "/rest/word-press/menus-list",
+			"status": 301
+		},
+		"/rest/wordpress/menus-list.md": {
+			"to": "/rest/word-press/menus-list.md",
+			"status": 301
+		},
+		"/rest/wordpress/menus-list.mdx": {
+			"to": "/rest/word-press/menus-list.mdx",
+			"status": 301
+		},
+		"/rest/wordpress/menus-get": {
+			"to": "/rest/word-press/menus-get",
+			"status": 301
+		},
+		"/rest/wordpress/menus-get.md": {
+			"to": "/rest/word-press/menus-get.md",
+			"status": 301
+		},
+		"/rest/wordpress/menus-get.mdx": {
+			"to": "/rest/word-press/menus-get.mdx",
+			"status": 301
+		},
+		"/hosting": {
+			"to": "/publishing/spacefast",
+			"status": 301
+		},
+		"/hosting/other-hosts": {
+			"to": "/publishing/other-platforms",
+			"status": 301
+		},
+		"/hosting/spacefast": {
+			"to": "/publishing/spacefast",
+			"status": 301
+		}
+	},
+	"headers": {
+		"/*.md": [
+			"Content-Type: text/markdown; charset=utf-8"
+		],
+		"/*.mdx": [
+			"Content-Type: text/markdown; charset=utf-8"
+		],
+		"/*.txt": [
+			"Content-Type: text/plain; charset=utf-8"
+		],
+		"/*": [
+			"X-Powered-By: Blume"
+		],
+		"/": [
+			"Link: </.well-known/api-catalog>; rel=\"api-catalog\"; type=\"application/linkset+json; profile=\\\"https://www.rfc-editor.org/info/rfc9727\\\"\", </.well-known/ai-catalog.json>; rel=\"ai-catalog\"; type=\"application/ai-catalog+json\", </openapi.json>; rel=\"service-desc\"; type=\"application/json\", </agent-readability.json>; rel=\"describedby\"; type=\"application/json\", </llms.txt>; rel=\"describedby\"; type=\"text/plain\", </index.md>; rel=\"alternate\"; type=\"text/markdown\""
+		],
+		"/.well-known/api-catalog": [
+			"Content-Type: application/linkset+json; profile=\"https://www.rfc-editor.org/info/rfc9727\"",
+			"Access-Control-Allow-Origin: *"
+		],
+		"/.well-known/ai-catalog.json": [
+			"Access-Control-Allow-Origin: *"
+		],
+		"/.well-known/ard.json": [
+			"Access-Control-Allow-Origin: *"
+		],
+		"/.well-known/agent-skills/*.md": [
+			"Content-Type: text/markdown; charset=utf-8"
+		],
+		"/.well-known/agent-skills/*.tar.gz": [
+			"Content-Type: application/gzip"
+		],
+		"/blume-assets/*.svg": [
+			"Content-Security-Policy: sandbox",
+			"X-Content-Type-Options: nosniff"
+		]
+	},
+	"markdown": [
+		"/.well-known/agent-skills/first/SKILL.md",
+		"/agents.md",
+		"/changelog.md",
+		"/changelog/blocks.md",
+		"/compiler.md",
+		"/examples.md",
+		"/examples/blog.md",
+		"/examples/full-site.md",
+		"/examples/pantry.md",
+		"/examples/reading-list.md",
+		"/getting-started.md",
+		"/index.md",
+		"/pages.md",
+		"/publishing/other-platforms.md",
+		"/publishing/content-in-git.md",
+		"/publishing/spacefast.md",
+		"/reference.md",
+		"/reference/cli.md",
+		"/reference/client.md",
+		"/reference/config.md",
+		"/reference/diagnostics.md",
+		"/reference/language-support.md",
+		"/reference/wordpress-plugins.md",
+		"/rest.md",
+		"/rest/account/auth-config.md",
+		"/rest/account/auth-guest.md",
+		"/rest/account/auth-me.md",
+		"/rest/account/auth-sign-out.md",
+		"/rest/actions/actions-approve-comment.md",
+		"/rest/actions/actions-published-count.md",
+		"/rest/authors/authors-compare.md",
+		"/rest/authors/authors-create.md",
+		"/rest/authors/authors-delete.md",
+		"/rest/authors/authors-discard.md",
+		"/rest/authors/authors-get.md",
+		"/rest/authors/authors-list.md",
+		"/rest/authors/authors-preview-link.md",
+		"/rest/authors/authors-promote.md",
+		"/rest/authors/authors-revisions-get.md",
+		"/rest/authors/authors-revisions-list.md",
+		"/rest/authors/authors-revisions-restore.md",
+		"/rest/authors/authors-stage.md",
+		"/rest/authors/authors-staged.md",
+		"/rest/authors/authors-update.md",
+		"/rest/comments/comments-create.md",
+		"/rest/comments/comments-delete.md",
+		"/rest/comments/comments-get.md",
+		"/rest/comments/comments-list.md",
+		"/rest/comments/comments-update.md",
+		"/rest/files/files-decks-delete.md",
+		"/rest/files/files-decks-download.md",
+		"/rest/files/files-decks-get.md",
+		"/rest/files/files-decks-upload.md",
+		"/rest/globals/globals-settings-get.md",
+		"/rest/globals/globals-settings-update.md",
+		"/rest/media/media-delete.md",
+		"/rest/media/media-get.md",
+		"/rest/media/media-list.md",
+		"/rest/media/media-update.md",
+		"/rest/media/media-upload.md",
+		"/rest/members/members-create.md",
+		"/rest/members/members-delete.md",
+		"/rest/members/members-get.md",
+		"/rest/members/members-list.md",
+		"/rest/members/members-update.md",
+		"/rest/members/users-create.md",
+		"/rest/members/users-delete.md",
+		"/rest/members/users-get.md",
+		"/rest/members/users-list.md",
+		"/rest/members/users-update.md",
+		"/rest/posts/posts-compare.md",
+		"/rest/posts/posts-create.md",
+		"/rest/posts/posts-delete.md",
+		"/rest/posts/posts-discard.md",
+		"/rest/posts/posts-get.md",
+		"/rest/posts/posts-list.md",
+		"/rest/posts/posts-preview-link.md",
+		"/rest/posts/posts-promote.md",
+		"/rest/posts/posts-revisions-get.md",
+		"/rest/posts/posts-revisions-list.md",
+		"/rest/posts/posts-revisions-restore.md",
+		"/rest/posts/posts-stage.md",
+		"/rest/posts/posts-staged.md",
+		"/rest/posts/posts-update.md",
+		"/rest/schema/openapi.md",
+		"/rest/schema/schema.md",
+		"/rest/search/search.md",
+		"/rest/sync/sync-posts-apply.md",
+		"/rest/sync/sync-posts-convert.md",
+		"/rest/sync/sync-posts-merge.md",
+		"/rest/sync/sync-posts-read.md",
+		"/rest/sync/sync-posts-trash.md",
+		"/rest/word-press/categories-create.md",
+		"/rest/word-press/categories-delete.md",
+		"/rest/word-press/categories-get.md",
+		"/rest/word-press/categories-list.md",
+		"/rest/word-press/categories-update.md",
+		"/rest/word-press/menus-get.md",
+		"/rest/word-press/menus-list.md",
+		"/rest/word-press/pages-create.md",
+		"/rest/word-press/pages-delete.md",
+		"/rest/word-press/pages-get.md",
+		"/rest/word-press/pages-list.md",
+		"/rest/word-press/pages-update.md",
+		"/rest/word-press/tags-create.md",
+		"/rest/word-press/tags-delete.md",
+		"/rest/word-press/tags-get.md",
+		"/rest/word-press/tags-list.md",
+		"/rest/word-press/tags-update.md",
+		"/skill.md"
+	],
+	"mdx": [
+		"/agents.mdx",
+		"/changelog.mdx",
+		"/changelog/blocks.mdx",
+		"/compiler.mdx",
+		"/examples.mdx",
+		"/examples/blog.mdx",
+		"/examples/full-site.mdx",
+		"/examples/pantry.mdx",
+		"/examples/reading-list.mdx",
+		"/getting-started.mdx",
+		"/index.mdx",
+		"/pages.mdx",
+		"/publishing/other-platforms.mdx",
+		"/publishing/content-in-git.mdx",
+		"/publishing/spacefast.mdx",
+		"/reference.mdx",
+		"/reference/cli.mdx",
+		"/reference/client.mdx",
+		"/reference/config.mdx",
+		"/reference/diagnostics.mdx",
+		"/reference/language-support.mdx",
+		"/reference/wordpress-plugins.mdx",
+		"/rest.mdx",
+		"/rest/account/auth-config.mdx",
+		"/rest/account/auth-guest.mdx",
+		"/rest/account/auth-me.mdx",
+		"/rest/account/auth-sign-out.mdx",
+		"/rest/actions/actions-approve-comment.mdx",
+		"/rest/actions/actions-published-count.mdx",
+		"/rest/authors/authors-compare.mdx",
+		"/rest/authors/authors-create.mdx",
+		"/rest/authors/authors-delete.mdx",
+		"/rest/authors/authors-discard.mdx",
+		"/rest/authors/authors-get.mdx",
+		"/rest/authors/authors-list.mdx",
+		"/rest/authors/authors-preview-link.mdx",
+		"/rest/authors/authors-promote.mdx",
+		"/rest/authors/authors-revisions-get.mdx",
+		"/rest/authors/authors-revisions-list.mdx",
+		"/rest/authors/authors-revisions-restore.mdx",
+		"/rest/authors/authors-stage.mdx",
+		"/rest/authors/authors-staged.mdx",
+		"/rest/authors/authors-update.mdx",
+		"/rest/comments/comments-create.mdx",
+		"/rest/comments/comments-delete.mdx",
+		"/rest/comments/comments-get.mdx",
+		"/rest/comments/comments-list.mdx",
+		"/rest/comments/comments-update.mdx",
+		"/rest/files/files-decks-delete.mdx",
+		"/rest/files/files-decks-download.mdx",
+		"/rest/files/files-decks-get.mdx",
+		"/rest/files/files-decks-upload.mdx",
+		"/rest/globals/globals-settings-get.mdx",
+		"/rest/globals/globals-settings-update.mdx",
+		"/rest/media/media-delete.mdx",
+		"/rest/media/media-get.mdx",
+		"/rest/media/media-list.mdx",
+		"/rest/media/media-update.mdx",
+		"/rest/media/media-upload.mdx",
+		"/rest/members/members-create.mdx",
+		"/rest/members/members-delete.mdx",
+		"/rest/members/members-get.mdx",
+		"/rest/members/members-list.mdx",
+		"/rest/members/members-update.mdx",
+		"/rest/members/users-create.mdx",
+		"/rest/members/users-delete.mdx",
+		"/rest/members/users-get.mdx",
+		"/rest/members/users-list.mdx",
+		"/rest/members/users-update.mdx",
+		"/rest/posts/posts-compare.mdx",
+		"/rest/posts/posts-create.mdx",
+		"/rest/posts/posts-delete.mdx",
+		"/rest/posts/posts-discard.mdx",
+		"/rest/posts/posts-get.mdx",
+		"/rest/posts/posts-list.mdx",
+		"/rest/posts/posts-preview-link.mdx",
+		"/rest/posts/posts-promote.mdx",
+		"/rest/posts/posts-revisions-get.mdx",
+		"/rest/posts/posts-revisions-list.mdx",
+		"/rest/posts/posts-revisions-restore.mdx",
+		"/rest/posts/posts-stage.mdx",
+		"/rest/posts/posts-staged.mdx",
+		"/rest/posts/posts-update.mdx",
+		"/rest/schema/openapi.mdx",
+		"/rest/schema/schema.mdx",
+		"/rest/search/search.mdx",
+		"/rest/sync/sync-posts-apply.mdx",
+		"/rest/sync/sync-posts-convert.mdx",
+		"/rest/sync/sync-posts-merge.mdx",
+		"/rest/sync/sync-posts-read.mdx",
+		"/rest/sync/sync-posts-trash.mdx",
+		"/rest/word-press/categories-create.mdx",
+		"/rest/word-press/categories-delete.mdx",
+		"/rest/word-press/categories-get.mdx",
+		"/rest/word-press/categories-list.mdx",
+		"/rest/word-press/categories-update.mdx",
+		"/rest/word-press/menus-get.mdx",
+		"/rest/word-press/menus-list.mdx",
+		"/rest/word-press/pages-create.mdx",
+		"/rest/word-press/pages-delete.mdx",
+		"/rest/word-press/pages-get.mdx",
+		"/rest/word-press/pages-list.mdx",
+		"/rest/word-press/pages-update.mdx",
+		"/rest/word-press/tags-create.mdx",
+		"/rest/word-press/tags-delete.mdx",
+		"/rest/word-press/tags-get.mdx",
+		"/rest/word-press/tags-list.mdx",
+		"/rest/word-press/tags-update.mdx"
+	],
+	"files": [
+		"/.well-known/agent-skills/index.json",
+		"/.well-known/ai-catalog.json",
+		"/.well-known/api-catalog",
+		"/.well-known/ard.json",
+		"/agent-readability.json",
+		"/api/docs/navigation.json",
+		"/api/docs/pages.json",
+		"/api/docs/pages/agents.json",
+		"/api/docs/pages/changelog.json",
+		"/api/docs/pages/changelog/blocks.json",
+		"/api/docs/pages/compiler.json",
+		"/api/docs/pages/examples.json",
+		"/api/docs/pages/examples/blog.json",
+		"/api/docs/pages/examples/full-site.json",
+		"/api/docs/pages/examples/pantry.json",
+		"/api/docs/pages/examples/reading-list.json",
+		"/api/docs/pages/getting-started.json",
+		"/api/docs/pages/index.json",
+		"/api/docs/pages/pages.json",
+		"/api/docs/pages/publishing/other-platforms.json",
+		"/api/docs/pages/publishing/content-in-git.json",
+		"/api/docs/pages/publishing/spacefast.json",
+		"/api/docs/pages/reference.json",
+		"/api/docs/pages/reference/cli.json",
+		"/api/docs/pages/reference/client.json",
+		"/api/docs/pages/reference/config.json",
+		"/api/docs/pages/reference/diagnostics.json",
+		"/api/docs/pages/reference/language-support.json",
+		"/api/docs/pages/reference/wordpress-plugins.json",
+		"/api/docs/pages/rest.json",
+		"/api/docs/pages/rest/account/auth-config.json",
+		"/api/docs/pages/rest/account/auth-guest.json",
+		"/api/docs/pages/rest/account/auth-me.json",
+		"/api/docs/pages/rest/account/auth-sign-out.json",
+		"/api/docs/pages/rest/actions/actions-approve-comment.json",
+		"/api/docs/pages/rest/actions/actions-published-count.json",
+		"/api/docs/pages/rest/authors/authors-compare.json",
+		"/api/docs/pages/rest/authors/authors-create.json",
+		"/api/docs/pages/rest/authors/authors-delete.json",
+		"/api/docs/pages/rest/authors/authors-discard.json",
+		"/api/docs/pages/rest/authors/authors-get.json",
+		"/api/docs/pages/rest/authors/authors-list.json",
+		"/api/docs/pages/rest/authors/authors-preview-link.json",
+		"/api/docs/pages/rest/authors/authors-promote.json",
+		"/api/docs/pages/rest/authors/authors-revisions-get.json",
+		"/api/docs/pages/rest/authors/authors-revisions-list.json",
+		"/api/docs/pages/rest/authors/authors-revisions-restore.json",
+		"/api/docs/pages/rest/authors/authors-stage.json",
+		"/api/docs/pages/rest/authors/authors-staged.json",
+		"/api/docs/pages/rest/authors/authors-update.json",
+		"/api/docs/pages/rest/comments/comments-create.json",
+		"/api/docs/pages/rest/comments/comments-delete.json",
+		"/api/docs/pages/rest/comments/comments-get.json",
+		"/api/docs/pages/rest/comments/comments-list.json",
+		"/api/docs/pages/rest/comments/comments-update.json",
+		"/api/docs/pages/rest/files/files-decks-delete.json",
+		"/api/docs/pages/rest/files/files-decks-download.json",
+		"/api/docs/pages/rest/files/files-decks-get.json",
+		"/api/docs/pages/rest/files/files-decks-upload.json",
+		"/api/docs/pages/rest/globals/globals-settings-get.json",
+		"/api/docs/pages/rest/globals/globals-settings-update.json",
+		"/api/docs/pages/rest/media/media-delete.json",
+		"/api/docs/pages/rest/media/media-get.json",
+		"/api/docs/pages/rest/media/media-list.json",
+		"/api/docs/pages/rest/media/media-update.json",
+		"/api/docs/pages/rest/media/media-upload.json",
+		"/api/docs/pages/rest/members/members-create.json",
+		"/api/docs/pages/rest/members/members-delete.json",
+		"/api/docs/pages/rest/members/members-get.json",
+		"/api/docs/pages/rest/members/members-list.json",
+		"/api/docs/pages/rest/members/members-update.json",
+		"/api/docs/pages/rest/members/users-create.json",
+		"/api/docs/pages/rest/members/users-delete.json",
+		"/api/docs/pages/rest/members/users-get.json",
+		"/api/docs/pages/rest/members/users-list.json",
+		"/api/docs/pages/rest/members/users-update.json",
+		"/api/docs/pages/rest/posts/posts-compare.json",
+		"/api/docs/pages/rest/posts/posts-create.json",
+		"/api/docs/pages/rest/posts/posts-delete.json",
+		"/api/docs/pages/rest/posts/posts-discard.json",
+		"/api/docs/pages/rest/posts/posts-get.json",
+		"/api/docs/pages/rest/posts/posts-list.json",
+		"/api/docs/pages/rest/posts/posts-preview-link.json",
+		"/api/docs/pages/rest/posts/posts-promote.json",
+		"/api/docs/pages/rest/posts/posts-revisions-get.json",
+		"/api/docs/pages/rest/posts/posts-revisions-list.json",
+		"/api/docs/pages/rest/posts/posts-revisions-restore.json",
+		"/api/docs/pages/rest/posts/posts-stage.json",
+		"/api/docs/pages/rest/posts/posts-staged.json",
+		"/api/docs/pages/rest/posts/posts-update.json",
+		"/api/docs/pages/rest/schema/openapi.json",
+		"/api/docs/pages/rest/schema/schema.json",
+		"/api/docs/pages/rest/search/search.json",
+		"/api/docs/pages/rest/sync/sync-posts-apply.json",
+		"/api/docs/pages/rest/sync/sync-posts-convert.json",
+		"/api/docs/pages/rest/sync/sync-posts-merge.json",
+		"/api/docs/pages/rest/sync/sync-posts-read.json",
+		"/api/docs/pages/rest/sync/sync-posts-trash.json",
+		"/api/docs/pages/rest/word-press/categories-create.json",
+		"/api/docs/pages/rest/word-press/categories-delete.json",
+		"/api/docs/pages/rest/word-press/categories-get.json",
+		"/api/docs/pages/rest/word-press/categories-list.json",
+		"/api/docs/pages/rest/word-press/categories-update.json",
+		"/api/docs/pages/rest/word-press/menus-get.json",
+		"/api/docs/pages/rest/word-press/menus-list.json",
+		"/api/docs/pages/rest/word-press/pages-create.json",
+		"/api/docs/pages/rest/word-press/pages-delete.json",
+		"/api/docs/pages/rest/word-press/pages-get.json",
+		"/api/docs/pages/rest/word-press/pages-list.json",
+		"/api/docs/pages/rest/word-press/pages-update.json",
+		"/api/docs/pages/rest/word-press/tags-create.json",
+		"/api/docs/pages/rest/word-press/tags-delete.json",
+		"/api/docs/pages/rest/word-press/tags-get.json",
+		"/api/docs/pages/rest/word-press/tags-list.json",
+		"/api/docs/pages/rest/word-press/tags-update.json",
+		"/compiler.wasm",
+		"/files/blog.blueprint.json",
+		"/files/blog.json",
+		"/files/full-site.blueprint.json",
+		"/files/full-site.json",
+		"/files/pantry.blueprint.json",
+		"/files/pantry.json",
+		"/files/reading-list.blueprint.json",
+		"/files/reading-list.json",
+		"/icon.svg",
+		"/llms-full.txt",
+		"/llms.txt",
+		"/logo.svg",
+		"/og/agents.png",
+		"/og/changelog.png",
+		"/og/changelog/blocks.png",
+		"/og/compiler.png",
+		"/og/examples.png",
+		"/og/examples/blog.png",
+		"/og/examples/full-site.png",
+		"/og/examples/pantry.png",
+		"/og/examples/reading-list.png",
+		"/og/getting-started.png",
+		"/og/index.png",
+		"/og/pages.png",
+		"/og/playground.png",
+		"/og/publishing/other-platforms.png",
+		"/og/publishing/content-in-git.png",
+		"/og/publishing/spacefast.png",
+		"/og/reference.png",
+		"/og/reference/cli.png",
+		"/og/reference/client.png",
+		"/og/reference/config.png",
+		"/og/reference/diagnostics.png",
+		"/og/reference/language-support.png",
+		"/og/reference/wordpress-plugins.png",
+		"/og/rest.png",
+		"/og/rest/account/auth-config.png",
+		"/og/rest/account/auth-guest.png",
+		"/og/rest/account/auth-me.png",
+		"/og/rest/account/auth-sign-out.png",
+		"/og/rest/actions/actions-approve-comment.png",
+		"/og/rest/actions/actions-published-count.png",
+		"/og/rest/authors/authors-compare.png",
+		"/og/rest/authors/authors-create.png",
+		"/og/rest/authors/authors-delete.png",
+		"/og/rest/authors/authors-discard.png",
+		"/og/rest/authors/authors-get.png",
+		"/og/rest/authors/authors-list.png",
+		"/og/rest/authors/authors-preview-link.png",
+		"/og/rest/authors/authors-promote.png",
+		"/og/rest/authors/authors-revisions-get.png",
+		"/og/rest/authors/authors-revisions-list.png",
+		"/og/rest/authors/authors-revisions-restore.png",
+		"/og/rest/authors/authors-stage.png",
+		"/og/rest/authors/authors-staged.png",
+		"/og/rest/authors/authors-update.png",
+		"/og/rest/comments/comments-create.png",
+		"/og/rest/comments/comments-delete.png",
+		"/og/rest/comments/comments-get.png",
+		"/og/rest/comments/comments-list.png",
+		"/og/rest/comments/comments-update.png",
+		"/og/rest/files/files-decks-delete.png",
+		"/og/rest/files/files-decks-download.png",
+		"/og/rest/files/files-decks-get.png",
+		"/og/rest/files/files-decks-upload.png",
+		"/og/rest/globals/globals-settings-get.png",
+		"/og/rest/globals/globals-settings-update.png",
+		"/og/rest/media/media-delete.png",
+		"/og/rest/media/media-get.png",
+		"/og/rest/media/media-list.png",
+		"/og/rest/media/media-update.png",
+		"/og/rest/media/media-upload.png",
+		"/og/rest/members/members-create.png",
+		"/og/rest/members/members-delete.png",
+		"/og/rest/members/members-get.png",
+		"/og/rest/members/members-list.png",
+		"/og/rest/members/members-update.png",
+		"/og/rest/members/users-create.png",
+		"/og/rest/members/users-delete.png",
+		"/og/rest/members/users-get.png",
+		"/og/rest/members/users-list.png",
+		"/og/rest/members/users-update.png",
+		"/og/rest/posts/posts-compare.png",
+		"/og/rest/posts/posts-create.png",
+		"/og/rest/posts/posts-delete.png",
+		"/og/rest/posts/posts-discard.png",
+		"/og/rest/posts/posts-get.png",
+		"/og/rest/posts/posts-list.png",
+		"/og/rest/posts/posts-preview-link.png",
+		"/og/rest/posts/posts-promote.png",
+		"/og/rest/posts/posts-revisions-get.png",
+		"/og/rest/posts/posts-revisions-list.png",
+		"/og/rest/posts/posts-revisions-restore.png",
+		"/og/rest/posts/posts-stage.png",
+		"/og/rest/posts/posts-staged.png",
+		"/og/rest/posts/posts-update.png",
+		"/og/rest/schema/openapi.png",
+		"/og/rest/schema/schema.png",
+		"/og/rest/search/search.png",
+		"/og/rest/sync/sync-posts-apply.png",
+		"/og/rest/sync/sync-posts-convert.png",
+		"/og/rest/sync/sync-posts-merge.png",
+		"/og/rest/sync/sync-posts-read.png",
+		"/og/rest/sync/sync-posts-trash.png",
+		"/og/rest/word-press/categories-create.png",
+		"/og/rest/word-press/categories-delete.png",
+		"/og/rest/word-press/categories-get.png",
+		"/og/rest/word-press/categories-list.png",
+		"/og/rest/word-press/categories-update.png",
+		"/og/rest/word-press/menus-get.png",
+		"/og/rest/word-press/menus-list.png",
+		"/og/rest/word-press/pages-create.png",
+		"/og/rest/word-press/pages-delete.png",
+		"/og/rest/word-press/pages-get.png",
+		"/og/rest/word-press/pages-list.png",
+		"/og/rest/word-press/pages-update.png",
+		"/og/rest/word-press/tags-create.png",
+		"/og/rest/word-press/tags-delete.png",
+		"/og/rest/word-press/tags-get.png",
+		"/og/rest/word-press/tags-list.png",
+		"/og/rest/word-press/tags-update.png",
+		"/og/tour.png",
+		"/openapi.json",
+		"/robots.txt",
+		"/sitemap.xml"
+	],
+	"sitemap": [
+		"/",
+		"/agents",
+		"/changelog",
+		"/changelog/blocks",
+		"/compiler",
+		"/examples",
+		"/examples/blog",
+		"/examples/full-site",
+		"/examples/pantry",
+		"/examples/reading-list",
+		"/getting-started",
+		"/pages",
+		"/playground",
+		"/publishing/other-platforms",
+		"/publishing/content-in-git",
+		"/publishing/spacefast",
+		"/reference",
+		"/reference/cli",
+		"/reference/client",
+		"/reference/config",
+		"/reference/diagnostics",
+		"/reference/language-support",
+		"/reference/wordpress-plugins",
+		"/rest",
+		"/rest/account/auth-config",
+		"/rest/account/auth-guest",
+		"/rest/account/auth-me",
+		"/rest/account/auth-sign-out",
+		"/rest/actions/actions-approve-comment",
+		"/rest/actions/actions-published-count",
+		"/rest/authors/authors-compare",
+		"/rest/authors/authors-create",
+		"/rest/authors/authors-delete",
+		"/rest/authors/authors-discard",
+		"/rest/authors/authors-get",
+		"/rest/authors/authors-list",
+		"/rest/authors/authors-preview-link",
+		"/rest/authors/authors-promote",
+		"/rest/authors/authors-revisions-get",
+		"/rest/authors/authors-revisions-list",
+		"/rest/authors/authors-revisions-restore",
+		"/rest/authors/authors-stage",
+		"/rest/authors/authors-staged",
+		"/rest/authors/authors-update",
+		"/rest/comments/comments-create",
+		"/rest/comments/comments-delete",
+		"/rest/comments/comments-get",
+		"/rest/comments/comments-list",
+		"/rest/comments/comments-update",
+		"/rest/files/files-decks-delete",
+		"/rest/files/files-decks-download",
+		"/rest/files/files-decks-get",
+		"/rest/files/files-decks-upload",
+		"/rest/globals/globals-settings-get",
+		"/rest/globals/globals-settings-update",
+		"/rest/media/media-delete",
+		"/rest/media/media-get",
+		"/rest/media/media-list",
+		"/rest/media/media-update",
+		"/rest/media/media-upload",
+		"/rest/members/members-create",
+		"/rest/members/members-delete",
+		"/rest/members/members-get",
+		"/rest/members/members-list",
+		"/rest/members/members-update",
+		"/rest/members/users-create",
+		"/rest/members/users-delete",
+		"/rest/members/users-get",
+		"/rest/members/users-list",
+		"/rest/members/users-update",
+		"/rest/posts/posts-compare",
+		"/rest/posts/posts-create",
+		"/rest/posts/posts-delete",
+		"/rest/posts/posts-discard",
+		"/rest/posts/posts-get",
+		"/rest/posts/posts-list",
+		"/rest/posts/posts-preview-link",
+		"/rest/posts/posts-promote",
+		"/rest/posts/posts-revisions-get",
+		"/rest/posts/posts-revisions-list",
+		"/rest/posts/posts-revisions-restore",
+		"/rest/posts/posts-stage",
+		"/rest/posts/posts-staged",
+		"/rest/posts/posts-update",
+		"/rest/schema/openapi",
+		"/rest/schema/schema",
+		"/rest/search/search",
+		"/rest/sync/sync-posts-apply",
+		"/rest/sync/sync-posts-convert",
+		"/rest/sync/sync-posts-merge",
+		"/rest/sync/sync-posts-read",
+		"/rest/sync/sync-posts-trash",
+		"/rest/word-press/categories-create",
+		"/rest/word-press/categories-delete",
+		"/rest/word-press/categories-get",
+		"/rest/word-press/categories-list",
+		"/rest/word-press/categories-update",
+		"/rest/word-press/menus-get",
+		"/rest/word-press/menus-list",
+		"/rest/word-press/pages-create",
+		"/rest/word-press/pages-delete",
+		"/rest/word-press/pages-get",
+		"/rest/word-press/pages-list",
+		"/rest/word-press/pages-update",
+		"/rest/word-press/tags-create",
+		"/rest/word-press/tags-delete",
+		"/rest/word-press/tags-get",
+		"/rest/word-press/tags-list",
+		"/rest/word-press/tags-update",
+		"/tour"
+	],
+	"llms": [
+		"/",
+		"/getting-started",
+		"/compiler",
+		"/pages",
+		"/agents",
+		"/publishing/spacefast",
+		"/publishing/other-platforms",
+		"/publishing/content-in-git",
+		"/changelog",
+		"/changelog/blocks",
+		"/examples",
+		"/examples/blog",
+		"/examples/full-site",
+		"/examples/pantry",
+		"/examples/reading-list",
+		"/reference",
+		"/reference/config",
+		"/reference/client",
+		"/reference/cli",
+		"/reference/language-support",
+		"/reference/diagnostics",
+		"/reference/wordpress-plugins",
+		"/rest",
+		"/rest/authors/authors-list",
+		"/rest/authors/authors-create",
+		"/rest/authors/authors-get",
+		"/rest/authors/authors-update",
+		"/rest/authors/authors-delete",
+		"/rest/authors/authors-revisions-list",
+		"/rest/authors/authors-revisions-get",
+		"/rest/authors/authors-revisions-restore",
+		"/rest/authors/authors-staged",
+		"/rest/authors/authors-stage",
+		"/rest/authors/authors-discard",
+		"/rest/authors/authors-compare",
+		"/rest/authors/authors-promote",
+		"/rest/authors/authors-preview-link",
+		"/rest/posts/posts-list",
+		"/rest/posts/posts-create",
+		"/rest/posts/posts-get",
+		"/rest/posts/posts-update",
+		"/rest/posts/posts-delete",
+		"/rest/posts/posts-revisions-list",
+		"/rest/posts/posts-revisions-get",
+		"/rest/posts/posts-revisions-restore",
+		"/rest/posts/posts-staged",
+		"/rest/posts/posts-stage",
+		"/rest/posts/posts-discard",
+		"/rest/posts/posts-compare",
+		"/rest/posts/posts-promote",
+		"/rest/posts/posts-preview-link",
+		"/rest/sync/sync-posts-read",
+		"/rest/sync/sync-posts-apply",
+		"/rest/sync/sync-posts-trash",
+		"/rest/sync/sync-posts-convert",
+		"/rest/sync/sync-posts-merge",
+		"/rest/comments/comments-list",
+		"/rest/comments/comments-create",
+		"/rest/comments/comments-get",
+		"/rest/comments/comments-update",
+		"/rest/comments/comments-delete",
+		"/rest/members/members-list",
+		"/rest/members/members-create",
+		"/rest/members/members-get",
+		"/rest/members/members-update",
+		"/rest/members/members-delete",
+		"/rest/members/users-list",
+		"/rest/members/users-create",
+		"/rest/members/users-get",
+		"/rest/members/users-update",
+		"/rest/members/users-delete",
+		"/rest/globals/globals-settings-get",
+		"/rest/globals/globals-settings-update",
+		"/rest/actions/actions-approve-comment",
+		"/rest/actions/actions-published-count",
+		"/rest/files/files-decks-upload",
+		"/rest/files/files-decks-get",
+		"/rest/files/files-decks-delete",
+		"/rest/files/files-decks-download",
+		"/rest/word-press/pages-list",
+		"/rest/word-press/pages-create",
+		"/rest/word-press/pages-get",
+		"/rest/word-press/pages-update",
+		"/rest/word-press/pages-delete",
+		"/rest/word-press/categories-list",
+		"/rest/word-press/categories-create",
+		"/rest/word-press/categories-get",
+		"/rest/word-press/categories-update",
+		"/rest/word-press/categories-delete",
+		"/rest/word-press/tags-list",
+		"/rest/word-press/tags-create",
+		"/rest/word-press/tags-get",
+		"/rest/word-press/tags-update",
+		"/rest/word-press/tags-delete",
+		"/rest/word-press/menus-list",
+		"/rest/word-press/menus-get",
+		"/rest/media/media-list",
+		"/rest/media/media-upload",
+		"/rest/media/media-get",
+		"/rest/media/media-update",
+		"/rest/media/media-delete",
+		"/rest/account/auth-me",
+		"/rest/account/auth-config",
+		"/rest/account/auth-guest",
+		"/rest/account/auth-sign-out",
+		"/rest/search/search",
+		"/rest/schema/schema",
+		"/rest/schema/openapi",
+		"/.well-known/agent-skills/first/SKILL.md",
+		"/llms-full.txt",
+		"/index.md",
+		"/api/docs/pages.json",
+		"/.well-known/agent-skills/index.json",
+		"/.well-known/api-catalog",
+		"/.well-known/ai-catalog.json",
+		"/agent-readability.json",
+		"/sitemap.xml"
+	],
+	"dropped": [
+		"/404.json",
+		"/404.md",
+		"/blume-redirects.json",
+		"/blume-search.json",
+		"/vercel.json"
+	]
+}

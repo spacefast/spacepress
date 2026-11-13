@@ -1,5 +1,5 @@
 //! The commands the server runs for a tool: `first find` and the other site commands, Studio's
-//! status, and the compiler in a process of its own. Each is bounded by the server's timeout and
+//! status for `dev_status`, and the compiler in a process of its own. Each is bounded by the server's timeout and
 //! stops when the client cancels the request it belongs to.
 
 use super::Options;
@@ -40,6 +40,69 @@ pub(super) fn stop(pid: u32) {
         .status();
 }
 
+/// Stops the command's process group if this server dies first. A server killed by its client
+/// (SIGTERM, then SIGKILL, as the stdio transport describes) runs no code of its own, so a small
+/// shell holds the read end of a pipe whose write end only this process has: when the server is
+/// gone for any reason, the read sees end of input and the shell stops the group. It is started
+/// once the command is running and stopped when it has finished (see [`Guard`]).
+#[cfg(unix)]
+fn guard(pid: u32) -> Option<Guard> {
+    // Both ends are close-on-exec, so the write end never leaks into a command this server starts
+    // later (each would hold the pipe open, and the guardian would never see end of input). The read
+    // end reaches the guardian as its stdin, which `spawn` sets up explicitly.
+    let (read, write) = std::io::pipe().ok()?;
+    let mut shell = Command::new("/bin/sh");
+    shell.args([
+        "-c",
+        "cat >/dev/null; kill -TERM \"-$1\" 2>/dev/null",
+        "sh",
+        &pid.to_string(),
+    ]);
+    shell
+        .stdin(Stdio::from(read))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    std::os::unix::process::CommandExt::process_group(&mut shell, 0);
+    let guardian = shell.spawn().ok()?;
+    Some(Guard {
+        guardian,
+        write: Some(write),
+    })
+}
+
+#[cfg(not(unix))]
+fn guard(_pid: u32) -> Option<Guard> {
+    None
+}
+
+/// The guardian of one command. Dropped once the command has finished: closing the write end makes
+/// the guardian stop a group that no longer exists, and the guardian is then reaped.
+struct Guard {
+    guardian: std::process::Child,
+    #[cfg(unix)]
+    write: Option<std::io::PipeWriter>,
+}
+
+impl Drop for Guard {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        drop(self.write.take());
+        let _ = self.guardian.wait();
+    }
+}
+
+/// Kills a command's whole process group: for one that ignored [`stop`].
+fn stop_hard(pid: u32) {
+    if cfg!(unix) {
+        let _ = Command::new("/bin/sh")
+            .args(["-c", "kill -KILL \"-$1\"", "sh", &pid.to_string()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+}
+
 /// Runs `command` with no input and its output captured.
 pub(super) fn run(options: &Options, mut command: Command) -> Ran {
     command
@@ -53,6 +116,7 @@ pub(super) fn run(options: &Options, mut command: Command) -> Ran {
         Err(error) => return Ran::Failed(error),
     };
     let pid = child.id();
+    let guarded = guard(pid);
     {
         let mut flight = options.flight.lock().expect("flight");
         flight.child = Some(pid);
@@ -90,9 +154,12 @@ pub(super) fn run(options: &Options, mut command: Command) -> Ran {
         flight.stop
     };
     if output.is_none() {
+        // The command ignored the stop: kill it and everything it started.
+        stop_hard(pid);
         let _ = child.kill();
     }
     let status = child.wait();
+    drop(guarded);
     match (cancelled, timed_out, output, status) {
         (true, ..) => Ran::Cancelled,
         (_, true, ..) => Ran::TimedOut,

@@ -38,7 +38,7 @@ This is the runtime endpoint. To work on the project's source, use the `first` s
 3. Build the header in a shell, so the password is not written to a file or to history:
 
    ```sh
-   read -r -s -p 'user:application-password: ' FIRST_APP_PASSWORD
+   printf 'user:application-password: '; stty -echo; read -r FIRST_APP_PASSWORD; stty echo; echo
    export FIRST_MCP_AUTH="Basic $(printf %s "$FIRST_APP_PASSWORD" | base64 | tr -d '\n')"
    unset FIRST_APP_PASSWORD
    ```

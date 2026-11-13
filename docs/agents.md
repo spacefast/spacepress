@@ -37,6 +37,13 @@ filters, ordering, pagination, and declared relation loads. Update takes
 wrap rows in `{ "rows": [...] }`; action results have the handler's shape.
 Always inspect `tools/list` for the actual input schema before calling a tool.
 
+A `collection()` also has one tool per step of its [staged version](staged.md):
+`<kind>-stage`, `<kind>-staged-get`, `<kind>-staged-compare`,
+`<kind>-staged-promote`, `<kind>-staged-discard` and `<kind>-staged-preview`.
+An agent can stage a change to a published item, read the comparison, and
+leave the promote to a person, or to a credential that is allowed that tool.
+`table()` kinds, such as the ones in this app, have none.
+
 `api: { delete: false }` removes that operation. `agents: false` keeps the
 underlying ability registered for PHP and WP-CLI, while hiding it from public
 ability REST discovery and the app's MCP server. Globals also expose get and

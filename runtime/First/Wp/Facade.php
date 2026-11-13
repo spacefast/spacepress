@@ -23,6 +23,7 @@ use First\Js;
  *   GET/PATCH /__first/api/v1/settings      → GET /wp/v2/settings (public fields from the index for others)
  *   GET    /__first/api/v1/menus[/<loc>]    → /wp/v2/menu-locations + /wp/v2/menu-items, public locations only
  *   GET    /__first/api/v1                 → the app's schema: kinds, fields, actions (`first pull`)
+ *   …/<kind>/<id>/staged[/compare|/promote|/preview] → a post kind's staged version ({@see Staged})
  *
  * Errors are RFC 9457 problem documents mapped from core's `WP_Error`. Callers authenticate as core
  * accepts: the cookie with `X-WP-Nonce`, an application password, or a First Identity bearer token.
@@ -180,6 +181,13 @@ final class Facade
             self::gate($kind, 'update');
 
             return self::revisions($kind, $method, self::id($kind, $segments[1]), array_slice($segments, 3));
+        }
+        if ($kind['type'] === 'post' && ($segments[2] ?? null) === 'staged' && count($segments) <= 4) {
+            // A kind's staged versions ({@see Staged}): First's own, with no core route to map.
+            self::gate($kind, 'update');
+            [$status, $data] = Staged::route((string) $kind['name'], self::id($kind, $segments[1]), $method, array_slice($segments, 3), $query, self::body($body));
+
+            return self::json($status, ['data' => $data]);
         }
         if (count($segments) !== 2) {
             throw HttpError::notFound("No route for $path");

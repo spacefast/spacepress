@@ -128,6 +128,7 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "label",
     "drafts",
     "revisions",
+    "staged",
     "comments",
     "title",
     "content",
@@ -359,6 +360,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     editor: true,
                     drafts: true,
                     revisions: true,
+                    staged: true,
                     comments: false,
                     title: None,
                     content: None,
@@ -409,6 +411,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.editor = opts.editor;
         coll.drafts = opts.drafts;
         coll.revisions = opts.revisions;
+        coll.staged = opts.staged;
         coll.comments = opts.comments;
         coll.title = opts.title;
         coll.content = opts.content;
@@ -814,6 +817,7 @@ struct CollOpts {
     editor: bool,
     drafts: bool,
     revisions: bool,
+    staged: bool,
     comments: bool,
     title: Option<String>,
     content: Option<String>,
@@ -943,6 +947,18 @@ fn collection_options(
                 .help("remove this option; use table() for application data"));
         }
         Some(r) => r,
+        None => editor,
+    };
+    // Staged versions are WordPress revisions of a post: on for collections unless turned off.
+    let staged = match flag("staged")? {
+        Some(true) if !editor => {
+            return Err(
+                Diag::new(span("staged"), "only collection() kinds have staged versions").help(
+                    "a staged version is a WordPress revision of a post; a table() row has no editorial lifecycle",
+                ),
+            );
+        }
+        Some(on) => on,
         None => editor,
     };
     // spec.md §6: comments are off on every kind that doesn't turn them on.
@@ -1204,6 +1220,7 @@ fn collection_options(
         editor,
         drafts,
         revisions,
+        staged,
         comments,
         title,
         content,
@@ -3180,6 +3197,18 @@ fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span
     for c in out.schema.collections.values() {
         for op in ["list", "get", "create", "update", "delete", "revisions"] {
             add(format!("{}-{op}", kebab(&c.table)))?;
+        }
+        if c.editor && c.revisions && c.staged && c.api.update {
+            for op in [
+                "stage",
+                "staged-get",
+                "staged-compare",
+                "staged-promote",
+                "staged-discard",
+                "staged-preview",
+            ] {
+                add(format!("{}-{op}", kebab(&c.table)))?;
+            }
         }
         if c.sync.is_some() {
             for op in ["read", "apply", "trash"] {

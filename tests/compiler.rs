@@ -503,6 +503,18 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "only collection() kinds take comments",
         ),
         (
+            "tables: { notes: table({ title: text().optional() }, { staged: true }) }",
+            "only collection() kinds have staged versions",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }, { staged: 1 }) }",
+            "`staged` must be true or false",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }), notesStaged: collection({ title: text() }) }",
+            "ability kebab collision: notes-staged-get",
+        ),
+        (
             "collections: { notes: collection({ title: text() }, { comments: 'yes' }) }",
             "`comments` must be true or false",
         ),
@@ -2352,8 +2364,8 @@ fn builds_wordpress_and_knows_no_target_option() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
-/// A kind's `url` and the config's `frontend` (docs/spec/spec.md §2.7, §5): checked at build time and
-/// emitted into schema.php, where the router and link filters read them.
+/// A kind's `url` and `staged` and the config's `frontend` (docs/spec/spec.md §2.7, §5): checked at
+/// build time and emitted into schema.php, where the runtime reads them.
 #[test]
 fn kind_urls_and_the_frontend_mode_reach_the_schema() {
     rejects(
@@ -2425,6 +2437,16 @@ export default defineConfig({ name: "kindurls" });
 "#,
     );
     assert!(built.get("frontend").is_none(), "{built}");
+    // `staged: false` is the one staged setting the schema carries: collections stage unless it is there.
+    let built = schema(
+        r#"import { collection, defineConfig, text } from "first";
+export const notes = collection({ title: text() });
+export const fixed = collection({ title: text() }, { staged: false });
+export default defineConfig({ name: "kindurls", collections: { notes, fixed } });
+"#,
+    );
+    assert!(built["collections"]["notes"].get("staged").is_none(), "{built}");
+    assert_eq!(built["collections"]["fixed"]["staged"], false);
 }
 
 /// A project whose ledger is still at `first/migrations/` is refused, never read as a first build:

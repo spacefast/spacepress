@@ -21,6 +21,10 @@
 			"description": "Saved versions of a row, for collections with revisions."
 		},
 		{
+			"name": "Staged versions",
+			"description": "A change to an item saved beside the live one, for collections. Every route needs update access on the row and answers 404 without it."
+		},
+		{
 			"name": "Actions",
 			"description": "Named server functions from `actions` in your config."
 		},
@@ -537,6 +541,317 @@
 						}
 					}
 				]
+			}
+		},
+		"/{collection}/{id}/staged": {
+			"get": {
+				"tags": [
+					"Staged versions"
+				],
+				"operationId": "getStaged",
+				"summary": "Get the staged version",
+				"description": "The row as it would be once promoted, the fields that are staged, and who staged last. 404 when nothing is staged. With `?preview=<token>` it answers without signing in.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "preview",
+						"in": "query",
+						"required": false,
+						"description": "A preview token from the preview route.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			},
+			"patch": {
+				"tags": [
+					"Staged versions"
+				],
+				"operationId": "stageRow",
+				"summary": "Stage a change",
+				"description": "Saves the fields you send into the row's staged version. The live row stays as it is until the staged version is promoted.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "The fields to stage.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"tags": [
+					"Staged versions"
+				],
+				"operationId": "discardStaged",
+				"summary": "Discard the staged version",
+				"description": "Ends the staged version. The live row is untouched, and the discarded version stays in the row's revisions.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/{collection}/{id}/staged/compare": {
+			"get": {
+				"tags": [
+					"Staged versions"
+				],
+				"operationId": "compareStaged",
+				"summary": "Compare staged and live",
+				"description": "The staged fields whose value differs from the live row, with both values.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				]
+			}
+		},
+		"/{collection}/{id}/staged/promote": {
+			"post": {
+				"tags": [
+					"Staged versions"
+				],
+				"operationId": "promoteStaged",
+				"summary": "Promote the staged version",
+				"description": "Makes the staged version live, as an update of the row. With `at` (a future time) the promote is scheduled instead; `at: null` cancels a scheduled promote.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "Empty, or `at`.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
+			}
+		},
+		"/{collection}/{id}/staged/preview": {
+			"post": {
+				"tags": [
+					"Staged versions"
+				],
+				"operationId": "previewStaged",
+				"summary": "Create a preview link",
+				"description": "A signed link to the staged version that works without signing in until it expires or the staged version is promoted or discarded.",
+				"responses": {
+					"200": {
+						"description": "The result, under `data`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"parameters": [
+					{
+						"name": "collection",
+						"in": "path",
+						"required": true,
+						"description": "The collection or table key from your config, for example `posts`.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"description": "The row's primary key.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"description": "Empty, or `ttl` in seconds.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
 			}
 		},
 		"/actions/{name}": {

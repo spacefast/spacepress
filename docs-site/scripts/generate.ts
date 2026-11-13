@@ -520,6 +520,7 @@ const mediaPhp = read("runtime/First/Media/Module.php");
 const syncPhp = read("runtime/First/Sync/Routes.php");
 const servicesPhp = read("runtime/First/Services/Module.php");
 const facadePhp = read("runtime/First/Wp/Facade.php");
+const stagedPhp = read("runtime/First/Wp/Staged.php");
 const prefix = /PREFIX = '([^']+)'/.exec(facadePhp)?.[1] ?? "";
 if (!prefix) throw new Error("runtime/First/Wp/Facade.php: no PREFIX");
 const listLimit = /private const LIMIT = (\d+)/.exec(facadePhp)?.[1];
@@ -539,6 +540,10 @@ expectAllow(facadePhp, "Facade::global", "private static function global(", ["GE
 expectAllow(facadePhp, "Facade::route", "if (count($segments) === 1) {", ["GET", "HEAD", "POST"]);
 expectAllow(facadePhp, "Facade::route", "$id = self::id($kind, $segments[1]);", ["GET", "HEAD", "PATCH", "DELETE"]);
 expectAllow(facadePhp, "Facade::revisions", "if ($rest[1] !== 'restore'", ["POST"]);
+expectAllow(stagedPhp, "Staged::route", "case '':", ["GET", "HEAD", "PATCH", "DELETE"]);
+expectAllow(stagedPhp, "Staged::route", "case 'compare':", ["GET", "HEAD"]);
+expectAllow(stagedPhp, "Staged::route", "case 'promote':", ["POST"]);
+expectAllow(stagedPhp, "Staged::route", "case 'preview':", ["POST"]);
 expectAllow(authPhp, "Auth\\Module::route", "case 'auth/config'", ["GET"]);
 expectAllow(authPhp, "Auth\\Module::route", "case 'auth/guest'", ["POST"]);
 expectAllow(authPhp, "Auth\\Module::route", "case 'auth/session'", ["DELETE"]);
@@ -592,6 +597,7 @@ const openapi = {
 	tags: [
 		{ name: "Collections", description: "One set of routes for each kind and table in your config, and for WordPress's own kinds." },
 		{ name: "Revisions", description: "Saved versions of a row, for collections with revisions." },
+		{ name: "Staged versions", description: "A change to an item saved beside the live one, for collections. Every route needs update access on the row and answers 404 without it." },
 		{ name: "Actions", description: "Named server functions from `actions` in your config." },
 		{ name: "Globals", description: "Single records, such as site settings, from `globals` in your config." },
 		{ name: "Media", description: "WordPress media library uploads." },
@@ -638,6 +644,20 @@ const openapi = {
 		},
 		"/{collection}/{id}/revisions/{revision}/restore": {
 			post: op("Revisions", "restoreRevision", "Restore a revision", "Makes the revision the current row.", { parameters: [collection, id, param("revision", "The revision ID.", { type: "integer" })] }),
+		},
+		"/{collection}/{id}/staged": {
+			get: op("Staged versions", "getStaged", "Get the staged version", "The row as it would be once promoted, the fields that are staged, and who staged last. 404 when nothing is staged. With `?preview=<token>` it answers without signing in.", { parameters: [collection, id, query("preview", "A preview token from the preview route.")] }),
+			patch: op("Staged versions", "stageRow", "Stage a change", "Saves the fields you send into the row's staged version. The live row stays as it is until the staged version is promoted.", { parameters: [collection, id], ...body("The fields to stage.") }),
+			delete: op("Staged versions", "discardStaged", "Discard the staged version", "Ends the staged version. The live row is untouched, and the discarded version stays in the row's revisions.", { parameters: [collection, id] }),
+		},
+		"/{collection}/{id}/staged/compare": {
+			get: op("Staged versions", "compareStaged", "Compare staged and live", "The staged fields whose value differs from the live row, with both values.", { parameters: [collection, id] }),
+		},
+		"/{collection}/{id}/staged/promote": {
+			post: op("Staged versions", "promoteStaged", "Promote the staged version", "Makes the staged version live, as an update of the row. With `at` (a future time) the promote is scheduled instead; `at: null` cancels a scheduled promote.", { parameters: [collection, id], ...body("Empty, or `at`.") }),
+		},
+		"/{collection}/{id}/staged/preview": {
+			post: op("Staged versions", "previewStaged", "Create a preview link", "A signed link to the staged version that works without signing in until it expires or the staged version is promoted or discarded.", { parameters: [collection, id], ...body("Empty, or `ttl` in seconds.") }),
 		},
 		"/actions/{name}": {
 			post: op("Actions", "callAction", "Call an action", "Runs the action's Ability through WordPress's Abilities run route with the input you send and returns its result. The action's `access` rule decides who may call it. A `readonly` action also answers `GET` with `?input=<json>`.", {

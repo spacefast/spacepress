@@ -15,9 +15,10 @@ import * as media from "./first/lanes/media.ts";
 import * as locales from "./first/lanes/locales.ts";
 import * as rest from "./first/lanes/rest.ts";
 import * as runtime from "./first/lanes/runtime.ts";
+import * as staged from "./first/lanes/staged.ts";
 import { merge, mergeHooks } from "./first/compose.ts";
 import uploads from "./first/uploads.ts";
-const lanes = [fields, sync, jobs, auth, abilities, media, locales, rest, runtime];
+const lanes = [fields, sync, jobs, auth, abilities, media, locales, rest, runtime, staged];
 
 // A `table()` with a real SQL UNIQUE index (the blog has none).
 export const signups = table({

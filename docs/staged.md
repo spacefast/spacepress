@@ -1,0 +1,149 @@
+# Staged versions
+
+A staged version is a change to an item that is saved beside the live item. Visitors, the API,
+core REST, Markdown twins, feeds, search and caches keep returning the live item until someone
+promotes the staged version. Until then it can be read, compared with the live item, previewed
+through a signed link, scheduled, or discarded.
+
+Every `collection()` has staged versions. `table()` kinds do not: a table row has no editorial
+lifecycle, so a change to it is an update. Turn the feature off for one collection with
+`staged: false`.
+
+```ts
+export const posts = collection({ title: text(), body: richText() }, { url: "/blog/:slug" });
+export const logs = collection({ title: text() }, { staged: false });
+```
+
+## What a staged version is
+
+- **One per item, shared.** Everyone who may update the item reads and writes the same staged
+  version. Each `stage` call adds its fields to it; a field staged again takes the new value.
+- **Only the staged fields.** The staged version holds the fields that were staged. Promoting it
+  changes those fields and no others, so a live edit to another field made in the meantime stays.
+- **A WordPress revision.** It is stored as one revision of the post, named
+  `<id>-autosave-staged-v1`. The name is in core's autosave family, so revision lists, revision
+  pruning and core's change detection pass over it, and it is separate from core's own per-user
+  autosave slot, which the editors overwrite and delete. Its fields are stored on the revision
+  under the same meta keys the post uses, as on every other revision of a First post.
+  `_first_staged` on the revision records the staged fields and a scheduled promote.
+
+## Operations
+
+All of these need the item's `update` rule. A caller it doesn't cover gets the `404` a missing item
+gets, whether or not anything is staged.
+
+| Operation | API (`/__first/api/v1`) | Client | Ability `<app>/<kind>-…` | `wp first staged …` |
+|---|---|---|---|---|
+| Stage | `PATCH /<kind>/<id>/staged` with the fields | `first.posts.stage(id, patch)` | `stage` | `stage <kind> <id> <json>` |
+| Read | `GET /<kind>/<id>/staged` | `first.posts.staged(id)` | `staged-get` | `show <kind> <id>` |
+| Compare | `GET /<kind>/<id>/staged/compare` | `first.posts.compare(id)` | `staged-compare` | `compare <kind> <id>` |
+| Promote | `POST /<kind>/<id>/staged/promote` | `first.posts.promote(id)` | `staged-promote` | `promote <kind> <id>` |
+| Schedule a promote | the same route with `{ "at": "<ISO time>" }`; `{ "at": null }` cancels | `first.posts.promote(id, { at })` | `staged-promote` with `at` | `promote <kind> <id> --at=<ISO time>` or `--cancel` |
+| Discard | `DELETE /<kind>/<id>/staged` | `first.posts.discard(id)` | `staged-discard` | `discard <kind> <id>` |
+| Preview link | `POST /<kind>/<id>/staged/preview` with optional `{ "ttl": seconds }` | `first.posts.previewLink(id)` | `staged-preview` | |
+| List every staged version | | | | `list [<kind>]` |
+
+`wp first staged` is the trusted CLI: it applies no access rule and no field mask.
+
+A staged version reads as:
+
+```json
+{
+  "id": 412,
+  "row": { "id": 7, "title": "Staged title", "slug": "hello", "status": "published" },
+  "fields": ["title"],
+  "by": { "id": 3, "name": "Ed" },
+  "at": "2026-11-13T10:00:00.000Z",
+  "promoteAt": null
+}
+```
+
+`row` is the item as it would be once promoted. `id` is the revision that holds it.
+
+### Stage
+
+`stage` checks the patch as an update would: the update rule given the patch, field write rules,
+types, `min`/`max`/`pattern`/`validate`, media and references. It runs no hook, queues no webhook
+and purges no URL, because nothing visible changed. `status`, `publishedAt` and the other system
+fields can't be staged: they change with an update of the item.
+
+Unique checks run when the staged version is promoted, not when it is staged: until then the value
+is not in use.
+
+### Compare
+
+```json
+{ "id": 412, "changes": [{ "field": "title", "live": "Live title", "staged": "Staged title" }], "by": {}, "at": "…", "promoteAt": null }
+```
+
+`changes` lists the staged fields whose value differs from the live item, in schema order. Both
+sides go through the reader's field masks. A field hidden from the reader on either side is left
+out, whether it changed or not.
+
+### Promote
+
+A promote is an update of the item by the caller, with the staged fields as the patch. So the
+update rule, field write rules, validation, `beforeUpdate` and `afterUpdate`, unique checks, the
+revision, URL purges, change notices and webhooks all run exactly as for `PATCH /<kind>/<id>`. The
+update and the end of the staged version are one transaction: a promote that is refused changes
+nothing and keeps the staged version.
+
+The promoter needs to be allowed to write every staged field. An editor can't promote a staged
+version that holds a field only admins may set.
+
+After a promote the staged revision stays in the item's revisions, next to the revision the update
+wrote.
+
+### Schedule a promote
+
+`{ "at": "2026-12-01T09:00:00Z" }` schedules the promote on WordPress's own `publish_future_post`
+cron event, the one core uses for scheduled posts. No other cron, worker or queue is involved. The
+caller must be able to promote now.
+
+When the event runs, the promote runs as the user who scheduled it, under the rules as they are
+then. If it is refused or fails, nothing changes, the schedule is cleared, and the reason is kept
+on the staged version as `error` for its editors. It is not retried. Staging more fields keeps the
+schedule.
+
+### Discard
+
+`discard` ends the staged version. The live item is untouched. The revision stays in the item's
+revisions and is recorded as discarded and by whom; nothing is deleted.
+
+### Preview links
+
+```json
+{ "token": "…", "expiresAt": "…", "api": "https://example.com/__first/api/v1/posts/7/staged?preview=…", "url": "https://example.com/blog/hello/?first_preview=…" }
+```
+
+- `api` returns the staged version without signing in, through an anonymous visitor's field masks
+  and without `by`, `promoteAt` or `error`. Use it from an external frontend or a `first/app` page.
+- `url` is the item's own page rendering the staged title, content and fields. It is set for a
+  kind with a `url` that the theme renders, and `null` otherwise.
+
+A token is an HMAC over the kind, the item, the staged revision and an expiry, keyed with the
+site's `AUTH` salt. It expires after an hour by default (`ttl`, 60 seconds to one day), and stops
+working when the staged version is promoted or discarded, or when the site's salts change. A
+previewed page is sent `no-store`, `noindex` and `no-referrer`, and is never stored by Batcache.
+Markdown twins ignore the token.
+
+## Who can tell that a staged version exists
+
+Only a caller who passes the item's update rule, or who holds a valid preview token.
+
+For anyone else nothing differs between an item with a staged version and one without: the item's
+row, lists, counts, search, `?format=md`, the Markdown twin, the page, feeds, `llms.txt`, the
+sitemap, core REST (including the item's `version-history` and `predecessor-version` links, which
+core counts for every reader), and the `404` of every staged route and ability.
+
+## Abilities and credentials
+
+Each step is its own Ability, so a credential can be allowed to stage and not to promote:
+`<app>/<kind>-stage`, `-staged-get`, `-staged-compare`, `-staged-promote`, `-staged-discard` and
+`-staged-preview`. First declares them separately and does not scope credentials itself.
+
+## Limits
+
+- Post kinds only. `table()` kinds and globals have no staged versions.
+- Relations loaded with `with` are not part of a staged version; stage the referencing field.
+- A staged version belongs to one row. On a kind with `locales`, that is one translation.

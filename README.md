@@ -283,7 +283,9 @@ depend on:
 Each `collection(fields, options?)` is a custom post type (`first_<name>`) with a
 Secure Custom Fields group, so your content shows up in WordPress admin with
 revisions, and in the block editor when the collection has a `content` field,
-next to whatever the site already does.
+next to whatever the site already does. A change to a published item can be
+saved as a [staged version](docs/staged.md) that visitors don't see, then
+compared, previewed, promoted or discarded.
 Use `table(fields, options?)` for app data in its own SQL table. Both kinds
 support references and one/many relations to either kind, with typed client
 queries and target access rules. The registry key supplies the name once:

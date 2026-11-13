@@ -36,8 +36,16 @@ Keep core's sitemap as the only one and add to it through core's API.
 - **Front-end modes.** `frontend: false` disables sitemaps (`wp_sitemaps_enabled`). An external
   frontend gets the sitemap from this site with every entry at its own address; this site answers
   the sitemap before its redirect to the frontend, as it answers feeds.
-- **Purges.** A write announces the sitemap index and the file that lists the item with the
-  item's other URLs, so a host's page cache drops them.
+- **One list per kind.** An item is listed when First's read pipeline gives it to an anonymous
+  viewer, it is published without a password, every placeholder of its `url` comes from a field a
+  visitor may read, and no guarded app page serves its address. A file's count, its paging and its
+  entries come from that one list, so no hidden row can add a file or a page. A sitemap request is
+  answered as nobody (no user, no post-password cookie).
+- **Purges.** A write announces the sitemap index and every file of the sub-sitemap that would
+  list the item (as many as the index last showed, plus one). Computing the one file would run the
+  read rules inside the write, and depends on rows other readers can't see. A First write to a kind
+  with a `url`, or to the users kind, purges them too: it can change who may read a row without
+  touching the post.
 
 ## Not done
 

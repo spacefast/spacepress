@@ -39,3 +39,15 @@ export const members = userProjection({
   name: text().optional(),
   listed: boolean().default(false),
 }, { access: { read: (ctx) => ctx.user?.role === "admin" ? true : { listed: true }, update: "self", create: "admin", delete: "admin" } });
+
+// A slug only editors read: its addresses would carry it, so the kind is not listed at all.
+export const cases = collection({
+  title: text(),
+  slug: slug({ source: "title" }).access({ read: "editor" }).optional(),
+}, { title: "title", url: "/cases/:slug" });
+
+// Public rows, but the app page that serves their URL is behind a sign-in guard.
+export const vault = collection({
+  title: text(),
+  slug: slug({ source: "title" }).optional(),
+}, { title: "title", url: "/members/vault/:slug" });

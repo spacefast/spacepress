@@ -37,6 +37,8 @@ final class Sitemap
     public const NAME = 'first';
     /** The sub-sitemap that lists `first/app/` pages. */
     public const PAGES = 'app-pages';
+    /** The option that records each sub-sitemap's file count, for purges. */
+    private const PAGES_SEEN = 'first_sitemap_pages';
 
     public static function register(Plugin $plugin): void
     {
@@ -54,12 +56,49 @@ final class Sitemap
         // at 1): the sitemap is this site's own, like its feeds, whoever renders the pages.
         add_action('template_redirect', static function (): void {
             if (get_query_var('sitemap') || get_query_var('sitemap-stylesheet')) {
+                self::anonymous();
                 wp_sitemaps_get_server()->render_sitemaps();
+                // Core answered a 404 (sitemaps off, an unknown file, an empty page) and returned: end
+                // here, before an external frontend's gate would redirect the request.
+                if (is_404()) {
+                    exit;
+                }
             }
         }, -2);
         // A password-protected post's content is not a visitor's to read: core lists such posts, this
         // sitemap does not.
         add_filter('wp_sitemaps_posts_query_args', static fn (mixed $args): mixed => is_array($args) ? $args + ['has_password' => false] : $args, PHP_INT_MAX);
+        // Core dates the home entry from a query of its own, which counts protected posts: date it
+        // from the newest post this sitemap lists instead.
+        add_filter('wp_sitemaps_posts_show_on_front_entry', static function (mixed $entry): mixed {
+            if (!is_array($entry)) {
+                return $entry;
+            }
+            unset($entry['lastmod']);
+            $latest = get_posts(['post_type' => 'post', 'post_status' => 'publish', 'has_password' => false, 'numberposts' => 1,
+                'orderby' => 'modified', 'order' => 'DESC', 'suppress_filters' => false]);
+            if ($latest !== []) {
+                $entry['lastmod'] = (string) wp_date(DATE_W3C, (int) strtotime($latest[0]->post_modified_gmt . ' UTC'));
+            }
+
+            return $entry;
+        }, 0);
+        // Each core sub-sitemap's file count, for purges ({@see files()}).
+        // The index lists every file of every sub-sitemap, so its last entry per sub-sitemap is the count.
+        $counted = [];
+        add_filter('wp_sitemaps_index_entry', static function (mixed $entry, string $provider, string $subtype, int $page) use (&$counted): mixed {
+            $counted["$provider:$subtype"] = max($counted["$provider:$subtype"] ?? 0, $page);
+            self::remember($provider, $subtype, $counted["$provider:$subtype"]);
+
+            return $entry;
+        }, 10, 4);
+        // A write that changes who may see a row without touching the post (a field a filter rule
+        // reads, a users-kind field) still purges the files that list its kind.
+        \First\Extensions::onWritten(static function (string $op, string $collection): void {
+            if (has_action('first_purge_urls') !== false && ($files = self::filesForKind($collection)) !== []) {
+                Purges::announce($files);
+            }
+        });
         // Core lists the authors of public posts. With a users kind, a user is listed only when a
         // signed-out visitor may read their row.
         add_filter('wp_sitemaps_users_query_args', static fn (mixed $args): mixed => is_array($args) ? self::readableUsers($plugin, $args) : $args, PHP_INT_MAX);
@@ -79,9 +118,22 @@ final class Sitemap
     }
 
     /**
-     * The sitemap files a write to $post changes, for the purge of its URLs: the index (a sub-sitemap
-     * may appear, vanish or gain a file) and the file that lists the item. Core and First both order
-     * a sub-sitemap by id, so the item's file is the count of listed items up to its id.
+     * The rest of this request is a signed-out visitor's, whatever it carries: no user, and no
+     * post-password cookie that would open a protected item to First's reads.
+     */
+    private static function anonymous(): void
+    {
+        wp_set_current_user(0);
+        add_filter('determine_current_user', static fn (): int => 0, PHP_INT_MAX);
+        unset($_COOKIE['wp-postpass_' . COOKIEHASH]);
+    }
+
+    /**
+     * The sitemap files a write to $post may change, for the purge of its URLs: the index and every
+     * file of the sub-sitemap that would list it. Which file holds an item depends on rows other
+     * readers can't see, and asking the read rules here would run them inside the write, so every
+     * file of that sub-sitemap goes; a sub-sitemap holds 2000 URLs a file, so that is a few paths.
+     * The file count is the one the last sitemap request recorded, plus one for a new file.
      *
      * @return list<string>
      */
@@ -95,25 +147,56 @@ final class Sitemap
         if (!$server instanceof \WP_Sitemaps || !$server->sitemaps_enabled()) {
             return [];
         }
-        $max = max(1, (int) wp_sitemaps_get_max_urls(self::NAME));
         foreach (self::subtypes($plugin) as $subtype => $kind) {
             if (isset($kind['kind']) && ($plugin->schema->collection($kind['kind'])['wp']['postType'] ?? null) === $post->post_type) {
-                $before = self::count($plugin, $kind['kind'], [$plugin->schema->collection($kind['kind'])['primaryKey'] => ['lte' => $post->ID]]);
-
-                return [(string) get_sitemap_url('index'), (string) get_sitemap_url(self::NAME, $subtype, max(1, (int) ceil($before / $max)))];
+                return self::files(self::NAME, $subtype);
             }
         }
         $posts = $server->registry->get_provider('posts');
         if (!$posts instanceof \WP_Sitemaps_Provider || !isset($posts->get_object_subtypes()[$post->post_type])) {
             return [];
         }
-        global $wpdb;
-        $before = (int) $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = %s AND post_status = 'publish' AND ID <= %d",
-            $post->post_type, $post->ID,
-        ));
 
-        return [(string) get_sitemap_url('index'), (string) get_sitemap_url('posts', $post->post_type, max(1, (int) ceil($before / $max)))];
+        return self::files('posts', $post->post_type);
+    }
+
+    /** The files of First's sub-sitemap a write to a row of $collection may change (`onWritten`). */
+    public static function filesForKind(string $collection): array
+    {
+        $plugin = Plugin::instance();
+        if ($plugin === null || $plugin->schema->frontend() === false || !function_exists('get_sitemap_url')) {
+            return [];
+        }
+        if (($plugin->schema->auth()['collection'] ?? null) === $collection) {
+            return self::files('users', '');
+        }
+        $subtype = self::subtypes($plugin)[self::slug($collection)] ?? null;
+
+        return $subtype === null ? [] : self::files(self::NAME, self::slug($collection));
+    }
+
+    /** @return list<string> the index and files 1..n+1 of one sub-sitemap, n as last recorded */
+    private static function files(string $provider, string $subtype): array
+    {
+        $seen = get_option(self::PAGES_SEEN, []);
+        $n = is_array($seen) ? (int) ($seen["$provider:$subtype"] ?? 1) : 1;
+        $out = [(string) get_sitemap_url('index')];
+        for ($page = 1; $page <= $n + 1; $page++) {
+            $out[] = (string) get_sitemap_url($provider, $subtype, $page);
+        }
+
+        return $out;
+    }
+
+    /** Records how many files a sub-sitemap has, when a request finds it changed. */
+    private static function remember(string $provider, string $subtype, int $pages): void
+    {
+        $seen = get_option(self::PAGES_SEEN, []);
+        $seen = is_array($seen) ? $seen : [];
+        if (($seen["$provider:$subtype"] ?? null) !== $pages) {
+            $seen["$provider:$subtype"] = $pages;
+            update_option(self::PAGES_SEEN, $seen, false);
+        }
     }
 
     /**
@@ -178,9 +261,11 @@ final class Sitemap
         if ($kind === null) {
             return 0;
         }
-        $count = isset($kind['kind']) ? self::count($plugin, $kind['kind']) : count(self::appPages($plugin));
+        $count = count(isset($kind['kind']) ? self::listed($plugin, $kind['kind']) : self::appPages($plugin));
+        $pages = (int) ceil($count / wp_sitemaps_get_max_urls(self::NAME));
+        self::remember(self::NAME, $subtype, $pages);
 
-        return (int) ceil($count / wp_sitemaps_get_max_urls(self::NAME));
+        return $pages;
     }
 
     /**
@@ -195,9 +280,7 @@ final class Sitemap
             return [];
         }
         $max = wp_sitemaps_get_max_urls(self::NAME);
-        $entries = isset($kind['kind'])
-            ? self::items($plugin, $kind['kind'], $max, ($page - 1) * $max)
-            : array_slice(self::appPages($plugin), ($page - 1) * $max, $max);
+        $entries = array_slice(isset($kind['kind']) ? self::entries($plugin, $kind['kind']) : self::appPages($plugin), ($page - 1) * $max, $max);
         $out = [];
         foreach ($entries as $entry) {
             /**
@@ -222,7 +305,13 @@ final class Sitemap
     private static function readableUsers(Plugin $plugin, array $args): array
     {
         $collection = $plugin->schema->auth()['collection'] ?? null;
-        if (!is_string($collection) || $plugin->unavailable() !== null) {
+        if (!is_string($collection)) {
+            return $args;
+        }
+        if ($plugin->unavailable() !== null) {
+            // The rule can't be asked while storage is behind the build: list no author until it can.
+            $args['include'] = [0];
+
             return $args;
         }
         try {
@@ -241,49 +330,88 @@ final class Sitemap
 
     // ================================================================ kinds
 
-    /** The rows of a kind an anonymous visitor reads: the read rule and draft visibility decide. */
-    private static function count(Plugin $plugin, string $kind, ?array $where = null): int
-    {
-        try {
-            return $plugin->db()->count($kind, $where, new Viewer(null), self::everyLocale($plugin, $kind));
-        } catch (\First\HttpError) {
-            return 0; // the read rule refuses signed-out visitors outright
-        }
-    }
+    /** @var array<string, list<int>> a kind's listed ids, once per request */
+    private static array $listed = [];
 
     /**
-     * @return list<array{loc: string, lastmod?: string}>
+     * The ids of a kind's items a signed-out visitor may open, by id: the one list a file's count,
+     * its paging and its entries come from, so none of them can tell a hidden row is there.
+     *
+     * An item is listed when First's read pipeline gives it to an anonymous viewer (the read rule,
+     * a filter it returns, draft visibility, the store's guards), it is published without a
+     * password, every placeholder of its pattern is filled from a field a visitor may read, and no
+     * guarded `first/app/` route serves its URL.
+     *
+     * @return list<int>
      */
-    private static function items(Plugin $plugin, string $kind, int $limit, int $offset): array
+    public static function listed(Plugin $plugin, string $kind): array
     {
+        if (isset(self::$listed[$kind])) {
+            return self::$listed[$kind];
+        }
         $spec = $plugin->schema->collection($kind);
         $pk = $spec['primaryKey'];
+        $visitor = new Viewer(null);
+        if (!self::patternReadable($spec, $visitor)) {
+            return self::$listed[$kind] = [];
+        }
         try {
-            // First's read pipeline as a signed-out visitor picks the rows; only their ids are read.
-            $rows = $plugin->db()->findMany($kind, ['columns' => [$pk => true], 'orderBy' => [$pk => 'asc'], 'limit' => $limit, 'offset' => $offset]
-                + self::everyLocale($plugin, $kind), new Viewer(null));
+            $rows = $plugin->db()->findMany($kind, ['columns' => [$pk => true], 'orderBy' => [$pk => 'asc']] + self::everyLocale($plugin, $kind), $visitor);
         } catch (\First\HttpError) {
-            return [];
+            return self::$listed[$kind] = []; // the read rule refuses signed-out visitors outright
         }
         $ids = array_map(static fn (array $row): int => (int) $row[$pk], $rows);
-        if ($ids === []) {
-            return [];
-        }
         _prime_post_caches($ids, false, false);
         $out = [];
         foreach ($ids as $id) {
             $post = get_post($id);
-            // A password-protected item is not a visitor's to read. The read above leaves it out for a
-            // request without the password's cookie; the sitemap is the same document with one.
             if (!$post instanceof \WP_Post || $post->post_status !== 'publish' || $post->post_password !== '') {
                 continue;
             }
-            // The kind's pattern builds the link (`post_type_link`); an item whose pattern has an
-            // empty placeholder has no address of its own, and core's `?p=` form is not listed.
-            if (KindUrls::instance()?->path($kind, $post) === null) {
+            $path = KindUrls::instance()?->path($kind, $post);
+            if ($path === null || AppRouter::instance()?->guarded($path) === true) {
                 continue;
             }
-            $out[] = ['loc' => (string) get_permalink($post), 'lastmod' => (string) wp_date(DATE_W3C, (int) strtotime($post->post_modified_gmt . ' UTC'))];
+            $out[] = $id;
+        }
+
+        return self::$listed[$kind] = $out;
+    }
+
+    /**
+     * Whether a visitor may read every field the kind's `url` pattern puts in an address. A pattern
+     * that shows a field the visitor may not read (`:slug` with a read rule on the slug) lists nothing:
+     * its addresses would carry the hidden value.
+     */
+    private static function patternReadable(array $spec, Viewer $visitor): bool
+    {
+        foreach (explode('/', trim((string) $spec['url'], '/')) as $segment) {
+            if (!str_starts_with($segment, ':')) {
+                continue;
+            }
+            $field = explode('.', substr($segment, 1), 2)[0];
+            $column = match ($field) {
+                'slug', 'path' => $spec['slug'] ?? null,
+                'id', 'year', 'month', 'day' => null,
+                default => $field,
+            };
+            if ($column !== null && isset($spec['columns'][$column]) && \First\FieldAccess::mayHide($spec['columns'][$column], $visitor)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** @return list<array{loc: string, lastmod: string}> the listed items' entries, in id order */
+    private static function entries(Plugin $plugin, string $kind): array
+    {
+        $out = [];
+        foreach (self::listed($plugin, $kind) as $id) {
+            $post = get_post($id);
+            if ($post instanceof \WP_Post) {
+                $out[] = ['loc' => (string) get_permalink($post), 'lastmod' => (string) wp_date(DATE_W3C, (int) strtotime($post->post_modified_gmt . ' UTC'))];
+            }
         }
 
         return $out;

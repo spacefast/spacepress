@@ -116,6 +116,15 @@ final class Purges
         return has_action('first_purge_urls') !== false;
     }
 
+    /** URLs a write changed that no post hook names (First's own writes): announced with the rest. */
+    public static function announce(array $urls): void
+    {
+        $plugin = Plugin::instance();
+        if ($plugin !== null && self::listening()) {
+            self::add($plugin, $urls);
+        }
+    }
+
     /** @param list<string> $urls */
     private static function add(Plugin $plugin, array $urls): void
     {

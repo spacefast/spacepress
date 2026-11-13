@@ -946,7 +946,8 @@ fn frontend_modes_on_wordpress() {
             "/wp-sitemap-users-1.xml",
             "/wp-sitemap-first-notes-1.xml",
             "/wp-sitemap-first-journal-1.xml",
-            "/wp-sitemap-first-briefs-1.xml"
+            "/wp-sitemap-first-briefs-1.xml",
+            "/wp-sitemap-first-vault-1.xml"
         ]),
         "{sitemap}"
     );
@@ -961,7 +962,9 @@ fn frontend_modes_on_wordpress() {
             "/wp-sitemap-users-1.xml": ["/author/editor/"],
             "/wp-sitemap-first-notes-1.xml": ["/notes/renamed-note/"],
             "/wp-sitemap-first-journal-1.xml": ["/journal/2026/day-one/"],
-            "/wp-sitemap-first-briefs-1.xml": ["/briefs/open-brief/"]
+            "/wp-sitemap-first-briefs-1.xml": ["/briefs/open-brief/"],
+            // With no app page in front of it, WordPress renders a vault item for anyone.
+            "/wp-sitemap-first-vault-1.xml": ["/members/vault/vault-item/"]
         }),
         "{sitemap}"
     );
@@ -983,10 +986,39 @@ fn frontend_modes_on_wordpress() {
         (&sitemap["unknown kind"], &sitemap["past the end"]),
         (&serde_json::json!(404), &serde_json::json!(404))
     );
-    // A write purges the index and the file that lists the item.
+    // A write purges the index and every file of the item's sub-sitemap, one more for a new file:
+    // which file lists it depends on rows other readers can't see.
+    let briefs_files = serde_json::json!([
+        "/wp-sitemap.xml",
+        "/wp-sitemap-first-briefs-1.xml",
+        "/wp-sitemap-first-briefs-2.xml"
+    ]);
+    assert_eq!(sitemap["purged"], briefs_files);
+    // So does a write that only changes who may read the row, and then the row is gone: the file
+    // that held only it is a 404, as core answers an empty one.
+    assert_eq!(sitemap["purged by a field"], briefs_files);
     assert_eq!(
-        sitemap["purged"],
-        serde_json::json!(["/wp-sitemap.xml", "/wp-sitemap-first-briefs-1.xml"])
+        (&sitemap["briefs after"], &sitemap["briefs status after"]),
+        (&serde_json::json!([]), &serde_json::json!(404))
+    );
+    // Core dates the home entry from its own query, which counts protected posts; here it is the
+    // newest post the sitemap lists.
+    assert_eq!(sitemap["home lastmod"], sitemap["newest public post"], "{sitemap}");
+    // A kind whose `url` shows a field visitors may not read (`cases`: a slug only editors read) has no
+    // file, nor does one whose URL a guarded app page serves (`vault`, under `members/`).
+    assert_eq!(
+        app["sitemap"]["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|f| {
+                let f = f.as_str().unwrap();
+                f.contains("-cases-") || f.contains("-vault-")
+            })
+            .count(),
+        0,
+        "{}",
+        app["sitemap"]
     );
     // With first/app/, its public pages are listed too: not the guarded one, not the one whose
     // metadata says `robots: { index: false }`, and not a route with parameters.

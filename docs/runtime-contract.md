@@ -629,19 +629,27 @@ The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
   `/wp-sitemap-first-<kind>-<n>.xml`, and one for `first/app/` pages,
   `/wp-sitemap-first-app-pages-<n>.xml`. A file holds up to
   `wp_sitemaps_get_max_urls('first')` URLs (2000), as core's do.
-- **Only what a signed-out visitor may read.** A kind's rows are selected by
+- **Only what a signed-out visitor may read.** A sitemap request is answered as
+  nobody: no user, and no post-password cookie. A kind's items are selected by
   First's read pipeline as an anonymous viewer, so the read rule, a filter the
   rule returns and draft visibility decide, exactly as for a visitor's
-  `posts.list()`. A kind readers must sign in for has no file. A
-  password-protected item is left out. The sitemap is one document: a signed-in
-  editor, or a visitor holding a post password's cookie, gets the same file.
+  `posts.list()`. Then an item is listed only when it is published without a
+  password, every placeholder of its `url` comes from a field a visitor may read
+  (a `:slug` only editors read lists nothing), and no `first/app/` page under a
+  layout `guard` serves its address. A file's count, its paging and its entries
+  come from that one list, so a hidden row adds no file and no page. A kind with
+  nothing to list has no file.
 - **App pages** are the ones `/llms.txt` lists (no parameters, no layout
   `guard`, a 200 for a signed-out visitor), less the home page (core lists it)
   and any page whose metadata says `robots: { index: false }`.
+- **Core's home entry** is dated from the newest post the posts file lists
+  (core's own query would count protected posts). With a users kind, the users
+  file lists only users whose row a visitor may read, and none while storage is
+  behind the build.
 - **Front-end modes.** `frontend: false` has no public pages, so sitemaps are
   off (`wp_sitemaps_enabled`) and core answers their URLs with a 404. With an
-  external frontend the sitemap is still answered here, and every `<loc>` is at
-  that site, like every other link.
+  external frontend the sitemap is still answered here (a 404 stays a 404, never
+  a redirect), and every `<loc>` is at that site, like every other link.
 - **`first_sitemap_entry` filter** (`array $entry, string $subtype`): change one
   entry of First's files, or return an empty value to leave the URL out. Core's
   own filters (`wp_sitemaps_posts_entry`, `wp_sitemaps_max_urls`,
@@ -657,13 +665,16 @@ listens and purges those URLs from Batcache and the edge. With no listener
 
 - **Writes covered:** posts and pages of public post types (create, update,
   publish, unpublish, trash, delete), term assignments, and term edits and
-  deletes in public taxonomies. Drafts that stay drafts and First collections
-  (not public) announce nothing.
+  deletes in public taxonomies, and First kinds with a `url`. Drafts that stay
+  drafts and First kinds without a `url` announce nothing. A First write to a
+  kind with a `url`, or to the users kind, also purges that kind's sitemap
+  files, since it can change who may read a row without touching the post.
 - **Paths, root-relative with their query:** the item's URL before and after
   the write (a slug change purges both), the home page, the posts page, the
   post type archive, every term archive the post had or has, the author
   archive, page 2 of each listing, the feed, `/llms.txt`, the sitemap index
-  and the sitemap file that lists the item, and every page URL's `.md` twin. A term edit or delete purges its archive and page 2, and a
+  and every file of the sub-sitemap that would list the item (as many as the
+  index last showed, plus one), and every page URL's `.md` twin. A term edit or delete purges its archive and page 2, and a
   slug change purges both the old and the new archive. Adding or removing a
   post's terms (`wp_set_object_terms()`, `wp_remove_object_terms()`) purges
   page 1 and page 2 of every term archive it joined or left. Deeper listing pages fall back to the edge's `s-maxage`

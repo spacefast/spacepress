@@ -33,6 +33,8 @@ $noteId = (int) (\First\db()->findFirst('notes', ['where' => ['slug' => 'hello-n
 \First\db()->insert('briefs', ['title' => 'Embargoed brief', 'slug' => 'embargoed-brief', 'embargoed' => true, 'status' => 'published']);
 \First\db()->insert('briefs', ['title' => 'Draft brief', 'slug' => 'draft-brief', 'status' => 'draft']);
 \First\db()->insert('memos', ['title' => 'A memo', 'status' => 'published']);
+\First\db()->insert('cases', ['title' => 'Confidential case', 'slug' => 'confidential-case', 'status' => 'published']);
+\First\db()->insert('vault', ['title' => 'Vault item', 'slug' => 'vault-item', 'status' => 'published']);
 \First\db()->insert('notes', ['title' => 'Locked note', 'slug' => 'locked-note', 'status' => 'published']);
 wp_update_post(['ID' => (int) \First\db()->findFirst('notes', ['where' => ['slug' => 'locked-note']])['id'], 'post_password' => 'secret']);
 wp_insert_post(['post_type' => 'post', 'post_status' => 'draft', 'post_title' => 'Core draft', 'post_name' => 'core-draft']);
@@ -157,6 +159,21 @@ $out['sitemap'] = [
         return $out;
     })(),
 ];
+// Core's home entry is dated from the newest post the sitemap lists, not from a protected one: make
+// the protected post the newest change on the site.
+global $wpdb;
+$wpdb->update($wpdb->posts, ['post_modified_gmt' => gmdate('Y-m-d H:i:s', time() + 86400), 'post_modified' => gmdate('Y-m-d H:i:s', time() + 86400)], ['post_name' => 'core-locked']);
+clean_post_cache((int) $wpdb->get_var("SELECT ID FROM {$wpdb->posts} WHERE post_name = 'core-locked'"));
+$out['sitemap']['home lastmod'] = (static function () use ($got): ?string {
+    $doc = @simplexml_load_string($got('/wp-sitemap-posts-page-1.xml')['body']);
+    foreach ($doc === false ? [] : $doc->children() as $entry) {
+        if (str_ends_with((string) $entry->loc, '/') && substr_count(parse_url((string) $entry->loc, PHP_URL_PATH) ?? '/', '/') === 1) {
+            return (string) $entry->lastmod;
+        }
+    }
+    return null;
+})();
+$out['sitemap']['newest public post'] = (string) wp_date(DATE_W3C, (int) strtotime(get_posts(['post_status' => 'publish', 'has_password' => false, 'numberposts' => 1, 'orderby' => 'modified'])[0]->post_modified_gmt . ' UTC'));
 // A write purges the sitemap files that list the item, with its other URLs.
 delete_option('test_purges');
 wp_set_current_user(1);
@@ -164,5 +181,15 @@ wp_set_current_user(1);
 $site->actAs(null);
 wp_cache_delete('test_purges', 'options');
 $out['sitemap']['purged'] = array_values(array_filter(get_option('test_purges', []), static fn (string $p): bool => str_contains($p, 'wp-sitemap')));
+// A write that only changes who may read a row (the field the rule filters on) purges the kind's
+// files too, and the next sitemap no longer lists the row.
+delete_option('test_purges');
+wp_set_current_user(1);
+\First\db()->update('briefs', ['embargoed' => true], ['slug' => 'open-brief']);
+$site->actAs(null);
+wp_cache_delete('test_purges', 'options');
+$out['sitemap']['purged by a field'] = array_values(array_filter(get_option('test_purges', []), static fn (string $p): bool => str_contains($p, 'wp-sitemap')));
+$out['sitemap']['briefs after'] = array_map($strip, $locs(fetch("$url/wp-sitemap-first-briefs-1.xml")['body']));
+$out['sitemap']['briefs status after'] = fetch("$url/wp-sitemap-first-briefs-1.xml")['status'];
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

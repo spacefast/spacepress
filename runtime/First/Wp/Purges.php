@@ -192,7 +192,8 @@ final class Purges
         }
         $urls = array_values(array_filter($urls, static fn (mixed $url): bool => is_string($url) && $url !== ''));
 
-        return [$urls[0], ...self::listings(array_slice($urls, 1))];
+        // Other addresses that show this post (a `page.md` route answers with and without a trailing slash).
+        return (array) apply_filters('first_post_purge_urls', [$urls[0], ...self::listings(array_slice($urls, 1))], $post);
     }
 
     /**

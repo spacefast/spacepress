@@ -452,12 +452,15 @@ fn convert(
     if let Some(content) = transformed.content_config {
         sources.insert(PathBuf::from("server/__z08-content.ts"), content);
     }
-    // The candidate's app code lives under the First root (docs/spec/spec.md §1), pages in
-    // `first/app/`: a page one folder deeper than 0.8's `pages/<x>.tsx` imports `first/shared/`
-    // with the same relative path 0.8's `pages/<x>/` folder used for `shared/`.
+    // The candidate's app code lives under the First root (docs/spec/spec.md §1), and what 0.8 kept
+    // under `pages/` (the pages and the data modules beside them) under `first/app/`. Both move
+    // down by the same one folder, so every relative import between them still resolves.
     let mut sources: BTreeMap<PathBuf, String> = sources
         .into_iter()
-        .map(|(path, text)| (Path::new(crate::layout::ROOT).join(path), text))
+        .map(|(path, text)| match path.strip_prefix("pages") {
+            Ok(rest) => (Path::new(pages::APP).join(rest), text),
+            Err(_) => (Path::new(crate::layout::ROOT).join(path), text),
+        })
         .collect();
     sources.insert(
         PathBuf::from("first.config.ts"),

@@ -190,6 +190,19 @@ impl Compiler<'_, '_> {
                                 }
                             }
                         }
+                        // `"first/content"`'s types, so a component can take the tree `nav()` returns.
+                        if let Stmt::Import { source, specs, .. } = stmt
+                            && source == crate::loader::CONTENT_MODULE
+                        {
+                            for spec in specs {
+                                if spec.local == *name
+                                    && let ImportName::Named(imported) = &spec.imported
+                                    && let Some(ty) = super::content::content_type(imported)
+                                {
+                                    return Ok(ty);
+                                }
+                            }
+                        }
                         if let Stmt::Import { source, specs, .. } = stmt
                             && source == crate::loader::FIRST_MODULE
                         {

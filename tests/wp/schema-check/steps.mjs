@@ -91,6 +91,14 @@ export const steps = {
   readoptRetype: app(["const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
     "const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: ref(memos).optional() });",
     `const tasks = table({ name: text().optional(), rank: text().optional() }, { existingTable: "sf_spc_schema_check_retype" });`], "memos, tags, tasks"),
+  // 17. Storage follows the builder: memos, a table() with rows, is declared with collection().
+  //     The build plans the table's drop and moves no rows; the deploy refuses it with the count.
+  memosAsCollection: `import { boolean, collection, defineConfig, number, ref, table, text } from "first";
+const memos = collection({ title: text(), text: text().max(5).optional() });
+const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: ref(memos).optional() });
+const tasks = table({ name: text().optional(), rank: text().optional() }, { existingTable: "sf_spc_schema_check_retype" });
+export default defineConfig({ name: "schema-check", collections: { memos }, tables: { tags, tasks } });
+`,
 };
 
 if (process.argv[2] !== undefined) {

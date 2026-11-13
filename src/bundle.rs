@@ -255,10 +255,6 @@ fn is_vendor(path: &str) -> bool {
     path.split('/').any(|part| part == "node_modules")
 }
 
-pub(crate) fn check_input(path: &str) -> Result<(), Diag> {
-    safe_input(path)
-}
-
 fn safe_input(path: &str) -> Result<(), Diag> {
     if path.is_empty()
         || path.contains('\\')

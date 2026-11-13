@@ -15,11 +15,12 @@ your app queries belongs in a table.
 
 ## Files
 
-- `first/tables.ts`: the example tables. Any `.ts` file under `first/` works; a `table()` registers
+- `first/tables.ts`: example tables. Any `.ts` file under `first/` works; a `table()` registers
   under its export name.
-- `tables.client.ts`: the same tables from a frontend, through the generated client.
-- `tsconfig.json` is not changed. If your editor can't resolve `"first"` in the two files above,
-  add `"first/**/*.ts"` and `"*.client.ts"` to its `include`.
+- `tables.client.ts`: the example tables from a frontend, through the generated client.
+- `tsconfig.json` is yours and is not changed. For `tsc` to check the two files above, its
+  `include` needs `"first/**/*.ts"` and `"*.client.ts"`. A project from
+  `npm create @spacefast/first` already has both.
 - `first/_generated/migrations/`: written by `first build`. It holds one SQL file per schema change
   and `snapshot.json`, the schema as of the last build. Commit the folder. Don't edit or delete
   anything in it: the next migration is planned against it.
@@ -35,9 +36,10 @@ already has, before it runs any of them:
   `wp first migrate --drop=tasks=12`.
 - A rename keeps its rows: `was: "old_name"` on the table, `.was("old")` on the field.
 
-A refusal changes nothing. `first dev` protects local rows the same way: a save that removes or
-retypes a field is refused. To apply it, stop dev, run `first build`, then start once with
-`first dev --allow-destructive`.
+A refusal changes nothing. `first dev` is stricter with your local data: it refuses a save that
+removes a field or changes its type, whether or not the table has rows. To apply one, stop dev and
+start it once with `first dev --allow-destructive`; run `first build` before that if you want to
+read the SQL.
 
 ## Reading and writing
 

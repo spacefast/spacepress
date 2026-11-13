@@ -6,9 +6,9 @@ use crate::{diag, layout, loader, platform, schema_php, wp_plugins};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// Compiles the project and writes nothing, for a command that only needs to know it compiles.
-pub(super) fn compile(project: &Path) -> Result<(), Diag> {
-    build(project, false).map(|_| ())
+/// Compiles the project and writes nothing: the schema, for a command that only needs to know it.
+pub(super) fn compile(project: &Path) -> Result<crate::schema::Schema, Diag> {
+    build(project, false).map(|built| built.schema)
 }
 
 /// Runs the whole pipeline in memory.

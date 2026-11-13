@@ -157,6 +157,7 @@ pub fn main() -> ExitCode {
             match rest.first() {
                 None => print!("{}", help()),
                 Some(name) => match usage(&rest.join(" ")).or_else(|| usage(name)) {
+                    Some(text) if name == "add" => print!("{text}\n{}", crate::commands::add::modules()),
                     Some(text) => println!("{text}"),
                     None => {
                         eprint!("no command {name}\n{}", help());

@@ -19,13 +19,13 @@ export const projects = table({
   archived: boolean().default(false),
 }, {
   // Who may do what. A role admits itself and every role above it:
-  // subscriber < author < editor < admin.
+  // subscriber < author < editor < admin. "subscriber" is anyone with an account.
   access: { read: "subscriber", create: "editor", update: "editor", delete: "editor" },
 });
 
 export const tasks = table({
-  // A foreign key to projects.id: MySQL refuses a task without its project, and deleting a
-  // project deletes its tasks.
+  // A foreign key to projects.id: the database refuses a task without its project, and deleting
+  // a project deletes its tasks.
   projectId: integer().references(() => projects.id, { onDelete: "cascade" }),
   title: text().max(200),
   done: boolean().default(false),
@@ -33,21 +33,27 @@ export const tasks = table({
 }, {
   access: {
     read: "subscriber",
-    create: "author",
-    // A rule can be a function. Returning a filter limits the rule to the rows that match it:
-    // here everyone below editor may change a task only while it is open.
-    update: ({ user }) => (user?.role === "editor" || user?.role === "admin" ? true : { done: false }),
+    create: "subscriber",
+    // A rule can be a function. `user` is null for a visitor who is not signed in, so refuse that
+    // first. Returning a filter limits the rule to the rows that match it: editors change any
+    // task, everyone else with an account only a task that is still open.
+    update: ({ user }) => {
+      if (!user || user.role === "guest") return false;
+      if (user.role === "editor" || user.role === "admin") return true;
+      return { done: false };
+    },
     delete: "editor",
   },
 });
 
 // Relations: to read a task with its project (`first.tasks.list({ with: { project: true } })`),
-// declare the relation and list it in first.config.ts:
+// declare the relation in first.config.ts. The first argument lists every kind the app has, so
+// add yours next to these two:
 //
 //   import { defineRelations } from "first";
 //   import { projects, tasks } from "./first/tables";
 //
-//   const relations = defineRelations({ projects, tasks }, (r) => ({
+//   const relations = defineRelations({ projects, tasks /* , and your other kinds */ }, (r) => ({
 //     tasks: { project: r.one.projects({ from: r.tasks.projectId, to: r.projects.id }) },
 //     projects: { tasks: r.many.tasks() },
 //   }));

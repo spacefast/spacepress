@@ -176,7 +176,8 @@ curl -u "$AUTH" -X POST $BASE/actions/consume -d '{"itemId":1}'
 plugins to `first/dist/wp-content/` without booting anything. `first add db` adds
 SQL tables to a project that has none: an example `first/tables.ts` with a
 foreign key and access rules, typed client calls for it, and a note on
-migrations. It only creates files that are missing. Commit
+migrations. It only creates files that are missing, and leaves the example out
+of a project that already has tables. Commit
 `first/_generated/migrations/`, `first/_generated/client/`, `first/_generated/db.d.ts` and
 `first/_generated/wp-plugins.lock.json`; `.first/` is local build and development state.
 

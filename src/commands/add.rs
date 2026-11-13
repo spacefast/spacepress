@@ -9,22 +9,34 @@
 //! again.
 
 use crate::diag::{self, Diag};
+use crate::schema::Schema;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+
+/// When a file belongs in the project, beyond its path being free.
+enum When {
+    Always,
+    /// An example of the module's own kinds: only for a project that has no `table()` yet, so an
+    /// author who moved or renamed the example doesn't get it back.
+    NoTables,
+    /// Code that calls these tables: only when the project has them.
+    Tables(&'static [&'static str]),
+}
 
 struct File {
     /// Relative to the project root, with `/` separators.
     path: &'static str,
     content: &'static str,
     what: &'static str,
+    when: When,
 }
 
 struct Module {
     name: &'static str,
     summary: &'static str,
     files: &'static [File],
-    /// What to run next, one line each.
+    /// What to do next, one line each.
     next: &'static [&'static str],
 }
 
@@ -36,25 +48,30 @@ const MODULES: &[Module] = &[Module {
             path: "first/tables.ts",
             content: include_str!("add/db/tables.ts"),
             what: "two example tables, with a foreign key and access rules",
+            when: When::NoTables,
         },
         File {
             path: "tables.client.ts",
             content: include_str!("add/db/tables.client.ts"),
-            what: "typed client calls for them",
+            what: "typed client calls for the example tables",
+            when: When::Tables(&["projects", "tasks"]),
         },
         File {
             path: "first/DATABASE.md",
             content: include_str!("add/db/DATABASE.md"),
             what: "how tables, migrations and the deploy check work",
+            when: When::Always,
         },
     ],
     next: &[
-        "first build   writes the SQL for the new tables to first/_generated/migrations/ (commit it)",
+        "first build   writes the SQL for new tables to first/_generated/migrations/ (commit it)",
         "first dev     applies it to the local site",
+        "tsc           checks the new files once tsconfig.json includes them (first/DATABASE.md)",
     ],
 }];
 
-fn modules() -> String {
+/// The modules, one line each, for usage errors and `first help add`.
+pub(crate) fn modules() -> String {
     let width = MODULES.iter().map(|m| m.name.len()).max().unwrap_or(0);
     let mut out = String::from("modules:\n");
     for module in MODULES {
@@ -73,23 +90,63 @@ fn occupied(path: &Path) -> bool {
     std::fs::symlink_metadata(path).is_ok()
 }
 
-/// Creates `path` with `content`. Fails when something is already there, so a file that appeared
-/// since [`occupied`] looked is never replaced.
-fn create(path: &Path, content: &str) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)?
-        .write_all(content.as_bytes())
+fn table(schema: &Schema, key: Option<&str>) -> bool {
+    schema
+        .collections
+        .values()
+        .any(|c| !c.editor && !c.auth && key.is_none_or(|key| c.key == key))
 }
 
-fn refuse(project: &Path, problem: &Diag, message: &str) -> ExitCode {
-    eprint!("{}", diag::render(problem, project));
-    eprintln!("{message}");
-    ExitCode::from(1)
+/// Why `file` doesn't belong in a project with this schema, or None when it does.
+fn skip(file: &File, schema: &Schema) -> Option<String> {
+    match file.when {
+        When::Always => None,
+        When::NoTables => table(schema, None).then(|| "the project already has tables".to_string()),
+        When::Tables(names) => names
+            .iter()
+            .find(|name| !table(schema, Some(name)))
+            .map(|name| format!("it calls the example table `{name}`, which the project doesn't have")),
+    }
+}
+
+/// What a run created, in order, so a failed run can take all of it out again.
+#[derive(Default)]
+struct Created {
+    files: Vec<&'static str>,
+    directories: Vec<PathBuf>,
+}
+
+impl Created {
+    /// Creates `path` with `content`, and the directories it needs. Fails when something is
+    /// already there, so a file that appeared since [`occupied`] looked is never replaced. A file
+    /// that could not be written whole is removed.
+    fn file(&mut self, project: &Path, path: &'static str, content: &str) -> std::io::Result<()> {
+        let full = project.join(path);
+        let mut missing: Vec<PathBuf> = full
+            .ancestors()
+            .skip(1)
+            .take_while(|directory| !occupied(directory))
+            .map(Path::to_path_buf)
+            .collect();
+        missing.reverse();
+        for directory in missing {
+            std::fs::create_dir(&directory)?;
+            self.directories.push(directory);
+        }
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&full)?;
+        self.files.push(path);
+        file.write_all(content.as_bytes())
+    }
+
+    fn undo(&self, project: &Path) {
+        for file in &self.files {
+            let _ = std::fs::remove_file(project.join(file));
+        }
+        // Only a directory this run made, and only while it is empty.
+        for directory in self.directories.iter().rev() {
+            let _ = std::fs::remove_dir(directory);
+        }
+    }
 }
 
 pub(crate) fn cli(args: &[String]) -> ExitCode {
@@ -108,71 +165,77 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
     let project = PathBuf::from(dir);
     let project = project.canonicalize().unwrap_or(project);
     let command = format!("first add {}", module.name);
-
-    if let Err(problem) = super::build::compile(&project) {
-        return refuse(
-            &project,
-            &problem,
-            &format!("{command}: the project has to compile first. Nothing was added."),
+    if !project.join("first.config.ts").is_file() {
+        eprintln!(
+            "{command}: no first.config.ts in {}. Run it in a First project, or pass the project's directory.",
+            project.display()
         );
+        return ExitCode::from(1);
     }
-    // Files and the directories made for them, in the order they were made.
-    let mut created: Vec<&File> = Vec::new();
-    let mut directories: Vec<PathBuf> = Vec::new();
-    let undo = |created: &[&File], directories: &[PathBuf]| {
-        for file in created {
-            let _ = std::fs::remove_file(project.join(file.path));
-        }
-        for directory in directories.iter().rev() {
-            let _ = std::fs::remove_dir(directory);
-        }
+    let refuse = |problem: &Diag, message: &str| {
+        eprint!("{}", diag::render(problem, &project));
+        eprintln!("{command}: {message}");
+        ExitCode::from(1)
     };
+
+    let mut schema = match super::build::compile(&project) {
+        Ok(schema) => schema,
+        Err(problem) => return refuse(&problem, "the project has to compile first. Nothing was added."),
+    };
+    let mut created = Created::default();
+    // Each file is judged against the project as it is with the files before it, so a file that
+    // calls the example's tables sees them once they are written.
+    let mut compiled = 0;
+    let mut report = Vec::new();
     for file in module.files {
-        let path = project.join(file.path);
-        if occupied(&path) {
+        if occupied(&project.join(file.path)) {
+            report.push((file, "kept   ", "already there, not changed".to_string()));
             continue;
         }
-        let missing: Vec<PathBuf> = path
-            .ancestors()
-            .skip(1)
-            .take_while(|directory| !occupied(directory))
-            .map(Path::to_path_buf)
-            .collect();
-        directories.extend(missing.into_iter().rev());
-        if let Err(error) = create(&path, file.content) {
-            undo(&created, &directories);
+        if !matches!(file.when, When::Always) && compiled < created.files.len() {
+            schema = match super::build::compile(&project) {
+                Ok(schema) => schema,
+                Err(problem) => {
+                    created.undo(&project);
+                    return refuse(
+                        &problem,
+                        "its files don't compile next to your code, so nothing was added. If a name is taken, rename yours for a moment and run it again.",
+                    );
+                }
+            };
+            compiled = created.files.len();
+        }
+        if let Some(why) = skip(file, &schema) {
+            report.push((file, "skipped", why));
+            continue;
+        }
+        if let Err(error) = created.file(&project, file.path, file.content) {
+            created.undo(&project);
             eprintln!("{command}: can't write {}: {error}. Nothing was added.", file.path);
             return ExitCode::from(1);
         }
-        created.push(file);
+        report.push((file, "created", file.what.to_string()));
     }
-    if !created.is_empty()
+    if compiled < created.files.len()
         && let Err(problem) = super::build::compile(&project)
     {
-        undo(&created, &directories);
+        created.undo(&project);
         return refuse(
-            &project,
             &problem,
-            &format!(
-                "{command}: its example doesn't compile next to your code, so nothing was added. If a name is taken, rename yours for a moment or write the tables by hand (docs/config-api.md)."
-            ),
+            "its files don't compile next to your code, so nothing was added. If a name is taken, rename yours for a moment and run it again.",
         );
     }
 
-    let width = module.files.iter().map(|f| f.path.len()).max().unwrap_or(0);
-    if created.is_empty() {
-        println!("{command}: nothing to add, every file is already there");
+    if created.files.is_empty() {
+        println!("{command}: nothing to add");
     } else {
         println!("{command}: {}", module.summary);
     }
-    for file in module.files {
-        if created.iter().any(|c| c.path == file.path) {
-            println!("  created  {:width$}  {}", file.path, file.what);
-        } else {
-            println!("  kept     {:width$}  already there, not changed", file.path);
-        }
+    let width = module.files.iter().map(|f| f.path.len()).max().unwrap_or(0);
+    for (file, status, detail) in &report {
+        println!("  {status}  {:width$}  {detail}", file.path);
     }
-    if !created.is_empty() {
+    if !created.files.is_empty() {
         println!("\nnext:");
         for line in module.next {
             println!("  {line}");

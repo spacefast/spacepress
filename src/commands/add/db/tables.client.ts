@@ -5,7 +5,7 @@ import { createClient } from "./first/_generated/client/index.ts";
 
 const first = createClient({ url: "/__first/api/v1" });
 
-/** The open tasks of one project, the soonest due date first. */
+/** The open tasks of one project by due date; tasks with no date come first. At most 50 unless you pass `limit`. */
 export function openTasks(projectId: number) {
   return first.tasks.list({ where: { projectId, done: false }, orderBy: { dueOn: "asc" } });
 }

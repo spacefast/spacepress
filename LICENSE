@@ -9,9 +9,6 @@ GPL-2.0-or-later (full text in LICENSE-GPL)
   runtime/admin/         the first-admin plugin and its screens, emitted
                          with `admin: true`
   runtime/wp-plugin/     the first-runtime and first-app plugin templates
-  runtime/pages/         the optional pages runtime, copied into the
-                         first-pages-<app> plugin that first-pages build and
-                         first compile-sources emit
 
   and every plugin that `first build` emits from them.
 

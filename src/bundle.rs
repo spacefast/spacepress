@@ -133,8 +133,6 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
             "hosted apps cannot install WordPress plugins; the host provides the platform",
         ));
     }
-    // TSX pages travel as their render artifact plus the inputs it was rendered from.
-    crate::pages::check(&*recording, &project, &built)?;
     let mut app = SourceBundle::default();
     let mut vendor = SourceBundle::default();
     if fs.exists(&project.join(crate::pipeline::OLD_LEDGER)) {
@@ -441,7 +439,6 @@ pub(crate) struct Compiled {
     /// The app has an auth collection, so it mounts `first-identity`.
     pub identity: bool,
     pub admin: bool,
-    pub pages: Option<String>,
 }
 
 /// `compile`, optionally without the schema-independent runtime plugins (a build store keeps
@@ -537,7 +534,6 @@ pub(crate) fn compile_tree(
     if built.plugins.as_ref().is_some_and(|p| !p.plugins.is_empty()) {
         return Err(failure("hosted apps cannot install WordPress plugins"));
     }
-    let pages = crate::pages::check(&*fs, &root, &built)?;
     let mut seeds = Vec::new();
     for (name, collection) in &built.schema.collections {
         let Some(sync) = &collection.sync else { continue };
@@ -624,9 +620,6 @@ pub(crate) fn compile_tree(
     )
     .map_err(io)?;
     crate::emit::emit_generated(assets, &migrations, &output.join("plugins"), &built, runtime).map_err(io)?;
-    if let Some(pages) = &pages {
-        crate::pages::emit(&output.join("plugins"), pages).map_err(io)?;
-    }
     let client = output.join("client");
     for (name, bytes) in &built.client_files {
         std::fs::create_dir_all(&client).map_err(io)?;
@@ -636,9 +629,9 @@ pub(crate) fn compile_tree(
         .into_iter()
         .map(|p| (p.slug, p.version))
         .collect();
-    // The app's first.config.ts routes and TSX pages, so the host can tell which of its URLs outside
-    // /wp-json to hand to WordPress without booting it to ask. Identity's /identity and the pages
-    // plugin's assets/ are the host's own and not listed. Both lists use the route path grammar: a
+    // The app's `first/app/` routes and pages, so the host can tell which of its URLs outside
+    // /wp-json to hand to WordPress without booting it to ask. Identity's /identity and the app
+    // plugin's own files are not listed. Both lists use the route path grammar: a
     // leading `/`, no trailing slash except `/`, literal segments, `:name` for one segment and a
     // final `*name` for one or more. A host matching against them should:
     // - trim one trailing `/` from the request path first (pages canonicalize `/about/` to `/about`);
@@ -647,10 +640,7 @@ pub(crate) fn compile_tree(
     //   the wrong method gets the runtime's 405 rather than the host's 404.
     // `pagePaths` are GET and HEAD only. The runtime still picks the most specific route.
     let mut app_routes: Vec<(String, String)> = Vec::new();
-    let mut page_paths: Vec<String> = pages
-        .as_ref()
-        .map(|p| p.patterns.iter().map(|pattern| page_path(pattern)).collect())
-        .unwrap_or_default();
+    let mut page_paths: Vec<String> = Vec::new();
     // `first/app/` pages are GET paths; `route.ts` handlers and pages with handlers take any
     // method. A zero-or-more catch-all (`**rest`) is its folder plus `*rest`, in the host grammar.
     if let Some(app) = &built.schema.app {
@@ -710,7 +700,7 @@ pub(crate) fn compile_tree(
     let summary = serde_json::json!({"name": schema.name, "collections": collections, "tables": tables, "actions": actions,
         "identity": schema.collections.values().any(|c| c.auth), "admin": schema.admin});
     let manifest = serde_json::json!({"format":"first.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
-        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "pages":pages.as_ref().map(|p| format!("first-pages-{}", p.app)), "routes":routes, "pagePaths":page_paths,
+        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "routes":routes, "pagePaths":page_paths,
         "summary":summary, "host":crate::host_contract::manifest_host(), "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
     std::fs::write(
         output.join("manifest.json"),
@@ -721,7 +711,6 @@ pub(crate) fn compile_tree(
         manifest,
         identity: built.schema.collections.values().any(|c| c.auth),
         admin: built.schema.admin,
-        pages: pages.as_ref().map(|p| format!("first-pages-{}", p.app)),
         name: built.schema.name,
     })
 }
@@ -792,15 +781,4 @@ pub(crate) fn compile_cli(args: &[String]) -> std::process::ExitCode {
             std::process::ExitCode::FAILURE
         }
     }
-}
-
-/// A page route pattern (`/notes/[]`, whose last segment is an item) in the route path grammar
-/// (`/notes/:item`), so one matcher serves `routes` and `pagePaths`.
-#[cfg(feature = "host")]
-fn page_path(pattern: &str) -> String {
-    pattern
-        .split('/')
-        .map(|segment| if segment == "[]" { ":item" } else { segment })
-        .collect::<Vec<_>>()
-        .join("/")
 }

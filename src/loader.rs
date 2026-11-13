@@ -178,6 +178,20 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         }
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
     }
+    // Pages beside first.config.ts are from before `first/app/`: refuse them rather than build a
+    // site without them. (A converted 0.8 capsule's `pages/` is read by `first migrate`, not here.)
+    if !fs.frozen_capture() && fs.is_dir(&program.root.join("pages")) {
+        let pages = program.root.join("pages");
+        let file = diag::register_file(&pages, "");
+        diagnostics.push(
+            Diag::new(
+                Span { file, start: 0, end: 0 },
+                "pages/ beside first.config.ts is from the old pages renderer; nothing serves it",
+            )
+            .help("TSX pages live in first/app/ now (docs/pages.md): move each pages/<path>/page.tsx to first/app/<path>/page.tsx, and replace load() with `await db.query…` in the page")
+            .code(diag::Code::Import),
+        );
+    }
     // Handlers beside first.config.ts are from before `first/wp-hooks/`: refuse them rather than
     // build without them, which would drop every filter they register.
     let old = program.root.join("wp-hooks");

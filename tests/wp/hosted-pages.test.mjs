@@ -1,5 +1,5 @@
 // Run by tests/wp/hosted-pages-run.sh against a WordPress/MariaDB site that holds only the output of
-// `first compile-sources` for examples/full-site: pages, the island, the client component, the action and the custom routes.
+// `first compile-sources` for examples/full-site: its first/app pages, client components, action and HTTP routes.
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHmac } from 'node:crypto';
@@ -16,14 +16,14 @@ const exec = promisify(execFile);
 const site = JSON.parse(readFileSync(join(app, 'harness.json'), 'utf8'));
 const base = site.url.replace(/\/$/, '');
 const editor = `Basic ${Buffer.from(`editor:${site.users.editor.appPassword}`).toString('base64')}`;
-// playwright-core is pinned by packages/pages; nothing else in this lane needs npm.
-const { chromium } = createRequire(new URL('../../packages/pages/package.json', import.meta.url))('playwright-core');
+// playwright-core is pinned by tests/differential/client; nothing else in this lane needs npm.
+const { chromium } = createRequire(new URL('../differential/client/package.json', import.meta.url))('playwright-core');
 
 function chromiumPath() {
-  if (process.env.FIRST_PAGES_CHROMIUM) return process.env.FIRST_PAGES_CHROMIUM;
+  if (process.env.FIRST_CHROMIUM) return process.env.FIRST_CHROMIUM;
   const cache = join(homedir(), '.cache/ms-playwright');
   const shell = readdirSync(cache).filter((name) => name.startsWith('chromium_headless_shell-')).sort().reverse()[0];
-  if (shell === undefined) throw new Error('Set FIRST_PAGES_CHROMIUM to a chrome-headless-shell executable.');
+  if (shell === undefined) throw new Error('Set FIRST_CHROMIUM to a chrome-headless-shell executable.');
   return join(cache, shell, 'chrome-headless-shell-linux64/chrome-headless-shell');
 }
 
@@ -37,10 +37,9 @@ const api = async (path, init = {}) => {
 };
 const wp = async (...args) => (await exec(harness, ['wp', ...args], { maxBuffer: 8 * 1024 * 1024 })).stdout.trim();
 
-test('the host-compiled full site serves pages, hydrates its island, runs its action and answers its routes', { timeout: 300000 }, async () => {
+test('the host-compiled full site serves its first/app pages, hydrates its client components, runs its action and answers its routes', { timeout: 300000 }, async () => {
   const compiled = JSON.parse(readFileSync(join(app, 'compiled/manifest.json'), 'utf8'));
-  assert.equal(compiled.pages, 'first-pages-fullsite', 'the hosted compile emitted the pages plugin');
-  assert.match(await wp('plugin', 'list', '--status=active', '--field=name'), /first-pages-fullsite/);
+  assert.equal(compiled.pages ?? null, null, 'no separate pages plugin: the app plugin renders first/app/');
 
   const note = await api('/__first/api/v1/notes', { method: 'POST', body: JSON.stringify({
     title: 'Hosted light', slug: 'hosted-light', dek: 'Served from compile-sources', status: 'published',
@@ -50,49 +49,57 @@ test('the host-compiled full site serves pages, hydrates its island, runs its ac
   const draft = await api('/__first/api/v1/notes', { method: 'POST', body: JSON.stringify({ title: 'Hidden draft', slug: 'hidden-draft', status: 'draft' }) });
   assert.equal(draft.status, 201, JSON.stringify(draft.body));
 
-  // 1. HTML pages: home, a static page with an asset, the listing, an item route and the claimed 404.
+  // 1. HTML pages: home, a static page with an image, the listing, a note's own URL and the 404.
   const home = await http('/');
   assert.equal(home.status, 200);
   assert.match(home.text, /<title>Home · Field Notes<\/title>/);
-  assert.match(home.text, /<h1 class="wp-block-heading">Notes from the field<\/h1>/);
-  assert.match(home.text, new RegExp(`<a href="${base}/notes/hosted-light/">Hosted light</a>`));
+  assert.match(home.text, /<h1>Notes from the field<\/h1>/);
+  assert.match(home.text, /<a href="\/notes\/hosted-light"[^>]*>Hosted light<\/a>/);
   assert.doesNotMatch(home.text, /Hidden draft/);
-  assert.match(home.headers.get('cache-control'), /private, no-store/);
-  const about = await http('/about/');
+  assert.equal(home.headers.get('cache-control'), 'public, s-maxage=300, max-age=0, must-revalidate', "an anonymous visitor's page is shared");
+  // The layout's stylesheet, from the app plugin under a content-hashed name, cached for a year.
+  const css = /href='([^']+\/first\/app\/assets\/global-[0-9a-f]{16}\.css)'/.exec(home.text)?.[1];
+  assert.ok(css, 'the layout links its stylesheet');
+  const sheet = await fetch(css);
+  assert.equal(sheet.status, 200);
+  assert.match(sheet.headers.get('cache-control') ?? sheet.headers.get('expires') ?? '', /max-age=31536000|GMT/);
+  assert.match(await sheet.text(), /body\.first-app/);
+  const about = await http('/about');
   assert.equal(about.status, 200);
-  const svg = /src="([^"]+\/assets\/compass-[A-Z0-9]+\.svg)"/.exec(about.text)?.[1];
-  assert.ok(svg, 'the imported asset is served from the hosted plugin');
+  const svg = /src="([^"]+\/first\/app\/assets\/compass-[0-9a-f]{16}\.svg)"/.exec(about.text)?.[1];
+  assert.ok(svg, 'the imported SVG is its URL in the app plugin');
   assert.equal((await fetch(svg)).status, 200);
-  const css = /href='([^']+\/assets\/page-[0-9a-f]+\.css)'/.exec(about.text)?.[1];
-  assert.ok(css && (await (await fetch(css)).text()).includes('body.first-pages'), 'route stylesheet');
-  assert.match((await http('/notes/')).text, /Hosted light/);
-  const detail = await http('/notes/hosted-light/');
+  assert.match((await http('/notes')).text, /Hosted light/);
+  const detail = await http('/notes/hosted-light');
   assert.equal(detail.status, 200);
   assert.match(detail.text, /<title>Hosted light · Field Notes<\/title>/);
   assert.match(detail.text, /Rendered by <em>WordPress<\/em>\./);
+  assert.match(detail.text, /<article class="note_note">/, "the CSS module's class, renamed as packages/pages named it");
+  assert.match(detail.text, /\/first\/app\/assets\/note-[0-9a-f]{16}\.css/, 'the page links its module stylesheet');
   assert.doesNotMatch(detail.text, /Staff only/, 'field access applies to anonymous rendering');
-  const missing = await http('/notes/hidden-draft/');
+  const missing = await http('/notes/hidden-draft');
   assert.equal(missing.status, 404);
-  assert.match(missing.text, /<h1 class="wp-block-heading">Not found<\/h1>/);
+  assert.match(missing.text, /<h1>Not found<\/h1>/);
   assert.doesNotMatch(missing.text, /Hidden draft/);
 
-  // 2. The island hydrates in Chromium and its button calls the compiled `cheer` action.
+  // 2. A note's cheer button is a "use client" component: it hydrates in Chromium and calls `cheer`.
   const browser = await chromium.launch({ executablePath: chromiumPath() });
   try {
     const tab = await browser.newPage();
     const errors = [];
     tab.on('pageerror', (error) => errors.push(error.message));
     const actionCalls = [];
-    tab.on('request', (request) => { if (request.url().includes('/__first/api/v1/actions/cheer')) actionCalls.push(request.method()); });
-    await tab.goto(`${base}/notes/hosted-light/`);
-    assert.equal(await tab.textContent('[data-wp-text="context.count"]'), '0');
-    await tab.click('button:has-text("Cheer")');
-    await tab.waitForFunction(() => document.querySelector('[data-wp-text="context.count"]')?.textContent === '1');
-    await tab.click('button:has-text("Cheer")');
-    await tab.waitForFunction(() => document.querySelector('[data-wp-text="context.count"]')?.textContent === '2');
-    assert.deepEqual(actionCalls, ['POST', 'POST'], 'the hydrated island posted to the action');
+    tab.on('request', (request) => { if (request.url().includes('/actions/cheer')) actionCalls.push(request.method()); });
+    await tab.goto(`${base}/notes/hosted-light`);
+    const button = 'button.cheer';
+    assert.equal(await tab.textContent(button), '0 cheers');
+    await tab.click(button);
+    await tab.waitForFunction((s) => document.querySelector(s)?.textContent === '1 cheer', button, { timeout: 15000 });
+    await tab.click(button);
+    await tab.waitForFunction((s) => document.querySelector(s)?.textContent === '2 cheers', button, { timeout: 15000 });
+    assert.deepEqual(actionCalls, ['POST', 'POST'], 'the hydrated component posted to the action');
     await tab.reload();
-    assert.equal(await tab.textContent('[data-wp-text="context.count"]'), '2', 'the server renders the stored count');
+    assert.equal(await tab.textContent(button), '2 cheers', 'the server renders the stored count');
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

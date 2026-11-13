@@ -55,18 +55,65 @@ final class Index
         }
         self::$registered = true;
         \First\SystemTables::register('__' . self::TABLE, [
-            'CREATE TABLE IF NOT EXISTS `{prefix}' . self::TABLE . '` (`kind` VARCHAR(64) NOT NULL, `item` VARCHAR(191) NOT NULL, `field` VARCHAR(64) NOT NULL, '
-            . '`body` LONGTEXT NOT NULL, PRIMARY KEY (`kind`, `item`, `field`), KEY `item` (`kind`, `item`), FULLTEXT KEY `body` (`body`)) '
+            // `kind`, `item` and `field` are bytes: a row's id is matched exactly as stored (`a` is not
+            // `A`), and comparing them involves no collation to clash with the connection's.
+            // A table from before ids were bytes is dropped and created again: it holds nothing that
+            // isn't rebuilt from the rows (the shape is cleared when tables are installed).
+            static function (\First\Store $store): void {
+                global $wpdb;
+                $connection = new \First\Wp\Connection($wpdb);
+                if ($connection->run('SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? AND DATA_TYPE = ?',
+                    [$connection->prefix() . self::TABLE, 'item', 'varchar']) !== []) {
+                    $store->applySystemStatements(['DROP TABLE IF EXISTS `{prefix}' . self::TABLE . '`']);
+                }
+            },
+            'CREATE TABLE IF NOT EXISTS `{prefix}' . self::TABLE . '` (`kind` VARBINARY(64) NOT NULL, `item` VARBINARY(764) NOT NULL, `field` VARBINARY(64) NOT NULL, '
+            . '`body` LONGTEXT NOT NULL, PRIMARY KEY (`kind`, `item`, `field`), FULLTEXT KEY `body` (`body`)) '
             . 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
         ]);
         Extensions::onWritten(self::written(...));
+        if (function_exists('add_action')) {
+            // The runtime created or changed this table: every kind is indexed again (the shape
+            // recorded for the old table no longer says what the new one holds).
+            add_action('first_runtime_tables_installed', static fn () => delete_option(self::SHAPE));
+            // After every build and every runtime update, once the app runs: kinds whose searchable
+            // fields changed since they were last indexed are rebuilt by a queued job. One cached
+            // option read when nothing changed.
+            add_action('wp_loaded', static fn () => self::reindexChanged());
+            // Users written outside First's pipeline (wp_insert_user, wp_update_user, the profile
+            // form, identity's sign-up) report nothing: the member's entries follow core's user
+            // hooks instead, re-read from the stored row. Inside a First write this repeats what
+            // its own report does.
+            add_action('user_register', static fn (int $id) => self::user($id), PHP_INT_MAX);
+            add_action('profile_update', static fn (int $id) => self::user($id), PHP_INT_MAX);
+            add_action('deleted_user', static fn (int $id) => self::user($id), PHP_INT_MAX);
+        }
+    }
+
+    /** A WordPress user changed outside the pipeline: their member entries, from the user as stored now. */
+    public static function user(int $id): void
+    {
+        $plugin = \First\Wp\Plugin::instance();
+        $collection = $plugin?->schema->auth()['collection'] ?? null;
+        if ($collection === null || $plugin->unavailable() !== null) {
+            return;
+        }
+        $plugin->app();
+        if (!Storage::ready()) {
+            return;
+        }
+        $spec = db()->schema()->collection($collection);
+        $fields = self::fields($spec);
+        if ($fields !== []) {
+            self::refresh($collection, $spec, $id, $fields);
+        }
     }
 
     /** The runtime-native job that rebuilds one kind's entries, a batch per run (Action Scheduler). */
     public static function jobSpec(): array
     {
         return [
-            'input' => ['kind' => ['type' => 'text', 'notNull' => true], 'after' => ['type' => 'text']],
+            'input' => ['kind' => ['type' => 'text', 'notNull' => true], 'after' => ['type' => 'text'], 'generation' => ['type' => 'text']],
             'handler' => [self::class, 'rebuild'], 'retries' => 5, 'agents' => false,
         ];
     }
@@ -116,21 +163,40 @@ final class Index
             return;
         }
         if ($op === 'delete') {
-            Storage::run('DELETE FROM {search} WHERE "kind" = ? AND "item" = ?', [$collection, (string) $id]);
+            Storage::run('DELETE FROM {search} WHERE "kind" = ? AND "item" = ?', [Storage::bytes($collection), Storage::bytes((string) $id)]);
 
             return;
         }
-        self::put($collection, (string) $id, $fields, $row);
+        self::refresh($collection, $spec, $id, $fields);
+    }
+
+    /**
+     * A row's entries from the row as it is stored now, read as the system. An after-hook that wrote
+     * the row again reported its own write first; the outer report then reads the same final row, so
+     * the last write to the index is never an older snapshot.
+     *
+     * @param list<string> $fields
+     */
+    private static function refresh(string $collection, array $spec, int|string $id, array $fields): void
+    {
+        $stored = db()->findFirst($collection, ['where' => [$spec['primaryKey'] => $id], 'columns' => array_fill_keys([$spec['primaryKey'], ...$fields], true)]
+            + self::everyLocale($collection));
+        if ($stored === null) {
+            Storage::run('DELETE FROM {search} WHERE "kind" = ? AND "item" = ?', [Storage::bytes($collection), Storage::bytes((string) $id)]);
+
+            return;
+        }
+        self::put($collection, (string) $id, $fields, $stored);
     }
 
     /** @param list<string> $fields */
     private static function put(string $collection, string $id, array $fields, array $row): void
     {
-        Storage::run('DELETE FROM {search} WHERE "kind" = ? AND "item" = ?', [$collection, $id]);
+        Storage::run('DELETE FROM {search} WHERE "kind" = ? AND "item" = ?', [Storage::bytes($collection), Storage::bytes($id)]);
         foreach ($fields as $field) {
             $text = self::text($row[$field] ?? null);
             if ($text !== '') {
-                Storage::run('INSERT INTO {search} ("kind", "item", "field", "body") VALUES (?, ?, ?, ?)', [$collection, $id, $field, $text]);
+                Storage::run('INSERT INTO {search} ("kind", "item", "field", "body") VALUES (?, ?, ?, ?)', [Storage::bytes($collection), Storage::bytes($id), Storage::bytes($field), $text]);
             }
         }
     }
@@ -142,16 +208,20 @@ final class Index
             return '';
         }
         $text = preg_replace('/<!--.*?-->/s', ' ', $value) ?? $value;
+        // `<p>green</p><p>tea</p>` reads as two words: every tag is a boundary before tags go.
+        $text = preg_replace('/<[^>]*>/', ' ', $text) ?? $text;
         $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
         return trim((string) preg_replace('/\s+/u', ' ', $text));
     }
 
     /**
-     * One run of a kind's rebuild: the next BATCH rows after `after`, read as the system (the index
-     * holds every row; reads filter), then the next run is queued. The first run clears the kind.
+     * One run of a kind's rebuild: the next BATCH rows after `after`, each re-indexed from the row as
+     * stored now (locked for the write, so a concurrent edit commits before or after it, never under
+     * it), then the next run is queued. Rows already indexed stay searchable meanwhile; the last run
+     * removes entries of rows that no longer exist and of fields no longer searchable.
      *
-     * @param array{kind: string, after?: ?string} $input
+     * @param array{kind: string, after?: ?string, generation?: ?string} $input
      */
     public static function rebuild(array $input, array $ctx = []): void
     {
@@ -164,23 +234,34 @@ final class Index
         $pk = $spec['primaryKey'];
         $fields = self::fields($spec);
         $after = $input['after'] ?? null;
-        db()->transaction(static function () use ($kind, $spec, $pk, $fields, $after): void {
-            if ($after === null) {
-                Storage::run('DELETE FROM {search} WHERE "kind" = ?', [$kind]);
+        $generation = (string) ($input['generation'] ?? self::generation($kind, $fields));
+        if ($generation !== self::generation($kind, $fields)) {
+            return; // a newer build's rebuild of this kind has taken over
+        }
+        db()->transaction(static function () use ($kind, $spec, $pk, $fields, $after, $generation): void {
+            $where = $after === null ? [] : ['where' => [$pk => ['gt' => is_numeric($after) && $spec['columns'][$pk]['type'] === 'integer' ? (int) $after : $after]]];
+            $ids = array_column(db()->findMany($kind, $where + ['columns' => [$pk => true], 'orderBy' => [$pk => 'asc'], 'limit' => self::BATCH] + self::everyLocale($kind)), $pk);
+            foreach ($ids as $id) {
+                Storage::lock($kind, (string) $id);
+                self::refresh($kind, $spec, $id, $fields);
             }
-            if ($fields === []) {
+            if (count($ids) === self::BATCH) {
+                $last = (string) $ids[count($ids) - 1];
+                Jobs::enqueue(self::JOB, ['kind' => $kind, 'after' => $last, 'generation' => $generation], ['key' => substr(hash('sha256', "$generation:$last"), 0, 40)]);
+
                 return;
             }
-            $where = $after === null ? [] : ['where' => [$pk => ['gt' => is_numeric($after) && $spec['columns'][$pk]['type'] === 'integer' ? (int) $after : $after]]];
-            $columns = array_fill_keys([$pk, ...$fields], true);
-            $rows = db()->findMany($kind, $where + ['columns' => $columns, 'orderBy' => [$pk => 'asc'], 'limit' => self::BATCH] + self::everyLocale($kind));
-            foreach ($rows as $row) {
-                self::put($kind, (string) $row[$pk], $fields, $row);
-            }
-            if (count($rows) === self::BATCH) {
-                Jobs::enqueue(self::JOB, ['kind' => $kind, 'after' => (string) $rows[count($rows) - 1][$pk]], ['key' => "$kind:" . $rows[count($rows) - 1][$pk]]);
-            }
+            // The last batch: what the rebuild didn't write is stale.
+            $in = $fields === [] ? '' : ' AND "field" NOT IN (' . implode(', ', array_fill(0, count($fields), '?')) . ')';
+            Storage::run('DELETE FROM {search} WHERE "kind" = ?' . $in, [Storage::bytes($kind), ...array_map(Storage::bytes(...), $fields)]);
+            Storage::removeMissing($kind, $spec);
         });
+    }
+
+    /** What a rebuild of $kind is for: the kind and its searchable fields, as a short key. */
+    private static function generation(string $kind, array $fields): string
+    {
+        return substr(hash('sha256', $kind . ':' . implode(',', $fields)), 0, 32);
     }
 
     /**
@@ -214,11 +295,12 @@ final class Index
                 // A kind with no rows yet (a new kind, a new site) has nothing to index: its rows are
                 // indexed as they are written.
                 if (($previous[$kind] ?? null) !== $fields && db()->count($kind, null, null, self::everyLocale($kind)) > 0) {
-                    Jobs::enqueue(self::JOB, ['kind' => $kind, 'after' => null], ['key' => "$kind:start"]);
+                    $generation = self::generation($kind, $fields);
+                    Jobs::enqueue(self::JOB, ['kind' => $kind, 'after' => null, 'generation' => $generation], ['key' => $generation]);
                 }
             }
             foreach (array_keys(array_diff_key($previous, $shape)) as $gone) {
-                Storage::run('DELETE FROM {search} WHERE "kind" = ?', [(string) $gone]);
+                Storage::run('DELETE FROM {search} WHERE "kind" = ?', [Storage::bytes((string) $gone)]);
             }
             update_option(self::SHAPE, $shape, false);
         });
@@ -252,8 +334,8 @@ final class Index
         $sql = [];
         $params = [];
         foreach ($match as [$condition, $values]) {
-            $sql[] = "EXISTS (SELECT 1 FROM $table s WHERE s.`kind` = ? AND s.`item` = CAST($key AS CHAR) AND s.`field` IN ($in) AND $condition)";
-            array_push($params, $collection, ...$fields, ...$values);
+            $sql[] = "EXISTS (SELECT 1 FROM $table s WHERE s.`kind` = ? AND " . Storage::itemIs($key) . " AND s.`field` IN ($in) AND $condition)";
+            array_push($params, Storage::bytes($collection), ...array_map(Storage::bytes(...), $fields), ...$values);
         }
 
         return new SqlPredicate(implode(' AND ', $sql), $params);

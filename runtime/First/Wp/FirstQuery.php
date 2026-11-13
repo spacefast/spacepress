@@ -106,7 +106,8 @@ final class FirstQuery
     /**
      * `search`: every word in a searchable field the viewer may read (spec §2.6), through the search
      * index ({@see \First\Search\Index}). `search_columns` narrows it to core's title, content and
-     * excerpt columns, each meaning the kind's own title or content field.
+     * excerpt columns, each meaning the kind's own title or content field; on the users route, `name`
+     * is the member's name (`id`, `username`, `slug` and `email` aren't searchable fields).
      *
      * @return ?array{search: string, searchFields?: list<string>}
      */
@@ -121,7 +122,9 @@ final class FirstQuery
         if ($columns === []) {
             return ['search' => $term];
         }
-        $core = ['post_title' => $spec['title'] ?? null, 'post_content' => $spec['content'] ?? null, 'post_excerpt' => $spec['content'] ?? null];
+        $core = $collection === (Plugin::instance()?->schema->auth()['collection'] ?? null)
+            ? ['name' => 'name']
+            : ['post_title' => $spec['title'] ?? null, 'post_content' => $spec['content'] ?? null, 'post_excerpt' => $spec['content'] ?? null];
 
         return ['search' => $term, 'searchFields' => array_values(array_unique(array_filter(array_map(static fn ($c) => $core[$c] ?? null, $columns))))];
     }

@@ -411,6 +411,11 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:15");
     rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:15");
     rejects(
+        "reject-reserved-search",
+        "\"search\" is reserved",
+        "first.config.ts:2:16",
+    );
+    rejects(
         "reject-post-type-length",
         "WordPress post types are limited to 20 characters and First prefixes `first_`",
         "first.config.ts:2:18",

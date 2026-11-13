@@ -658,19 +658,31 @@ The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
 
 ## Search (`Search\Index`, `Search\Module`)
 
+`search` is a reserved kind name: the compiler refuses it, as it does `media` and
+`files`, because the API serves `GET /search`.
+
 `search` on a kind (`posts.list({ search })`, `?search=` on `/__first/api/v1/<kind>`
 and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
 
 - **The index.** `{prefix}first__search` has one row per (kind, row id, field):
-  the field's text with markup and block comments removed and entities decoded.
+  the field's text with markup and block comments removed (each tag is a word
+  break) and entities decoded. Kind, row id and field are bytes, so ids that
+  differ only in case are different rows.
   Searchable fields are the kind's title and content and every `text` and
   `richText` field without an `enum`. The table carries a FULLTEXT key.
 - **Kept on write.** `Extensions::onWritten` replaces a row's entries inside the
   write's transaction, for every pipeline write and every wp-admin or core REST
-  save; a rollback leaves the index as it was. When a build changes a kind's
-  searchable fields, the first request after it queues the runtime job
+  save, from the row as stored at that moment (an after-hook that writes the row
+  again leaves its own text, not the outer write's); a rollback leaves the index
+  as it was. Users changed by WordPress itself (`wp_insert_user`,
+  `wp_update_user`, the profile screen, sign-up) are re-indexed on core's
+  `user_register`, `profile_update` and `deleted_user`. When a build changes a
+  kind's searchable fields, the first request after it queues the runtime job
   `first.search.reindex` (outbox and Action Scheduler) for each kind that has
-  rows; it re-indexes 200 rows per run and queues the next.
+  rows. It re-indexes 200 rows per run, each locked against a concurrent write,
+  and queues the next; nothing is cleared first, so rows stay searchable during
+  it, and the last run removes entries of deleted rows and dropped fields. A run
+  queued for an older build's fields does nothing.
 - **Read.** A search becomes one condition on the kind's own read: every word
   occurs, as the start of a word, in an indexed field the reader may read in
   every row (`FieldAccess::mayHide`). The read rule, draft visibility and the
@@ -679,6 +691,19 @@ and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
   `MATCH ... AGAINST ('+word*' IN BOOLEAN MODE)`; the SQLite translator with
   `FIRST_WORD_PREFIX(body, word)`, which `Wp\Connection` registers. A text with
   no letter or digit matches nothing; at most 8 words and 200 characters.
+- **Not refused.** A search is never a 403 because a field is hidden from the
+  reader: it runs over the fields they may read. On core's users route
+  (`/wp/v2/users?search=`) First selects the members as the reader and core's
+  own search over login, nicename and email is off; `search_columns=name` is
+  the member's name, and other columns match nothing. `X-WP-Total` counts the
+  same members.
+- **Engine differences.** On MySQL and MariaDB an InnoDB FULLTEXT index sees a
+  transaction's writes only after it commits, so a search inside the
+  transaction that wrote a row (a hook searching for the row it just saved)
+  doesn't find it; the SQLite path does. MySQL folds accents with the table's
+  `utf8mb4_unicode_ci` collation (`cafe` finds `café`) and keeps `_` inside a
+  word (`bar` doesn't find `foo_bar`); the SQLite path folds case only and
+  starts a word after `_`.
 - `GET /search` runs the search on every kind with a searchable field and an
   API `list`, as the caller. A kind the caller may not read, and a `kinds=`
   name that isn't a searchable kind, are left out without a word.

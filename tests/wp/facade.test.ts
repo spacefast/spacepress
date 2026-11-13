@@ -273,24 +273,3 @@ test("a restore puts back the whole revision, fields hidden from the caller incl
   assert.deepEqual([direct.status, direct.json.pointer], [403, "/salary"]);
   assert.equal((await f("POST", `/payroll/${id}/revisions/${oldest}/restore`)).status, 404, "anonymous: no such row");
 });
-  assert.equal(revisions.status, 200, JSON.stringify(revisions.json));
-  const oldest = revisions.json.data.at(-1).id;
-  const snapshot = await f("GET", `/payroll/${id}/revisions/${oldest}`, { as: "editor" });
-  assert.equal("writeOnly" in snapshot.json.data, false, "the revision is masked for the editor");
-  const restored = await f("POST", `/payroll/${id}/revisions/${oldest}/restore`, { as: "editor" });
-  assert.equal(restored.status, 200, JSON.stringify(restored.json));
-  assert.equal(restored.json.data.title, `Restore pay ${run}`);
-  assert.equal("writeOnly" in restored.json.data, false, "the answer is masked like every read");
-  const stored = first("find", "payroll", JSON.stringify({ where: { id } }))[0];
-  assert.deepEqual([stored.title, stored.writeOnly], [`Restore pay ${run}`, "w1"], "the write-only field came back from the revision");
-  // salary: the editor may not set it, so its restore is refused whole, whatever the stored value is.
-  const paid = first("insert", "payroll", JSON.stringify({ title: `Paid ${run}`, salary: "1k" }))[0].id;
-  first("update", "payroll", JSON.stringify({ id: paid }), JSON.stringify({ title: `Paid ${run} later`, salary: "2k" }));
-  const paidOldest = (await f("GET", `/payroll/${paid}/revisions`, { as: "editor" })).json.data.at(-1).id;
-  const refused = await f("POST", `/payroll/${paid}/revisions/${paidOldest}/restore`, { as: "editor" });
-  assert.deepEqual([refused.status, refused.json.code, refused.json.pointer], [403, "forbidden", "/salary"]);
-  assert.deepEqual(Object.values(first("find", "payroll", JSON.stringify({ where: { id: paid }, columns: { title: true, salary: true } }))[0]), [`Paid ${run} later`, "2k"], "nothing was restored");
-  assert.equal((await f("POST", `/payroll/${paid}/revisions/${paidOldest}/restore`, { as: "admin" })).status, 200, "an admin restores it");
-  assert.equal(first("find", "payroll", JSON.stringify({ where: { id: paid } }))[0].salary, "1k");
-  assert.equal((await f("POST", `/payroll/${id}/revisions/${oldest}/restore`)).status, 404, "anonymous: no such row");
-});

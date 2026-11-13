@@ -154,38 +154,45 @@ fn snippet(text: &str, terms: &[String]) -> String {
     )
 }
 
-/// Sections ranked for `query`: those matching more of its words first, then by how often and where
-/// (a heading or the page's title counts for more than the text). Ties keep page order.
+/// Sections ranked for `query` by which of its words they hold and where.
 pub(super) fn search(query: &str, limit: usize) -> Vec<Value> {
     let terms = {
         let mut terms = words(query);
-        terms.dedup();
+        let mut seen = std::collections::HashSet::new();
+        terms.retain(|term| seen.insert(term.clone()));
         terms
     };
     if terms.is_empty() {
         return Vec::new();
     }
-    let mut hits: Vec<(usize, usize, Value)> = Vec::new();
+    let mut hits: Vec<(f64, Value)> = Vec::new();
     for (path, text) in DOCS {
         let (body, front_title, _) = parts(text);
         let page_title = title(path, body, front_title);
         let page_words = words(&format!("{path} {page_title}"));
         for section in sections(body) {
             let heading_words = words(section.heading);
-            let text = section.body.to_lowercase();
-            let (mut matched, mut score) = (0, 0);
+            // Whole words, so `access` does not match `accessors`; a plural or a possessive still
+            // matches (`rules` for `rule`, `site's` for `site`).
+            let text_words = words(section.body);
+            let same = |word: &String, term: &String| {
+                word == term
+                    || word.strip_suffix('s').is_some_and(|stem| stem == term)
+                    || term.strip_suffix('s').is_some_and(|stem| stem == word)
+            };
+            // Each word of the query found counts, a heading most, the page's title next; mentions
+            // in the text count less with each repeat, so a long section does not win by length.
+            let mut score = 0.0;
             for term in &terms {
-                let in_heading = heading_words.iter().filter(|word| *word == term).count();
-                let in_page = page_words.iter().filter(|word| *word == term).count();
-                let in_text = text.matches(term.as_str()).count();
+                let in_heading = heading_words.iter().filter(|word| same(word, term)).count();
+                let in_page = page_words.iter().filter(|word| same(word, term)).count();
+                let in_text = text_words.iter().filter(|word| same(word, term)).count();
                 if in_heading + in_text > 0 {
-                    matched += 1;
-                    score += in_heading * 8 + in_page * 3 + in_text.min(6);
+                    score += 6.0 + 10.0 * in_heading as f64 + 3.0 * in_page as f64 + 4.0 * (in_text as f64).ln_1p();
                 }
             }
-            if matched > 0 {
+            if score > 0.0 {
                 hits.push((
-                    matched,
                     score,
                     json!({
                         "path": path,
@@ -198,8 +205,9 @@ pub(super) fn search(query: &str, limit: usize) -> Vec<Value> {
             }
         }
     }
-    hits.sort_by_key(|hit| std::cmp::Reverse((hit.0, hit.1)));
-    hits.into_iter().take(limit).map(|(_, _, hit)| hit).collect()
+    // Stable: ties keep page order.
+    hits.sort_by(|a, b| b.0.total_cmp(&a.0));
+    hits.into_iter().take(limit).map(|(_, hit)| hit).collect()
 }
 
 /// One page with its outline, or one section of it with its subsections. A long page read whole
@@ -235,12 +243,42 @@ pub(super) fn read(name: &str, section: Option<&str>) -> Result<Value, String> {
             .find(|s| s.level <= all[at].level)
             .map_or(body.len(), |s| s.start);
         out["section"] = json!(all[at].heading);
-        out["text"] = json!(body[all[at].start..end].trim_end());
+        let text = body[all[at].start..end].trim_end();
+        if text.len() <= WHOLE_PAGE {
+            out["text"] = json!(text);
+        } else {
+            // A section as long as a page (the page's own title, or one long list): its opening,
+            // and the subsections to read next.
+            let mut cut = all[at + 1..]
+                .iter()
+                .find(|s| s.start < all[at].start + text.len())
+                .map_or(WHOLE_PAGE, |s| s.start - all[at].start)
+                .min(WHOLE_PAGE);
+            while !text.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            out["text"] = json!(text[..cut].trim_end());
+            out["truncated"] = json!(true);
+            out["sections"] = json!(
+                all[at + 1..]
+                    .iter()
+                    .take_while(|s| s.start < all[at].start + text.len())
+                    .map(|s| s.heading)
+                    .collect::<Vec<_>>()
+            );
+            out["next"] = json!("read one of `sections` by passing its name as `section`");
+        }
     } else if body.len() <= WHOLE_PAGE {
         out["text"] = json!(body);
     } else {
-        // The opening: everything before the second heading.
-        let opening = all.get(2).map_or(body.len(), |s| s.start).min(WHOLE_PAGE);
+        // The opening: the page up to its first subsection (the second heading when the page
+        // starts with its title, the first otherwise).
+        let opening = all
+            .iter()
+            .filter(|s| s.level > 0)
+            .nth(usize::from(all.first().is_some_and(|s| s.level == 1)))
+            .map_or(body.len(), |s| s.start)
+            .min(WHOLE_PAGE);
         let mut end = opening;
         while !body.is_char_boundary(end) {
             end -= 1;

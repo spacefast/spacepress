@@ -50,8 +50,10 @@ default) adds `commands/`, `sync/`, `config_migrate/`, plugin downloads and the 
 `cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown` and
 serves it as the docs site's playground compiler (see [`docs-site/README.md`](docs-site/README.md)).
 
-`build.rs` also embeds `docs/*.md` (design proposals excepted) and `docs-site/docs/` for
-`first mcp`'s `docs_search` and `docs_read`, so a documentation change needs a rebuild to show there.
+`build.rs` also embeds the guides in `docs/` and the pages of `docs-site/docs/` for `first mcp`'s
+`docs_search` and `docs_read`, so a documentation change needs a rebuild to show there. A new page in
+`docs/` fails the build until it is added to `GUIDES` (embedded) or `NOT_GUIDES` (left out) in
+`build.rs`.
 
 The runtime under `runtime/` is embedded into the binary by `build.rs` and
 written out by `first build` into the `first-runtime`, `first-identity` and

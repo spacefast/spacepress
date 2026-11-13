@@ -23,7 +23,7 @@ pub struct Args {
     pub(crate) frozen: bool,
 }
 
-const COMMANDS: &str = include_str!("../runtime/First/Cli/commands.json");
+pub(crate) const COMMANDS: &str = include_str!("../runtime/First/Cli/commands.json");
 
 struct Entry {
     name: String,

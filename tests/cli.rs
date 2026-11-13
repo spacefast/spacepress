@@ -615,6 +615,24 @@ fn mcp_opens_with_initialize_and_lists_read_only_tools_unless_writes_are_allowed
     assert_eq!(bad.status.code(), Some(2));
     assert!(text(&bad.stderr).contains("usage: first mcp [dir] [--allow-remote-read] [--allow-writes]"));
     assert!(bad.stdout.is_empty());
+    // One project directory, and a directory: a second one or a file is refused, not guessed at.
+    let config = agent_kit().join("first.config.ts");
+    for args in [
+        vec![config.as_os_str()],
+        vec![agent_kit().as_os_str(), config.as_os_str()],
+    ] {
+        let refused = first().arg("mcp").args(&args).stdin(Stdio::null()).output().unwrap();
+        assert_eq!(refused.status.code(), Some(2), "{args:?}");
+        assert!(refused.stdout.is_empty());
+    }
+    let timeout = first()
+        .args(["mcp", "--allow-writes"])
+        .env("FIRST_MCP_TIMEOUT", "soon")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(timeout.status.code(), Some(2));
+    assert!(text(&timeout.stderr).contains("FIRST_MCP_TIMEOUT is a number of seconds"));
     let help = first().args(["help", "mcp"]).output().unwrap();
     assert_eq!(
         text(&help.stdout),
@@ -709,6 +727,22 @@ fn mcp_answers_malformed_input_without_stopping() {
     mcp.write(r#"[{"jsonrpc":"2.0","id":1,"method":"ping"}]"#);
     assert_eq!(mcp.read()["error"]["code"], -32600);
     mcp.write(r#"{"jsonrpc":"2.0","id":null,"method":"ping"}"#);
+    assert_eq!(mcp.read()["error"]["code"], -32600);
+    // Bytes that are not UTF-8 are a parse error like any other, and the server keeps reading.
+    let stdin = mcp.stdin.as_mut().unwrap();
+    stdin
+        .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"params\":{\"x\":\"\xff\"}}\n")
+        .unwrap();
+    stdin.flush().unwrap();
+    assert_eq!(mcp.read()["error"]["code"], -32700);
+    // A request whose method is not a string, or that has none, is invalid, and says so with its id.
+    mcp.write(r#"{"jsonrpc":"2.0","id":5,"method":5}"#);
+    let method = mcp.read();
+    assert_eq!(
+        (&method["id"], &method["error"]["code"]),
+        (&serde_json::json!(5), &serde_json::json!(-32600))
+    );
+    mcp.write(r#"{"jsonrpc":"2.0","id":6}"#);
     assert_eq!(mcp.read()["error"]["code"], -32600);
     mcp.write(r#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":["schema"]}"#);
     let params = mcp.read();
@@ -806,13 +840,52 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
         schema["jobs"]["clearDone"],
         serde_json::json!({ "input": { "keep": { "type": "integer", "default": 0 } }, "retries": 2, "agents": false })
     );
+    // A page that serves a kind's `url` names the kind as `kinds` lists it.
     assert_eq!(
         schema["routes"],
         serde_json::json!([
             { "pattern": "/api/list", "type": "route", "file": "first/app/api/list/route.ts", "methods": ["GET"], "access": "anyone" },
+            { "pattern": "/events/:slug", "type": "page", "file": "first/app/events/[slug]/page.tsx", "kind": "cookingEvents" },
             { "pattern": "/", "type": "page", "file": "first/app/page.tsx" },
         ])
     );
+    let events = &schema["kinds"]["cookingEvents"];
+    assert_eq!(events["path"], "cooking_events");
+    assert_eq!(events["url"], "/events/:slug");
+    // A slug derived from another field is filled in, so a write need not send it.
+    assert_eq!(
+        events["fields"]["slug"],
+        serde_json::json!({ "type": "slug", "generated": true, "unique": true, "source": "title" })
+    );
+    // A list of selects says it is a list; a single select does not.
+    assert_eq!(
+        events["fields"]["tags"],
+        serde_json::json!({ "type": "select", "many": true, "values": ["vegan", "quick", "baking"] })
+    );
+    // Boolean rules stay booleans; a rule written as a function is named as one.
+    assert_eq!(
+        events["access"],
+        serde_json::json!({ "read": true, "create": "editor", "update": "function", "delete": false })
+    );
+    assert_eq!(
+        schema["kinds"]["shoppingList"]["hooks"],
+        serde_json::json!(["beforeCreate"])
+    );
+    assert_eq!(
+        schema["globals"]["settings"],
+        serde_json::json!({
+            "label": "Settings",
+            "fields": { "storeName": { "type": "text", "default": "Corner shop" }, "open": { "type": "boolean", "default": true } },
+            "access": { "read": "anyone", "update": "admin" },
+            "agents": true,
+        })
+    );
+    assert_eq!(
+        schema["files"]["receipts"]["accept"],
+        serde_json::json!(["application/pdf"])
+    );
+    assert_eq!(schema["files"]["receipts"]["maxBytes"], 5_000_000);
+    assert_eq!(schema["files"]["receipts"]["access"]["read"], "owner");
     assert_eq!(
         schema["roles"],
         serde_json::json!(["guest", "subscriber", "author", "editor", "admin"])
@@ -843,7 +916,7 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
     assert!(one.get("actions").is_none());
     assert_eq!(
         mcp.refused("schema", serde_json::json!({ "kind": "recipes" })),
-        "no kind recipes; this project's kinds are: articles, shoppingList, substitutes"
+        "no kind recipes; this project's kinds are: cookingEvents, articles, shoppingList, substitutes"
     );
     mcp.finish();
 }
@@ -963,6 +1036,25 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
         long,
         sections[sections.len() / 2].as_str().unwrap(),
         &committed,
+    );
+    // A section as long as a page is capped the same way, with its subsections to read next.
+    let title = committed.lines().next().unwrap().trim_start_matches('#').trim();
+    let whole = mcp.ok("docs_read", serde_json::json!({ "path": long, "section": title }));
+    assert_eq!(whole["truncated"], true, "{long}: {title}");
+    assert!(whole["text"].as_str().unwrap().len() < committed.len() / 2);
+    assert!(!whole["sections"].as_array().unwrap().is_empty());
+    // A heading of the query outranks a long section that only mentions its words; whole words only.
+    let access = mcp.ok(
+        "docs_search",
+        serde_json::json!({ "query": "access rules owner", "limit": 3 }),
+    );
+    assert!(
+        access["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|hit| hit["path"] == "docs/config-api.md" && hit["section"] == "Access"),
+        "{access}"
     );
     assert!(
         mcp.refused("docs_read", serde_json::json!({ "path": "docs/nope.md" }))
@@ -1149,6 +1241,156 @@ fn mcp_refuses_writes_and_other_sites_unless_its_flags_allow_them() {
     assert!(
         mcp.refused("run_action", serde_json::json!({ "name": "rename" }))
             .starts_with("run_action writes to the dev site")
+    );
+    // The limit is checked, not quietly lowered.
+    assert_eq!(
+        mcp.refused(
+            "query",
+            serde_json::json!({ "kind": "notes", "site": "@prod", "limit": 501 })
+        ),
+        "`limit` is at most 500; page with `offset` for more"
+    );
+    // Without `limit`, 20 rows.
+    let default = mcp.call("query", serde_json::json!({ "kind": "notes", "site": "@prod" }));
+    assert_eq!(default["structuredContent"]["args"][4], r#"{"limit":20}"#);
+    mcp.finish();
+
+    // The site commands take a kind by its storage name; the tools take the name `schema` lists.
+    let mut mcp = Mcp::start(&agent_kit(), &["--allow-remote-read"], |command| {
+        with_path(command, wp.path())
+    });
+    mcp.modern = true;
+    let seen = mcp.call("query", serde_json::json!({ "kind": "shoppingList", "site": "@prod" }));
+    assert_eq!(seen["structuredContent"]["args"][3], "shopping_list", "{seen}");
+    mcp.finish();
+
+    // --allow-writes: neither `update` nor `run_action` takes a `site`.
+    let mut mcp = Mcp::start(project.path(), &["--allow-writes"], |command| {
+        with_path(command, wp.path())
+    });
+    mcp.modern = true;
+    for (tool, arguments) in [
+        (
+            "update",
+            serde_json::json!({ "kind": "notes", "where": { "id": 1 }, "set": { "title": "y" }, "site": "@prod" }),
+        ),
+        ("run_action", serde_json::json!({ "name": "rename", "site": "@prod" })),
+    ] {
+        assert_eq!(
+            mcp.refused(tool, arguments),
+            format!("{tool} writes to this project's dev site and no other; it takes no `site`")
+        );
+    }
+    mcp.finish();
+}
+
+/// A stand-in `wp` that runs `script` (sh), for the timing and output cases of the site tools.
+fn scripted_wp(script: &str) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("wp");
+    std::fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    dir
+}
+
+/// Whether a process that wrote its pid to `file` is still running.
+#[cfg(unix)]
+fn running(file: &Path) -> bool {
+    let pid = std::fs::read_to_string(file).unwrap_or_default();
+    !pid.trim().is_empty()
+        && Command::new("/bin/sh")
+            .args(["-c", "kill -0 \"$1\" 2>/dev/null", "sh", pid.trim()])
+            .status()
+            .unwrap()
+            .success()
+}
+
+#[cfg(unix)]
+#[test]
+fn mcp_stops_a_command_at_the_timeout_and_when_the_request_is_cancelled() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    let pids = tempfile::tempdir().unwrap();
+    // A site that never answers. Each call records the pid of the command it is stuck in.
+    let wp = scripted_wp(&format!("sleep 600 & echo $! > {}/$$; wait", pids.path().display()));
+    let stuck = |pids: &Path| -> Vec<PathBuf> {
+        std::fs::read_dir(pids)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect()
+    };
+    let query = serde_json::json!({ "kind": "notes", "site": "@slow" });
+
+    // The timeout ends the command and everything it started, and the call says why.
+    let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
+        with_path(command, wp.path());
+        command.env("FIRST_MCP_TIMEOUT", "1");
+    });
+    mcp.modern = true;
+    assert_eq!(
+        mcp.refused("query", query.clone()),
+        "first find took longer than 1 seconds and was stopped; FIRST_MCP_TIMEOUT sets the limit"
+    );
+    let started = stuck(pids.path());
+    assert_eq!(started.len(), 1);
+    assert!(!running(&started[0]), "the command the site command started is gone");
+    mcp.finish();
+    std::fs::remove_file(&started[0]).unwrap();
+
+    // A cancelled request is stopped and never answered; the next request is answered at once.
+    let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
+        with_path(command, wp.path())
+    });
+    mcp.modern = true;
+    mcp.write(
+        &serde_json::json!({ "jsonrpc": "2.0", "id": "slow", "method": "tools/call",
+            "params": { "name": "query", "arguments": query, "_meta": modern_meta() } })
+        .to_string(),
+    );
+    // Wait until the site command is running, so the cancellation reaches a command and not a queue.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    while stuck(pids.path()).is_empty() || !running(&stuck(pids.path())[0]) {
+        assert!(std::time::Instant::now() < deadline, "the site command never started");
+        std::thread::yield_now();
+    }
+    mcp.write(r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"slow","reason":"test"}}"#);
+    let started = std::time::Instant::now();
+    let discovered = mcp.request("server/discover", serde_json::json!({}));
+    assert!(discovered.get("result").is_some(), "{discovered}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(60));
+    assert!(!running(&stuck(pids.path())[0]), "the cancelled command is gone");
+    // A request cancelled while it waits its turn never runs: two queued, the first cancelled.
+    mcp.write(
+        &serde_json::json!({ "jsonrpc": "2.0", "id": "queued", "method": "tools/call",
+            "params": { "name": "check", "arguments": {}, "_meta": modern_meta() } })
+        .to_string(),
+    );
+    mcp.write(r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"queued"}}"#);
+    let after = mcp.request("server/discover", serde_json::json!({}));
+    assert!(after.get("result").is_some(), "only the discover is answered: {after}");
+    // finish() checks nothing else is ever written.
+    mcp.finish();
+}
+
+#[test]
+fn mcp_reads_a_site_commands_answer_after_other_output() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    // A PHP notice before the document, as a site with WP_DEBUG prints it.
+    let wp = scripted_wp(
+        r#"echo "PHP Notice:  Undefined index: x in /site/wp-content/plugins/other.php on line 3"; echo '{"data":[{"id":1}]}'"#,
+    );
+    let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
+        with_path(command, wp.path())
+    });
+    mcp.modern = true;
+    assert_eq!(
+        mcp.ok("query", serde_json::json!({ "kind": "notes", "site": "@noisy" })),
+        serde_json::json!({ "data": [{ "id": 1 }] })
     );
     mcp.finish();
 }

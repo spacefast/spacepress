@@ -16,9 +16,13 @@ pub mod front_matter;
 #[cfg(feature = "cli")]
 pub mod git;
 #[cfg(feature = "cli")]
+pub mod github;
+#[cfg(feature = "cli")]
 pub mod merge;
 #[cfg(feature = "cli")]
 pub mod plan;
+#[cfg(feature = "cli")]
+pub mod pr;
 pub mod uid;
 #[cfg(any(feature = "cli", test))]
 pub mod yaml_out;

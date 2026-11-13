@@ -2273,3 +2273,367 @@ fn a_component_block_in_markdown_syncs_both_ways() {
     assert_eq!(again["pending"], serde_json::json!([]), "{again}");
     let _ = std::fs::remove_dir_all(&project);
 }
+
+/// A fake of the GitHub REST API's pull request calls, for `first sync --pr`: it keeps pull requests
+/// and comments in memory and records every call. Never a real GitHub.
+#[derive(Default)]
+struct FakeGitHub {
+    pulls: Vec<serde_json::Value>,
+    comments: Vec<(u64, String)>,
+    calls: Vec<String>,
+}
+
+fn fake_github(repo: &'static str) -> (String, std::sync::Arc<std::sync::Mutex<FakeGitHub>>) {
+    let state = std::sync::Arc::new(std::sync::Mutex::new(FakeGitHub::default()));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let shared = state.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut client) = stream else { continue };
+            let mut reader = std::io::BufReader::new(client.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let mut parts = line.split_whitespace();
+            let (method, target) = (
+                parts.next().unwrap_or("").to_string(),
+                parts.next().unwrap_or("").to_string(),
+            );
+            let (mut length, mut auth) = (0usize, String::new());
+            loop {
+                let mut h = String::new();
+                reader.read_line(&mut h).unwrap();
+                if h.trim().is_empty() {
+                    break;
+                }
+                let (k, v) = h.split_once(':').unwrap();
+                match k.to_ascii_lowercase().as_str() {
+                    "content-length" => length = v.trim().parse().unwrap(),
+                    "authorization" => auth = v.trim().to_string(),
+                    _ => {}
+                }
+            }
+            let mut body = vec![0u8; length];
+            reader.read_exact(&mut body).unwrap();
+            let body: serde_json::Value = serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
+            let mut s = shared.lock().unwrap();
+            s.calls.push(format!("{method} {target}"));
+            let path = target.split('?').next().unwrap().to_string();
+            let prefix = format!("/repos/{repo}");
+            let (status, answer) = if auth != "Bearer test-token" {
+                (401, serde_json::json!({"message": "Bad credentials"}))
+            } else {
+                match (method.as_str(), path.strip_prefix(&prefix).unwrap_or("?")) {
+                    ("GET", "") => (200, serde_json::json!({"default_branch": "main"})),
+                    ("GET", "/pulls") => (
+                        200,
+                        serde_json::Value::Array(s.pulls.iter().filter(|p| p["state"] == "open").cloned().collect()),
+                    ),
+                    ("POST", "/pulls") => {
+                        let number = s.pulls.len() as u64 + 1;
+                        let pr = serde_json::json!({
+                            "number": number, "state": "open", "html_url": format!("https://github.test/{repo}/pull/{number}"),
+                            "title": body["title"], "body": body["body"], "base": {"ref": body["base"]},
+                            "head": {"ref": body["head"], "repo": {"full_name": repo}},
+                        });
+                        s.pulls.push(pr.clone());
+                        (201, pr)
+                    }
+                    ("PATCH", p) if p.starts_with("/pulls/") => {
+                        let n: u64 = p["/pulls/".len()..].parse().unwrap();
+                        let pr = &mut s.pulls[n as usize - 1];
+                        for (k, v) in body.as_object().unwrap() {
+                            pr[k] = v.clone();
+                        }
+                        (200, pr.clone())
+                    }
+                    ("POST", p) if p.starts_with("/issues/") && p.ends_with("/comments") => {
+                        let n: u64 = p["/issues/".len()..p.len() - "/comments".len()].parse().unwrap();
+                        s.comments.push((n, body["body"].as_str().unwrap().to_string()));
+                        (201, serde_json::json!({"id": s.comments.len()}))
+                    }
+                    _ => (404, serde_json::json!({"message": "Not Found"})),
+                }
+            };
+            drop(s);
+            let text = answer.to_string();
+            let _ = client.write_all(
+                format!(
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
+                    text.len()
+                )
+                .as_bytes(),
+            );
+        }
+    });
+    (format!("http://127.0.0.1:{port}"), state)
+}
+
+/// `git` with a test identity (the commits a person makes on the repository's main branch).
+fn git_as_person(dir: &Path, args: &[&str]) -> String {
+    let mut all = vec!["-c", "user.name=t", "-c", "user.email=t@example.test"];
+    all.extend_from_slice(args);
+    git(dir, &all)
+}
+
+#[test]
+fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date() {
+    let (project, site) = setup();
+    // The repository: `origin` is a bare repository beside the project; main holds the project.
+    let origin = project.with_extension("origin.git");
+    let _ = std::fs::remove_dir_all(&origin);
+    let out = Command::new("git")
+        .args(["init", "-q", "--bare", "-b", "main"])
+        .arg(&origin)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    git(&project, &["checkout", "-q", "-B", "main"]);
+    std::fs::write(
+        project.join("content/notes/hello.md"),
+        "---\ntitle: Hello\nlevel: intro\n---\nIn git.\n",
+    )
+    .unwrap();
+    git(
+        &project,
+        &["add", "first.config.ts", "first/components", ".gitignore", "content"],
+    );
+    git_as_person(&project, &["commit", "-q", "-m", "a project"]);
+    git(&project, &["remote", "add", "origin", origin.to_str().unwrap()]);
+    git(&project, &["push", "-q", "origin", "main"]);
+    let checkout_head = git(&project, &["rev-parse", "HEAD"]);
+    let (api, github) = fake_github("acme/site");
+    let pr = |extra: &[&str]| -> serde_json::Value {
+        let out = first()
+            .args(["sync", "--pr", "--repo", "acme/site"])
+            .args(extra)
+            .arg(&project)
+            .args(["--site", &site.url(), "--json"])
+            .env("FIRST_APP_PASSWORD", &site.token)
+            .env("GITHUB_TOKEN", "test-token")
+            .env("GITHUB_API_URL", &api)
+            .env_remove("GITHUB_REPOSITORY")
+            .env_remove("GITHUB_ACTIONS")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.test")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.test")
+            .output()
+            .unwrap();
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        data(&out)
+    };
+    let show = |rev: &str| git(&origin, &["show", rev]);
+    let branch_of = |run: &serde_json::Value| run["pr"]["branch"].as_str().unwrap().to_string();
+
+    // A record made on the site: the first run pushes the file in git to the site and opens a pull
+    // request whose branch holds the site's record as a file. The checkout it ran from is untouched.
+    let (s, made) = site.call("POST", "/notes", Some(serde_json::json!({"title": "From the site", "body": "<!-- wp:paragraph -->\n<p>Written in wp-admin.</p>\n<!-- /wp:paragraph -->"})));
+    assert_eq!(s, 201, "{made}");
+    let opened = pr(&[]);
+    assert_eq!(opened["pr"]["action"], "opened", "{opened}");
+    assert_eq!(opened["pr"]["number"], 1);
+    let branch = branch_of(&opened);
+    assert!(branch.starts_with("first-sync/127.0.0.1-"), "{branch}");
+    assert!(show(&format!("{branch}:content/notes/from-the-site.md")).contains("Written in wp-admin."));
+    assert!(show(&format!("{branch}:.first/sync-base.json")).contains("\"version\": 1"));
+    assert!(
+        site.rows("notes").iter().any(|r| r["title"] == "Hello"),
+        "the file in git reached the site"
+    );
+    assert_eq!(
+        git(&project, &["rev-parse", "HEAD"]),
+        checkout_head,
+        "the checkout is never committed on"
+    );
+    assert!(!project.join("content/notes/from-the-site.md").exists());
+    {
+        let gh = github.lock().unwrap();
+        assert_eq!(gh.pulls[0]["base"]["ref"], "main");
+        assert!(
+            gh.pulls[0]["body"]
+                .as_str()
+                .unwrap()
+                .contains("`content/notes/from-the-site.md`")
+        );
+    }
+
+    // Nothing new on the site: no push, no new pull request, no edit.
+    let first_head = git(&origin, &["rev-parse", &branch]).trim().to_string();
+    let calls = github.lock().unwrap().calls.len();
+    let unchanged = pr(&[]);
+    assert_eq!(unchanged["pr"]["action"], "unchanged", "{unchanged}");
+    assert_eq!(git(&origin, &["rev-parse", &branch]).trim(), first_head);
+    let gh_calls: Vec<String> = github.lock().unwrap().calls[calls..].to_vec();
+    assert!(gh_calls.iter().all(|c| c.starts_with("GET ")), "{gh_calls:?}");
+    assert_eq!(github.lock().unwrap().pulls.len(), 1);
+
+    // Another edit on the site: the same pull request, its branch moved forward (never rewritten).
+    let id = made["data"]["id"].clone();
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{id}"),
+        Some(serde_json::json!({"title": "Renamed on the site"})),
+    );
+    assert_eq!(s, 200);
+    let updated = pr(&[]);
+    assert_eq!(updated["pr"]["action"], "updated", "{updated}");
+    assert_eq!(updated["pr"]["number"], 1);
+    assert_eq!(branch_of(&updated), branch);
+    git(&origin, &["merge-base", "--is-ancestor", &first_head, &branch]);
+    let file = updated["pr"]["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|c| c.as_str()?.strip_prefix("M content/notes/").map(String::from))
+        .unwrap();
+    assert!(show(&format!("{branch}:content/notes/{file}")).contains("title: Renamed on the site"));
+    assert_eq!(github.lock().unwrap().pulls.len(), 1);
+
+    // The pull request is merged: main has what the site has, so the next run has nothing to do.
+    let clone = project.with_extension("clone");
+    let _ = std::fs::remove_dir_all(&clone);
+    let out = Command::new("git")
+        .args(["clone", "-q"])
+        .arg(&origin)
+        .arg(&clone)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    git_as_person(
+        &clone,
+        &[
+            "merge",
+            "-q",
+            "--no-ff",
+            "-m",
+            "Merge the sync",
+            &format!("origin/{branch}"),
+        ],
+    );
+    git(&clone, &["push", "-q", "origin", "main"]);
+    github.lock().unwrap().pulls[0]["state"] = "closed".into();
+    let none = pr(&[]);
+    assert_eq!(none["pr"]["action"], "none", "{none}");
+    assert_eq!(github.lock().unwrap().pulls.len(), 1);
+
+    // A file change merged in git goes to the site; only the sync base changes, and it goes to main.
+    let hello = std::fs::read_to_string(clone.join("content/notes/hello.md")).unwrap();
+    std::fs::write(
+        clone.join("content/notes/hello.md"),
+        hello.replace("In git.", "Edited in git."),
+    )
+    .unwrap();
+    git_as_person(&clone, &["commit", "-q", "-am", "Edit hello"]);
+    git(&clone, &["push", "-q", "origin", "main"]);
+    let pushed = pr(&[]);
+    assert_eq!(pushed["pr"]["action"], "base", "{pushed}");
+    assert!(
+        site.rows("notes")
+            .iter()
+            .any(|r| r["body"].as_str().unwrap_or("").contains("Edited in git.")),
+        "the merged file reached the site"
+    );
+    assert_eq!(
+        github.lock().unwrap().pulls.len(),
+        1,
+        "no pull request for bookkeeping alone"
+    );
+    git(&clone, &["pull", "-q", "--ff-only"]);
+    assert_eq!(pr(&[])["pr"]["action"], "none");
+
+    // The same field edited in git and on the site: a pull request with the conflict file and a
+    // comment naming it; neither side is overwritten.
+    let hello = std::fs::read_to_string(clone.join("content/notes/hello.md")).unwrap();
+    std::fs::write(
+        clone.join("content/notes/hello.md"),
+        hello.replace("title: Hello", "title: Git title"),
+    )
+    .unwrap();
+    git_as_person(&clone, &["commit", "-q", "-am", "Retitle hello in git"]);
+    git(&clone, &["push", "-q", "origin", "main"]);
+    let hello_row = site.rows("notes").into_iter().find(|r| r["title"] == "Hello").unwrap();
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{}", hello_row["id"]),
+        Some(serde_json::json!({"title": "Site title"})),
+    );
+    assert_eq!(s, 200);
+    let conflicted = pr(&[]);
+    assert_eq!(conflicted["pr"]["action"], "opened", "{conflicted}");
+    assert_eq!(conflicted["conflicts"].as_array().unwrap().len(), 1, "{conflicted}");
+    let branch = branch_of(&conflicted);
+    let uid = hello_row["uid"].as_str().unwrap();
+    let conflict = show(&format!("{branch}:.first/conflicts/{uid}.md"));
+    assert!(
+        conflict.contains("<<<<<<< files") && conflict.contains("Site title"),
+        "{conflict}"
+    );
+    assert!(show(&format!("{branch}:content/notes/hello.md")).contains("title: Git title"));
+    assert_eq!(
+        site.rows("notes")
+            .into_iter()
+            .find(|r| r["id"] == hello_row["id"])
+            .unwrap()["title"],
+        "Site title"
+    );
+    {
+        let gh = github.lock().unwrap();
+        let (n, comment) = gh.comments.last().expect("a comment listing the conflicts");
+        assert_eq!(*n, 2);
+        assert!(comment.contains(&format!(".first/conflicts/{uid}.md")), "{comment}");
+    }
+    // Run again: the same conflict, no second comment, nothing pushed.
+    let comments = github.lock().unwrap().comments.len();
+    assert_eq!(pr(&[])["pr"]["action"], "unchanged");
+    assert_eq!(github.lock().unwrap().comments.len(), comments);
+    // Another site edit updates the pull request; the conflicts are the same, so still one comment.
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{id}"),
+        Some(serde_json::json!({"title": "Renamed again"})),
+    );
+    assert_eq!(s, 200);
+    assert_eq!(pr(&[])["pr"]["action"], "updated");
+    assert_eq!(github.lock().unwrap().comments.len(), comments);
+
+    // A commit someone else put on the sync branch stops the run before anything is rebuilt.
+    let other = project.with_extension("other");
+    let _ = std::fs::remove_dir_all(&other);
+    let out = Command::new("git")
+        .args(["clone", "-q", "-b", &branch])
+        .arg(&origin)
+        .arg(&other)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    std::fs::write(other.join("notes.txt"), "mine").unwrap();
+    git(&other, &["add", "notes.txt"]);
+    git_as_person(&other, &["commit", "-q", "-m", "A note of mine"]);
+    git(&other, &["push", "-q", "origin", &branch]);
+    let out = first()
+        .args(["sync", "--pr", "--repo", "acme/site"])
+        .arg(&project)
+        .args(["--site", &site.url()])
+        .env("FIRST_APP_PASSWORD", &site.token)
+        .env("GITHUB_TOKEN", "test-token")
+        .env("GITHUB_API_URL", &api)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("A note of mine"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    for dir in [&project, &origin, &clone, &other] {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}

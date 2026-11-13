@@ -2,6 +2,7 @@
 //!
 //! ```text
 //! first sync [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]
+//! first sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch]
 //! first sync status [dir] --site …     what a sync would do; writes nothing
 //! first sync resolve <uid> [dir] --site …
 //! ```
@@ -9,16 +10,19 @@
 //! Without `--site`, the project's running dev site. The credential comes from the environment: `FIRST_APP_PASSWORD` (`user:application-password`) or
 //! `FIRST_TOKEN` (a bearer token from the identity plugin).
 //!
+//! `--pr` runs on a fresh worktree of the default branch and opens or updates one pull request with
+//! the result (see `sync::pr`); it needs `GITHUB_TOKEN`.
+//!
 //! Exit codes: 0 ok, 1 failed, 2 changes pending or conflicts (`--check`), 3 usage, 4 auth.
 
 use crate::sync::apply::{self, Options};
 use crate::sync::client::{Client, Credential};
-use crate::sync::{Report, git};
+use crate::sync::{Report, git, pr};
 use serde_json::json;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: first sync [status | resolve <uid>] [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]\n       credential: FIRST_APP_PASSWORD=<user:application-password> or FIRST_TOKEN=<bearer token>";
+const USAGE: &str = "usage: first sync [status | resolve <uid>] [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]\n       first sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch] [--only c1,c2] [--json]\n       credential: FIRST_APP_PASSWORD=<user:application-password> or FIRST_TOKEN=<bearer token>";
 
 struct Flags {
     mode: Mode,
@@ -29,6 +33,9 @@ struct Flags {
     check: bool,
     commit: bool,
     json: bool,
+    pr: bool,
+    repo: Option<String>,
+    base: Option<String>,
 }
 
 enum Mode {
@@ -47,6 +54,9 @@ fn parse(args: &[String]) -> Result<Flags, String> {
         check: false,
         commit: true,
         json: false,
+        pr: false,
+        repo: None,
+        base: None,
     };
     let mut positional = Vec::new();
     let mut it = args.iter();
@@ -66,6 +76,9 @@ fn parse(args: &[String]) -> Result<Flags, String> {
             "--check" => flags.check = true,
             "--no-commit" => flags.commit = false,
             "--json" => flags.json = true,
+            "--pr" => flags.pr = true,
+            "--repo" => flags.repo = Some(value("--repo")?),
+            "--base" => flags.base = Some(value("--base")?),
             "--watch" => return Err("--watch is not available yet; run first sync again, or from a scheduler".into()),
             other if other.starts_with("--") => return Err(format!("unknown flag {other}")),
             other => positional.push(other.to_string()),
@@ -88,6 +101,14 @@ fn parse(args: &[String]) -> Result<Flags, String> {
     }
     if flags.check && matches!(flags.mode, Mode::Resolve(_)) {
         return Err("resolve writes both sides; it has no --check (first sync --check shows the conflict)".into());
+    }
+    if flags.pr && (flags.check || !flags.commit || !matches!(flags.mode, Mode::Sync)) {
+        return Err(
+            "--pr runs a sync and opens a pull request; it takes no --check, --no-commit, status or resolve".into(),
+        );
+    }
+    if !flags.pr && (flags.repo.is_some() || flags.base.is_some()) {
+        return Err("--repo and --base go with --pr".into());
     }
     let env = |name: &str| std::env::var(name).ok().filter(|s| !s.is_empty());
     flags.credential = match (env("FIRST_APP_PASSWORD"), env("FIRST_TOKEN")) {
@@ -141,22 +162,40 @@ pub fn run(args: &[String]) -> ExitCode {
         }
         _ => {}
     }
-    let mut report = Report::new(&project);
     let check = flags.check || matches!(flags.mode, Mode::Status);
-    let result = match &flags.mode {
-        Mode::Resolve(uid) => apply::resolve(&project, &client, uid, &mut report),
-        _ => apply::run(
-            &project,
-            &client,
-            &Options {
-                only: flags.only.clone(),
-                check,
-            },
-            &mut report,
-        ),
+    let options = Options {
+        only: flags.only.clone(),
+        check,
+    };
+    let mut pr = None;
+    let (mut report, result) = if flags.pr {
+        let settings = pr::Settings {
+            repo: flags.repo.clone(),
+            base: flags.base.clone(),
+            site: site.clone(),
+        };
+        match pr::run(&project, &settings, &mut |dir, report| {
+            apply::run(dir, &client, &options, report)
+        }) {
+            Ok((report, result, outcome)) => {
+                pr = outcome;
+                (report, result)
+            }
+            Err(e) => {
+                eprintln!("✗ {e}");
+                return ExitCode::from(1);
+            }
+        }
+    } else {
+        let mut report = Report::new(&project);
+        let result = match &flags.mode {
+            Mode::Resolve(uid) => apply::resolve(&project, &client, uid, &mut report),
+            _ => apply::run(&project, &client, &options, &mut report),
+        };
+        (report, result)
     };
     let mut commit = None;
-    if result.is_ok() && !check && flags.commit && !report.written.is_empty() {
+    if result.is_ok() && !check && flags.commit && !flags.pr && !report.written.is_empty() {
         let paths = report.written.clone();
         let message = format!(
             "first sync: {} applied, {} conflicts",
@@ -185,6 +224,18 @@ pub fn run(args: &[String]) -> ExitCode {
             "applied": report.applied, "pending": report.pending, "conflicts": report.conflicts, "refused": report.refused,
             "failed": report.failures, "notes": report.notes, "written": rel, "commit": commit,
         });
+        let mut body = body;
+        if flags.pr {
+            body["pr"] = pr.as_ref().map_or(serde_json::Value::Null, |o| {
+                json!({
+                    "action": o.action,
+                    "number": o.pull.as_ref().map(|p| p.number),
+                    "url": o.pull.as_ref().map(|p| p.url.clone()),
+                    "branch": o.pull.as_ref().map(|p| p.head.clone()),
+                    "changes": o.changes,
+                })
+            });
+        }
         match &result {
             Ok(()) if code != 1 => println!("{}", json!({"data": body})),
             _ => println!(
@@ -218,6 +269,14 @@ pub fn run(args: &[String]) -> ExitCode {
             report.conflicts.len(),
             commit.map(|_| ", committed").unwrap_or_default()
         );
+        if let Some(o) = &pr {
+            match (&o.pull, o.action) {
+                (_, "none") => println!("no changes for a pull request"),
+                (_, "base") => println!("only the sync base changed: pushed to the default branch"),
+                (Some(p), action) => println!("pull request {action}: {}", p.url),
+                (None, action) => println!("pull request {action}"),
+            }
+        }
     }
     ExitCode::from(code)
 }

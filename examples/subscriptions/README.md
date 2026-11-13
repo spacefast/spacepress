@@ -4,11 +4,6 @@ A personal subscription tracker with a React SPA. Track renewal dates, payment
 labels, categories, and charge history. Each row belongs to the signed-in
 WordPress user.
 
-**This example does not compile on current main.** The compiler diagnostic below
-prevents emitting fresh migrations and a typed client. The frontend uses the
-generated-client API, but the final app cannot start yet. No generated substitute
-or compiler patch is committed.
-
 ## What it shows
 
 | Piece | Behavior |
@@ -75,24 +70,9 @@ example before publishing. A successful First build must also commit
 `first/_generated/client/`, `first/_generated/migrations/`, `first/_generated/db.d.ts`, and `first/_generated/wp-plugins.lock.json`.
 They cannot be generated from this config while the diagnostic remains.
 
-## Known gaps on main (ef0a42e3883eb146ad6318ff32cbc54cdb2e31d1)
+## Known gaps
 
-`./target/debug/first check examples/subscriptions --json` exits 1. The error
-count is `diagnostics.filter(d => d.severity === "error").length = 1` in
-[`verification/compiler.json`](verification/compiler.json). The diagnostic is
-verbatim:
-
-```text
-can't insert { currency: string; amount: number; categories: { category: string; amount: number }[] } | undefined into an array of { currency: string; amount: number; categories: { category: string; amount: number }[] }
-  --> first.config.ts:143:13
-143 |             currencies.push(total);
-```
-
-The source first assigns a new group inside `if (!total)`, then pushes it.
-TypeScript accepts this control flow. Main's First compiler retains the old
-`undefined` alternative. The aggregation is preserved to expose the gap.
-`first dev examples/subscriptions --no-watch --port 8795` stops at the same
-build diagnostic with `first dev: Failed (1): build`.
+`first check examples/subscriptions` passes. The monthly totals (`monthlyBurn`) sum per currency, then per category, with `findIndex` and a running total, which First's type checker follows; an earlier form that reassigned a possibly undefined `find()` result did not compile.
 
 The disposable site also returns this runtime diagnostic on the owned
 subscription delete path. It is triggered by the `charges.subscriptionId`
@@ -105,26 +85,6 @@ reference and owner-filtered table access in `first.config.ts`:
 `Db::requireReferenceVisibility()` requires full child-table visibility before
 cascading a delete. The owner rule intentionally filters that table. The app
 keeps its foreign key and private access rules. Its cancel action still works.
-
-Earlier authoring diagnostics are retained here for completeness. They no
-longer occur in the final source, which uses contextual table access callbacks
-and captures `ctx.user` before mutating hook data:
-
-```text
-first.config.ts:11:10
-read: (ctx: { user: { id: number } | null }) => ...
-this parameter is declared as { user: { id: number } | null }, but it receives { user: { id: number; name: string; role: "guest" | "subscriber" | "author" | "editor" | "admin" } | null; op: string; data?: Record<string, unknown> | null }
-help: accept the supplied argument type, or change the values supplied to the function
-
-first.config.ts:11:15
-read: (ctx: AccessCtx) => ...
-unknown type `AccessCtx`
-
-first.config.ts:103:114
-const subscription = await db.query.subscriptions.findFirst({ where: { id: data.subscriptionId, ownerId: ctx.user.id } });
-can't read `id`: this might be null ({ id: number; name: string; role: "guest" | "subscriber" | "author" | "editor" | "admin" } | null)
-help: check it first, or use `?.`
-```
 
 The installed `spacefast/0.8.0` CLI also refuses the deploy guide's preflight:
 

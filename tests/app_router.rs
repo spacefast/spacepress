@@ -1256,6 +1256,10 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     // The layout's site.css first, then the page's module, then the client component's module.
     assert_eq!(files("about"), ["site", "page", "counter"], "{seen}");
     assert_eq!(files("plain"), ["site"], "{seen}");
+    // A page.md has no imports of its own: it links what the layouts above it import.
+    assert_eq!(seen["colophon"]["status"], 200, "{seen}");
+    assert_eq!(files("colophon"), ["site"], "{seen}");
+    assert_eq!(seen["colophon"]["classes"]["div"][0], "site", "{seen}");
     let css = |page: &str, i: usize| seen[page]["links"][i]["css"].as_str().unwrap().to_string();
     assert_eq!(
         css("about", 0),

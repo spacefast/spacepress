@@ -343,6 +343,22 @@ pub fn build(
             {
                 return Err(Diag::new(config_span, format!("existingTable binding for `{stored}` cannot change after the first snapshot, including through a `was` rename; move data explicitly before changing storage")).phase(diag::Code::Schema));
             }
+            // Storage follows the builder: a SQL table in the ledger declared with collection() would
+            // plan the table's drop and read empty posts. Refused here, before any migration is written.
+            if let Some(next) = successor
+                && tables[stored]["editor"] == false
+                && tables[stored]["auth"] != true
+                && next["editor"] == true
+            {
+                let kind = ext.collections.iter().find(|c| snapshot["tables"].get(c.table()) == Some(next));
+                let key = kind.map_or(stored.as_str(), |c| schema.collections[c.table()].key.as_str());
+                return Err(Diag::new(
+                    kind.map_or(config_span, |c| c.span),
+                    format!("`{key}` is stored as a SQL table, and collection() is always WordPress posts"),
+                )
+                .help("declare it with table() again: its rows stay where they are and no migration is written")
+                .phase(diag::Code::Schema));
+            }
             let canonical = crate::schema::physical_name(stored);
             if &canonical != stored
                 && !schema.collections.contains_key(stored)

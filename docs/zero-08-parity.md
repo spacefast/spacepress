@@ -489,9 +489,9 @@ those four. No refused corpus app is blocked by endpoints any more.
 | Range on an optional field, `.where()`, `.orderBy()`, `.limit()`, `.offset()` | `db.query` filters exist; not mapped | Refused | Port the query |
 | `query()`, `mutation()`, `action()` | `action()` at `POST /__first/api/v1/actions/<name>` with named inputs | Auto, **WP** | Update callers to the v2 client |
 | `type PaginationOptions`, `Id<T>` | Structural types in the candidate | Auto | — |
-| `collections`, native `posts`, `content/posts/` | Collections and a post-backed `posts` collection; data copied with IDs | Auto, **WP** | Native `pages` and `media` collections; rich blocks; multiple references |
-| `sync` declarations | `first sync` (local) | Dropped with review | Hosted edits do not rebuild a frontend |
-| `connectors` | `connector-roles.json` overlay | Role map only | Connector calls (`ctx.connectors`) |
+| `collections`, native `posts`, `content/posts/` | Collections and a post-backed `posts` collection; data copied with IDs | Auto for declared collections, **WP**; undeclared `content/posts/` is refused (`Z08_OMITTED_POSTS`) | Native `pages` and `media` collections; rich blocks; multiple references; declaring `posts` for undeclared content |
+| `sync` declarations | `first sync` (local) | Refused (`Z08_OMITTED_SYNC`) | Declare the collection with `sync` in `first.config.ts`; hosted edits do not rebuild a frontend |
+| `connectors` | **missing** | Refused (`Z08_OMITTED_CONNECTORS`) | **Gap**: connectors and connector calls (`ctx.connectors`) |
 | `favicon` | Nothing to map: no 0.8 compiler, engine or runner read it, so the icon was always the published `/favicon.ico` | Dropped with a review entry | Keep the icon file in `public/` |
 | Pure helpers, classes, local `shared/` modules | Copied | Auto | Helpers outside the v2 subset (for example `in`, `URL`) |
 | `declare const NAME` build globals | `process.env.NAME` in handlers, `env("NAME")` in webhook and upload settings | Refused, names the fix | Replace the global |
@@ -517,7 +517,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `ctx.env.NAME` | `process.env["NAME"]`: process environment, then a `wp-config.php` constant | Auto, **WP** | Move secrets to the host's variables; a name 0.8 left unset may now resolve to a host constant |
 | `ctx.log.info/warn/error/debug` | `console.*` to the PHP error log | Auto | — |
 | `ctx.invalidate(...)` | Committed writes announce themselves | Owned by the realtime PR (#128) | — |
-| `ctx.email.send` | `mail.send` from `"zero"` (#133), queued with the write, sent after commit | Auto once #133 lands | Spacefast engine connects `first_mail_transport` to the Space sender (#5063) |
+| `ctx.email.send` | `mail.send` from `"first"` (#133), queued with the write, sent after commit | Auto once #133 lands | Spacefast engine connects `first_mail_transport` to the Space sender (#5063) |
 | `ctx.spam.check/reportSpam/reportHam` | **missing** | Refused | **Gap** |
 | `ctx.gravatar` | `avatarUrl` is the same URL (SHA-256 of the trimmed, lower-cased address, same options); `profile` fetches Gravatar's public profile with `fetch` and projects it as 0.8 did | Auto | Bad `avatarUrl` options answer 422 `service_payload_invalid` with the 0.8 message |
 | `ctx.crypto.sha256/hmacSha256/timingSafeEqual` | `createHash`/`createHmac`/`timingSafeEqual` from `"node:crypto"`, byte for byte 0.8's output on the 452 recorded vectors; a named key reads `process.env` trimmed | Auto | — |
@@ -530,7 +530,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 
 | 0.8 capability | v2 equivalent | Converter | Needs a person |
 | --- | --- | --- | --- |
-| `endpoint({ method, path, readOnly })` for GET, POST, PUT, PATCH, DELETE | [`route()`](config-api.md#http-routes) at the same method and path; v2 prefers literal segments over `:params`, as 0.8 did | Auto, **WP** | Unsafe methods need `X-WP-Nonce` for a signed-in caller, otherwise they run anonymously (a review entry says so); v2 adds `Cache-Control: private, no-store` unless the endpoint sets its own |
+| `endpoint({ method, path, readOnly })` for GET, POST, PUT, PATCH, DELETE | a [`first/app/**/route.ts`](config-api.md#http-routes) handler at the same method and path (`:id` becomes a `[id]` folder, a final `:splat` a `[...splat]` folder plus a route at the bare prefix); v2 prefers literal segments over params, as 0.8 did | Auto, **WP** | Unsafe methods need `X-WP-Nonce` for a signed-in caller, otherwise they run anonymously (a review entry says so); v2 adds `Cache-Control: private, no-store` unless the endpoint sets its own |
 | `json()`, `text()`, `empty()`, `redirect()`, plain values, `undefined` → 204 | The same status, headers and body | Auto, **WP** | — |
 | `request.text()`, `json()`, `headers.get/has`, `query.get/getAll/has`, `params`, `method` | `req.body`, `req.headers`, `req.query` (URLSearchParams semantics: first value, byte-exact names), `req.params` | Auto, **WP** | — |
 | `request.json().catch(fn)`, `text().catch(fn)`, and a returned `json()`/`text()` | The same read; invalid JSON calls `fn` as 0.8's rejection did | Auto | — |

@@ -151,13 +151,13 @@ final class FieldAccess
                 }
             } elseif ($key === 'NOT') {
                 self::checkFilter($collection, $value, $viewer, $kptr);
+            } elseif (\First\Schema::filtersRelation($spec, $key, $value)) {
+                self::checkLink($collection, $spec['relations'][$key], $viewer, $kptr);
+                self::checkFilter($spec['relations'][$key]['collection'], $value, $viewer, $kptr);
             } elseif (isset($spec['columns'][$key])) {
                 if (self::mayHide($spec['columns'][$key], $viewer)) {
                     throw self::hidden($key, $kptr);
                 }
-            } elseif (isset($spec['relations'][$key])) {
-                self::checkLink($collection, $spec['relations'][$key], $viewer, $kptr);
-                self::checkFilter($spec['relations'][$key]['collection'], $value, $viewer, $kptr);
             }
         }
     }
@@ -307,7 +307,7 @@ final class FieldAccess
     }
 
     /**
-     * What a write of $value to a group column stores for $viewer, as /first/v1 stores it: omitted
+     * What a write of $value to a group column stores for $viewer, as First's write pipeline stores it: omitted
      * sub-fields the viewer can't read or can't set keep their stored values ($before), defaults
      * fill the rest. Other types are returned as given. For writes that bypass {@see checkWrite()}'s
      * resolution (core REST `meta`).

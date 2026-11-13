@@ -112,10 +112,10 @@ export const tours: Tour[] = [
         slug: "the-client",
         title: "A typed client for any frontend",
         prose: [
-          "`first/_generated/client/types.ts` is generated from the schema: a row type, an insert type, a patch type and a filter type per collection, plus the relations that `with` can load.",
+          "`first/_generated/client/types.ts` is generated from the schema: a row type, an insert type, a patch type and a filter type per collection, plus the relations that `with` can load: each `ref()` field and the reverse list its target gets.",
           "`first/_generated/client/index.ts` is the runtime half, copied from the repository with the generated types beside it.",
         ],
-        config: { file: "first.config.ts", lines: { from: "export const relations", to: "}));" } },
+        config: { file: "first.config.ts", lines: { from: "export const shoppingList = table({", to: "itemId: ref(items)" } },
         outputs: [
           { file: { artifact: "types.ts" }, lines: { from: "export interface Item {", to: "export interface ItemWith" } },
           { file: { artifact: "types.ts" }, lines: { from: "export interface Collections {", toLine: "}" } },

@@ -1,12 +1,12 @@
 // Editor parity (§1.7, §4.3, §4.9): saves through core /wp/v2/first_posts with `acf` fields, the way the
-// block editor saves, show up in /first/v1 in the same request with First's decoded values; First's rules
+// block editor saves, show up in /__first/api/v1 in the same request with First's decoded values; First's rules
 // block bad values with First's message; afterCreate/afterUpdate run with the editing user. The test
 // app's posts hooks (tests/wp/app) record each run as a comment.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { core, http, ok, problem, run, sql, wp, first } from "./env.ts";
 
-test("a core REST save with acf fields reads back identically through /first/v1 and runs the after hooks", async () => {
+test("a core REST save with acf fields reads back identically through /__first/api/v1 and runs the after hooks", async () => {
   const created = await http("POST", core + "/first_posts", {
     as: "editor",
     body: {
@@ -109,7 +109,7 @@ test("First's rules block an editor save with First's message", async () => {
   const tooLong = await http("POST", core + "/first_posts", { as: "editor", body: { title: `Long ${run}`, status: "publish", acf: { first_excerpt: "x".repeat(301) } } });
   assert.equal(tooLong.status, 400);
   assert.equal(tooLong.json.data.params.acf, "excerpt must be at most 300 characters");
-  // The same message /first/v1 gives for the same value.
+  // The same message /__first/api/v1 gives for the same value.
   const viaZero = await problem("POST", "/posts", { as: "editor", body: { title: `Long ${run}`, excerpt: "x".repeat(301) } }, { status: 422, code: "invalid_input", pointer: "/excerpt" });
   assert.equal(viaZero.detail, tooLong.json.data.params.acf);
   const nested = await http("POST", core + "/first_posts", {
@@ -157,8 +157,8 @@ test("showIf becomes SCF conditional_logic, including rules on core post columns
   assert.equal(prepared(draft), false, "draft: the field is not rendered");
 });
 
-// Core /wp/v2 is First's rules too: the field rules /first/v1 enforces refuse the same core save.
-test("core /wp/v2 saves follow the field access /first/v1 enforces", async () => {
+// Core /wp/v2 is First's rules too: the field rules /__first/api/v1 enforces refuse the same core save.
+test("core /wp/v2 saves follow the field access /__first/api/v1 enforces", async () => {
   const id = first("insert", "field_staff", JSON.stringify({ name: `Paid ${run}`, salary: 10 }))[0].id;
   await problem("PATCH", `/field_staff/${id}`, { as: "editor", body: { salary: 42 } }, { status: 403, code: "forbidden", pointer: "/salary" });
   const refused = await http("POST", `${core}/first_field_staff/${id}`, { as: "editor", body: { acf: { first_salary: 42 } } });
@@ -197,13 +197,13 @@ test("editor password writes invalidate visibility and keep relations private", 
   const row = await ok("POST", "/posts", { as: "editor", body: { title: `Password write ${run}`, status: "published" } });
   const id = row.id;
   await ok("POST", "/comments", { as: "editor", body: { postId: id, name: "Visibility", body: "Related" } });
-  const comments = () => ok("GET", `/comments?with=post&where=${encodeURIComponent(JSON.stringify({ postId: id }))}`, { as: "subscriber" });
-  assert.equal((await comments())[0].post.id, id);
+  const comments = () => ok("GET", `/comments?with=postId&where=${encodeURIComponent(JSON.stringify({ postId: id }))}`, { as: "subscriber" });
+  assert.equal((await comments())[0].postId.id, id);
   const protectedPost = await http("POST", `${core}/first_posts/${id}`, { as: "editor", body: { password: "editor-secret" } });
   assert.equal(protectedPost.status, 200);
-  assert.equal((await comments())[0].post, null);
+  assert.equal((await comments())[0].postId, null);
   assert.equal((await http("GET", `${core}/first_posts/${id}?password=editor-secret`)).status, 200);
   const cleared = await http("POST", `${core}/first_posts/${id}`, { as: "editor", body: { password: "" } });
   assert.equal(cleared.status, 200);
-  assert.equal((await comments())[0].post.id, id);
+  assert.equal((await comments())[0].postId.id, id);
 });

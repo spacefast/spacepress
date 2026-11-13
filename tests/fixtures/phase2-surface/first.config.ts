@@ -1,4 +1,4 @@
-import { collection, text, email, media, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db, table, userProjection } from "first";
+import { collection, text, email, media, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db, table, userProjection, ref } from "first";
 import type { FieldAccessCtx as FieldContext, JobCtx } from "first";
 function deny(): never { throw new Error("denied"); }
 async function yes() { return true; }
@@ -92,7 +92,7 @@ const audit = table({ note: text() }, { agents: false });
 const authors = collection({ name: text(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }).optional(), avatar: media().access({ read: "authenticated" }).optional() }, { title: "name", uid: true });
 const posts = collection({
   title: text().localized(), content: richText().localized().optional(), slug: slug({ source: "title" }).optional(),
-  authorId: integer().references(() => authors.id).optional(), deck: file({ bucket: "decks" }).optional(),
+  authorId: ref(authors).optional().onDelete("restrict"), deck: file({ bucket: "decks" }).optional(),
   seo: group({ kind: select(["a", "b"]).optional(), enabled: boolean().optional(), label: text().access({ read: visibleField }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }).optional() }).showIf({ status: "published" }).optional(),
   items: repeater({ enabled: boolean().optional(), label: text().showIf({ enabled: true }).optional() }).optional(),
   sections: blocks({ hero: { kind: text().optional(), label: text().access({ update: ctx => { switch (ctx.op) { case "read": throw new Error("not an update"); case "create": return false; case "update": return visibleRole(ctx); } } }).showIf({ kind: { ne: "hidden" } }).optional() } }).optional(),

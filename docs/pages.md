@@ -137,13 +137,42 @@ wp-admin, in the block editor, and the route shows what they saved.
 The ruling and its alternatives are in
 [the decision](decisions/2026-11-13-content-pages.md).
 
+## Stylesheets and images
+
+```tsx
+// first/app/layout.tsx
+import "./site.css";
+// first/app/notes/[slug]/page.tsx
+import styles from "./note.module.css";
+import compass from "./compass.svg";
+
+<article className={styles.note}><img src={compass} alt="" /></article>
+```
+
+- `import "./x.css"` links the stylesheet on every page whose page or layouts
+  import it, directly or through a component. Each file is linked once, in
+  import order, the root layout's first.
+- `import styles from "./x.module.css"` renames each class to
+  `<file stem>_<class>` (`note.module.css`'s `.dek` is `note_dek`), and
+  `styles.dek` is that name. If two modules define the same class name, the
+  later one by path gets a number (`note_dek2`). A `"use client"` component may
+  import a CSS module, and its class can depend on state.
+- `import logo from "./x.svg"` gives the file's URL.
+- Every file is copied into the app plugin under `first/app/assets/`, named by a
+  hash of its bytes, with a year's cache. A changed file gets a new URL.
+- These are refused at the line, with the fix: `@import` (import each file from
+  TSX), a relative `url(...)` (put the file in `public/` and write
+  `url(/name.png)`), `:global`, `:local` and `composes` in a module, and an SVG
+  imported by a `"use client"` component (pass the URL as a prop). Other files,
+  binary images and fonts among them, go in `public/`, by their URL.
+
 ## On WordPress
 
 The router answers on `template_redirect`, before the theme. wp-admin, login,
 `/wp-json`, feeds, robots and First's own paths never reach it. When
 `first/app/` exists, a URL no route serves renders `not-found.tsx`. URLs
 WordPress itself resolves (a post, a category archive) keep the theme until a
-route serves them. Responses are `private, no-store` for now.
+route serves them.
 
 ## The `pages/` pipeline (being replaced)
 

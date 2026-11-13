@@ -567,11 +567,11 @@ async function checkPantry(publicClient, editor, story) {
     );
     const publicItems = await publicClient.items.list({
       where: { id: item.id },
-      with: { location: true, story: true },
+      with: { locationId: true, storyId: true },
     });
     assert.equal(publicItems.length, 1);
     assert.equal(
-      publicItems[0].location.id,
+      publicItems[0].locationId.id,
       location.id,
       "Public pantry reads resolve location",
     );
@@ -582,16 +582,16 @@ async function checkPantry(publicClient, editor, story) {
     );
     assert.equal(publicItems[0].opened, true);
     assert.equal(
-      publicItems[0].story.id,
+      publicItems[0].storyId.id,
       story.id,
       "SQL item resolves its native cooking story",
     );
     const [cookingStory] = await publicClient.stories.list({
       where: { id: story.id },
-      with: { pantryItems: true },
+      with: { items: true },
     });
     assert.deepEqual(
-      cookingStory.pantryItems.map((row) => row.id),
+      cookingStory.items.map((row) => row.id),
       [item.id],
     );
     const shelves = await publicClient.locations.list({
@@ -604,7 +604,7 @@ async function checkPantry(publicClient, editor, story) {
     );
     const initial = await publicClient.shoppingList.list({
       where: { itemId: item.id },
-      with: { item: true },
+      with: { itemId: true },
     });
     assert.equal(
       initial.length,
@@ -612,7 +612,7 @@ async function checkPantry(publicClient, editor, story) {
       "Low-stock creation adds one shopping entry",
     );
     assert.equal(initial[0].done, false);
-    assert.equal(initial[0].item.id, item.id);
+    assert.equal(initial[0].itemId.id, item.id);
     for (const action of ["consume", "restock"]) {
       await assert.rejects(
         () => publicClient.actions[action]({ itemId: item.id, amount: 1 }),
@@ -794,12 +794,12 @@ async function check(saved) {
     );
     const tasks = await publicClient.tasks.list({
       where: { id: task.id },
-      with: { story: true },
+      with: { storyId: true },
     });
     assert.equal(tasks.length, 1, "SQL task appears in public list");
     const linked = tasks[0];
     assert.equal(
-      linked.story.id,
+      linked.storyId.id,
       story.id,
       "SQL task resolves its WordPress story",
     );

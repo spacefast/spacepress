@@ -252,7 +252,6 @@ pub fn build(
                 schema.column_mut(&at).access.insert(op, Access::Fn(name));
             }
             Slot::JobHandler { job } => schema.jobs.get_mut(&job).expect("job").handler = name,
-            Slot::RouteHandler { route } => schema.routes.get_mut(&route).expect("route").handler = name,
             Slot::WpHook { index } => schema.wp_hooks[index].handler = name,
             Slot::Component { name: component } => {
                 schema.components.insert(component, name);
@@ -283,7 +282,6 @@ pub fn build(
                     Owner::FileBucket(f) => {
                         schema.files.get_mut(&f).expect("bucket").access.insert(op, rule);
                     }
-                    Owner::Route(r) => schema.routes.get_mut(&r).expect("route").access = rule,
                     Owner::Job(_) => unreachable!("jobs have no access rules"),
                 }
             }

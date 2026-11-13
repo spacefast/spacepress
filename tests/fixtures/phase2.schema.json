@@ -28,6 +28,26 @@
             }
         }
     },
+    "uploads": {
+        "backend": "s3",
+        "bucket": {
+            "env": "UPLOAD_BUCKET"
+        },
+        "region": "us-east-1",
+        "endpoint": {
+            "env": "UPLOAD_ENDPOINT"
+        },
+        "prefix": "phase2",
+        "pathStyle": true,
+        "credentials": {
+            "accessKeyId": {
+                "env": "UPLOAD_KEY"
+            },
+            "secretAccessKey": {
+                "env": "UPLOAD_SECRET"
+            }
+        }
+    },
     "auth": {
         "collection": "members",
         "guests": true,
@@ -61,6 +81,10 @@
                     "type": "email",
                     "notNull": true
                 },
+                "payload": {
+                    "type": "json",
+                    "notNull": true
+                },
                 "data": {
                     "type": "group",
                     "fields": {
@@ -74,10 +98,6 @@
                             "type": "json"
                         }
                     }
-                },
-                "payload": {
-                    "type": "json",
-                    "notNull": true
                 }
             },
             "handler": "job__sendWelcome",
@@ -111,61 +131,6 @@
         }
     ],
     "collections": {
-        "audit": {
-            "key": "audit",
-            "label": "Audit",
-            "editor": false,
-            "drafts": false,
-            "revisions": false,
-            "comments": false,
-            "uid": false,
-            "sync": null,
-            "auth": false,
-            "agents": false,
-            "localized": false,
-            "title": null,
-            "content": null,
-            "slug": null,
-            "primaryKey": "id",
-            "columns": {
-                "id": {
-                    "type": "integer",
-                    "primaryKey": true,
-                    "autoIncrement": true,
-                    "notNull": true
-                },
-                "note": {
-                    "type": "text",
-                    "notNull": true
-                }
-            },
-            "relations": [],
-            "hooks": [],
-            "beforeCreateFills": [],
-            "access": {
-                "read": {
-                    "role": "anyone"
-                },
-                "create": {
-                    "role": "editor"
-                },
-                "update": {
-                    "role": "editor"
-                },
-                "delete": {
-                    "role": "editor"
-                }
-            },
-            "api": {
-                "list": true,
-                "get": true,
-                "create": true,
-                "update": true,
-                "delete": true
-            },
-            "wp": null,
-            "table": "first_audit"
-        },
         "authors": {
             "key": "authors",
             "label": "Authors",
@@ -245,7 +210,15 @@
                     "system": true
                 }
             },
-            "relations": [],
+            "relations": {
+                "posts": {
+                    "kind": "many",
+                    "collection": "posts",
+                    "from": "id",
+                    "to": "authorId",
+                    "optional": false
+                }
+            },
             "hooks": [],
             "beforeCreateFills": [],
             "access": {
@@ -321,7 +294,8 @@
                     "type": "integer",
                     "references": {
                         "collection": "authors",
-                        "column": "id"
+                        "column": "id",
+                        "onDelete": "restrict"
                     }
                 },
                 "deck": {
@@ -467,7 +441,15 @@
                     "system": true
                 }
             },
-            "relations": [],
+            "relations": {
+                "authorId": {
+                    "kind": "one",
+                    "collection": "authors",
+                    "from": "authorId",
+                    "to": "id",
+                    "optional": true
+                }
+            },
             "hooks": [],
             "beforeCreateFills": [],
             "access": {
@@ -498,6 +480,61 @@
                 "fieldKeyPrefix": "field_first_posts_"
             },
             "table": null
+        },
+        "audit": {
+            "key": "audit",
+            "label": "Audit",
+            "editor": false,
+            "drafts": false,
+            "revisions": false,
+            "comments": false,
+            "uid": false,
+            "sync": null,
+            "auth": false,
+            "agents": false,
+            "localized": false,
+            "title": null,
+            "content": null,
+            "slug": null,
+            "primaryKey": "id",
+            "columns": {
+                "id": {
+                    "type": "integer",
+                    "primaryKey": true,
+                    "autoIncrement": true,
+                    "notNull": true
+                },
+                "note": {
+                    "type": "text",
+                    "notNull": true
+                }
+            },
+            "relations": [],
+            "hooks": [],
+            "beforeCreateFills": [],
+            "access": {
+                "read": {
+                    "role": "anyone"
+                },
+                "create": {
+                    "role": "editor"
+                },
+                "update": {
+                    "role": "editor"
+                },
+                "delete": {
+                    "role": "editor"
+                }
+            },
+            "api": {
+                "list": true,
+                "get": true,
+                "create": true,
+                "update": true,
+                "delete": true
+            },
+            "wp": null,
+            "table": "first_audit"
         },
         "members": {
             "key": "members",
@@ -643,17 +680,17 @@
             },
             "agents": false,
             "idempotent": true,
+            "readonly": false,
+            "destructive": false,
+            "output": {
+                "type": "boolean"
+            },
             "signature": {
                 "secret": {
                     "env": "STRIPE_WEBHOOK_SECRET"
                 },
                 "header": "stripe-signature",
                 "scheme": "hmac-sha256"
-            },
-            "readonly": false,
-            "destructive": false,
-            "output": {
-                "type": "boolean"
             }
         },
         "widened": {
@@ -664,7 +701,6 @@
             },
             "agents": true,
             "idempotent": false,
-            "signature": null,
             "readonly": false,
             "destructive": false,
             "output": {
@@ -1209,27 +1245,8 @@
                     "formatted",
                     "inferredNumber"
                 ]
-            }
-        }
-    },
-    "uploads": {
-        "backend": "s3",
-        "bucket": {
-            "env": "UPLOAD_BUCKET"
-        },
-        "region": "us-east-1",
-        "endpoint": {
-            "env": "UPLOAD_ENDPOINT"
-        },
-        "pathStyle": true,
-        "prefix": "phase2",
-        "credentials": {
-            "accessKeyId": {
-                "env": "UPLOAD_KEY"
             },
-            "secretAccessKey": {
-                "env": "UPLOAD_SECRET"
-            }
+            "signature": null
         }
     }
 }

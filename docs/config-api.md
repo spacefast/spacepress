@@ -3,8 +3,8 @@
 `first build` reads `first.config.ts`, evaluates it at build time with First's own
 Rust evaluator (no Node, no JS engine), and compiles hooks/actions to PHP.
 Everything below is exported from the `"first"` module. Shapes follow Drizzle
-ORM 1.0 (beta.22): column builders, `defineRelations`, relational-query
-`findMany`/`findFirst` with object filters.
+ORM 1.0 (beta.22): column builders, relational-query `findMany`/`findFirst` with
+object filters.
 
 ## Project layout
 
@@ -130,32 +130,27 @@ install a drop-in, so the host supplies it (on Spacefast, the box image does).
 
 ```ts
 import {
-  collection, table, text, integer, defineRelations, defineConfig,
+  collection, table, text, integer, ref, defineConfig,
 } from "first";
 
 // Native WordPress content with an editor and the integer id every kind has.
 const posts = collection({ title: text() });
 // App data in SQL, with a reference to the content.
 const stock = table({
-  postId: integer().references(() => posts.id, { onDelete: "cascade" }).optional(),
+  post: ref(posts).optional().onDelete("cascade"),
   quantity: integer().default(0),
 });
-const collections = { posts };
-const tables = { stock };
-const relations = defineRelations({ ...collections, ...tables }, (r) => ({
-  stock: { post: r.one.posts({ from: r.stock.postId, to: r.posts.id }) },
-  posts: { stock: r.many.stock() },
-}));
 
 export default defineConfig({
-  collections, tables, relations,
+  collections: { posts }, tables: { stock },
   hooks: { posts: { beforeCreate(data) { data.title = data.title.trim(); } } },
 });
 ```
 
 The generated client stays flat: `first.posts.create({ title: "Hello" })`,
-`first.stock.create({ postId, quantity: 2 })`, then
-`first.stock.list({ where: { post: { title: "Hello" } }, with: { post: true } })`.
+`first.stock.create({ post: postId, quantity: 2 })`, then
+`first.stock.list({ where: { post: { title: "Hello" } }, with: { post: true } })`,
+and back the other way `first.posts.list({ with: { stock: true } })`.
 See the [pantry](../examples/pantry/first.config.ts) for a table-only app and
 [blog](../examples/blog/first.config.ts) for editorial content with related app data.
 
@@ -199,8 +194,8 @@ sets are safe): `.optional()`, `.default(value)` (a literal), `.defaultNow()`
 (timestamp/date), `.$default(() => value)` / `.$defaultFn(...)` (runs in PHP on
 insert), `.$onUpdate(() => value)` / `.$onUpdateFn(...)` (runs in PHP on
 update; `() => new Date()` on a timestamp is recognized as "now"), `.many()`
-(select and media), `.unique()`, `.references(() => other.col, { onDelete,
-onUpdate })` with actions `"cascade" | "restrict" | "set null" | "no action"`,
+(select and media), `.unique()`, `.onDelete("cascade" | "restrict" | "setNull")` and
+`.reverse("name")` (on `ref()`, see [Relations](#relations)),
 `.min(n)` / `.max(n)` (numbers: bounds; strings: length; lists: item count),
 `.pattern(/re/)` (strings), `.validate((value, ctx) => true | "message")`
 (compiled to PHP, runs on every write), `.was("old")` (a rename: the deploy
@@ -212,7 +207,7 @@ The earlier forms are refused with a located error that names the replacement:
 kind has an integer `id`; a text key is `code: text().unique().max(191)`),
 `real()` (`number()`), `text({ enum })` and `select({ options })` (`select([...])`),
 `multiple: true` (`.many()`), `{ fields }` and `{ layouts }` wrappers, and
-`json().$type<T>()` (`json<T>()`).
+`json().$type<T>()` (`json<T>()`), `.references()` and `defineRelations` (`ref(kind)`).
 
 Phase-2 modifiers:
 
@@ -237,10 +232,10 @@ Phase-2 modifiers:
 - `file({ bucket })`: a column holding a private file's id. See [Files](#files).
 
 Each modifier is checked against the column kind (design §1.2): `.max()` on a
-boolean, `.pattern()` on a number, `.references()` on text and so on fail the
+boolean, `.pattern()` on a number, `.onDelete()` on text and so on fail the
 build at the modifier. `.unique()` text needs `.max(≤191)` (MySQL index limit).
 Sub-fields of `group`/`repeater`/`blocks` can't use `.unique()`,
-`.references()`, `slug()`, `blocks()`, or `.$onUpdate()`, and nest at most 3 deep.
+`ref()`, `slug()`, `blocks()`, or `.$onUpdate()`, and nest at most 3 deep.
 
 Column keys are the SQL column names.
 
@@ -253,7 +248,7 @@ storage. Register each definition in its matching namespace:
 
 ```ts
 const posts = collection({ title: text() });
-const stock = table({ postId: integer().references(() => posts.id).optional() });
+const stock = table({ post: ref(posts).optional() });
 export default defineConfig({ collections: { posts }, tables: { stock } });
 ```
 
@@ -502,8 +497,8 @@ sub-field rules, and a required field needs a default. `GET`/`PATCH
 
 ## defineConfig
 
-`defineConfig({ name?, collections?, tables?, users?, relations?, globals?, hooks?, actions?,
-jobs?, routes?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend? })`. `name` (a slug,
+`defineConfig({ name?, collections?, tables?, users?, globals?, hooks?, actions?,
+jobs?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `first-app-<name>`.
 `admin: true` ships the optional admin screens as a fourth plugin,
 `first-admin`; by default the build emits none. `frontend` says who renders the
@@ -513,7 +508,7 @@ localhost) so links, previews and feeds point there.
 
 ## Plugin packages
 
-A plugin is an npm package that adds hooks, actions, jobs and routes. It runs
+A plugin is an npm package that adds hooks, actions and jobs. It runs
 in the app's PHP process. The compiler records everything its code can do,
 and the app grants that in a committed lock file.
 
@@ -539,7 +534,7 @@ export default defineConfig({ collections: { posts }, use: [seo({ suffix: " | Si
 - Plugin hooks run before the app's hook for the same collection and kind,
   in `use` order. A before-hook's returned replacement becomes the next
   hook's `data`. A throw aborts the request, as in app hooks.
-- A plugin's actions, jobs and routes are registered as `<name>_<key>`.
+- A plugin's actions and jobs are registered as `<name>_<key>`.
   Inside the plugin, `jobs.<key>` names its own jobs.
 - A plugin package can import its own modules, `"first"` and ordinary npm
   packages. Importing the app's modules or another plugin's package fails
@@ -561,7 +556,7 @@ grant and writes `first/_generated/plugins.lock.json`:
 | `read` | collection keys and `globals.<name>`: queries, relation loads, hooked collections |
 | `write` | `<collection>.<field>` (or `.*`), `globals.<name>`: inserts, updates, before-hook changes, including through helpers |
 | `delete` | collection keys |
-| `hooks`, `actions`, `routes` | what the plugin registers |
+| `hooks`, `actions` | what the plugin registers |
 | `http` | hosts with a written `https://host/` prefix; `*` for a URL built at runtime |
 | `env` | variable names, including `crypto.hmacSha256` keys and signature secrets |
 | `mail` | `send` |
@@ -590,10 +585,29 @@ There are no CPU or memory limits.
 
 ## Relations
 
-`defineRelations({ ...collections, ...tables, ...users }, (r) => ({ ... }))`, Drizzle 1.0 style:
-`r.one.<key>({ from: r.<this>.<col>, to: r.<target>.<col>, optional? })`,
-`r.many.<key>({ from, to })`. `r.many.<key>()` with no config is inferred from
-the single `one` relation pointing back.
+`ref(kind)` is a field holding the `id` of a row of another kind; `ref(() => kind)`
+refers to one declared later or to itself. The field name is the stored column,
+the relation name and the `with` key: `with: { post: true }` replaces the id with
+the row under the same key, and `where: { post: { title: "Hello" } }` filters by
+the target's fields (`where: { post: 7 }` still matches the id).
+
+```ts
+const authors = collection({ name: text() });
+const posts = collection({
+  title: text(),
+  author: ref(authors),                                  // required: delete is restricted
+  editor: ref(authors).optional().reverse("edited"),     // optional: delete sets null
+});
+```
+
+The target gets a reverse many relation named after the referencing kind's key
+(`first.authors.list({ with: { posts: true } })`), or `.reverse("name")` names it.
+Two refs from one kind to the same target get no default reverse; both need
+`.reverse()`, and the build error names them. A reverse named like a field of
+the target is a build error. `.onDelete()` takes `"cascade"`, `"restrict"` or
+`"setNull"`; the default is `"restrict"` on a required ref and `"setNull"` on an
+optional one. `ref()` refers to `id` only: a kind that links by a natural key
+stores the value as a plain field and queries by it.
 
 One graph covers collection↔collection, table↔table and both directions across
 storage kinds. Relation filters and `with` loads use the same runtime machinery
@@ -671,56 +685,54 @@ and `data.pointer`.
 
 > On a hosted Spacefast Space, routes outside `/wp-json` aren't served yet: the host doesn't hand those paths to WordPress. The compiled manifest lists them (`routes`, and `pagePaths` for pages) for the host change that will. On your own WordPress they work today.
 >
-> For a host reading those lists: trim one trailing `/` from the request path, treat `HEAD` as `GET`, and hand over any request whose path matches an entry whatever its method, so the app answers a wrong method with 405. `*name` takes one or more segments.
+> For a host reading those lists: trim one trailing `/` from the request path, treat `HEAD` as `GET`, and hand over any request whose path matches an entry whatever its method, so the app answers a wrong method with 405. `:name` takes one segment and `*name` one or more.
 
-`routes` serves your own method and path on the site, outside `/wp-json`: a
-feed, a sitemap, a payment provider's webhook, anything that is not a JSON
-action call.
+An HTTP route serves your own methods on a path of the site, outside
+`/wp-json`: a feed, a sitemap, a payment provider's webhook, anything that is
+not a JSON action call. It is a `route.ts` file under `first/app/`, at the
+folder of its URL ([pages](pages.md) describes the folder rules); `first/app/`
+needs no pages for it.
 
 ```ts
-import { defineConfig, route, env, db } from "first";
+// first/app/api/feed.json/route.ts: GET /api/feed.json
+import { db, type RouteRequest } from "first";
 
-export default defineConfig({
-  routes: {
-    feed: route({
-      method: "GET",
-      path: "/api/feed.json",
-      access: "anyone",
-      async handler(req) {
-        const limit = Number(req.query.get("limit") ?? "20");
-        const notes = await db.query.notes.findMany({ where: { status: "published" }, limit });
-        return {
-          headers: { "content-type": "application/feed+json" },
-          body: JSON.stringify({ version: "https://jsonfeed.org/version/1.1", items: notes.map((n) => ({ id: String(n.id), title: n.title })) }),
-        };
-      },
-    }),
-    stripe: route({
-      method: "POST",
-      path: "/webhooks/stripe",
-      signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" },
-      handler(req) {
-        const event = JSON.parse(req.body) as { type: string };
-        return { status: 202, body: "ok " + event.type };
-      },
-    }),
-  },
-});
+export const access = "anyone";
+
+export async function GET(req: RouteRequest) {
+  const limit = Number(req.query.get("limit") ?? "20");
+  const notes = await db.query.notes.findMany({ where: { status: "published" }, limit });
+  return {
+    headers: { "content-type": "application/feed+json" },
+    body: JSON.stringify({ version: "https://jsonfeed.org/version/1.1", items: notes.map((n) => ({ id: String(n.id), title: n.title })) }),
+  };
+}
 ```
 
-- `method`: `GET`, `POST`, `PUT`, `PATCH` or `DELETE`, one per route. A `GET`
-  route also answers `HEAD`. A path that a route serves with another method
-  answers `405`.
-- `path` starts with `/`. Each segment is literal (`A-Z a-z 0-9 . _ ~ -`) or
-  `:name`, which matches one segment. The last segment may be `*name`, which
-  matches one or more segments; `req.params.name` is them decoded and joined
-  with `/`. An encoded `/` or a `.`/`..` segment never matches. A trailing
-  slash matches. Two routes with the same method and shape are refused. So is
-  a first segment WordPress or First
-  owns (`wp-admin`, `wp-json`, `wp-content`, `feed`, `first-admin`, `auth`,
-  `__spacefast`, `.well-known`, ...), and so is a URL that a
-  [TSX page](pages.md) serves.
-- Pass exactly one of `access` or `signature`; there is no default. `access`
+```ts
+// first/app/webhooks/stripe/route.ts: POST /webhooks/stripe
+import { env, type RouteRequest } from "first";
+
+export const signature = { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" };
+
+export function POST(req: RouteRequest) {
+  const event = JSON.parse(req.body) as { type: string };
+  return { status: 202, body: "ok " + event.type };
+}
+```
+
+- Export one handler per method: `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
+  `GET` also answers `HEAD`. Any other method on the path answers `405`. A
+  `page.tsx` may export the same handlers, except `GET`, for its own URL.
+- The folder is the path. A folder is a literal segment (lowercase letters,
+  digits, `. _ ~ -`), `[name]` for one segment, or a final `[...name]` for one
+  or more; `req.params.name` is the decoded segment, or the decoded segments
+  joined with `/`. An encoded `/` or a `.`/`..` segment never matches. A
+  trailing slash matches. Two files that serve one URL are refused, and so is a
+  first folder that WordPress or First owns (`wp-admin`, `wp-json`,
+  `wp-content`, `feed`, `first-admin`, `auth`, `__spacefast`, `.well-known`,
+  ...).
+- Export exactly one of `access` or `signature`; there is no default. `access`
   takes the same rules as actions (`"anyone"`, `"authenticated"`, a role, a
   boolean, or a function of `ctx`). `signature` verifies an HMAC over the raw
   body, as on [actions](#actions). The verified caller is then anonymous.
@@ -734,11 +746,10 @@ export default defineConfig({
   `entries()`. Names are kept exactly (`a.b`, `x[]`), `+` is a space, and a
   repeated name keeps every value in order. PHP's `$_GET` would rename `a.b` to
   `a_b` and keep only the last value.
-- When several routes match, the most specific one wins, whatever their order
-  in the config. Segments are compared from the left, and a literal segment
-  beats a `:param`, which beats a `*rest`: `/api/feed.json` wins over
-  `/api/:id`, `/api/probe/:id` wins over `/api/:kind/:id`, and
-  `/files/:bucket/latest` wins over `/files/*path`.
+- When several routes match, the most specific one wins. Segments are
+  compared from the left, and a literal folder beats a `[param]`, which beats a
+  `[...rest]`: `api/feed.json` wins over `api/[id]`, `api/probe/[id]` wins over
+  `api/[kind]/[id]`, and `files/[bucket]/latest` wins over `files/[...path]`.
 - The handler returns `{ status?, headers?, body? }`. `status` defaults to
   `200`, `body` to `""`, and `Content-Type` to `text/plain; charset=utf-8`. Header
   names are case-insensitive, so the handler's `content-type` replaces the

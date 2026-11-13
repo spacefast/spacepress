@@ -18,8 +18,6 @@ export const collections = {  };
 export const tables = { jobNotes, hookNotes };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
-/** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
-export const relations = (r: unknown) => ({});
 export const actions = {
   refsEnqueue: action({
     input: { noteId: integer(), meta: json() }, access: "editor",

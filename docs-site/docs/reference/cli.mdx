@@ -21,7 +21,7 @@ These commands run on your machine, on the project's files.
 | `first doctor [dir] [--out dir] [--site url] [--json]` | Check a build, and a running site (FIRST_TOKEN) |
 | `first sync [status \| resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--json]` | Content files \<-\> site records (FIRST_APP_PASSWORD or FIRST_TOKEN) |
 | `first abilities pull [dir] --site url [--only vendor/*]` | Lock a site's abilities into first/_generated/abilities.json (FIRST_APP_PASSWORD) |
-| `first deploy <inspect\|publish\|init\|status\|backup\|restore> <options>` | Artifact preflight and offline workspaces (docs/deployment.md) |
+| `first deploy <inspect\|publish\|init\|status\|backup\|restore> <options>` | Artifact preflight and offline workspaces ([docs/deployment.md](https://github.com/spacefast/zero/blob/main/docs/deployment.md)) |
 
 ## Site commands
 
@@ -31,7 +31,7 @@ These commands run inside WordPress. On a local site, run them as `first <comman
 | --- | --- |
 | `wp first migrate [--drop=<kind>=<rows>,...] [--mark-applied=<id>]` | Apply pending database migrations, checked against live rows. |
 | `wp first seed --records=<dir> [--dry-run]` | First-sync content from compiled records. |
-| `wp first jobs list [--state=s] \| run <id> \| retry <id> \| cancel <id> \| maintain` | Inspect and drive background jobs. |
+| `wp first jobs list [--state=s] \| run <id> \| retry <id> \| cancel <id> \| maintain \| tick [--limit=n] [--budget-ms=ms]` | Inspect and drive background jobs. |
 | `wp first abilities` | List the app's abilities. |
 | `wp first run <ability> [--input=<json>]` | Run an ability. |
 | `wp first action <name> [json]` | Call an action as the trusted CLI. |

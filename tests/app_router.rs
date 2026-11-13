@@ -502,6 +502,79 @@ fn rejects(dir: &Path, files: &[(&str, &str)], message: &str, at: &str) {
     );
 }
 
+/// A stylesheet the compiler can't serve as it is, and an import that isn't code or an asset, are
+/// build errors at the line, with the fix.
+#[test]
+fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
+    let dir = std::env::temp_dir().join(format!("first-app-css-{}", std::process::id()));
+    let page = |import: &str| format!("{import}\nexport default function P() {{ return <p/>; }}\n");
+    let styled = page("import \"./x.css\";");
+    let module = page("import s from \"./x.module.css\";");
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &styled),
+            ("first/app/x.css", "@import \"normalize.css\";\n.a {}\n"),
+        ],
+        "`@import` in an imported stylesheet isn't supported",
+        "first/app/x.css:1:1",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &styled),
+            ("first/app/x.css", ".a {\n  background: url(./bg.png);\n}\n"),
+        ],
+        "`url(./bg.png)` is relative to the stylesheet",
+        "first/app/x.css:2:15",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &module),
+            ("first/app/x.module.css", ":global(.a) {}\n"),
+        ],
+        "`:global` isn't supported in CSS modules",
+        "first/app/x.module.css:1:1",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &module),
+            ("first/app/x.module.css", ".a { composes: b; }\n"),
+        ],
+        "`composes` isn't supported in CSS modules",
+        "first/app/x.module.css:1:6",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &page("import data from \"./x.json\";")),
+            ("first/app/x.json", "{}"),
+        ],
+        "can't import \"./x.json\": expected TypeScript or JavaScript source",
+        "first/app/page.tsx:1:1",
+    );
+    // A client component renders in the browser too; an image URL comes in as a prop.
+    rejects(
+        &dir,
+        &[
+            (
+                "first/app/page.tsx",
+                "import { C } from \"../components/C\";\nexport default function P() { return <C />; }\n",
+            ),
+            (
+                "first/components/C.tsx",
+                "\"use client\";\nimport logo from \"./logo.svg\";\nexport function C() { return <img src={logo} />; }\n",
+            ),
+            ("first/components/logo.svg", "<svg/>"),
+        ],
+        "a \"use client\" component can't import first/components/logo.svg",
+        "first/components/C.tsx",
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Shapes the router can't serve, and route files that would silently do nothing, are build
 /// errors at the file, with the fix.
 #[test]
@@ -1022,7 +1095,8 @@ fn refuses_client_code_outside_the_subset() {
 /// The record's browser check: compiled client components on a real WordPress page, in Chromium
 /// with `SCRIPT_DEBUG` (the Interactivity runtime's development build, the one that warns).
 /// Hydration changes nothing in the server HTML, the runtime logs no warnings, a click calls the
-/// server action and updates the label, and effects and shared state follow state changes.
+/// server action and updates the label, effects and shared state follow state changes, and a CSS
+/// module's class switches with state and styles the element.
 #[test]
 fn client_components_hydrate_in_the_browser() {
     assert!(
@@ -1076,6 +1150,15 @@ fn client_components_hydrate_in_the_browser() {
             &serde_json::json!("2"),
             &serde_json::json!("40")
         )
+    );
+    // The CSS module's class is renamed on both sides, and the stylesheet the page links applies.
+    assert_eq!(
+        (&seen["toggleBefore"], &seen["toggleAfter"]),
+        (
+            &serde_json::json!(["toggle_off", "rgb(10, 20, 30)", "off"]),
+            &serde_json::json!(["toggle_on", "rgb(200, 40, 40)", "on"])
+        ),
+        "{seen}"
     );
 }
 
@@ -1132,4 +1215,70 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         seen["purged"],
         serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])
     );
+}
+
+/// Stylesheets and SVGs that pages, layouts and components import (docs/spec/tsx-to-php.md,
+/// "Accepted"), on WordPress over HTTP: each page links its layouts' and its own stylesheets once,
+/// in import order (the root layout's first), from the app plugin, with content-hashed names; a CSS
+/// module's classes are renamed `<stem>_<class>` on the element and in the served file, and an SVG
+/// import is its URL.
+#[test]
+fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
+    let project = fixture("app-assets", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_assets.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let files = |page: &str| -> Vec<String> {
+        seen[page]["links"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| {
+                assert_eq!(l["status"].as_i64(), Some(200), "{l}");
+                assert!(l["type"].as_str().unwrap().starts_with("text/css"), "{l}");
+                l["file"].as_str().unwrap().split('-').next().unwrap().to_string()
+            })
+            .collect()
+    };
+    // The layout's site.css first, then the page's module, then the client component's module.
+    assert_eq!(files("about"), ["site", "page", "counter"], "{seen}");
+    assert_eq!(files("plain"), ["site"], "{seen}");
+    let css = |page: &str, i: usize| seen[page]["links"][i]["css"].as_str().unwrap().to_string();
+    assert_eq!(
+        css("about", 0),
+        ":root { --ink: #1d2420; }\nbody { margin: 0; color: var(--ink); }\n.site { max-width: 48rem; }\n"
+    );
+    assert_eq!(
+        css("about", 1),
+        ".page_title { font-size: 2rem; }\n.page_card .page_title { color: #1f4d3a; }\n@media (min-width: 40rem) { .page_card { padding: 1rem; } }\n"
+    );
+    assert_eq!(
+        css("about", 2),
+        ".counter_button { border: 0; }\n.counter_on { background: #1f4d3a; }\n"
+    );
+    // The plain stylesheet's link is the same file on both pages.
+    assert_eq!(seen["about"]["links"][0]["file"], seen["plain"]["links"][0]["file"]);
+    assert_eq!(
+        seen["about"]["classes"],
+        serde_json::json!({ "div": ["site"], "section": ["page_card"], "h1": ["page_title"], "button": ["counter_button"] }),
+        "{seen}"
+    );
+    let image = &seen["about"]["images"][0];
+    assert_eq!(image["status"].as_i64(), Some(200), "{image}");
+    assert!(image["type"].as_str().unwrap().starts_with("image/svg+xml"), "{image}");
+    assert!(image["src"].as_str().unwrap().starts_with("compass-"), "{image}");
+    assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
 }

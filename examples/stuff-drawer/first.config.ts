@@ -1,7 +1,7 @@
 import {
-  action, collection, date, db, defineConfig, defineRelations, HttpError,
+  action, collection, date, db, defineConfig, HttpError,
   integer, job, jobs, json, media, table, text, timestamp,
-  type InferSelectModel, select,
+  type InferSelectModel, select, ref,
 } from "first";
 import { actorId, ownerId, personalAccess } from "./first/lib/ownership";
 
@@ -19,7 +19,7 @@ const things = collection({
   connectorB: text().ui({ label: "Connector B", placeholder: "Lightning" }).optional(),
   lengthCm: integer().min(0).ui({ label: "Length in cm" }).optional(),
   wattage: integer().min(0).ui({ label: "Power in watts" }).optional(),
-  binId: integer().references(() => bins.id, { onDelete: "set null" }).optional(),
+  binId: ref(bins).optional(),
   quantity: integer().min(1).default(1).ui({ help: "Total owned, including copies lent out. Each loan is one copy." }),
   photo: media({ accept: "image" }).optional(),
   tags: json<string[]>().$default(() => []).validate((tags) => (Array.isArray(tags) && tags.every((tag) => typeof tag === "string")) || "Tags must be a JSON list of strings.").ui({ help: 'A JSON list, for example ["travel", "iphone"].' }),
@@ -33,8 +33,8 @@ const people = collection({
 }, { title: "name", label: "People", access: personalAccess });
 
 const loans = table({
-  thingId: integer().references(() => things.id, { onDelete: "restrict" }),
-  personId: integer().references(() => people.id, { onDelete: "restrict" }),
+  thingId: ref(things),
+  personId: ref(people),
   lentOn: date().defaultNow(),
   dueOn: date(),
   returnedOn: date().optional(),
@@ -44,15 +44,6 @@ const loans = table({
 
 const collections = { bins, things, people };
 const tables = { loans };
-const relations = defineRelations({ ...collections, ...tables }, (r) => ({
-  things: { bin: r.one.bins({ from: r.things.binId, to: r.bins.id }), loans: r.many.loans() },
-  bins: { things: r.many.things() },
-  people: { loans: r.many.loans() },
-  loans: {
-    thing: r.one.things({ from: r.loans.thingId, to: r.things.id }),
-    person: r.one.people({ from: r.loans.personId, to: r.people.id }),
-  },
-}));
 
 type Loan = InferSelectModel<typeof loans>;
 
@@ -103,8 +94,7 @@ async function describeLoans(owner: number, entries: Loan[]) {
 export default defineConfig({
   name: "stuff-drawer",
   admin: true,
-  collections, tables, relations,
-  hooks: {
+  collections, tables, hooks: {
     bins: { beforeCreate(data, ctx) { data.ownerId = actorId(ctx); } },
     people: { beforeCreate(data, ctx) { data.ownerId = actorId(ctx); } },
     things: {
@@ -114,21 +104,30 @@ export default defineConfig({
       },
       async beforeUpdate(patch, existing) {
         await checkBin(patch.binId === undefined ? existing.binId : patch.binId, existing.ownerId);
-        if (patch.quantity !== undefined) {
+        const quantity = patch.quantity;
+        if (quantity !== undefined) {
           const active = await db.query.loans.findMany({ where: {
             ownerId: existing.ownerId, thingId: existing.id, returnedOn: { isNull: true },
           } });
-          if (patch.quantity < active.length) throw new HttpError(409, "copies_on_loan", "Return copies before reducing the quantity.");
+          if (quantity < active.length) throw new HttpError(409, "copies_on_loan", "Return copies before reducing the quantity.");
         }
       },
     },
     loans: {
       async beforeCreate(data, ctx) {
         data.ownerId = actorId(ctx);
-        await checkLoan({ ...data, ownerId: actorId(ctx), lentOn: data.lentOn ?? new Date().toISOString().slice(0, 10) });
+        await checkLoan({
+          ownerId: data.ownerId, thingId: data.thingId, personId: data.personId, dueOn: data.dueOn,
+          lentOn: data.lentOn ?? new Date().toISOString().slice(0, 10), returnedOn: data.returnedOn,
+        });
       },
       async beforeUpdate(patch, existing) {
-        await checkLoan({ ...existing, ...patch });
+        await checkLoan({
+          id: existing.id, ownerId: existing.ownerId,
+          thingId: patch.thingId ?? existing.thingId, personId: patch.personId ?? existing.personId,
+          lentOn: patch.lentOn ?? existing.lentOn, dueOn: patch.dueOn ?? existing.dueOn,
+          returnedOn: patch.returnedOn === undefined ? existing.returnedOn : patch.returnedOn,
+        });
       },
       afterCreate: scheduleOverdue,
       afterUpdate: scheduleOverdue,
@@ -157,7 +156,7 @@ export default defineConfig({
         const result = [];
         for (const thing of inventory) {
           const searchable = `${thing.name} ${thing.connectorA ?? ""} ${thing.connectorB ?? ""} ${thing.tags.join(" ")}`.toLowerCase();
-          if (!words.every((word) => searchable.includes(word))) continue;
+          if (!words.every((word) => word === undefined || searchable.includes(word))) continue;
           const bin = thing.binId == null ? null : await db.query.bins.findFirst({ where: { id: thing.binId, ownerId: owner } });
           const active = await db.query.loans.findMany({ where: { thingId: thing.id, ownerId: owner, returnedOn: { isNull: true } } });
           result.push({ thing, bin, outOnLoan: active.length > 0, availableQuantity: thing.quantity - active.length });
@@ -191,7 +190,7 @@ export default defineConfig({
         const entries = await db.query.loans.findMany({ where: {
           ownerId: owner, returnedOn: { isNull: true }, dueOn: { lt: new Date().toISOString().slice(0, 10) },
         }, orderBy: { dueOn: "asc" } });
-        return describeLoans(owner, entries);
+        return await describeLoans(owner, entries);
       },
     }),
     whoHas: action({
@@ -201,7 +200,7 @@ export default defineConfig({
         const person = await db.query.people.findFirst({ where: { id: personId, ownerId: owner } });
         if (!person) throw new HttpError(404, "not_found", "Person not found in your drawer.");
         const entries = await db.query.loans.findMany({ where: { ownerId: owner, personId, returnedOn: { isNull: true } }, orderBy: { lentOn: "asc" } });
-        return describeLoans(owner, entries);
+        return await describeLoans(owner, entries);
       },
     }),
   },

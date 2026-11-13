@@ -8,7 +8,7 @@ import {
   table,
   text,
   type CollectionHooks,
-  type InferSelectModel, select,
+  type InferSelectModel, select, ref,
 } from "first";
 import { stories } from "./stories";
 
@@ -34,14 +34,12 @@ export const items = table(
     brand: text().max(80).optional(),
     notes: text({ multiline: true }).max(2000).optional(),
     opened: boolean().default(false),
-    storyId: integer().references(() => stories.id, { onDelete: "set null" }).optional(),
+    storyId: ref(() => stories).optional(),
     quantity: integer().min(0).default(1),
     unit: select(["pcs", "g", "ml"]).default("pcs"),
     lowStockAt: integer().min(0).default(1),
     expiresOn: date().optional(),
-    locationId: integer().references(() => locations.id, {
-      onDelete: "set null",
-    }).optional(),
+    locationId: ref(locations).optional(),
   },
   {
     label: "Pantry items",
@@ -56,7 +54,7 @@ export const items = table(
 
 export const shoppingList = table(
   {
-    itemId: integer().unique().references(() => items.id, { onDelete: "cascade" }),
+    itemId: ref(items).unique().onDelete("cascade"),
     name: text().min(1).max(120),
     done: boolean().default(false),
   },

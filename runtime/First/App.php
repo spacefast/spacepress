@@ -6,7 +6,9 @@ namespace First;
 
 /**
  * Boots a generated app and serves its REST API (§4.8) and CLI. The WordPress plugin passes its
- * Store/Auth/Media and calls handle() with the path after its REST prefix (`/wp-json/first/v1`).
+ * Store/Auth/Media and calls handle() with the path after the API prefix (`/__first/api/v1`): the
+ * WordPress facade for First's own routes with no core route (sign-in, sync, services, files), and
+ * the abilities (invoke).
  */
 final class App
 {
@@ -84,117 +86,6 @@ final class App
 
         return Extensions::execute('action:' . $name, $action, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer,
             static fn (): Response => Response::json(JsBinary::refuseWire(Seam::asVisitor($visitor, static fn (): mixed => Timers::run(static fn (): mixed => $fn($input, $ctx))), 'action ' . $name)));
-    }
-
-    /**
-     * The `routes` entry for a method and path, with its decoded parameters. GET answers HEAD;
-     * a trailing slash is ignored; literal segments match exactly and `:name` takes one segment.
-     *
-     * @return ?array{name: string, route: array, params: array<string, string>}
-     */
-    public function matchRoute(string $method, string $path): ?array
-    {
-        return self::routeFor($this->schema, $method, $path);
-    }
-
-    /**
-     * matchRoute() from the schema alone, so a request can be matched before storage is usable.
-     *
-     * @return ?array{name: string, route: array, params: array<string, string>}
-     */
-    public static function routeFor(Schema $schema, string $method, string $path): ?array
-    {
-        $method = $method === 'HEAD' ? 'GET' : $method;
-        $segments = explode('/', trim($path, '/'));
-        foreach ($segments as $segment) {
-            if ($segment === '' || preg_match('/%(?![0-9A-Fa-f]{2})/', $segment) === 1) {
-                return null;
-            }
-        }
-        $decoded = array_map('rawurldecode', $segments);
-        foreach ($decoded as $segment) {
-            if ($segment === '.' || $segment === '..' || str_contains($segment, '/') || !mb_check_encoding($segment, 'UTF-8')) {
-                return null;
-            }
-        }
-        // Most specific wins, whatever the declaration order: compared segment by segment from the
-        // left, a literal beats a `:param`, which beats a `*rest`. Declaration order breaks only
-        // exact ties, which the compiler refuses anyway.
-        $best = null;
-        $bestRank = null;
-        foreach ($schema->routes() as $name => $route) {
-            if ($route['method'] !== $method) {
-                continue;
-            }
-            $pattern = explode('/', trim($route['path'], '/'));
-            $rest = str_starts_with((string) end($pattern), '*');
-            $fixed = $rest ? count($pattern) - 1 : count($pattern);
-            // `*rest` takes one or more segments, never none, like the original runtime's matcher.
-            if ($rest ? count($decoded) <= $fixed : count($decoded) !== $fixed) {
-                continue;
-            }
-            $params = [];
-            $rank = [];
-            foreach ($pattern as $i => $part) {
-                if (str_starts_with($part, '*')) {
-                    $params[substr($part, 1)] = implode('/', array_slice($decoded, $i));
-                    $rank[] = 2;
-                } elseif (str_starts_with($part, ':')) {
-                    $params[substr($part, 1)] = $decoded[$i];
-                    $rank[] = 1;
-                } elseif ($part !== $decoded[$i]) {
-                    continue 2;
-                } else {
-                    $rank[] = 0;
-                }
-            }
-            if ($bestRank === null || self::moreSpecific($rank, $bestRank)) {
-                $best = ['name' => $name, 'route' => $route, 'params' => $params];
-                $bestRank = $rank;
-            }
-        }
-
-        return $best;
-    }
-
-    /**
-     * Left to right, the first differing segment decides: literal (0) before `:param` (1) before
-     * `*rest` (2). PHP's own array `<` compares lengths first, which would rank `/a/*rest` above
-     * `/a/:b/c` for being shorter.
-     *
-     * @param list<int> $a
-     * @param list<int> $b
-     */
-    private static function moreSpecific(array $a, array $b): bool
-    {
-        foreach ($a as $i => $kind) {
-            if (!isset($b[$i])) {
-                return false;
-            }
-            if ($kind !== $b[$i]) {
-                return $kind < $b[$i];
-            }
-        }
-
-        return count($a) > count($b);
-    }
-
-    /** Whether any route claims this path for some method (a 405 rather than a 404 for the others). */
-    public function routePathKnown(string $path): bool
-    {
-        return self::routePathFor($this->schema, $path);
-    }
-
-    /** routePathKnown() from the schema alone. */
-    public static function routePathFor(Schema $schema, string $path): bool
-    {
-        foreach (['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as $method) {
-            if (self::routeFor($schema, $method, $path) !== null) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

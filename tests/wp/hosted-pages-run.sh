@@ -17,7 +17,7 @@ cleanup() { "$here/harness.sh" down; rm -rf "$app"; }
 trap cleanup EXIT
 rsync -a --exclude .first --exclude node_modules "$repo/examples/full-site/" "$app/project/"
 # Probes beyond the example: undefined optional fields and once() keyed to the request body.
-python3 "$here/hosted-pages-probes.py" "$app/project/first.config.ts"
+python3 "$here/hosted-pages-probes.py" "$app/project"
 "$target/debug/first" sources "$app/project" --out "$app/source"
 # The harness installs the pinned platform plugins from a native build's lock; it never serves them.
 "$target/debug/first" build "$app/project" --quiet >/dev/null

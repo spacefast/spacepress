@@ -137,6 +137,27 @@ the earlier API becomes `.optional()`.
     its tests move to a fixture in that format. Cost: authors lose database-enforced natural-key
     foreign keys; bringing them back is a new surface decision.
 
+23. **One old reading, every 0.3.0 form.** Ruling 21's switch is the only old-reading mode: the one
+    flag (`Fs::legacy_fields`, which only `src/zero_bundle.rs` sets, read as `Evaluator::legacy`) also
+    turns on `mod legacy` in `src/extract.rs`. There is no per-form switch, CLI flag or config key, and
+    nothing a normal project can reach. With it, besides ruling 21's field forms and ruling 22's
+    references:
+    - a table that declares its own primary key (`code: text().primaryKey()`) gets no implicit `id`,
+      as 0.3.0 built it, so its stored table and snapshot are unchanged;
+    - `route()` and the `routes` key (in `defineConfig` and `definePlugin`) read onto the
+      `first/app/` route table, one handler route per entry, with its access rule or signature. The
+      table is marked `legacyRoutes` and the runtime serves it as 0.3.0 did: a path is matched among
+      the routes of the request's method (405 when only another method has it), reads in the handler
+      are trusted, and the theme keeps the front end (no First 404 page). The 0.3.0 plugin lock's
+      `routes` grants are ignored;
+    - the signature scheme `"zero"` reads as `"first"`, the same timestamped HMAC renamed.
+
+    `tests/fixtures/zero-0.3/forms/` holds every form 0.3.0 accepted, captured and compiled by the
+    0.3.0 compiler, and `tests/zero_bundle.rs` asserts its recompile adds no migration and serves the
+    0.3.0 schema; `routes/` holds what the 0.3.0 runtime answered each route request. A PR that
+    removes or changes an authoring form runs that test (docs/spacefast-host-checklist.md, "Old
+    bundles"). Delete `mod legacy` in both files with `src/zero_bundle.rs`.
+
 ## Stored-schema changes the cutover accepts
 
 The criterion "the authoring rewrite produces no data migration" holds except for exactly these:

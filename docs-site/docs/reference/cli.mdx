@@ -18,6 +18,7 @@ These commands run on your machine, on the project's files.
 | `first dev status [dir]` | Report the local site. |
 | `first build [dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]` | Write the WordPress plugins to first/dist/wp-content. |
 | `first check [dir] [--json] [--frozen]` | Compile and report problems; write nothing. |
+| `first add <module> [dir]` | Add a module to the project as files you own; never overwrites one. Modules: db (SQL tables) |
 | `first doctor [dir] [--out dir] [--site url] [--json]` | Check a build, and a running site (FIRST_TOKEN) |
 | `first init [dir] [--check]` | Write AGENTS.md, .mcp.json and the agent skills for this project; --check exits 1 when they are out of date. |
 | `first mcp [dir] [--allow-remote-read] [--allow-writes]` | Serve the project to a coding agent as an MCP server on stdio. |

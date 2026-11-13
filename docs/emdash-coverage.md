@@ -126,7 +126,7 @@ Three official contracts require separate attention:
 - **Schema changes:** EmDash tools create collections/fields/block versions at
   runtime. First declares them in `first.config.ts` and compiles them. A source
   edit plus rebuild is a different agent workflow, not the same runtime tool.
-  An opt-in runtime path exists for adding fields to collections
+  An opt-in runtime path exists for collections, globals, their fields, labels and presentation
   ([`runtimeSchema`](config-api.md#runtime-schema-changes)); its agent tools are not built yet.
 - **Whole-site transfer:** portable export/analyze/import/resume/receipt includes
   media, principals, comments and approvals. Config migration and Markdown sync

@@ -91,7 +91,9 @@ final class KindUrls
             $vars = ['post_type=' . $kind['type'], 'first_kind=' . $name];
             foreach ($query as $field => $match) {
                 $vars[] = match ($field) {
-                    'slug', 'path' => 'name=' . $match,
+                    'slug' => 'name=' . $match,
+                    // A hierarchical kind: core resolves the whole parent chain (`get_page_by_path`).
+                    'path' => 'pagename=' . $match,
                     'id' => 'p=' . $match,
                     'year' => 'year=' . $match,
                     'month' => 'monthnum=' . $match,

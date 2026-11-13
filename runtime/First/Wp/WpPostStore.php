@@ -188,6 +188,8 @@ final class WpPostStore implements Store
                 $col === ($spec['title'] ?? null) => new ColumnRef('{a}.post_title', '', '', 'scalar'),
                 $col === ($spec['content'] ?? null) => new ColumnRef('{a}.post_content', '', '', 'scalar'),
                 $col === ($spec['slug'] ?? null) => new ColumnRef('{a}.post_name', '', '', 'scalar'),
+                $system && $col === 'parent' && ($spec['hierarchical'] ?? false) => new ColumnRef('NULLIF({a}.post_parent, 0)', '', 'NULLIF({a}.post_parent, 0)', 'scalar'),
+                $system && $col === 'order' && ($spec['hierarchical'] ?? false) => new ColumnRef('{a}.menu_order', '', '{a}.menu_order', 'scalar'),
                 $system && $col === 'status' => new ColumnRef("CASE {a}.post_status WHEN 'publish' THEN 'published' WHEN 'future' THEN 'scheduled' ELSE 'draft' END", '', '', 'scalar'),
                 $system && $col === 'uid' => new ColumnRef($v, "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::UID_META . "'", $v, 'scalar'),
                 $system && $col === 'publishedAt' => new ColumnRef(
@@ -392,6 +394,14 @@ final class WpPostStore implements Store
         foreach ($map as $col => $field) {
             if (array_key_exists($col, $values)) {
                 $post[$field] = (string) ($values[$col] ?? '');
+            }
+        }
+        if ($spec['hierarchical'] ?? false) {
+            if (array_key_exists('parent', $values)) {
+                $post['post_parent'] = (int) ($values['parent'] ?? 0);
+            }
+            if (array_key_exists('order', $values)) {
+                $post['menu_order'] = (int) ($values['order'] ?? 0);
             }
         }
         if (array_key_exists('status', $values) && ($spec['columns']['status']['system'] ?? false)) {

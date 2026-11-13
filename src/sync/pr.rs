@@ -79,6 +79,24 @@ fn in_repo(rel: &str, path: &str) -> String {
     }
 }
 
+/// The branch name segment for a site: its host and port, and for a site below a path
+/// (`https://example.test/blog`) the path as well, so two sites on one host never share a branch.
+fn site_segment(site: &str) -> String {
+    let path = url::Url::parse(site)
+        .ok()
+        .map(|u| u.path().trim_matches('/').to_string())
+        .unwrap_or_default();
+    let host = host_segment(site);
+    if path.is_empty() {
+        return host;
+    }
+    let path: String = path
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' })
+        .collect();
+    format!("{host}/{}", path.trim_matches('-'))
+}
+
 /// The site's host as a branch name segment: `docs.example.test`, `127.0.0.1-8080`.
 fn host_segment(site: &str) -> String {
     let url = url::Url::parse(site).ok();
@@ -174,22 +192,43 @@ pub fn run(
         .or_else(|| env("GITHUB_REPOSITORY"))
         .or_else(|| repo_from_remote(&remote))
         .ok_or("--pr needs the GitHub repository: --repo owner/name, or GITHUB_REPOSITORY")?;
+    // The push goes to origin with git's own credentials; the pull request names the repository. A
+    // GitHub origin that is another repository (a fork) would push where no pull request can come from.
+    if let Some(pushed) = repo_from_remote(&remote)
+        && !pushed.eq_ignore_ascii_case(&repo)
+    {
+        return Err(format!(
+            "origin is {pushed}, but the pull request would be opened on {repo}; run in a clone of {repo}, or pass --repo {pushed}"
+        ));
+    }
     let api = env("GITHUB_API_URL").unwrap_or_else(|| "https://api.github.com".into());
     let gh = GitHub::new(&api, &repo, &token)?;
     let base = match &settings.base {
         Some(b) => b.clone(),
         None => gh.default_branch()?,
     };
-    let prefix = format!("first-sync/{}/", host_segment(&settings.site));
+    // The timestamp follows the last `/`: `first-sync/<host>[/<path>]/<unix time>`.
+    let prefix = format!("first-sync/{}/", site_segment(&settings.site));
     let open = gh.open_pull(&base, &prefix)?;
 
-    let fetch = |branch: &str| -> Result<String, String> {
-        git(&root, &["fetch", "-q", "origin", &format!("refs/heads/{branch}")])?;
-        git(&root, &["rev-parse", "FETCH_HEAD^{commit}"])
+    // Into refs of this command's own, never FETCH_HEAD, which the checkout's own fetches share.
+    let fetch = |branch: &str, name: &str| -> Result<String, String> {
+        let local = format!("refs/first-sync/{name}");
+        git(
+            &root,
+            &[
+                "fetch",
+                "-q",
+                "--no-write-fetch-head",
+                "origin",
+                &format!("+refs/heads/{branch}:{local}"),
+            ],
+        )?;
+        git(&root, &["rev-parse", &format!("{local}^{{commit}}")])
     };
-    let base_sha = fetch(&base)?;
+    let base_sha = fetch(&base, "base")?;
     let head_sha = match &open {
-        Some(pull) => Some(fetch(&pull.head)?),
+        Some(pull) => Some(fetch(&pull.head, "head")?),
         None => None,
     };
     if let (Some(pull), Some(head)) = (&open, &head_sha) {
@@ -276,6 +315,22 @@ fn publish(
         rel.to_string()
     };
     git(wt, &["add", "-A", "--", &scope])?;
+    // A file the sync wrote that .gitignore (or a global excludes file) hides would be left out of
+    // the commit while the base says both sides have it: the next run would read that as a deletion.
+    let ignored: Vec<String> = report
+        .written
+        .iter()
+        .filter(|p| p.exists())
+        .filter_map(|p| p.strip_prefix(wt).ok().map(|r| r.to_string_lossy().replace('\\', "/")))
+        .filter(|p| !p.contains("/.first/") && !p.starts_with(".first/"))
+        .filter(|p| git(wt, &["check-ignore", "-q", "--no-index", "--", p]).is_ok())
+        .collect();
+    if !ignored.is_empty() {
+        return Err(format!(
+            "{} ignored by git, so the pull request can't carry it; stop ignoring the synced folders",
+            ignored.join(", ")
+        ));
+    }
     // Both are under the ignored `.first/`: the base is committed, and conflicts go in the pull request.
     for path in [BASE_FILE, CONFLICTS] {
         if wt.join(in_repo(rel, path)).exists() {
@@ -318,6 +373,16 @@ fn publish(
     if let (Some(pull), Some(head)) = (&open, &head_sha) {
         let fork = git(wt, &["merge-base", head, base_sha])?;
         if changes(wt, &fork, head)? == diff {
+            // Nothing to push. A run that pushed and then failed to describe it left the description or
+            // the conflict comment behind: write them now.
+            let body = description(site, base, &listed, report, &conflicts);
+            if pull.body != body {
+                gh.update_pull(pull.number, &body)?;
+            }
+            let comment = conflict_comment(&conflicts);
+            if !conflicts.is_empty() && !gh.has_comment(pull.number, &comment)? {
+                gh.comment(pull.number, &comment)?;
+            }
             return Ok(Outcome {
                 action: "unchanged",
                 pull: Some(pull.clone()),
@@ -396,18 +461,29 @@ fn publish(
             gh.update_pull(pull.number, &body)?;
             ("updated", pull)
         }
-        None => (
-            "opened",
-            gh.create_pull(
+        None => {
+            let created = gh.create_pull(
                 &branch,
                 base,
-                &format!("Content changes from {}", host_segment(site)),
+                &format!("Content changes from {}", site_segment(site)),
                 &body,
-            )?,
-        ),
+            );
+            match created {
+                Ok(pull) => ("opened", pull),
+                Err(e) => {
+                    // No pull request holds the branch, so no later run finds it: take it away again
+                    // rather than leave one more behind on every run.
+                    let cleanup = gh
+                        .delete_branch(&branch)
+                        .err()
+                        .map(|d| format!("; and the branch {branch} is left behind: {d}"));
+                    return Err(format!("{e}{}", cleanup.unwrap_or_default()));
+                }
+            }
+        }
     };
-    if !conflicts.is_empty() && conflicts != previous_conflicts {
-        gh.comment(pull.number, &conflict_comment(&report.conflicts, &conflicts))?;
+    if conflicts != previous_conflicts && !(conflicts.is_empty() && previous_conflicts.is_empty()) {
+        gh.comment(pull.number, &conflict_comment(&conflicts))?;
     }
     Ok(Outcome {
         action,
@@ -442,22 +518,23 @@ fn description(site: &str, base: &str, listed: &[String], report: &Report, confl
     s
 }
 
-fn conflict_comment(found: &[String], files: &[String]) -> String {
-    let mut s = String::from(
-        "**Sync conflicts.** These fields changed both in git and on the site since they last agreed:\n\n",
-    );
-    for c in found {
-        s.push_str(&format!("- `{c}`\n"));
+/// The comment listing the conflicts: the same text for the same set, so a run can tell whether it
+/// was posted.
+fn conflict_comment(files: &[String]) -> String {
+    if files.is_empty() {
+        return "**No conflicts left.** Every record this pull request carries agrees with the site now.".into();
     }
-    s.push_str("\nEach is a conflict file on this branch:\n\n");
+    let mut s = String::from(
+        "**Sync conflicts.** The same fields of these records changed in git and on the site since they last agreed. \
+         Each is a conflict file on this branch, with both versions:\n\n",
+    );
     for f in files {
         s.push_str(&format!("- `{f}`\n"));
     }
     s.push_str(
-        "\nTo resolve one, check out this branch, edit the conflict file into the version to keep and run \
-         `first sync resolve <uid> --site <url>`: the site gets that version, and the next run of `first sync --pr` \
-         writes it to its file here and drops the conflict file; nothing needs pushing. Or change the record on the \
-         site, or the file on the default branch, until both say the same.\n",
+        "\nNothing was written to either side for them. To resolve one, make the record the same on both sides: edit it \
+         on the site, or edit its file on the default branch, into the version to keep. The next run of \
+         `first sync --pr` finds them equal, records that, and drops the conflict file from this pull request.\n",
     );
     s
 }
@@ -467,7 +544,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_sites_host_and_port_name_its_branch() {
+    fn a_sites_host_port_and_path_name_its_branch() {
+        assert_eq!(site_segment("https://docs.example.test/"), "docs.example.test");
+        assert_eq!(site_segment("https://example.test/blog"), "example.test/blog");
+        assert_eq!(site_segment("https://example.test/a/b.c/"), "example.test/a-b-c");
+        assert_ne!(
+            site_segment("https://example.test/blog"),
+            site_segment("https://example.test/docs")
+        );
         assert_eq!(host_segment("https://docs.example.test/"), "docs.example.test");
         assert_eq!(host_segment("http://127.0.0.1:8080/blog"), "127.0.0.1-8080");
         assert_eq!(host_segment("not a url"), "site");

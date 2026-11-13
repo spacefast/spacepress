@@ -2390,6 +2390,12 @@ struct FakeGitHub {
     dispatches: Vec<serde_json::Value>,
     comments: Vec<(u64, String)>,
     calls: Vec<String>,
+    /// Refuse new pull requests (as GitHub does when Actions may not create them).
+    refuse_pulls: bool,
+    /// Fail every description update and comment (a rate limit after the push).
+    refuse_writes: bool,
+    /// Branches deleted through the API.
+    deleted: Vec<String>,
 }
 
 fn fake_github(repo: &'static str) -> (String, std::sync::Arc<std::sync::Mutex<FakeGitHub>>) {
@@ -2446,12 +2452,34 @@ fn fake_github(repo: &'static str) -> (String, std::sync::Arc<std::sync::Mutex<F
                         200,
                         serde_json::Value::Array(s.pulls.iter().filter(|p| p["state"] == "open").cloned().collect()),
                     ),
+                    ("POST", "/pulls") if s.refuse_pulls => (
+                        403,
+                        serde_json::json!({"message": "GitHub Actions is not permitted to create or approve pull requests."}),
+                    ),
+                    ("PATCH", _) | ("POST", _) if s.refuse_writes && !path.ends_with("/pulls") => {
+                        (403, serde_json::json!({"message": "API rate limit exceeded"}))
+                    }
+                    ("GET", p) if p.starts_with("/issues/") && p.ends_with("/comments") => {
+                        let n: u64 = p["/issues/".len()..p.len() - "/comments".len()].parse().unwrap();
+                        let list: Vec<serde_json::Value> = s
+                            .comments
+                            .iter()
+                            .filter(|(m, _)| *m == n)
+                            .map(|(_, b)| serde_json::json!({"body": b}))
+                            .collect();
+                        (200, serde_json::Value::Array(list))
+                    }
+                    ("DELETE", p) if p.starts_with("/git/refs/heads/") => {
+                        let branch = p["/git/refs/heads/".len()..].to_string();
+                        s.deleted.push(branch);
+                        (204, serde_json::Value::Null)
+                    }
                     ("POST", "/pulls") => {
                         let number = s.pulls.len() as u64 + 1;
                         let pr = serde_json::json!({
                             "number": number, "state": "open", "html_url": format!("https://github.test/{repo}/pull/{number}"),
                             "title": body["title"], "body": body["body"], "base": {"ref": body["base"]},
-                            "head": {"ref": body["head"], "repo": {"full_name": repo}},
+                            "head": {"ref": body["head"], "repo": {"full_name": repo.to_uppercase()}},
                         });
                         s.pulls.push(pr.clone());
                         (201, pr)
@@ -2524,8 +2552,8 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
     git(&project, &["push", "-q", "origin", "main"]);
     let checkout_head = git(&project, &["rev-parse", "HEAD"]);
     let (api, github) = fake_github("acme/site");
-    let pr = |extra: &[&str]| -> serde_json::Value {
-        let out = first()
+    let pr_out = |extra: &[&str]| -> Output {
+        first()
             .args(["sync", "--pr", "--repo", "acme/site"])
             .args(extra)
             .arg(&project)
@@ -2540,7 +2568,10 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
             .env("GIT_COMMITTER_NAME", "t")
             .env("GIT_COMMITTER_EMAIL", "t@example.test")
             .output()
-            .unwrap();
+            .unwrap()
+    };
+    let pr = |extra: &[&str]| -> serde_json::Value {
+        let out = pr_out(extra);
         assert_eq!(
             out.status.code(),
             Some(0),
@@ -2644,6 +2675,26 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
     assert_eq!(none["pr"]["action"], "none", "{none}");
     assert_eq!(github.lock().unwrap().pulls.len(), 1);
 
+    // GitHub refuses the new pull request (Actions may not create them): the branch pushed for it is
+    // deleted again, so no run leaves one behind. The site's edit waits for the next run.
+    let (s, refused_edit) = site.call(
+        "POST",
+        "/notes",
+        Some(serde_json::json!({"title": "Waits for a pull request"})),
+    );
+    assert_eq!(s, 201, "{refused_edit}");
+    github.lock().unwrap().refuse_pulls = true;
+    let out = pr_out(&[]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let deleted = github.lock().unwrap().deleted.clone();
+    assert_eq!(deleted.len(), 1, "{deleted:?}");
+    assert!(deleted[0].starts_with("first-sync/127.0.0.1-"), "{deleted:?}");
+    github.lock().unwrap().refuse_pulls = false;
+    git(&origin, &["push", "-q", ".", &format!(":refs/heads/{}", deleted[0])]);
+    let (s, _) = site.call("DELETE", &format!("/notes/{}", refused_edit["data"]["id"]), None);
+    assert_eq!(s, 200);
+    assert_eq!(pr(&[])["pr"]["action"], "none");
+
     // A file change merged in git goes to the site; only the sync base changes, and it goes to main.
     let hello = std::fs::read_to_string(clone.join("content/notes/hello.md")).unwrap();
     std::fs::write(
@@ -2723,6 +2774,93 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
     assert_eq!(s, 200);
     assert_eq!(pr(&[])["pr"]["action"], "updated");
     assert_eq!(github.lock().unwrap().comments.len(), comments);
+
+    // A description or comment that failed after the push is written by the next run, which pushes
+    // nothing new.
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{id}"),
+        Some(serde_json::json!({"title": "Renamed a third time"})),
+    );
+    assert_eq!(s, 200);
+    let head_before = git(&origin, &["rev-parse", &branch]);
+    github.lock().unwrap().refuse_writes = true;
+    let out = pr_out(&[]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_ne!(
+        git(&origin, &["rev-parse", &branch]),
+        head_before,
+        "the push went through"
+    );
+    github.lock().unwrap().refuse_writes = false;
+    // The failed run's description was never stored: plant a stale one, as GitHub would still show.
+    github.lock().unwrap().pulls[1]["body"] = "stale".into();
+    let calls = github.lock().unwrap().calls.len();
+    let retried = pr(&[]);
+    assert_eq!(retried["pr"]["action"], "unchanged", "{retried}");
+    let made: Vec<String> = github.lock().unwrap().calls[calls..].to_vec();
+    assert!(made.iter().any(|c| c == "PATCH /repos/acme/site/pulls/2"), "{made:?}");
+    assert_ne!(github.lock().unwrap().pulls[1]["body"], "stale");
+    let n = github.lock().unwrap().comments.len();
+    assert_eq!(pr(&[])["pr"]["action"], "unchanged");
+    assert_eq!(
+        github.lock().unwrap().comments.len(),
+        n,
+        "a comment already there is not posted again"
+    );
+
+    // --only would rebuild the pull request without the other kinds: refused.
+    let out = pr_out(&["--only", "notes"]);
+    assert_eq!(out.status.code(), Some(3), "{}", String::from_utf8_lossy(&out.stderr));
+    // A setup refusal (no GITHUB_TOKEN) is a JSON error with --json.
+    let out = first()
+        .args(["sync", "--pr", "--repo", "acme/site", "--json"])
+        .arg(&project)
+        .args(["--site", &site.url()])
+        .env("FIRST_APP_PASSWORD", &site.token)
+        .env_remove("GITHUB_TOKEN")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let refused: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
+    assert!(
+        refused["error"]["detail"]
+            .as_str()
+            .is_some_and(|d| d.contains("GITHUB_TOKEN")),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+
+    // Resolving the conflict as the comment says: the site made to say what git says. The next run
+    // drops the conflict file from the pull request and says so.
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{}", hello_row["id"]),
+        Some(serde_json::json!({"title": "Git title"})),
+    );
+    assert_eq!(s, 200);
+    let resolved = pr(&[]);
+    assert_eq!(resolved["pr"]["action"], "updated", "{resolved}");
+    assert!(resolved["conflicts"].as_array().unwrap().is_empty(), "{resolved}");
+    assert!(
+        git(
+            &origin,
+            &["ls-tree", "-r", "--name-only", &branch, "--", ".first/conflicts"]
+        )
+        .trim()
+        .is_empty(),
+        "the conflict file is gone from the branch"
+    );
+    assert!(
+        github
+            .lock()
+            .unwrap()
+            .comments
+            .last()
+            .unwrap()
+            .1
+            .contains("No conflicts left")
+    );
 
     // A commit someone else put on the sync branch stops the run before anything is rebuilt.
     let other = project.with_extension("other");
@@ -2809,7 +2947,7 @@ fn an_edit_in_wp_admin_reaches_a_pull_request_and_a_merged_file_reaches_the_site
                 .success()
         );
         let out = first()
-            .args(["sync", "--pr", "--only", "docs"])
+            .args(["sync", "--pr"])
             .arg(clone.path())
             .args(["--site", &site.url(), "--json"])
             .env("FIRST_APP_PASSWORD", &site.token)

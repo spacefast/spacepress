@@ -139,6 +139,12 @@ until the five-minute window ends.
 - It does not track which rows a query matched. A write to any row of a kind makes every
   subscription on that kind either re-run or, for a visitor answered by hash, run as it always does.
 - It adds no process, cron or worker. Nothing runs between requests.
+- It does not see, before the five-minute trust window ends, what changes a result without a write
+  through First's write path: another plugin's SQL, or a runtime schema change that adds a field.
+- A counter is part of its write's transaction: if the counter can't be written, the write fails
+  with it.
+- `Live\Module::evaluate()` called inside a transaction that later rolls back hands out a token
+  over rows that never committed; server code calls it after its own writes commit.
 
 ## Rejected
 

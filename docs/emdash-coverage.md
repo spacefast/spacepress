@@ -62,7 +62,7 @@ routes. The deeper marketing and portfolio examples above remain behavioral
 counterparts; they do not claim unchanged upstream frontend source.
 
 Run the full application seam with `node examples/emdash/test.mjs official-source`.
-This is separate from EmDash's staged edit locks, unsaved inline editor,
+This is separate from EmDash's edit locks, unsaved inline editor,
 plugin contributions, sandbox execution and provider infrastructure, which
 remain explicit gaps. For npm source algorithms, the independent
 [package probe harness](../examples/npm-compat/README.md) distinguishes raw
@@ -117,7 +117,12 @@ Three official contracts require separate attention:
 
 - **Published and staged content:** EmDash stages edits without replacing the
   live version. Compare/discard/promote uses `_rev`; held edit locks reject
-  writes. Native status/revision support alone does not prove this contract.
+  writes. First's [staged versions](staged.md) are `partial`: staging beside
+  the live item, compare, discard, promote as an update, scheduled promote,
+  signed preview links and concurrent writers are proven by
+  `tests/php/staged_test.php` and `tests/wp/staged.test.ts`. `_rev` tokens,
+  held edit locks and the wp-admin screens are not built yet. `table()` kinds
+  have no staged versions.
 - **Schema changes:** EmDash tools create collections/fields/block versions at
   runtime. First declares them in `first.config.ts` and compiles them. A source
   edit plus rebuild is a different agent workflow, not the same runtime tool.

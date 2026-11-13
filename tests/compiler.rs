@@ -408,6 +408,17 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "help: storage follows the builder: collection() is always WordPress posts; use table() for a SQL table",
         "first.config.ts:2:60",
     );
+    // On table() the same option gets its own builder's name and fix.
+    rejects(
+        "reject-table-editor-false",
+        "table() has no option `editor`",
+        "first.config.ts:2:55",
+    );
+    rejects(
+        "reject-table-editor-false",
+        "help: storage follows the builder: table() is always a SQL table; remove the option",
+        "first.config.ts:2:55",
+    );
     rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:15");
     rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:15");
     rejects(
@@ -527,6 +538,18 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         (
             "tables: { notes: table({ title: text().optional() }, { comments: true }) }",
             "only collection() kinds take comments",
+        ),
+        (
+            "tables: { notes: table({ title: text().optional() }, { staged: true }) }",
+            "only collection() kinds have staged versions",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }, { staged: 1 }) }",
+            "`staged` must be true or false",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }), notesStaged: collection({ title: text() }) }",
+            "ability kebab collision: notes-staged-get",
         ),
         (
             "collections: { notes: collection({ title: text() }, { comments: 'yes' }) }",
@@ -2390,8 +2413,8 @@ fn builds_wordpress_and_knows_no_target_option() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
-/// A kind's `url` and the config's `frontend` (docs/spec/spec.md §2.7, §5): checked at build time and
-/// emitted into schema.php, where the router and link filters read them.
+/// A kind's `url` and `staged` and the config's `frontend` (docs/spec/spec.md §2.7, §5): checked at
+/// build time and emitted into schema.php, where the runtime reads them.
 #[test]
 fn kind_urls_and_the_frontend_mode_reach_the_schema() {
     rejects(
@@ -2463,6 +2486,16 @@ export default defineConfig({ name: "kindurls" });
 "#,
     );
     assert!(built.get("frontend").is_none(), "{built}");
+    // `staged: false` is the one staged setting the schema carries: collections stage unless it is there.
+    let built = schema(
+        r#"import { collection, defineConfig, text } from "first";
+export const notes = collection({ title: text() });
+export const fixed = collection({ title: text() }, { staged: false });
+export default defineConfig({ name: "kindurls", collections: { notes, fixed } });
+"#,
+    );
+    assert!(built["collections"]["notes"].get("staged").is_none(), "{built}");
+    assert_eq!(built["collections"]["fixed"]["staged"], false);
 }
 
 /// A project whose ledger is still at `first/migrations/` is refused, never read as a first build:
@@ -3403,6 +3436,49 @@ fn the_openapi_document_describes_what_the_api_answers() {
         "First note"
     );
     check("GET", &format!("/notes/{id}/revisions"), Some("author"), &[], b"", 404);
+    // A staged version (docs/staged.md) of each collection: stage, read, compare, preview, schedule,
+    // promote, discard. The promoted title keeps "First", which the search below looks for.
+    for (path, field, value) in [
+        (format!("/notes/{id}"), "title", "First note, staged"),
+        (format!("/authors/{author}"), "name", "Ann, staged"),
+    ] {
+        let staged = check(
+            "PATCH",
+            &format!("{path}/staged"),
+            Some("editor"),
+            &[],
+            &json(json!({ field: value })),
+            200,
+        );
+        assert_eq!(staged["data"]["row"][field], value);
+        check("GET", &format!("{path}/staged"), Some("editor"), &[], b"", 200);
+        check("GET", &format!("{path}/staged"), Some("author"), &[], b"", 404);
+        let compared = check("GET", &format!("{path}/staged/compare"), Some("editor"), &[], b"", 200);
+        assert_eq!(compared["data"]["changes"][0]["field"], field);
+        let link = check("POST", &format!("{path}/staged/preview"), Some("editor"), &[], b"", 200);
+        assert!(link["data"]["token"].is_string());
+        let at = json!({ "at": "2099-01-01T00:00:00Z" });
+        check(
+            "POST",
+            &format!("{path}/staged/promote"),
+            Some("editor"),
+            &[],
+            &json(at),
+            200,
+        );
+        let promoted = check("POST", &format!("{path}/staged/promote"), Some("editor"), &[], b"", 200);
+        assert_eq!(promoted["data"][field], value);
+        check(
+            "PATCH",
+            &format!("{path}/staged"),
+            Some("editor"),
+            &[],
+            &json(json!({ field: "Gone" })),
+            200,
+        );
+        check("DELETE", &format!("{path}/staged"), Some("editor"), &[], b"", 200);
+        check("DELETE", &format!("{path}/staged"), Some("editor"), &[], b"", 404);
+    }
     check(
         "GET",
         &format!("/authors/{author}/revisions/999999"),

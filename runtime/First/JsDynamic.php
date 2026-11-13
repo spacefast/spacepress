@@ -517,6 +517,22 @@ trait JsDynamic
      * call/apply, it receives that receiver.
      */
     /** Calls a function value with an explicit receiver, as `receiver.method(...args)` does. */
+    /**
+     * The callee of `receiver.name?.(...)`: read once with the receiver bound, or null when the
+     * property is null or undefined, so the call short-circuits before its arguments run.
+     */
+    public static function optionalMethod(mixed $receiver, mixed $name): ?\Closure
+    {
+        $method = self::dynamicGet($receiver, $name);
+        if (self::isNullish($method)) { return null; }
+        // Class and built-in methods dispatch with their receiver; a data property calls the value
+        // read above, so a getter runs once as in JavaScript.
+        $own = ($receiver instanceof JsObject || $receiver instanceof JsArray || $receiver instanceof JsArguments)
+            && !$name instanceof JsSymbol && array_key_exists(self::key($name), $receiver->p);
+        if (!$own && !$name instanceof JsSymbol) { return self::dynamicMethod($receiver, $name); }
+        return static fn (...$args) => self::dynamicInvoke($method, $receiver, new JsArray($args));
+    }
+
     public static function callWithReceiver(mixed $function, mixed $receiver, JsArray $args): mixed
     {
         return self::dynamicInvoke($function, $receiver, $args);

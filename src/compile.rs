@@ -10148,7 +10148,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "`{op}` on `{}` isn't supported on editor collections; filter on a scalar column",
                         col.name
                     ),
-                    "on WordPress this value is spread over many postmeta rows; use isNull/isNotNull, or `editor: false`",
+                    "on WordPress this value is spread over many postmeta rows; use isNull/isNotNull, or keep this data in a table()",
                 );
             }
             Ok(())

@@ -257,6 +257,79 @@ fn rejects(dir: &Path, files: &[(&str, &str)], message: &str, at: &str) {
     );
 }
 
+/// A stylesheet the compiler can't serve as it is, and an import that isn't code or an asset, are
+/// build errors at the line, with the fix.
+#[test]
+fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
+    let dir = std::env::temp_dir().join(format!("first-app-css-{}", std::process::id()));
+    let page = |import: &str| format!("{import}\nexport default function P() {{ return <p/>; }}\n");
+    let styled = page("import \"./x.css\";");
+    let module = page("import s from \"./x.module.css\";");
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &styled),
+            ("first/app/x.css", "@import \"normalize.css\";\n.a {}\n"),
+        ],
+        "`@import` in an imported stylesheet isn't supported",
+        "first/app/x.css:1:1",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &styled),
+            ("first/app/x.css", ".a {\n  background: url(./bg.png);\n}\n"),
+        ],
+        "`url(./bg.png)` is relative to the stylesheet",
+        "first/app/x.css:2:15",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &module),
+            ("first/app/x.module.css", ":global(.a) {}\n"),
+        ],
+        "`:global` isn't supported in CSS modules",
+        "first/app/x.module.css:1:1",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &module),
+            ("first/app/x.module.css", ".a { composes: b; }\n"),
+        ],
+        "`composes` isn't supported in CSS modules",
+        "first/app/x.module.css:1:6",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &page("import data from \"./x.json\";")),
+            ("first/app/x.json", "{}"),
+        ],
+        "can't import \"./x.json\": expected TypeScript or JavaScript source",
+        "first/app/page.tsx:1:1",
+    );
+    // A client component renders in the browser too; an image URL comes in as a prop.
+    rejects(
+        &dir,
+        &[
+            (
+                "first/app/page.tsx",
+                "import { C } from \"../components/C\";\nexport default function P() { return <C />; }\n",
+            ),
+            (
+                "first/components/C.tsx",
+                "\"use client\";\nimport logo from \"./logo.svg\";\nexport function C() { return <img src={logo} />; }\n",
+            ),
+            ("first/components/logo.svg", "<svg/>"),
+        ],
+        "a \"use client\" component can't import first/components/logo.svg",
+        "first/components/C.tsx",
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Shapes the router can't serve, and route files that would silently do nothing, are build
 /// errors at the file, with the fix.
 #[test]
@@ -737,7 +810,8 @@ fn refuses_client_code_outside_the_subset() {
 /// The record's browser check: compiled client components on a real WordPress page, in Chromium
 /// with `SCRIPT_DEBUG` (the Interactivity runtime's development build, the one that warns).
 /// Hydration changes nothing in the server HTML, the runtime logs no warnings, a click calls the
-/// server action and updates the label, and effects and shared state follow state changes.
+/// server action and updates the label, effects and shared state follow state changes, and a CSS
+/// module's class switches with state and styles the element.
 #[test]
 fn client_components_hydrate_in_the_browser() {
     assert!(
@@ -791,6 +865,15 @@ fn client_components_hydrate_in_the_browser() {
             &serde_json::json!("2"),
             &serde_json::json!("40")
         )
+    );
+    // The CSS module's class is renamed on both sides, and the stylesheet the page links applies.
+    assert_eq!(
+        (&seen["toggleBefore"], &seen["toggleAfter"]),
+        (
+            &serde_json::json!(["toggle_off", "rgb(10, 20, 30)", "off"]),
+            &serde_json::json!(["toggle_on", "rgb(200, 40, 40)", "on"])
+        ),
+        "{seen}"
     );
 }
 

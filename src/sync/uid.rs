@@ -7,6 +7,12 @@ pub fn for_file(collection: &str, basename: &str) -> String {
     format!("zr_{}", &hex[..20])
 }
 
+/// A folder-tree file's identity when it has no uid: its slug, unique in its kind, so moving the
+/// file to another folder, or making it its folder's `index` file, keeps the same record.
+pub fn for_tree_file(collection: &str, slug: &str) -> String {
+    for_file(collection, &format!("{slug}/"))
+}
+
 pub fn valid(u: &str) -> bool {
     u.len() == 23 && u.starts_with("zr_") && u[3..].bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }

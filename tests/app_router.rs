@@ -1615,6 +1615,10 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     assert_eq!(seen["roadmap as editor"]["cache"], "private, no-store, max-age=0");
     // Only an item's own path serves it.
     assert_eq!(seen["wrong parent"], 404);
+    assert_eq!(
+        seen["landing"], 404,
+        "`[[...path]]` with nothing after /docs finds no item"
+    );
     assert_eq!(seen["missing"], 404);
     assert_eq!(seen["slug alone"][0], 404);
     assert_eq!(seen["permalink"], "/docs/guides/deploy/space/");
@@ -1627,6 +1631,27 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         serde_json::json!({ "Reference [current]": "/docs/guides/reference" })
     );
     assert_eq!(seen["moved old"], serde_json::json!([404]));
+    // A published page under a draft is as hidden as the draft: its path names an unpublished page.
+    assert_eq!(seen["under a draft"], serde_json::json!([404, 404]));
+    // A WordPress Page with a doc's slug doesn't take over the doc's URL.
+    assert_eq!(seen["page with a doc slug"], serde_json::json!([200, ["Introduction"]]));
+    // Slugs are unique among siblings: two pages named `install` under different parents each serve.
+    assert_eq!(
+        seen["same slug elsewhere"],
+        serde_json::json!([["Install again"], ["Install"]])
+    );
+    // A block that renders differently each time doesn't cost the headings their anchors.
+    assert_eq!(
+        seen["headings beside a gallery"],
+        serde_json::json!([
+            [
+                "#why Why depth-2",
+                "#small-print Small print depth-3",
+                "#why-2 Why depth-2"
+            ],
+            ["h2#why", "h3#small-print", "h2#why-2"]
+        ])
+    );
     // Components in Markdown (docs/decisions/2026-11-13-components-in-markdown.md): the file's
     // tags are stored as the app's blocks, their Markdown as inner blocks.
     assert_eq!(

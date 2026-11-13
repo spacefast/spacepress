@@ -20,6 +20,7 @@ The examples the site features are listed in `lib/site-examples.ts`. Each one sa
 | Path | Source |
 | --- | --- |
 | `docs/index.mdx`, `docs/getting-started.mdx`, `docs/publishing/` | Written by hand |
+| `docs/agents.mdx` | `docs/agents.md` |
 | `docs/examples/` | `examples/*`: each README and config, compiled when the pages are generated |
 | `docs/reference/config.mdx` | `types/first/index.d.ts` |
 | `docs/reference/client.mdx` | `runtime/client/index.ts` |

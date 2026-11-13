@@ -2624,6 +2624,19 @@ fn init_keeps_the_authors_files_as_they_wrote_them_and_writes_only_inside_the_pr
     assert!(!escaping.join("AGENTS.md").exists() && !escaping.join(".agents").exists());
 }
 
+/// A server started with no PATH (a client that passes a bare environment) still compiles: what
+/// it runs around a command needs no program from PATH.
+#[test]
+fn mcp_compiles_with_no_path() {
+    let mut mcp = Mcp::start(&agent_kit(), &[], |command| {
+        command.env("PATH", "");
+    });
+    mcp.modern = true;
+    assert_eq!(mcp.ok("check", serde_json::json!({}))["ok"], true);
+    assert_eq!(mcp.ok("schema", serde_json::json!({}))["name"], "agentkit");
+    mcp.finish();
+}
+
 /// A client that kills the server (SIGTERM, as the stdio transport's shutdown escalates to) leaves
 /// nothing the server started running.
 #[cfg(unix)]

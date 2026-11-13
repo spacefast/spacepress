@@ -54,7 +54,9 @@ fn guard(pid: u32) -> Option<Guard> {
     let mut shell = Command::new("/bin/sh");
     shell.args([
         "-c",
-        "cat >/dev/null; kill -TERM \"-$1\" 2>/dev/null",
+        // Builtins only: a guardian that needs a program from PATH (the dev acceptance suite runs
+        // with almost none) would fail at once and stop the command it guards.
+        "while read -r _; do :; done; kill -TERM \"-$1\" 2>/dev/null",
         "sh",
         &pid.to_string(),
     ]);

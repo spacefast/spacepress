@@ -57,9 +57,9 @@ final class SchemaVersions
     public function propose(mixed $changeSet): array
     {
         $state = Loader::state($this->plugin->schema->name());
-        $resolved = Changes::resolve($this->plugin->schema->collections(), $state, $changeSet, Loader::declared($this->plugin->schema->name()));
+        $resolved = Changes::resolve($this->compiled(), $state, $changeSet, Loader::declared($this->plugin->schema->name()));
 
-        return ['parent' => (int) $state['version'], 'changes' => $resolved['changes'], 'effects' => $this->effects($resolved['changes'])];
+        return ['parent' => (int) $state['version'], 'changes' => $resolved['changes'], 'effects' => $this->effects($resolved['changes'], $resolved['state'])];
     }
 
     /**
@@ -91,7 +91,7 @@ final class SchemaVersions
             if ((int) ($state['version'] ?? 0) !== $newest['version'] || ($state['format'] ?? null) !== Loader::FORMAT) {
                 $state = $this->replay($rows);
             }
-            $resolved = Changes::resolve($this->plugin->schema->collections(), $state, $changeSet, Loader::declared($this->plugin->schema->name()));
+            $resolved = Changes::resolve($this->compiled(), $state, $changeSet, Loader::declared($this->plugin->schema->name()));
             $row = ['app' => $app, 'version' => $parent + 1, 'parent' => $parent, 'format' => Loader::FORMAT, 'build' => $this->plugin->buildHash(),
                 'actor' => $actor, 'changes' => $resolved['changes'], 'createdAt' => gmdate('Y-m-d\TH:i:s.000\Z')];
             $row['hash'] = self::hashOf($newest['hash'], $row);
@@ -125,6 +125,12 @@ final class SchemaVersions
         return hash('sha256', $parentHash . "\n" . self::json($row));
     }
 
+    /** The build this request runs, as compiled: what every change is checked against. */
+    private function compiled(): array
+    {
+        return Loader::compiled() ?? throw new \LogicException('The app was loaded without its compiled schema');
+    }
+
     /** Every version, oldest first. Empty before the first change. */
     public function list(): array
     {
@@ -147,12 +153,12 @@ final class SchemaVersions
     /** The state the stored versions add up to. A version in a format this runtime can't read stops the replay. */
     private function replay(array $rows): array
     {
-        $state = ['format' => Loader::FORMAT, 'version' => 0, 'hash' => '', 'collections' => []];
+        $state = Loader::EMPTY;
         foreach ($rows as $row) {
             if ($row['format'] !== Loader::FORMAT) {
                 throw new HttpError(409, 'schema_format', "Schema version {$row['version']} is stored in format {$row['format']}; this runtime reads format " . Loader::FORMAT . '. Update the First runtime before changing the schema');
             }
-            $state = ['version' => $row['version'], 'hash' => $row['hash']] + Changes::fold($state, $row['changes']);
+            $state = ['format' => Loader::FORMAT, 'version' => $row['version'], 'hash' => $row['hash']] + Changes::fold($state, $row['changes']);
         }
 
         return $state;
@@ -170,17 +176,52 @@ final class SchemaVersions
         }
     }
 
-    /** What each change does to stored data, for a person or an agent to read before applying. */
-    private function effects(array $changes): array
+    /**
+     * The change set that undoes version `$version`: what a rollback applies as a new version. The
+     * versions since must not build on it (a field added to a kind it added, say); the rules that
+     * refuse such a change set say which.
+     *
+     * @return array a change set ({@see propose()} and {@see apply()} take it)
+     */
+    public function reversal(int $version): array
     {
+        $rows = $this->list();
+        $before = Loader::EMPTY;
+        foreach ($rows as $row) {
+            if ($row['version'] === $version) {
+                return ['format' => Loader::FORMAT, 'changes' => Changes::reverse($before, $row['changes'])];
+            }
+            $before = Changes::fold($before, $row['changes']);
+        }
+
+        throw new HttpError(404, 'not_found', "No schema version $version");
+    }
+
+    /** What each change does to stored data, for a person or an agent to read before applying. */
+    private function effects(array $changes, array $after): array
+    {
+        $schema = Loader::apply($this->compiled(), $after);
+        // Counted by type name, so a collection that isn't registered (not added yet, or removed) is counted too.
+        $items = static fn (string $postType): int => (int) $GLOBALS['wpdb']->get_var($GLOBALS['wpdb']->prepare(
+            "SELECT COUNT(*) FROM {$GLOBALS['wpdb']->posts} WHERE post_type = %s AND post_status NOT IN ('auto-draft', 'inherit')", $postType));
         $effects = [];
         foreach ($changes as $change) {
-            $kind = $this->plugin->schema->collection($change['kind']);
-            $items = array_sum(array_diff_key((array) wp_count_posts($kind['wp']['postType']), ['auto-draft' => 0]));
-            $effects[] = ['op' => $change['op'], 'kind' => $change['kind'], 'field' => $change['field'],
-                'storage' => 'post meta ' . $kind['wp']['metaPrefix'] . $change['field'] . ' on ' . $kind['wp']['postType'],
-                'existingItems' => (int) $items,
-                'note' => isset($change['definition']['default']) ? 'existing items get the default when they are next saved' : 'existing items have no value until they are edited'];
+            $global = isset($change['global']);
+            $kind = $change[$global ? 'global' : 'kind'];
+            $effect = array_intersect_key($change, ['op' => 1, 'kind' => 1, 'global' => 1, 'field' => 1]);
+            $postType = "first_$kind";
+            $effects[] = $effect + match ($change['op']) {
+                'addField' => ['storage' => 'post meta ' . $schema['collections'][$kind]['wp']['metaPrefix'] . $change['field'] . ' on ' . $schema['collections'][$kind]['wp']['postType'],
+                    'existingItems' => $items($schema['collections'][$kind]['wp']['postType']),
+                    'note' => isset($change['definition']['default']) ? 'existing items get the default when they are next saved' : 'existing items have no value until they are edited'],
+                'addGlobalField' => ['storage' => 'option ' . $schema['globals'][$kind]['wp']['optionPrefix'] . $change['field'], 'note' => 'reads the default, or null, until it is set'],
+                'addCollection' => ['storage' => "post type $postType", 'existingItems' => $items($postType), 'note' => 'no SQL table is created; items are posts'],
+                'addGlobal' => ['storage' => "options first_global_{$kind}_*", 'note' => 'no SQL table is created; values are options'],
+                'setLabel', 'setFieldUi' => ['note' => 'presentation only; no stored data changes'],
+                'removeField' => ['note' => 'hidden from the schema; stored values are kept and come back if the field is added again as ' . $change['was']],
+                'removeCollection' => ['existingItems' => $items($postType), 'note' => "hidden from the schema; its items stay in post type $postType and come back if the collection is added again"],
+                'removeGlobal' => ['note' => 'hidden from the schema; its stored values are kept'],
+            };
         }
 
         return $effects;

@@ -48,18 +48,49 @@ pub(super) fn wp_command(project: &Path) -> Result<Command, String> {
     command(project, "wp")
 }
 
+/// `first dev` has created this project's site: the marker it writes first (scripts/dev/studio.mjs).
+pub(super) fn created(project: &Path) -> bool {
+    project.join(".first/dev/owner.json").is_file()
+}
+
+/// The project's dev site as data, for `first mcp`'s `dev_status`: `state` is `none` (never created),
+/// `stopped` or `running`. `project` is canonical.
+pub(super) fn status(project: &Path) -> Result<serde_json::Value, String> {
+    use serde_json::json;
+    if !created(project) {
+        return Ok(json!({ "state": "none", "start": "first dev" }));
+    }
+    let out = command(project, "status")?
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| format!("first needs Node.js 22+ and npm (npx) for the dev site: {e}"))?;
+    let studio: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
+    let Some(url) = studio["siteUrl"].as_str().filter(|_| out.status.success()) else {
+        let said = String::from_utf8_lossy(&out.stderr);
+        return Err(format!(
+            "cannot read the dev site's status: {}",
+            said.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("no output")
+        ));
+    };
+    let url = url.trim_end_matches('/');
+    Ok(json!({
+        "state": if studio["isOnline"] == true { "running" } else { "stopped" },
+        "url": url,
+        "admin": format!("{url}/wp-admin/"),
+        "site": project.join(".first/dev/wordpress"),
+        "wordpress": studio["wpVersion"],
+        "php": studio["phpVersion"],
+    }))
+}
+
 /// The dev site's URL, for the commands that speak HTTP (`sync`) when `--site` is absent.
 pub(super) fn url(project: &Path) -> Result<String, String> {
     let project = project
         .canonicalize()
         .map_err(|e| format!("{}: {e}", project.display()))?;
-    let out = command(&project, "status")?
-        .stderr(std::process::Stdio::inherit())
-        .output()
-        .map_err(|e| format!("first needs Node.js 22+ and npm (npx) for the dev site: {e}"))?;
-    let status: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
-    match status["siteUrl"].as_str() {
-        Some(url) if out.status.success() && status["isOnline"] == true => Ok(url.trim_end_matches('/').to_string()),
+    let status = status(&project)?;
+    match status["url"].as_str() {
+        Some(url) if status["state"] == "running" => Ok(url.to_string()),
         _ => Err("the dev site is not running; start it with first dev, or pass --site <url>".into()),
     }
 }

@@ -48,16 +48,43 @@ final class Facade
      */
     public static function firstRow(string $collection, int $id, \First\Viewer $viewer): ?object
     {
+        $key = $collection . "\0" . ($viewer->user['id'] ?? 0) . "\0" . ($viewer->user['role'] ?? '');
+        if (!isset(self::$rows[$key]) || !array_key_exists($id, self::$rows[$key])) {
+            self::prefetch($collection, [$id], $viewer);
+        }
+        $row = self::$rows[$key][$id] ?? null;
+
+        return $row === null ? null : (object) PostMeta::values($collection, $row, array_map('strval', array_keys($row)));
+    }
+
+    /** @var array<string, array<int, ?array>> First's rows by collection and viewer, then id, for this dispatch's page */
+    private static array $rows = [];
+
+    /**
+     * First's rows for $ids as $viewer reads them, in one query: a list page costs one read for all
+     * its rows, not one per row. Ids the read rule leaves out are recorded as null.
+     *
+     * @param list<int> $ids
+     */
+    public static function prefetch(string $collection, array $ids, \First\Viewer $viewer): void
+    {
+        $key = $collection . "\0" . ($viewer->user['id'] ?? 0) . "\0" . ($viewer->user['role'] ?? '');
+        $missing = array_values(array_diff(array_map('intval', $ids), array_keys(self::$rows[$key] ?? [])));
+        if ($missing === []) {
+            return;
+        }
         $db = Plugin::instance()?->db() ?? throw new \LogicException('No First app');
         $pk = $db->schema()->collection($collection)['primaryKey'];
         $all = \First\Locale\Module::localized($collection) ? ['locale' => '*'] : [];
         try {
-            $row = $db->findFirst($collection, ['where' => [$pk => $id]] + $all, $viewer);
+            $found = $db->findMany($collection, ['where' => [$pk => ['in' => $missing]]] + $all, $viewer);
         } catch (HttpError) {
-            return null;
+            $found = [];
         }
-
-        return $row === null ? null : (object) PostMeta::values($collection, $row, array_map('strval', array_keys($row)));
+        $byId = array_column($found, null, $pk);
+        foreach ($missing as $id) {
+            self::$rows[$key][$id] = $byId[$id] ?? null;
+        }
     }
 
     private const LIMIT = 50;
@@ -286,7 +313,7 @@ final class Facade
         $next = $offset + $limit;
         $cursor = $next < $total ? rtrim(strtr(base64_encode((string) json_encode(['offset' => $next])), '+/', '-_'), '=') : null;
 
-        $rows = array_values(array_filter(array_map(static fn (array $r) => Kinds::row($kind, $r), $rows), static fn ($r) => $r !== null));
+        $rows = array_values(array_filter(Kinds::rows($kind, $rows), static fn ($r) => $r !== null));
 
         return self::json(200, ['data' => $rows, 'cursor' => $cursor]);
     }
@@ -406,11 +433,13 @@ final class Facade
 
     private static function run(\WP_REST_Request $request): \WP_REST_Response
     {
+        self::$rows = []; // each core dispatch reads its own page fresh: nothing outlives it
         self::$depth++;
         self::$methods[] = $request->get_method();
         try {
             return rest_do_request($request);
         } finally {
+            self::$rows = [];
             array_pop(self::$methods);
             self::$depth--;
         }

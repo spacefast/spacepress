@@ -166,6 +166,7 @@ pub fn build(
     components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     app::register(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::content_page::register(program, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
+    crate::runtime_schema::apply(program, &mut ev, &mut ext)?;
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;

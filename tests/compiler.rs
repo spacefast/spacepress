@@ -3999,6 +3999,18 @@ fn the_openapi_document_describes_what_the_api_answers() {
     assert_eq!(found["data"]["results"][0]["id"], id, "{found}");
     check("GET", "/services/search?collection=notes&q=F", None, &[], b"", 422);
     check("GET", "/services/search?collection=nope&q=First", None, &[], b"", 404);
+    // The site-wide search, and `search` on a table, answer as the document says.
+    let site_wide = check(
+        "GET",
+        "/search?q=first&kinds=notes,tallies&limit=5",
+        None,
+        &[],
+        b"",
+        200,
+    );
+    assert_eq!(site_wide["data"]["results"][0]["kind"], "notes", "{site_wide}");
+    check("GET", "/search?q=%3F%3F", None, &[], b"", 400);
+    check("GET", "/tallies?search=a", None, &[], b"", 200);
     let records = check("GET", "/sync/authors?first=10", Some("editor"), &[], b"", 200);
     let record = &records["data"]["records"][0];
     check("GET", "/sync/authors", None, &[], b"", 401);

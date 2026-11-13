@@ -328,7 +328,8 @@ registered once.
 | `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. The site's sitemap (`/wp-sitemap.xml`) lists the kind's items a signed-out visitor may read. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
 
 Collections need a title and physical names of at most 14 characters (WordPress
-prefixes `first_`). Built-in route names are reserved. User projections retain
+prefixes `first_`). Built-in route names are reserved (`media`, `files`,
+`globals`, `actions`, `me`, `auth`, `services`, `search`). User projections retain
 WordPress identity storage; see [Sign-in](#sign-in).
 
 ### Files that moved into `first/_generated/`

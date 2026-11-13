@@ -151,7 +151,7 @@ const COLLECTION_OPTIONS: &[&str] = &[
 ];
 /// Collection names that would shadow a built-in route (§4.8).
 const RESERVED_COLLECTIONS: &[&str] = &[
-    "media", "files", "globals", "actions", "me", "_schema", "auth", "services",
+    "media", "files", "globals", "actions", "me", "_schema", "auth", "services", "search",
 ];
 /// WordPress limits post types to 20 characters; First prefixes `first_`.
 const MAX_POST_TYPE_TABLE: usize = 20 - "first_".len();

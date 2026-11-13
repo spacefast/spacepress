@@ -102,6 +102,9 @@ final class Plugin
         });
         Facade::register($this);
         AppRouter::register($this);
+        // Code blocks: highlighted with their title and marked lines, grouped into tabs (no script).
+        add_filter('render_block_core/code', [\First\Content\Code::class, 'render'], 10, 2);
+        add_filter('the_content', [\First\Content\Code::class, 'groups'], 20);
         // Components content may use as blocks (first/components: `export const blocks`).
         add_action('init', [\First\Content\Blocks::class, 'register'], 5);
         ContentPages::register($this);

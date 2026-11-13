@@ -244,7 +244,10 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
             Some(Value::String(u)) if valid_uid(&u) => u,
             None if !check => {
                 let uid = if c.nested {
-                    for_file(&c.name, &below)
+                    crate::sync::uid::for_tree_file(
+                        &c.name,
+                        front[c.slug.as_deref().unwrap_or("slug")].as_str().unwrap_or_default(),
+                    )
                 } else {
                     for_file(&c.name, &path.file_name().unwrap_or_default().to_string_lossy())
                 };
@@ -362,9 +365,9 @@ fn render(c: &Collection, uid: &str, fields: &Map<String, Value>, body: Option<&
 }
 
 /// `<slug>.md` when the collection has a slug and the record a usable one, else `<uid>.md`.
-fn file_name(c: &Collection, record: &Value) -> String {
+fn file_name(c: &Collection, record: &Value, current: Option<&Path>) -> String {
     if c.nested {
-        return tree_file(c, record);
+        return tree_file(c, record, current);
     }
     let slug = c.slug.as_ref().and_then(|s| record["fields"][s].as_str()).filter(|s| {
         !s.is_empty() && !s.starts_with('.') && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
@@ -381,26 +384,30 @@ fn note_tree(c: &Collection, record: &Value) {
     if !c.nested {
         return;
     }
-    let (Some(uid), Some(slug)) = (
-        record["uid"].as_str(),
-        c.slug.as_ref().and_then(|s| record["fields"][s].as_str()),
-    ) else {
-        return;
-    };
+    let Some(uid) = record["uid"].as_str() else { return };
+    let slug = c
+        .slug
+        .as_ref()
+        .and_then(|s| record["fields"][s].as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or(uid);
     let parent = record["fields"]["parent"].as_str().map(String::from);
     c.tree.borrow_mut().insert(uid.to_string(), (slug.to_string(), parent));
 }
 
 /// A folder-tree record's file below the sync folder: its ancestors' slugs are its folders, and a
 /// record with children is its own folder's `index` file.
-fn tree_file(c: &Collection, record: &Value) -> String {
+fn tree_file(c: &Collection, record: &Value, current: Option<&Path>) -> String {
     note_tree(c, record);
     let tree = c.tree.borrow();
     let uid = record["uid"].as_str().unwrap_or_default();
+    // A draft started on the site has no slug yet: its file is named by its uid until it has one,
+    // so the file is read back next run (`.md` alone would be skipped, then taken for a deletion).
     let slug = c
         .slug
         .as_ref()
         .and_then(|s| record["fields"][s].as_str())
+        .filter(|s| !s.is_empty())
         .unwrap_or(uid)
         .to_string();
     let mut ancestors = Vec::new();
@@ -416,9 +423,12 @@ fn tree_file(c: &Collection, record: &Value) -> String {
         at = up.clone();
     }
     ancestors.reverse();
-    let has_children = tree.values().any(|(_, p)| p.as_deref() == Some(uid));
     let names: Vec<&str> = ancestors.iter().map(String::as_str).collect();
-    tree_path(&names, &slug, has_children, &c.format)
+    // A folder's index file stays one while it has no children yet: the author made the folder.
+    let index = tree_path(&names, &slug, true, &c.format);
+    let is_index = current.is_some_and(|p| p == c.dir.join(&index));
+    let has_children = tree.values().any(|(_, p)| p.as_deref() == Some(uid));
+    tree_path(&names, &slug, has_children || is_index, &c.format)
 }
 
 /// The site's records of a collection, all pages. Absence from this inventory means "deleted on the
@@ -601,23 +611,24 @@ fn collection(
 ) -> Result<(), String> {
     let (files, clean) = read_files(c, report, options.check);
     let mut remote = pull(client, c).map_err(|p| report.problem(&c.name, &p))?;
-    // A folder tree: the site's records place each other's files; a file's own place counts for
-    // a record only the files hold.
+    let base_entries = bases.collection(site, &c.name);
+    // A folder tree: the site's records place each other's files. A file's own place counts for a
+    // record only the files hold, and for one the file changed since the last sync: that change is
+    // what this run pushes, so a moved folder's children follow it instead of moving back.
     for r in remote.values() {
         if let Remote::Live(item) = r {
             note_tree(c, &item.record);
         }
     }
     for f in files.values() {
-        if !c
-            .tree
-            .borrow()
-            .contains_key(f.item.record["uid"].as_str().unwrap_or_default())
-        {
+        let uid = f.item.record["uid"].as_str().unwrap_or_default();
+        let changed_here = base_entries
+            .get(uid)
+            .is_some_and(|b| b["digest"].as_str() != Some(f.item.digest.as_str()));
+        if changed_here || !c.tree.borrow().contains_key(uid) {
             note_tree(c, &f.item.record);
         }
     }
-    let base_entries = bases.collection(site, &c.name);
     let mut uids: Vec<String> = files.keys().cloned().collect();
     for uid in remote.keys().chain(base_entries.keys()) {
         if !uids.contains(uid) {
@@ -626,6 +637,24 @@ fn collection(
     }
     if let Some(only) = only {
         uids.retain(|u| only.contains_key(u));
+    }
+    // A folder tree: parents before their children, so a child's parent exists on the site when the
+    // child is pushed, and its file lands below its parent's folder.
+    if c.nested {
+        let tree = c.tree.borrow();
+        let depth = |uid: &str| {
+            let mut n = 0;
+            let mut at = tree.get(uid).and_then(|(_, p)| p.clone());
+            while let Some(p) = at {
+                n += 1;
+                if n > tree.len() {
+                    break; // a cycle
+                }
+                at = tree.get(&p).and_then(|(_, up)| up.clone());
+            }
+            n
+        };
+        uids.sort_by_key(|u| depth(u));
     }
     // Bodies both sides changed are merged on the server, in batches.
     let mut merges: Vec<(String, plan::BodyMerge)> = Vec::new();
@@ -783,7 +812,7 @@ fn perform(
     match action {
         // Both sides agree; a file whose slug changed on both sides alike still moves.
         Action::Nothing => {
-            if let Some(f) = file.filter(|f| f.path != c.dir.join(file_name(c, &f.item.record))) {
+            if let Some(f) = file.filter(|f| f.path != c.dir.join(file_name(c, &f.item.record, Some(&f.path)))) {
                 if options.check {
                     pending(report, "move the file to its slug");
                 } else {
@@ -796,7 +825,7 @@ fn perform(
         Action::Adopt(item) => {
             // Both sides already agree; a slug both changed alike still moves the file, and the base
             // moves once the file is where it belongs.
-            let misplaced = file.filter(|f| f.path != c.dir.join(file_name(c, &item.record)));
+            let misplaced = file.filter(|f| f.path != c.dir.join(file_name(c, &item.record, Some(&f.path))));
             if options.check {
                 if misplaced.is_some() {
                     pending(report, "move the file to its slug");
@@ -836,7 +865,7 @@ fn perform(
                     // The file already holds the stored record unless the server reshaped it or its slug moved it.
                     let in_place = file.is_some_and(|f| {
                         f.item.digest == digest
-                            && f.path == c.dir.join(file_name(c, &stored))
+                            && f.path == c.dir.join(file_name(c, &stored, Some(&f.path)))
                             && unchanged(&f.path, Some(&f.bytes))
                     });
                     let landed = in_place || write_record(c, file, &stored, report);
@@ -1066,7 +1095,7 @@ fn identity_push(client: &Client, name: &str, record: &Value, first: &Problem) -
 fn write_record(c: &Collection, current: Option<&File>, record: &Value, report: &mut Report) -> bool {
     let empty = Map::new();
     let uid = record["uid"].as_str().unwrap_or_default();
-    let target = c.dir.join(file_name(c, record));
+    let target = c.dir.join(file_name(c, record, current.map(|f| f.path.as_path())));
     // Someone may have edited or removed the file since it was read: never write over that. The edit
     // stays, the base doesn't move, and the next run plans it.
     let changed = match current {

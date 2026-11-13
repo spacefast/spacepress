@@ -109,18 +109,18 @@ const exampleChecks: Record<string, { title: string; run: (base: string, admin: 
 		},
 	},
 	"full-site": {
-		title: "a signed-out visitor reads the TSX pages: /notes/, and a note with its cheer island and no desk notes",
+		title: "a signed-out visitor reads the first/app pages: /notes/, and a note with its cheer button and no desk notes",
 		async run(base) {
 			const visitor = browser(base, { signedOut: true });
 			const list = await visitor("/notes/");
 			assert.equal(list.status, 200);
-			assert.match(list.body, /<a href="[^"]*\/notes\/dawn-on-the-ridge\/">Dawn on the ridge<\/a>/);
+			assert.match(list.body, /<a href="[^"]*\/notes\/dawn-on-the-ridge"[^>]*>Dawn on the ridge<\/a>/);
 			assert.doesNotMatch(list.body, /Notes for next week/, "a draft is listed to a signed-out visitor");
-			const note = await visitor("/notes/dawn-on-the-ridge/");
+			const note = await visitor("/notes/dawn-on-the-ridge");
 			assert.equal(note.status, 200);
 			assert.match(note.body, /<h1[^>]*>Dawn on the ridge<\/h1>/);
-			assert.match(note.body, /data-wp-interactive="fullsite\/cheer"/);
-			assert.match(note.body, /data-wp-text="context.count"[^>]*>3</);
+			assert.match(note.body, /data-wp-interactive="fullsite\/CheerButton"/);
+			assert.match(note.body, /<button[^>]*class="cheer"[^>]*>3 cheers</);
 			assert.doesNotMatch(note.body, /Check the photo credit/, "desk notes shown to a signed-out visitor");
 		},
 	},

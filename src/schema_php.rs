@@ -217,6 +217,9 @@ fn collection(out: &mut String, c: &Collection) {
     let _ = writeln!(out, "            'auth' => {},", c.auth);
     let _ = writeln!(out, "            'agents' => {},", c.agents);
     let _ = writeln!(out, "            'localized' => {},", c.localized);
+    if c.hierarchical {
+        out.push_str("            'hierarchical' => true,\n");
+    }
     let _ = writeln!(out, "            'title' => {},", opt(&c.title));
     let _ = writeln!(out, "            'content' => {},", opt(&c.content));
     let _ = writeln!(out, "            'slug' => {},", opt(&c.slug));

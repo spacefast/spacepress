@@ -328,7 +328,8 @@ registered once.
 | `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
 
 Collections need a title and physical names of at most 14 characters (WordPress
-prefixes `first_`). Built-in route names are reserved. User projections retain
+prefixes `first_`). Built-in route names are reserved (`media`, `files`,
+`globals`, `actions`, `me`, `auth`, `services`, `search`). User projections retain
 WordPress identity storage; see [Sign-in](#sign-in).
 
 ### Files that moved into `first/_generated/`
@@ -527,6 +528,57 @@ translation groups, and the app plugin ships a `wpml-config.xml` saying which
 fields translate.
 
 ## Sync
+
+### A folder tree: a docs section
+
+A hierarchical collection syncs a whole folder tree ([decision](decisions/2026-11-13-docs-kind.md)):
+
+```ts
+export const docs = collection(
+  { title: text(), slug: slug({ source: "title" }), content: richText().optional() },
+  { hierarchical: true, url: "/docs/:path", sync: "content/docs/**/*.md" },
+);
+```
+
+```text
+content/docs/
+├── introduction.md        /docs/introduction
+└── guides/
+    ├── index.md           /docs/guides: the page the folder stands for
+    ├── install.md         /docs/guides/install
+    └── deploy/
+        ├── index.md       /docs/guides/deploy
+        └── space.md       /docs/guides/deploy/space
+```
+
+- `hierarchical: true` adds `parent` and `order`, stored as the post's own parent and menu order:
+  the editor's page attributes edit them, and `:path` in the url is the parent chain.
+- A file's name is its slug and its folder its parent; front matter never holds either. Put
+  `order: 2` in front matter to sort; siblings with the same order sort by title.
+- Slugs are unique in the kind, so two folders can't both hold an `install.md`.
+- `first sync` moves a file when its page moves on the site, and turns a page that gains children
+  into its folder's `index.md`.
+
+A page reads the navigation from `"first/content"`, as the visitor:
+
+```tsx
+// first/app/docs/[...path]/page.tsx
+import { docs } from "first:db";
+import { Content, type PageProps } from "first/app";
+import { nav, pager, headings } from "first/content";
+
+export default async function Doc({ item }: PageProps<"docs/[...path]">) {
+  const tree = await nav(docs, item);           // [{ id, title, href, current, open, children }]
+  const { prev, next } = await pager(docs, item);
+  const toc = headings(item);                   // [{ depth: 2 | 3, text, id }]
+  return <article><h1>{item.title}</h1><Content value={item.content} /></article>;
+}
+```
+
+The tree is the published items the visitor may read, siblings by order then title, four levels
+deep. `headings()` gives the ids the page renders its headings with.
+
+### Seeding and `first sync`
 
 Every publish seeds synced files: missing records are created, trashed records stay deleted, and no records are removed.
 Existing editable records keep their site content; the publish reports `first_seed_skipped_existing` for differing files, and `first sync` merges them.

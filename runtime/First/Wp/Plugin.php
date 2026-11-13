@@ -436,6 +436,12 @@ final class Plugin
         return hash_file('sha256', $this->dir . '/first/app/schema.php');
     }
 
+    /** Identifies the compiled schema this request runs: what a runtime schema version was validated on. */
+    public function buildHash(): string
+    {
+        return $this->schemaHash();
+    }
+
     // ================================================================ registration
 
     public function registerPostTypes(): void

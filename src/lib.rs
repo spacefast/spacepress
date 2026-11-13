@@ -25,6 +25,7 @@ pub mod pages;
 pub mod pipeline;
 pub mod platform;
 pub mod plugins;
+pub mod runtime_schema;
 pub mod schema;
 pub mod schema_php;
 pub mod services_config;

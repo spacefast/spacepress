@@ -503,13 +503,49 @@ sub-field rules, and a required field needs a default. `GET`/`PATCH
 ## defineConfig
 
 `defineConfig({ name?, collections?, tables?, users?, relations?, globals?, hooks?, actions?,
-jobs?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend? })`. `name` (a slug,
+jobs?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend?, runtimeSchema? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `first-app-<name>`.
 `admin: true` ships the optional admin screens as a fourth plugin,
 `first-admin`; by default the build emits none. `frontend` says who renders the
 public site: leave it out for the theme (or `first/app` when it exists), `false`
 for backend only, or an external site's `https://` address (`http://` only on
 localhost) so links, previews and feeds point there.
+
+### Runtime schema changes
+
+`runtimeSchema: true` lets the running site add fields to its `collection()` kinds without a build
+(spec §2.10, [decision record](decisions/2026-11-13-runtime-schema.md)). It is off by default, and
+with it off nothing below exists.
+
+- **What a change is.** `{ "format": 1, "changes": [{ "op": "addField", "kind": "articles", "field":
+  "subtitle", "definition": { "type": "text", "rules": { "max": 120 } } }] }`. A definition is the
+  field as `schema.php` stores it: `type` (`text`, `integer`, `real`, `boolean`, `date`,
+  `timestamp`, `json`, `email`, `url`, `richText`, `media`, `mediaList`, `select`, `group`,
+  `repeater`, `blocks`), and where they apply `notNull`, `enum`, `multiple`, `multiline`, `accept`,
+  `default` (`{ "value": … }` with one string, number or boolean, or `{ "now": true }`), `rules`
+  (`min`, `max`), `fields`, `layouts` and `ui`.
+- **Rules.** The compiler's, with the compiler's diagnostic code in the refusal (`F3001`, `F2001`,
+  `F3101`). The site adds three of its own: a field is optional or has a default
+  (`schema_required`); a name every kind has or will have is not available (`schema_reserved`);
+  and anything that is not adding a field to a collection is `schema_build_only`, with the source
+  edit to make. Fields of a translated or synced collection are build-only for now.
+- **Versions.** An accepted change is the next row of `<prefix>first__schema_versions`: version,
+  parent, the build it was validated on, who applied it, when, the change in stored form, and a
+  hash chained to the parent's. Rows are never updated or deleted. A change names the version it
+  was made against; when another was applied first it is refused with 409 `schema_conflict`.
+- **Loading.** The active version's fields are in one autoloaded option,
+  `first_<app>_runtime_schema`. A request adds them to the compiled schema and does nothing else.
+  A field the build declares itself is never replaced. The new field is post meta
+  `first_<field>`, registered and added to the kind's field group like a compiled one, from the
+  request after the change. `GET /__first/api/v1` reports `runtimeSchema: { version, hash, build }`.
+- **In the project.** `first/_generated/runtime-schema.json` (`{ "format": 1, "version", "hash",
+  "collections": { "<kind>": { "columns": { … } } } }`) lists a site's fields for the build, which
+  declares them as if they were authored. A build that lacks the site's fields does not drop
+  them: they stay active, with their data.
+
+This release has the store, the loader, the rules and the build's reading of the lock. Applying a
+change is `First\Wp\SchemaVersions::of($plugin)->apply($parent, $changeSet, $actor)` from PHP;
+the Abilities, the `first schema` commands, `first pull` and the admin screen are not built yet.
 
 ## Plugin packages
 

@@ -244,7 +244,8 @@ final class WpSite
             $port = $this->port;
             putenv("FIRST_TEST_SERVER_PORT=$port");
             $server = proc_open(
-                [PHP_BINARY, '-S', "127.0.0.1:$port", __DIR__ . '/wp-router.php'],
+                // A suite that rewrites schema.php (an app update) is served the new file by the next request.
+                [PHP_BINARY, '-d', 'opcache.revalidate_freq=0', '-S', "127.0.0.1:$port", __DIR__ . '/wp-router.php'],
                 [1 => ['file', "$this->dir/server.log", 'a'], 2 => ['file', "$this->dir/server.log", 'a']],
                 $pipes,
                 $this->dir,

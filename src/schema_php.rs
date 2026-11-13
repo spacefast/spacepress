@@ -388,6 +388,9 @@ pub fn render(schema: &Schema) -> String {
                 r.styles.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", ")
             )
         };
+        if app.legacy_routes {
+            out.push_str("        'legacyRoutes' => true,\n");
+        }
         out.push_str("        'routes' => [\n");
         for r in &app.routes {
             let _ = writeln!(out, "            {},", route(r));

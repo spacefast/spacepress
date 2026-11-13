@@ -114,22 +114,28 @@ final class ContentPages
             if (in_array($page['digest'], $applied, true)) {
                 continue;
             }
-            $file = 'first/app/' . ($route === '/' ? '' : $route . '/') . 'page.md';
+            $file = 'the page.md at ' . $route;
             $history = array_slice([...$applied, $page['digest']], -self::HISTORY);
+            // What the last applied file said: a page only becomes non-public when it was public.
+            // A record from before statuses were kept, or an adopted Page, counts as public.
+            $was = $entry['status'] ?? 'publish';
             $post = $entry !== null ? get_post($entry['post']) : $this->lost($route);
             if ($entry === null && $post instanceof \WP_Post) {
                 // A Page this route stored before the site lost its record of it: adopted as it is.
-                $state['pages'][$route] = ['post' => $post->ID, 'applied' => $history, 'stored' => ''];
-                $this->hide($post, $page['status']);
+                $state['pages'][$route] = ['post' => $post->ID, 'applied' => $history, 'stored' => '', 'status' => $page['status']];
+                $this->hide($post, $was, $page['status']);
+                $this->keep($state);
                 continue;
             }
             if ($entry !== null && (!$post instanceof \WP_Post || self::fingerprint($post) !== $entry['stored'])) {
                 // Someone changed the Page (or trashed or deleted it): the site's version stays.
                 error_log("[first] $file changed, but its Page was edited on the site; the site keeps its version");
                 $state['pages'][$route]['applied'] = $history;
+                $state['pages'][$route]['status'] = $page['status'];
                 if ($post instanceof \WP_Post) {
-                    $this->hide($post, $page['status']);
+                    $this->hide($post, $was, $page['status']);
                 }
+                $this->keep($state);
                 continue;
             }
             try {
@@ -144,21 +150,28 @@ final class ContentPages
                 'post_type' => 'page', 'post_name' => $page['slug'], 'comment_status' => 'closed', 'ping_status' => 'closed',
                 'meta_input' => [self::META => $route],
             ]);
-            $state['pages'][$route] = ['post' => $id, 'applied' => $history, 'stored' => self::fingerprint(get_post($id))];
+            $state['pages'][$route] = ['post' => $id, 'applied' => $history, 'stored' => self::fingerprint(get_post($id)), 'status' => $page['status']];
+            // Each Page as it lands: a failure later in the loop leaves no Page the record doesn't know.
+            $this->keep($state);
         }
         $state['builds'] = array_slice([...$state['builds'], $this->build()], -self::HISTORY);
+        $this->keep($state);
+    }
+
+    private function keep(array $state): void
+    {
         update_option($this->option(), $state, true);
     }
 
     /**
-     * The one change a new file version makes to a Page the site edited: when the file now says
+     * The one change a new file version makes to a Page the site edited: when the file newly says
      * the page is not public (`status: draft`, or a layout `guard` above it), a published Page
      * takes that status. Its content stays the site's, and an editor can publish it again; without
      * this, WordPress's REST API and sitemap would keep showing a page the code took away.
      */
-    private function hide(\WP_Post $post, string $status): void
+    private function hide(\WP_Post $post, string $was, string $status): void
     {
-        if ($status !== 'publish' && $post->post_status === 'publish') {
+        if ($was === 'publish' && $status !== 'publish' && $post->post_status === 'publish') {
             self::save(['ID' => $post->ID, 'post_status' => $status]);
         }
     }
@@ -351,12 +364,20 @@ final class ContentPages
         }
         $have = '/' . trim((string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH), '/');
         $want = '/' . trim((string) wp_parse_url($this->url($route), PHP_URL_PATH), '/');
-        $query = array_filter($_GET, 'is_string');
+        $query = wp_unslash(array_filter($_GET, 'is_string'));
         $own = array_intersect_key($query, ['page_id' => 1, 'p' => 1, 'pagename' => 1]);
+        // Core found the Page by its slug (`/colophon`): if one of the app's own page routes
+        // serves that path, the path is that route's, whatever Page core resolved it to.
+        $base = rtrim((string) wp_parse_url(home_url('/'), PHP_URL_PATH), '/');
+        $path = $base !== '' && str_starts_with($have, $base) ? (substr($have, strlen($base)) ?: '/') : $have;
+        $routes = $this->plugin->schema->app()['routes'] ?? [];
+        if ($own === [] && rawurldecode($have) !== rawurldecode($want) && (AppRouter::match($routes, $path)['route']['page'] ?? null) !== null) {
+            return;
+        }
         if (rawurldecode($have) === rawurldecode($want) && $own === []) {
             return;
         }
-        wp_safe_redirect(add_query_arg(array_map('rawurlencode', array_diff_key($query, $own)), $this->url($route)), 301);
+        wp_safe_redirect(add_query_arg(urlencode_deep(array_diff_key($query, $own)), $this->url($route)), 301);
         exit;
     }
 }

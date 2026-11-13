@@ -96,8 +96,11 @@ test("core /wp-abilities/v1 lists the blog abilities with their JSON Schemas and
   }
   const byName = Object.fromEntries(listed.map((a: any) => [a.name, a]));
   const golden = JSON.parse(readFileSync(join(here, "fixtures/abilities.json"), "utf8"));
+  // A subscriber's update rule covers no blog row, so the staged-version abilities aren't offered to
+  // them (docs/staged.md); every other ability the golden shows in REST is.
+  const staged = (a: any) => /^(stage|staged-)/.test(a.meta.first.op);
   assert.deepEqual(Object.keys(byName).filter((n) => golden.some((a: any) => a.name === n)).sort(),
-    golden.filter((a: any) => a.meta.show_in_rest).map((a: any) => a.name).sort());
+    golden.filter((a: any) => a.meta.show_in_rest && !staged(a)).map((a: any) => a.name).sort());
 
   const list = byName["blog/posts-list"];
   assert.equal(list.category, "blog");

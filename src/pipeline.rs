@@ -39,6 +39,8 @@ pub struct Built {
     pub plugin_report: serde_json::Value,
     /// Abilities (and later hooks and functions) the compiled code uses from WordPress.
     pub wordpress_uses: Vec<compile::WordPressUse>,
+    /// With `runtimeSchema`: which fields the project's source names (`first/app/references.php`).
+    pub references: Option<serde_json::Value>,
 }
 
 /// The schema ledger, committed with the project: `snapshot.json` and the numbered SQL that
@@ -423,7 +425,12 @@ pub fn build(
             .filter_map(|(name, c)| c.url.clone().map(|u| (name.clone(), u)))
             .collect::<Vec<_>>(),
     );
+    let references = schema
+        .runtime_schema
+        .is_some()
+        .then(|| crate::runtime_schema::references(&schema, &program.root));
     Ok(Built {
+        references,
         plugins: ext.plugins,
         unsupported_plugins,
         client_files,

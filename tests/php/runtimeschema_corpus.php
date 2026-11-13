@@ -176,7 +176,7 @@ eq('an operation names a kind or a global, not both', $verdict($set(['op' => 'se
 $declared = ['collections' => ['events' => ['starts' => 'text']], 'globals' => ['banner' => ['text' => 'integer']]];
 $verdictWith = static function (array $changeSet) use ($kinds, $empty, $declared): string {
     try {
-        Changes::resolve($kinds, $empty, $changeSet, $declared);
+        Changes::resolve($kinds, $empty, $changeSet, null, $declared);
 
         return 'accept';
     } catch (Refused $e) {

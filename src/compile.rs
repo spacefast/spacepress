@@ -391,6 +391,9 @@ pub struct Compiler<'a, 'p> {
     fx: Option<FnCtx>,
     /// Inferred result type of each action handler (for the typed client).
     pub action_results: HashMap<String, Ty>,
+    /// Each server component's props type (`first/components/x.tsx#Name` → its first parameter),
+    /// for the blocks Markdown pages use (`crate::content_blocks`).
+    pub component_props: HashMap<String, Ty>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
     /// The `this` type for the next object-literal method compiled (the literal's own type).
@@ -491,6 +494,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             output: String::new(),
             fx: None,
             action_results: HashMap::new(),
+            component_props: HashMap::new(),
             plugin: None,
             current: String::new(),
             uses: Vec::new(),
@@ -894,6 +898,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
                 self.islands.push(ctx.analysis);
+            }
+            if let Slot::Component { name: component } = &root.slot
+                && let Some(Ty::Fn(params, _)) = self.helper_types.get(&key)
+            {
+                let props = params.first().cloned().unwrap_or(Ty::Obj(IndexMap::new()));
+                self.component_props.insert(component.clone(), props);
             }
             if let Slot::ActionHandler { action } = &root.slot
                 && let Some(Ty::Fn(_, ret)) = self.helper_types.get(&key)

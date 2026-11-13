@@ -337,6 +337,9 @@ pub fn render(schema: &Schema) -> String {
             let _ = writeln!(out, "        {} => {},", php_str(name), php_str(function));
         }
     }
+    if !schema.blocks.is_empty() {
+        out.push_str(&crate::content_blocks::schema_php(&schema.blocks));
+    }
     if !schema.islands.is_empty() {
         out.push_str("    ],\n    'islands' => [\n");
         for (namespace, island) in &schema.islands {

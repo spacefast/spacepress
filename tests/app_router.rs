@@ -1455,6 +1455,56 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         serde_json::json!({ "Reference [current]": "/docs/guides/reference" })
     );
     assert_eq!(seen["moved old"], serde_json::json!([404]));
+    // Components in Markdown (docs/decisions/2026-11-13-components-in-markdown.md): the file's
+    // tags are stored as the app's blocks, their Markdown as inner blocks.
+    assert_eq!(
+        seen["blocks registered"],
+        serde_json::json!(["docskind/callout", "docskind/badge"])
+    );
+    assert_eq!(
+        seen["blocks stored"],
+        serde_json::json!([
+            ["core/paragraph", [], []],
+            ["docskind/callout", { "type": "warning", "title": "Before you start" }, ["core/paragraph", "core/list"]],
+            ["docskind/badge", { "label": "New", "count": 3 }, []],
+            ["core/paragraph", [], []],
+        ])
+    );
+    // The route renders each block through its component, the inner content as its children.
+    assert_eq!(
+        seen["blocks rendered"],
+        serde_json::json!([
+            200,
+            "<aside class=\"callout callout-warning\" role=\"note\"><p class=\"callout-title\">Before you start</p><div class=\"callout-body\"> <p class=\"wp-block-paragraph\">Back up the <b>database</b>.</p> <ul class=\"wp-block-list\"> <li>Export it</li> <li>Keep a copy</li> </ul> </div></aside>",
+            "<span class=\"badge\">New<b> 3</b></span>",
+        ])
+    );
+    // Written back, the blocks are the file's tags again, and an editor's change to a prop is too.
+    let file = "Run the installer.\n\n<Callout type=\"warning\" title=\"Before you start\">\nBack up the **database**.\n\n- Export it\n- Keep a copy\n</Callout>\n\n<Badge label=\"New\" count={3} />\n\nThen continue.\n";
+    assert_eq!(seen["blocks back"], file);
+    assert_eq!(
+        seen["blocks edited back"],
+        file.replace("type=\"warning\"", "type=\"note\"")
+    );
+    // The Markdown twin is what a reader sees: the components' text, never their tags.
+    let twin = seen["blocks twin"].as_str().unwrap();
+    assert!(
+        twin.contains("Before you start\n\nBack up the **database**.") && !twin.contains("<Callout"),
+        "{twin}"
+    );
+    // What a file can't say about a block is refused with the reason; a tag in a code fence is code.
+    assert_eq!(
+        seen["blocks refused"],
+        serde_json::json!({
+            "unknown tag": "<Tabs> isn't a block this site has; list it in its component file's `export const blocks`",
+            "unknown prop": "<Callout> has no prop `colour`; it takes type, title",
+            "enum": "<Callout type> takes \"note\" | \"warning\"",
+            "required": "<Callout> needs `type`",
+            "number": "<Badge count> takes number",
+            "unclosed": "<Callout> is never closed: put </Callout> on a line of its own",
+        })
+    );
+    assert!(seen["blocks fenced"].as_str().unwrap().starts_with("<!-- wp:code"));
     // The query API reads parent and order like any field.
     assert_eq!(
         seen["api"],
@@ -1554,6 +1604,42 @@ fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
             !out.status.success() && stderr.contains(message),
             "expected {message:?} in:\n{stderr}"
         );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A component listed as a block must have props a Markdown tag can write, and the list must name
+/// the file's own components; each refusal is at the component file.
+#[test]
+fn content_blocks_refuse_props_a_tag_cannot_write() {
+    let dir = std::env::temp_dir().join(format!("first-blocks-reject-{}", std::process::id()));
+    for (component, message) in [
+        (
+            "export const blocks = [\"Card\"];\nexport function Card({ links }: { links: string[] }) { return <div>{links.length}</div>; }\n",
+            "<Card>'s prop `links` is string[], which a Markdown tag can't write",
+        ),
+        (
+            "export const blocks = [\"Missing\"];\nexport function Card() { return <div />; }\n",
+            "`blocks` names `Missing`, which components/Card.tsx doesn't export as a component",
+        ),
+        (
+            "export const blocks = \"Card\";\nexport function Card() { return <div />; }\n",
+            "`blocks` is a list of this file's component names",
+        ),
+    ] {
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("first/components")).unwrap();
+        std::fs::write(
+            dir.join("first.config.ts"),
+            "import { defineConfig } from \"first\";\nexport default defineConfig({});\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("first/components/Card.tsx"), component).unwrap();
+        let out = first().arg("check").arg(&dir).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{message}: should fail:\n{stderr}");
+        assert!(stderr.contains(message), "expected {message:?} in:\n{stderr}");
+        assert!(stderr.contains("--> first/components/Card.tsx"), "{stderr}");
     }
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -12,6 +12,7 @@ pub mod builtins;
 pub mod client;
 pub mod client_component;
 pub mod compile;
+pub mod content_blocks;
 pub mod content_page;
 pub mod css;
 pub mod diag;

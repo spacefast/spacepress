@@ -10,7 +10,7 @@ A kind with `sync` keeps its records as files in the repository (`content/<kind>
 - an edit saved on the site comes back to the repository as **one pull request**, which someone reviews and merges;
 - a file change merged into the default branch goes to the site.
 
-## The pull request: `first sync --pr`
+## The pull request
 
 ```sh
 FIRST_APP_PASSWORD=sync-bot:xxxx GITHUB_TOKEN=ghp_… first sync --pr --site https://docs.example.com
@@ -38,7 +38,7 @@ The checkout you run `--pr` from is never committed on or changed.
 
 `--repo owner/name` and `--base branch` choose the repository and the target branch. By default they are `GITHUB_REPOSITORY` (or `origin`'s GitHub URL) and the repository's default branch. `GITHUB_API_URL` points at GitHub Enterprise. The command talks to GitHub's REST API itself; it doesn't need the `gh` CLI.
 
-## The workflow: `first init --github`
+## The GitHub workflow
 
 ```sh
 first init --github

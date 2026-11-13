@@ -358,6 +358,8 @@ pub struct Collection {
     pub editor: bool,
     pub drafts: bool,
     pub revisions: bool,
+    /// `staged: false` turns staged versions off for a collection (they need its revisions).
+    pub staged: bool,
     /// `comments: true`: the post type supports WordPress comments; every other kind has them off.
     pub comments: bool,
     pub title: Option<String>,

@@ -37,7 +37,7 @@ final class MarkdownTwins
 
     public static function register(): void
     {
-        // After HttpRoutes (0): an app route at a `.md` path or `/llms.txt` is the app's.
+        // After the app router's handlers (0): a first/app/ route at a `.md` path or `/llms.txt` is the app's.
         add_filter('do_parse_request', [self::class, 'parseRequest'], 1);
         add_action('parse_request', [self::class, 'parsed'], PHP_INT_MAX);
         add_action('wp', [self::class, 'answer'], PHP_INT_MIN);

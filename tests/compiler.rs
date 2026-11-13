@@ -163,6 +163,36 @@ fn replaced_field_forms_name_their_replacement() {
             "`.many()` isn't valid on a text column",
             "first.config.ts:2:37",
         ),
+        (
+            "reject-define-relations",
+            "`defineRelations()` is gone: a reference is a field",
+            "first.config.ts:3:26",
+        ),
+        (
+            "reject-relations-key",
+            "`relations` is gone: a reference is a field",
+            "first.config.ts:3:66",
+        ),
+        (
+            "reject-references",
+            "`.references()` is gone: a reference is a `ref()` field",
+            "first.config.ts:3:40",
+        ),
+        (
+            "reject-ref-set-null",
+            "`noteId` is required, so deleting what it refers to can't set it to null",
+            "first/schema.ts:3:48",
+        ),
+        (
+            "reject-ref-reverse-clash",
+            "`noteId` gives \"notes\" a reverse list named `tags`, which \"notes\" already has",
+            "first/schema.ts:3:37",
+        ),
+        (
+            "reject-ref-target",
+            "ref() takes a kind, not \"notes\"",
+            "first/schema.ts:2:37",
+        ),
     ] {
         rejects(fixture, message, at);
     }
@@ -313,21 +343,6 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
 }
 
 #[test]
-fn a_catch_all_route_segment_comes_last() {
-    rejects(
-        "reject-route-catchall-middle",
-        "has a *catch-all that is not the last segment",
-        "first.config.ts:3:",
-    );
-    let out = first()
-        .args(["check"])
-        .arg(root().join("tests/fixtures/route-catchall"))
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-}
-
-#[test]
 fn destructured_defaults_may_read_earlier_siblings_only() {
     let out = first()
         .args(["check"])
@@ -363,11 +378,6 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "reject-hook-typo",
         "there's no hook called `beforeCreat`",
         "first.config.ts:3:",
-    );
-    rejects(
-        "reject-bad-reference",
-        "`aName` is integer() but references a.name, which is text()",
-        "first.config.ts:3:36",
     );
     // §1.2: modifiers per column kind, pointing at the modifier call.
     rejects(
@@ -613,12 +623,14 @@ fn context_values_pass_through_typed_helpers() {
         .arg("eval")
         .arg(tmp.join("first/dist/wp-content"))
         .arg(
-            r#"$route = $app->matchRoute("POST", "/echo");
+            r#"// first/app/echo/route.ts, matched the way the app router matches it.
+               $file = $wp->plugin()->schema->app()["files"]["app/echo/route.ts"];
+               $route = ["name" => "echo", "params" => [], "route" => ["handler" => $file["methods"]["POST"], "access" => $file["access"], "signature" => null]];
                // req.url and req.query as the WordPress transport builds them: 0.8's form, with every
                // share-link secret redacted and the share parameter kept out of the query.
                $at = fn (string $host, string $uri) => json_decode($app->serveRoute($route, "POST", "/echo",
-                   \First\Wp\HttpRoutes::query((string) parse_url($uri, PHP_URL_QUERY)), "", [], null,
-                   \First\Wp\HttpRoutes::url($host, $uri))[2], true);
+                   \First\Wp\RouteRequest::query((string) parse_url($uri, PHP_URL_QUERY)), "", [], null,
+                   \First\Wp\RouteRequest::url($host, $uri))[2], true);
                $urls = [
                  $at("Site.Example.:8443", "/echo?a=1&__=secret&b=2"),
                  $at("site.example", "/echo?token=t1&purchaseToken=p1&tokens=kept"),
@@ -1012,9 +1024,9 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     let (s, consumed) = server.send("POST", "/actions/consume", Some(&format!(r#"{{"itemId":{milk_id}}}"#)));
     assert_eq!(s, 200, "{consumed}");
     assert_eq!(consumed["data"]["message"], "Oat Milk: 1 l left");
-    let (_, list) = server.send("GET", "/shopping_list?with=item", None);
+    let (_, list) = server.send("GET", "/shopping_list?with=itemId", None);
     assert_eq!(list["data"][0]["name"], "Oat Milk");
-    assert_eq!(list["data"][0]["item"]["quantity"], 1);
+    assert_eq!(list["data"][0]["itemId"]["quantity"], 1);
     assert_eq!(list["data"][0]["notifiedAt"], serde_json::Value::Null);
 
     // §6.1: restocking enqueued notifyLowStock; Action Scheduler runs it off the request (the queue's
@@ -1786,10 +1798,7 @@ fn rejects_phase2_static_contracts() {
             "`.primaryKey()` is gone: every kind has an integer `id`",
         ),
         ("reject-sync-reference", "sync references need uid: true on a"),
-        (
-            "reject-job-reference",
-            "`.references()` isn't allowed on an action input",
-        ),
+        ("reject-job-reference", "`ref()` isn't allowed on an action input"),
         ("reject-job-unique", "`.unique()` isn't allowed on an action input"),
         ("reject-job-retries", "job retries must be a whole number from 0 to 20"),
         ("reject-once-key", "once key must be a string"),

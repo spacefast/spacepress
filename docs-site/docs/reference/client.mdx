@@ -27,6 +27,7 @@ The client unwraps `data`, so `list()` returns the rows themselves.
 | `CollectionKey` | type |
 | `RowWith` | type |
 | `ListQuery` | type |
+| `Query` | interface |
 | `CollectionClient` | interface |
 | `MediaQuery` | interface |
 | `MediaClient` | interface |
@@ -54,11 +55,12 @@ Each collection and table in your config is a property of the client.
 
 ```ts
 interface CollectionClient<K extends CollectionKey> {
-  list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
+  list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Query<RowWith<K, W>[]>;
   paginate<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
     q?: ListQuery<K, ExactWith<K, W>> & { cursor?: string | null },
-  ): Promise<{ rows: RowWith<K, W>[]; cursor: string | null }>;
-  get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Promise<RowWith<K, W>>;
+  ): Query<{ rows: RowWith<K, W>[]; cursor: string | null }>;
+  get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Query<RowWith<K, W>>;
+  count(q?: { where?: Collections[K]["filter"] } & StatusQuery<K> & LocaleQuery<K>): Query<number>;
   create(data: Collections[K]["insert"]): Promise<Row<K>>;
   update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
   delete(id: IdOf<K>): Promise<Row<K>>;

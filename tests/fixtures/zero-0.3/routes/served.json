@@ -1,0 +1,50 @@
+{
+ "feed": [
+  200,
+  "[\"Published\",\"Draft\"]"
+ ],
+ "feed limit": [
+  200,
+  "[\"Published\"]"
+ ],
+ "literal": [
+  200,
+  "latest"
+ ],
+ "param": [
+  200,
+  "get 7"
+ ],
+ "post anonymous": [
+  401,
+  "{\"type\":\"about:blank\",\"title\":\"Unauthenticated\",\"status\":401,\"code\":\"unauthenticated\",\"detail\":\"Sign in to do call route rename\"}"
+ ],
+ "post editor": [
+  201,
+  "post 7"
+ ],
+ "rest anonymous": [
+  401,
+  "{\"type\":\"about:blank\",\"title\":\"Unauthenticated\",\"status\":401,\"code\":\"unauthenticated\",\"detail\":\"Sign in to do call route files\"}"
+ ],
+ "rest signed in": [
+  200,
+  "file a/b"
+ ],
+ "signed": [
+  202,
+  "signed payload"
+ ],
+ "unrouted": [
+  404,
+  null
+ ],
+ "unsigned": [
+  401,
+  "{\"type\":\"about:blank\",\"title\":\"Unauthorized\",\"status\":401,\"code\":\"invalid_signature\",\"detail\":\"The request signature is missing, stale or invalid\"}"
+ ],
+ "wrong method": [
+  405,
+  "{\"type\":\"about:blank\",\"title\":\"Method not allowed\",\"status\":405,\"code\":\"method_not_allowed\",\"detail\":\"DELETE is not allowed on /api/feed.json\"}"
+ ]
+}

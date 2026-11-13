@@ -36,10 +36,11 @@ type Graph = {
     'items': Many<'items'>;
   };
   'items': {
-    'location': One<'locations', true>;
+    'locationId': One<'locations', true>;
+    'shoppingList': Many<'shoppingList'>;
   };
   'shoppingList': {
-    'item': One<'items', true>;
+    'itemId': One<'items', true>;
   };
 };
 declare module "first" { interface Register { relations: Relations<Entities, Graph>; config: typeof config } }

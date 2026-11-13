@@ -45,13 +45,15 @@ type Entities = {
 type Graph = {
   'systems': {
     'tasks': Many<'tasks'>;
+    'doneLogs': Many<'doneLogs'>;
   };
   'tasks': {
-    'system': One<'systems', true>;
+    'systemId': One<'systems', false>;
     'doneLogs': Many<'doneLogs'>;
   };
   'doneLogs': {
-    'task': One<'tasks', true>;
+    'taskId': One<'tasks', false>;
+    'systemId': One<'systems', false>;
   };
 };
 declare module "first" { interface Register { relations: Relations<Entities, Graph>; config: typeof config } }

@@ -7,11 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { auth, harness, http, ok, run, wp, wpTry, first, type Role } from "./env.ts";
-
-// Abilities run First's own pipeline (App::invoke), the one the old namespace served; until they run
-// through the core routes too, they are compared with it.
-const api = `${harness.url}/wp-json/first/v1`;
+import { api, auth, harness, http, ok, run, wp, wpTry, first, type Role } from "./env.ts";
 
 type Who = Role | "anonymous";
 const here = dirname(fileURLToPath(import.meta.url));
@@ -122,7 +118,7 @@ test("executing an ability answers each user exactly as REST does", async () => 
     ["blog/posts-update", { id: postId, patch: { excerpt: `by agent ${run}` } }, "POST", "PATCH", `/posts/${postId}`, { excerpt: `by rest ${run}` },
       async () => assert.equal((await ok("GET", `/posts/${postId}`, { as: "editor" })).excerpt, `by agent ${run}`)],
     ["blog/signups-list", { limit: 1 }, "GET", "GET", "/signups?limit=1", undefined],
-    ["blog/global-settings-update", { tagline: `agents ${run}` }, "POST", "PATCH", "/globals/settings", { tagline: `rest ${run}` },
+    ["blog/global-settings-update", { tagline: `agents ${run}` }, "POST", "PATCH", "/settings", { tagline: `rest ${run}` },
       async () => assert.equal((await ok("GET", "/settings")).tagline, `agents ${run}`)],
     ["blog/approve-comment", { id: 999999999 }, "POST", "POST", "/actions/approveComment", { id: 999999999 }],
     // Non-editors may only reset a json() value to {}: the ability's check sees `{}` as REST does, and
@@ -167,7 +163,7 @@ test("GET filters core can't type are refused; as JSON strings they match REST a
   // Bracketed, `false` in these places would arrive as the truthy string "false" and invert.
   const shapes = (op: string) => [
     ["where", { id: postId, AND: [{ AND: [{ cover: { [op]: false } }] }] }],
-    ["where", { id: postId, AND: [{ author: { userId: { [op]: false } } }] }],
+    ["where", { id: postId, AND: [{ authorId: { userId: { [op]: false } } }] }],
     ["with", { comments: { where: { body: { [op]: false } } } }],
   ] as const;
   // A query string core can't type as a whole stays all strings, the typed parts included.
@@ -189,7 +185,7 @@ test("GET filters core can't type are refused; as JSON strings they match REST a
   }
 });
 
-test("an ability create runs the pipeline and is visible in /first/v1", async () => {
+test("an ability create runs the pipeline and is visible through the API", async () => {
   const r = await runAbility("blog/posts-create", { title: `Audit agent ${run}` }, "author");
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.slug, `audit-agent-${run}`);

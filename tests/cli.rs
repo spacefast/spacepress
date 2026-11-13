@@ -93,7 +93,7 @@ fn help_lists_build_and_site_commands_from_one_table() {
     let jobs = first().args(["help", "jobs"]).output().unwrap();
     assert_eq!(
         text(&jobs.stdout),
-        "usage: first jobs list [--state=s] | run <id> | retry <id> | cancel <id> | maintain\n"
+        "usage: first jobs list [--state=s] | run <id> | retry <id> | cancel <id> | maintain | tick [--limit=n] [--budget-ms=ms]\n"
     );
 }
 
@@ -330,6 +330,29 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     assert_eq!(app["data"]["id"], "app_lane", "{app}");
     let usage = same(&["identity", "frobnicate"]);
     assert_eq!(usage["error"]["code"], "invalid_command");
+    // `first mcp --allow-remote-read`: `query` reads the same site through the same forwarding, by
+    // the kind's name, with its filter; a kind the site lacks is the site's own error document.
+    let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| env(command));
+    mcp.modern = true;
+    forwarded(&["insert", "notes", r#"{"title":"Second"}"#]);
+    let read = mcp.ok(
+        "query",
+        serde_json::json!({ "kind": "notes", "site": "@lane", "where": { "title": "Second" }, "columns": { "title": true } }),
+    );
+    assert_eq!(read, serde_json::json!({ "data": [{ "title": "Second" }] }));
+    let all = mcp.ok(
+        "query",
+        serde_json::json!({ "kind": "notes", "site": "@lane", "orderBy": { "id": "desc" }, "limit": 1 }),
+    );
+    assert_eq!(all["data"].as_array().unwrap().len(), 1);
+    assert_eq!(all["data"][0]["title"], "Second");
+    let unknown = mcp.call("query", serde_json::json!({ "kind": "nope", "site": "@lane" }));
+    assert_eq!(unknown["isError"], true);
+    assert_eq!(
+        unknown["structuredContent"]["error"]["code"], "invalid_query",
+        "{unknown}"
+    );
+    mcp.finish();
     // `first wp` reaches plain WordPress commands.
     let mut command = first();
     command.args(["wp", "--site", "@lane", "option", "get", "blogname"]);
@@ -341,4 +364,1527 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         "{}",
         text(&blogname.stderr)
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// `first mcp`: the real binary driven over stdin and stdout, one JSON-RPC message per line.
+// ---------------------------------------------------------------------------------------------
+
+/// What every 2026-07-28 request carries in `params._meta`.
+fn modern_meta() -> serde_json::Value {
+    serde_json::json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientInfo": { "name": "cli-test", "version": "1" },
+        "io.modelcontextprotocol/clientCapabilities": {},
+    })
+}
+
+struct Mcp {
+    child: Child,
+    stdin: Option<std::process::ChildStdin>,
+    lines: std::sync::mpsc::Receiver<String>,
+    next_id: u64,
+    /// Send the per-request metadata of 2026-07-28 instead of opening with `initialize`.
+    modern: bool,
+}
+
+impl Mcp {
+    fn start(project: &Path, flags: &[&str], configure: impl FnOnce(&mut Command)) -> Mcp {
+        let mut command = first();
+        command.arg("mcp").arg(project).args(flags);
+        configure(&mut command);
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let (send, lines) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for line in std::io::BufReader::new(stdout).lines() {
+                if send.send(line.unwrap()).is_err() {
+                    break;
+                }
+            }
+        });
+        Mcp {
+            stdin: child.stdin.take(),
+            child,
+            lines,
+            next_id: 0,
+            modern: false,
+        }
+    }
+
+    /// A server whose client opened with the `initialize` handshake.
+    fn initialized(project: &Path, flags: &[&str]) -> Mcp {
+        let mut mcp = Mcp::start(project, flags, |_| {});
+        let opened = mcp.result(
+            "initialize",
+            serde_json::json!({ "protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": { "name": "cli-test", "version": "1" } }),
+        );
+        assert_eq!(opened["protocolVersion"], "2025-11-25");
+        mcp.notify("notifications/initialized");
+        mcp
+    }
+
+    fn write(&mut self, line: &str) {
+        let stdin = self.stdin.as_mut().unwrap();
+        stdin.write_all(line.as_bytes()).unwrap();
+        stdin.write_all(b"\n").unwrap();
+        stdin.flush().unwrap();
+    }
+
+    fn notify(&mut self, method: &str) {
+        self.write(&serde_json::json!({ "jsonrpc": "2.0", "method": method }).to_string());
+    }
+
+    /// The next message. Everything the server writes to stdout is one JSON object on one line.
+    fn read(&mut self) -> serde_json::Value {
+        let line = self
+            .lines
+            .recv_timeout(std::time::Duration::from_secs(300))
+            .expect("the server answers");
+        let message: serde_json::Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("not JSON: {line}"));
+        assert_eq!(message["jsonrpc"], "2.0", "{line}");
+        message
+    }
+
+    fn request(&mut self, method: &str, mut params: serde_json::Value) -> serde_json::Value {
+        self.next_id += 1;
+        if self.modern {
+            params["_meta"] = modern_meta();
+        }
+        let id = self.next_id;
+        self.write(&serde_json::json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }).to_string());
+        let answer = self.read();
+        assert_eq!(answer["id"], id, "{answer}");
+        answer
+    }
+
+    fn result(&mut self, method: &str, params: serde_json::Value) -> serde_json::Value {
+        let answer = self.request(method, params);
+        assert!(answer.get("error").is_none(), "{method}: {answer}");
+        answer["result"].clone()
+    }
+
+    /// `tools/call`: the result. A successful one's text content is its structured content as JSON.
+    fn call(&mut self, tool: &str, arguments: serde_json::Value) -> serde_json::Value {
+        let result = self.result(
+            "tools/call",
+            serde_json::json!({ "name": tool, "arguments": arguments }),
+        );
+        assert_eq!(result["content"][0]["type"], "text", "{tool}: {result}");
+        if result["isError"] == false {
+            let structured = &result["structuredContent"];
+            let text: serde_json::Value = serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+            assert_eq!(&text, structured, "{tool}");
+        }
+        result
+    }
+
+    /// A call that ran and succeeded: its structured content.
+    fn ok(&mut self, tool: &str, arguments: serde_json::Value) -> serde_json::Value {
+        let result = self.call(tool, arguments);
+        assert_eq!(result["isError"], false, "{tool}: {result}");
+        result["structuredContent"].clone()
+    }
+
+    /// A call the tool refused or that failed: what it said.
+    fn refused(&mut self, tool: &str, arguments: serde_json::Value) -> String {
+        let result = self.call(tool, arguments);
+        assert_eq!(result["isError"], true, "{tool}: {result}");
+        result["content"][0]["text"].as_str().unwrap().to_string()
+    }
+
+    /// Closing stdin is the client's shutdown: the server exits by itself, having written nothing more.
+    fn finish(mut self) {
+        drop(self.stdin.take());
+        assert!(self.child.wait().unwrap().success());
+        assert!(self.lines.recv().is_err(), "nothing after the last answer");
+    }
+}
+
+impl Drop for Mcp {
+    fn drop(&mut self) {
+        drop(self.stdin.take());
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+fn agent_kit() -> PathBuf {
+    root().join("tests/fixtures/agent-kit")
+}
+
+fn tool_names(tools: &serde_json::Value) -> Vec<&str> {
+    tools["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect()
+}
+
+#[test]
+fn mcp_opens_with_initialize_and_lists_read_only_tools_unless_writes_are_allowed() {
+    let mut mcp = Mcp::start(&agent_kit(), &[], |_| {});
+    // A method before the handshake, with no protocol version of its own, is refused and says how to open.
+    let early = mcp.request("tools/list", serde_json::json!({}));
+    assert_eq!(early["error"]["code"], -32602, "{early}");
+    assert_eq!(
+        early["error"]["data"]["supported"],
+        serde_json::json!(["2026-07-28", "2025-11-25", "2025-06-18"])
+    );
+    // The server answers the revision the client asked for when it speaks it, otherwise its newest
+    // revision that has a handshake.
+    let opened = mcp.result(
+        "initialize",
+        serde_json::json!({ "protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": { "name": "old", "version": "1" } }),
+    );
+    assert_eq!(opened["protocolVersion"], "2025-11-25");
+    assert_eq!(opened["serverInfo"]["name"], "first");
+    assert_eq!(opened["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(
+        opened["capabilities"],
+        serde_json::json!({ "tools": {}, "resources": {} })
+    );
+    assert!(opened["instructions"].as_str().unwrap().contains("schema"));
+    mcp.notify("notifications/initialized");
+    assert_eq!(mcp.result("ping", serde_json::json!({})), serde_json::json!({}));
+
+    let tools = mcp.result("tools/list", serde_json::json!({}));
+    assert_eq!(
+        tool_names(&tools),
+        [
+            "schema",
+            "check",
+            "docs_search",
+            "docs_read",
+            "commands",
+            "dev_status",
+            "query"
+        ]
+    );
+    for tool in tools["tools"].as_array().unwrap() {
+        assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
+        assert_eq!(tool["annotations"]["readOnlyHint"], true, "{tool}");
+        assert!(!tool["description"].as_str().unwrap().is_empty());
+    }
+    // Without --allow-remote-read, `query` has no `site` to ask for.
+    let query = &tools["tools"][6]["inputSchema"]["properties"];
+    assert!(query.get("site").is_none(), "{query}");
+    // The legacy revisions carry none of 2026-07-28's result fields.
+    assert!(
+        tools.get("resultType").is_none() && tools.get("ttlMs").is_none(),
+        "{tools}"
+    );
+    // The lists fit one page: a cursor this server never handed out is invalid.
+    let paged = mcp.request("tools/list", serde_json::json!({ "cursor": "2" }));
+    assert_eq!(paged["error"]["code"], -32602, "{paged}");
+    let unknown = mcp.request("prompts/list", serde_json::json!({}));
+    assert_eq!(unknown["error"]["code"], -32601, "{unknown}");
+    mcp.finish();
+
+    let mut writable = Mcp::initialized(&agent_kit(), &["--allow-writes", "--allow-remote-read"]);
+    let tools = writable.result("tools/list", serde_json::json!({}));
+    assert_eq!(
+        tool_names(&tools),
+        [
+            "schema",
+            "check",
+            "docs_search",
+            "docs_read",
+            "commands",
+            "dev_status",
+            "query",
+            "run_action",
+            "insert",
+            "update"
+        ]
+    );
+    assert_eq!(tools["tools"][6]["inputSchema"]["properties"]["site"]["type"], "string");
+    for tool in &tools["tools"].as_array().unwrap()[7..] {
+        assert_eq!(tool["annotations"]["readOnlyHint"], false, "{tool}");
+    }
+    writable.finish();
+
+    // An option the command does not take is a usage error, before any protocol.
+    let bad = first().args(["mcp", "--allow-everything"]).output().unwrap();
+    assert_eq!(bad.status.code(), Some(2));
+    assert!(text(&bad.stderr).contains("usage: first mcp [dir] [--allow-remote-read] [--allow-writes]"));
+    assert!(bad.stdout.is_empty());
+    // One project directory, and a directory: a second one or a file is refused, not guessed at.
+    let config = agent_kit().join("first.config.ts");
+    for args in [
+        vec![config.as_os_str()],
+        vec![agent_kit().as_os_str(), config.as_os_str()],
+    ] {
+        let refused = first().arg("mcp").args(&args).stdin(Stdio::null()).output().unwrap();
+        assert_eq!(refused.status.code(), Some(2), "{args:?}");
+        assert!(refused.stdout.is_empty());
+    }
+    let timeout = first()
+        .args(["mcp", "--allow-writes"])
+        .env("FIRST_MCP_TIMEOUT", "soon")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(timeout.status.code(), Some(2));
+    assert!(text(&timeout.stderr).contains("FIRST_MCP_TIMEOUT is a number of seconds"));
+    let help = first().args(["help", "mcp"]).output().unwrap();
+    assert_eq!(
+        text(&help.stdout),
+        "usage: first mcp [dir] [--allow-remote-read] [--allow-writes]\n"
+    );
+}
+
+#[test]
+fn mcp_serves_the_stateless_revision_from_per_request_metadata() {
+    let mut mcp = Mcp::start(&agent_kit(), &[], |_| {});
+    mcp.modern = true;
+    let discovered = mcp.result("server/discover", serde_json::json!({}));
+    assert_eq!(discovered["supportedVersions"], serde_json::json!(["2026-07-28"]));
+    assert_eq!(
+        discovered["capabilities"],
+        serde_json::json!({ "tools": {}, "resources": {} })
+    );
+    assert_eq!(discovered["resultType"], "complete");
+    assert_eq!(
+        discovered["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+        "first"
+    );
+    assert_eq!(discovered["cacheScope"], "public");
+    assert!(discovered["ttlMs"].as_u64().is_some());
+
+    // No handshake: any request is answered from its own metadata, with the revision's result fields.
+    let tools = mcp.result("tools/list", serde_json::json!({}));
+    assert_eq!(tools["resultType"], "complete");
+    assert_eq!(tools["cacheScope"], "public");
+    assert_eq!(tool_names(&tools).len(), 7);
+    let commands = mcp.result("tools/call", serde_json::json!({ "name": "commands", "arguments": {} }));
+    assert_eq!(commands["resultType"], "complete");
+    assert!(
+        commands.get("ttlMs").is_none(),
+        "a tool result is not cacheable: {commands}"
+    );
+    // The handshake's own method is not one of this revision's.
+    let handshake = mcp.request("ping", serde_json::json!({}));
+    assert_eq!(handshake["error"]["code"], -32601, "{handshake}");
+    // A missing resource is Invalid Params in this revision (it was -32002 before).
+    let missing = mcp.request(
+        "resources/read",
+        serde_json::json!({ "uri": "first-docs:///docs/nope.md" }),
+    );
+    assert_eq!(missing["error"]["code"], -32602, "{missing}");
+    assert_eq!(missing["error"]["data"]["uri"], "first-docs:///docs/nope.md");
+
+    // A revision this server does not speak is refused with the ones it does.
+    mcp.modern = false;
+    let mut meta = modern_meta();
+    meta["io.modelcontextprotocol/protocolVersion"] = serde_json::json!("1900-01-01");
+    let refused = mcp.request("tools/list", serde_json::json!({ "_meta": meta }));
+    assert_eq!(refused["error"]["code"], -32022, "{refused}");
+    assert_eq!(
+        refused["error"]["data"],
+        serde_json::json!({ "supported": ["2026-07-28"], "requested": "1900-01-01" })
+    );
+    // The required capabilities field is missing: malformed.
+    let bare = mcp.request(
+        "tools/list",
+        serde_json::json!({ "_meta": { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } }),
+    );
+    assert_eq!(bare["error"]["code"], -32602, "{bare}");
+
+    // A subscription is acknowledged with the notification types the server honours: none, because
+    // nothing it lists changes. The request stays open, so there is no response to it.
+    mcp.write(
+        &serde_json::json!({ "jsonrpc": "2.0", "id": "listen", "method": "subscriptions/listen",
+            "params": { "_meta": modern_meta(), "notifications": { "toolsListChanged": true } } })
+        .to_string(),
+    );
+    let acknowledged = mcp.read();
+    assert_eq!(acknowledged["method"], "notifications/subscriptions/acknowledged");
+    assert!(acknowledged.get("id").is_none(), "{acknowledged}");
+    assert_eq!(
+        acknowledged["params"],
+        serde_json::json!({ "_meta": { "io.modelcontextprotocol/subscriptionId": "listen" }, "notifications": {} })
+    );
+    mcp.finish();
+}
+
+#[test]
+fn mcp_answers_malformed_input_without_stopping() {
+    let mut mcp = Mcp::initialized(&agent_kit(), &[]);
+    mcp.write("this is not json");
+    let parse = mcp.read();
+    assert_eq!(parse["error"]["code"], -32700);
+    assert!(
+        parse.get("id").is_none(),
+        "an unreadable id is left out, never null: {parse}"
+    );
+    mcp.write(r#"[{"jsonrpc":"2.0","id":1,"method":"ping"}]"#);
+    assert_eq!(mcp.read()["error"]["code"], -32600);
+    mcp.write(r#"{"jsonrpc":"2.0","id":null,"method":"ping"}"#);
+    assert_eq!(mcp.read()["error"]["code"], -32600);
+    // Bytes that are not UTF-8 are a parse error like any other, and the server keeps reading.
+    let stdin = mcp.stdin.as_mut().unwrap();
+    stdin
+        .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"params\":{\"x\":\"\xff\"}}\n")
+        .unwrap();
+    stdin.flush().unwrap();
+    assert_eq!(mcp.read()["error"]["code"], -32700);
+    // A request whose method is not a string, or that has none, is invalid, and says so with its id.
+    mcp.write(r#"{"jsonrpc":"2.0","id":5,"method":5}"#);
+    let method = mcp.read();
+    assert_eq!(
+        (&method["id"], &method["error"]["code"]),
+        (&serde_json::json!(5), &serde_json::json!(-32600))
+    );
+    mcp.write(r#"{"jsonrpc":"2.0","id":6}"#);
+    assert_eq!(mcp.read()["error"]["code"], -32600);
+    mcp.write(r#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":["schema"]}"#);
+    let params = mcp.read();
+    assert_eq!(
+        (&params["id"], &params["error"]["code"]),
+        (&serde_json::json!(7), &serde_json::json!(-32602))
+    );
+    // Notifications, blank lines and a stray response are never answered: the next answer is the ping's.
+    mcp.notify("notifications/cancelled");
+    mcp.write("");
+    mcp.write(r#"{"jsonrpc":"2.0","id":99,"result":{}}"#);
+    assert_eq!(mcp.result("ping", serde_json::json!({})), serde_json::json!({}));
+    // An unknown tool is a protocol error; a wrong argument is a tool result the model can correct.
+    let unknown = mcp.request("tools/call", serde_json::json!({ "name": "deploy", "arguments": {} }));
+    assert_eq!(unknown["error"]["code"], -32602, "{unknown}");
+    assert_eq!(unknown["error"]["message"], "Unknown tool: deploy");
+    assert_eq!(
+        mcp.refused("check", serde_json::json!({ "fix": true })),
+        "check takes no arguments, and was given `fix`"
+    );
+    assert_eq!(mcp.refused("docs_search", serde_json::json!({})), "`query` is required");
+    mcp.finish();
+}
+
+#[test]
+fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
+    let mut mcp = Mcp::initialized(&agent_kit(), &[]);
+    let schema = mcp.ok("schema", serde_json::json!({}));
+    assert_eq!(schema["name"], "agentkit");
+    // Kinds are keyed by the name the author exported; `path` is the name the API and the site commands use.
+    let list = &schema["kinds"]["shoppingList"];
+    assert_eq!(list["type"], "table");
+    assert_eq!(list["path"], "shopping_list");
+    assert_eq!(
+        list["access"],
+        serde_json::json!({ "read": "anyone", "create": "editor", "update": "editor", "delete": "admin" })
+    );
+    assert_eq!(
+        list["operations"],
+        serde_json::json!(["list", "get", "create", "update", "delete"])
+    );
+    assert_eq!(
+        list["fields"]["name"],
+        serde_json::json!({ "type": "text", "required": true })
+    );
+    assert_eq!(
+        list["fields"]["quantity"],
+        serde_json::json!({ "type": "integer", "default": 1, "min": 1 })
+    );
+    assert_eq!(
+        list["fields"]["aisle"],
+        serde_json::json!({ "type": "select", "values": ["produce", "dairy", "pantry"] })
+    );
+    assert_eq!(
+        list["fields"]["id"],
+        serde_json::json!({ "type": "integer", "primaryKey": true, "generated": true })
+    );
+    // A ref is reported as the author wrote it, with the relation it gives each side.
+    let substitutes = &schema["kinds"]["substitutes"];
+    assert_eq!(
+        substitutes["fields"]["item"],
+        serde_json::json!({ "type": "ref", "required": true, "to": "shoppingList", "onDelete": "cascade" })
+    );
+    assert_eq!(
+        substitutes["relations"],
+        serde_json::json!({ "item": { "kind": "one", "to": "shoppingList" } })
+    );
+    assert_eq!(
+        list["relations"],
+        serde_json::json!({ "substitutes": { "kind": "many", "to": "substitutes" } })
+    );
+    let articles = &schema["kinds"]["articles"];
+    assert_eq!(articles["type"], "collection");
+    assert_eq!(articles["access"]["create"], "author");
+    assert_eq!(
+        articles["fields"]["title"],
+        serde_json::json!({ "type": "text", "required": true, "max": 160 })
+    );
+    assert_eq!(
+        articles["fields"]["reviewNote"],
+        serde_json::json!({ "type": "text", "access": { "read": "editor" } })
+    );
+    assert_eq!(articles["drafts"], true);
+
+    let rename = &schema["actions"]["rename"];
+    assert_eq!(rename["access"], "editor");
+    assert_eq!(rename["endpoint"], "POST /__first/api/v1/actions/rename");
+    assert_eq!(rename["ability"], "agentkit/rename");
+    assert_eq!(
+        rename["input"]["id"],
+        serde_json::json!({ "type": "integer", "required": true })
+    );
+    assert_eq!(rename["output"]["type"], "object");
+    assert_eq!(
+        schema["jobs"]["clearDone"],
+        serde_json::json!({ "input": { "keep": { "type": "integer", "default": 0 } }, "retries": 2, "agents": false })
+    );
+    // A page that serves a kind's `url` names the kind as `kinds` lists it.
+    assert_eq!(
+        schema["routes"],
+        serde_json::json!([
+            { "pattern": "/api/list", "type": "route", "file": "first/app/api/list/route.ts", "methods": ["GET"], "access": "anyone" },
+            { "pattern": "/events/:slug", "type": "page", "file": "first/app/events/[slug]/page.tsx", "kind": "cookingEvents" },
+            { "pattern": "/", "type": "page", "file": "first/app/page.tsx" },
+        ])
+    );
+    let events = &schema["kinds"]["cookingEvents"];
+    assert_eq!(events["path"], "cooking_events");
+    assert_eq!(events["url"], "/events/:slug");
+    // A slug derived from another field is filled in, so a write need not send it.
+    assert_eq!(
+        events["fields"]["slug"],
+        serde_json::json!({ "type": "slug", "generated": true, "unique": true, "source": "title" })
+    );
+    // A list of selects says it is a list; a single select does not.
+    assert_eq!(
+        events["fields"]["tags"],
+        serde_json::json!({ "type": "select", "many": true, "values": ["vegan", "quick", "baking"] })
+    );
+    // Boolean rules stay booleans; a rule written as a function is named as one.
+    assert_eq!(
+        events["access"],
+        serde_json::json!({ "read": true, "create": "editor", "update": "function", "delete": false })
+    );
+    assert_eq!(
+        schema["kinds"]["shoppingList"]["hooks"],
+        serde_json::json!(["beforeCreate"])
+    );
+    assert_eq!(
+        schema["globals"]["settings"],
+        serde_json::json!({
+            "label": "Settings",
+            "fields": { "storeName": { "type": "text", "default": "Corner shop" }, "open": { "type": "boolean", "default": true } },
+            "access": { "read": "anyone", "update": "admin" },
+            "agents": true,
+        })
+    );
+    assert_eq!(
+        schema["files"]["receipts"]["accept"],
+        serde_json::json!(["application/pdf"])
+    );
+    assert_eq!(schema["files"]["receipts"]["maxBytes"], 5_000_000);
+    assert_eq!(schema["files"]["receipts"]["access"]["read"], "owner");
+    assert_eq!(
+        schema["roles"],
+        serde_json::json!(["guest", "subscriber", "author", "editor", "admin"])
+    );
+    assert_eq!(schema["endpoints"]["mcp"], "/wp-json/mcp/first-agentkit");
+    let abilities: Vec<&str> = schema["abilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a.as_str().unwrap())
+        .collect();
+    for ability in [
+        "agentkit/shopping-list-list",
+        "agentkit/articles-create",
+        "agentkit/rename",
+    ] {
+        assert!(abilities.contains(&ability), "{ability} in {abilities:?}");
+    }
+    // The job does not opt in to agents, so the site registers no Ability for it.
+    assert!(!abilities.iter().any(|a| a.contains("clear-done")), "{abilities:?}");
+
+    // One kind on request; a kind the project lacks names the ones it has.
+    let one = mcp.ok("schema", serde_json::json!({ "kind": "articles" }));
+    assert_eq!(
+        one["kinds"].as_object().unwrap().keys().collect::<Vec<_>>(),
+        ["articles"]
+    );
+    assert!(one.get("actions").is_none());
+    assert_eq!(
+        mcp.refused("schema", serde_json::json!({ "kind": "recipes" })),
+        "no kind recipes; this project's kinds are: cookingEvents, articles, shoppingList, substitutes"
+    );
+    mcp.finish();
+}
+
+#[test]
+fn mcp_check_returns_the_envelope_first_check_json_prints_and_sees_edits() {
+    // On the fixture, the same document `first check --json` writes.
+    let printed = first().arg("check").arg(agent_kit()).arg("--json").output().unwrap();
+    assert!(printed.status.success(), "{}", text(&printed.stderr));
+    let printed: serde_json::Value = serde_json::from_slice(&printed.stdout).unwrap();
+    let mut mcp = Mcp::initialized(&agent_kit(), &[]);
+    let checked = mcp.ok("check", serde_json::json!({}));
+    assert_eq!(checked, printed);
+    assert_eq!(checked["schema"], "first-diagnostics");
+    assert_eq!(checked["ok"], true);
+    mcp.finish();
+
+    // The server compiles the files as they are at each call: an edit shows up without a restart.
+    let project = tempfile::tempdir().unwrap();
+    let config = project.path().join("first.config.ts");
+    std::fs::write(&config, CONFIG).unwrap();
+    let mut mcp = Mcp::initialized(project.path(), &[]);
+    assert_eq!(mcp.ok("check", serde_json::json!({}))["ok"], true);
+    std::fs::write(&config, CONFIG.replace("title: text()", "title: nothing()")).unwrap();
+    // A project that does not compile is still a successful call: the diagnostics are the answer.
+    let broken = mcp.ok("check", serde_json::json!({}));
+    assert_eq!(broken["ok"], false);
+    let diagnostic = &broken["diagnostics"][0];
+    assert_eq!(diagnostic["location"]["file"], "first.config.ts");
+    assert_eq!(diagnostic["location"]["line"], 2);
+    assert!(diagnostic["code"].as_str().unwrap().starts_with('F'), "{diagnostic}");
+    let printed = first().arg("check").arg(project.path()).arg("--json").output().unwrap();
+    assert_eq!(printed.status.code(), Some(1));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&printed.stdout).unwrap(),
+        broken
+    );
+    // No schema until it compiles; the diagnostics come back instead.
+    let refused = mcp.call("schema", serde_json::json!({}));
+    assert_eq!(refused["isError"], true);
+    assert_eq!(refused["structuredContent"], broken);
+    std::fs::write(&config, CONFIG).unwrap();
+    assert_eq!(mcp.ok("schema", serde_json::json!({}))["name"], "clilane");
+    // Checking wrote nothing into the project.
+    let written: Vec<_> = std::fs::read_dir(project.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(written, ["first.config.ts"]);
+    mcp.finish();
+}
+
+#[test]
+fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
+    let mut mcp = Mcp::initialized(&agent_kit(), &[]);
+    let found = mcp.ok(
+        "docs_search",
+        serde_json::json!({ "query": "compiler diagnostics envelope", "limit": 5 }),
+    );
+    let results = found["results"].as_array().unwrap();
+    assert!(!results.is_empty() && results.len() <= 5, "{found}");
+    let hit = results
+        .iter()
+        .find(|hit| hit["path"] == "docs/compiler-diagnostics.md")
+        .unwrap_or_else(|| panic!("the diagnostics page among {found}"));
+    assert_eq!(hit["title"], "Compiler diagnostics");
+    assert!(!hit["snippet"].as_str().unwrap().is_empty());
+    // Words no page has: no results, not an error.
+    let nothing = mcp.ok("docs_search", serde_json::json!({ "query": "zzqqxxyy" }));
+    assert_eq!(nothing["results"], serde_json::json!([]));
+
+    // A page as committed, whole, with its outline.
+    let on_disk = std::fs::read_to_string(root().join("docs/compiler-diagnostics.md")).unwrap();
+    let page = mcp.ok(
+        "docs_read",
+        serde_json::json!({ "path": "docs/compiler-diagnostics.md" }),
+    );
+    assert_eq!(page["title"], "Compiler diagnostics");
+    assert_eq!(page["text"], on_disk);
+    assert!(page.get("truncated").is_none());
+    // One section by its heading (in any letter case): that heading first, and only text of the page.
+    let section = |mcp: &mut Mcp, path: &str, name: &str, committed: &str| {
+        let read = mcp.ok(
+            "docs_read",
+            serde_json::json!({ "path": path, "section": name.to_uppercase() }),
+        );
+        let text = read["text"].as_str().unwrap();
+        let heading = text.lines().next().unwrap();
+        assert_eq!(heading.trim_start_matches('#').trim(), name, "{path}");
+        assert!(heading.starts_with('#') && committed.contains(text), "{path} {name}");
+        assert!(text.len() < committed.len());
+    };
+    let last = page["sections"].as_array().unwrap().last().unwrap().as_str().unwrap();
+    section(&mut mcp, "docs/compiler-diagnostics.md", last, &on_disk);
+    // A long page read whole answers with its opening and its outline, to read one section at a time.
+    let listed = mcp.result("resources/list", serde_json::json!({}));
+    let resources = listed["resources"].as_array().unwrap();
+    let long = resources
+        .iter()
+        .filter(|page| page["name"].as_str().unwrap().starts_with("docs/"))
+        .max_by_key(|page| page["size"].as_u64().unwrap())
+        .unwrap()["name"]
+        .as_str()
+        .unwrap();
+    let committed = std::fs::read_to_string(root().join(long)).unwrap();
+    let opening = mcp.ok("docs_read", serde_json::json!({ "path": long }));
+    assert_eq!(opening["truncated"], true, "{long}");
+    let text = opening["text"].as_str().unwrap();
+    assert!(
+        committed.starts_with(text) && text.len() < committed.len() / 2,
+        "{long}"
+    );
+    let sections = opening["sections"].as_array().unwrap();
+    assert!(sections.len() > 3, "{long}: {sections:?}");
+    section(
+        &mut mcp,
+        long,
+        sections[sections.len() / 2].as_str().unwrap(),
+        &committed,
+    );
+    // A section as long as a page is capped the same way, with its subsections to read next.
+    let title = committed.lines().next().unwrap().trim_start_matches('#').trim();
+    let whole = mcp.ok("docs_read", serde_json::json!({ "path": long, "section": title }));
+    assert_eq!(whole["truncated"], true, "{long}: {title}");
+    assert!(whole["text"].as_str().unwrap().len() < committed.len() / 2);
+    assert!(!whole["sections"].as_array().unwrap().is_empty());
+    // A heading of the query outranks a long section that only mentions its words; whole words only.
+    let access = mcp.ok(
+        "docs_search",
+        serde_json::json!({ "query": "access rules owner", "limit": 3 }),
+    );
+    assert!(
+        access["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|hit| hit["path"] == "docs/config-api.md" && hit["section"] == "Access"),
+        "{access}"
+    );
+    assert!(
+        mcp.refused("docs_read", serde_json::json!({ "path": "docs/nope.md" }))
+            .starts_with("no documentation page docs/nope.md")
+    );
+    assert!(
+        mcp.refused(
+            "docs_read",
+            serde_json::json!({ "path": "docs/agents.md", "section": "No such heading" })
+        )
+        .starts_with("docs/agents.md has no section \"No such heading\"; its sections are: ")
+    );
+
+    // The same pages are the server's resources. Design proposals are not documentation of what ships.
+    let uris: Vec<&str> = resources.iter().map(|r| r["uri"].as_str().unwrap()).collect();
+    assert!(uris.contains(&"first-docs:///docs/agents.md"), "{uris:?}");
+    assert!(
+        uris.contains(&"first-docs:///docs-site/docs/getting-started.mdx"),
+        "{uris:?}"
+    );
+    assert!(
+        !uris
+            .iter()
+            .any(|uri| uri.contains("/design-") || uri.contains("/spec/")),
+        "{uris:?}"
+    );
+    let started = resources
+        .iter()
+        .find(|r| r["name"] == "docs-site/docs/getting-started.mdx")
+        .unwrap();
+    assert_eq!(started["title"], "Get started");
+    assert_eq!(started["mimeType"], "text/markdown");
+    assert!(started["description"].as_str().unwrap().contains("First app"));
+    let read = mcp.result(
+        "resources/read",
+        serde_json::json!({ "uri": "first-docs:///docs/compiler-diagnostics.md" }),
+    );
+    assert_eq!(
+        read["contents"],
+        serde_json::json!([{ "uri": "first-docs:///docs/compiler-diagnostics.md", "mimeType": "text/markdown", "text": on_disk }])
+    );
+    // Through 2025-11-25 a missing resource is -32002.
+    let missing = mcp.request(
+        "resources/read",
+        serde_json::json!({ "uri": "first-docs:///docs/nope.md" }),
+    );
+    assert_eq!(missing["error"]["code"], -32002, "{missing}");
+    assert_eq!(
+        mcp.result("resources/templates/list", serde_json::json!({}))["resourceTemplates"],
+        serde_json::json!([])
+    );
+    mcp.finish();
+}
+
+#[test]
+fn mcp_commands_is_the_command_table_and_dev_status_reports_a_project_with_no_site() {
+    let table: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root().join("runtime/First/Cli/commands.json")).unwrap()).unwrap();
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    let mut mcp = Mcp::initialized(project.path(), &["--allow-writes"]);
+    assert_eq!(mcp.ok("commands", serde_json::json!({})), table);
+    // The table lists the server's own command.
+    assert!(
+        table["build"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["name"] == "mcp")
+    );
+
+    // No dev site was ever started here: the tools say so and start nothing.
+    assert_eq!(
+        mcp.ok("dev_status", serde_json::json!({})),
+        serde_json::json!({ "state": "none", "start": "first dev" })
+    );
+    let no_site =
+        "this project has no dev site yet; start one with `first dev` (`first dev --no-watch` starts it and returns)";
+    assert_eq!(mcp.refused("query", serde_json::json!({ "kind": "notes" })), no_site);
+    assert_eq!(
+        mcp.refused(
+            "insert",
+            serde_json::json!({ "kind": "notes", "rows": [{ "title": "x" }] })
+        ),
+        no_site
+    );
+    assert!(!project.path().join(".first").exists());
+    mcp.finish();
+}
+
+#[test]
+fn mcp_refuses_writes_and_other_sites_unless_its_flags_allow_them() {
+    // A stand-in `wp` records anything that reaches a site; nothing may.
+    let wp = fake_wp();
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    let mut mcp = Mcp::start(project.path(), &[], |command| with_path(command, wp.path()));
+    mcp.modern = true;
+    for (tool, arguments) in [
+        ("run_action", serde_json::json!({ "name": "rename", "input": {} })),
+        (
+            "insert",
+            serde_json::json!({ "kind": "notes", "rows": [{ "title": "x" }] }),
+        ),
+        (
+            "update",
+            serde_json::json!({ "kind": "notes", "where": { "id": 1 }, "set": { "title": "y" } }),
+        ),
+    ] {
+        assert_eq!(
+            mcp.refused(tool, arguments),
+            format!(
+                "{tool} writes to the dev site, and this server was started read-only. Start it as `first mcp --allow-writes` to allow writes to this project's dev site."
+            )
+        );
+    }
+    assert_eq!(
+        mcp.refused("query", serde_json::json!({ "kind": "notes", "site": "@prod" })),
+        "query reads this project's dev site only, and was asked for @prod. Start the server as `first mcp --allow-remote-read` to read another site."
+    );
+    mcp.finish();
+
+    // --allow-writes opens the dev site to writes, never another site.
+    let mut mcp = Mcp::start(project.path(), &["--allow-writes"], |command| {
+        with_path(command, wp.path())
+    });
+    mcp.modern = true;
+    assert_eq!(
+        mcp.refused(
+            "insert",
+            serde_json::json!({ "kind": "notes", "rows": [{ "title": "x" }], "site": "@prod" })
+        ),
+        "insert writes to this project's dev site and no other; it takes no `site`"
+    );
+    assert!(
+        mcp.refused("query", serde_json::json!({ "kind": "notes", "site": "@prod" }))
+            .starts_with("query reads this project's dev site only")
+    );
+    mcp.finish();
+
+    // --allow-remote-read forwards a read to the named site, as `first find --site` does.
+    let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
+        with_path(command, wp.path())
+    });
+    mcp.modern = true;
+    let seen = mcp.call(
+        "query",
+        serde_json::json!({ "kind": "notes", "site": "@prod", "where": { "title": "x" }, "limit": 3 }),
+    );
+    // The stand-in exits 7 after printing what it was given, so the call reports an error with it.
+    assert_eq!(seen["isError"], true, "{seen}");
+    assert_eq!(
+        seen["structuredContent"]["args"],
+        serde_json::json!([
+            "@prod",
+            "first",
+            "find",
+            "notes",
+            r#"{"where":{"title":"x"},"limit":3}"#
+        ])
+    );
+    // A name is never an option of the command it is passed to.
+    assert_eq!(
+        mcp.refused(
+            "query",
+            serde_json::json!({ "kind": "--exec=phpinfo();", "site": "@prod" })
+        ),
+        "`kind` is a name as `schema` lists it, not \"--exec=phpinfo();\""
+    );
+    assert_eq!(
+        mcp.refused(
+            "query",
+            serde_json::json!({ "kind": "notes", "site": "--path=/elsewhere" })
+        ),
+        "`site` is a project directory, a deployment workspace or a WP-CLI @alias"
+    );
+    assert_eq!(
+        mcp.refused(
+            "query",
+            serde_json::json!({ "kind": "notes", "site": "@prod", "wher": {} })
+        ),
+        "query takes kind, where, orderBy, limit, offset, columns, with, site, not `wher`"
+    );
+    assert!(
+        mcp.refused("run_action", serde_json::json!({ "name": "rename" }))
+            .starts_with("run_action writes to the dev site")
+    );
+    // The limit is checked, not quietly lowered.
+    assert_eq!(
+        mcp.refused(
+            "query",
+            serde_json::json!({ "kind": "notes", "site": "@prod", "limit": 501 })
+        ),
+        "`limit` is at most 500; page with `offset` for more"
+    );
+    // Without `limit`, 20 rows.
+    let default = mcp.call("query", serde_json::json!({ "kind": "notes", "site": "@prod" }));
+    assert_eq!(default["structuredContent"]["args"][4], r#"{"limit":20}"#);
+    mcp.finish();
+
+    // The site commands take a kind by its storage name; the tools take the name `schema` lists.
+    let mut mcp = Mcp::start(&agent_kit(), &["--allow-remote-read"], |command| {
+        with_path(command, wp.path())
+    });
+    mcp.modern = true;
+    let seen = mcp.call("query", serde_json::json!({ "kind": "shoppingList", "site": "@prod" }));
+    assert_eq!(seen["structuredContent"]["args"][3], "shopping_list", "{seen}");
+    mcp.finish();
+
+    // --allow-writes: neither `update` nor `run_action` takes a `site`.
+    let mut mcp = Mcp::start(project.path(), &["--allow-writes"], |command| {
+        with_path(command, wp.path())
+    });
+    mcp.modern = true;
+    for (tool, arguments) in [
+        (
+            "update",
+            serde_json::json!({ "kind": "notes", "where": { "id": 1 }, "set": { "title": "y" }, "site": "@prod" }),
+        ),
+        ("run_action", serde_json::json!({ "name": "rename", "site": "@prod" })),
+    ] {
+        assert_eq!(
+            mcp.refused(tool, arguments),
+            format!("{tool} writes to this project's dev site and no other; it takes no `site`")
+        );
+    }
+    mcp.finish();
+}
+
+/// A stand-in `wp` that runs `script` (sh), for the timing and output cases of the site tools.
+fn scripted_wp(script: &str) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("wp");
+    std::fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    dir
+}
+
+/// Whether a process that wrote its pid to `file` is still running.
+#[cfg(unix)]
+fn running(file: &Path) -> bool {
+    let pid = std::fs::read_to_string(file).unwrap_or_default();
+    !pid.trim().is_empty()
+        && Command::new("/bin/sh")
+            .args(["-c", "kill -0 \"$1\" 2>/dev/null", "sh", pid.trim()])
+            .status()
+            .unwrap()
+            .success()
+}
+
+#[cfg(unix)]
+#[test]
+fn mcp_stops_a_command_at_the_timeout_and_when_the_request_is_cancelled() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    let pids = tempfile::tempdir().unwrap();
+    // A site that never answers. Each call records the pid of the command it is stuck in.
+    let wp = scripted_wp(&format!("sleep 600 & echo $! > {}/$$; wait", pids.path().display()));
+    let stuck = |pids: &Path| -> Vec<PathBuf> {
+        std::fs::read_dir(pids)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect()
+    };
+    let query = serde_json::json!({ "kind": "notes", "site": "@slow" });
+
+    // The timeout ends the command and everything it started, and the call says why.
+    let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
+        with_path(command, wp.path());
+        command.env("FIRST_MCP_TIMEOUT", "1");
+    });
+    mcp.modern = true;
+    assert_eq!(
+        mcp.refused("query", query.clone()),
+        "first find took longer than 1 seconds and was stopped; FIRST_MCP_TIMEOUT sets the limit"
+    );
+    let started = stuck(pids.path());
+    assert_eq!(started.len(), 1);
+    assert!(!running(&started[0]), "the command the site command started is gone");
+    mcp.finish();
+    std::fs::remove_file(&started[0]).unwrap();
+
+    // A cancelled request is stopped and never answered; the next request is answered at once.
+    let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
+        with_path(command, wp.path())
+    });
+    mcp.modern = true;
+    mcp.write(
+        &serde_json::json!({ "jsonrpc": "2.0", "id": "slow", "method": "tools/call",
+            "params": { "name": "query", "arguments": query, "_meta": modern_meta() } })
+        .to_string(),
+    );
+    // Wait until the site command is running, so the cancellation reaches a command and not a queue.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    while stuck(pids.path()).is_empty() || !running(&stuck(pids.path())[0]) {
+        assert!(std::time::Instant::now() < deadline, "the site command never started");
+        std::thread::yield_now();
+    }
+    mcp.write(r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"slow","reason":"test"}}"#);
+    let started = std::time::Instant::now();
+    let discovered = mcp.request("server/discover", serde_json::json!({}));
+    assert!(discovered.get("result").is_some(), "{discovered}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(60));
+    assert!(!running(&stuck(pids.path())[0]), "the cancelled command is gone");
+    // A request cancelled while it waits its turn never runs: two queued, the first cancelled.
+    mcp.write(
+        &serde_json::json!({ "jsonrpc": "2.0", "id": "queued", "method": "tools/call",
+            "params": { "name": "check", "arguments": {}, "_meta": modern_meta() } })
+        .to_string(),
+    );
+    mcp.write(r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"queued"}}"#);
+    let after = mcp.request("server/discover", serde_json::json!({}));
+    assert!(after.get("result").is_some(), "only the discover is answered: {after}");
+    // finish() checks nothing else is ever written.
+    mcp.finish();
+}
+
+#[test]
+fn mcp_reads_a_site_commands_answer_after_other_output() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    // A PHP notice before the document, as a site with WP_DEBUG prints it.
+    let wp = scripted_wp(
+        r#"echo "PHP Notice:  Undefined index: x in /site/wp-content/plugins/other.php on line 3"; echo '{"data":[{"id":1}]}'"#,
+    );
+    let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
+        with_path(command, wp.path())
+    });
+    mcp.modern = true;
+    assert_eq!(
+        mcp.ok("query", serde_json::json!({ "kind": "notes", "site": "@noisy" })),
+        serde_json::json!({ "data": [{ "id": 1 }] })
+    );
+    mcp.finish();
+}
+
+/// A project from the scaffolder, as `npm create @spacefast/first` writes it, without the npm
+/// install. Its directory name has a space, as a real one may.
+fn scaffold(parent: &Path) -> PathBuf {
+    let project = parent.join("my app");
+    let created = Command::new("node")
+        .arg(root().join("packages/create-first/bin/create-first.mjs"))
+        .arg(&project)
+        .arg("--no-install")
+        .output()
+        .expect("node");
+    assert!(created.status.success(), "{}", text(&created.stderr));
+    project
+}
+
+fn add(project: &Path, args: &[&str]) -> Output {
+    first().arg("add").args(args).arg(project).output().unwrap()
+}
+
+/// The report line `first add` printed for `file`: "created", "kept" or "skipped", and its reason.
+fn reported(report: &str, file: &str) -> (String, String) {
+    let line = report
+        .lines()
+        .find(|l| l.split_whitespace().nth(1) == Some(file))
+        .unwrap_or_else(|| panic!("no line for {file} in:\n{report}"));
+    let mut words = line.split_whitespace();
+    let status = words.next().unwrap().to_string();
+    (status, words.skip(1).collect::<Vec<_>>().join(" "))
+}
+
+/// Every file and directory under `dir`, with each file's bytes, sorted.
+fn tree(dir: &Path) -> Vec<(String, Vec<u8>)> {
+    fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.strip_prefix(root).unwrap().to_string_lossy().into_owned();
+            if path.is_symlink() {
+                out.push((format!("{name}@"), Vec::new()));
+            } else if path.is_dir() {
+                walk(root, &path, out);
+                out.push((format!("{name}/"), Vec::new()));
+            } else {
+                out.push((name, std::fs::read(&path).unwrap()));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out);
+    out.sort();
+    out
+}
+
+/// `first add db` on a fresh scaffold: the project still checks and builds, the build plans the
+/// tables with their foreign key, and the new files type-check under the scaffold's own tsconfig.
+/// Needs node and tsc (or TSC), as the other generated-client tests do.
+#[test]
+fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let before = first().arg("check").arg(&project).output().unwrap();
+    assert!(
+        text(&before.stdout).contains("1 collections, 0 tables"),
+        "{}",
+        text(&before.stdout)
+    );
+
+    // Run inside the project, with no directory argument.
+    let added = first().args(["add", "db"]).current_dir(&project).output().unwrap();
+    assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
+    let report = text(&added.stdout);
+    for file in ["first/tables.ts", "tables.client.ts", "first/DATABASE.md"] {
+        assert!(project.join(file).is_file(), "{file}");
+        assert_eq!(reported(&report, file).0, "created", "{report}");
+    }
+    // A second run before the first build adds nothing, so the build plans each table once.
+    let again = add(&project, &["db"]);
+    assert_eq!(again.status.code(), Some(0), "{}", text(&again.stderr));
+
+    let checked = first().arg("check").arg(&project).output().unwrap();
+    assert_eq!(checked.status.code(), Some(0), "{}", text(&checked.stderr));
+    assert!(
+        text(&checked.stdout).contains("1 collections, 2 tables"),
+        "{}",
+        text(&checked.stdout)
+    );
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
+    let mut ledger: Vec<String> = std::fs::read_dir(project.join("first/_generated/migrations"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    ledger.sort();
+    assert_eq!(ledger, ["0001_init.sql", "snapshot.json"]);
+    let sql = std::fs::read_to_string(project.join("first/_generated/migrations/0001_init.sql")).unwrap();
+    assert_eq!(sql.matches("CREATE TABLE `{prefix}first_projects`").count(), 1, "{sql}");
+    assert!(
+        sql.contains("FOREIGN KEY (`project`) REFERENCES `{prefix}first_projects` (`id`) ON DELETE CASCADE"),
+        "{sql}"
+    );
+    // The scaffold's own kind stays a WordPress post type: it gets no table.
+    assert!(!sql.contains("first_notes"), "{sql}");
+
+    // The scaffold's own tsconfig covers the new files. Only the path to the types differs here,
+    // where nothing is installed from npm.
+    std::fs::write(
+        project.join("tsconfig.test.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "extends": "./tsconfig.json",
+            "compilerOptions": { "types": [], "paths": { "first": [root().join("types/first/index.d.ts")] } }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let tsc = |extra: &[&str]| {
+        Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+            .arg("--project")
+            .arg(project.join("tsconfig.test.json"))
+            .args(extra)
+            .output()
+            .expect("tsc (or TSC) must be installed to check the added files")
+    };
+    let listed = text(&tsc(&["--listFilesOnly"]).stdout);
+    for file in ["first/tables.ts", "tables.client.ts"] {
+        assert!(
+            listed.lines().any(|l| l.ends_with(file)),
+            "{file} is not type-checked:\n{listed}"
+        );
+    }
+    let typed = tsc(&[]);
+    assert!(typed.status.success(), "{}{}", text(&typed.stdout), text(&typed.stderr));
+
+    // A mistake in the added client file is a type error: a field the table doesn't have.
+    let client = std::fs::read_to_string(project.join("tables.client.ts")).unwrap();
+    std::fs::write(
+        project.join("tables.client.ts"),
+        format!("{client}\nexport const wrong = () => first.tasks.create({{ project: 1, title: \"x\", owner: 2 }});\n"),
+    )
+    .unwrap();
+    let typed = tsc(&[]);
+    assert!(!typed.status.success());
+    assert!(
+        text(&typed.stdout).contains("tables.client.ts") && text(&typed.stdout).contains("owner"),
+        "{}",
+        text(&typed.stdout)
+    );
+}
+
+#[test]
+fn add_only_creates_missing_files_and_never_changes_one_that_is_there() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    assert_eq!(add(&project, &["db"]).status.code(), Some(0));
+    // The author edits what they were given.
+    let mine = format!(
+        "{}\n// mine\n",
+        std::fs::read_to_string(project.join("first/tables.ts")).unwrap()
+    );
+    std::fs::write(project.join("first/tables.ts"), &mine).unwrap();
+    std::fs::write(project.join("first/DATABASE.md"), "my notes\n").unwrap();
+    let state = tree(&project);
+    let again = add(&project, &["db"]);
+    assert_eq!(again.status.code(), Some(0), "{}", text(&again.stderr));
+    let report = text(&again.stdout);
+    assert!(report.starts_with("first add db: nothing to add\n"), "{report}");
+    for file in ["first/tables.ts", "tables.client.ts", "first/DATABASE.md"] {
+        assert_eq!(reported(&report, file).0, "kept", "{report}");
+    }
+    assert_eq!(tree(&project), state);
+
+    // A deleted file comes back; the others are still not touched.
+    std::fs::remove_file(project.join("tables.client.ts")).unwrap();
+    let third = add(&project, &["db"]);
+    assert_eq!(third.status.code(), Some(0), "{}", text(&third.stderr));
+    assert_eq!(reported(&text(&third.stdout), "tables.client.ts").0, "created");
+    assert_eq!(tree(&project), state);
+
+    // A link that points nowhere is something of the author's too: it is neither followed nor replaced.
+    #[cfg(unix)]
+    {
+        std::fs::remove_file(project.join("tables.client.ts")).unwrap();
+        std::os::unix::fs::symlink(tmp.path().join("elsewhere.ts"), project.join("tables.client.ts")).unwrap();
+        let state = tree(&project);
+        let linked = add(&project, &["db"]);
+        assert_eq!(linked.status.code(), Some(0), "{}", text(&linked.stderr));
+        assert_eq!(reported(&text(&linked.stdout), "tables.client.ts").0, "kept");
+        assert!(!tmp.path().join("elsewhere.ts").exists());
+        assert_eq!(tree(&project), state);
+    }
+}
+
+/// The example is for a project with no tables. One that has its own gets the note, not a second
+/// set of tables, and no client code for tables it doesn't have.
+#[test]
+fn add_db_leaves_out_the_example_where_the_project_has_its_own_tables() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    std::fs::create_dir_all(project.join("first")).unwrap();
+    let mine = "import { table, text } from \"first\";\nexport const orders = table({ code: text().max(40) });\n";
+    // At the module's own path first, then anywhere else under first/.
+    for (at, status) in [("first/tables.ts", "kept"), ("first/schema.ts", "skipped")] {
+        std::fs::write(project.join(at), mine).unwrap();
+        let _ = std::fs::remove_file(project.join("first/DATABASE.md"));
+        let added = add(&project, &["db"]);
+        assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
+        let report = text(&added.stdout);
+        assert_eq!(reported(&report, "first/tables.ts").0, status, "{report}");
+        let (client, why) = reported(&report, "tables.client.ts");
+        assert_eq!(client, "skipped", "{report}");
+        assert!(why.contains("`projects`"), "{report}");
+        assert_eq!(reported(&report, "first/DATABASE.md").0, "created", "{report}");
+        assert!(!project.join("tables.client.ts").exists());
+        let checked = first().arg("check").arg(&project).output().unwrap();
+        assert!(
+            text(&checked.stdout).contains("1 collections, 1 tables"),
+            "{}",
+            text(&checked.stdout)
+        );
+        std::fs::remove_file(project.join(at)).unwrap();
+    }
+
+    // An author who took the example and then moved and renamed its tables doesn't get it back.
+    assert_eq!(add(&project, &["db"]).status.code(), Some(0));
+    assert!(project.join("first/tables.ts").is_file() && project.join("tables.client.ts").is_file());
+    std::fs::remove_file(project.join("first/tables.ts")).unwrap();
+    std::fs::remove_file(project.join("tables.client.ts")).unwrap();
+    std::fs::write(project.join("first/schema.ts"), mine).unwrap();
+    let state = tree(&project);
+    let again = add(&project, &["db"]);
+    assert_eq!(again.status.code(), Some(0), "{}", text(&again.stderr));
+    assert!(text(&again.stdout).starts_with("first add db: nothing to add\n"));
+    assert_eq!(tree(&project), state);
+}
+
+#[test]
+fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    // An export of the author's already uses a name the module's example exports.
+    std::fs::create_dir_all(project.join("first/server")).unwrap();
+    std::fs::write(
+        project.join("first/server/tasks.ts"),
+        "import { action } from \"first\";\nexport const tasks = action({ input: {}, async handler() { return 1; } });\n",
+    )
+    .unwrap();
+    let state = tree(&project);
+    let clash = add(&project, &["db"]);
+    assert_eq!(clash.status.code(), Some(1), "{}", text(&clash.stdout));
+    let error = text(&clash.stderr);
+    assert!(error.contains("`tasks` names two things"), "{error}");
+    assert!(error.contains("nothing was added"), "{error}");
+    assert_eq!(tree(&project), state);
+
+    // A project that doesn't compile today is refused before anything is written, with its own error.
+    std::fs::write(project.join("first/server/tasks.ts"), "export const broken = ;\n").unwrap();
+    let state = tree(&project);
+    let broken = add(&project, &["db"]);
+    assert_eq!(broken.status.code(), Some(1), "{}", text(&broken.stdout));
+    assert!(
+        text(&broken.stderr).contains("first/server/tasks.ts:1"),
+        "{}",
+        text(&broken.stderr)
+    );
+    assert!(
+        text(&broken.stderr).contains("Nothing was added"),
+        "{}",
+        text(&broken.stderr)
+    );
+    assert_eq!(tree(&project), state);
+
+    // With no first/ directory yet, a refused add doesn't leave an empty one behind.
+    let bare = tmp.path().join("bare");
+    std::fs::create_dir_all(&bare).unwrap();
+    std::fs::write(
+        bare.join("first.config.ts"),
+        "import { action, defineConfig } from \"first\";\nexport default defineConfig({ name: \"bare\", actions: { projects: action({ input: {}, async handler() { return 1; } }) } });\n",
+    )
+    .unwrap();
+    let state = tree(&bare);
+    let refused = add(&bare, &["db"]);
+    assert_eq!(refused.status.code(), Some(1), "{}", text(&refused.stdout));
+    assert_eq!(tree(&bare), state);
+
+    // A directory that isn't a project says so, and gets nothing.
+    let empty = tmp.path().join("empty");
+    std::fs::create_dir_all(&empty).unwrap();
+    let none = add(&empty, &["db"]);
+    assert_eq!(none.status.code(), Some(1));
+    assert!(
+        text(&none.stderr).starts_with("first add db: no first.config.ts in "),
+        "{}",
+        text(&none.stderr)
+    );
+    assert!(std::fs::read_dir(&empty).unwrap().next().is_none());
+}
+
+/// A file that can't be written whole (a full disk, a quota) is not left behind half written.
+/// The file size limit stands in for the full disk: the first write past it fails.
+#[cfg(unix)]
+#[test]
+fn add_removes_a_file_it_could_not_finish_writing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let state = tree(&project);
+    let out = Command::new("sh")
+        .args(["-c", "trap '' XFSZ; ulimit -f 1; exec \"$@\"", "sh"])
+        .arg(env!("CARGO_BIN_EXE_first"))
+        .args(["add", "db"])
+        .arg(&project)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}{}", text(&out.stdout), text(&out.stderr));
+    assert!(
+        text(&out.stderr).contains("can't write first/tables.ts") && text(&out.stderr).contains("Nothing was added"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert_eq!(tree(&project), state);
+    // The project still compiles, and the next run adds everything.
+    let added = add(&project, &["db"]);
+    assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
+    assert_eq!(reported(&text(&added.stdout), "first/tables.ts").0, "created");
+}
+
+#[test]
+fn add_names_its_modules_when_the_module_is_missing_or_unknown() {
+    // `first help add` lists the modules; the command table's summary names each of them.
+    let help = first().args(["help", "add"]).output().unwrap();
+    assert_eq!(help.status.code(), Some(0));
+    let modules = text(&help.stdout);
+    assert!(
+        modules.starts_with("usage: first add <module> [dir]\nmodules:\n  db  "),
+        "{modules}"
+    );
+    let table: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root().join("runtime/First/Cli/commands.json")).unwrap()).unwrap();
+    let row = table["build"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["name"] == "add")
+        .expect("an add row");
+    let named = row["summary"]
+        .as_str()
+        .unwrap()
+        .split_once("Modules: ")
+        .expect("Modules:")
+        .1;
+    for line in modules.lines().skip(2) {
+        let name = line.split_whitespace().next().unwrap();
+        assert!(named.split([' ', ',']).any(|word| word == name), "{name} in {named:?}");
+    }
+
+    let none = first().arg("add").output().unwrap();
+    assert_eq!(none.status.code(), Some(2));
+    assert_eq!(text(&none.stderr), format!("first add needs a module\n{modules}"));
+    let tmp = tempfile::tempdir().unwrap();
+    let unknown = add(tmp.path(), &["pages"]);
+    assert_eq!(unknown.status.code(), Some(2));
+    assert_eq!(text(&unknown.stderr), format!("no module pages\n{modules}"));
+    let option = add(tmp.path(), &["db", "--force"]);
+    assert_eq!(option.status.code(), Some(2));
+    assert_eq!(
+        text(&option.stderr),
+        format!("unknown option --force for first add\n{modules}")
+    );
+    assert!(std::fs::read_dir(tmp.path()).unwrap().next().is_none());
+}
+
+/// The example's access rules on a real WordPress, over HTTP: reading and writing tasks needs an
+/// account, anyone with one changes a task only while it is open, and an editor changes any.
+/// Needs PHP 8.2+ with pdo_sqlite, curl, and network for the pinned downloads (cached in
+/// tests/wp/cache), as the site test above does.
+#[test]
+fn the_added_tables_enforce_their_access_rules_on_a_real_wordpress() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    assert_eq!(add(&project, &["db"]).status.code(), Some(0));
+    let built = first().arg("build").arg(&project).arg("--quiet").output().unwrap();
+    assert!(built.status.success(), "build: {}", text(&built.stderr));
+    let mut child = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("serve")
+        .arg(project.join("first/dist/wp-content"))
+        .args(["sub=subscriber", "ed=editor"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .expect("php");
+    let mut line = String::new();
+    std::io::BufReader::new(child.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    let _served = Served(child);
+    let served: serde_json::Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("serve: {line}"));
+    let base = format!("{}/__first/api/v1", served["url"].as_str().unwrap());
+    // (status, body) of one request, as `who` (a served user) or signed out.
+    let call = |who: Option<&str>, method: &str, path: &str, body: Option<serde_json::Value>| {
+        let mut curl = Command::new("curl");
+        curl.args([
+            "--silent",
+            "--max-time",
+            "60",
+            "--write-out",
+            "\n%{http_code}",
+            "--request",
+            method,
+        ]);
+        if let Some(who) = who {
+            curl.args(["--user", served["users"][who]["appPassword"].as_str().unwrap()]);
+        }
+        if let Some(body) = &body {
+            curl.args([
+                "--header",
+                "Content-Type: application/json",
+                "--data",
+                &body.to_string(),
+            ]);
+        }
+        let out = curl.arg(format!("{base}{path}")).output().expect("curl");
+        let answer = text(&out.stdout);
+        let (body, status) = answer
+            .rsplit_once('\n')
+            .unwrap_or_else(|| panic!("{method} {path}: {answer}"));
+        (
+            status
+                .parse::<u16>()
+                .unwrap_or_else(|_| panic!("{method} {path}: {answer}")),
+            serde_json::from_str::<serde_json::Value>(body).unwrap_or(serde_json::Value::Null),
+        )
+    };
+    let json = |text: &str| -> serde_json::Value { serde_json::from_str(text).unwrap() };
+
+    // Projects: editors write, anyone with an account reads.
+    let (status, _) = call(Some("sub"), "POST", "/projects", Some(json(r#"{"name":"Launch"}"#)));
+    assert_eq!(status, 403);
+    let (status, project_row) = call(Some("ed"), "POST", "/projects", Some(json(r#"{"name":"Launch"}"#)));
+    assert_eq!(status, 201, "{project_row}");
+    let project_id = project_row["data"]["id"].clone();
+    assert_eq!(call(None, "GET", "/projects", None).0, 401);
+    assert_eq!(call(Some("sub"), "GET", "/projects", None).0, 200);
+
+    // Tasks: the foreign key is real, and creating one needs an account.
+    let task = |title: &str| serde_json::json!({ "project": project_id, "title": title });
+    assert_eq!(call(None, "POST", "/tasks", Some(task("signed out"))).0, 401);
+    let (status, refused) = call(
+        Some("sub"),
+        "POST",
+        "/tasks",
+        Some(serde_json::json!({ "project": 999, "title": "no project" })),
+    );
+    assert_eq!(status, 409, "{refused}");
+    let (status, open) = call(Some("sub"), "POST", "/tasks", Some(task("Write the post")));
+    assert_eq!(status, 201, "{open}");
+    assert_eq!(open["data"]["done"], false);
+    let id = open["data"]["id"].as_i64().unwrap();
+    let path = format!("/tasks/{id}");
+
+    // Signed out: no read, no change, and the refusal doesn't hand back the row.
+    assert_eq!(call(None, "GET", "/tasks", None).0, 401);
+    let (status, answer) = call(None, "PATCH", &path, Some(json(r#"{"title":"defaced"}"#)));
+    assert_eq!(status, 401, "{answer}");
+    assert!(answer["data"].is_null(), "{answer}");
+    assert_eq!(call(None, "DELETE", &path, None).0, 401);
+    // With an account: an open task changes, a finished one doesn't, and only an editor deletes.
+    let (status, closed) = call(Some("sub"), "PATCH", &path, Some(json(r#"{"done":true}"#)));
+    assert_eq!(status, 200, "{closed}");
+    assert_eq!(closed["data"]["done"], true);
+    let (status, answer) = call(Some("sub"), "PATCH", &path, Some(json(r#"{"title":"reopened?"}"#)));
+    assert_eq!(status, 404, "{answer}");
+    assert_eq!(call(Some("sub"), "DELETE", &path, None).0, 403);
+    let (status, edited) = call(
+        Some("ed"),
+        "PATCH",
+        &path,
+        Some(json(r#"{"title":"Write the post (done)"}"#)),
+    );
+    assert_eq!(status, 200, "{edited}");
+    let (_, read) = call(Some("sub"), "GET", &path, None);
+    assert_eq!(read["data"]["title"], "Write the post (done)");
+
+    // The field is the relation, in both directions.
+    let (_, with_project) = call(Some("sub"), "GET", "/tasks?with=project", None);
+    assert_eq!(with_project["data"][0]["project"]["name"], "Launch", "{with_project}");
+    let (_, with_tasks) = call(Some("sub"), "GET", "/projects?with=tasks", None);
+    assert_eq!(with_tasks["data"][0]["tasks"][0]["id"], id, "{with_tasks}");
+
+    // Deleting the project deletes its tasks.
+    let project_path = format!("/projects/{}", project_id);
+    assert_eq!(call(Some("ed"), "DELETE", &project_path, None).0, 200);
+    let (status, left) = call(Some("ed"), "GET", "/tasks", None);
+    assert_eq!(status, 200);
+    assert_eq!(left["data"], serde_json::json!([]));
 }

@@ -41,23 +41,6 @@ $openNote = $db->insert('openNotes', ['title' => 'Anonymous unique slug'], true,
 eq('anonymous unique creation succeeds when password guards cannot narrow reads', $openNote['slug'], 'anonymous-unique-slug');
 eq('native unrestricted reads do not enumerate every primary key', $db->permittedKeys('openNotes', 'read', $anonymous), null);
 
-// Internal REST calls can discard their response before WordPress serves a different one.
-$internal = new \WP_REST_Request('GET', '/first/v1/posts');
-$internal->set_url_params(['path' => 'posts']);
-$discarded = \First\Wp\Rest::dispatch($app, $internal);
-unset($discarded);
-$unrelated = new \WP_REST_Response(['native' => true]);
-ob_start();
-$served = \First\Wp\Rest::serve(false, $unrelated);
-$output = ob_get_clean();
-eq('discarded First responses cannot hijack another response', [$served, $output], [false, '']);
-$response = \First\Wp\Rest::dispatch($app, $internal);
-ob_start();
-$served = \First\Wp\Rest::serve(false, $response);
-$output = ob_get_clean();
-eq('live First responses still serve their committed body', [$served, json_decode($output, true)], [true, ['data' => []]]);
-eq('a response body is consumed once', \First\Wp\Rest::serve(false, $response), false);
-
 $users = [];
 foreach (['admin', 'ed', 'alice', 'bob', 'sub'] as $name) {
     $users[$name] = $wp->user($name);
@@ -137,10 +120,10 @@ eq('native password is applied before page limits', array_column($db->findMany('
     'where' => ['id' => ['in' => [$protected['id'], $public['id']]]], 'orderBy' => ['id' => 'asc'], 'limit' => 1,
 ], $anon), 'id'), [$public['id']]);
 $linked = $db->insert('comments', ['postId' => $protected['id'], 'name' => 'Linked', 'body' => 'Visible comment', 'approved' => true], true)[0];
-$related = $db->findFirst('comments', ['where' => ['id' => $linked['id']], 'with' => ['post' => true]], $anon);
-eq('native password hides attached relation', $related['post'], null);
+$related = $db->findFirst('comments', ['where' => ['id' => $linked['id']], 'with' => ['postId' => true]], $anon);
+eq('native password hides attached relation', $related['postId'], null);
 eq('native password prevents relation-filter inference', $db->findMany('comments', [
-    'where' => ['id' => $linked['id'], 'post' => ['body' => ['like' => '%native-password-secret%']]],
+    'where' => ['id' => $linked['id'], 'postId' => ['body' => ['like' => '%native-password-secret%']]],
 ], $anon), []);
 $wp->actAs('admin');
 $nativeController = new \WP_REST_Posts_Controller('first_posts');
@@ -223,7 +206,7 @@ eq('valid native cookie unlocks the same viewer-bound body as WordPress', [post_
 unset($_COOKIE['wp-postpass_' . COOKIEHASH]);
 eq('removing password proof invalidates visibility', [$db->findMany('posts', ['where' => $protectedWhere], $anon), $coreRead()->get_status()], [[], 404]);
 $wp->startServer();
-$wire = json_decode(file_get_contents($wp->url() . '/wp-json/first/v1/posts/' . $protected['id'], false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 10]])), true);
+$wire = json_decode(file_get_contents($wp->url() . '/__first/api/v1/posts/' . $protected['id'], false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 10]])), true);
 eq('anonymous HTTP cannot read a native password-protected record', [$wire['status'] ?? null, $wire['code'] ?? null], [404, 'not_found']);
 $db->delete('comments', ['id' => $linked['id']]);
 $db->delete('posts', ['id' => ['in' => [$protected['id'], $public['id']]]]);
@@ -633,13 +616,13 @@ eq('download response streams raw bytes and headers after commit', [
 
     return $rows;
 });
-$read = req('GET', '/posts/' . $seam['id'], as: 'ed', query: ['with' => 'comments,author,cover'])[1];
+$read = req('GET', '/posts/' . $seam['id'], as: 'ed', query: ['with' => 'comments,authorId,cover'])[1];
 eq('lookup precedes decoded read transforms, before with, at every relation level', [$read['excerpt'], array_column($read['comments'], 'body')], ['looked up before with', ['looked up decoded', 'looked up decoded']]);
 
 eq('read stripping keeps relation linkage private and does not resurrect populated media', [
-    array_key_exists('authorId', $read), array_key_exists('cover', $read),
-    $read['author']['id'], array_key_exists('postId', $read['comments'][0]),
-], [false, false, $seamAuthor['id'], false]);
+    is_array($read['authorId'] ?? null), array_key_exists('cover', $read),
+    $read['authorId']['id'], array_key_exists('postId', $read['comments'][0]),
+], [true, false, $seamAuthor['id'], false]);
 $revisionId = $db->revisions('posts', $seam['id'])[0]['id'];
 eq('revisions use the same read transform', array_key_exists('authorId', req('GET', '/posts/' . $seam['id'] . '/revisions/' . $revisionId, as: 'ed')[1]), false);
 eq('write responses use the read transform after trusted hooks', array_key_exists('authorId', req('PATCH', '/posts/' . $seam['id'], ['body' => 'changed'], 'ed')[1]), false);
@@ -667,8 +650,8 @@ eq('write responses use the read transform after trusted hooks', array_key_exist
     }
 });
 eq('query extensions normalize filters and projections at every relation level', $db->findMany('posts', [
-    'seamId' => $seam['id'], 'idsOnly' => true, 'with' => ['author' => ['idsOnly' => true]],
-]), [['id' => $seam['id'], 'author' => ['id' => $seamAuthor['id']]]]);
+    'seamId' => $seam['id'], 'idsOnly' => true, 'with' => ['authorId' => ['idsOnly' => true]],
+]), [['id' => $seam['id'], 'authorId' => ['id' => $seamAuthor['id']]]]);
 problem('query extensions reject forbidden selectors before the query', fn () => $db->findMany('posts', ['orderBy' => ['excerpt' => 'asc']], new \First\Viewer($users['ed'])), 403, 'forbidden', '/orderBy/excerpt');
 eq('REST list and item queries deliver feature options before SQL', [
     array_column(req('GET', '/posts', as: 'ed', query: ['locale' => 'de'])[1], 'id'),

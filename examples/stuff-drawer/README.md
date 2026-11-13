@@ -2,8 +2,6 @@
 
 A personal inventory for cables, adapters, chargers, tools, books, and other small things, with a lending log. There is no custom frontend. WordPress owns the UI and sign-in.
 
-This example currently **does not compile on main**. See [Known gaps](#known-gaps-on-main-b66e98b3). The published Space is a restricted source snapshot, not a working inventory app. Local HTTP verification, generated artifacts, and admin screenshots remain blocked by the compiler error.
-
 ## Data and screens
 
 | Resource | Storage and UI | Fields |
@@ -109,42 +107,9 @@ These screenshots are not done. Once main can build this source, run the HTTP ve
 | Change overdue behavior | Edit `scheduleOverdue` and the `markOverdue` job. Keep using Action Scheduler. |
 | Change an editor label | Use the field's `.ui({ label, help, placeholder })` metadata. |
 
-## Known gaps on main b66e98b3
+## Known gaps
 
-The native compiler was built from `b66e98b3866037061198c51ebef9534609a5e301`. No compiler or runtime files are changed by this example.
-
-### Exported callback context types do not compile
-
-`first/lib/ownership.ts:5:34` uses the exported `AccessCtx` annotation:
-
-```ts
-export function ownerFilter(ctx: AccessCtx) {
-```
-
-`first check --json` reports exactly one error diagnostic. Count = the number of entries in `diagnostics` with `severity === "error"`; compilation stops at this first error, so this is not a count of every possible unsupported construct.
-
-`first build examples/stuff-drawer` prints:
-
-```text
-error: unknown type `AccessCtx`
-  --> first/lib/ownership.ts:5:34
-  |
-5 | export function ownerFilter(ctx: AccessCtx) {
-  |                                  ^^^^^^^^^
-```
-
-`first dev examples/stuff-drawer --no-watch --port 8897` prints:
-
-```text
-error: unknown type `AccessCtx`
-  --> first/lib/ownership.ts:5:34
-  |
-5 | export function ownerFilter(ctx: AccessCtx) {
-  |                                  ^^^^^^^^^
-first dev: Failed (1): build
-```
-
-Both `AccessCtx` and `HookCtx` are public exports and accepted type imports. Main's annotation resolver in `src/compile/annotations.rs` recognizes `FieldAccessCtx` and `JobCtx` but does not implement these two types. The source retains the ordinary exported types instead of changing the compiler or rewriting the app around this gap.
+`first check examples/stuff-drawer` passes. Earlier versions of this README recorded compile errors here; the source now reads them out: `AccessCtx` and `HookCtx` compile, the loan checks build their argument field by field instead of spreading a partial patch, `quantity` is read once before it is compared, and the search loop skips an absent word.
 
 ### Native editor saves skip before hooks
 

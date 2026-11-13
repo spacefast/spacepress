@@ -376,9 +376,10 @@ final class Module
             }
         }
 
-        return match ($guards) {
-            [] => Versions::ALL,
-            [['status' => 'published']] => Versions::PUBLISHED,
+        return match (true) {
+            $guards === [] => Versions::ALL,
+            // Only a kind with drafts keeps a `published` counter.
+            $guards === [['status' => 'published']] && ($spec['drafts'] ?? false) => Versions::PUBLISHED,
             default => null,
         };
     }

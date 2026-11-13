@@ -25,7 +25,7 @@ export const SCHEMA = {
 			"revisions": true,
 			"localized": true,
 			"relations": {
-				"author": {
+				"authorId": {
 					"kind": "one",
 					"collection": "authors",
 					"optional": true
@@ -47,7 +47,7 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": { "post": {
+			"relations": { "postId": {
 				"kind": "one",
 				"collection": "posts",
 				"optional": false

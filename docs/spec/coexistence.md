@@ -16,7 +16,8 @@ one of them at a time, never both in the same version.
   `{ code, file, line, column, feature, v2, fix }`, so the owner or their agent
   can fix it and publish again. Until v2 publishing and the hosted data copy land,
   that includes every app with a frontend, pages, static files, posts, users or
-  Functions (the `Z08_LOCAL_*` and `Z08_FUNCTIONS` refusals). A clean candidate on
+  Functions (the monorepo's own `Z08_LOCAL_*` and `Z08_FUNCTIONS` refusals, not
+  converter codes). A clean candidate on
   a 0.8 Space whose runtime doesn't run v2 yet also ships as 0.8, with status
   `waiting_on_runtime`; on a Space with no 0.8 app it's refused with the
   retryable `runtime_capabilities_pending`.
@@ -75,12 +76,12 @@ The platform enforces these, and the spec work keeps them true:
 | Rule | Suite |
 |---|---|
 | 1 | monorepo `apps/control-plane/src/versions/zero-generation.test.ts`, `runtime/tests/zero-v2-cordon.test.ts` |
-| 2 | monorepo `runtime/tests/zero-v2-hosted.test.ts`, `first-source.test.ts` |
+| 2 | monorepo `runtime/tests/zero-v2-hosted.test.ts`, `runtime/tests/zero-v2-source.test.ts` |
 | 3 | monorepo `runtime/tests/zero-runtime.test.ts` (0.8), the e2e wp.cloud runtime contract |
 | 4 | monorepo `runtime/tests/zero-runtime.test.ts`, `legacy-zero-users.ts` |
 | 5 | zero CI lane "Spacefast cross-prefix migration and session continuity" |
-| 6 | monorepo `packages/cli/src/first-.test.ts`, `first-source-publish.test.ts` |
-| migration | zero `tests/app_migrate.rs`, `tests/config_migrate.rs`, CI lanes "Zero 0.8 census tool" and "Zero 0.8 site, app-user and application migrations"; monorepo `first-generation.test.ts`, `packages/common/src/utils/zero-migration.test.ts` |
+| 6 | monorepo `packages/cli/src/zero-v2.test.ts`, `packages/cli/src/zero-v2-source-publish.test.ts` |
+| migration | zero `tests/app_migrate.rs`, `tests/config_migrate.rs`, CI lanes "Zero 0.8 census tool" and "Zero 0.8 site, app-user and application migrations"; monorepo `apps/control-plane/src/versions/zero-generation.test.ts`, `packages/common/src/utils/zero-migration.test.ts` |
 
 Where a rule has no behavior test yet, the
 coexistence test lane adds one.

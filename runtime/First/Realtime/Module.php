@@ -109,7 +109,7 @@ final class Module
         }
         $store = db()->store();
         if ($pks !== [] && $store instanceof \First\Wp\CompositeStore) {
-            \First\Live\Versions::touch($store->db, $collection); // the rows are published now
+            \First\Live\Versions::touch($store->db, $collection, true); // the rows are published now
         }
         $pk = $spec['primaryKey'] ?? 'id';
         foreach ($pks as $id) {

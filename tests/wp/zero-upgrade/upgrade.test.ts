@@ -73,6 +73,16 @@ test("table rows, posts with their revisions, the global and the file read back 
   assert.equal(wp("eval", "echo is_dir(WP_CONTENT_DIR . '/uploads/zero-private') ? 'old' : 'moved';"), "moved");
 });
 
+test("the deleted /wp-json/first/v1 and the 0.3 client file are not served; an old tab's action is not run", async () => {
+  const gone = await fetch(`${site}/wp-json/first/v1/notes`);
+  assert.deepEqual([gone.status, (await gone.json()).code], [404, "rest_no_route"]);
+  assert.equal((await fetch(`${site}/__zero/client.js`)).status, 404);
+  const before = (await ok("GET", "/notes")).length;
+  const action = await fetch(`${site}/wp-json/zero/v1/actions/add`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "From an open tab" }) });
+  assert.equal(action.status, 404);
+  assert.equal((await ok("GET", "/notes")).length, before, "the action didn't run");
+});
+
 test("an editor still edits the post in wp-admin: its post type, fields and SCF field keys are First's", async () => {
   const fields = JSON.parse(wp("eval", `echo wp_json_encode(get_fields(${seeded.post}));`));
   assert.equal(fields.first_summary ?? fields.summary, "Edited by 0.3");

@@ -18,6 +18,8 @@ your app queries belongs in a table.
 - `first/tables.ts`: the example tables. Any `.ts` file under `first/` works; a `table()` registers
   under its export name.
 - `tables.client.ts`: the same tables from a frontend, through the generated client.
+- `tsconfig.json` is not changed. If your editor can't resolve `"first"` in the two files above,
+  add `"first/**/*.ts"` and `"*.client.ts"` to its `include`.
 - `first/_generated/migrations/`: written by `first build`. It holds one SQL file per schema change
   and `snapshot.json`, the schema as of the last build. Commit the folder. Don't edit or delete
   anything in it: the next migration is planned against it.
@@ -33,8 +35,9 @@ already has, before it runs any of them:
   `wp first migrate --drop=tasks=12`.
 - A rename keeps its rows: `was: "old_name"` on the table, `.was("old")` on the field.
 
-A refusal changes nothing. `first dev` runs the same check on your local site and stops instead of
-losing local rows; restart it once with `--allow-destructive` to let a change through.
+A refusal changes nothing. `first dev` protects local rows the same way: a save that removes or
+retypes a field is refused. To apply it, stop dev, run `first build`, then start once with
+`first dev --allow-destructive`.
 
 ## Reading and writing
 

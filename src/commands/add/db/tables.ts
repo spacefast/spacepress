@@ -19,7 +19,7 @@ export const projects = table({
   archived: boolean().default(false),
 }, {
   // Who may do what. A role admits itself and every role above it:
-  // subscriber < author < editor < admin. Without `access`, anyone reads and editors write.
+  // subscriber < author < editor < admin.
   access: { read: "subscriber", create: "editor", update: "editor", delete: "editor" },
 });
 

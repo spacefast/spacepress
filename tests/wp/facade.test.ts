@@ -122,6 +122,15 @@ test("the users kind: rows as First reads them, writes through First's rules, cr
   assert.deepEqual([own.json.data.email, own.json.data.role, own.json.data.name, own.json.data.notes], [trusted.email, "subscriber", trusted.name, {}]);
   assert.equal((await f("GET", `/members/${harness.users.admin.id}`, { as: "subscriber" })).status, 404);
   assert.deepEqual((await f("GET", "/members", { as: "subscriber" })).json.data.map((m: any) => m.id), [sub], "the list holds what `self` allows");
+  // Signed out, the kind's read rule still decides on First's API: `self` gives a visitor no row, and
+  // one user is the same 401 whether the id exists or not. Core's own route lists nobody at all.
+  const anonymous = await f("GET", "/members");
+  assert.deepEqual([anonymous.status, anonymous.json.data], [200, []]);
+  for (const id of [sub, harness.users.admin.id, 99999999]) {
+    const one = await f("GET", `/members/${id}`);
+    assert.deepEqual([one.status, one.json.code], [401, "unauthenticated"], `member ${id}`);
+  }
+  assert.equal((await fetch(`${harness.url}/wp-json/wp/v2/users`)).status, 401);
   // A PATCH of only core user fields still runs First's update: validation, field rules, hooks.
   const name = (await ok("GET", `/members/${sub}`, { as: "subscriber" })).name;
   const long = await f("PATCH", `/members/${sub}`, { as: "subscriber", body: { name: "x".repeat(81) } });

@@ -251,6 +251,7 @@ app is active they are closed to visitors who aren't signed in:
 | the users sitemap (`/wp-sitemap-users-1.xml`), and its entry in `/wp-sitemap.xml` | gone |
 | a post's oEmbed `author_name` and `author_url` | the site's name and address, as core answers for a post with no author |
 | `/__first/api/v1/users` | follows the core route (401) |
+| the app's own users kind on First's API (`GET /__first/api/v1/<kind>`) | its read rule decides, as for every viewer: the list holds the rows the rule gives a signed-out visitor (none, for `self` or a role), and one user is a 401 unless the rule gives that row to anyone, whether or not the id exists |
 
 Signed-in users and credentials keep core's answers (the block editor's author
 picker), and the users kind's read rule decides what First's API shows. A

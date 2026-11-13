@@ -134,9 +134,9 @@ pub static RULES: &[Rule] = &[
     },
     Rule {
         code: "Z08_OMITTED_CONNECTORS",
-        feature: "connector role and its credentials",
-        v2: "nothing yet: connectors are not in v2",
-        fix: "Remove the connector, or keep the Space on 0.8 until v2 has connectors.",
+        feature: "connector role the Space config can't declare as it is",
+        v2: "a role in sf.jsonc `connectors`, called from pages with @spacefast/client",
+        fix: "Give the role its connector slug (`connector({ as, connector: \"github\" })`; a 0.8 publish's zero_connector_roles_move notice names the one its binding uses) and a camelCase name, at most 32 roles.",
         test: |_, r| r.starts_with(omitted::CONNECTORS),
         example: ("/connectors/calendar", "the connector role is not carried over: x"),
     },
@@ -192,8 +192,8 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_CLIENT_CONNECTORS",
         feature: "0.8 client connector state",
-        v2: "nothing yet: connector calls are not in v2",
-        fix: "Remove the connector state from the client until v2 has connectors.",
+        v2: "the role's page route, /__spacefast/connectors/<role>/<tool>, which the migrated Space keeps serving",
+        fix: "Replace the connector state with a call to the role's route (fetch, or space.connectors from /__spacefast/client.js).",
         test: |_, r| r.starts_with(client::TAG_CONNECTORS),
         example: ("/client/index.tsx", "0.8 client connector state: x"),
     },
@@ -524,6 +524,17 @@ pub static RULES: &[Rule] = &[
         example: (
             "/queries/q/ctx/db",
             "unsupported context service; port its authority and behavior explicitly",
+        ),
+    },
+    Rule {
+        code: "Z08_CTX_CONNECTORS",
+        feature: "ctx.connectors in a server handler",
+        v2: "space.connectors.<role>.<tool>() from @spacefast/client, on the page",
+        fix: "Call the role from the page with @spacefast/client; the candidate keeps the role in sf.jsonc, and server code can't call connectors on First yet.",
+        test: |p, _| p.contains("/ctx/connectors"),
+        example: (
+            "/actions/sync/ctx/connectors",
+            "server code can't call connectors on First yet",
         ),
     },
     Rule {

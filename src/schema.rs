@@ -379,6 +379,9 @@ pub struct Collection {
     pub localized: bool,
     /// `url: "/blog/:slug"`: the pattern as written (spec §2.7). Checked by [`crate::kind_url`].
     pub url: Option<String>,
+    /// `hierarchical: true` (spec §2.6): items nest under a `parent` and sort by `order`, stored as
+    /// the post's own `post_parent` and `menu_order`; `:path` in the url is the parent chain.
+    pub hierarchical: bool,
 }
 
 impl Collection {
@@ -389,6 +392,7 @@ impl Collection {
     /// Is this column a WordPress core post column (not postmeta) on WP?
     pub fn is_core_column(&self, col: &str) -> bool {
         self.columns.get(col).is_some_and(|c| c.primary_key || c.system)
+            || (self.hierarchical && matches!(col, "parent" | "order"))
             || self.title.as_deref() == Some(col)
             || self.content.as_deref() == Some(col)
             || self.slug.as_deref() == Some(col)
@@ -494,6 +498,16 @@ pub struct Schema {
     pub admin: bool,
     /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `first/app`.
     pub frontend: Option<crate::kind_url::Frontend>,
+    /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
+    /// while it runs. Holds what the build read from the lock `first pull` writes.
+    pub runtime_schema: Option<RuntimeSchema>,
+}
+
+/// The site schema version a build contains: zero and no hash before any `first pull`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RuntimeSchema {
+    pub version: u64,
+    pub hash: String,
 }
 
 impl Default for Schema {
@@ -517,6 +531,7 @@ impl Default for Schema {
             locales: None,
             admin: false,
             frontend: None,
+            runtime_schema: None,
         }
     }
 }

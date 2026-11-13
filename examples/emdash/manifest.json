@@ -787,11 +787,16 @@
       "owner": "agents",
       "contract": "Updating a published EmDash item stages a draft while live content remains unchanged; compare/discard/promote use optimistic _rev and edit-lock semantics.",
       "requiredProof": "Edit a published item through the claimed API, prove live content remains old, compare/discard/publish, then exercise stale revision and held lock.",
-      "firstCounterpart": "examples/emdash/agents",
+      "firstCounterpart": "docs/staged.md",
       "acceptanceCommand": "agents",
-      "status": "gap",
+      "status": "partial",
       "evidence": [],
-      "limitation": "Do not infer EmDash staged-live semantics from ordinary WordPress draft status/revision support; this exact contract needs a dedicated implementation and proof."
+      "existingBehavioralOwners": [
+        "tests/php/staged_test.php",
+        "tests/wp/staged.test.ts"
+      ],
+      "qualifiedScope": "Staging a change to a published collection item beside the live version; compare with field masks; discard keeping revision history; promote as an ordinary update (rules, hooks, unique checks, purges, webhooks) in one transaction; scheduled promote on core's publish_future_post event; signed expiring preview links; concurrent stagers and promoters serialized by the item's row lock; no reader without the update rule learns a staged version exists. Proven by tests/php/staged_test.php (WordPress on SQLite) and tests/wp/staged.test.ts (WordPress and MariaDB over HTTP), not by an EmDash example suite.",
+      "remainingProof": "Optimistic _rev tokens on reads and writes, a held edit lock (_edit_lock) refusing other writers, and the wp-admin staged-changes screens are not built yet."
     },
     "media": {
       "owner": "platform",

@@ -88,7 +88,7 @@ $at = static function (string $resource, ?string $field = null) use ($release): 
 $refuses('not a release', fn () => Model::map(['format' => 'other'], $schema()), '');
 $noTasks = new Schema(['version' => 3, 'runtime' => Schema::SERIES, 'collections' => ['projects' => $schema()->collection('projects')]]);
 $refuses('a collection the new app lacks', fn () => Model::map($release, $noTasks), $at('tasks') . '/id');
-$refuses('an editor: false table', fn () => Model::map($release, $schema(['tasks' => ['editor' => false, 'wp' => null]])), $at('tasks') . '/id');
+$refuses('a table() kind', fn () => Model::map($release, $schema(['tasks' => ['editor' => false, 'wp' => null]])), $at('tasks') . '/id');
 $refuses('a field without its column', fn () => Model::map($release, new Schema(['version' => 3, 'runtime' => Schema::SERIES, 'collections' => ['projects' => $schema()->collection('projects'), 'tasks' => array_replace($schema()->collection('tasks'), ['columns' => array_diff_key($schema()->collection('tasks')['columns'], ['notes' => 1])])]])), $at('tasks', 'notes') . '/name');
 $refuses('enum options that differ', fn () => Model::map($release, $schema(['projects' => ['columns' => ['stage' => ['enum' => ['idea', 'live', 'gone']]]]])), $at('projects', 'stage') . '/definition');
 $refuses('a single media field on a list column', fn () => Model::map($release, $schema(['projects' => ['columns' => ['cover' => ['type' => 'mediaList']]]])), $at('projects', 'cover') . '/definition');

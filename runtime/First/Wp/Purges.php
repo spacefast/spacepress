@@ -193,8 +193,9 @@ final class Purges
         }
         $urls = array_values(array_filter($urls, static fn (mixed $url): bool => is_string($url) && $url !== ''));
 
-        // The sitemap files that list it (core's and First's), which have no pages or twins of their own.
-        return [$urls[0], ...self::listings(array_slice($urls, 1)), ...Sitemap::filesFor($post)];
+        // Other addresses that show this post (a `page.md` route answers with and without a trailing
+        // slash), and the sitemap files that list it (core's and First's), which have no twins.
+        return [...(array) apply_filters('first_post_purge_urls', [$urls[0], ...self::listings(array_slice($urls, 1))], $post), ...Sitemap::filesFor($post)];
     }
 
     /**

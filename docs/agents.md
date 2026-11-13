@@ -86,10 +86,10 @@ path in place of `npx --no-install first`.
 |---|---|
 | `schema` | The project's kinds with their fields, access rules, relations and hooks; globals, actions, jobs, pages and HTTP routes, file buckets, roles, the Abilities the site registers, and the endpoints. `kind` narrows it to one kind. |
 | `check` | The `first-diagnostics` envelope `first check --json` prints ([compiler diagnostics](compiler-diagnostics.md)). It writes nothing. |
-| `docs_search`, `docs_read` | First's documentation as built into this binary: `docs/*.md` and the docs site's pages. A long page read whole answers with its opening and its sections; pass `section` to read one. |
+| `docs_search`, `docs_read` | First's documentation as built into this binary: the guides in `docs/` (not the design proposals or the pages for hosts and maintainers) and the docs site's pages. A long page or section read whole answers with its opening and its sections; pass `section` to read one. |
 | `commands` | The command table `first help` prints. |
 | `dev_status` | What `first dev status --json` reports: whether the project has a local dev site, whether it runs, its URL and port, and whether a `first dev` process is rebuilding it on save. |
-| `query` | A kind's records from the local dev site, through `first find`: `kind`, `where`, `orderBy`, `limit`, `offset`, `columns`, `with`. |
+| `query` | A kind's records from the local dev site, through `first find`: `kind`, `where`, `orderBy`, `limit` (20 by default, at most 500), `offset`, `columns`, `with`. Like every request to the site, it first publishes scheduled posts that are due. |
 
 `schema`, `check`, `docs_search` and `docs_read` compile or read from the
 binary and need no site. `schema` and `check` read the files as they are at each
@@ -106,6 +106,10 @@ no access rules, drafts included. They are for a developer's own dev site:
   `insert` and `update` run `first action`, `first insert` and `first update` on
   this project's dev site. They take no `site`, so they never reach another one.
 - There is no delete tool.
+
+A tool that runs a command (the compiler for `schema` and `check`, `first find`
+and the other site commands) stops it after 120 seconds, or the number of
+seconds in `FIRST_MCP_TIMEOUT`, and stops it when the client cancels the request.
 
 ### Run the dev site from an agent
 

@@ -48,9 +48,13 @@ pub(super) fn wp_command(project: &Path) -> Result<Command, String> {
     command(project, "wp")
 }
 
-/// `first dev` has created this project's site: the marker it writes first (scripts/dev/studio.mjs).
+/// `first dev` has created this project's site: its marker (scripts/dev/studio.mjs) says Studio
+/// finished creating it.
 pub(super) fn created(project: &Path) -> bool {
-    project.join(".first/dev/owner.json").is_file()
+    std::fs::read(project.join(".first/dev/owner.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .is_some_and(|owner| owner["created"] == true)
 }
 
 /// Something accepts connections on the site's port. Studio serves the site on localhost.
@@ -95,8 +99,7 @@ pub(super) fn status(project: &Path) -> Result<serde_json::Value, String> {
             .ok()
             .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
     };
-    // The marker says whether Studio finished creating the site.
-    if read("owner.json").is_none_or(|owner| owner["created"] != true) {
+    if !created(project) {
         return Ok(json!({ "state": "none", "start": "first dev" }));
     }
     let report = |url: &str, port: u16, running: bool, pid: Option<u64>, log: Value, versions: [&Value; 2]| {

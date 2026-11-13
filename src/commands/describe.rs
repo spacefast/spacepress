@@ -3,7 +3,7 @@
 //! answers with it. It reads the schema the pipeline built (the one `first check` compiles) and adds
 //! nothing to it.
 
-use crate::schema::{Access, App, Collection, Column, DefaultKind, RelKind, Schema};
+use crate::schema::{Access, App, ColType, Collection, Column, DefaultKind, RelKind, Schema};
 use crate::wordpress::abilities::{kebab, own_inputs};
 use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
@@ -11,7 +11,7 @@ use serde_json::{Map, Value, json};
 /// The app's HTTP API below the site root (`First\Wp\Facade::PREFIX`).
 pub(super) const API: &str = crate::sync::client::API;
 
-pub(super) fn access(rule: &Access) -> Value {
+fn access(rule: &Access) -> Value {
     match rule {
         Access::Allow(allowed) => json!(allowed),
         Access::Self_ => json!("self"),
@@ -40,18 +40,23 @@ fn fields(columns: &IndexMap<String, Column>, schema: &Schema) -> Value {
 fn field(c: &Column, schema: &Schema) -> Value {
     let mut out = Map::new();
     // A single `select([...])` is stored as text with its values; an author knows it as a select.
-    let single_select = c.ty == crate::schema::ColType::Text && c.enum_values.is_some();
+    let single_select = c.ty == ColType::Text && c.enum_values.is_some();
     // A `ref(kind)` is stored as the target's id; an author knows it as a ref.
     let authored = if single_select {
         "select"
     } else if c.references.is_some() {
         "ref"
+    } else if c.ty == ColType::MediaList {
+        // `media().many()`; the list is the `many` flag below.
+        "media"
     } else {
         c.ty.builder_name()
     };
     out.insert("type".into(), json!(authored));
+    // First fills it in: the id, the status and timestamps, a slug derived from another field.
+    let generated = c.system || c.derived || c.auto_increment || c.ty == ColType::Slug && c.source.is_some();
     // A write must supply it: required, and nothing fills it in.
-    if !c.optional_on_insert() && !c.derived && !c.system {
+    if !c.optional_on_insert() && !generated {
         out.insert("required".into(), json!(true));
     }
     let mut flag = |name: &str, on: bool| {
@@ -60,8 +65,9 @@ fn field(c: &Column, schema: &Schema) -> Value {
         }
     };
     flag("primaryKey", c.primary_key);
-    // First fills it in: the id, timestamps, a slug derived from another field.
-    flag("generated", c.system || c.derived || c.auto_increment);
+    flag("generated", generated);
+    // `select([...]).many()` and `media().many()` hold a list.
+    flag("many", c.ty.is_list_kind());
     flag("unique", c.unique && !c.primary_key);
     flag("multiline", c.multiline);
     flag("localized", c.localized);
@@ -185,7 +191,7 @@ fn kind(c: &Collection, schema: &Schema) -> Value {
 }
 
 /// `first/app/`: each page and HTTP route by its URL pattern, most specific first.
-fn routes(app: &App) -> Vec<Value> {
+fn routes(app: &App, schema: &Schema) -> Vec<Value> {
     app.routes
         .iter()
         .chain(&app.not_found)
@@ -219,8 +225,9 @@ fn routes(app: &App) -> Vec<Value> {
                         .collect::<Vec<_>>()
                 );
             }
+            // The kind whose `url` this page serves, by the name `kinds` lists it under.
             if let Some((kind, _)) = &route.kind {
-                out["kind"] = json!(kind);
+                out["kind"] = json!(schema.collections.get(kind).map_or(kind, |c| &c.key));
             }
             out
         })
@@ -298,7 +305,7 @@ pub(super) fn project(schema: &Schema) -> Value {
         "globals": globals,
         "actions": actions,
         "jobs": jobs,
-        "routes": schema.app.as_ref().map(routes).unwrap_or_default(),
+        "routes": schema.app.as_ref().map(|app| routes(app, schema)).unwrap_or_default(),
         "files": files,
         // Lowest to highest: an access rule naming a role admits that role and every one after it.
         "roles": crate::schema::ROLES,

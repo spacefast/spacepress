@@ -2,10 +2,10 @@
 //! `first check`, the command table behind `first help`, the dev site behind `first dev status`, and
 //! the site commands (`first find`, `first action`, `first insert`, `first update`).
 
-use super::{INVALID_PARAMS, Options, RpcError, docs};
+use super::{INVALID_PARAMS, Options, RpcError, child, docs};
 use crate::commands::{build, describe, dev};
 use serde_json::{Map, Value, json};
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 /// Rows `query` returns when the caller names no limit, and the most it returns.
 const DEFAULT_ROWS: u64 = 20;
@@ -105,7 +105,8 @@ pub(super) fn list(options: &Options) -> Vec<Value> {
             "Read records",
             &format!(
                 "Reads a kind's records from the local dev site with `first find`, as the trusted command line: no \
-                 access rules, drafts included. Returns {DEFAULT_ROWS} rows unless `limit` says otherwise.{}",
+                 access rules, drafts included. Returns {DEFAULT_ROWS} rows unless `limit` says otherwise, at most \
+                 {MOST_ROWS}. Like every request to the site, it first publishes scheduled posts that are due.{}",
                 if options.allow_remote_read {
                     " `site` reads another site: a project directory, a deployment workspace or a WP-CLI @alias."
                 } else {
@@ -160,7 +161,7 @@ pub(super) fn list(options: &Options) -> Vec<Value> {
                 "Inserts records of a kind into the local dev site with `first insert`, as the trusted command line.",
                 object(
                     json!({
-                        "kind": { "type": "string", "description": "A kind's name as `schema` lists it." },
+                        "kind": kind.clone(),
                         "rows": { "type": "array", "items": { "type": "object" }, "minItems": 1, "description": "One object per record." },
                     }),
                     &["kind", "rows"],
@@ -173,7 +174,7 @@ pub(super) fn list(options: &Options) -> Vec<Value> {
                 "Updates the records of a kind that match `where` on the local dev site with `first update`, as the trusted command line.",
                 object(
                     json!({
-                        "kind": { "type": "string", "description": "A kind's name as `schema` lists it." },
+                        "kind": kind.clone(),
                         "where": { "type": "object", "description": "Which records; a filter as `query` takes it." },
                         "set": { "type": "object", "description": "The fields to change." },
                     }),
@@ -252,49 +253,100 @@ fn dev_site(options: &Options) -> Result<(), String> {
     }
 }
 
-/// The project compiled as `first check` compiles it: the diagnostics envelope, and the description
-/// of its schema when there are no diagnostics. Each run registers its own sources, as the browser
-/// build does, so a long-lived process does not keep every earlier run's.
-fn compile(options: &Options) -> (Value, Option<Value>) {
-    crate::diag::isolated(|| {
-        let (envelope, built) = build::check(&options.project, build::frozen(false));
-        (envelope, built.map(|built| describe::project(&built.schema)))
-    })
+/// `first mcp <dir> --compile`: the project compiled as `first check` compiles it, as one JSON
+/// document: the diagnostics `envelope`, and the `schema` description when there are no
+/// diagnostics. It runs in a process of its own (see [`compile`]).
+pub(super) fn compiled(project: &std::path::Path) -> Value {
+    let (envelope, built) = build::check(project, build::frozen(false));
+    json!({ "envelope": envelope, "schema": built.map(|built| describe::project(&built.schema)) })
+}
+
+/// Why a command run for a tool gave no answer, as the tool's result.
+fn not_run(what: &str, ran: child::Ran, options: &Options) -> Value {
+    match ran {
+        child::Ran::TimedOut => failed(format!(
+            "{what} took longer than {} seconds and was stopped; FIRST_MCP_TIMEOUT sets the limit",
+            options.timeout.as_secs()
+        )),
+        // Never sent: the client cancelled the request.
+        child::Ran::Cancelled => failed(format!("{what} was cancelled")),
+        child::Ran::Failed(error) => failed(format!("cannot run {what}: {error}")),
+        child::Ran::Finished(_) => unreachable!("a finished command has an answer"),
+    }
+}
+
+/// The project compiled in a separate process: the diagnostics envelope, and the description of its
+/// schema when there are no diagnostics. A server that runs for hours then keeps nothing from one
+/// compile to the next, and a compile is bounded and cancellable like the site commands.
+fn compile(options: &Options) -> Result<(Value, Option<Value>), Value> {
+    let mut command =
+        Command::new(std::env::current_exe().map_err(|e| failed(format!("cannot run the compiler: {e}")))?);
+    command.arg("mcp").arg(&options.project).arg("--compile");
+    match child::run(options, command) {
+        child::Ran::Finished(output) => {
+            let answer = serde_json::from_slice::<Value>(&output.stdout)
+                .ok()
+                .filter(|answer| output.status.success() && answer["envelope"].is_object());
+            match answer {
+                Some(mut answer) => {
+                    let schema = Some(answer["schema"].take()).filter(|schema| !schema.is_null());
+                    Ok((answer["envelope"].take(), schema))
+                }
+                None => Err(failed(format!(
+                    "the compiler stopped without an answer (exit {}):\n{}",
+                    output
+                        .status
+                        .code()
+                        .map_or("signal".to_string(), |code| code.to_string()),
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ))),
+            }
+        }
+        ran => Err(not_run("the compiler", ran, options)),
+    }
 }
 
 /// A kind's storage name, which the site commands take, for the name the author gave it. A name the
 /// project does not have (or a project that does not compile) is passed on for the site to judge.
-fn storage_name(options: &Options, kind: &str) -> String {
-    compile(options)
-        .1
+fn storage_name(options: &Options, kind: &str) -> Result<String, Value> {
+    let (_, schema) = compile(options)?;
+    Ok(schema
         .and_then(|schema| schema["kinds"][kind]["path"].as_str().map(str::to_string))
-        .unwrap_or_else(|| kind.to_string())
+        .unwrap_or_else(|| kind.to_string()))
+}
+
+/// The JSON document a site command printed: its last line that is one. A PHP notice or a Studio
+/// banner printed before it does not turn a finished command into one that "did not answer".
+fn document(stdout: &str) -> Option<Value> {
+    stdout
+        .lines()
+        .rev()
+        .find_map(|line| serde_json::from_str::<Value>(line.trim()).ok().filter(Value::is_object))
 }
 
 /// Runs `first <args>` in the project, as an author would, and answers with what it printed. The
 /// site commands print one JSON document: `{"data": …}`, or `{"error": …}` with a non-zero status.
 fn site_command(options: &Options, args: &[String]) -> Value {
-    let run = std::env::current_exe().and_then(|first| {
-        Command::new(first)
-            .args(args)
-            .current_dir(&options.project)
-            .stdin(Stdio::null())
-            .output()
-    });
-    let output = match run {
-        Ok(output) => output,
+    let first = match std::env::current_exe() {
+        Ok(first) => first,
         Err(error) => return failed(format!("cannot run first {}: {error}", args[0])),
     };
+    let mut command = Command::new(first);
+    command.args(args).current_dir(&options.project);
+    let output = match child::run(options, command) {
+        child::Ran::Finished(output) => output,
+        ran => return not_run(&format!("first {}", args[0]), ran, options),
+    };
     let stdout = String::from_utf8_lossy(&output.stdout);
-    match serde_json::from_str::<Value>(stdout.trim()) {
-        Ok(answer @ Value::Object(_)) if output.status.success() && answer.get("error").is_none() => ok(answer),
-        Ok(answer @ Value::Object(_)) => json!({
+    match document(&stdout) {
+        Some(answer) if output.status.success() && answer.get("error").is_none() => ok(answer),
+        Some(answer) => json!({
             "content": [{ "type": "text", "text": answer.to_string() }],
             "structuredContent": answer,
             "isError": true,
         }),
         // Not a document: the site could not be reached. What the command said is the explanation.
-        _ => {
+        None => {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let said: Vec<&str> = stdout
                 .lines()
@@ -350,18 +402,19 @@ fn query(options: &Options, arguments: &Arguments) -> Result<Value, String> {
             .map(Some)
             .ok_or_else(|| format!("`{name}` is an integer, {least} or more")),
     };
-    find.insert(
-        "limit".into(),
-        json!(count("limit", 1)?.unwrap_or(DEFAULT_ROWS).min(MOST_ROWS)),
-    );
+    let limit = count("limit", 1)?.unwrap_or(DEFAULT_ROWS);
+    if limit > MOST_ROWS {
+        return Err(format!("`limit` is at most {MOST_ROWS}; page with `offset` for more"));
+    }
+    find.insert("limit".into(), json!(limit));
     if let Some(offset) = count("offset", 0)? {
         find.insert("offset".into(), json!(offset));
     }
-    let mut args = vec![
-        "find".to_string(),
-        storage_name(options, kind),
-        Value::Object(find).to_string(),
-    ];
+    let kind = match storage_name(options, kind) {
+        Ok(kind) => kind,
+        Err(answer) => return Ok(answer),
+    };
+    let mut args = vec!["find".to_string(), kind, Value::Object(find).to_string()];
     if let Some(site) = site {
         args.extend(["--site".to_string(), site.to_string()]);
     }
@@ -382,6 +435,8 @@ fn write(options: &Options, name: &str, arguments: &Arguments) -> Result<Value, 
     known_arguments(options, name, arguments)?;
     dev_site(options)?;
     let object = |name: &str| object_argument(arguments, name)?.ok_or_else(|| format!("`{name}` is required"));
+    let kind =
+        || -> Result<Result<String, Value>, String> { Ok(storage_name(options, name_argument(arguments, "kind")?)) };
     let args = match name {
         "run_action" => vec![
             "action".to_string(),
@@ -394,18 +449,20 @@ fn write(options: &Options, name: &str, arguments: &Arguments) -> Result<Value, 
                 .and_then(Value::as_array)
                 .filter(|rows| !rows.is_empty() && rows.iter().all(Value::is_object))
                 .ok_or("`rows` is a list of one or more objects")?;
-            vec![
-                "insert".to_string(),
-                storage_name(options, name_argument(arguments, "kind")?),
-                Value::Array(rows.clone()).to_string(),
-            ]
+            let kind = match kind()? {
+                Ok(kind) => kind,
+                Err(answer) => return Ok(answer),
+            };
+            vec!["insert".to_string(), kind, Value::Array(rows.clone()).to_string()]
         }
-        _ => vec![
-            "update".to_string(),
-            storage_name(options, name_argument(arguments, "kind")?),
-            object("where")?.to_string(),
-            object("set")?.to_string(),
-        ],
+        _ => {
+            let (filter, set) = (object("where")?.to_string(), object("set")?.to_string());
+            let kind = match kind()? {
+                Ok(kind) => kind,
+                Err(answer) => return Ok(answer),
+            };
+            vec!["update".to_string(), kind, filter, set]
+        }
     };
     // No --site: the write tools reach this project's dev site and no other.
     Ok(site_command(options, &args))
@@ -422,7 +479,10 @@ pub(super) fn call(options: &Options, name: &str, arguments: &Arguments) -> Resu
             Err(unknown)
         }
         "schema" => (|| {
-            let (envelope, schema) = compile(options);
+            let (envelope, schema) = match compile(options) {
+                Ok(compiled) => compiled,
+                Err(answer) => return Ok(answer),
+            };
             let Some(mut schema) = schema else {
                 return Ok(json!({
                     "content": [{ "type": "text", "text": format!("The project does not compile, so it has no schema yet. Fix these diagnostics first:\n{envelope}") }],
@@ -447,7 +507,7 @@ pub(super) fn call(options: &Options, name: &str, arguments: &Arguments) -> Resu
             }
             Ok(ok(schema))
         })(),
-        "check" => Ok(ok(compile(options).0)),
+        "check" => Ok(compile(options).map_or_else(|answer| answer, |(envelope, _)| ok(envelope))),
         "docs_search" => (|| {
             let query = required(arguments, "query")?;
             let limit = match arguments.get("limit") {

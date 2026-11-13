@@ -165,6 +165,7 @@ pub fn main() -> ExitCode {
             match rest.first() {
                 None => print!("{}", help()),
                 Some(name) => match usage(&rest.join(" ")).or_else(|| usage(name)) {
+                    Some(text) if name == "add" => print!("{text}\n{}", crate::commands::add::modules()),
                     Some(text) => println!("{text}"),
                     None => {
                         eprint!("no command {name}\n{}", help());
@@ -186,6 +187,7 @@ pub fn main() -> ExitCode {
             ExitCode::from(2)
         }
         "deploy" => crate::commands::deploy::adapter(&rest),
+        "add" => crate::commands::add::cli(&rest),
         "abilities" if rest.first().is_some_and(|sub| sub == "pull") => crate::commands::abilities::cli(&rest),
         "abilities" if rest.first().is_some_and(|sub| !sub.starts_with('-')) => {
             eprintln!(

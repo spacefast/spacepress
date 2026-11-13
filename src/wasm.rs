@@ -26,7 +26,8 @@
 //! `client` (`types.ts` and `schema.ts`), `genTs`, `warnings`, `unsupportedPlugins`, `hints`,
 //! `appPlugin` (every file of the `first-app-<name>` plugin `first build` writes, by path below the
 //! plugins directory: the `.sql` files under `first/_generated/migrations/` in `files` and this
-//! compile's new ones), `firstPlugins` (First's plugins in activation
+//! compile's new ones; its `first/app/openapi.json` is what `first build` also writes to
+//! `first/_generated/openapi.json`), `firstPlugins` (First's plugins in activation
 //! order) and `wordpressPlugins` (`{slug, version}`, dependencies first).
 
 use crate::loader::{self, Fs};

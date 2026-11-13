@@ -559,14 +559,27 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   collection is post type `first_<name>` with no SQL table. Both are registered like compiled
   ones, from the request after the change. `GET /__first/api/v1` reports `runtimeSchema: {
   version, hash, build }`.
-- **In the project.** `first/_generated/runtime-schema.json` lists a site's changes for the build:
-  `collections` and `globals` (fields added to declared kinds), `added` (new kinds) and `overrides`
-  (labels and presentation). The build declares them as if they were authored. A build that lacks
-  the site's changes does not drop them: they stay active, with their data.
+- **In the project.** `first pull [dir] [--site url] [--check]` writes the site's newest version to
+  `first/_generated/runtime-schema.json`: `collections` and `globals` (fields added to declared
+  kinds), `added` (new kinds) and `overrides` (labels and presentation), with the version number
+  and hash. It reads `GET /__first/api/v1/schema-versions/lock`, which answers administrators only
+  (`FIRST_APP_PASSWORD` or `FIRST_TOKEN`). Before it keeps the new lock it compiles the project
+  with it; a lock the project can't compile (it declares one of the names differently, say) is
+  not written, and the error says why. Then it refreshes `first/_generated/` (types, client).
+  `--check` exits 1 when the lock is behind the site and writes nothing. The build declares what
+  the lock lists as if it were authored, and records the version in `schema.php`.
+- **What compiled code uses.** With the flag on, `first build` writes `first/app/references.php`:
+  every field and kind name that occurs as a word in a source file it loaded. A field the build
+  declares can be removed at runtime only when it is optional and its name occurs nowhere; a kind,
+  only when its name occurs nowhere. A field your code reads, or a required one, is
+  `schema_in_use`. To remove it, delete it from your code and from the lock, build and deploy.
+- **Deploying.** A build that lacks the site's changes does not drop them: they stay active, with
+  their data, and `wp first migrate` lists them under `runtimeSchema.kept`. A build that declares
+  a runtime name, or a removed one, with another stored type is refused before any table changes,
+  with the fix (usually: `first pull`, then build).
 
-This release has the store, the loader, the rules and the build's reading of the lock. Applying a
-change is `First\Wp\SchemaVersions::of($plugin)->apply($parent, $changeSet, $actor)` from PHP;
-the Abilities, the `first schema` commands, `first pull` and the admin screen are not built yet.
+Applying a change is `First\Wp\SchemaVersions::of($plugin)->apply($parent, $changeSet, $actor)`
+from PHP; the Abilities, the `first schema` commands and the admin screen are not built yet.
 Taxonomies can't be added at runtime: `taxonomy()` is not in this First version.
 
 ## Plugin packages

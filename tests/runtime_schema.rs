@@ -417,6 +417,22 @@ fn a_site_changes_its_schema_the_project_pulls_it_and_the_next_build_contains_it
         serde_json::json!(["articles.subtitle", "articles.mood", "events", "banner"]),
         "{report}"
     );
+    // `wp first migrate` (what a deploy runs) says the same.
+    let migrated = site.php(
+        "if (!class_exists('WP_CLI')) { eval('final class WP_CLI { public static array $lines = []; public static function line(string $s): void { self::$lines[] = $s; } public static function halt(int $c): never { throw new RuntimeException(\"halt $c\"); } }'); } \
+         \\First\\Wp\\Runtime::plugin()->cli(['migrate']); return json_decode(implode(\"\\n\", WP_CLI::$lines), true);",
+        &serde_json::Value::Null,
+    );
+    assert_eq!(
+        migrated["data"]["runtimeSchema"]["kept"],
+        serde_json::json!(["articles.subtitle", "articles.mood", "events", "banner"]),
+        "{migrated}"
+    );
+    assert_eq!(
+        migrated["data"]["runtimeSchema"]["build"],
+        serde_json::json!({ "version": 0, "hash": "" }),
+        "{migrated}"
+    );
 
     // A build that declares a runtime field with another stored type is refused, and says what to do.
     std::fs::write(

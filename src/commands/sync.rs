@@ -22,7 +22,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: first sync [status | resolve <uid>] [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]\n       first sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch] [--only c1,c2] [--json]\n       credential: FIRST_APP_PASSWORD=<user:application-password> or FIRST_TOKEN=<bearer token>";
+const USAGE: &str = "usage: first sync [status | resolve <uid>] [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]\n       first sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch] [--json]\n       credential: FIRST_APP_PASSWORD=<user:application-password> or FIRST_TOKEN=<bearer token>";
 
 struct Flags {
     mode: Mode,
@@ -107,6 +107,11 @@ fn parse(args: &[String]) -> Result<Flags, String> {
             "--pr runs a sync and opens a pull request; it takes no --check, --no-commit, status or resolve".into(),
         );
     }
+    if flags.pr && flags.only.is_some() {
+        // The pull request is rebuilt from every synced kind; with some left out, their changes would
+        // drop out of it.
+        return Err("--pr syncs every kind; it takes no --only".into());
+    }
     if !flags.pr && (flags.repo.is_some() || flags.base.is_some()) {
         return Err("--repo and --base go with --pr".into());
     }
@@ -182,7 +187,11 @@ pub fn run(args: &[String]) -> ExitCode {
                 (report, result)
             }
             Err(e) => {
-                eprintln!("✗ {e}");
+                if flags.json {
+                    println!("{}", json!({"error": {"detail": e}}));
+                } else {
+                    eprintln!("✗ {e}");
+                }
                 return ExitCode::from(1);
             }
         }

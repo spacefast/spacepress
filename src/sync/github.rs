@@ -19,14 +19,18 @@ pub struct Pull {
     pub number: u64,
     pub url: String,
     pub head: String,
+    /// The description as GitHub has it (empty for a new one).
+    pub body: String,
 }
 
 impl GitHub {
     /// `repo` is `owner/name`.
     pub fn new(api: &str, repo: &str, token: &str) -> Result<GitHub, String> {
         let parsed = url::Url::parse(api).map_err(|e| format!("GITHUB_API_URL: {e}"))?;
-        if !matches!(parsed.scheme(), "http" | "https") || !parsed.username().is_empty() {
-            return Err("GITHUB_API_URL must be an http(s) URL without credentials".into());
+        // The token goes in a header: plain http only to this machine (a test or a local proxy).
+        let local = matches!(parsed.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
+        if !(parsed.scheme() == "https" || parsed.scheme() == "http" && local) || !parsed.username().is_empty() {
+            return Err("GITHUB_API_URL must be an https URL without credentials".into());
         }
         let mut parts = repo.split('/');
         let valid = |s: Option<&str>| {
@@ -67,6 +71,10 @@ impl GitHub {
                 .iter()
                 .fold(self.agent.get(&url), |r, (k, v)| r.header(*k, *v))
                 .call(),
+            ("DELETE", _) => headers
+                .iter()
+                .fold(self.agent.delete(&url), |r, (k, v)| r.header(*k, *v))
+                .call(),
             (_, Some(b)) => headers
                 .iter()
                 .fold(
@@ -79,7 +87,7 @@ impl GitHub {
                 )
                 .header("Content-Type", "application/json")
                 .send(b.to_string()),
-            _ => unreachable!("a GitHub call is a GET, or a POST or PATCH with a body"),
+            _ => unreachable!("a GitHub call is a GET or DELETE, or a POST or PATCH with a body"),
         };
         let mut response = response.map_err(|e| format!("GitHub {method} {path}: {e}"))?;
         let status = response.status().as_u16();
@@ -106,7 +114,7 @@ impl GitHub {
             .ok_or_else(|| "GitHub's answer for the repository has no default_branch".into())
     }
 
-    /// The open pull request into `base` whose branch starts with `prefix`, from this repository.
+    /// The open pull request into `base` whose branch, in this repository, starts with `prefix`.
     pub fn open_pull(&self, base: &str, prefix: &str) -> Result<Option<Pull>, String> {
         let base_q: String = url::form_urlencoded::byte_serialize(base.as_bytes()).collect();
         for page in 1..=10 {
@@ -118,12 +126,16 @@ impl GitHub {
             let list = list.as_array().ok_or("GitHub's pull request list is not a list")?;
             for pr in list {
                 let head = pr["head"]["ref"].as_str().unwrap_or_default();
-                let same_repo = pr["head"]["repo"]["full_name"].as_str() == Some(self.repo.as_str());
+                // GitHub answers in the repository's own case; owner/name compare without it.
+                let same_repo = pr["head"]["repo"]["full_name"]
+                    .as_str()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(&self.repo));
                 if same_repo && head.starts_with(prefix) {
                     return Ok(Some(Pull {
                         number: pr["number"].as_u64().ok_or("a pull request without a number")?,
                         url: pr["html_url"].as_str().unwrap_or_default().to_string(),
                         head: head.to_string(),
+                        body: pr["body"].as_str().unwrap_or_default().to_string(),
                     }));
                 }
             }
@@ -132,6 +144,25 @@ impl GitHub {
             }
         }
         Ok(None)
+    }
+
+    /// Whether a comment on the pull request is exactly `body`.
+    pub fn has_comment(&self, number: u64, body: &str) -> Result<bool, String> {
+        for page in 1..=10 {
+            let list = self.call(
+                "GET",
+                &format!("/issues/{number}/comments?per_page=100&page={page}"),
+                None,
+            )?;
+            let list = list.as_array().ok_or("GitHub's comment list is not a list")?;
+            if list.iter().any(|c| c["body"].as_str() == Some(body)) {
+                return Ok(true);
+            }
+            if list.len() < 100 {
+                break;
+            }
+        }
+        Ok(false)
     }
 
     pub fn create_pull(&self, head: &str, base: &str, title: &str, body: &str) -> Result<Pull, String> {
@@ -144,6 +175,7 @@ impl GitHub {
             number: pr["number"].as_u64().ok_or("GitHub's new pull request has no number")?,
             url: pr["html_url"].as_str().unwrap_or_default().to_string(),
             head: head.to_string(),
+            body: body.to_string(),
         })
     }
 
@@ -154,6 +186,17 @@ impl GitHub {
 
     pub fn close_pull(&self, number: u64) -> Result<(), String> {
         self.call("PATCH", &format!("/pulls/{number}"), Some(&json!({"state": "closed"})))
+            .map(|_| ())
+    }
+
+    /// Delete a branch this run pushed and could not open a pull request for.
+    pub fn delete_branch(&self, branch: &str) -> Result<(), String> {
+        let path: String = branch
+            .split('/')
+            .map(|s| url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("/");
+        self.call("DELETE", &format!("/git/refs/heads/{path}"), None)
             .map(|_| ())
     }
 
@@ -201,6 +244,13 @@ mod tests {
         ] {
             assert_eq!(repo_from_remote(remote), None, "{remote}");
         }
+    }
+
+    #[test]
+    fn the_token_goes_over_https_or_to_this_machine_only() {
+        assert!(GitHub::new("http://api.github.example", "acme/site", "t").is_err());
+        assert!(GitHub::new("http://127.0.0.1:9", "acme/site", "t").is_ok());
+        assert!(GitHub::new("https://user@api.github.com", "acme/site", "t").is_err());
     }
 
     #[test]

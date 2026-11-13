@@ -485,6 +485,19 @@ pub(crate) fn compile_tree(
                 .collect(),
         }
     };
+    // A capture from before `first/app/` may hold TSX pages for the old renderer (`pages/`, with
+    // their `first/pages.json` artifact). There is no renderer for them any more, and compiling the
+    // rest would publish the site without its pages.
+    if let Some(path) = sources
+        .files
+        .keys()
+        .find(|p| *p == "first/pages.json" || p.starts_with("pages/"))
+    {
+        return Err(failure(format!(
+            "this bundle has TSX pages from the old pages renderer ({path}), which First no longer has"
+        ))
+        .help("move the pages to first/app/ (docs/pages.md), then publish again with `first sources`"));
+    }
     let name = manifest.name;
     let root = source.join("modules");
     let source_migrations = sources

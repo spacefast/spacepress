@@ -171,13 +171,22 @@ fn a_zero_source_bundle_is_refused_when_tampered_or_mixed() {
     assert!(!output.exists());
 }
 
+/// A 0.3.0 bundle that carries TSX pages, as their render artifact or as `pages/` sources, is
+/// refused: First has no renderer for them, and compiling the rest would publish a site without
+/// its pages.
 #[test]
 fn a_zero_source_bundle_with_rendered_pages_is_refused_with_how_to_publish_again() {
+    for carried in ["zero/pages.json", "pages/page.tsx"] {
+        refuses_with_pages(carried);
+    }
+}
+
+fn refuses_with_pages(carried: &str) {
     let work = tempfile::tempdir().unwrap();
     let bundle = work.path().join("pages");
     copy_dir(&Path::new(FIXTURE).join("sources"), &bundle);
     let mut app: serde_json::Value = serde_json::from_slice(&fs::read(bundle.join("app.zero.json")).unwrap()).unwrap();
-    app["files"]["zero/pages.json"] = "{}".into();
+    app["files"][carried] = "{}".into();
     let bytes = serde_json::to_vec(&app).unwrap();
     fs::write(bundle.join("app.zero.json"), &bytes).unwrap();
     let mut manifest = manifest(&bundle);
@@ -191,12 +200,16 @@ fn a_zero_source_bundle_with_rendered_pages_is_refused_with_how_to_publish_again
     };
     fs::write(bundle.join("manifest.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
     let error = first::bundle::compile(&bundle, &work.path().join("out"), &bundle, None).unwrap_err();
-    assert!(error.message.contains("TSX pages"), "{}", error.message);
+    assert!(error.message.contains("TSX pages"), "{carried}: {}", error.message);
     assert!(
-        error.help.as_deref().is_some_and(|h| h.contains("first sources")),
-        "{:?}",
+        error
+            .help
+            .as_deref()
+            .is_some_and(|h| h.contains("first/app/") && h.contains("first sources")),
+        "{carried}: {:?}",
         error.help
     );
+    assert!(!work.path().join("out").exists(), "{carried}: nothing is written");
 }
 
 /// What a deployed 0.3.0 Space's next version serves its pages: recompiled from its stored

@@ -2499,3 +2499,100 @@ fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
     );
     assert!(other.join("first.config.ts").is_file() && !other.join("AGENTS.md").exists());
 }
+
+/// `first init --github` writes the content sync workflow at the repository's root, with the
+/// project's synced folders as its push paths; reruns keep it in step until its header line is
+/// deleted. With `ACTIONLINT` set (a path to actionlint), the file is also linted.
+#[test]
+fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path();
+    let project = repo.join("site");
+    std::fs::create_dir_all(&project).unwrap();
+    let config = |dirs: &[&str]| {
+        let kinds: Vec<String> = dirs
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                format!("const k{i} = collection({{ title: text(), body: richText().optional() }}, {{ content: \"body\", sync: \"{d}/*.md\" }});\n")
+            })
+            .collect();
+        let names: Vec<String> = (0..dirs.len()).map(|i| format!("k{i}")).collect();
+        format!(
+            "import {{ defineConfig, collection, text, richText }} from \"first\";\n{}export default defineConfig({{ name: \"gh\", collections: {{ {} }} }});\n",
+            kinds.concat(),
+            names.join(", ")
+        )
+    };
+    std::fs::write(project.join("first.config.ts"), config(&["content/posts"])).unwrap();
+    let git = Command::new("git").args(["init", "-q"]).arg(repo).output().unwrap();
+    assert!(git.status.success());
+    let path = repo.join(".github/workflows/first-sync.yml");
+
+    // Without --github: no workflow.
+    let out = init(&project, &[]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(!path.exists());
+
+    let out = init(&project, &["--github"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stdout).contains("wrote ../.github/workflows/first-sync.yml"),
+        "{}",
+        text(&out.stdout)
+    );
+    let workflow = std::fs::read_to_string(&path).unwrap();
+    for expected in [
+        "    types: [first-content-changed]\n",
+        "  schedule:\n",
+        "      - \"site/content/posts/**\"\n",
+        "        working-directory: \"site\"\n",
+        "  contents: write\n  pull-requests: write\n",
+        "run: npx --no-install first sync --pr --site \"$FIRST_SITE_URL\"\n",
+        "FIRST_APP_PASSWORD: ${{ secrets.FIRST_APP_PASSWORD }}\n",
+    ] {
+        assert!(workflow.contains(expected), "{expected:?} in\n{workflow}");
+    }
+    // Every action is pinned by a full commit SHA.
+    for line in workflow.lines().filter(|l| l.contains("uses: ")) {
+        let pin = line.split('@').nth(1).unwrap().split_whitespace().next().unwrap();
+        assert!(pin.len() == 40 && pin.bytes().all(|b| b.is_ascii_hexdigit()), "{line}");
+    }
+    if let Some(actionlint) = std::env::var_os("ACTIONLINT") {
+        let lint = Command::new(actionlint).arg(&path).output().unwrap();
+        assert!(lint.status.success(), "{}{}", text(&lint.stdout), text(&lint.stderr));
+    }
+
+    // In step: --check passes, and a rerun without --github writes nothing.
+    assert!(init(&project, &["--check"]).status.success());
+    // A new synced folder: first check says so, --check fails, and a plain rerun updates the paths.
+    std::fs::write(project.join("first.config.ts"), config(&["content/posts", "docs"])).unwrap();
+    let checked = first().arg("check").arg(&project).output().unwrap();
+    assert!(
+        text(&checked.stderr).contains(".github/workflows/first-sync.yml no longer matches"),
+        "{}",
+        text(&checked.stderr)
+    );
+    assert_eq!(init(&project, &["--check"]).status.code(), Some(1));
+    assert!(init(&project, &[]).status.success());
+    assert!(
+        std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("      - \"site/docs/**\"\n")
+    );
+
+    // Its header line deleted, the file is the author's: never rewritten, never reported.
+    let mine = std::fs::read_to_string(&path)
+        .unwrap()
+        .replacen("# Written by", "# Adapted from", 1);
+    std::fs::write(&path, &mine).unwrap();
+    std::fs::write(project.join("first.config.ts"), config(&["content/posts"])).unwrap();
+    assert!(init(&project, &["--github"]).status.success());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), mine);
+    let checked = first().arg("check").arg(&project).output().unwrap();
+    assert!(
+        !text(&checked.stderr).contains("first-sync.yml"),
+        "{}",
+        text(&checked.stderr)
+    );
+}

@@ -38,6 +38,32 @@ The checkout you run `--pr` from is never committed on or changed.
 
 `--repo owner/name` and `--base branch` choose the repository and the target branch. By default they are `GITHUB_REPOSITORY` (or `origin`'s GitHub URL) and the repository's default branch. `GITHUB_API_URL` points at GitHub Enterprise. The command talks to GitHub's REST API itself; it doesn't need the `gh` CLI.
 
+## The workflow: `first init --github`
+
+```sh
+first init --github
+```
+
+writes `.github/workflows/first-sync.yml` at the root of the repository. It runs `first sync --pr` from the project's own `first` package (`npx --no-install first`), on:
+
+| Event | What it does |
+|---|---|
+| `schedule`, hourly | brings the site's edits back as the sync pull request |
+| `repository_dispatch` of type `first-content-changed` | the same, as soon as the site reports a saved record |
+| `push` to the default branch that changes a file below a synced folder | sends those files to the site; site edits made meanwhile come back as the pull request |
+| `workflow_dispatch` | a run by hand, from the Actions tab |
+
+Its `paths` are the folders your kinds sync. When they change, `first check` says the workflow is out of date and `first init` writes it again. Delete its first line to make it yours; `first init` then leaves it alone.
+
+It names its settings and never holds a value. Set them under **Settings → Secrets and variables → Actions**:
+
+| Name | Kind | Value |
+|---|---|---|
+| `FIRST_SITE_URL` | variable | the site's URL |
+| `FIRST_APP_PASSWORD` | secret | `user:application-password` for sync ([permissions](#permissions)); or `FIRST_TOKEN` |
+
+The workflow grants its own `GITHUB_TOKEN` `contents: write` and `pull-requests: write`. In **Settings → Actions → General**, *Allow GitHub Actions to create and approve pull requests* must be on for it to open the pull request. Runs never overlap: one waits for the other (`concurrency: first-sync`). The actions it uses are pinned by commit.
+
 ## Conflicts
 
 When the same field of the same record changed in git and on the site since they last agreed, `first sync` writes neither side. It writes `.first/conflicts/<uid>.md` with both versions and the version they started from, between git's conflict markers.

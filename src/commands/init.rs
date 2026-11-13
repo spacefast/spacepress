@@ -6,6 +6,8 @@
 //!   the author's and is left as it is.
 //! - The skills this binary carries (`skills/` in the repository), under each directory in
 //!   [`SKILL_DIRS`].
+//! - With `--github`, `.github/workflows/first-sync.yml` at the repository's root: the workflow
+//!   that runs `first sync --pr` ([`super::init_github`]). Once written, reruns keep it in step.
 //!
 //! The section is generated from the compiled project (its kinds, actions, jobs, routes and
 //! endpoints, as `first mcp`'s `schema` tool describes them) and from the command table, so it goes
@@ -24,7 +26,7 @@ const END: &str = "<!-- first:end -->";
 /// Where agents look for a project's skills: `.agents/skills` (Codex and the shared convention)
 /// and `.claude/skills` (Claude Code).
 const SKILL_DIRS: [&str; 2] = [".agents/skills", ".claude/skills"];
-const USAGE: &str = "usage: first init [dir] [--check]";
+const USAGE: &str = "usage: first init [dir] [--check] [--github]";
 
 /// The `first` entry `.mcp.json` gets. `--no-install` runs the project's own `first` and never
 /// downloads a package by that name.
@@ -286,7 +288,7 @@ fn with_server(current: Option<&str>) -> Result<Option<String>, String> {
 
 /// Every file `first init` would write that differs from what is there: (path relative to the
 /// project, its new contents).
-fn pending(project: &Path, described: &Value) -> Result<Vec<(PathBuf, String)>, String> {
+fn pending(project: &Path, described: &Value, github: bool) -> Result<Vec<(PathBuf, String)>, String> {
     let read = |rel: &Path| match std::fs::read_to_string(project.join(rel)) {
         Ok(text) => Ok(Some(text)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -311,12 +313,25 @@ fn pending(project: &Path, described: &Value) -> Result<Vec<(PathBuf, String)>, 
             }
         }
     }
+    let dirs: Vec<String> = described["kinds"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(_, kind)| kind["sync"]["dir"].as_str().map(String::from))
+        .collect();
+    let (rel, text) = super::init_github::workflow(project, &dirs);
+    let current = read(&rel)?;
+    if super::init_github::managed(current.as_deref(), github) && current.as_deref() != Some(text.as_str()) {
+        out.push((rel, text));
+    }
     Ok(out)
 }
 
-/// A project that ran `first init` before: its `AGENTS.md` has the section.
+/// A project that ran `first init` before: its `AGENTS.md` has the section, or its sync workflow
+/// is the one `first init --github` wrote.
 fn installed(project: &Path) -> bool {
     std::fs::read_to_string(project.join("AGENTS.md")).is_ok_and(|text| text.contains(BEGIN))
+        || super::init_github::written(project)
 }
 
 /// The one line `first check` and `first build` print when a project's agent files no longer match
@@ -325,17 +340,25 @@ pub(super) fn stale_hint(project: &Path, schema: &crate::schema::Schema) -> Opti
     if !installed(project) {
         return None;
     }
-    let pending = pending(project, &describe::project(schema)).ok()?;
-    (!pending.is_empty()).then(|| {
-        "AGENTS.md and the agent skills no longer match this project or this compiler; run first init to update them".to_string()
-    })
+    let pending = pending(project, &describe::project(schema), false).ok()?;
+    let workflow = |(path, _): &(PathBuf, String)| path.ends_with(".github/workflows/first-sync.yml");
+    let agents = std::fs::read_to_string(project.join("AGENTS.md")).is_ok_and(|text| text.contains(BEGIN));
+    let mut stale = Vec::new();
+    if agents && pending.iter().any(|p| !workflow(p)) {
+        stale.push("AGENTS.md and the agent skills no longer match this project or this compiler");
+    }
+    if pending.iter().any(workflow) {
+        stale.push(".github/workflows/first-sync.yml no longer matches this project's synced folders");
+    }
+    (!stale.is_empty()).then(|| format!("{}; run first init to update them", stale.join(", and ")))
 }
 
 pub(crate) fn cli(args: &[String]) -> ExitCode {
-    let (mut project, mut check) = (PathBuf::from("."), false);
+    let (mut project, mut check, mut github) = (PathBuf::from("."), false, false);
     for arg in args {
         match arg.as_str() {
             "--check" => check = true,
+            "--github" => github = true,
             other if other.starts_with('-') => {
                 eprintln!("unknown option {other} for first init\n{USAGE}");
                 return ExitCode::from(2);
@@ -366,7 +389,7 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    let pending = match pending(&project, &describe::project(&built.schema)) {
+    let pending = match pending(&project, &describe::project(&built.schema), github) {
         Ok(pending) => pending,
         Err(error) => {
             eprintln!("error: {error}");

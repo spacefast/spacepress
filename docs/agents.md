@@ -21,6 +21,7 @@ made with `npm create @spacefast/first` already has them: the scaffolder runs
 | `AGENTS.md` | A section between `<!-- first:begin -->` and `<!-- first:end -->`: this project's kinds with their fields, access rules and API paths, its actions, jobs, pages and routes, the roles, the site's endpoints, every `first` command, and the skills. |
 | `.mcp.json` | A server named `first` that starts `first mcp` (below). |
 | `.agents/skills/`, `.claude/skills/` | The skills this compiler carries, one per task (below). |
+| `.github/workflows/first-sync.yml` | Only with `first init --github`: the workflow that keeps synced content and the site in step through pull requests ([Content in git](../docs-site/docs/publishing/content-in-git.mdx)). It is at the repository's root even when the project is in a folder of it. |
 
 The section is generated from the compiled project and from the command table,
 so it describes this project, not First in general. Commit all of it.
@@ -45,6 +46,9 @@ Each is a short procedure that links to the documentation for depth:
 - A server already named `first` in `.mcp.json`, and every other server, is
   left as it is.
 - The skill files are First's: a rerun writes them back as this compiler has them.
+- The workflow is First's while its first line says `first init --github` wrote it: a rerun
+  (with or without `--github`) writes it back when the synced folders change. Delete that line to
+  keep your own edits; it is never touched again.
 - A project with its own `CLAUDE.md` should import the file with a line
   `@AGENTS.md`; `first init` says so when it is missing.
 

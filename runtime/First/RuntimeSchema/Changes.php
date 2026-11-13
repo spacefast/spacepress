@@ -24,10 +24,11 @@ final class Changes
     /**
      * @param array<string, array> $kinds the collections of the schema this request runs (build + active version)
      * @param array $state the site's active version ({@see Loader::state()})
+     * @param array $declared the stored types every build on the site declared ({@see Loader::declared()})
      * @return array{changes: list<array>, state: array} the changes in stored form and the state after them
      * @throws Refused
      */
-    public static function resolve(array $kinds, array $state, mixed $changeSet): array
+    public static function resolve(array $kinds, array $state, mixed $changeSet, array $declared = []): array
     {
         if (!is_array($changeSet) || ($changeSet['format'] ?? null) !== Loader::FORMAT) {
             throw new Refused('schema_format', 'A change set is { "format": ' . Loader::FORMAT . ', "changes": [...] }; this runtime reads format ' . Loader::FORMAT, null, '/format');
@@ -49,7 +50,7 @@ final class Changes
                 throw new Refused('schema_format', 'A change is an object with an `op`', null, $pointer);
             }
             $resolved[] = match ($change['op']) {
-                'addField' => self::addField($kinds, $state, $change, $pointer),
+                'addField' => self::addField($kinds, $state, $change, $pointer, $declared),
                 default => throw self::buildOnly($change['op'], $pointer),
             };
         }
@@ -60,7 +61,7 @@ final class Changes
         return ['changes' => $resolved, 'state' => $state];
     }
 
-    private static function addField(array &$kinds, array &$state, array $change, string $pointer): array
+    private static function addField(array &$kinds, array &$state, array $change, string $pointer, array $declared): array
     {
         if (array_diff(array_keys($change), ['op', 'kind', 'field', 'definition']) !== [] || !is_string($change['kind'] ?? null) || !is_string($change['field'] ?? null)) {
             throw new Refused('schema_format', 'addField is { "op": "addField", "kind", "field", "definition" }', null, $pointer);
@@ -85,6 +86,12 @@ final class Changes
         }
         if (isset($kinds[$kind]['relations'][$field])) {
             throw new Refused('schema_invalid', "$kind.$field: `$field` is already a relation of `$kind`", 'F3001', "$pointer/field");
+        }
+        $other = $declared['collections'][$kind][$field] ?? null;
+        if ($other !== null && $other !== $stored['type']) {
+            // Another build on this site (one the host still serves, or an older one) stores this
+            // field as another type; giving it a second meaning would garble values for one of them.
+            throw new Refused('schema_retype', "$kind.$field: a build that ran on this site stores `$field` as $other. Add it as $other, or give the field another name", null, "$pointer/definition/type");
         }
         if (strlen($field) > self::MAX_NAME) {
             throw new Refused('schema_name', "$kind.$field: a field added at runtime has a name of at most " . self::MAX_NAME . ' characters; it is stored as the post meta key `' . $kinds[$kind]['wp']['metaPrefix'] . '<name>`', null, "$pointer/field");

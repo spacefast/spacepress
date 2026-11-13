@@ -520,10 +520,14 @@ with it off nothing below exists.
   `default` (`{ "value": … }` with one string, number or boolean, or `{ "now": true }`), `rules`
   (`min`, `max`), `fields`, `layouts` and `ui`.
 - **Rules.** The compiler's, with the compiler's diagnostic code in the refusal (`F3001`, `F2001`,
-  `F3101`). The site adds three of its own: a field is optional or has a default
-  (`schema_required`); a name every kind has or will have is not available (`schema_reserved`);
-  and anything that is not adding a field to a collection is `schema_build_only`, with the source
-  edit to make. Fields of a translated or synced collection are build-only for now.
+  `F3101`). The site adds its own: a field is optional or has a default (`schema_required`); a
+  name every kind has or will have is not available (`schema_reserved`); a name that any build
+  which ran on the site stores as another type keeps that type (`schema_retype`), so two builds
+  the host serves at once never read one value two ways; and anything that is not adding a field
+  to a collection is `schema_build_only`, with the source edit to make. Fields of a translated or
+  synced collection are build-only for now.
+- **Hooks.** A `beforeCreate` or `beforeUpdate` hook sees only the fields its build declares. The
+  runtime fields of the write are kept aside while it runs and added back to what it returns.
 - **Versions.** An accepted change is the next row of `<prefix>first__schema_versions`: version,
   parent, the build it was validated on, who applied it, when, the change in stored form, and a
   hash chained to the parent's. Rows are never updated or deleted. A change names the version it

@@ -57,7 +57,7 @@ final class SchemaVersions
     public function propose(mixed $changeSet): array
     {
         $state = Loader::state($this->plugin->schema->name());
-        $resolved = Changes::resolve($this->plugin->schema->collections(), $state, $changeSet);
+        $resolved = Changes::resolve($this->plugin->schema->collections(), $state, $changeSet, Loader::declared($this->plugin->schema->name()));
 
         return ['parent' => (int) $state['version'], 'changes' => $resolved['changes'], 'effects' => $this->effects($resolved['changes'])];
     }
@@ -91,7 +91,7 @@ final class SchemaVersions
             if ((int) ($state['version'] ?? 0) !== $newest['version'] || ($state['format'] ?? null) !== Loader::FORMAT) {
                 $state = $this->replay($rows);
             }
-            $resolved = Changes::resolve($this->plugin->schema->collections(), $state, $changeSet);
+            $resolved = Changes::resolve($this->plugin->schema->collections(), $state, $changeSet, Loader::declared($this->plugin->schema->name()));
             $row = ['app' => $app, 'version' => $parent + 1, 'parent' => $parent, 'format' => Loader::FORMAT, 'build' => $this->plugin->buildHash(),
                 'actor' => $actor, 'changes' => $resolved['changes'], 'createdAt' => gmdate('Y-m-d\TH:i:s.000\Z')];
             $row['hash'] = self::hashOf($newest['hash'], $row);

@@ -19,7 +19,38 @@ require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 $base = require dirname(__DIR__) . '/runtime-schema/base.schema.php';
-$wp = wpSite('rtschema', ['schema' => $base, 'server' => true]);
+// The build's articles have hooks that return a replacement object, as compiled code may.
+$base['collections']['articles']['hooks'] = ['beforeCreate' => 'articles__hook__beforeCreate', 'beforeUpdate' => 'articles__hook__beforeUpdate'];
+$wp = wpSite('rtschema', ['schema' => $base, 'server' => true, 'muPlugins' => ['rtschema-propose' => <<<'PHP'
+    <?php
+    // Test only: proposes the posted change set in a fresh request, which sees the build as deployed now.
+    add_action('init', static function (): void {
+        if (parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH) !== '/__rtschema_propose') {
+            return;
+        }
+        try {
+            $out = [200, \First\Wp\SchemaVersions::of(\First\Wp\Runtime::plugin())->propose(json_decode((string) file_get_contents('php://input'), true))];
+        } catch (\First\HttpError $e) {
+            $out = [$e->status, ['code' => $e->errorCode, 'pointer' => $e->pointer]];
+        }
+        status_header($out[0]);
+        header('Content-Type: application/json');
+        echo json_encode($out[1]);
+        exit;
+    }, 99);
+    PHP], 'functions' => <<<'PHP'
+    function articles__hook__beforeCreate(\First\JsObject $data, \First\JsObject $ctx): \First\JsObject
+    {
+        return new \First\JsObject(['title' => \First\Js::prop($data, 'title') . '!'] + array_diff_key($data->p, ['title' => 1]));
+    }
+
+    function articles__hook__beforeUpdate(\First\JsObject $patch, \First\JsObject $existing, \First\JsObject $ctx): \First\JsObject
+    {
+        // A replacement built from the fields of the build it was compiled with: a runtime field in
+        // the patch is not in it.
+        return new \First\JsObject(array_intersect_key($patch->p, \First\RuntimeSchema\Loader::compiled()['collections']['articles']['columns']));
+    }
+    PHP]);
 $api = $wp->url() . '/__first/api/v1';
 
 /** @return array{int, mixed} status and decoded body, as $as (a test user name) or anonymous */
@@ -95,13 +126,13 @@ $d = $described();
 eq('the next request describes version 1', $d['runtimeSchema'], ['version' => 1, 'hash' => $v1['hash'], 'build' => ['version' => 0, 'hash' => '']]);
 eq('with the new field as stored', $d['kinds']['articles']['columns']['subtitle'], ['type' => 'text', 'rules' => ['max' => 20], 'ui' => ['label' => 'Subtitle']]);
 [$status, $new] = http('POST', "$api/articles", ['title' => 'Written after', 'subtitle' => 'Now it fits'], 'editor');
-eq('a write takes the new field', [$status, $new['data']['subtitle'] ?? null], [201, 'Now it fits']);
+eq('a write takes the new field, and the build\'s hook still runs', [$status, $new['data']['subtitle'] ?? null, $new['data']['title'] ?? null], [201, 'Now it fits', 'Written after!']);
 [$status, $problem] = http('POST', "$api/articles", ['title' => 'Too long', 'subtitle' => str_repeat('s', 21)], 'editor');
 eq('and its rule is enforced', [$status, $problem['code'] ?? null, $problem['pointer'] ?? null], [422, 'invalid_input', '/subtitle']);
 $before = http('GET', "$api/articles/{$old['data']['id']}")[1]['data'];
 eq('an item written before the change reads the field as empty', [array_key_exists('subtitle', $before), $before['subtitle'] ?? null], [true, null]);
 [$status, $patched] = http('PATCH', "$api/articles/{$old['data']['id']}", ['subtitle' => 'Added later'], 'editor');
-eq('and takes a value', [$status, $patched['data']['subtitle'] ?? null], [200, 'Added later']);
+eq('and takes a value through a hook that returns a replacement built from the build\'s fields', [$status, $patched['data']['subtitle'] ?? null], [200, 'Added later']);
 eq('the value is post meta under the field\'s name', $wp->scalar("SELECT meta_value FROM {prefix}postmeta WHERE post_id = ? AND meta_key = 'first_subtitle'", [$new['data']['id']]), 'Now it fits');
 [$status, $core] = http('GET', $wp->url() . "/wp-json/wp/v2/first_articles/{$new['data']['id']}?context=edit", null, 'editor');
 eq('core REST serves it as registered meta', [$status, $core['meta']['subtitle'] ?? null], [200, 'Now it fits']);
@@ -189,6 +220,19 @@ $wp->writeSchema($related);
 $columns = $described()['kinds']['articles']['columns'];
 check('a build\'s relation wins over a runtime field of the same name', !isset($columns['stars']) && isset($columns['teaser']), array_keys($columns));
 eq('and the field\'s stored values are untouched', $wp->scalar("SELECT meta_value FROM {prefix}postmeta WHERE post_id = ? AND meta_key = 'first_stars'", [$defaulted['data']['id']]), '3');
+
+// A build that ran on the site declared `mood` as an integer. Another build is served now, without
+// it; a runtime change can't give `mood` another type, whichever build the request runs.
+$moody = $base;
+$moody['collections']['articles']['columns']['mood'] = ['type' => 'integer'];
+$wp->writeSchema($moody);
+eq('the build that declares mood initializes on the site', http('GET', "$api/articles?limit=1")[0], 200);
+$wp->writeSchema($base);
+http('GET', "$api/articles?limit=1");
+[$status, $retype] = http('POST', $wp->url() . '/__rtschema_propose', $add('mood', ['type' => 'text']));
+eq('a runtime field can\'t take a name an earlier build stored as another type', [$status, $retype['code'] ?? null, $retype['pointer'] ?? null], [422, 'schema_retype', '/changes/0/definition/type']);
+[$status] = http('POST', $wp->url() . '/__rtschema_propose', $add('mood', ['type' => 'integer']));
+eq('it can take it with the same type', $status, 200);
 
 // A build without the runtime changes (the project was not pulled): nothing is dropped.
 $wp->writeSchema($base);

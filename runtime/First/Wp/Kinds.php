@@ -285,6 +285,14 @@ final class Kinds
         return $out;
     }
 
+    /** A field another plugin registered on $postType's REST route with register_rest_field, writable. */
+    private static function restField(string $postType, string $field): bool
+    {
+        rest_get_server(); // fires rest_api_init once, where plugins register their fields
+
+        return isset($GLOBALS['wp_rest_additional_fields'][$postType][$field]['update_callback']);
+    }
+
     private static function firstInput(array $kind, array $data, bool $create): array
     {
         $spec = $kind['spec'];
@@ -320,6 +328,10 @@ final class Kinds
                 $out['date_gmt'] = is_string($value) ? substr($value, 0, 19) : $value;
             } elseif (in_array($col, ['locale', 'translationOf'], true) && ($spec['localized'] ?? false)) {
                 $out[$col] = $value; // a translation's language and group (PostsController::firstWrite)
+            } elseif ($kind['type'] === 'post' && self::restField($spec['wp']['postType'], $col)) {
+                // A field another plugin registered on this post type's REST route (register_rest_field):
+                // core's own update of it runs, as for any core client.
+                $out[$col] = $value;
             } elseif (isset(PostMeta::fields($spec)[$col])) {
                 // A field: core's `meta`, which core's permission check and First's rules on it read.
                 $meta[$col] = $value;

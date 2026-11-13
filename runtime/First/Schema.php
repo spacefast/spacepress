@@ -52,8 +52,8 @@ final class Schema
 
     /**
      * Null unless the app set `runtimeSchema: true`. Otherwise the version the build contains
-     * (`version`, `hash`) and what this request added from the site's active version (`active`:
-     * its `version` and `hash`, and `added`, kind => field names).
+     * (`version`, `hash`) and the site's active version this request runs (`active`: its `version`
+     * and `hash`).
      */
     public function runtimeSchema(): ?array
     {

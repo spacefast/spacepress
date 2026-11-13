@@ -112,7 +112,11 @@ test("the job the 0.3 site queued runs under First's hooks", async () => {
   assert.deepEqual(sql("SELECT DISTINCT hook FROM wp_actionscheduler_actions WHERE status = 'pending' AND hook LIKE 'zero%'"), []);
   assert.deepEqual(sql("SELECT slug FROM wp_actionscheduler_groups WHERE slug LIKE 'zero%'"), []);
   wp("action-scheduler", "run", "--hooks=first_job");
-  assert.deepEqual(sql("SELECT job, state FROM wp_first__jobs"), [{ job: "stamp", state: "done" }]);
+  assert.deepEqual(sql("SELECT job, state FROM wp_first__jobs WHERE job = 'stamp'"), [{ job: "stamp", state: "done" }]);
+  // The rows that came over from 0.3 were never indexed: the upgrade queues one search rebuild per
+  // kind that has rows, and after it the old rows are searchable.
+  assert.deepEqual(sql("SELECT DISTINCT job, state FROM wp_first__jobs WHERE job <> 'stamp'"), [{ job: "first.search.reindex", state: "done" }]);
+  assert.deepEqual((await ok("GET", "/notes?search=kept")).map((n: any) => n.title), ["Kept note"]);
   const note = await ok("GET", `/notes/${seeded.note}`);
   assert.equal(note.done, true);
   const cron = wp("eval", "echo wp_json_encode(array_merge(...array_map('array_keys', array_values(array_filter(_get_cron_array(), 'is_array')))));");

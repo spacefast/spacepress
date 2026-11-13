@@ -61,6 +61,7 @@ mod runtime_files {
 #[cfg(feature = "cli")]
 mod docs_files {
     include!(concat!(env!("OUT_DIR"), "/docs_files.rs"));
+    include!(concat!(env!("OUT_DIR"), "/skills_files.rs"));
 }
 
 pub mod bundle;

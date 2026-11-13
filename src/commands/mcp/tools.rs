@@ -7,7 +7,6 @@ use crate::commands::{build, describe, dev};
 use serde_json::{Map, Value, json};
 use std::process::{Command, Stdio};
 
-const COMMANDS: &str = include_str!("../../../runtime/First/Cli/commands.json");
 /// Rows `query` returns when the caller names no limit, and the most it returns.
 const DEFAULT_ROWS: u64 = 20;
 const MOST_ROWS: u64 = 500;
@@ -466,7 +465,7 @@ pub(super) fn call(options: &Options, name: &str, arguments: &Arguments) -> Resu
             )?))
         })(),
         "commands" => Ok(ok(
-            serde_json::from_str(COMMANDS).expect("runtime/First/Cli/commands.json is JSON")
+            serde_json::from_str(crate::cli::COMMANDS).expect("runtime/First/Cli/commands.json is JSON")
         )),
         "dev_status" => dev::status(&options.project).map(ok),
         _ => return Err(RpcError::new(INVALID_PARAMS, format!("Unknown tool: {name}"))),

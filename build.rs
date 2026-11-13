@@ -4,7 +4,8 @@
 //!
 //! Also embeds the documentation `first mcp` searches and reads (`docs_files.rs`): the guides and
 //! references in `docs/*.md` and the docs site's pages in `docs-site/docs/`, so an answer matches
-//! the binary that gave it.
+//! the binary that gave it. And the agent skills under `skills/`, which `first init` writes into a
+//! project.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -95,6 +96,20 @@ fn embed_docs(manifest: &Path, out_dir: &Path) {
     }
     src.push_str("];\n");
     std::fs::write(out_dir.join("docs_files.rs"), src).expect("write docs_files.rs");
+
+    // `skills/<name>/…`: every file of every skill, as paths relative to `skills/`.
+    println!("cargo:rerun-if-changed=skills");
+    let root = manifest.join("skills");
+    let mut files = Vec::new();
+    collect(&root, &root, &mut files);
+    let mut src = String::from("/// (path relative to skills/, contents)\npub const SKILLS: &[(&str, &str)] = &[\n");
+    for f in &files {
+        let abs = root.join(f);
+        println!("cargo:rerun-if-changed={}", abs.display());
+        let _ = writeln!(src, "    ({f:?}, include_str!({:?})),", abs.display().to_string());
+    }
+    src.push_str("];\n");
+    std::fs::write(out_dir.join("skills_files.rs"), src).expect("write skills_files.rs");
 }
 
 fn main() {

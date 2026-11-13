@@ -52,6 +52,9 @@ serves it as the docs site's playground compiler (see [`docs-site/README.md`](do
 
 `build.rs` also embeds `docs/*.md` (design proposals excepted) and `docs-site/docs/` for
 `first mcp`'s `docs_search` and `docs_read`, so a documentation change needs a rebuild to show there.
+It embeds `skills/` the same way: each `skills/<name>/SKILL.md` is an agent skill in the layout of
+[WordPress/agent-skills](https://github.com/WordPress/agent-skills), and `first init` writes them
+into a project. Every command a skill names must exist: run it before you write it down.
 
 The runtime under `runtime/` is embedded into the binary by `build.rs` and
 written out by `first build` into the `first-runtime`, `first-identity` and
@@ -61,7 +64,7 @@ files under `runtime/` are picked up without code changes.
 ## The commands
 
 `first help` prints every command, grouped. **Build** commands (`dev`, `build`,
-`check`, `doctor`, `mcp`, `sync`, `abilities pull`, `migrate app|config`, `deploy`) run in the `first`
+`check`, `doctor`, `init`, `mcp`, `sync`, `abilities pull`, `migrate app|config`, `deploy`) run in the `first`
 binary against the project's files (`abilities pull` reads a site's abilities
 into the committed `first/_generated/abilities.json`). **Site** commands (`migrate`, `seed`,
 `jobs`, `run`, `identity`, …) are implemented once, as `wp first <command>` in

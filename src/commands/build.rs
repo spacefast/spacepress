@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 /// Runs the whole pipeline in memory.
-fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
+pub(super) fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
     let entry = project.join("first.config.ts");
     if !entry.is_file() {
         return Err(Diag::new(
@@ -383,9 +383,13 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     for w in &built.unsupported_plugins {
         eprintln!("warning: {w}");
     }
+    // A project that ran `first init`: its agent files follow the config and the compiler.
+    let agent_files = (!args.quiet)
+        .then(|| super::init::stale_hint(&project, &built.schema))
+        .flatten();
     if args.command == "check" {
         if !args.quiet {
-            for h in &built.hints {
+            for h in built.hints.iter().chain(&agent_files) {
                 eprintln!("hint: {h}");
             }
         }
@@ -437,7 +441,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         eprintln!("warning: this migration {w}");
     }
     if !args.quiet {
-        for h in &built.hints {
+        for h in built.hints.iter().chain(&agent_files) {
             eprintln!("hint: {h}");
         }
     }

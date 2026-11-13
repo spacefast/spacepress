@@ -421,6 +421,24 @@ final class WpSite
         }
     }
 
+    /**
+     * The `serveRoute` match for a `first/app/` HTTP handler, as the app router finds it: the
+     * route whose pattern takes `$path`, that file's `$method` handler, and its access rule.
+     *
+     * @return array{name: string, params: array<string, string>, route: array<string, mixed>}
+     */
+    public function route(string $method, string $path): array
+    {
+        $app = $this->plugin()->schema->app();
+        $match = \First\Wp\AppRouter::match($app['routes'], $path) ?? throw new \RuntimeException("no route takes $path");
+        $file = $app['files'][$match['route']['handler'] ?? $match['route']['page']];
+        return [
+            'name' => (string) $match['route']['id'],
+            'params' => array_map(static fn ($v) => is_array($v) ? implode('/', $v) : $v, $match['params']),
+            'route' => ['handler' => $file['methods'][$method] ?? throw new \RuntimeException("$path has no $method"), 'access' => $file['access'] ?? ['allow' => false], 'signature' => $file['signature'] ?? null],
+        ];
+    }
+
     /** Where an upload URL of this site lives on disk. */
     public function uploadPath(string $url): string
     {

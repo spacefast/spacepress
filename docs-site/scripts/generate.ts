@@ -209,8 +209,11 @@ interface Command {
 const commands = json<{ build: Command[]; site: Command[] }>("runtime/First/Cli/commands.json");
 const sentence = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}${/[.)]$/.test(s) ? "" : "."}`;
 const usage = (prefix: string, c: Command) => `${prefix} ${c.name}${c.args ? ` ${c.args}` : ""}`;
+// A summary may point at a repository doc, `(docs/deployment.md)`, for the terminal. On the site
+// that becomes a link to the file on GitHub.
+const docLinks = (text: string) => text.replace(/\((docs\/[\w./-]+\.md)\)/g, (_, file: string) => `([${file}](${github}/${file}))`);
 const commandRows = (prefix: string, rows: Command[]) =>
-	rows.map((c) => `| \`${cell(toFirst(usage(prefix, c)))}\` | ${cell(mdx(sentence(toFirst(c.summary))))} |`).join("\n");
+	rows.map((c) => `| \`${cell(toFirst(usage(prefix, c)))}\` | ${cell(docLinks(mdx(sentence(toFirst(c.summary)))))} |`).join("\n");
 // Commands that move an app or its data from another system. Migrations are experimental, so the
 // reference leaves them out and says so. `migrate` (apply database migrations) is not one of them.
 const experimental = new Set(["migrate app", "migrate config", "migrate-legacy", "migrate-legacy-users", "migrate-spacefast"]);

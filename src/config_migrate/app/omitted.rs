@@ -197,7 +197,7 @@ pub(super) fn carries(key: &str, value: &serde_json::Value, served: &BTreeSet<St
 /// - an absolute URL or an empty source;
 /// - a first segment holding a pattern character (the engine compiles `:name` anywhere in a
 ///   segment to `[^/]+`, so `/w:x` matches `/wp-json`, and `*` to a splat);
-/// - a first segment WordPress or First owns (`endpoints::RESERVED`, `wp-json` among them), or one
+/// - a first segment WordPress or First owns (`app::RESERVED_FIRST`, `wp-json` among them), or one
 ///   starting with `wp-` (WordPress's own entry points);
 /// - a first segment the candidate serves files under (`served`, from its public/ tree: the
 ///   converted client's `app/`, `first/` and stylesheet folders, and the carried static files).
@@ -221,7 +221,7 @@ fn redirect_reaches_app(rule: &serde_json::Value, served: &BTreeSet<String>) -> 
     first.is_empty()
         || first.contains([':', '*'])
         || lower.starts_with("wp-")
-        || super::endpoints::RESERVED.contains(&lower.as_str())
+        || crate::app::RESERVED_FIRST.contains(&lower.as_str())
         || served.contains(&lower)
 }
 /// The WordPress-style theme file 0.8 read for the pages' theme tokens (`THEME_JSON_FILE`).
@@ -622,7 +622,7 @@ pub(super) fn sweep(
         if name == "index.html" && client_app {
             continue;
         }
-        let reserved = super::endpoints::RESERVED.contains(&first.to_ascii_lowercase().as_str());
+        let reserved = crate::app::RESERVED_FIRST.contains(&first.to_ascii_lowercase().as_str());
         match fs.read_to_string(&root.join(&relative)) {
             Ok(text) if !reserved => {
                 out.files.insert(format!("public/{name}"), text);

@@ -38,6 +38,14 @@ pub const RESERVED_FIRST_SEGMENTS: &[&str] = &[
     "wp-trackback.php",
     "wp-comments-post.php",
     "wp-mail.php",
+    // The host's and First's own entry points.
+    ".well-known",
+    "__zero",
+    "identity",
+    "index.php",
+    "wp-config.php",
+    "first-admin",
+    "auth",
 ];
 
 /// What the pattern may refer to on its kind.

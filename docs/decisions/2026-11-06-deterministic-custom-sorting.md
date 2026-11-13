@@ -1,5 +1,7 @@
 # Restrict custom sorting to numeric key differences
 
+Superseded by [2026-11-11-array-sort-timsort](2026-11-11-array-sort-timsort.md): sorting now runs V8's TimSort, so every comparator is accepted.
+
 JavaScript engines choose comparator call sequences. A callback that changes state, or an inconsistent comparator, can return different observable results across Node and PHP. Matching one engine's sequence would also depend on its version.
 
 We accept numeric subtraction between the two parameters, or matching property paths, in either direction. The compiler records that shape; the runtime sorts by finite primitive keys without invoking user callbacks. Other comparator shapes and nonfinite or object keys receive explicit refusals.

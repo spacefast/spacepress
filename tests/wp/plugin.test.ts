@@ -40,7 +40,7 @@ test("activation registers the post types, field groups and options page, and cr
   assert.deepEqual(scf.pages, [["first-global-settings", "first_global_settings", "first-blog"]]);
 
   const tables = sql("SELECT TABLE_NAME AS t, ENGINE AS e FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'wp\\_first%' AND TABLE_NAME NOT LIKE 'wp\\_first\\_identity\\_%'");
-  const sharedTables = ["wp_first__files", "wp_first__jobs", "wp_first__migrations", "wp_first__outbox", "wp_first__receipts", "wp_first__revisions", "wp_first_comments", "wp_first_field_teams", "wp_first_fuse_log", "wp_first_guestbook", "wp_first_hook_notes", "wp_first_job_notes", "wp_first_key_links", "wp_first_key_roots", "wp_first_phrases", "wp_first_reviews", "wp_first_signups", "wp_first_tour_log"];
+  const sharedTables = ["wp_first__files", "wp_first__jobs", "wp_first__migrations", "wp_first__outbox", "wp_first__receipts", "wp_first__revisions", "wp_first_comments", "wp_first_field_teams", "wp_first_fuse_log", "wp_first_guestbook", "wp_first_hook_notes", "wp_first_job_notes", "wp_first_phrases", "wp_first_reviews", "wp_first_signups", "wp_first_tour_log"];
   assert.deepEqual(tables.filter((r) => sharedTables.includes(r.t)).map((r) => r.t).sort(), sharedTables);
   assert.deepEqual([...new Set(tables.map((r) => r.e))], ["InnoDB"]);
   assert.deepEqual(sql("SELECT app, id FROM wp_first__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]]);
@@ -686,13 +686,12 @@ test("runtime registrations extend system tables and every generated SCF field",
         echo "file\\0bytes:" . get_option('first_stream_committed', 'uncommitted');
       }, 200, ['Content-Type' => 'application/octet-stream', 'Content-Disposition' => 'attachment; filename="proof.bin"']);
     });
-    $request = new WP_REST_Request('GET', '/first/v1/download-proof');
-    $request['path'] = 'download-proof';
-    $response = \\First\\Wp\\Rest::dispatch($app, $request);
+    [$status, $headers, $body] = \\First\\Wp\\Facade::route(\\First\\Wp\\Plugin::instance(), 'GET', '/download-proof', [], '');
+    // The stream runs after the operation commits, as the facade emits it.
     ob_start();
-    $served = \\First\\Wp\\Rest::serve(false, $response);
-    $body = ob_get_clean();
-    echo wp_json_encode([$response->get_status(), $response->get_headers()['Content-Type'], $response->get_headers()['Content-Disposition'], $served, $body]);
+    \\First\\Response::emit($body);
+    $out = ob_get_clean();
+    echo wp_json_encode([$status, $headers['Content-Type'], $headers['Content-Disposition'], $body instanceof Closure, $out]);
     delete_option('first_stream_committed');
   `));
   assert.deepEqual(stream, [200, "application/octet-stream", 'attachment; filename="proof.bin"', true, "file\0bytes:committed"]);

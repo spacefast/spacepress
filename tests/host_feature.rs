@@ -13,6 +13,28 @@ fn host_capture_matches_native_bundle_bytes_and_compiles() {
     }
     let result = first::host::compile_sources(&host, &work.path().join("compiled"), &host, None).unwrap();
     assert_eq!(result["format"], "first.hosted.v1");
+    // What a host reads without opening First's generated files (docs/host-contract.md).
+    assert_eq!(result["hostContract"], first::host_contract::HOST_CONTRACT);
+    assert_eq!(result["summary"]["name"], "pantry");
+    assert_eq!(
+        result["summary"]["tables"],
+        serde_json::json!(["items", "locations", "shopping_list"])
+    );
+    assert_eq!(result["summary"]["collections"], result["summary"]["tables"]);
+    assert!(
+        result["summary"]["actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a == "consume"),
+        "{}",
+        result["summary"]
+    );
+    assert_eq!(result["host"]["mount"], "First\\Loader\\Loader::load");
+    assert_eq!(result["host"]["jobsCommand"], "wp first jobs tick");
+    let written: serde_json::Value =
+        serde_json::from_slice(&fs::read(work.path().join("compiled/manifest.json")).unwrap()).unwrap();
+    assert_eq!(written, result, "the manifest file is what compile_sources returns");
     assert!(
         work.path()
             .join("compiled/plugins/first-runtime/first-runtime.php")
@@ -175,6 +197,8 @@ fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
         "islands/cheer.client.ts",
         "styles/global.css",
         "pages/about/compass.svg",
+        "first/app/applause/page.tsx",
+        "first/components/CheerButton.tsx",
     ] {
         assert!(app["files"][file].is_string(), "{file} is captured");
     }
@@ -193,7 +217,7 @@ fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
     );
     assert_eq!(
         manifest["pagePaths"],
-        serde_json::json!(["/", "/about", "/notes", "/notes/:item", "/notes/featured"])
+        serde_json::json!(["/", "/about", "/applause", "/notes", "/notes/:item", "/notes/featured"])
     );
     let plugin = tree(&compiled.join("plugins/first-pages-fullsite"));
     let artifact: serde_json::Value = serde_json::from_str(app["files"]["first/pages.json"].as_str().unwrap()).unwrap();
@@ -222,7 +246,7 @@ fn host_capture_of_a_pages_site_matches_native_and_emits_the_pages_plugin() {
     let schema =
         String::from_utf8(fs::read(compiled.join("plugins/first-app-fullsite/first/app/schema.php")).unwrap()).unwrap();
     assert!(
-        schema.contains("'feed' => ['method' => 'GET', 'path' => '/api/feed.json'"),
+        schema.contains("'app/api/feed.json/route.ts' => ['component' => null"),
         "{schema}"
     );
 }
@@ -336,88 +360,28 @@ fn a_tampered_render_artifact_cannot_carry_php_or_escape_the_plugin() {
     );
 }
 
+/// A `first/app/` route captures from source with no page artifact, and the host compile lists it
+/// with its typed `req` (route shapes and refusals are tests/app_router.rs's).
 #[test]
-fn routes_declare_one_method_and_a_path_that_wordpress_does_not_own() {
+fn app_routes_capture_and_compile_on_the_host() {
     let work = tempfile::tempdir().unwrap();
-    let check = |routes: &str| {
-        fs::write(
-            work.path().join("first.config.ts"),
-            format!("import {{ defineConfig, route }} from 'first'; export default defineConfig({{ name: 'r', routes: {{ {routes} }} }});"),
-        )
-        .unwrap();
-        first::host::sources(work.path(), &work.path().join(format!("o{}", rand_suffix())))
-            .map(|_| ())
-            .map_err(|e| e.message)
-    };
-    let ok = "a: route({ method: 'GET', path: '/api/:id/feed.json', access: 'anyone', handler: (req) => ({ body: req.params['id'] + (req.query.get('k') ?? '') + req.query.getAll('k').join(',') }) })";
-    assert_eq!(check(ok), Ok(()));
-    for (routes, message) in [
-        (
-            "a: route({ method: 'GET', path: '/wp-json/x', access: 'anyone', handler: () => ({}) })",
-            "owns",
-        ),
-        (
-            "a: route({ method: 'GET', path: 'api', access: 'anyone', handler: () => ({}) })",
-            "must start with /",
-        ),
-        (
-            "a: route({ method: 'TRACE', path: '/x', access: 'anyone', handler: () => ({}) })",
-            "not supported",
-        ),
-        (
-            "a: route({ method: 'GET', path: '/x', handler: () => ({}) })",
-            "needs access or signature",
-        ),
-        (
-            "a: route({ method: 'GET', path: '/x/:a', access: 'anyone', handler: () => ({}) }), b: route({ method: 'GET', path: '/x/:b', access: 'anyone', handler: () => ({}) })",
-            "both match",
-        ),
-        (
-            "a: route({ method: 'GET', path: '/x', access: 'anyone', handler: () => ({ status: 'ok' }) })",
-            "not a route response",
-        ),
-        (
-            "a: route({ method: 'GET', path: '/x', access: 'anyone', handler: (req) => ({ body: req.query['k'] }) })",
-            "has no field `k`",
-        ),
-    ] {
-        let error = check(routes).unwrap_err();
-        assert!(error.contains(message), "{routes}: {error}");
-    }
-}
-
-fn rand_suffix() -> u64 {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static N: AtomicU64 = AtomicU64::new(0);
-    N.fetch_add(1, Ordering::Relaxed)
-}
-
-#[test]
-fn a_route_cannot_take_a_page_url() {
-    let work = tempfile::tempdir().unwrap();
-    let project = pages_project(work.path());
-    let config = project.join("first.config.ts");
-    let text = fs::read_to_string(&config).unwrap();
+    fs::create_dir_all(work.path().join("first/app/api/[id]/feed.json")).unwrap();
     fs::write(
-        &config,
-        text.replace("path: \"/api/feed.json\"", "path: \"/notes/:id\""),
+        work.path().join("first.config.ts"),
+        "import { defineConfig } from 'first'; export default defineConfig({ name: 'r' });",
     )
     .unwrap();
-    let error = refused(&project, &work.path().join("out"));
-    assert!(error.message.contains("can match a URL the page"), "{}", error.message);
-    // A literal path under an item route is a URL that route serves, whatever the method.
     fs::write(
-        &config,
-        text.replace("path: \"/api/feed.json\"", "path: \"/notes/hello\"")
-            .replace(
-                "method: \"GET\",\n      path: \"/notes/hello\"",
-                "method: \"POST\",\n      path: \"/notes/hello\"",
-            ),
+        work.path().join("first/app/api/[id]/feed.json/route.ts"),
+        "import type { RouteRequest } from 'first';\nexport const access = 'anyone';\nexport async function GET(req: RouteRequest) { return { body: req.params['id'] + (req.query.get('k') ?? '') + req.query.getAll('k').join(',') }; }\n",
     )
     .unwrap();
-    assert!(
-        refused(&project, &work.path().join("out2"))
-            .message
-            .contains("can match a URL the page")
+    let out = work.path().join("src");
+    first::host::sources(work.path(), &out).expect("captures");
+    let compiled = work.path().join("compiled");
+    let manifest = first::host::compile_sources(&out, &compiled, &out, None).expect("compiles");
+    assert_eq!(
+        manifest["routes"],
+        serde_json::json!([{ "method": "GET", "path": "/api/:id/feed.json" }])
     );
 }

@@ -635,6 +635,16 @@ listens and purges those URLs from Batcache and the edge. With no listener
   rolled-back transaction announces nothing.
 - `Purges::paths(array $urls): list<string>` turns URLs into the announced
   paths, `.md` twins included.
+- **`first/app/` pages** (`Render\Cache`): an anonymous visitor's 200 render of
+  a page outside any guarded layout sends `Cache-Control: public,
+  s-maxage=300, max-age=0, must-revalidate` (the `first_app_cache_window`
+  filter sets the window); anything else sends `private, no-store` and calls
+  `batcache_cancel()`. Each cacheable render records the rows it read in
+  `first__app_reads` (kind, row id or `*` for a listing, path with query). A
+  committed write to a kind announces, once after commit, every recorded path
+  that read that row or listed the kind, with its `.md` twin. More than 200
+  paths becomes `/*`, a whole-host purge. Nothing is recorded or announced
+  without a listener.
 
 ## CLI (`wp first`)
 
@@ -1011,8 +1021,8 @@ Arrays (`JsArray`):
 - `arrSlice(JsArray $a, int|float $start = 0, int|float|null $end = null): JsArray`, `arrAt(JsArray $a, int|float $i): mixed`.
 - `splice(JsArray $a, int|float $start, int|float|null $deleteCount = null, mixed ...$items): JsArray`.
 - `push(JsArray $a, mixed ...$items): int`, `unshift(...)`: int; `pop(JsArray $a): mixed`, `shift(...)`: mixed.
-- `reverse(JsArray $a): JsArray`, `sort(JsArray $a, ?callable $cmp = null): JsArray`, `fill(JsArray $a, mixed $v, int|float $start = 0, int|float|null $end = null): JsArray` mutate the handle. Sort is stable; default comparison uses UTF-16 code units and refuses multiple object values. Custom comparators must be compiler-recognized numeric differences between the two parameters or matching property paths. The runtime sorts finite primitive keys; arbitrary or effectful comparator callbacks are refused before invocation.
-- `sorted(JsArray $a, ?callable $cmp = null): JsArray` (`toSorted`), `toReversed(JsArray $a): JsArray`, `with(JsArray $a, int|float $index, mixed $value): JsArray` return new handles.
+- `reverse(JsArray $a): JsArray`, `sort(JsArray $a, mixed $cmp = null): JsArray`, `fill(JsArray $a, mixed $v, int|float $start = 0, int|float|null $end = null): JsArray` mutate the handle. Sort runs V8's TimSort (`JsSort`, matching `src/sort.rs` for configuration evaluation), so any comparator sees Node's calls in Node's order; its result converts with ToNumber and NaN counts as 0. Default comparison uses the UTF-16 code units of each element's string form. Undefined goes last without reaching the comparator. `sort` writes the array only after sorting succeeds. A compiler-recognized numeric key difference (`Js::sortComparator`) reads each key once instead of calling the comparator, only when every key is a finite primitive own data property, where the result is the same.
+- `sorted(JsArray $a, mixed $cmp = null): JsArray` (`toSorted`), `toReversed(JsArray $a): JsArray`, `with(JsArray $a, int|float $index, mixed $value): JsArray` return new handles.
 - `reduce(JsArray $a, callable $f, mixed ...$init): mixed` calls `(acc, value, index, array)`; empty without init throws `TypeError`.
 - `flat(JsArray $a, int|float $depth = 1): JsArray` (typed calls accept depths 0 and 1, with null selecting 0 and undefined selecting 1), `flatMap(JsArray $a, callable $f): JsArray`; flatMap flattens each result before the next callback.
 - `concat(JsArray $a, mixed ...$items): JsArray` reads receiver elements after evaluating every argument. Element inference preserves null and undefined, including nullable array operands.

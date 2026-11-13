@@ -28,6 +28,7 @@ pub mod plugins;
 pub mod schema;
 pub mod schema_php;
 pub mod services_config;
+pub mod sort;
 pub mod types;
 pub mod uri;
 pub mod value;
@@ -45,6 +46,7 @@ pub mod config_migrate;
 mod emit;
 #[cfg(feature = "host")]
 pub mod host;
+pub mod host_contract;
 #[cfg(feature = "host")]
 pub mod store;
 #[cfg(any(feature = "cli", feature = "host"))]

@@ -17,7 +17,6 @@
           "posts.beforeCreate"
         ],
         "actions": [],
-        "routes": [],
         "http": [],
         "env": [],
         "mail": [],

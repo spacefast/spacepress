@@ -812,9 +812,49 @@ export interface Register {}
 
 type RegisteredSchema = Register extends { relations: Relations<infer S, any> } ? S : never;
 
-/** The app's kinds by registered name: what `import { posts } from "first:db"` gives you. */
-export type RegisteredKinds = [RegisteredSchema] extends [never] ? {} : RegisteredSchema;
 type RegisteredRelations = Register extends { relations: Relations<any, infer C> } ? C : {};
+
+type KindListOptions<TSchema extends Schema, TRels, K extends keyof TSchema, TCols, TWith> = {
+  locale?: Locale | "*";
+  where?: RelationsFilter<TSchema, TRels, K>;
+  orderBy?: OrderBy<TSchema[K]>;
+  /** A case-insensitive match on the kind's title, content and text fields the visitor may read. */
+  search?: string;
+  limit?: number;
+  columns?: TCols;
+  with?: TWith;
+};
+
+/**
+ * The query API of one kind (spec §3), on what `import { posts } from "first:db"` gives you. Every
+ * call runs as the visitor the request runs as: access rules, draft visibility and field masks
+ * apply. Jobs and signed webhooks run as the system. `posts.system` makes the same calls trusted.
+ */
+export interface KindApi<TSchema extends Schema, TRels, K extends keyof TSchema> {
+  list<TCols extends ColumnsSelection<TSchema[K]> = {}, TWith extends WithConfig<TSchema, TRels, K> = {}>(
+    q?: KindListOptions<TSchema, TRels, K, TCols, TWith> & { offset?: number },
+  ): Promise<QueryRow<TSchema, TRels, K, TCols, TWith>[]>;
+  /** `limit` rows (20 by default, at most 100) after `cursor`; `cursor` is null on the last page. */
+  paginate<TCols extends ColumnsSelection<TSchema[K]> = {}, TWith extends WithConfig<TSchema, TRels, K> = {}>(
+    q?: KindListOptions<TSchema, TRels, K, TCols, TWith> & { cursor?: string | null },
+  ): Promise<{ rows: QueryRow<TSchema, TRels, K, TCols, TWith>[]; cursor: string | null }>;
+  /** One row by id or by a filter (`{ slug: "hello" }`); null when no row the visitor may read matches. A kind they may not read at all throws the API's 401/403. */
+  get<TCols extends ColumnsSelection<TSchema[K]> = {}, TWith extends WithConfig<TSchema, TRels, K> = {}>(
+    target: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id | RelationsFilter<TSchema, TRels, K> : RelationsFilter<TSchema, TRels, K>,
+    q?: { locale?: Locale | "*"; columns?: TCols; with?: TWith },
+  ): Promise<QueryRow<TSchema, TRels, K, TCols, TWith> | null>;
+  count(q?: { locale?: Locale | "*"; where?: RelationsFilter<TSchema, TRels, K>; search?: string }): Promise<number>;
+  create(data: TSchema[K]["$inferInsert"]): Promise<TSchema[K]["$inferSelect"]>;
+  /** The updated row; a 404 when no row has that id or the visitor's update rule doesn't cover it. */
+  update(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never, patch: Partial<TSchema[K]["$inferInsert"]>): Promise<TSchema[K]["$inferSelect"]>;
+  /** The deleted row; a 404 when no row has that id or the visitor's delete rule doesn't cover it. */
+  delete(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<TSchema[K]["$inferSelect"]>;
+}
+
+/** The app's kinds by registered name: what `import { posts } from "first:db"` gives you. */
+export type RegisteredKinds = [RegisteredSchema] extends [never]
+  ? {}
+  : { readonly [K in keyof RegisteredSchema]: RegisteredSchema[K] & KindApi<RegisteredSchema, RegisteredRelations, K> & { readonly system: KindApi<RegisteredSchema, RegisteredRelations, K> } };
 
 type UnregisteredQuery = {
   readonly [key: string]: "Schema not registered: add first/_generated/db.d.ts (run `first build`) so `db.query` knows your collections";
@@ -1075,8 +1115,6 @@ export interface ConfigInput<
   /** `NoInfer`: types come from the explicit registries, so unknown hook keys are errors. */
   hooks?: NoInfer<Hooks<TSchema>>;
   actions?: Record<string, AnyAction>;
-  /** Custom HTTP endpoints on the site's own paths, outside `/wp-json`. */
-  routes?: Record<string, Route>;
   jobs?: TJobs;
   webhooks?: Webhook[];
   /** Private native forms, queued mail, publication search and server-priced checkout. */
@@ -1134,7 +1172,6 @@ export declare function definePlugin<TSchema extends Schema = Schema>(definition
   hooks?: Hooks<TSchema>;
   actions?: Record<string, AnyAction>;
   jobs?: Record<string, AnyJob>;
-  routes?: Record<string, Route>;
 }): Plugin;
 
 // ---------------------------------------------------------------------------
@@ -1163,10 +1200,7 @@ export declare function job<TInput extends ColumnsConfig>(definition: {
 }): Job<TInput>;
 export interface EnqueueOptions { delay?: number; key?: string }
 
-declare const routeBrand: unique symbol;
-/** A custom HTTP endpoint: `routes: { feed: route({ ... }) }`. */
-export interface Route { readonly [routeBrand]: true }
-/** The request a route handler receives. Header names are lowercase; the body is the raw text. */
+/** The request a `route.ts` (or page) HTTP handler under `first/app/` receives. Header names are lowercase; the body is the raw text. */
 export interface RouteRequest {
   method: string;
   /**
@@ -1175,7 +1209,7 @@ export interface RouteRequest {
    */
   url: string;
   path: string;
-  /** `:name` segments of the route path, decoded. */
+  /** The `[name]` and `[...name]` folders of the route, decoded (catch-all segments joined with `/`). */
   params: Record<string, string>;
   /**
    * The query string as URLSearchParams reads it: names byte-exact (`a.b`, `x[]`), every value
@@ -1193,19 +1227,6 @@ export interface RouteQuery {
 }
 /** What a route handler returns. Status defaults to 200, body to "", Content-Type to text/plain; charset=utf-8. */
 export interface RouteResponse { status?: number; headers?: Record<string, string>; body?: string }
-type RoutePath = `/${string}`;
-/**
- * One method and path served by a compiled handler, in one transaction (`docs/config-api.md#http-routes`).
- * Exactly one of `access` (who may call) or `signature` (an HMAC over the raw body; the caller is anonymous).
- */
-export declare function route(definition: {
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  path: RoutePath;
-  handler: (req: RouteRequest, ctx: HookCtx) => Awaitable<RouteResponse>;
-} & (
-  | { access: GateRule<Record<string, never>>; signature?: never }
-  | { signature: { secret: EnvValue; header: string; scheme: "first" | "hmac-sha256" }; access?: never }
-)): Route;
 export interface JobHandle<TInput> {
   enqueue(input: TInput, opts?: EnqueueOptions): Promise<{ id: string }>;
 }

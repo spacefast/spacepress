@@ -238,9 +238,11 @@ fn compile_request(request: Request) -> String {
         Err(diagnostics) => Err(diagnostics),
         Ok(program) => pipeline::build(&project, &program, previous, |_| None).map_err(|d| vec![d]),
     };
+    let mut snapshot = None;
     let (diagnostics, output) = match built {
         Err(diagnostics) => (diagnostics, None),
         Ok(built) => {
+            snapshot = Some(built.snapshot.clone());
             let schema_php = crate::schema_php::render(&built.schema);
             // The ledger's SQL from the request, then this compile's new files, as `first build`
             // writes the new ones into the ledger and packs all of it.
@@ -290,10 +292,11 @@ fn compile_request(request: Request) -> String {
             (Vec::new(), Some(output))
         }
     };
-    let response = Response {
-        check: diag::envelope(&diagnostics, &project),
-        output,
-    };
+    let mut check = diag::envelope(&diagnostics, &project);
+    if let Some(snapshot) = &snapshot {
+        check = check.with_indexes(snapshot);
+    }
+    let response = Response { check, output };
     serde_json::to_string(&response).expect("response serializes")
 }
 
@@ -416,8 +419,13 @@ pub fn operation(operation: &str, request: &str) -> String {
                         )
                         .map_err(|d| vec![d])
                     });
-                    let diagnostics = built.err().unwrap_or_default();
-                    Ok(serde_json::json!({"check":diag::envelope(&diagnostics, &root)}))
+                    let check = match built {
+                        Ok(built) => diag::envelope(&[], &root).with_indexes(&built.snapshot),
+                        Err(diagnostics) => {
+                            return Ok(serde_json::json!({"check":diag::envelope(&diagnostics, &root)}));
+                        }
+                    };
+                    Ok(serde_json::json!({ "check": check }))
                 }
                 _ => Err("unknown operation".into()),
             }

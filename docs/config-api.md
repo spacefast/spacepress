@@ -59,6 +59,33 @@ export const like = action({ input: { id: integer() }, async handler({ id }) { /
   app's kinds as options. An unknown name is refused at the import with
   the closest one. Types come from `first/_generated/db.d.ts`.
 
+### Querying a kind
+
+A kind from `"first:db"` reads and writes as the visitor: the caller of the
+action or route, or the reader of the page. Its access rules, draft
+visibility and field masks apply, as on the API.
+
+```ts
+import { posts } from "first:db";
+
+await posts.list({ where: { status: "published" }, orderBy: { publishedAt: "desc" }, limit: 10, with: { author: true } });
+await posts.paginate({ limit: 20, cursor });   // { rows, cursor }; cursor is null on the last page
+await posts.get(42);  await posts.get({ slug: "hello" });   // the row, or null
+await posts.count({ where, search: "first" });
+await posts.create({ title: "Hi" });  await posts.update(42, { title: "Hello" });  await posts.delete(42);
+await posts.system.list();   // trusted: no access rules, every draft
+```
+
+- `search` matches the title, content and text fields the visitor may read.
+- `paginate` takes `limit` (20 by default, at most 100) and the `cursor` the
+  previous page returned.
+- A kind the visitor may not read at all throws the API's 401 or 403. A row
+  they can't read or change is `null` from `get`, and a 404 from `update` and
+  `delete`.
+- Jobs and signed webhooks have no visitor and run as the system.
+  `<kind>.system.*` makes the same calls trusted anywhere.
+- `db.query` and `db.insert/update/delete` stay trusted.
+
 ## WordPress plugins
 
 Use a top-level package map in `defineConfig`:
@@ -340,6 +367,12 @@ on the new table to rename it, or remove the old one in its own deploy.
 
 ### Schema changes at deploy
 
+`first check --json` lists each SQL index the deploy keeps, and why it exists,
+under `indexes`: `{ table, name, unique, columns, reason }`. The reasons are
+the primary key, `.unique()`, a reference (MySQL indexes a foreign key),
+drafts (status and publish date) and locales (one row per locale in a
+translation group). Post-backed kinds use WordPress's own indexes.
+
 `first build` writes the SQL for each schema change to `first/_generated/migrations/`.
 You don't edit or review it. The deploy (`wp first migrate`, the first request after
 a file-copy update, or the host's initialization) checks every pending change against
@@ -466,7 +499,7 @@ sub-field rules, and a required field needs a default. `GET`/`PATCH
 ## defineConfig
 
 `defineConfig({ name?, collections?, tables?, users?, globals?, hooks?, actions?,
-jobs?, routes?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend? })`. `name` (a slug,
+jobs?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `first-app-<name>`.
 `admin: true` ships the optional admin screens as a fourth plugin,
 `first-admin`; by default the build emits none. `frontend` says who renders the
@@ -476,7 +509,7 @@ localhost) so links, previews and feeds point there.
 
 ## Plugin packages
 
-A plugin is an npm package that adds hooks, actions, jobs and routes. It runs
+A plugin is an npm package that adds hooks, actions and jobs. It runs
 in the app's PHP process. The compiler records everything its code can do,
 and the app grants that in a committed lock file.
 
@@ -502,7 +535,7 @@ export default defineConfig({ collections: { posts }, use: [seo({ suffix: " | Si
 - Plugin hooks run before the app's hook for the same collection and kind,
   in `use` order. A before-hook's returned replacement becomes the next
   hook's `data`. A throw aborts the request, as in app hooks.
-- A plugin's actions, jobs and routes are registered as `<name>_<key>`.
+- A plugin's actions and jobs are registered as `<name>_<key>`.
   Inside the plugin, `jobs.<key>` names its own jobs.
 - A plugin package can import its own modules, `"first"` and ordinary npm
   packages. Importing the app's modules or another plugin's package fails
@@ -524,7 +557,7 @@ grant and writes `first/_generated/plugins.lock.json`:
 | `read` | collection keys and `globals.<name>`: queries, relation loads, hooked collections |
 | `write` | `<collection>.<field>` (or `.*`), `globals.<name>`: inserts, updates, before-hook changes, including through helpers |
 | `delete` | collection keys |
-| `hooks`, `actions`, `routes` | what the plugin registers |
+| `hooks`, `actions` | what the plugin registers |
 | `http` | hosts with a written `https://host/` prefix; `*` for a URL built at runtime |
 | `env` | variable names, including `crypto.hmacSha256` keys and signature secrets |
 | `mail` | `send` |
@@ -675,56 +708,54 @@ and `data.pointer`.
 
 > On a hosted Spacefast Space, routes outside `/wp-json` aren't served yet: the host doesn't hand those paths to WordPress. The compiled manifest lists them (`routes`, and `pagePaths` for pages) for the host change that will. On your own WordPress they work today.
 >
-> For a host reading those lists: trim one trailing `/` from the request path, treat `HEAD` as `GET`, and hand over any request whose path matches an entry whatever its method, so the app answers a wrong method with 405. `*name` takes one or more segments.
+> For a host reading those lists: trim one trailing `/` from the request path, treat `HEAD` as `GET`, and hand over any request whose path matches an entry whatever its method, so the app answers a wrong method with 405. `:name` takes one segment and `*name` one or more.
 
-`routes` serves your own method and path on the site, outside `/wp-json`: a
-feed, a sitemap, a payment provider's webhook, anything that is not a JSON
-action call.
+An HTTP route serves your own methods on a path of the site, outside
+`/wp-json`: a feed, a sitemap, a payment provider's webhook, anything that is
+not a JSON action call. It is a `route.ts` file under `first/app/`, at the
+folder of its URL ([pages](pages.md) describes the folder rules); `first/app/`
+needs no pages for it.
 
 ```ts
-import { defineConfig, route, env, db } from "first";
+// first/app/api/feed.json/route.ts: GET /api/feed.json
+import { db, type RouteRequest } from "first";
 
-export default defineConfig({
-  routes: {
-    feed: route({
-      method: "GET",
-      path: "/api/feed.json",
-      access: "anyone",
-      async handler(req) {
-        const limit = Number(req.query.get("limit") ?? "20");
-        const notes = await db.query.notes.findMany({ where: { status: "published" }, limit });
-        return {
-          headers: { "content-type": "application/feed+json" },
-          body: JSON.stringify({ version: "https://jsonfeed.org/version/1.1", items: notes.map((n) => ({ id: String(n.id), title: n.title })) }),
-        };
-      },
-    }),
-    stripe: route({
-      method: "POST",
-      path: "/webhooks/stripe",
-      signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" },
-      handler(req) {
-        const event = JSON.parse(req.body) as { type: string };
-        return { status: 202, body: "ok " + event.type };
-      },
-    }),
-  },
-});
+export const access = "anyone";
+
+export async function GET(req: RouteRequest) {
+  const limit = Number(req.query.get("limit") ?? "20");
+  const notes = await db.query.notes.findMany({ where: { status: "published" }, limit });
+  return {
+    headers: { "content-type": "application/feed+json" },
+    body: JSON.stringify({ version: "https://jsonfeed.org/version/1.1", items: notes.map((n) => ({ id: String(n.id), title: n.title })) }),
+  };
+}
 ```
 
-- `method`: `GET`, `POST`, `PUT`, `PATCH` or `DELETE`, one per route. A `GET`
-  route also answers `HEAD`. A path that a route serves with another method
-  answers `405`.
-- `path` starts with `/`. Each segment is literal (`A-Z a-z 0-9 . _ ~ -`) or
-  `:name`, which matches one segment. The last segment may be `*name`, which
-  matches one or more segments; `req.params.name` is them decoded and joined
-  with `/`. An encoded `/` or a `.`/`..` segment never matches. A trailing
-  slash matches. Two routes with the same method and shape are refused. So is
-  a first segment WordPress or First
-  owns (`wp-admin`, `wp-json`, `wp-content`, `feed`, `first-admin`, `auth`,
-  `__spacefast`, `.well-known`, ...), and so is a URL that a
-  [TSX page](pages.md) serves.
-- Pass exactly one of `access` or `signature`; there is no default. `access`
+```ts
+// first/app/webhooks/stripe/route.ts: POST /webhooks/stripe
+import { env, type RouteRequest } from "first";
+
+export const signature = { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" };
+
+export function POST(req: RouteRequest) {
+  const event = JSON.parse(req.body) as { type: string };
+  return { status: 202, body: "ok " + event.type };
+}
+```
+
+- Export one handler per method: `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
+  `GET` also answers `HEAD`. Any other method on the path answers `405`. A
+  `page.tsx` may export the same handlers, except `GET`, for its own URL.
+- The folder is the path. A folder is a literal segment (lowercase letters,
+  digits, `. _ ~ -`), `[name]` for one segment, or a final `[...name]` for one
+  or more; `req.params.name` is the decoded segment, or the decoded segments
+  joined with `/`. An encoded `/` or a `.`/`..` segment never matches. A
+  trailing slash matches. Two files that serve one URL are refused, and so is a
+  first folder that WordPress or First owns (`wp-admin`, `wp-json`,
+  `wp-content`, `feed`, `first-admin`, `auth`, `__spacefast`, `.well-known`,
+  ...).
+- Export exactly one of `access` or `signature`; there is no default. `access`
   takes the same rules as actions (`"anyone"`, `"authenticated"`, a role, a
   boolean, or a function of `ctx`). `signature` verifies an HMAC over the raw
   body, as on [actions](#actions). The verified caller is then anonymous.
@@ -738,11 +769,10 @@ export default defineConfig({
   `entries()`. Names are kept exactly (`a.b`, `x[]`), `+` is a space, and a
   repeated name keeps every value in order. PHP's `$_GET` would rename `a.b` to
   `a_b` and keep only the last value.
-- When several routes match, the most specific one wins, whatever their order
-  in the config. Segments are compared from the left, and a literal segment
-  beats a `:param`, which beats a `*rest`: `/api/feed.json` wins over
-  `/api/:id`, `/api/probe/:id` wins over `/api/:kind/:id`, and
-  `/files/:bucket/latest` wins over `/files/*path`.
+- When several routes match, the most specific one wins. Segments are
+  compared from the left, and a literal folder beats a `[param]`, which beats a
+  `[...rest]`: `api/feed.json` wins over `api/[id]`, `api/probe/[id]` wins over
+  `api/[kind]/[id]`, and `files/[bucket]/latest` wins over `files/[...path]`.
 - The handler returns `{ status?, headers?, body? }`. `status` defaults to
   `200`, `body` to `""`, and `Content-Type` to `text/plain; charset=utf-8`. Header
   names are case-insensitive, so the handler's `content-type` replaces the

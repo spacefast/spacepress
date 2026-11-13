@@ -36,7 +36,7 @@ export const PROBES = [
 
 const config = (body) => `import { action, defineConfig, text } from "first";
 ${body.imports ?? ""}
-export default defineConfig({ name: "probe", actions: { a: action({ access: "anyone", input: { s: text().notNull() }, async handler(input) {
+export default defineConfig({ name: "probe", actions: { a: action({ access: "anyone", input: { s: text() }, async handler(input) {
 ${body.handler}
 } }) } });
 `;

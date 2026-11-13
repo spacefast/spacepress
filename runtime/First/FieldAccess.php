@@ -307,7 +307,7 @@ final class FieldAccess
     }
 
     /**
-     * What a write of $value to a group column stores for $viewer, as /first/v1 stores it: omitted
+     * What a write of $value to a group column stores for $viewer, as First's write pipeline stores it: omitted
      * sub-fields the viewer can't read or can't set keep their stored values ($before), defaults
      * fill the rest. Other types are returned as given. For writes that bypass {@see checkWrite()}'s
      * resolution (core REST `meta`).

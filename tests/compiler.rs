@@ -169,6 +169,11 @@ fn replaced_field_forms_name_their_replacement() {
             "first.config.ts:3:26",
         ),
         (
+            "reject-relations-key",
+            "`relations` is gone: a reference is a field",
+            "first.config.ts:3:66",
+        ),
+        (
             "reject-references",
             "`.references()` is gone: a reference is a `ref()` field",
             "first.config.ts:3:40",
@@ -365,21 +370,6 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
     let _ = std::fs::remove_dir_all(&nested);
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("JSX files can't be part of a First config"));
-}
-
-#[test]
-fn a_catch_all_route_segment_comes_last() {
-    rejects(
-        "reject-route-catchall-middle",
-        "has a *catch-all that is not the last segment",
-        "first.config.ts:3:",
-    );
-    let out = first()
-        .args(["check"])
-        .arg(root().join("tests/fixtures/route-catchall"))
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 }
 
 #[test]
@@ -663,12 +653,14 @@ fn context_values_pass_through_typed_helpers() {
         .arg("eval")
         .arg(tmp.join("first/dist/wp-content"))
         .arg(
-            r#"$route = $app->matchRoute("POST", "/echo");
+            r#"// first/app/echo/route.ts, matched the way the app router matches it.
+               $file = $wp->plugin()->schema->app()["files"]["app/echo/route.ts"];
+               $route = ["name" => "echo", "params" => [], "route" => ["handler" => $file["methods"]["POST"], "access" => $file["access"], "signature" => null]];
                // req.url and req.query as the WordPress transport builds them: 0.8's form, with every
                // share-link secret redacted and the share parameter kept out of the query.
                $at = fn (string $host, string $uri) => json_decode($app->serveRoute($route, "POST", "/echo",
-                   \First\Wp\HttpRoutes::query((string) parse_url($uri, PHP_URL_QUERY)), "", [], null,
-                   \First\Wp\HttpRoutes::url($host, $uri))[2], true);
+                   \First\Wp\RouteRequest::query((string) parse_url($uri, PHP_URL_QUERY)), "", [], null,
+                   \First\Wp\RouteRequest::url($host, $uri))[2], true);
                $urls = [
                  $at("Site.Example.:8443", "/echo?a=1&__=secret&b=2"),
                  $at("site.example", "/echo?token=t1&purchaseToken=p1&tokens=kept"),
@@ -2168,11 +2160,11 @@ fn rejects_phase2_static_contracts() {
         ),
         (
             "[2, 1].sort((a, b) => { value += 2; return a - b; })",
-            "sorting requires a numeric key-difference comparator",
+            "field rules must return a boolean on every path",
         ),
         (
             "[2, 1].toSorted((a, b) => { value += 2; return a - b; })",
-            "sorting requires a numeric key-difference comparator",
+            "field rules must return a boolean on every path",
         ),
         (
             "Array.from({ length: 2 }, () => { value++; return 1; })",

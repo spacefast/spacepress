@@ -126,15 +126,6 @@
         "summary": "Create in authors",
         "x-first-access": "admin",
         "description": "Creates one authors row and returns it.\n\nAccess: Users with the `admin` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
-            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
-          }
-        ],
         "requestBody": {
           "required": true,
           "description": "The new row's fields.",
@@ -491,7 +482,7 @@
           {
             "name": "with",
             "in": "query",
-            "description": "What to load with each row, comma-separated or as a JSON object: `authorId`, `comments`, `subscribers`, `announcements`, `cover`. A relation holds only rows the caller may read.",
+            "description": "What to load with each row, comma-separated or as a JSON object: `authorId`, `comments`, `subscribers`, `announcements`, `cover`, `manuscript`. A relation holds only rows the caller may read.",
             "schema": { "type": "string" }
           },
           {
@@ -532,15 +523,6 @@
         "summary": "Create in posts",
         "x-first-access": "author",
         "description": "Creates one posts row and returns it.\n\nAccess: Users with the `author` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
-            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
-          }
-        ],
         "requestBody": {
           "required": true,
           "description": "The new row's fields.",
@@ -603,7 +585,7 @@
           {
             "name": "with",
             "in": "query",
-            "description": "What to load with each row, comma-separated or as a JSON object: `authorId`, `comments`, `subscribers`, `announcements`, `cover`. A relation holds only rows the caller may read.",
+            "description": "What to load with each row, comma-separated or as a JSON object: `authorId`, `comments`, `subscribers`, `announcements`, `cover`, `manuscript`. A relation holds only rows the caller may read.",
             "schema": { "type": "string" }
           },
           {
@@ -1002,13 +984,45 @@
         },
         "responses": {
           "200": {
-            "description": "The outcome.",
+            "description": "The outcome: the row was updated, or was already as sent.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "data": { "type": "object" }
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uid": { "type": "string" },
+                        "status": { "type": "string", "enum": ["applied", "normalized", "unchanged"] },
+                        "digest": { "type": "string" },
+                        "record": { "type": "object", "description": "The record as stored, when the site normalized what was sent." }
+                      },
+                      "required": ["uid", "status"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The outcome: the record created a row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uid": { "type": "string" },
+                        "status": { "type": "string", "enum": ["applied", "normalized", "unchanged"] },
+                        "digest": { "type": "string" },
+                        "record": { "type": "object", "description": "The record as stored, when the site normalized what was sent." }
+                      },
+                      "required": ["uid", "status"]
+                    }
                   },
                   "required": ["data"]
                 }
@@ -2014,15 +2028,6 @@
         "summary": "Create in members",
         "x-first-access": "admin",
         "description": "Creates one members row and returns it.\n\nAccess: Users with the `admin` role or a higher one may do this.\n\nA new user is a WordPress user, so WordPress core's rule applies as well: the caller must be allowed to create users.",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
-            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
-          }
-        ],
         "requestBody": {
           "required": true,
           "description": "The new row's fields.",
@@ -2150,6 +2155,233 @@
       "delete": {
         "tags": ["Members"],
         "operationId": "members.delete",
+        "summary": "Delete from members",
+        "x-first-access": "admin",
+        "description": "Deletes one members row for good and returns the row as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The deleted row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Member" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": ["Members"],
+        "operationId": "users.list",
+        "summary": "List members",
+        "x-first-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The members rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "where",
+            "in": "query",
+            "description": "A filter, as JSON: a value or operators per field, with `AND`, `OR` and `NOT`. A filter on a field the caller may not read is refused.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MemberFilter" }
+              }
+            }
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `email`, `name`, `plan`, `role`.",
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Member" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["Members"],
+        "operationId": "users.create",
+        "summary": "Create in members",
+        "x-first-access": "admin",
+        "description": "Creates one members row and returns it.\n\nAccess: Users with the `admin` role or a higher one may do this.\n\nA new user is a WordPress user, so WordPress core's rule applies as well: the caller must be allowed to create users.",
+        "requestBody": {
+          "required": true,
+          "description": "The new row's fields.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MemberInsert" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Member" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/users/{id}": {
+      "get": {
+        "tags": ["Members"],
+        "operationId": "users.get",
+        "summary": "Get one of members",
+        "x-first-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "One members row.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Member" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "tags": ["Members"],
+        "operationId": "users.update",
+        "summary": "Update in members",
+        "x-first-access": "self",
+        "description": "Changes the fields sent on one members row and returns the row.\n\nAccess: A signed-in user may do this to their own row only.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to change.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MemberPatch" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The row after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Member" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "delete": {
+        "tags": ["Members"],
+        "operationId": "users.delete",
         "summary": "Delete from members",
         "x-first-access": "admin",
         "description": "Deletes one members row for good and returns the row as it was.\n\nAccess: Users with the `admin` role or a higher one may do this.",
@@ -4714,7 +4946,8 @@
           "email": { "type": "string", "maxLength": 191 },
           "name": { "type": "string", "maxLength": 80 },
           "plan": { "type": "string", "enum": ["free", "supporter"] },
-          "role": { "type": "string", "enum": ["guest", "subscriber", "author", "editor", "admin"] }
+          "role": { "type": "string", "enum": ["guest", "subscriber", "author", "editor", "admin"] },
+          "password": { "type": "string" }
         }
       },
       "MemberFilter": {

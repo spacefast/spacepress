@@ -3022,9 +3022,10 @@ fn the_openapi_document_describes_what_the_api_answers() {
         assert_eq!(status, expect, "{method} {path} as {user:?}: {text}");
         let template = template_of(path);
         let key = format!("{method} {template}");
-        *operations
+        let covered = operations
             .get_mut(&key)
-            .unwrap_or_else(|| panic!("the document has no operation {key}")) = true;
+            .unwrap_or_else(|| panic!("the document has no operation {key}"));
+        *covered |= status < 300;
         let operation = &document["paths"][&template][method.to_lowercase()];
         if status < 300 {
             // What was sent is what the document says the operation takes: each query argument is
@@ -3040,6 +3041,20 @@ fn the_openapi_document_describes_what_the_api_answers() {
                 .filter(|p| p["in"] == "query")
                 .map(|p| p["name"].as_str().unwrap())
                 .collect();
+            let declared_headers: Vec<String> = operation["parameters"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|p| p["in"] == "header")
+                .map(|p| p["name"].as_str().unwrap().to_ascii_lowercase())
+                .collect();
+            for (name, _) in headers {
+                let name = name.to_ascii_lowercase();
+                assert!(
+                    name == "content-type" || name == "authorization" || declared_headers.contains(&name),
+                    "{key} was sent the header `{name}`, which the document does not list: {declared_headers:?}"
+                );
+            }
             for pair in path
                 .split_once('?')
                 .map(|(_, q)| q)
@@ -3208,6 +3223,17 @@ fn the_openapi_document_describes_what_the_api_answers() {
         .unwrap();
     assert_eq!(
         check(
+            "GET",
+            &format!("/authors/{author}/revisions/{first_save}"),
+            Some("editor"),
+            &[],
+            b"",
+            200
+        )["data"]["name"],
+        "Ada"
+    );
+    assert_eq!(
+        check(
             "POST",
             &format!("/authors/{author}/revisions/{first_save}/restore"),
             Some("editor"),
@@ -3230,7 +3256,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
         "POST",
         "/notes",
         Some("editor"),
-        &[("Idempotency-Key", "note-1")],
+        &[],
         &json(json!({
             "title": "First note", "body": "<p>Tea</p>", "rating": 4.5, "tags": ["home"], "author": author,
             "seo": { "heading": "H" }, "steps": [{ "label": "one" }],
@@ -3360,7 +3386,34 @@ fn the_openapi_document_describes_what_the_api_answers() {
     check("DELETE", &format!("/notes/{draft_id}"), Some("editor"), &[], b"", 200);
 
     // A table anyone may add to. Its delete is switched off, so the document has no such operation.
-    let tally = check("POST", "/tallies", None, &[], &json(json!({ "label": "a" })), 201);
+    let tally = check(
+        "POST",
+        "/tallies",
+        None,
+        &[("Idempotency-Key", "tally-1")],
+        &json(json!({ "label": "a" })),
+        201,
+    );
+    // The document offers `Idempotency-Key` on this create: a repeat gives the first row, adds none.
+    let again = check(
+        "POST",
+        "/tallies",
+        None,
+        &[("Idempotency-Key", "tally-1")],
+        &json(json!({ "label": "a" })),
+        201,
+    );
+    assert_eq!(again["data"]["id"], tally["data"]["id"], "{again}");
+    // A post kind's create is core's insert and takes no key, so the document offers none there.
+    assert!(
+        !document["paths"]["/notes"]["post"]["parameters"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|p| p["name"] == "Idempotency-Key"),
+        "{}",
+        document["paths"]["/notes"]["post"]
+    );
     let tally_id = tally["data"]["id"].as_i64().unwrap();
     check(
         "GET",
@@ -3463,6 +3516,43 @@ fn the_openapi_document_describes_what_the_api_answers() {
         &[],
         &json(json!({ "email": "other@example.test", "name": "Other" })),
         403,
+    );
+    // The users kind also answers at `/users`, the spec's name for it.
+    assert_eq!(
+        check("GET", "/users", Some("subscriber"), &[], b"", 200)["data"][0]["id"],
+        subscriber
+    );
+    check(
+        "GET",
+        &format!("/users/{subscriber}"),
+        Some("subscriber"),
+        &[],
+        b"",
+        200,
+    );
+    check(
+        "PATCH",
+        &format!("/users/{subscriber}"),
+        Some("subscriber"),
+        &[],
+        &json(json!({ "plan": "free" })),
+        200,
+    );
+    let aliased = check(
+        "POST",
+        "/users",
+        Some("admin"),
+        &[],
+        &json(json!({ "email": "alias@example.test", "name": "Alias", "password": "a-long-enough-password-2" })),
+        201,
+    );
+    check(
+        "DELETE",
+        &format!("/users/{}", aliased["data"]["id"]),
+        Some("admin"),
+        &[],
+        b"",
+        200,
     );
     check(
         "DELETE",
@@ -3719,6 +3809,16 @@ fn the_openapi_document_describes_what_the_api_answers() {
         check("GET", &format!("/{kind}/999999"), None, &[], b"", 404);
     }
     // Comments are closed on the post until someone opens them: core's refusal is a problem too.
+    // On a kind with `comments: true` (the fixture's notes) the create answers with the new comment.
+    let created = check(
+        "POST",
+        "/comments",
+        Some("editor"),
+        &[],
+        &json(json!({ "on": id, "content": "First!" })),
+        201,
+    );
+    assert_eq!(created["data"]["on"], id, "{created}");
     check(
         "POST",
         "/comments",
@@ -3803,6 +3903,26 @@ fn the_openapi_document_describes_what_the_api_answers() {
         &json(json!({ "record": {} })),
         422,
     );
+    // A record the site has not seen creates a row: 201, with the stored digest. The site fills the
+    // defaults the file left out, so it answers with the record as stored.
+    let fresh = check(
+        "POST",
+        "/sync/authors",
+        Some("editor"),
+        &[],
+        &json(
+            json!({ "record": { "uid": "zr_0123456789abcdef0123", "fields": { "name": "Synced" }, "body": null }, "expect": "absent" }),
+        ),
+        201,
+    );
+    assert_eq!(
+        (
+            fresh["data"]["status"].as_str(),
+            fresh["data"]["record"]["fields"]["name"].as_str()
+        ),
+        (Some("normalized"), Some("Synced")),
+        "{fresh}"
+    );
     check(
         "POST",
         "/sync/authors/convert",
@@ -3859,13 +3979,15 @@ fn the_openapi_document_describes_what_the_api_answers() {
     let (status, content_type, _) = api(&server, "GET", "/nope", None, &[], b"");
     assert_eq!((status, content_type.as_str()), (404, "application/problem+json"));
 
+    // A theme menu location needs a theme that registers one; the harness's block theme has none,
+    // so `GET /menus/{location}` is asserted above only as the 404 for a location that isn't there.
     let uncalled: Vec<&String> = operations
         .iter()
-        .filter(|(_, called)| !**called)
+        .filter(|(key, called)| !**called && key.as_str() != "GET /menus/{location}")
         .map(|(key, _)| key)
         .collect();
     assert!(
         uncalled.is_empty(),
-        "the test never called these operations of the document: {uncalled:?}"
+        "no request to these operations of the document succeeded, so their success schemas never ran: {uncalled:?}"
     );
 }

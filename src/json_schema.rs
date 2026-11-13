@@ -145,11 +145,15 @@ pub fn insert(c: &Collection) -> Value {
     input(props, required_names)
 }
 
-/// An update's patch: every writable column, all optional.
+/// An update's patch: every writable column, all optional. A users kind's patch also takes a new
+/// `password` (`Auth\Module::password` handles it on every write but a delete).
 pub fn patch(c: &Collection) -> Value {
-    let props: Map<String, Value> = writable(c, false)
+    let mut props: Map<String, Value> = writable(c, false)
         .map(|col| (col.name.clone(), column(col, false)))
         .collect();
+    if c.auth && !props.contains_key("password") {
+        props.insert("password".into(), json!({ "type": "string" }));
+    }
     json!({ "type": "object", "properties": props })
 }
 

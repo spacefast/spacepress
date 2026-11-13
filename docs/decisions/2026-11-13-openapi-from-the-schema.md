@@ -23,7 +23,10 @@ Ability schemas, and of the typed client.
   is the output schema the compiler already infers for its Ability.
 - **Names are the client's.** A component is named as the client's interface for the same value
   (`Post`, `PostInsert`, `PostPatch`, `PostFilter`), from the same function. An `operationId` is the
-  client call that makes the request (`posts.list`).
+  client call that makes the request where there is one (`posts.list`), and names the kind and
+  operation otherwise (`sync.notes.read`).
+- **A signed webhook action is left out**, as `GET /__first/api/v1` leaves it out: it is for the
+  one service that holds its secret.
 - **Operations follow the schema.** A kind's `api` flags, `revisions`, `sync`, an action's
   `readonly` and `signature`, the file buckets and the `services` config decide which paths exist.
   WordPress's own kinds are described with the field names `Wp\Kinds` maps them to.

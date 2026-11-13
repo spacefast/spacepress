@@ -7,8 +7,9 @@ namespace First;
 /**
  * `GET /__first/api/v1/openapi.json`: the app's API as an OpenAPI 3.1 document. `first build` writes
  * the document from the app's schema (the same data as schema.php and the typed client) into the
- * app plugin; this serves that file, with the site's own address as its server. It says nothing a
- * caller can't already read at `GET /__first/api/v1`, so it is public and the same for everyone.
+ * app plugin; this serves that file, with the site's own address as its server. Like
+ * `GET /__first/api/v1` it describes the app's kinds, fields, globals and actions (signed webhook
+ * actions left out, as there), never rows, so it is public and the same for everyone.
  */
 final class OpenApi
 {

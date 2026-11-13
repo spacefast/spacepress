@@ -27,7 +27,7 @@ export const notes = collection({
   steps: repeater({ label: text().max(40), done: boolean().default(false) }).max(5).optional(),
   sections: blocks({ quote: { text: text(), cite: text().optional() }, rule: {} }).optional(),
   extra: json<{ source: string }>().optional(),
-}, { title: "title", content: "body", drafts: true, revisions: true, access: { read: "anyone", create: "author", update: "editor", delete: "editor" } });
+}, { title: "title", content: "body", drafts: true, revisions: true, comments: true, access: { read: "anyone", create: "author", update: "editor", delete: "editor" } });
 
 // A table readers add to; rows are never deleted over the API.
 export const tallies = table({

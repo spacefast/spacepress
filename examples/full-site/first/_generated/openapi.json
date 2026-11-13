@@ -112,15 +112,6 @@
         "summary": "Create in notes",
         "x-first-access": "author",
         "description": "Creates one notes row and returns it.\n\nAccess: Users with the `author` role or a higher one may do this.",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
-            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
-          }
-        ],
         "requestBody": {
           "required": true,
           "description": "The new row's fields.",

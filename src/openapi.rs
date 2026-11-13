@@ -5,7 +5,8 @@
 //! - a kind's row, create input and patch are [`crate::json_schema`]'s, the same shapes the
 //!   Abilities publish;
 //! - component names are the typed client's interface names (`Post`, `PostInsert`, `PostPatch`,
-//!   `PostFilter`), and an operation id is the client call that makes the request (`posts.list`);
+//!   `PostFilter`), and an operation id names it as the client's call for the request does
+//!   (`posts.list`), where the client has one;
 //! - an operation exists exactly when the facade serves it: a kind's `api` flags, `revisions`,
 //!   `sync`, a `readonly` action's `GET`.
 //!
@@ -166,6 +167,8 @@ struct Op {
     body: Option<Value>,
     /// The success status and its response.
     ok: (u16, Value),
+    /// A second success status: 201 when the request created what it names.
+    created: Option<Value>,
     statuses: Vec<u16>,
     /// The rule that decides the request, or `None` when WordPress core's own rules do.
     rule: Option<Access>,
@@ -185,6 +188,7 @@ impl Op {
             parameters: Vec::new(),
             body: None,
             ok: (200, envelope("The result.", json!({}))),
+            created: None,
             statuses: Vec::new(),
             rule: None,
             notes: Vec::new(),
@@ -204,6 +208,11 @@ impl Op {
 
     fn ok(mut self, status: u16, response: Value) -> Op {
         self.ok = (status, response);
+        self
+    }
+
+    fn created(mut self, response: Value) -> Op {
+        self.created = Some(response);
         self
     }
 
@@ -260,6 +269,9 @@ impl Op {
         }
         let mut responses = Map::new();
         responses.insert(self.ok.0.to_string(), self.ok.1);
+        if let Some(created) = self.created {
+            responses.insert("201".into(), created);
+        }
         statuses.sort_unstable();
         statuses.dedup();
         for status in statuses {
@@ -584,7 +596,7 @@ impl Builder<'_> {
             .chain(
                 c.columns
                     .values()
-                    .filter(|col| matches!(col.ty, ColType::Media | ColType::MediaList))
+                    .filter(|col| matches!(col.ty, ColType::Media | ColType::MediaList | ColType::File))
                     .map(|col| col.name.as_str()),
             )
             .collect();
@@ -666,11 +678,15 @@ impl Builder<'_> {
             if c.auth {
                 op = op.note("A new user is a WordPress user, so WordPress core's rule applies as well: the caller must be allowed to create users.");
             }
+            // Only a table's create runs through First's receipts (`TableController`); a post kind's
+            // or the users kind's create is core's insert, which takes no key.
+            if !c.editor && !c.auth {
+                op = op.params([idempotency_key(false)]);
+            }
             self.paths.add(
                 &base,
                 "post",
-                op.params([idempotency_key(false)])
-                    .body(body("The new row's fields.", reference(&insert)))
+                op.body(body("The new row's fields.", reference(&insert)))
                     .ok(201, envelope("The new row.", row.clone()))
                     .errors(&[401, 403, 409]),
             );
@@ -796,6 +812,31 @@ impl Builder<'_> {
         if c.sync.is_some() {
             self.sync(c, &update, &delete);
         }
+        // The users kind also answers at `/users` (`Wp\Kinds::all`), the spec's name for it.
+        if c.auth
+            && table != "users"
+            && !self.schema.collections.contains_key("users")
+            && !self.schema.globals.contains_key("users")
+        {
+            let prefix = format!("{base}/");
+            let aliases: Vec<(String, Map<String, Value>)> = self
+                .paths
+                .0
+                .iter()
+                .filter(|(path, _)| *path == &base || path.starts_with(&prefix))
+                .map(|(path, ops)| {
+                    let mut ops = ops.clone();
+                    for op in ops.values_mut() {
+                        if let Some(id) = op["operationId"].as_str() {
+                            op["operationId"] =
+                                json!(format!("users.{}", id.strip_prefix(&format!("{key}.")).unwrap_or(id)));
+                        }
+                    }
+                    (format!("/users{}", &path[base.len()..]), ops)
+                })
+                .collect();
+            self.paths.0.extend(aliases);
+        }
     }
 
     /// The routes `first sync` uses to keep a kind's content files and its rows in step.
@@ -818,6 +859,13 @@ impl Builder<'_> {
                 "properties": { "records": { "type": "array", "items": { "type": "object" } }, "next": { "type": ["integer", "null"] } },
                 "required": ["records", "next"],
             }))));
+        // What apply and trash answer (`Sync\Routes`): the uid, what happened, and the new digest.
+        let outcome = json!({ "type": "object", "properties": {
+            "uid": { "type": "string" },
+            "status": { "type": "string", "enum": ["applied", "normalized", "unchanged"] },
+            "digest": { "type": "string" },
+            "record": { "type": "object", "description": "The record as stored, when the site normalized what was sent." },
+        }, "required": ["uid", "status"] });
         let expect = json!({ "type": "string", "pattern": "^(absent|sha256:[0-9a-f]{64})$", "description": "The digest the caller last saw, or `absent` for a row it believes does not exist." });
         let uid = json!({ "type": "string", "pattern": "^zr_[0-9a-f]{20}$" });
         self.paths.add(&base, "post", Op::new("Sync", format!("sync.{table}.apply"), format!("Apply a {table} sync record"), "Creates or updates one row from a content file, when the row still matches `expect`. A row that changed since answers 409 `sync_stale`.")
@@ -825,7 +873,8 @@ impl Builder<'_> {
             .body(body("The record and the digest it expects.", json!({
                 "type": "object", "properties": { "record": { "type": "object" }, "expect": expect }, "required": ["record", "expect"],
             })))
-            .ok(200, envelope("The outcome.", any()))
+            .ok(200, envelope("The outcome: the row was updated, or was already as sent.", outcome.clone()))
+            .created(envelope("The outcome: the record created a row.", outcome.clone()))
             .errors(&[409]));
         self.paths.add(
             &format!("{base}/trash"),
@@ -905,17 +954,9 @@ impl Builder<'_> {
         let input = js::action_input(&a.input);
         let output = a.output.as_ref().map(dialect).unwrap_or(json!({}));
         let result = envelope("The action's result.", output);
-        if let Some(signature) = &a.signature {
-            // A signed webhook: the caller signs the raw body, and nobody is signed in.
-            let header = signature["header"].as_str().unwrap_or("First-Signature");
-            self.paths.add(&path, "post", Op::new("Actions", format!("actions.{}", a.name), format!("Call {}", a.name), format!(
-                "Runs the `{}` action. The caller signs the raw request body and sends the signature in `{header}`; a request without a valid signature is refused, and the action runs as nobody.", a.name
-            ))
-            .unauthenticated()
-            .params([json!({ "name": header, "in": "header", "required": true, "description": "The signature of the raw body.", "schema": { "type": "string" } })])
-            .body(body("The action's input.", input))
-            .ok(200, result)
-            .errors(&[401]));
+        if a.signature.is_some() {
+            // A signed webhook is for the one service that holds its secret, and the app's public
+            // schema (`Kinds::describe`) leaves it out: so does this document.
             return;
         }
         let mut post = Op::new(
@@ -1023,8 +1064,10 @@ impl Builder<'_> {
 
     /// The WordPress kinds every site has (spec §2.1), unless the app has a kind of that name.
     fn wordpress(&mut self) {
-        // The app's own kind or global of that name answers instead (`Wp\Facade::route`).
-        let has = |name: &str| self.schema.collections.contains_key(name) || self.schema.globals.contains_key(name);
+        // The app's own kind of that name answers instead (`Wp\Facade::route`). A global of that
+        // name takes only the one-segment path; the item paths still reach the built-in kind.
+        let has = |name: &str| self.schema.collections.contains_key(name);
+        let global = |name: &str| self.schema.globals.contains_key(name);
         let description = "WordPress's own content, in First's field names. WordPress core decides access, as it does for every other client of these routes.";
         let paged = || [paging("limit"), paging("offset"), paging("cursor")];
         let search = || {
@@ -1050,6 +1093,12 @@ impl Builder<'_> {
             json!({ "type": "object", "properties": properties })
         };
         let ids = || json!({ "type": "array", "items": { "type": "integer" } });
+        let term_row = || {
+            json!({ "type": "object", "properties": {
+                "id": integer(), "name": text(), "slug": text(), "description": { "type": "string" },
+                "parent": optional_integer(), "count": integer(), "url": text(),
+            } })
+        };
         // What a write to a post or a page may set (`Wp\Kinds::input`); anything else is refused.
         let post_input = json!({ "type": "object", "properties": {
             "title": { "type": "string" }, "content": { "type": "string" }, "slug": { "type": "string" }, "excerpt": { "type": "string" },
@@ -1092,17 +1141,8 @@ impl Builder<'_> {
             } }),
                 false,
             ),
-            (
-                "categories",
-                "WordPressTerm",
-                json!({ "type": "object", "properties": {
-                "id": integer(), "name": text(), "slug": text(), "description": { "type": "string" },
-                "parent": optional_integer(), "count": integer(), "url": text(),
-            } }),
-                term_input.clone(),
-                true,
-            ),
-            ("tags", "WordPressTerm", Value::Null, term_input, true),
+            ("categories", "WordPressTerm", term_row(), term_input.clone(), true),
+            ("tags", "WordPressTerm", term_row(), term_input, true),
         ];
         for (name, component, row, input, by_slug) in kinds {
             if has(name) {
@@ -1110,9 +1150,7 @@ impl Builder<'_> {
             }
             self.tag("WordPress", description);
             let component = &self.own(component);
-            if !row.is_null() {
-                self.components.insert(component.to_string(), row);
-            }
+            self.components.entry(component.to_string()).or_insert(row);
             let id = if by_slug {
                 path_param(
                     "id",
@@ -1126,24 +1164,26 @@ impl Builder<'_> {
             let item = format!("{base}/{{id}}");
             let one = envelope("The row.", reference(component));
             let fields = body("The fields to set. Any other field is refused.", input);
-            self.paths.add(&base, "get", Op::new("WordPress", format!("{name}.list"), format!("List {name}"), format!("WordPress's {name}, one page at a time. The route's other WordPress filters (`status`, `author`, `parent`, ...) pass through."))
-                .params(paged())
-                .params([search()])
-                .ok(200, page(reference(component)))
-                .errors(&[400, 401, 403]));
-            self.paths.add(
-                &base,
-                "post",
-                Op::new(
-                    "WordPress",
-                    format!("{name}.create"),
-                    format!("Create in {name}"),
-                    format!("Creates one of WordPress's {name} and returns it."),
-                )
-                .body(fields.clone())
-                .ok(201, one.clone())
-                .errors(&[401, 403]),
-            );
+            if !global(name) {
+                self.paths.add(&base, "get", Op::new("WordPress", format!("{name}.list"), format!("List {name}"), format!("WordPress's {name}, one page at a time. The route's other WordPress filters (`status`, `author`, `parent`, ...) pass through."))
+                    .params(paged())
+                    .params([search()])
+                    .ok(200, page(reference(component)))
+                    .errors(&[400, 401, 403]));
+                self.paths.add(
+                    &base,
+                    "post",
+                    Op::new(
+                        "WordPress",
+                        format!("{name}.create"),
+                        format!("Create in {name}"),
+                        format!("Creates one of WordPress's {name} and returns it."),
+                    )
+                    .body(fields.clone())
+                    .ok(201, one.clone())
+                    .errors(&[401, 403]),
+                );
+            }
             let mut get = Op::new(
                 "WordPress",
                 format!("{name}.get"),
@@ -1258,20 +1298,45 @@ impl Builder<'_> {
                     "Deletes the item and its files. Fields that pointed at it become null.",
                 )
                 .rule(&editor)
-                .params([id])
+                .params([id.clone()])
                 .ok(200, envelope("The deleted media item.", media))
                 .errors(&[404]),
             );
+            // Where an upload kept off the web root (`uploads: { backend: "s3" }`) is streamed from: a
+            // media item's `url` and its sizes' URLs point here. Without that backend it is a 404.
+            let offsite = self.schema.uploads.as_ref().is_some_and(|u| u["backend"] == "s3");
+            if offsite {
+                self.paths.add(
+                "/media/{id}/file/{hash}/{path}",
+                "get",
+                Op::new(
+                    "Media",
+                    "media.file",
+                    "Read an uploaded file",
+                    "The bytes of one file of a media item, such as an image size, when the site keeps uploads off its web root. Take the URL from the item's `url` or `sizes`.",
+                )
+                .unauthenticated()
+                .params([
+                    id,
+                    path_param("hash", "The SHA-256 of the file's path, from the media item's URL.", json!({ "type": "string" })),
+                    path_param("path", "The file's path within the item.", json!({ "type": "string" })),
+                ])
+                .ok(200, json!({ "description": "The file.", "content": { "*/*": { "schema": { "type": "string", "format": "binary" } } } }))
+                .errors(&[404]),
+            );
+            }
         }
 
         if !has("users") && !self.schema.collections.values().any(|c| c.auth) {
             self.tag("WordPress", description);
             self.define("WordPressUser", wordpress_user());
-            self.paths.add("/users", "get", Op::new("WordPress", "users.list", "List users", "WordPress's users, as WordPress shows them to the caller: authors of public content to everyone, every user to those who may list users.")
+            if !global("users") {
+                self.paths.add("/users", "get", Op::new("WordPress", "users.list", "List users", "WordPress's users, as WordPress shows them to the caller: authors of public content to everyone, every user to those who may list users.")
                 .params(paged())
                 .params([search()])
                 .ok(200, page(self.own_ref("WordPressUser")))
                 .errors(&[400, 401, 403]));
+            }
             self.paths.add(
                 "/users/{id}",
                 "get",
@@ -1304,21 +1369,23 @@ impl Builder<'_> {
             }, "required": ["location", "items"] }),
             );
             let anyone = Access::anyone();
-            self.paths.add(
-                "/menus",
-                "get",
-                Op::new(
-                    "WordPress",
-                    "menus.list",
-                    "List menus",
-                    "The menu in each theme location, as a tree.",
-                )
-                .rule(&anyone)
-                .ok(
-                    200,
-                    envelope("The menus.", json!({ "type": "array", "items": self.own_ref("Menu") })),
-                ),
-            );
+            if !global("menus") {
+                self.paths.add(
+                    "/menus",
+                    "get",
+                    Op::new(
+                        "WordPress",
+                        "menus.list",
+                        "List menus",
+                        "The menu in each theme location, as a tree.",
+                    )
+                    .rule(&anyone)
+                    .ok(
+                        200,
+                        envelope("The menus.", json!({ "type": "array", "items": self.own_ref("Menu") })),
+                    ),
+                );
+            }
             self.paths.add(
                 "/menus/{location}",
                 "get",
@@ -1339,7 +1406,7 @@ impl Builder<'_> {
             );
         }
 
-        if !has("settings") {
+        if !has("settings") && !global("settings") {
             self.tag("WordPress", description);
             self.define("SiteSettings", json!({ "type": "object", "properties": {
                 "title": { "type": "string" }, "tagline": { "type": "string" }, "timezone": { "type": "string" },
@@ -1736,7 +1803,77 @@ pub fn render(document: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::{Value, json};
+
+    /// The document for an app written as `first.config.ts` plus `first/schema.ts`.
+    fn document(schema_ts: &str) -> Value {
+        let files = [
+            (
+                "/app/first.config.ts",
+                "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"app\" });\n",
+            ),
+            ("/app/first/schema.ts", schema_ts),
+        ]
+        .into_iter()
+        .map(|(path, source)| (std::path::PathBuf::from(path), source.to_string()))
+        .collect();
+        let program = crate::loader::load_from(
+            std::rc::Rc::new(crate::wasm::Memory::new(files)),
+            std::path::Path::new("/app/first.config.ts"),
+        )
+        .unwrap_or_else(|d| panic!("{d:?}"));
+        crate::pipeline::build(
+            std::path::Path::new("/app"),
+            &program,
+            || Ok(crate::pipeline::Previous::none()),
+            |_| None,
+        )
+        .unwrap_or_else(|d| panic!("{}", d.message))
+        .openapi
+    }
+
+    /// Every `$ref` in the document names something the document defines.
+    fn dangling(document: &Value) -> Vec<String> {
+        fn walk(value: &Value, document: &Value, out: &mut Vec<String>) {
+            match value {
+                Value::Object(map) => {
+                    if let Some(reference) = map.get("$ref").and_then(Value::as_str)
+                        && document.pointer(reference.trim_start_matches('#')).is_none()
+                    {
+                        out.push(reference.to_string());
+                    }
+                    map.values().for_each(|v| walk(v, document, out));
+                }
+                Value::Array(items) => items.iter().for_each(|v| walk(v, document, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        walk(document, document, &mut out);
+        out
+    }
+
+    /// A kind or global named like one of WordPress's own kinds takes its place where the API gives
+    /// it that place, and every reference still resolves: a `categories` kind leaves `tags` its own
+    /// term schema, and a global named `posts` takes only `GET /posts`.
+    #[test]
+    fn names_shared_with_wordpress_kinds_leave_no_dangling_reference() {
+        let doc = document(
+            "import { collection, global, text } from \"first\";\n\
+             export const categories = collection({ title: text() }, { title: \"title\" });\n\
+             export const posts = global(\"posts\", { motto: text().default(\"x\") });\n",
+        );
+        assert_eq!(dangling(&doc), Vec::<String>::new());
+        assert_eq!(doc["paths"]["/tags"]["get"]["operationId"], "tags.list");
+        assert_eq!(doc["paths"]["/categories"]["get"]["operationId"], "categories.list");
+        assert_eq!(doc["paths"]["/posts"]["get"]["operationId"], "globals.posts.get");
+        assert!(
+            doc["paths"]["/posts"].get("post").is_none(),
+            "{}",
+            doc["paths"]["/posts"]
+        );
+        assert_eq!(doc["paths"]["/posts/{id}"]["get"]["operationId"], "posts.get");
+    }
 
     #[test]
     fn the_written_document_parses_back_to_the_same_value() {

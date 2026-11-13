@@ -4706,15 +4706,29 @@ fn openapi_schemas_are_the_registered_ability_schemas() {
                 compared += 1;
             }
         }
-        for (key, global) in &schema.globals {
+        for key in schema.globals.keys() {
             let k = kebab(key);
+            // The document's own operations for the global, as a client reads them.
+            let path = &built.openapi["paths"][format!("/{key}")];
+            let resolve = |schema: &Value| -> Value {
+                match schema["$ref"].as_str() {
+                    Some(reference) => built
+                        .openapi
+                        .pointer(reference.trim_start_matches('#'))
+                        .unwrap()
+                        .clone(),
+                    None => schema.clone(),
+                }
+            };
             assert_eq!(
-                first::json_schema::fields(&global.fields, true),
+                resolve(
+                    &path["get"]["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["data"]
+                ),
                 registered[format!("{app}/global-{k}-get")]["output"],
                 "{source}: the global {key}"
             );
             assert_eq!(
-                first::json_schema::global_patch(&global.fields),
+                resolve(&path["patch"]["requestBody"]["content"]["application/json"]["schema"]),
                 input(&format!("{app}/global-{k}-update")),
                 "{source}: the patch of the global {key}"
             );

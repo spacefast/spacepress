@@ -30,6 +30,7 @@ Every First file starts with `declare(strict_types=1);`. Namespace `First`.
     first-app-<name>.php                plugin header
     first/app/schema.php                generated: `return [...]` schema metadata
     first/app/functions.php             generated: compiled hooks, actions, helpers (namespace FirstApp)
+    first/app/openapi.json              generated: the API as OpenAPI 3.1, served at /__first/api/v1/openapi.json
     first/app/migrations/NNNN_<name>.sql  MySQL DDL, `{prefix}` for the table prefix
     public/...                         copied from <project>/public if present
   *.zip                                the same plugins, packaged

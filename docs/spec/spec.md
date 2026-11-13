@@ -460,7 +460,7 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
 | Pages with no request data, prerendered to HTML plus `.md` | Files served by the engine before WordPress boots |
 | Interactive component stores, CSS and assets, content-hashed | Immutable files, cached for a year |
 | `llms.txt` and the sitemap skeleton | Files |
-| `_generated/db.d.ts`, `routes.d.ts`, `openapi.json`, `spec.json` | Used by clients only |
+| `_generated/db.d.ts`, `routes.d.ts`, `openapi.json`, `spec.json` | Used by clients; the site also serves `openapi.json` (§3a) |
 
 Client bundling uses Rolldown. It is Rust, built on the same OXC family as
 First's parser, and powers Vite. That keeps the build free of Node, so it can

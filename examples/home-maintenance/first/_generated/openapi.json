@@ -85,7 +85,7 @@
           {
             "name": "with",
             "in": "query",
-            "description": "What to load with each row, comma-separated or as a JSON object: `tasks`, `doneLogs`. A relation holds only rows the caller may read.",
+            "description": "What to load with each row, comma-separated or as a JSON object: `tasks`, `doneLogs`, `manual`. A relation holds only rows the caller may read.",
             "schema": { "type": "string" }
           }
         ],
@@ -120,15 +120,6 @@
         "summary": "Create in systems",
         "x-first-access": "authenticated",
         "description": "Creates one systems row and returns it.\n\nAccess: Any signed-in user may do this.",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
-            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
-          }
-        ],
         "requestBody": {
           "required": true,
           "description": "The new row's fields.",
@@ -186,7 +177,7 @@
           {
             "name": "with",
             "in": "query",
-            "description": "What to load with each row, comma-separated or as a JSON object: `tasks`, `doneLogs`. A relation holds only rows the caller may read.",
+            "description": "What to load with each row, comma-separated or as a JSON object: `tasks`, `doneLogs`, `manual`. A relation holds only rows the caller may read.",
             "schema": { "type": "string" }
           },
           {
@@ -552,15 +543,6 @@
         "summary": "Create in tasks",
         "x-first-access": "authenticated",
         "description": "Creates one tasks row and returns it.\n\nAccess: Any signed-in user may do this.",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
-            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
-          }
-        ],
         "requestBody": {
           "required": true,
           "description": "The new row's fields.",
@@ -984,15 +966,6 @@
         "summary": "Create in done_logs",
         "x-first-access": "authenticated",
         "description": "Creates one done_logs row and returns it.\n\nAccess: Any signed-in user may do this.",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
-            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
-          }
-        ],
         "requestBody": {
           "required": true,
           "description": "The new row's fields.",

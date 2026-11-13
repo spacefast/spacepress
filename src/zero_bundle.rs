@@ -69,7 +69,10 @@ pub(crate) fn read(source: &Path, manifest: &Manifest) -> Result<SourceBundle, D
 }
 
 fn current(path: &str) -> Result<String, Diag> {
-    if path == "zero/pages.json" {
+    // 0.3.0 rendered TSX pages ahead of time (`pages/` and their `zero/pages.json` artifact). First
+    // has no such renderer: pages are `first/app/` sources the compiler turns into PHP. A bundle
+    // that carries either is refused rather than compiled into a site with no pages.
+    if path == "zero/pages.json" || path.starts_with("pages/") {
         return Err(
             failure("this bundle has TSX pages (pages/) rendered by the 0.3.0 compiler, which First can't serve").help(
                 "move each page to first/app/<path>/page.tsx, then publish again with a client that captures First sources (`first sources`)",

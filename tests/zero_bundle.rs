@@ -189,15 +189,20 @@ fn a_zero_source_bundle_with_rendered_pages_is_refused_with_how_to_publish_again
         "{help}"
     );
     assert!(!output.exists());
+    // `pages/` sources alone, without their artifact, are refused the same way.
+    let sources_only = edited_capture(work.path(), "pages/page.tsx", |_| "export default () => null;".into());
+    let error = first::bundle::compile(&sources_only, &output, &sources_only, None).unwrap_err();
+    assert!(error.message.contains("TSX pages (pages/)"), "{}", error.message);
+    assert!(!output.exists());
 }
 
-/// Rewrites one file of a copy of the 0.3.0 capture and re-hashes the app bundle, as a client that
+/// Rewrites (or adds) one file of a copy of the 0.3.0 capture and re-hashes the app bundle, as a client that
 /// predates the rename would have captured that source.
 fn edited_capture(work: &Path, path: &str, edit: impl FnOnce(&str) -> String) -> PathBuf {
     let bundle = work.join("edited");
     copy_dir(&Path::new(FIXTURE).join("sources"), &bundle);
     let mut app: serde_json::Value = serde_json::from_slice(&fs::read(bundle.join("app.zero.json")).unwrap()).unwrap();
-    let source = app["files"][path].as_str().unwrap().to_string();
+    let source = app["files"][path].as_str().unwrap_or_default().to_string();
     app["files"][path] = edit(&source).into();
     let bytes = serde_json::to_vec(&app).unwrap();
     fs::write(bundle.join("app.zero.json"), &bytes).unwrap();

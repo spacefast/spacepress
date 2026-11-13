@@ -1,0 +1,16 @@
+{
+  "format": "zero.hosted.v1",
+  "compiler": "0.3.0",
+  "app": "forms",
+  "wordpress": "7.1",
+  "php": "8.2",
+  "requires": {
+    "action-scheduler": "4.2.0",
+    "mcp-adapter": "0.7.1",
+    "polylang": "3.9",
+    "secure-custom-fields": "6.9.7"
+  },
+  "pages": null,
+  "appSourceSha256": "e8bcbc4f13b99677021c89c16ad1cf23b476b2d15b0a431550947da784a41fc8",
+  "vendorSourceSha256": "cedcb3e24c1850d78296610bdca1d9a692b1409400d9441d077353e29bf76e7b"
+}

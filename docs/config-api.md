@@ -118,6 +118,7 @@ isn't changed either. None of these switches can be turned off in
 | `autoUpdates` | no automatic core, plugin or theme updates |
 | `customizer` | `customize` is refused, so `customize.php` and its links are gone |
 | `comments` | comments closed on every post type except collections with `comments: true` |
+| `schemaLock` | the app's schema is changed in `first.config.ts` and nowhere on the site (see [Schema lock](#schema-lock)) |
 | `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
 | `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
 | `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
@@ -125,6 +126,58 @@ isn't changed either. None of these switches can be turned off in
 `GET /__first/api/v1` lists the switches in `runtime.wp.hardening`. The object cache
 is whatever the host's `object-cache.php` drop-in provides. A plugin can't
 install a drop-in, so the host supplies it (on Spacefast, the box image does).
+
+### Schema lock
+
+`first.config.ts` in the project's repository is the only way to change what
+First generates from it: its Secure Custom Fields field groups and options
+pages, its post types, its registered meta, and its roles and capabilities.
+First registers all of these in code on every request, so the site's database
+holds no copy of them to edit. What a site could still do is store something
+that takes their place or attaches to them. That is refused for every user,
+administrators included, with a message that names `first.config.ts`:
+
+```
+Refused: the field list of first_notes belongs to the app's schema, which First
+builds from first.config.ts. Change it there and deploy the app; it can't be
+changed on the site.
+```
+
+| refused | where |
+|---|---|
+| a field group, field, post type, taxonomy or options page saved under one of First's names (`group_first_…`, `field_first_…`, a `first_…` post type or taxonomy, a global's options page), in any letter case | SCF's screens in wp-admin, its import tool, its abilities over REST (`/wp-abilities/v1/…/run`) and MCP |
+| a field group attached to a First kind's post type or to a global's options page; a taxonomy attached to a First kind | the same |
+| a field of the site's own whose name is one of First's meta keys (`first_…`), on any post type or on users | the same |
+
+First's meta is registered in code too. Its values are content, edited through
+First's own validation on every route; the keys are protected, so wp-admin's
+Custom Fields box can't add or change one.
+
+A wp-admin screen answers 403 with the message on a page. A REST or MCP call
+answers 403 with the code `first_schema_locked` and the same message.
+
+Two rules apply without a refusal screen:
+
+- A field group that is already in the database never applies to a First kind,
+  however it got there (WP-CLI, an import made while the app was inactive). The
+  kind shows and saves the fields in the config, and nothing else.
+- A write to WordPress's role definitions is saved without any change to a role
+  First creates (`first_guest`) and without a capability of a First kind added
+  to any role (`edit_others_first_notes`): the kind's access rules answer those
+  capabilities for everyone, so a stored one would do nothing but mislead. The
+  rest of the write stands, and the response carries a `First-Schema-Lock`
+  header (a notice in wp-admin) with the message. Core has no screen or route
+  for roles; this covers plugins that edit them.
+
+Everything else stays open: content, media, users and their roles, settings,
+other plugins' own settings and field groups, the site's own SCF post types and
+taxonomies, and activating installed plugins.
+
+WP-CLI is not refused. It is the operator's trusted channel, as it is for
+`wp first insert`, and a field group it imports onto a First kind still never
+applies there. PHP that runs on the site (another plugin, a theme's
+`functions.php`) can register what it likes in code; the lock is about edits
+made on the site, not about code that is deployed to it.
 
 ## Mixed content and app data
 

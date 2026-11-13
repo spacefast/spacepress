@@ -627,6 +627,33 @@ test("without .htaccess the probe fails and uploads answer 503 until protection 
   assert.equal((await uploadDeck(pdf("ok"))).status, 201);
 });
 
+test("a media item reads on the API exactly as on core's media route: its parent post's visibility decides", async () => {
+  const upload = (parent?: number) => {
+    const form = new FormData();
+    form.append("file", new Blob([splitPng()], { type: "image/png" }), `parent-${run}-${parent ?? "none"}.png`);
+    if (parent !== undefined) form.append("post", String(parent));
+    return http("POST", `${core}/media`, { as: "author", form });
+  };
+  const post = (status: string) => Number(wp("post", "create", "--post_type=post", `--post_status=${status}`, `--post_author=${harness.users.author.id}`, `--post_title=Media parent ${status} ${run}`, "--porcelain"));
+  const published = (await upload(post("publish"))).json.id;
+  const drafted = (await upload(post("draft"))).json.id;
+  const loose = (await upload()).json.id;
+  const both = async (id: number, as?: "author" | "subscriber") => {
+    const viaCore = await http("GET", `${core}/media/${id}`, as ? { as } : {});
+    const viaApi = await http("GET", `${api}/media/${id}`, as ? { as } : {});
+    return [viaCore.status, viaApi.status];
+  };
+  assert.deepEqual(await both(published), [200, 200], "a published parent: anyone reads it");
+  assert.deepEqual(await both(loose), [200, 200], "an unattached item: anyone reads it");
+  const [coreAnon, apiAnon] = await both(drafted);
+  assert.ok(coreAnon >= 400, `core hides a draft's attachment (${coreAnon})`);
+  assert.equal(apiAnon, 404, "the API hides it too, as a missing item");
+  assert.deepEqual(await both(drafted, "subscriber"), [403, 404], "another signed-in user: hidden");
+  assert.deepEqual(await both(drafted, "author"), [200, 200], "the draft's author reads it");
+  const listed = await ok("GET", "/media" + `?${new URLSearchParams({ limit: "100" })}`);
+  assert.ok(!listed.some((m: any) => m.id === drafted), "the anonymous list doesn't hold it either");
+});
+
 } else {
   // This lane buys the real provider/replica boundary; local tests above own the ordinary rules.
   test("S3 keeps files, originals and editor derivatives durable across fresh replicas", async () => {
@@ -827,29 +854,3 @@ test("without .htaccess the probe fails and uploads answer 503 until protection 
   });
 }
 
-test("a media item reads on the API exactly as on core's media route: its parent post's visibility decides", async () => {
-  const upload = (parent?: number) => {
-    const form = new FormData();
-    form.append("file", new Blob([splitPng()], { type: "image/png" }), `parent-${run}-${parent ?? "none"}.png`);
-    if (parent !== undefined) form.append("post", String(parent));
-    return http("POST", `${core}/media`, { as: "author", form });
-  };
-  const post = (status: string) => Number(wp("post", "create", "--post_type=post", `--post_status=${status}`, `--post_author=${harness.users.author.id}`, `--post_title=Media parent ${status} ${run}`, "--porcelain"));
-  const published = (await upload(post("publish"))).json.id;
-  const drafted = (await upload(post("draft"))).json.id;
-  const loose = (await upload()).json.id;
-  const both = async (id: number, as?: "author" | "subscriber") => {
-    const viaCore = await http("GET", `${core}/media/${id}`, as ? { as } : {});
-    const viaApi = await http("GET", `${api}/media/${id}`, as ? { as } : {});
-    return [viaCore.status, viaApi.status];
-  };
-  assert.deepEqual(await both(published), [200, 200], "a published parent: anyone reads it");
-  assert.deepEqual(await both(loose), [200, 200], "an unattached item: anyone reads it");
-  const [coreAnon, apiAnon] = await both(drafted);
-  assert.ok(coreAnon >= 400, `core hides a draft's attachment (${coreAnon})`);
-  assert.equal(apiAnon, 404, "the API hides it too, as a missing item");
-  assert.deepEqual(await both(drafted, "subscriber"), [403, 404], "another signed-in user: hidden");
-  assert.deepEqual(await both(drafted, "author"), [200, 200], "the draft's author reads it");
-  const listed = await ok("GET", "/media" + `?${new URLSearchParams({ limit: "100" })}`);
-  assert.ok(!listed.some((m: any) => m.id === drafted), "the anonymous list doesn't hold it either");
-});

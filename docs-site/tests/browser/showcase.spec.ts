@@ -12,10 +12,11 @@ test("the landing page opens on the config, written out when the site was built"
 	await page.goto("./");
 	const config = page.locator(".explorer-config");
 	await expect(config).toBeVisible();
-	await expect(config).toContainText('import escapeHtml from "escape-html"');
+	await expect(config).toContainText('import { mine, ownerId, signedIn } from "./first/lib/owner"');
 	// The whole config is on the page: its last line is there without scrolling inside a box.
-	await expect(config).toContainText("shelf: route(");
-	await expect(page.locator(".explorer-bar")).toContainText("3 you write");
+	await expect(config).toContainText("await db.update(books).set({ minutesRead })");
+	// first.config.ts, first/lib/owner.ts, first/app/shelf.html/route.ts and package.json.
+	await expect(page.locator(".explorer-bar")).toContainText("4 you write");
 	expect(errors).toEqual([]);
 });
 

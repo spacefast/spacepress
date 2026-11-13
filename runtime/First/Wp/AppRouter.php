@@ -208,7 +208,7 @@ final class AppRouter
             }
         }
         try {
-            $user = HttpRoutes::caller($method, $headers);
+            $user = RouteRequest::caller($method, $headers);
         } catch (\First\HttpError $error) {
             $problem = \First\App::problem($error);
             $this->emit($problem['status'], ['Content-Type' => 'application/problem+json'], (string) Js::jsonStringify($problem));
@@ -217,8 +217,8 @@ final class AppRouter
         // The file's own `access` rule, or its `signature` (verified over the raw body; the
         // handler then runs as the system, spec §3).
         $spec = ['handler' => $methods[$lookup], 'access' => $file['access'] ?? ['allow' => false], 'signature' => $file['signature'] ?? null];
-        $query = HttpRoutes::query((string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '')));
-        $url = HttpRoutes::url((string) ($_SERVER['HTTP_HOST'] ?? (wp_parse_url(home_url('/'), PHP_URL_HOST) ?? '')), (string) ($_SERVER['REQUEST_URI'] ?? '/'));
+        $query = RouteRequest::query((string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '')));
+        $url = RouteRequest::url((string) ($_SERVER['HTTP_HOST'] ?? (wp_parse_url(home_url('/'), PHP_URL_HOST) ?? '')), (string) ($_SERVER['REQUEST_URI'] ?? '/'));
         // An unsigned handler reads as its caller, like a page; a signed webhook runs as the
         // system (spec §3), so its reads are trusted.
         $viewer = $spec['signature'] !== null ? null : new Viewer($user);

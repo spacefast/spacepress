@@ -18,7 +18,6 @@ pub const KINDS: &[(&str, &str)] = &[
     ("delete", "deletes from"),
     ("hooks", "hooks"),
     ("actions", "defines the action"),
-    ("routes", "serves"),
     ("http", "fetches from"),
     ("env", "reads the environment variable"),
     ("mail", "sends mail with"),

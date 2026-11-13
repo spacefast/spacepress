@@ -114,21 +114,30 @@ export default defineConfig({
       },
       async beforeUpdate(patch, existing) {
         await checkBin(patch.binId === undefined ? existing.binId : patch.binId, existing.ownerId);
-        if (patch.quantity !== undefined) {
+        const quantity = patch.quantity;
+        if (quantity !== undefined) {
           const active = await db.query.loans.findMany({ where: {
             ownerId: existing.ownerId, thingId: existing.id, returnedOn: { isNull: true },
           } });
-          if (patch.quantity < active.length) throw new HttpError(409, "copies_on_loan", "Return copies before reducing the quantity.");
+          if (quantity < active.length) throw new HttpError(409, "copies_on_loan", "Return copies before reducing the quantity.");
         }
       },
     },
     loans: {
       async beforeCreate(data, ctx) {
         data.ownerId = actorId(ctx);
-        await checkLoan({ ...data, ownerId: actorId(ctx), lentOn: data.lentOn ?? new Date().toISOString().slice(0, 10) });
+        await checkLoan({
+          ownerId: data.ownerId, thingId: data.thingId, personId: data.personId, dueOn: data.dueOn,
+          lentOn: data.lentOn ?? new Date().toISOString().slice(0, 10), returnedOn: data.returnedOn,
+        });
       },
       async beforeUpdate(patch, existing) {
-        await checkLoan({ ...existing, ...patch });
+        await checkLoan({
+          id: existing.id, ownerId: existing.ownerId,
+          thingId: patch.thingId ?? existing.thingId, personId: patch.personId ?? existing.personId,
+          lentOn: patch.lentOn ?? existing.lentOn, dueOn: patch.dueOn ?? existing.dueOn,
+          returnedOn: patch.returnedOn === undefined ? existing.returnedOn : patch.returnedOn,
+        });
       },
       afterCreate: scheduleOverdue,
       afterUpdate: scheduleOverdue,
@@ -157,7 +166,7 @@ export default defineConfig({
         const result = [];
         for (const thing of inventory) {
           const searchable = `${thing.name} ${thing.connectorA ?? ""} ${thing.connectorB ?? ""} ${thing.tags.join(" ")}`.toLowerCase();
-          if (!words.every((word) => searchable.includes(word))) continue;
+          if (!words.every((word) => word === undefined || searchable.includes(word))) continue;
           const bin = thing.binId == null ? null : await db.query.bins.findFirst({ where: { id: thing.binId, ownerId: owner } });
           const active = await db.query.loans.findMany({ where: { thingId: thing.id, ownerId: owner, returnedOn: { isNull: true } } });
           result.push({ thing, bin, outOnLoan: active.length > 0, availableQuantity: thing.quantity - active.length });
@@ -191,7 +200,7 @@ export default defineConfig({
         const entries = await db.query.loans.findMany({ where: {
           ownerId: owner, returnedOn: { isNull: true }, dueOn: { lt: new Date().toISOString().slice(0, 10) },
         }, orderBy: { dueOn: "asc" } });
-        return describeLoans(owner, entries);
+        return await describeLoans(owner, entries);
       },
     }),
     whoHas: action({
@@ -201,7 +210,7 @@ export default defineConfig({
         const person = await db.query.people.findFirst({ where: { id: personId, ownerId: owner } });
         if (!person) throw new HttpError(404, "not_found", "Person not found in your drawer.");
         const entries = await db.query.loans.findMany({ where: { ownerId: owner, personId, returnedOn: { isNull: true } }, orderBy: { lentOn: "asc" } });
-        return describeLoans(owner, entries);
+        return await describeLoans(owner, entries);
       },
     }),
   },

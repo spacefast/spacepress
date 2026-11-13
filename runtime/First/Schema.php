@@ -112,12 +112,6 @@ final class Schema
         return $this->raw['auth'] ?? ['collection' => null, 'guests' => true, 'accessTtl' => 300, 'refreshTtl' => 2592000];
     }
 
-    /** @return array<string, array{method: string, path: string, handler: string, access: array, signature: ?array}> */
-    public function routes(): array
-    {
-        return $this->raw['routes'] ?? [];
-    }
-
     /**
      * Server components: `components/<file>.tsx#<export>` => the compiled function in `FirstApp`,
      * which takes the props object and returns `\First\Html`.

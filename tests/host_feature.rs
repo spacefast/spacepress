@@ -57,6 +57,56 @@ fn host_capture_refuses_npm_before_resolution() {
     assert!(!work.path().join("source").exists());
 }
 
+/// A hosted publish compiles from the captured sources alone: a `page.md` travels in the bundle,
+/// and the compiled app plugin carries the page (its table entry and its Markdown).
+#[test]
+fn host_capture_carries_markdown_pages() {
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path().join("app");
+    fs::create_dir_all(project.join("first/app/about")).unwrap();
+    fs::write(
+        project.join("first.config.ts"),
+        "import { defineConfig } from 'first'; export default defineConfig({ name: 'mdsite' });",
+    )
+    .unwrap();
+    fs::write(
+        project.join("first/app/layout.tsx"),
+        "export default function Root({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
+    )
+    .unwrap();
+    fs::write(
+        project.join("first/app/about/page.md"),
+        "---\ntitle: About\n---\n\nWho we are.\n",
+    )
+    .unwrap();
+    let source = work.path().join("source");
+    first::host::sources(&project, &source).unwrap();
+    // The project is gone: only the bundle is left to compile from.
+    fs::remove_dir_all(&project).unwrap();
+    let compiled = work.path().join("compiled");
+    first::host::compile_sources(&source, &compiled, &source, None).unwrap();
+    let app = compiled.join("plugins/first-app-mdsite/first/app");
+    let php = |code: &str| {
+        let out = std::process::Command::new("php").args(["-r", code]).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8(out.stdout).unwrap()
+    };
+    assert_eq!(
+        php(&format!(
+            "$s = require '{}'; $p = $s['app']['content']['about']; echo $p['path'], '|', $p['title'], '|', $p['status'];",
+            app.join("schema.php").display()
+        )),
+        "/about|About|publish"
+    );
+    assert_eq!(
+        php(&format!(
+            "$b = require '{}'; echo json_encode($b);",
+            app.join("content.php").display()
+        )),
+        r#"{"about":"\nWho we are.\n"}"#
+    );
+}
+
 fn synced_project(root: &Path) {
     fs::create_dir_all(root.join("content/posts")).unwrap();
     fs::create_dir_all(root.join("content/items")).unwrap();

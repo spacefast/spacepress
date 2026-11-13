@@ -70,13 +70,6 @@ export type ColumnKind =
   | "repeater"
   | "blocks";
 
-export type ReferentialAction = "cascade" | "restrict" | "set null" | "no action";
-
-export interface ReferenceOptions {
-  onDelete?: ReferentialAction;
-  onUpdate?: ReferentialAction;
-}
-
 /** Values a `$onUpdate`/`$default` function may return: `Date` is accepted on time columns. */
 type GeneratedValue<TKind extends ColumnKind, TData> =
   | TData
@@ -90,8 +83,6 @@ type BoundedKind = "integer" | "number" | "text" | "email" | "url" | "slug" | "r
 type PatternKind = "text" | "email" | "url" | "slug";
 /** `.unique()`. */
 type UniqueKind = "id" | "integer" | "number" | "text" | "email" | "url" | "slug" | "boolean" | "date" | "timestamp";
-/** `.references()`. */
-type ReferenceKind = "id" | "integer" | "number";
 /** `.default()` and friends: every kind but media. */
 type DefaultKind = Exclude<ColumnKind, "media">;
 
@@ -200,12 +191,10 @@ export interface ColumnBuilder<
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /** Unique text columns also need `.max(n)` with n ≤ 191 (MySQL index limit). Not allowed on sub-fields or globals. */
   unique(this: ColumnBuilder<UniqueKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
-  /** Foreign key. The target column's type must match this column's type. */
-  references(
-    this: ColumnBuilder<ReferenceKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
-    ref: () => Column<ColumnKind, NonNullable<TData>>,
-    options?: ReferenceOptions,
-  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
+  /** What deleting the referenced row does: `restrict` (the default when required), `setNull` (the default when optional) or `cascade`. `ref()` fields only. */
+  onDelete(action: "cascade" | "restrict" | "setNull"): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
+  /** The name of the list of referencing rows on the target. Default: the referencing kind's name. `ref()` fields only. */
+  reverse(name: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
 
   /** Numbers: inclusive lower bound. text/email/url/slug/richText: length in code points. repeater/mediaList/select(multiple)/blocks: item count. */
   min(this: ColumnBuilder<BoundedKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>, n: number): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
@@ -252,6 +241,12 @@ export interface Column<
 
 export type AnyColumn = Column<ColumnKind, unknown, boolean, boolean, string, string>;
 
+/**
+ * A reference to a row of `kind` (its `id`): the field holds the id, `with: { field: true }` loads the
+ * row in its place, and `kind` gets a list of the referencing rows named after this kind. Pass
+ * `() => kind` for a kind declared later or for the kind itself.
+ */
+export declare function ref(kind: AnyCollection | (() => AnyCollection)): ColumnBuilder<"integer", number, true, false>;
 /** Every field is required unless `.optional()`; `.default()` or `.defaultNow()` make it omittable on create. */
 export declare function integer(): ColumnBuilder<"integer", number, true, false>;
 /** Any finite number (a double). */
@@ -559,12 +554,6 @@ export type Schema = Record<string, AnyCollection>;
 // 4. Relations
 // ---------------------------------------------------------------------------
 
-/** `r.<collectionKey>.<column>` inside `defineRelations`. */
-export interface RelationColumn<TKey extends string = string> {
-  readonly [relationBrand]: { collection: TKey };
-}
-
-type RelationColumns = RelationColumn | readonly [RelationColumn, ...RelationColumn[]];
 
 export interface One<TTarget extends string = string, TOptional extends boolean = boolean> {
   readonly [relationBrand]: { kind: "one"; target: TTarget; optional: TOptional };
@@ -576,44 +565,13 @@ export interface Many<TTarget extends string = string> {
 
 export type AnyRelation = One | Many;
 
-export interface OneConfig {
-  from: RelationColumns;
-  to: RelationColumns;
-  /** `false` when the related row always exists; the result then isn't nullable. Default `true`. */
-  optional?: boolean;
-}
 
-export interface ManyConfig {
-  from: RelationColumns;
-  to: RelationColumns;
-}
-
-/** Overloads (not a generic) so `optional` isn't inferred from the contextual return type. */
-export interface OneFn<TTarget extends string> {
-  (config: OneConfig & { optional: false }): One<TTarget, false>;
-  (config: OneConfig & { optional?: true }): One<TTarget, true>;
-  (config: OneConfig): One<TTarget, boolean>;
-}
-
-export interface ManyFn<TTarget extends string> {
-  /** With no config, inferred from the single `one` relation pointing back. */
-  (config?: ManyConfig): Many<TTarget>;
-}
-
-export type RelationsBuilder<TSchema extends Schema> = {
-  readonly [K in keyof TSchema & string]: {
-    readonly [C in keyof ColumnsOf<TSchema[K]>]: RelationColumn<K>;
-  };
-} & {
-  readonly one: { readonly [K in keyof TSchema & string]: OneFn<K> };
-  readonly many: { readonly [K in keyof TSchema & string]: ManyFn<K> };
-};
 
 export type RelationsConfig<TSchema extends Schema> = {
   [K in keyof TSchema]?: Record<string, AnyRelation>;
 };
 
-/** Result of `defineRelations`. */
+/** The kinds and their relations, as `first build` registers them in first/_generated/db.d.ts. */
 export interface Relations<
   TSchema extends Schema = Schema,
   TConfig extends RelationsConfig<TSchema> = RelationsConfig<TSchema>,
@@ -621,13 +579,6 @@ export interface Relations<
   readonly [relationsBrand]: { schema: TSchema; config: TConfig };
 }
 
-export declare function defineRelations<TSchema extends Schema>(
-  schema: TSchema,
-): Relations<TSchema, {}>;
-export declare function defineRelations<
-  TSchema extends Schema,
-  TConfig extends RelationsConfig<TSchema>,
->(schema: TSchema, relations: (r: RelationsBuilder<TSchema>) => TConfig): Relations<TSchema, TConfig>;
 
 /** Relations declared for collection `K` (empty when none). */
 type RelationsOf<TRels, K> = K extends keyof TRels
@@ -709,9 +660,11 @@ export type RelationsFilter<
   TSchema extends Schema,
   TRels,
   K extends keyof TSchema,
-> = ColumnFilters<ColumnsOf<TSchema[K]>> & {
+> = Omit<ColumnFilters<ColumnsOf<TSchema[K]>>, keyof RelationsOf<TRels, K>> & {
+  // A `ref()` field filters its id, or the row it refers to.
   [R in keyof RelationsOf<TRels, K>]?:
     | boolean
+    | (R extends keyof ColumnFilters<ColumnsOf<TSchema[K]>> ? ColumnFilters<ColumnsOf<TSchema[K]>>[R] : never)
     | RelationsFilter<TSchema, TRels, TargetOf<RelationsOf<TRels, K>[R]> & keyof TSchema>;
 } & {
   OR?: RelationsFilter<TSchema, TRels, K>[];
@@ -796,8 +749,10 @@ type WithResult<TSchema extends Schema, TRels, K extends keyof TSchema, TWith> =
 };
 
 /** One row of `db.query.<K>` given its `columns` and `with`. */
+/** A `ref()` field loaded by `with` holds the row in place of its id. */
 export type QueryRow<TSchema extends Schema, TRels, K extends keyof TSchema, TCols, TWith> = Simplify<
-  PickColumns<TSchema[K]["$inferSelect"], TCols> & WithResult<TSchema, TRels, K, TWith>
+  Omit<PickColumns<TSchema[K]["$inferSelect"], TCols>, keyof WithResult<TSchema, TRels, K, TWith>> &
+    WithResult<TSchema, TRels, K, TWith>
 >;
 
 export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof TSchema> {
@@ -1006,10 +961,19 @@ export interface AccessCtx<TData = Record<string, unknown>> {
 
 /**
  * A filter an access function may return: column conditions of the collection, plus relation
- * conditions (`{ author: { userId: ctx.user?.id } }`). Relation names aren't known where the
- * collection is defined, so the compiler checks those.
+ * conditions (`{ author: { userId: ctx.user?.id } }`). A `ref()` field is an integer column and its
+ * relation at once, so an integer column also takes a filter on the row it refers to. Relation names
+ * and targets aren't known where the collection is defined, so the compiler checks those.
  */
-export type AccessFilter<T extends AnyCollection> = TableFilter<T> & { [relation: string]: unknown };
+export type AccessFilter<T extends AnyCollection> = {
+  [K in keyof ColumnsOf<T>]?: ColumnKindOf<ColumnsOf<T>[K]> extends "integer"
+    ? ColumnFilter<ColumnsOf<T>[K]> | { [field: string]: unknown }
+    : ColumnFilter<ColumnsOf<T>[K]>;
+} & {
+  OR?: AccessFilter<T>[];
+  AND?: AccessFilter<T>[];
+  NOT?: AccessFilter<T>;
+} & { [relation: string]: unknown };
 
 /** `"anyone"` includes unauthenticated callers; `"authenticated"` is any user; a role admits itself and above. */
 export type AccessShorthand = boolean | "anyone" | "authenticated" | "self" | Role;
@@ -1139,14 +1103,11 @@ export interface ConfigInput<
   collections?: TCollections & Record<string, CollectionMeta<string, ColumnsConfig, false, "collection">>;
   tables?: TTables & Record<string, CollectionMeta<string, ColumnsConfig, false, "table">>;
   users?: TUsers & Record<string, CollectionMeta<string, ColumnsConfig, true, "userProjection">>;
-  relations?: TRelations;
   /** Key = the name used in `db.globals.<key>` and `/globals/<key>`. */
   globals?: TGlobals;
   /** `NoInfer`: types come from the explicit registries, so unknown hook keys are errors. */
   hooks?: NoInfer<Hooks<TSchema>>;
   actions?: Record<string, AnyAction>;
-  /** Custom HTTP endpoints on the site's own paths, outside `/wp-json`. */
-  routes?: Record<string, Route>;
   jobs?: TJobs;
   webhooks?: Webhook[];
   /** Private native forms, queued mail, publication search and server-priced checkout. */
@@ -1204,7 +1165,6 @@ export declare function definePlugin<TSchema extends Schema = Schema>(definition
   hooks?: Hooks<TSchema>;
   actions?: Record<string, AnyAction>;
   jobs?: Record<string, AnyJob>;
-  routes?: Record<string, Route>;
 }): Plugin;
 
 // ---------------------------------------------------------------------------
@@ -1233,10 +1193,7 @@ export declare function job<TInput extends ColumnsConfig>(definition: {
 }): Job<TInput>;
 export interface EnqueueOptions { delay?: number; key?: string }
 
-declare const routeBrand: unique symbol;
-/** A custom HTTP endpoint: `routes: { feed: route({ ... }) }`. */
-export interface Route { readonly [routeBrand]: true }
-/** The request a route handler receives. Header names are lowercase; the body is the raw text. */
+/** The request a `route.ts` (or page) HTTP handler under `first/app/` receives. Header names are lowercase; the body is the raw text. */
 export interface RouteRequest {
   method: string;
   /**
@@ -1245,7 +1202,7 @@ export interface RouteRequest {
    */
   url: string;
   path: string;
-  /** `:name` segments of the route path, decoded. */
+  /** The `[name]` and `[...name]` folders of the route, decoded (catch-all segments joined with `/`). */
   params: Record<string, string>;
   /**
    * The query string as URLSearchParams reads it: names byte-exact (`a.b`, `x[]`), every value
@@ -1263,19 +1220,6 @@ export interface RouteQuery {
 }
 /** What a route handler returns. Status defaults to 200, body to "", Content-Type to text/plain; charset=utf-8. */
 export interface RouteResponse { status?: number; headers?: Record<string, string>; body?: string }
-type RoutePath = `/${string}`;
-/**
- * One method and path served by a compiled handler, in one transaction (`docs/config-api.md#http-routes`).
- * Exactly one of `access` (who may call) or `signature` (an HMAC over the raw body; the caller is anonymous).
- */
-export declare function route(definition: {
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  path: RoutePath;
-  handler: (req: RouteRequest, ctx: HookCtx) => Awaitable<RouteResponse>;
-} & (
-  | { access: GateRule<Record<string, never>>; signature?: never }
-  | { signature: { secret: EnvValue; header: string; scheme: "first" | "hmac-sha256" }; access?: never }
-)): Route;
 export interface JobHandle<TInput> {
   enqueue(input: TInput, opts?: EnqueueOptions): Promise<{ id: string }>;
 }

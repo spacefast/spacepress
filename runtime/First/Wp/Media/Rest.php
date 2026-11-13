@@ -21,12 +21,16 @@ final class Rest
     {
         add_filter('rest_dispatch_request', [self::class, 'dispatch'], 10, 4);
         add_action('rest_api_init', [self::class, 'fields']);
-        // Media reads follow First's media rule (Access::MEDIA, `anyone` reads), not the parent post's
-        // visibility: core hides an attachment of a draft. For the API's dispatches only.
+        // Media reads need core's check (an attachment of a post the caller can't read is a 404,
+        // as on /wp/v2/media) and First's media read rule on top of it.
         add_filter('rest_endpoints', [self::class, 'endpoints']);
     }
 
-    /** rest_endpoints: the media item read's permission is First's media read rule on the API's dispatches. */
+    /**
+     * rest_endpoints: a media item read runs core's permission check first (its parent post's read
+     * check, as core does for an attached item), then First's media read rule. First's rule only
+     * narrows: the API never shows a media item core REST hides from the same caller.
+     */
     public static function endpoints(array $endpoints): array
     {
         foreach ($endpoints['/wp/v2/media/(?P<id>[\d]+)'] ?? [] as $i => $handler) {
@@ -36,9 +40,17 @@ final class Rest
             }
             $core = $handler['permission_callback'];
             $endpoints['/wp/v2/media/(?P<id>[\d]+)'][$i]['permission_callback'] = static function (\WP_REST_Request $request) use ($core): mixed {
+                $allowed = call_user_func($core, $request);
                 $post = get_post((int) $request['id']);
-                if (!\First\Wp\Facade::dispatching() || !$post instanceof \WP_Post || $post->post_type !== 'attachment') {
-                    return call_user_func($core, $request);
+                if (!$post instanceof \WP_Post || $post->post_type !== 'attachment') {
+                    return $allowed;
+                }
+                if ($allowed !== true) {
+                    // On the API a hidden item is a missing one: its existence never leaks.
+                    // (Core answers a parent it can't read with `false`, which REST turns into rest_forbidden.)
+                    return \First\Wp\Facade::dispatching() && ($allowed === false || (is_wp_error($allowed) && $allowed->get_error_code() === 'rest_forbidden'))
+                        ? new \WP_Error('rest_post_invalid_id', __('Invalid post ID.'), ['status' => 404])
+                        : $allowed;
                 }
                 try {
                     Access::require(Access::MEDIA['read'], new Viewer(WpAuth::current()), 'read', null, 'read media');

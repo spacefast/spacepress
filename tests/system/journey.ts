@@ -139,16 +139,16 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
     assert.equal((await editor.posts.get(feature)).status, "draft");
     await env.editor.publish(feature);
 
-    const read = await anon.posts.get(feature, { with: { author: true, cover: true, comments: true } });
-    const { cover: media, author: byline, comments: thread, updatedAt, publishedAt, uid, ...row } = read;
+    const read = await anon.posts.get(feature, { with: { authorId: true, cover: true, comments: true } });
+    const { cover: media, authorId: byline, comments: thread, updatedAt, publishedAt, uid, ...row } = read;
     assert.match(uid, /^zr_[0-9a-f]{20}$/, "synced posts carry a stable uid");
-    const { cover: _, ...rest } = fields;
+    const { cover: _, authorId: __, ...rest } = fields;
     assert.deepEqual(row, { ...rest, id: feature, status: "published", slug: `feature-${run}`, locale: "en", translations: { en: feature } }, "readers see every public field");
     assert.ok(publishedAt && updatedAt, "publishing stamps the dates");
     assert.deepEqual(media, await anon.media.get(cover));
     assert.deepEqual([media?.mime, media?.alt, byline?.id, thread], ["image/png", "A single pixel", env.authorId, []]);
-    const listed = await anon.posts.list({ where: { featured: true, topics: { has: "science" }, id: feature }, with: { author: true } });
-    assert.deepEqual(listed.map((p) => [p.id, p.author?.name]), [[feature, byline?.name]]);
+    const listed = await anon.posts.list({ where: { featured: true, topics: { has: "science" }, id: feature }, with: { authorId: true } });
+    assert.deepEqual(listed.map((p) => [p.id, p.authorId?.name]), [[feature, byline?.name]]);
     assert.ok((await anon.actions.frontPage()).featured.includes(feature), "actions read what the editor published");
   });
 
@@ -256,7 +256,7 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
       await env.runJobs();
       assert.equal((await admin.subscribers.list({ where: { email } }))[0].postId, null, "private and absent targets are both omitted from the private subscription");
     }
-    const draftProbe = { AND: [{ author: { name: { like: `%key-4%` } } }, { id: post.id }] };
+    const draftProbe = { AND: [{ authorId: { name: { like: `%key-4%` } } }, { id: post.id }] };
     assert.deepEqual(await anon.posts.list({ where: draftProbe }), [], "a draft author is invisible through the filter");
     assert.deepEqual((await editor.posts.list({ where: draftProbe })).map((p) => p.id), [post.id]);
     const adminProbe = { AND: [{ subscribers: { email: { like: `secret-7%` } } }, { id: post.id }] };

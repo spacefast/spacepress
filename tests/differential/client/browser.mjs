@@ -2,7 +2,8 @@
 // Loads a page with compiled client components in Chromium (playwright-core, pinned by
 // tests/differential/client/package.json). It checks that hydration changes nothing in the server HTML (a MutationObserver
 // registered before any module runs), that the Interactivity runtime logs no warnings (SCRIPT_DEBUG
-// serves its development build), and that clicks run the compiled stores. Prints JSON.
+// serves its development build), that clicks run the compiled stores, and that a CSS module's
+// classes style the element. Prints JSON.
 import { createRequire } from "node:module";
 import { readdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -26,14 +27,17 @@ try {
       for (const r of records) {
         if (r.target.closest?.("[data-wp-interactive^='clients/']") || r.target.parentElement?.closest?.("[data-wp-interactive^='clients/']")) {
           const nodes = (list) => [...list].map((n) => n.nodeType === 3 ? JSON.stringify(n.data) : n.nodeName).join(",");
-          window.__mutations.push(r.type + ":" + (r.attributeName ?? r.target.nodeName) + (r.type === "childList" ? ` -[${nodes(r.removedNodes)}] +[${nodes(r.addedNodes)}]` : ""));
+          // The runtime may set an attribute to the value it already has (`data-wp-bind--class`
+          // does): the HTML is unchanged, so that is not a hydration change.
+          if (r.type === "attributes" && r.oldValue === r.target.getAttribute(r.attributeName)) continue;
+          window.__mutations.push(r.type + ":" + (r.attributeName ?? r.target.nodeName) + (r.type === "attributes" ? `=${JSON.stringify(r.oldValue)}->${JSON.stringify(r.target.getAttribute(r.attributeName))}` : "") + (r.type === "childList" ? ` -[${nodes(r.removedNodes)}] +[${nodes(r.addedNodes)}]` : ""));
         }
       }
     });
     // Parsing is done at "interactive", and module scripts (the Interactivity runtime and the
     // stores) run after that: everything recorded from here on is hydration.
     document.addEventListener("readystatechange", () => {
-      if (document.readyState === "interactive") observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+      if (document.readyState === "interactive") observer.observe(document, { subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true });
     });
   });
   const responses = [];
@@ -53,7 +57,14 @@ try {
   const output = await page.textContent("output");
   const items = await page.textContent("u");
   const seen = await page.textContent("i");
-  process.stdout.write(JSON.stringify({ before, after, hydration, output, items, seen, warnings, responses }));
+  // A CSS module's renamed class, switched by state, styles the element from the linked stylesheet.
+  const toggle = "[data-wp-interactive='clients/Toggle']";
+  const look = () => page.$eval(toggle, (el) => [el.className, getComputedStyle(el).color, el.textContent]);
+  const toggleBefore = await look();
+  await page.click(toggle);
+  await page.waitForFunction((s) => document.querySelector(s).textContent === "on", toggle, { timeout: 15000 });
+  const toggleAfter = await look();
+  process.stdout.write(JSON.stringify({ before, after, hydration, output, items, seen, toggleBefore, toggleAfter, warnings, responses }));
 } finally {
   await browser.close();
 }

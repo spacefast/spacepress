@@ -85,9 +85,9 @@ export async function blogScenario(env: BlogScenarioEnv, t?: Steps): Promise<voi
     assert.deepEqual(drafts.map((p) => p.id), [draft.id]);
 
     // `has` on a list column, and a relation loaded with `with`.
-    const news = await anon.posts.list({ where: { tags: { has: "news" }, id: live.id }, with: { author: true } });
+    const news = await anon.posts.list({ where: { tags: { has: "news" }, id: live.id }, with: { authorId: true } });
     assert.equal(news.length, 1);
-    assert.equal(news[0].author?.id, live.authorId);
+    assert.equal(news[0].authorId?.id, live.authorId);
   });
 
   await step("access: anonymous can't write; authors only update their own posts; editors update any", async () => {
@@ -152,7 +152,7 @@ export async function blogScenario(env: BlogScenarioEnv, t?: Steps): Promise<voi
     assert.equal(post.cover, media.id);
     const withCover = await anon.posts.get(post.id, { with: { cover: true } });
     assert.deepEqual(withCover.cover, media);
-    const listed = await anon.posts.list({ where: { id: post.id }, with: { cover: true, author: true } });
+    const listed = await anon.posts.list({ where: { id: post.id }, with: { cover: true, authorId: true } });
     assert.equal(listed[0].cover?.url, media.url);
   });
 

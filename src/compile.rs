@@ -526,13 +526,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.uses("env", env.to_string(), span);
                 }
             }
-            Slot::RouteHandler { route } => {
-                let r = &self.schema.routes[route];
-                self.uses("routes", format!("{} {}", r.method, r.path), span);
-                if let Some(env) = r.signature.as_ref().and_then(|s| s["secret"]["env"].as_str()) {
-                    self.uses("env", env.to_string(), span);
-                }
-            }
             _ => {}
         }
     }
@@ -853,12 +846,31 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
                 let actions: std::collections::BTreeSet<String> = self.schema.actions.keys().cloned().collect();
+                let program = self.ev_program();
+                let assets: Vec<(String, &crate::assets::Asset)> = module
+                    .body
+                    .iter()
+                    .filter_map(|s| match s {
+                        crate::ir::Stmt::Import { source, specs, .. } => Some((source, specs)),
+                        _ => None,
+                    })
+                    .filter_map(|(source, specs)| {
+                        let target = program.resolved.get(&(module.id, source.clone()))?;
+                        let asset = program.assets.get(target)?;
+                        let local = specs
+                            .iter()
+                            .find(|s| matches!(s.imported, crate::ir::ImportName::Default))
+                            .map(|s| s.local.clone())?;
+                        Some((local, asset))
+                    })
+                    .collect();
                 let analysis = crate::client_component::analyse(
                     namespace,
                     &root.closure.func,
                     module,
                     crate::loader::CLIENT_MODULE,
                     &actions,
+                    &assets,
                 )?;
                 self.client = Some(client::ClientCtx {
                     analysis,
@@ -936,22 +948,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
             }
-            if let Slot::RouteHandler { route } = &root.slot {
-                let ret = match self.helper_types.get(&key) {
-                    Some(Ty::Fn(_, ret)) => match &**ret {
-                        Ty::Promise(t) => (**t).clone(),
-                        t => t.clone(),
-                    },
-                    _ => Ty::Unknown,
-                };
-                if !assignable(&ret, &types::route_response()) {
-                    return err_help(
-                        root.closure.func.span,
-                        format!("routes.{route} returns {}, not a route response", ret.describe()),
-                        "return { status?: number, headers?: Record<string, string>, body?: string }",
-                    );
-                }
-            }
             self.helpers
                 .entry((self.owner(), key, no_db))
                 .or_insert_with(|| name.clone());
@@ -997,7 +993,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .into_iter()
                 .map(|(_, t)| t)
                 .collect(),
-            Slot::RouteHandler { .. } => vec![types::route_request(), ctx],
             // A component's own annotation types its props (see `compile_function`); a page's
             // `metadata` function takes the same props.
             Slot::Component { .. } => vec![],
@@ -1025,9 +1020,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Owner::Global(name) => &self.schema.globals[name].fields,
                     Owner::Action(name) => &self.schema.actions[name].input,
                     Owner::Job(name) => &self.schema.jobs[name].input,
-                    Owner::FileBucket(_) | Owner::Route(_) => {
-                        unreachable!("file buckets and routes have no validator fields")
-                    }
+                    Owner::FileBucket(_) => unreachable!("file buckets have no validator fields"),
                 };
                 vec![
                     types::col_base(col, &types::json_ty, false),
@@ -4251,6 +4244,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Ok(Out::atom("\\First\\db()", Ty::Db))
             }
+            Value::Asset(file) => Ok(Out::atom(format!("\\First\\Assets::url({})", php_str(file)), Ty::Str)),
             Value::Env(name) => {
                 self.uses("env", name.to_string(), span);
                 Ok(Out::atom(
@@ -10110,7 +10104,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "NOT" => self.filter(table, v, allow_relations)?,
                 name => {
                     let c = &self.schema.collections[table];
-                    if let Some(col) = c.columns.get(name) {
+                    // A `ref()` field is both the id column and the relation: an object of other
+                    // than field operators filters through the relation.
+                    let through = c.relations.contains_key(name)
+                        && (!c.columns.contains_key(name)
+                            || matches!(&v.kind, ExprKind::Object(ps) if !ps.is_empty() && ps.iter().any(|p| !matches!(p, Prop::KV(PropKey::Static(k), _) if FILTER_OPS.contains(&k.as_str())))));
+                    if let Some(col) = c.columns.get(name).filter(|_| !through) {
                         let col = col.clone();
                         let editor = c.editor;
                         self.field_filter(&col, v, editor)?

@@ -209,8 +209,11 @@ interface Command {
 const commands = json<{ build: Command[]; site: Command[] }>("runtime/First/Cli/commands.json");
 const sentence = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}${/[.)]$/.test(s) ? "" : "."}`;
 const usage = (prefix: string, c: Command) => `${prefix} ${c.name}${c.args ? ` ${c.args}` : ""}`;
+// A summary may point at a repository doc, `(docs/deployment.md)`, for the terminal. On the site
+// that becomes a link to the file on GitHub.
+const docLinks = (text: string) => text.replace(/\((docs\/[\w./-]+\.md)\)/g, (_, file: string) => `([${file}](${github}/${file}))`);
 const commandRows = (prefix: string, rows: Command[]) =>
-	rows.map((c) => `| \`${cell(toFirst(usage(prefix, c)))}\` | ${cell(mdx(sentence(toFirst(c.summary))))} |`).join("\n");
+	rows.map((c) => `| \`${cell(toFirst(usage(prefix, c)))}\` | ${cell(docLinks(mdx(sentence(toFirst(c.summary)))))} |`).join("\n");
 // Commands that move an app or its data from another system. Migrations are experimental, so the
 // reference leaves them out and says so. `migrate` (apply database migrations) is not one of them.
 const experimental = new Set(["migrate app", "migrate config", "migrate-legacy", "migrate-legacy-users", "migrate-spacefast"]);
@@ -463,7 +466,6 @@ const defaultDocs: Record<string, string> = {
 	collections: "Editorial content stored as WordPress posts, with the WordPress editor. Build each one with `collection()`.",
 	tables: "App data in SQL tables of their own. Build each one with `table()`.",
 	users: "Fields on WordPress users. Build each one with `userProjection()`.",
-	relations: "Links between collections and tables. Build them with `defineRelations()`.",
 	hooks: "Functions that run before or after a create, update or delete.",
 	actions: "Named endpoints at `POST /__first/api/v1/actions/<name>`. Build each one with `action()`.",
 	jobs: "Background work that runs after the request, on Action Scheduler. Build each one with `job()`.",

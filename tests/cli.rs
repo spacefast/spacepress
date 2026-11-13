@@ -1075,6 +1075,8 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
         uris.contains(&"first-docs:///docs-site/docs/getting-started.mdx"),
         "{uris:?}"
     );
+    // The site's copy of a docs/ page is not a second page to search.
+    assert!(!uris.contains(&"first-docs:///docs-site/docs/agents.mdx"), "{uris:?}");
     assert!(
         !uris
             .iter()
@@ -2325,8 +2327,13 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
 
         // Every `first <command>` it names, in inline code or in a shell block, is in the command
         // table (or is `first help`).
+        // The skill's reference files count too.
+        let every_file: String = files_under(&dir)
+            .iter()
+            .map(|file| std::fs::read_to_string(dir.join(file)).unwrap())
+            .collect();
         let mut named = Vec::new();
-        for (i, part) in skill.split("```").enumerate() {
+        for (i, part) in every_file.split("```").enumerate() {
             if i % 2 == 1 {
                 named.extend(part.lines().map(str::trim).filter(|line| line.starts_with("first ")));
             } else {
@@ -2369,11 +2376,11 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
         }
         // Every documentation page it points to is one `first mcp`'s `docs_read` serves, unless the
         // skill says it is not.
-        for (at, _) in skill.match_indices("`docs") {
-            let path: &str = skill[at + 1..].split('`').next().unwrap();
+        for (at, _) in every_file.match_indices("`docs") {
+            let path: &str = every_file[at + 1..].split('`').next().unwrap();
             if path.ends_with(".md") || path.ends_with(".mdx") {
                 assert!(root().join(path).is_file(), "{name} points to {path}");
-                let line = skill[at..].lines().next().unwrap();
+                let line = every_file[at..].lines().next().unwrap();
                 if !line.contains("not served by `docs_read`") {
                     let read = embedded.call("docs_read", serde_json::json!({ "path": path }));
                     assert_eq!(

@@ -1349,23 +1349,50 @@ final class Db
     }
 
     /**
-     * Restore: the revision's user columns become an update patch (pk, system columns and onUpdate
-     * columns excluded), run through the full update pipeline.
+     * Restore: the revision's user columns (pk, system columns and onUpdate columns excluded) are
+     * written back from the stored copy, through the full update pipeline as $viewer. Columns the
+     * viewer can read are its patch, under every update and field rule. Columns that may be hidden
+     * from it can't be in its patch (it could neither send nor confirm them), so their stored values
+     * are written as trusted values after its rules pass: a restore restores the whole row, and the
+     * answer is masked for the viewer like every read.
      */
     public function restoreRevision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
     {
-        $spec = $this->schema->collection($collection);
-        $this->requireRevisable($collection, $pk, $viewer);
-        $row = $this->revisionRow($collection, $pk, $revisionId);
-        $patch = [];
-        foreach ($spec['columns'] as $name => $col) {
-            if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !isset($col['onUpdate'])) {
-                $patch[$name] = $row[$name];
+        return $this->current(function () use ($collection, $pk, $revisionId, $viewer): array {
+            $spec = $this->schema->collection($collection);
+            $this->requireRevisable($collection, $pk, $viewer);
+            $row = $this->revisionRow($collection, $pk, $revisionId);
+            // Only what the revision changes is written: an unchanged value is no write, so it needs
+            // no rule (a group whose sub-field has a conditional update rule stays as it is).
+            $opts = ['where' => [$spec['primaryKey'] => $pk]];
+            $current = $this->selectDecoded($collection, $opts, '', null)[0] ?? throw HttpError::notFound("No $collection row $pk");
+            $patch = $hidden = [];
+            foreach ($spec['columns'] as $name => $col) {
+                if ($name === $spec['primaryKey'] || ($col['system'] ?? false) || isset($col['onUpdate'])
+                    || Js::jsonStringify($row[$name] ?? null) === Js::jsonStringify($current[$name] ?? null)) {
+                    continue;
+                }
+                if ($viewer !== null && FieldAccess::mayHide($col, $viewer)) {
+                    $hidden[$name] = $row[$name];
+                } else {
+                    $patch[$name] = $row[$name];
+                }
             }
-        }
+            if ($hidden === []) {
+                return $this->update($collection, $patch, [$spec['primaryKey'] => $pk], true, $viewer)[0]
+                    ?? throw HttpError::notFound("No $collection row $pk");
+            }
 
-        return $this->update($collection, $patch, [$spec['primaryKey'] => $pk], true, $viewer)[0]
-            ?? throw HttpError::notFound("No $collection row $pk");
+            return $this->nested(function () use ($collection, $spec, $pk, $patch, $hidden, $viewer): array {
+                $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $patch);
+                $opts = ['where' => [$spec['primaryKey'] => $pk]];
+                $existing = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer)[0]
+                    ?? throw HttpError::notFound("No $collection row $pk");
+                $written = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $patch, $viewer, $hidden));
+
+                return $this->present([$written], $collection, $viewer)[0];
+            });
+        });
     }
 
     private function requireRevisable(string $collection, int|string $pk, ?Viewer $viewer): void

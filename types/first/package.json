@@ -9,6 +9,9 @@
     "./app": {
       "types": "./app.d.ts"
     },
+    "./client": {
+      "types": "./client.d.ts"
+    },
     "./jsx-runtime": {
       "types": "./jsx-runtime.d.ts"
     },

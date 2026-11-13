@@ -1,6 +1,5 @@
-// A small editorial site with optional TSX pages (pages/). The config holds the collections and
-// access rules; the public `cheer` action is in first/actions.ts. The pages add-on reads it through
-// viewer-bound queries and never through the trusted `db`.
+// A small editorial site: the config holds the collections and access rules, first/app/ the TSX
+// pages and HTTP routes, and first/actions.ts the public `cheer` action. Pages read as the visitor.
 import { collection, table, text, integer, richText, slug, timestamp, defineConfig, defineRelations } from "first";
 
 const STAFF = ["author", "editor", "admin"];
@@ -17,6 +16,8 @@ export const notes = collection({
   label: "Notes",
   title: "title",
   content: "body",
+  // first/app/notes/[slug]/page.tsx serves each note here.
+  url: "/notes/:slug",
   access: {
     read: (ctx) => STAFF.includes(ctx.user?.role ?? "") ? true : { status: "published" },
     create: "author",

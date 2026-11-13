@@ -2,8 +2,8 @@
 // PHP suites (tests/php/blog_app.php) run against that schema. examples/blog grows; this file does not.
 import {
   collection, global, text, integer, boolean, timestamp, richText, media, slug, select,
-  repeater, group, blocks, email, url, defineRelations, defineConfig, action, db, HttpError,
-  table,
+  repeater, group, blocks, email, url, defineConfig, action, db, HttpError,
+  table, ref,
 } from "first";
 
 export const authors = collection({
@@ -21,7 +21,7 @@ export const posts = collection({
   excerpt: text({ multiline: true }).max(300).optional(),
   cover: media({ accept: "image" }).optional(),
   tags: select(["news", "guide", "release"]).many().default([]),
-  authorId: integer().references(() => authors.id, { onDelete: "set null" }).optional(),
+  authorId: ref(authors).optional(),
   seo: group({
     metaTitle: text().max(70).optional(),
     metaDescription: text().max(160).optional(),
@@ -41,13 +41,13 @@ export const posts = collection({
   access: {
     read: (ctx) => ctx.user && ctx.user.role !== "subscriber" ? true : { status: "published" },
     create: "author",
-    update: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor" ? true : { author: { userId: ctx.user?.id ?? -1 } },
+    update: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor" ? true : { authorId: { userId: ctx.user?.id ?? -1 } },
     delete: "editor",
   },
 });
 
 export const comments = table({
-  postId: integer().references(() => posts.id, { onDelete: "cascade" }),
+  postId: ref(posts).onDelete("cascade"),
   name: text().max(60),
   body: text({ multiline: true }).min(1).max(2000).validate((v) => v.includes("http://") ? "No links in comments" : true),
   approved: boolean().default(false),
@@ -61,12 +61,6 @@ export const tables = { comments };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
 
-export const relations = defineRelations(entities, (r) => ({
-  posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }), comments: r.many.comments() },
-  authors: { posts: r.many.posts() },
-  comments: { post: r.one.posts({ from: r.comments.postId, to: r.posts.id, optional: false }) },
-}));
-
 export const settings = global("settings", {
   siteTitle: text().default("My blog").max(80),
   tagline: text().max(160).optional(),
@@ -77,7 +71,6 @@ export const settings = global("settings", {
 export default defineConfig({
   name: "blog",
   collections, tables, users,
-  relations,
   globals: { settings },
   hooks: {
     posts: {

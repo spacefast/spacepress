@@ -1,8 +1,8 @@
 import {
   text, integer, boolean, date, timestamp, json,
-  defineRelations, defineConfig, action, job, jobs, db, HttpError,
+  defineConfig, action, job, jobs, db, HttpError,
   type InferSelectModel,
-  table, select,
+  table, select, ref,
 } from "first";
 import { UNITS, LOW_STOCK, timestamps, slugify } from "./first/lib/fields";
 
@@ -20,13 +20,13 @@ export const items = table(named({
   lowStockAt: integer().default(LOW_STOCK),
   expiresOn: date().optional(),
   opened: boolean().default(false),
-  locationId: integer().references(() => locations.id, { onDelete: "set null" }).optional(),
+  locationId: ref(locations).optional(),
   tags: json<string[]>().$default(() => []),
   ...timestamps,
 }));
 
 export const shoppingList = table({
-  itemId: integer().references(() => items.id, { onDelete: "cascade" }).unique().optional(),
+  itemId: ref(items).unique().optional().onDelete("cascade"),
   name: text(),
   done: boolean().default(false),
   notifiedAt: timestamp().optional(),                // set by the notifyLowStock job
@@ -35,16 +35,6 @@ export const shoppingList = table({
 
 export const tables = { locations, items, shoppingList };
 export const entities = { ...tables };
-
-export const relations = defineRelations(entities, (r) => ({
-  items: {
-    location: r.one.locations({ from: r.items.locationId, to: r.locations.id }),
-  },
-  locations: { items: r.many.items() },
-  shoppingList: {
-    item: r.one.items({ from: r.shoppingList.itemId, to: r.items.id }),
-  },
-}));
 
 type Item = InferSelectModel<typeof items>;
 
@@ -60,7 +50,6 @@ async function restock(item: Item) {
 
 export default defineConfig({
   tables,
-  relations,
   jobs: {
     // A real pantry would push a notification here; this one stamps the list entry.
     notifyLowStock: job({
@@ -105,12 +94,12 @@ export default defineConfig({
         const soon = await db.query.items.findMany({
           where: { expiresOn: { lte: cutoff }, quantity: { gt: 0 } },
           orderBy: { expiresOn: "asc" },
-          with: { location: true },
+          with: { locationId: true },
         });
         return soon.map((i) => ({
           name: i.name,
           expiresOn: i.expiresOn,
-          where: i.location?.name ?? "somewhere",
+          where: i.locationId?.name ?? "somewhere",
         }));
       },
     }),

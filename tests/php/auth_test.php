@@ -76,20 +76,20 @@ eq('existing WordPress users became members with the collection\'s defaults when
 // ================================================================ hidden columns never leave the runtime
 
 [$s, $note] = $call('POST', '/notes', ['body' => 'hi', 'memberId' => $anaId], $anaId);
-[$s, $with] = $call('GET', '/notes', null, $anaId, ['with' => 'member']);
-check('with: a related member never exposes hidden columns', $s === 200 && ($with['data'][0]['member']['email'] ?? null) === 'ana@example.test' && !$leaks($with), $with);
+[$s, $with] = $call('GET', '/notes', null, $anaId, ['with' => 'memberId']);
+check('with: a related member never exposes hidden columns', $s === 200 && ($with['data'][0]['memberId']['email'] ?? null) === 'ana@example.test' && !$leaks($with), $with);
 [$s, $revs] = $call('PATCH', '/notes/' . $note['data']['id'], ['body' => 'edited'], $anaId);
 check('write results never expose hidden columns', $s === 200 && !$leaks($revs), $revs);
 $probe = static fn (array $query, string|int|null $as = null): array => $call('GET', str_contains(json_encode($query), 'member') && !isset($query['orderBy']) ? '/notes' : '/members', null, $as, $query);
 eq('filtering on a hidden column is refused (403, §4.3)', array_intersect_key($probe(['where' => json_encode(['passwordHash' => ['like' => '$2y%']])], $anaId)[1], ['status' => 1, 'code' => 1, 'pointer' => 1]),
     ['status' => 403, 'code' => 'forbidden', 'pointer' => '/where/passwordHash']);
-eq('filtering through a relation onto a hidden column is refused', $probe(['where' => json_encode(['member' => ['passwordHash' => ['isNotNull' => true]]])])[1]['pointer'] ?? null, '/where/member/passwordHash');
+eq('filtering through a relation onto a hidden column is refused', $probe(['where' => json_encode(['memberId' => ['passwordHash' => ['isNotNull' => true]]])])[1]['pointer'] ?? null, '/where/memberId/passwordHash');
 eq('nested OR/NOT filters are checked too', $probe(['where' => json_encode(['OR' => [['NOT' => ['suspendedAt' => null]]]])], $anaId)[1]['pointer'] ?? null, '/where/OR/0/NOT/suspendedAt');
 eq('ordering on a hidden column is refused', $probe(['orderBy' => 'guest'], $anaId)[1]['pointer'] ?? null, '/orderBy/guest');
 problem('selecting a hidden column is refused (403, §4.3)', fn () => $db->findMany('members', ['columns' => ['passwordHash' => true]], new Viewer($wp->user('admin'))), 403, 'forbidden', '/columns/passwordHash');
 eq('hidden columns are unknown to direct writes', $call('PATCH', "/members/$anaId", ['passwordHash' => 'x'], $anaId)[1]['pointer'] ?? null, '/passwordHash');
 problem('a mutation filtered on a hidden column is refused too', fn () => $db->update('members', ['name' => 'x'], ['passwordHash' => ['isNotNull' => true]], true, new Viewer($wp->user('admin'))), 403, 'forbidden', '/where/passwordHash');
-problem('… also through a relation', fn () => $db->delete('notes', ['member' => ['passwordHash' => ['isNotNull' => true]]], true, new Viewer($wp->user('admin'))), 403, 'forbidden', '/where/member/passwordHash');
+problem('… also through a relation', fn () => $db->delete('notes', ['memberId' => ['passwordHash' => ['isNotNull' => true]]], true, new Viewer($wp->user('admin'))), 403, 'forbidden', '/where/memberId/passwordHash');
 $trusted = $db->findMany('members');
 check('trusted reads (hooks, CLI) never carry the auth secrets either', !$leaks($trusted) && count($trusted) >= 2, $trusted);
 $revisionList = $call('GET', '/notes/' . $note['data']['id'] . '/revisions', null, $anaId)[1]['data'] ?? [];

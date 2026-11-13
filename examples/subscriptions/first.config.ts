@@ -1,6 +1,5 @@
 import {
-  table, text, integer, date, timestamp, defineConfig, defineRelations,
-  action, job, jobs, once, db, HttpError, type InferSelectModel, select,
+  table, text, integer, date, timestamp, defineConfig, action, job, jobs, once, db, HttpError, type InferSelectModel, select, ref,
 } from "first";
 import { advanceRenewal, monthlyAmount } from "./first/lib/calendar";
 
@@ -30,7 +29,7 @@ export const subscriptions = table({
 
 export const charges = table({
   ...ownership,
-  subscriptionId: integer().references(() => subscriptions.id, { onDelete: "cascade" }),
+  subscriptionId: ref(subscriptions).onDelete("cascade"),
   amount: integer().min(0).max(100_000_000),
   chargedOn: date().defaultNow(),
 }, { access: {
@@ -50,10 +49,6 @@ export const categories = table({
   delete: (ctx) => ctx.user ? { ownerId: ctx.user.id } : false,
 } });
 export const tables = { subscriptions, charges, categories };
-export const relations = defineRelations(tables, (r) => ({
-  subscriptions: { charges: r.many.charges() },
-  charges: { subscription: r.one.subscriptions({ from: r.charges.subscriptionId, to: r.subscriptions.id }) },
-}));
 
 type Subscription = InferSelectModel<typeof subscriptions>;
 
@@ -68,7 +63,6 @@ async function scheduleReminder(row: Subscription) {
 export default defineConfig({
   name: "subscriptions",
   tables,
-  relations,
   hooks: {
     subscriptions: {
       beforeCreate(data, ctx) {

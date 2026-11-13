@@ -83,8 +83,8 @@ test("an original Zero site moves onto the new app in place, the documented way"
   const served = await fetch(new URL(apollo.cover.url, receipt.url));
   assert.deepEqual(Buffer.from(await served.arrayBuffer()), Buffer.from(site.files[String(ids.media[0])], "base64"), "WordPress serves the original upload");
   assert.deepEqual((await anon.projects.list()).map((p) => p.id), [ids.apollo], "readers see what the original app published, and only that");
-  const tasks = await editor.tasks.list({ orderBy: { id: "asc" }, with: { project: true, parent: true } });
-  assert.deepEqual(tasks.map((t) => [t.id, t.project.id, t.parent?.id ?? null]), [[ids.parent, ids.apollo, null], [ids.child, ids.apollo, ids.parent]]);
+  const tasks = await editor.tasks.list({ orderBy: { id: "asc" }, with: { projectId: true, parentId: true } });
+  assert.deepEqual(tasks.map((t) => [t.id, t.projectId.id, t.parentId?.id ?? null]), [[ids.parent, ids.apollo, null], [ids.child, ids.apollo, ids.parent]]);
 
   // The migrated records are the new app's own: editors change them through its API.
   assert.equal((await editor.projects.update(ids.gemini, { budget: 8 })).budget, 8);

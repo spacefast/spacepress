@@ -28,7 +28,7 @@ FIRST_WP_HARNESS="$work/harness.json" FIRST_APP_ADOPTION_BEFORE="$work/before.js
 mkdir "$work/indexes"
 cp "$here/indexes.config.ts" "$work/indexes/first.config.ts"
 "$first" build "$work/indexes" --quiet >/dev/null
-sed -e 's/\.unique()//' -e 's/\.references(() => contacts.id, { onDelete: "set null" })//' "$here/indexes.config.ts" > "$work/indexes/first.config.ts"
+sed -e 's/\.unique()//' -e 's/ref(() => contacts)/integer()/' -e 's/ref(contacts)/integer()/' "$here/indexes.config.ts" > "$work/indexes/first.config.ts"
 "$first" build "$work/indexes" --quiet >/dev/null
 docker compose -p "$FIRST_WP_PROJECT" cp "$work/indexes/first/dist/wp-content/plugins/first-app-adoption-indexes" cli:/tmp/first-app-migrate-indexes >/dev/null 2>&1
 docker compose -p "$FIRST_WP_PROJECT" cp "$here/indexes.php" cli:/tmp/first-app-migrate-indexes.php >/dev/null 2>&1

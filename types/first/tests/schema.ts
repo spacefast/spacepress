@@ -2,9 +2,9 @@
 // pantry example (custom tables: `table()`); `authors`/`posts`/`comments`/`settings` mirror the
 // blog example (design §1.9) and carry the v1 additions.
 import {
-  blocks, boolean, collection, date, defineRelations, email, global, group, integer, json, media,
+  blocks, boolean, collection, date, email, global, group, integer, json, media,
   repeater, richText, select, slug, text, timestamp, url,
-  table,
+  table, ref,
 } from "first";
 
 export const UNITS = ["pcs", "g", "kg"] as const;
@@ -25,14 +25,14 @@ export const items = table({
   unit: select(UNITS).default("pcs"),
   expiresOn: date().optional(),
   opened: boolean().default(false),
-  locationId: integer().references(() => locations.id, { onDelete: "set null" }).optional(),
+  locationId: ref(locations).optional(),
   tags: json<string[]>().$default(() => []),
   meta: json().optional(),
   ...timestamps,
 });
 
 export const shoppingList = table({
-  itemId: integer().references(() => items.id, { onDelete: "cascade" }).unique().optional(),
+  itemId: ref(items).unique().optional().onDelete("cascade"),
   name: text(),
   done: boolean().default(false),
 });
@@ -58,7 +58,7 @@ export const posts = collection({
   photos: media().many().max(20).optional(),
   tags: select(["news", "guide", "release"]).many().default([]),
   kind: select(["article", "note"]).default("article"),
-  authorId: integer().references(() => authors.id, { onDelete: "set null" }).optional(),
+  authorId: ref(authors).optional(),
   seo: group({
     metaTitle: text().max(70).optional(),
     noindex: boolean().default(false),
@@ -81,7 +81,7 @@ export const posts = collection({
 });
 
 export const comments = table({
-  postId: integer().references(() => posts.id, { onDelete: "cascade" }),
+  postId: ref(posts).onDelete("cascade"),
   body: text({ multiline: true }).validate((v, ctx) => v.includes("http://") && ctx.user === null ? "No links" : true),
   approved: boolean().default(false),
 }, { access: { read: (ctx) => ctx.user ? true : { approved: true }, create: "anyone" } });
@@ -97,14 +97,3 @@ export const collections = { authors, posts };
 export const tables = { locations, items, shoppingList, comments };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
-
-export const relations = defineRelations(entities, (r) => ({
-  items: { location: r.one.locations({ from: r.items.locationId, to: r.locations.id }) },
-  locations: { items: r.many.items() },
-  shoppingList: {
-    item: r.one.items({ from: r.shoppingList.itemId, to: r.items.id, optional: false }),
-  },
-  posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }), comments: r.many.comments() },
-  authors: { posts: r.many.posts() },
-  comments: { post: r.one.posts({ from: r.comments.postId, to: r.posts.id, optional: false }) },
-}));

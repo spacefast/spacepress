@@ -195,8 +195,8 @@ test("the migration keeps every record, field, status, date and author, read thr
 });
 
 test("references resolve with `with`, media resolve to attachments", async () => {
-  const tasks = await ok("GET", "/tasks" + q({ orderBy: "id", with: { project: true, parent: true } }), { as: "admin" });
-  assert.deepEqual(tasks.map((t: any) => [t.id, t.title, t.notes, t.project.title, t.parent?.title ?? null, t.status]), [
+  const tasks = await ok("GET", "/tasks" + q({ orderBy: "id", with: { projectId: true, parentId: true } }), { as: "admin" });
+  assert.deepEqual(tasks.map((t: any) => [t.id, t.title, t.notes, t.projectId.title, t.parentId?.title ?? null, t.status]), [
     [ids.parent, "Plan launch", "Line one\nLine two", "Apollo 11", null, "published"],
     [ids.child, "Book the launch pad", null, "Apollo 11", "Plan launch", "draft"],
   ]);

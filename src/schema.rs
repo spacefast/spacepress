@@ -624,6 +624,9 @@ pub struct App {
     pub not_found: Option<AppRoute>,
     /// Route file (relative to `first/`) → its compiled exports.
     pub files: IndexMap<String, AppFile>,
+    /// The table is a 0.3.0 capture's `routes` config (`extract::legacy::routes`), served as 0.3.0
+    /// served it: matched per method, reads trusted, the front end left to the theme.
+    pub legacy_routes: bool,
 }
 
 #[derive(Debug, Clone)]

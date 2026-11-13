@@ -303,13 +303,14 @@ the content schema of a running site. Without it, the schema changes only by a
 build. The full design and what was measured are in
 [the decision record](../decisions/2026-11-13-runtime-schema.md).
 
-- **What can change at runtime:** fields on `collection()` kinds, new
-  collections, taxonomies and globals, labels and `.ui()` presentation. All of
-  it is post types, meta, terms and options, so no SQL DDL runs.
-- **What stays build-only:** `table()` kinds, hooks, actions, jobs, pages,
-  routes, file buckets, and any option that is a function. Retyping, renaming
-  or removing something declared in source is build-only too. A refused change
-  names the source edit to make.
+- **What can change at runtime:** fields on `collection()` kinds and globals,
+  new collections and globals (taxonomies once `taxonomy()` exists), labels and
+  `.ui()` presentation. All of it is post types, meta, terms and options, so no
+  SQL DDL runs.
+- **What stays build-only:** `table()` kinds, reference fields, hooks, actions,
+  jobs, pages, routes, file buckets, and any option that is a function.
+  Retyping or renaming anything, and removing something compiled code may use,
+  is build-only too. A refused change names the source edit to make.
 - **Versions.** Each accepted change is an append-only numbered version: who
   made it, when, the change set, the build it was validated on, and its parent.
   Versions are never deleted. Rollback is a new version that reverses an
@@ -318,26 +319,28 @@ build. The full design and what was measured are in
   change was applied first, it is refused with 409 and must be proposed again.
 - **Rules.** A runtime change passes the same rules as the compiler, with the
   same diagnostic codes; a shared corpus of valid and invalid changes runs
-  against both. One rule is added: a runtime field is optional or has a default.
+  against both. The site adds its own, for what a build can't hit: a field
+  added to an existing collection is optional or has a default, names that
+  carry a role in the compiler or that spec §2.4 reserves are not available,
+  and a name any build on the site declared keeps its stored type.
 - **Loading.** A request uses the compiled schema plus the active version's
   additions, read from one autoloaded option. Nothing compiles or validates at
   request time. Where a build and a version declare the same name, the build's
-  declaration is used.
-- **Git.** `first pull` writes the site's versions to
+  declaration is used; only a label and a field's presentation are replaced.
+- **Git.** `first pull` writes the site's newest version, resolved, to
   `first/_generated/runtime-schema.json`. `first build` reads it and declares
   those fields and kinds, so the next build contains them and the site's
   additions become no-ops. Deploying a build that lacks the site's runtime
   changes never drops them: the deploy-time check lists them and they stay
   active. A deploy is refused only when the build declares a name the site
-  already uses with a different stored type.
+  uses, or used and hid, with a different stored type.
 - **Surfaces.** Abilities `<app>/schema-read`, `<app>/schema-propose` (validate
   and return the diff, apply nothing) and `<app>/schema-apply` (its own
   capability, so a credential can be denied it); `first schema list | diff |
   apply | rollback`; the active version in `GET /__first/api/v1`; a wp-admin
   screen that lists versions with their diffs.
-- First's generated post types, field groups, taxonomies and meta still cannot
-  be edited directly in wp-admin or over core REST. This is the one way to
-  change them at runtime.
+- A runtime field or kind is registered by the same code as a compiled one,
+  so it gets the same protection from edits in wp-admin and over core REST.
 
 ## 3. Queries: one API everywhere
 

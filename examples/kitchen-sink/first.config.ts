@@ -1,7 +1,6 @@
 import {
-  action, blocks, boolean, collection, date, db, defineConfig, defineRelations,
-  email, env, file, files, global, group, HttpError, integer, job, jobs, media,
-  repeater, richText, select, slug, table, text, timestamp, url, userProjection,
+  action, blocks, boolean, collection, date, db, defineConfig, email, env, file, files, global, group, HttpError, integer, job, jobs, media,
+  repeater, richText, select, slug, table, text, timestamp, url, userProjection, ref,
 } from "first";
 
 // Native WordPress posts: title, content, drafts, revisions and custom fields.
@@ -48,29 +47,19 @@ export const members = userProjection({
 
 // App data in custom tables, related to native posts and users.
 export const registrations = table({
-  eventId: integer().references(() => events.id, { onDelete: "cascade" }),
-  memberId: integer().references(() => members.id, { onDelete: "cascade" }),
+  eventId: ref(events).onDelete("cascade"),
+  memberId: ref(members).onDelete("cascade"),
   confirmed: boolean().default(false),
   createdAt: timestamp().defaultNow(),
 }, { access: { read: "editor", create: "authenticated", update: "editor", delete: "admin" } });
 
 export const activity = table({
-  pageId: integer().references(() => pages.id, { onDelete: "cascade" }),
+  pageId: ref(pages).onDelete("cascade"),
   message: text(),
   createdAt: timestamp().defaultNow(),
 }, { access: { read: "editor", create: "admin", update: "admin", delete: "admin" } });
 
 const entities = { pages, events, members, registrations, activity };
-const relations = defineRelations(entities, (r) => ({
-  events: { registrations: r.many.registrations() },
-  members: { registrations: r.many.registrations() },
-  registrations: {
-    event: r.one.events({ from: r.registrations.eventId, to: r.events.id, optional: false }),
-    member: r.one.members({ from: r.registrations.memberId, to: r.members.id, optional: false }),
-  },
-  pages: { activity: r.many.activity() },
-  activity: { page: r.one.pages({ from: r.activity.pageId, to: r.pages.id, optional: false }) },
-}));
 
 // Shared settings use WordPress options through Secure Custom Fields.
 export const settings = global("settings", {
@@ -87,7 +76,6 @@ export default defineConfig({
   tables: { registrations, activity },
   users: { members },
   globals: { settings },
-  relations,
   locales: { default: "en", all: ["en", "de"] },
   media: { sizes: { card: { width: 600, height: 400, fit: "cover" }, avatar: { width: 96, height: 96, fit: "cover" } } },
   files: { handouts: files("handouts", { accept: ["application/pdf"], maxBytes: 5_000_000, access: { read: "authenticated", create: "editor", delete: "admin" } }) },

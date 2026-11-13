@@ -24,7 +24,7 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": { "note": {
+			"relations": { "noteId": {
 				"kind": "one",
 				"collection": "notes",
 				"optional": false

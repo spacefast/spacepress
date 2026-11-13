@@ -1,6 +1,6 @@
 import {
-  boolean, collection, date, defineRelations, integer, media, richText,
-  table, text, timestamp, type AccessCtx, number, select,
+  boolean, collection, date, integer, media, richText,
+  table, text, timestamp, type AccessCtx, number, select, ref,
 } from "first";
 
 export function owned(ctx: AccessCtx) {
@@ -47,13 +47,13 @@ export const foods = collection({
 export const vetNotes = collection({
   ...ownership,
   title: text().min(1),
-  petId: integer().references(() => pets.id, { onDelete: "restrict" }).ui({ label: "Pet" }),
+  petId: ref(pets).ui({ label: "Pet" }),
   body: richText().ui({ label: "Visit notes" }).optional(),
 }, { label: "Vet notes", title: "title", content: "body", access: ownerAccess });
 
 export const stock = table({
   ...ownership,
-  foodId: integer().references(() => foods.id, { onDelete: "restrict" }).ui({ label: "Food" }),
+  foodId: ref(foods).ui({ label: "Food" }),
   gramsLeft: number().min(0).ui({ label: "Grams remaining" }),
   openedOn: date().ui({ label: "Opened on", help: "Leave empty for an unopened pack." }).optional(),
   expiresOn: date().ui({ label: "Use by", help: "Expired packs are excluded from feeding and forecasts." }).optional(),
@@ -61,8 +61,8 @@ export const stock = table({
 
 export const feedings = table({
   ...ownership,
-  petId: integer().references(() => pets.id, { onDelete: "restrict" }).ui({ label: "Pet" }),
-  foodId: integer().references(() => foods.id, { onDelete: "restrict" }).ui({ label: "Food" }),
+  petId: ref(pets).ui({ label: "Pet" }),
+  foodId: ref(foods).ui({ label: "Food" }),
   grams: number().min(0.01).ui({ label: "Grams served" }),
   fedAt: timestamp().defaultNow().ui({ label: "Fed at" }),
   costCents: number().min(0).ui({ label: "Meal cost in cents", help: "Pack price when this meal was logged." }),
@@ -73,7 +73,7 @@ export const feedings = table({
 
 export const shoppingList = table({
   ...ownership,
-  foodId: integer().unique().references(() => foods.id, { onDelete: "cascade" }).ui({ label: "Food" }),
+  foodId: ref(foods).unique().ui({ label: "Food" }).onDelete("cascade"),
   needed: boolean().default(false).ui({ label: "Needs restocking" }),
   checkedAt: timestamp().ui({ label: "Last stock check" }).optional(),
 }, {
@@ -83,14 +83,3 @@ export const shoppingList = table({
 
 export const collections = { pets, foods, vetNotes };
 export const tables = { stock, feedings, shoppingList };
-export const relations = defineRelations({ ...collections, ...tables }, (r) => ({
-  pets: { vetNotes: r.many.vetNotes(), feedings: r.many.feedings() },
-  foods: { stock: r.many.stock(), feedings: r.many.feedings(), shoppingList: r.many.shoppingList() },
-  vetNotes: { pet: r.one.pets({ from: r.vetNotes.petId, to: r.pets.id }) },
-  stock: { food: r.one.foods({ from: r.stock.foodId, to: r.foods.id }) },
-  feedings: {
-    pet: r.one.pets({ from: r.feedings.petId, to: r.pets.id }),
-    food: r.one.foods({ from: r.feedings.foodId, to: r.foods.id }),
-  },
-  shoppingList: { food: r.one.foods({ from: r.shoppingList.foodId, to: r.foods.id }) },
-}));

@@ -13,7 +13,7 @@ function posts__access__read(\First\JsObject $ctx)
 
 function posts__access__update(\First\JsObject $ctx)
 {
-    return ((\First\Js::strictEq((($__t1 = \First\Js::prop($ctx, 'user')) === null ? null : \First\Js::prop($__t1, 'role')), 'admin')) || (\First\Js::strictEq((($__t2 = \First\Js::prop($ctx, 'user')) === null ? null : \First\Js::prop($__t2, 'role')), 'editor'))) ? true : ['author' => ['userId' => (($__t3 = \First\Js::prop($ctx, 'user')) === null ? null : \First\Js::prop($__t3, 'id')) ?? (-1)]];
+    return ((\First\Js::strictEq((($__t1 = \First\Js::prop($ctx, 'user')) === null ? null : \First\Js::prop($__t1, 'role')), 'admin')) || (\First\Js::strictEq((($__t2 = \First\Js::prop($ctx, 'user')) === null ? null : \First\Js::prop($__t2, 'role')), 'editor'))) ? true : ['authorId' => ['userId' => (($__t3 = \First\Js::prop($ctx, 'user')) === null ? null : \First\Js::prop($__t3, 'id')) ?? (-1)]];
 }
 
 function comments__validate__body(string $v)

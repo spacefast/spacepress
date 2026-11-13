@@ -605,11 +605,20 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     }
     let _ = writeln!(s, "export interface {n}With {{ {} }}", with.join("; "));
 
+    // A `ref()` field is both: its id's filter, or a filter on the row it refers to.
     let mut filter: Vec<String> = columns()
         .filter(|col| !col.derived)
-        .map(|col| format!("{}?: {}", key(&col.name), filter_ts(col)))
+        .map(|col| match c.relations.get(&col.name) {
+            Some(r) => format!(
+                "{}?: {} | {}Filter",
+                key(&col.name),
+                filter_ts(col),
+                names[&r.collection]
+            ),
+            None => format!("{}?: {}", key(&col.name), filter_ts(col)),
+        })
         .collect();
-    for r in c.relations.values() {
+    for r in c.relations.values().filter(|r| !c.columns.contains_key(&r.name)) {
         filter.push(format!("{}?: true | {}Filter", key(&r.name), names[&r.collection]));
     }
     filter.push(format!("AND?: {n}Filter[]"));

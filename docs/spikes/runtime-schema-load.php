@@ -86,7 +86,7 @@ $results = [
     'unit' => 'microseconds per load, median of 7 rounds of 500',
     'runs' => [],
 ];
-foreach ([0, 1, 20, 200] as $fields) {
+foreach ([0, 1, 20, 200, 450] as $fields) {
     $delta = $overlay($fields);
     $merged = $merge($compiled, $delta);
     $mergedFile = $write("merged-$fields.php", $merged);

@@ -68,9 +68,9 @@ async function listAll(collection, options = {}) {
 
 async function load() {
   [items, locations, shopping, stories] = await Promise.all([
-    listAll(client.items, { with: { story: true } }),
+    listAll(client.items, { with: { storyId: true } }),
     listAll(client.locations),
-    listAll(client.shoppingList, { with: { item: true } }),
+    listAll(client.shoppingList, { with: { itemId: true } }),
     listAll(client.stories),
   ]);
 }
@@ -235,16 +235,16 @@ function editorForm() {
       maxLength: 2000,
     });
     field(form, "Opened", "opened", record?.opened ?? false, { type: "checkbox" });
-    field(form, "Cooking story", "storyId", record?.storyId ?? "", {
+    field(form, "Cooking story", "storyId", record?.storyId?.id ?? "", {
       choices: [
         ["", "No linked story"],
         ...stories.map((story) => [story.id, story.title]),
       ],
     });
-    if (record?.story) {
+    if (record?.storyId) {
       const related = node("p");
-      const link = node("a", `Edit “${record.story.title}” in the native editor`);
-      link.href = `/wp-admin/post.php?post=${encodeURIComponent(record.story.id)}&action=edit`;
+      const link = node("a", `Edit “${record.storyId.title}” in the native editor`);
+      link.href = `/wp-admin/post.php?post=${encodeURIComponent(record.storyId.id)}&action=edit`;
       related.append(link);
       form.append(related);
     }
@@ -405,7 +405,7 @@ function list() {
               row.brand,
               row.opened ? "Opened" : "Unopened",
               row.expiresOn ? `Expires ${row.expiresOn}` : null,
-              row.story?.title ? `Story: ${row.story.title}` : null,
+              row.storyId?.title ? `Story: ${row.storyId.title}` : null,
             ]
               .filter(Boolean)
               .join(" · "),
@@ -418,8 +418,8 @@ function list() {
             ]
           : [
               row.name,
-              row.item
-                ? `${row.item.quantity} ${row.item.unit}`
+              row.itemId
+                ? `${row.itemId.quantity} ${row.itemId.unit}`
                 : "Item unavailable",
               row.done ? "Bought" : "To buy",
             ];

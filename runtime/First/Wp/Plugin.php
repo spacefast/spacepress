@@ -106,6 +106,7 @@ final class Plugin
         ContentPages::register($this);
         KindUrls::register($this);
         MarkdownTwins::register();
+        Sitemap::register($this);
         Purges::register($this);
         Hooks::register($this);
         add_action('admin_menu', [$this, 'adminMenu'], 9);
@@ -388,9 +389,15 @@ final class Plugin
     private function migrateNow(): array
     {
         $applied = $this->migrator()->migrate();
+        if (($compiled = \First\RuntimeSchema\Loader::compiled()) !== null) {
+            // `runtimeSchema`: runtime changes are checked against the fields of every build that ran here.
+            \First\RuntimeSchema\Loader::rememberDeclared($compiled);
+        }
         delete_option($this->refusalOption());
         IdentityBridge::provision();
         $this->backfillMembers();
+        // A kind whose searchable fields changed is re-indexed by a queued job, once the app runs.
+        add_action('init', static fn () => \First\Search\Index::reindexChanged(), PHP_INT_MAX);
         update_option($this->schemaOption(), $this->schemaHash(), false);
 
         return $applied;
@@ -437,6 +444,12 @@ final class Plugin
     private function schemaHash(): string
     {
         return hash_file('sha256', $this->dir . '/first/app/schema.php');
+    }
+
+    /** Identifies the compiled schema this request runs: what a runtime schema version was validated on. */
+    public function buildHash(): string
+    {
+        return $this->schemaHash();
     }
 
     // ================================================================ registration

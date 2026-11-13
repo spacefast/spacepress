@@ -469,13 +469,14 @@ fn page_md_is_a_wordpress_page() {
     assert!(text(&seen["third colophon subscriber"]["body"]).contains("For members."));
     assert!(text(&seen["third old colophon"]["content"]).contains("Kept by the site."));
     assert_eq!(seen["third leaks"], serde_json::json!([]));
-    // Six routes over the three builds, one Page each: eight first requests on six server workers
-    // all answered, and stored each new file version once. (Real concurrency: without the lock
-    // this fails in most runs, not in every one.)
-    assert_eq!(
-        seen["concurrent"],
-        serde_json::json!([200, 200, 200, 200, 200, 200, 200, 200])
-    );
+    // Storing happens once per build, under a lock. While a second process was in the middle of
+    // storing the second build, a request stored nothing: `/news` was not there yet and the
+    // colophon was still the first build's. The second process then finished normally.
+    assert_eq!(seen["holder"], serde_json::json!(["storing", "stored", 0]));
+    assert_eq!(seen["while locked"]["news"], 404, "{}", seen["while locked"]);
+    assert_eq!(seen["while locked"]["news stored"], serde_json::json!({ "count": 0 }));
+    assert!(text(&seen["while locked"]["colophon stored"]).contains("Set in a system font."));
+    // Six routes over the three builds, one Page each.
     assert_eq!(seen["pages"], serde_json::json!([1, 1, 1, 1, 1, 1]));
 }
 

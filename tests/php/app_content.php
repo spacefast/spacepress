@@ -31,7 +31,7 @@ function fetch(string $url, array $headers = []): array
     $ch = curl_init($url);
     $out = [];
     curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 120, CURLOPT_HTTPHEADER => $headers,
         CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$out): int {
             if (str_contains($line, ':')) {
                 [$name, $value] = explode(':', $line, 2);
@@ -172,24 +172,19 @@ $install = static function (string $wpContent) use ($site, $app): void {
     wpCopy($wpContent . '/plugins/' . basename($app), $app);
 };
 $install($argv[2]);
-// Six server workers, so the first requests for the new build really run at the same time.
-putenv('PHP_CLI_SERVER_WORKERS=6');
+// Storing a build's file versions happens once, under one site-wide lock. A second process
+// (tests/php/app_content_lock.php) starts storing this build and stops in the middle of its first
+// write, holding the lock. A request that arrives now must not store anything: it waits for the
+// lock, gives up, and serves what the site has. Then the second process finishes.
+$holder = proc_open([PHP_BINARY, '-d', 'memory_limit=512M', __DIR__ . '/app_content_lock.php', $site->dir], [0 => ['pipe', 'r'], 1 => ['pipe', 'w']], $pipes);
+$out['holder'] = [trim((string) fgets($pipes[1]))];
 $site->startServer();
-putenv('PHP_CLI_SERVER_WORKERS');
 $url = $site->url();
-// Each new file version must be stored once, whichever of them gets there first.
-$multi = curl_multi_init();
-$handles = [];
-foreach (['/colophon', '/news', '/guide', '/colophon', '/news', '/', '/about', '/news'] as $path) {
-    $handles[] = $h = curl_init($url . $path);
-    curl_setopt_array($h, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60]);
-    curl_multi_add_handle($multi, $h);
-}
-do {
-    curl_multi_exec($multi, $running);
-    curl_multi_select($multi, 1.0);
-} while ($running > 0);
-$out['concurrent'] = array_map(static fn ($h): int => (int) curl_getinfo($h, CURLINFO_RESPONSE_CODE), $handles);
+$during = fetch("$url/news");
+$out['while locked'] = ['news' => $during['status'], 'news stored' => $stored('news'), 'colophon stored' => $stored('colophon')['content'] ?? null];
+fwrite($pipes[0], "continue\n");
+$out['holder'][] = trim((string) fgets($pipes[1]));
+$out['holder'][] = proc_close($holder);
 $out['second colophon'] = page(fetch("$url/colophon"));
 $out['second colophon stored'] = $stored('colophon');
 $out['second news'] = page(fetch("$url/news"));

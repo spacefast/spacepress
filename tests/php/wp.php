@@ -78,12 +78,8 @@ final class WpSite
         $dir = sys_get_temp_dir() . "/first-wp-$label-" . bin2hex(random_bytes(4));
         $site = new self($dir);
         // Whatever fails below (download, install, activation, boot), the directory and server go.
-        // So do they after a fatal error in the suite itself: WordPress's fatal handler ends in the
-        // wp_die handler below, whose exit() skips every shutdown function registered after this one
-        // (wpSite()'s among them), and a php -S child would outlive the process.
         register_shutdown_function(static function () use ($site): void {
-            $fatal = in_array(error_get_last()['type'] ?? 0, [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true);
-            if ((!$site->loaded || $fatal) && getenv('FIRST_WP_KEEP') !== '1') {
+            if (!$site->loaded && getenv('FIRST_WP_KEEP') !== '1') {
                 $site->destroy();
             }
         });

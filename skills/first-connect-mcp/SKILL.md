@@ -25,26 +25,29 @@ This is the runtime endpoint. To work on the project's source, use the `first` s
    (`myTracker` is `first-my-tracker`). `AGENTS.md` and the `schema` tool give it under
    `endpoints.mcp`. Keep any WordPress subdirectory before `/wp-json`.
 
-2. Create an application password for the agent's user. On a hosted site: **Users → Profile →
-   Application Passwords** in wp-admin, over HTTPS. On the local dev site:
+2. Create a scoped credential for the agent: an application password that is read-only and sees
+   no personal data unless a flag grants more (`--write`, `--personal`, `--abilities=…`):
 
    ```sh
-   first wp user application-password create admin my-agent --porcelain
+   first identity agent add editor --name=my-agent
    ```
 
-   Use a separate user with the least role that works. The agent gets that user's access and no
-   more: the kinds' access rules apply to every tool call.
+   It prints the password once, in `data.password`. On a hosted site, **Users → Profile →
+   Application Passwords** offers the same choices over HTTPS. The agent gets the user's access and
+   the scope's, whichever is less: grant only what its task needs, and use a user with the least
+   role that works.
 
 3. Build the header in a shell, so the password is not written to a file or to history:
 
    ```sh
-   read -r -s -p 'user:application-password: ' FIRST_APP_PASSWORD
+   printf 'user:application-password: '; stty -echo; read -r FIRST_APP_PASSWORD; stty echo; echo
    export FIRST_MCP_AUTH="Basic $(printf %s "$FIRST_APP_PASSWORD" | base64 | tr -d '\n')"
    unset FIRST_APP_PASSWORD
    ```
 
-4. Add the server to the client, reading the header from the environment.
-   Claude Code, in `.mcp.json`:
+4. Add the server to the client, reading the header from the environment: `references/clients.md`
+   has the configuration for Claude Code, Claude Desktop and Codex. For Claude Code, in
+   `.mcp.json`:
 
    ```json
    {
@@ -56,14 +59,6 @@ This is the runtime endpoint. To work on the project's source, use the `first` s
        }
      }
    }
-   ```
-
-   Codex, in `~/.codex/config.toml`:
-
-   ```toml
-   [mcp_servers.first-my-app]
-   url = "https://your-site.example/wp-json/mcp/first-my-app"
-   env_http_headers = { Authorization = "FIRST_MCP_AUTH" }
    ```
 
    Start the client from the shell that exported `FIRST_MCP_AUTH`.
@@ -91,7 +86,8 @@ the answer carried and send `MCP-Protocol-Version` with the negotiated version.
   `mcp-adapter` on a dev site.
 - A kind or action has no tool: it sets `agents: false`, or that operation is turned off in the
   kind's `api` option. The `schema` tool shows `agents` and `operations` per kind.
-- A tool answers 403: the agent's user lacks the role the access rule names.
+- A tool answers 403: the agent's user lacks the role the access rule names, or the credential's
+  scope lacks a grant (the code is `scope`, and the message names the grant).
 
 ## Escalation
 

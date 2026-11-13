@@ -89,7 +89,7 @@ fn section(project: &Value) -> String {
          - Never edit `first/_generated/` or `first/dist/`: `first build` writes them. Commit `first/_generated/`.\n\
          - Look an API up before using it: the `docs_search` and `docs_read` tools of the `first` MCP server \
          (`.mcp.json`) answer from the documentation this compiler was built with.\n\
-         - `first dev` runs the project on a local WordPress site; site commands such as `first find <kind>` read it.\n\n\
+         - `first dev` runs the project on a local WordPress site; site commands such as `first find <storage name>` read it (the `API` column below gives each kind's).\n\n\
          ### Layout\n\n\
          - `first.config.ts`: `defineConfig`, the app's name and options.\n\
          - `first/`: kinds, actions and jobs, in any file; each registers under its export name.\n\
@@ -233,19 +233,32 @@ fn section(project: &Value) -> String {
     s
 }
 
+/// The byte offset of the line that is exactly `marker`, if there is one. A marker quoted inside the
+/// author's prose ("do not edit below `<!-- first:begin -->`") is text, not a marker.
+fn marker_line(text: &str, marker: &str) -> Option<usize> {
+    let mut at = 0;
+    for line in text.split_inclusive('\n') {
+        if line.trim_end_matches(['\n', '\r']) == marker {
+            return Some(at);
+        }
+        at += line.len();
+    }
+    None
+}
+
 /// `AGENTS.md` with the section put in: in place of the one it has, or at the end.
 fn with_section(current: Option<&str>, section: &str) -> Result<String, String> {
     let Some(current) = current else {
         return Ok(section.to_string());
     };
-    match (current.find(BEGIN), current.find(END)) {
+    match (marker_line(current, BEGIN), marker_line(current, END)) {
         (Some(begin), Some(end)) if begin < end => {
             let after = &current[end + END.len()..];
-            Ok(format!(
-                "{}{section}{}",
-                &current[..begin],
-                after.strip_prefix('\n').unwrap_or(after)
-            ))
+            let after = after
+                .strip_prefix("\r\n")
+                .or_else(|| after.strip_prefix('\n'))
+                .unwrap_or(after);
+            Ok(format!("{}{section}{after}", &current[..begin]))
         }
         (None, None) => {
             let gap = if current.is_empty() || current.ends_with("\n\n") {
@@ -258,30 +271,85 @@ fn with_section(current: Option<&str>, section: &str) -> Result<String, String> 
             Ok(format!("{current}{gap}{section}"))
         }
         _ => Err(format!(
-            "AGENTS.md has one of the markers {BEGIN} and {END} without the other, or in the wrong order; restore the pair or delete both, then run first init again"
+            "AGENTS.md has one of the marker lines {BEGIN} and {END} without the other, or in the wrong order; restore the pair or delete both, then run first init again"
         )),
     }
 }
 
-/// `.mcp.json` with a `first` server, or `None` when it already has one.
+/// `.mcp.json` with a `first` server, or `None` when it already has one. The file is the author's:
+/// the entry is inserted into its text, so numbers, key order, indentation and every other server
+/// stay exactly as written. Only a missing file, or one with no `mcpServers` object, is written in
+/// full.
 fn with_server(current: Option<&str>) -> Result<Option<String>, String> {
-    let mut config: Value = match current {
-        None => json!({}),
-        Some(text) => serde_json::from_str(text)
-            .map_err(|e| format!(".mcp.json is not valid JSON ({e}); fix it, then run first init again"))?,
+    let Some(text) = current else {
+        let config = json!({ "mcpServers": { "first": mcp_server() } });
+        return Ok(Some(serde_json::to_string_pretty(&config).expect("json") + "\n"));
     };
-    let servers = config
-        .as_object_mut()
-        .ok_or(".mcp.json is not a JSON object")?
-        .entry("mcpServers")
-        .or_insert_with(|| json!({}))
-        .as_object_mut()
-        .ok_or(".mcp.json: mcpServers is not an object")?;
-    if servers.contains_key("first") {
-        return Ok(None);
+    let config: Value = serde_json::from_str(text)
+        .map_err(|e| format!(".mcp.json is not valid JSON ({e}); fix it, then run first init again"))?;
+    let config = config.as_object().ok_or(".mcp.json is not a JSON object")?;
+    let entry = serde_json::to_string(&mcp_server()).expect("json");
+    match config.get("mcpServers") {
+        Some(Value::Object(servers)) if servers.contains_key("first") => Ok(None),
+        Some(Value::Object(servers)) => {
+            // After the `{` that opens the top-level `mcpServers` value.
+            let open = json_value_start(text, "mcpServers").ok_or(".mcp.json: cannot find mcpServers")?;
+            let comma = if servers.is_empty() { "" } else { "," };
+            Ok(Some(format!(
+                "{}\"first\": {entry}{comma}{}",
+                &text[..=open],
+                &text[open + 1..]
+            )))
+        }
+        Some(_) => Err(".mcp.json: mcpServers is not an object".into()),
+        None => {
+            // A new member at the start of the top-level object.
+            let open = text.find('{').expect("a JSON object starts with {");
+            let comma = if config.is_empty() { "" } else { "," };
+            Ok(Some(format!(
+                "{}\"mcpServers\": {{\"first\": {entry}}}{comma}{}",
+                &text[..=open],
+                &text[open + 1..]
+            )))
+        }
     }
-    servers.insert("first".into(), mcp_server());
-    Ok(Some(serde_json::to_string_pretty(&config).expect("json") + "\n"))
+}
+
+/// The offset of the `{` that opens the value of `key` in the top-level object of `text` (valid
+/// JSON). Scans tokens so a key inside a string or a nested object is never matched.
+fn json_value_start(text: &str, key: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let (mut depth, mut at) = (0usize, 0usize);
+    let mut last_string: Option<(usize, usize)> = None;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'"' => {
+                let start = at;
+                at += 1;
+                while at < bytes.len() && bytes[at] != b'"' {
+                    at += if bytes[at] == b'\\' { 2 } else { 1 };
+                }
+                last_string = Some((start, at));
+            }
+            b'{' | b'[' => {
+                if depth == 1 && bytes[at] == b'{' {
+                    // A value that follows `"key"` and a colon at the top level.
+                    if let Some((start, end)) = last_string {
+                        let between = &text[end + 1..at];
+                        let name: Option<String> = serde_json::from_str(&text[start..=end]).ok();
+                        if between.trim() == ":" && name.as_deref() == Some(key) {
+                            return Some(at);
+                        }
+                    }
+                }
+                depth += 1;
+            }
+            b'}' | b']' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        at += 1;
+    }
+    None
 }
 
 /// Every file `first init` would write that differs from what is there: (path relative to the
@@ -303,7 +371,19 @@ fn pending(project: &Path, described: &Value) -> Result<Vec<(PathBuf, String)>, 
     if let Some(next) = with_server(read(&mcp)?.as_deref())? {
         out.push((mcp, next));
     }
-    for dir in SKILL_DIRS {
+    // A skills directory the author removed (they use one agent, not the other) stays removed; a
+    // project that has neither gets both.
+    let used: Vec<&str> = SKILL_DIRS
+        .iter()
+        .copied()
+        .filter(|dir| project.join(dir).exists())
+        .collect();
+    let dirs = if used.is_empty() || !installed(project) {
+        SKILL_DIRS.to_vec()
+    } else {
+        used
+    };
+    for dir in dirs {
         for (path, text) in SKILLS {
             let rel = Path::new(dir).join(path);
             if read(&rel)?.as_deref() != Some(*text) {
@@ -314,9 +394,80 @@ fn pending(project: &Path, described: &Value) -> Result<Vec<(PathBuf, String)>, 
     Ok(out)
 }
 
+/// Writes `rel` (a path `first init` owns) below `project`, and nowhere else.
+///
+/// - A directory on the way that is a symbolic link is refused: `.claude` pointing elsewhere would
+///   put the skills outside the project.
+/// - A file that is a symbolic link (`AGENTS.md -> CLAUDE.md`) is written through, to its target,
+///   and stays a link, as long as the target is inside the project.
+/// - The file keeps the permissions it had; a new one gets the usual ones for the user's umask.
+fn write(project: &Path, rel: &Path, text: &str) -> Result<(), String> {
+    let path = target(project, rel)?;
+    let permissions = std::fs::metadata(&path).ok().map(|meta| meta.permissions());
+    let dir = path.parent().expect("a file has a directory");
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", rel.display()))?;
+    let mut file = tempfile::NamedTempFile::new_in(dir).map_err(|e| format!("{}: {e}", rel.display()))?;
+    std::io::Write::write_all(&mut file, text.as_bytes()).map_err(|e| format!("{}: {e}", rel.display()))?;
+    // A temporary file is private (0600); the file it replaces is whatever the author made it, and a
+    // new one is what the user's umask gives any new file.
+    let permissions = permissions.unwrap_or_else(new_file_permissions);
+    file.as_file()
+        .set_permissions(permissions)
+        .map_err(|e| format!("{}: {e}", rel.display()))?;
+    file.persist(&path)
+        .map_err(|e| format!("{}: {}", rel.display(), e.error))?;
+    Ok(())
+}
+
+/// Where `rel` is written: below `project`, through no linked directory, and through a linked file
+/// only to a target inside the project.
+fn target(project: &Path, rel: &Path) -> Result<PathBuf, String> {
+    let mut dir = project.to_path_buf();
+    for part in rel.parent().into_iter().flat_map(Path::components) {
+        dir.push(part);
+        if std::fs::symlink_metadata(&dir).is_ok_and(|meta| meta.file_type().is_symlink()) {
+            return Err(format!(
+                "{} is a symbolic link; first init writes only inside the project. Replace it with a directory, or run without it",
+                dir.strip_prefix(project).unwrap_or(&dir).display()
+            ));
+        }
+    }
+    let mut path = project.join(rel);
+    if std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        let target = path.canonicalize().map_err(|e| format!("{}: {e}", rel.display()))?;
+        if !target.starts_with(project) {
+            return Err(format!(
+                "{} links outside the project; first init writes only inside it",
+                rel.display()
+            ));
+        }
+        path = target;
+    }
+    Ok(path)
+}
+
+/// The permissions a newly created file gets under this process's umask.
+fn new_file_permissions() -> std::fs::Permissions {
+    let probe = tempfile::tempdir().and_then(|dir| {
+        let path = dir.path().join("probe");
+        std::fs::File::create(&path)?;
+        std::fs::metadata(&path).map(|meta| meta.permissions())
+    });
+    probe.unwrap_or_else(|_| {
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::PermissionsExt::from_mode(0o644)
+        }
+        #[cfg(not(unix))]
+        {
+            std::fs::metadata(".").expect("current directory").permissions()
+        }
+    })
+}
+
 /// A project that ran `first init` before: its `AGENTS.md` has the section.
 fn installed(project: &Path) -> bool {
-    std::fs::read_to_string(project.join("AGENTS.md")).is_ok_and(|text| text.contains(BEGIN))
+    std::fs::read_to_string(project.join("AGENTS.md")).is_ok_and(|text| marker_line(&text, BEGIN).is_some())
 }
 
 /// The one line `first check` and `first build` print when a project's agent files no longer match
@@ -384,8 +535,13 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
         eprintln!("run first init to update them");
         return ExitCode::from(1);
     }
+    // Every path is checked before any is written, so a refusal leaves the project as it was.
+    if let Some(error) = pending.iter().find_map(|(path, _)| target(&project, path).err()) {
+        eprintln!("error: {error}");
+        return ExitCode::from(1);
+    }
     for (path, text) in &pending {
-        if let Err(error) = crate::sync::write_atomic(&project.join(path), text.as_bytes()) {
+        if let Err(error) = write(&project, path, text) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }

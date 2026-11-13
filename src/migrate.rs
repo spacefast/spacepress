@@ -841,6 +841,18 @@ pub fn destructive(prev: &Json, next: &Json) -> Vec<String> {
                         "drops the WordPress table for \"{t}\" (it becomes {to}; existing rows aren't moved)"
                     ));
                 }
+                // The other way: rows held as posts (or users) stay where they are, and the new table
+                // starts empty. Nothing is dropped, so no deploy check stops it.
+                if !wp_table(def) && wp_table(n) {
+                    let from = if def["auth"].as_bool() == Some(true) {
+                        "WordPress users"
+                    } else {
+                        "WordPress posts"
+                    };
+                    out.push(format!(
+                        "creates an empty SQL table for \"{t}\" (its rows stay in {from}, and the app no longer reads them)"
+                    ));
+                }
             }
         }
     }
@@ -1039,6 +1051,13 @@ mod tests {
         assert_eq!(
             destructive(&v1, &posts)[0],
             "drops the WordPress table for \"members\" (it becomes post-backed; existing rows aren't moved)"
+        );
+        // And back: posts declared as a table() leave their rows in wp_posts and read an empty table.
+        assert_eq!(
+            destructive(&posts, &v1),
+            vec![
+                "creates an empty SQL table for \"members\" (its rows stay in WordPress posts, and the app no longer reads them)"
+            ]
         );
     }
 

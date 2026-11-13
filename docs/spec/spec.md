@@ -396,6 +396,7 @@ pagination in headers.
 | `GET/PATCH /__first/api/v1/settings`, `/__first/api/v1/<global>` | settings, or the read-only Ability for public fields | flat object |
 | `POST /__first/api/v1/actions/<name>` (`GET` if `readonly`) | `/wp-abilities/v1/abilities/<app>/<name>/run` | `{ data }` |
 | `GET /__first/api/v1` | `/wp-json` index + Abilities list | the app's schema as the site runs it (the active runtime version included, §2.10): kinds, fields, actions (what `first pull` reads) |
+| `GET /__first/api/v1/openapi.json` | the build's `_generated/openapi.json` (§7) | the API as an OpenAPI 3.1 document, with the site's address |
 
 - **Errors:** RFC 9457 problem documents (`code`, `detail`, `pointer`), mapped
   from core's `WP_Error`.
@@ -457,6 +458,11 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
 
 In every mode, wp-admin, login, First sign-in, `/wp-json`, Action Scheduler,
 media, the markdown versions of pages and `llms.txt` keep working.
+
+The sitemap is core's (`/wp-sitemap.xml`): core's providers for posts, terms and
+users, plus one First provider for `app/` pages and kinds with a `url`. It lists
+only what a signed-out visitor may read under First's access rules. `frontend:
+false` has no sitemap; with an external frontend its entries point there.
 
 ## 6. Config and the opinionated WordPress
 
@@ -522,7 +528,7 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
 | Pages with no request data, prerendered to HTML plus `.md` | Files served by the engine before WordPress boots |
 | Interactive component stores, CSS and assets, content-hashed | Immutable files, cached for a year |
 | `llms.txt` and the sitemap skeleton | Files |
-| `_generated/db.d.ts`, `routes.d.ts`, `openapi.json`, `spec.json` | Used by clients only |
+| `_generated/db.d.ts`, `routes.d.ts`, `openapi.json`, `spec.json` | Used by clients; the site also serves `openapi.json` (§3a) |
 
 Client bundling uses Rolldown. It is Rust, built on the same OXC family as
 First's parser, and powers Vite. That keeps the build free of Node, so it can

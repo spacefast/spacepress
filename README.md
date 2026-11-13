@@ -112,6 +112,7 @@ built 2 collections, 0 globals, 1 hooks, 1 actions -> first/dist/wp-content in 6
 | MySQL migrations, diffed against the last build | `first/_generated/migrations/0001_init.sql` |
 | A typed client: `first.posts.list({ with: { writer: true } })` and friends | `first/_generated/client/` |
 | Editor types, so `db` in your hooks knows your schema | `first/_generated/db.d.ts` |
+| The API as an OpenAPI 3.1 document, also served by the site | `first/_generated/openapi.json`, `/__first/api/v1/openapi.json` |
 | An HTTP API for every collection, global and action, with relations loaded through `with`, over WordPress's REST routes | `/__first/api/v1/...` |
 | Sign-in, sessions, roles, guests, passkeys and MFA | the `first-identity` plugin |
 | A dashboard: WordPress admin, with a post type and a field group generated for each collection that has an editor | Posts and Authors menus in `wp-admin` |
@@ -199,16 +200,19 @@ SQL tables to a project that has none: an example `first/tables.ts` with a
 foreign key and access rules, typed client calls for it, and a note on
 migrations. It only creates files that are missing, and leaves the example out
 of a project that already has tables. Commit
-`first/_generated/migrations/`, `first/_generated/client/`, `first/_generated/db.d.ts` and
-`first/_generated/wp-plugins.lock.json`; `.first/` is local build and development state.
+`first/_generated/migrations/`, `first/_generated/client/`, `first/_generated/db.d.ts`,
+`first/_generated/openapi.json` and `first/_generated/wp-plugins.lock.json`; `.first/` is local
+build and development state.
 
 Want a seeded app to click through? [The showcase](examples/showcase/README.md)
 includes structured fields, collection/table relations, image delivery, a
 compiled class/action and a repeatable HTTP smoke check. Its separate
 `node examples/showcase/run.mjs` launcher still uses Docker; `first dev` does not.
 
-Working on a project with a coding agent? `first mcp` serves its schema,
-compiler diagnostics, First's documentation and the dev site as MCP tools. To use
+Working on a project with a coding agent? `first init` writes an `AGENTS.md`
+section describing this project, the agent skills and an `.mcp.json` entry for
+`first mcp`, which serves the project's schema, compiler diagnostics, First's
+documentation and the dev site as MCP tools. To use
 your collections and actions from Claude Code, Claude Desktop or Codex, connect
 to the site's own MCP endpoint. Both are in the [agent guide](docs/agents.md).
 
@@ -377,7 +381,7 @@ sure WP-Cron or a real cron reaches the site.
 - [`docs/wp-plugins.md`](docs/wp-plugins.md): declaring and pinning WordPress plugins
 - [`docs/sealed.md`](docs/sealed.md): sealed mode, a site that runs only First's code and the plugins it declares
 - [`docs/services.md`](docs/services.md): native forms, queued email, publication search and Stripe checkout
-- [`docs/agents.md`](docs/agents.md): `first mcp` for coding agents, and the site's MCP endpoint for agents that use the app
+- [`docs/agents.md`](docs/agents.md): `first init` and `first mcp` for coding agents, and the site's MCP endpoint for agents that use the app
 - [`docs/realtime.md`](docs/realtime.md): live updates with `watch`, the change hook and pluggable transports
 - [`docs/deployment.md`](docs/deployment.md): artifact preflight and offline WordPress backup and recovery
 - [`docs/pages.md`](docs/pages.md): optional TSX routes, layouts and viewer-bound pages, with a complete site example

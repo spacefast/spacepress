@@ -329,7 +329,9 @@ final class Facade
             return $plugin->app()->handle('POST', '/actions/' . rawurlencode($name), [], $body, self::headers());
         }
         \First\App::allow($method, ($action['readonly'] ?? false) ? ['GET', 'HEAD', 'POST'] : ['POST']);
-        $input = $method === 'POST' ? $body : (string) Js::jsonStringify(self::queryInput($query));
+        // No arguments is the empty object, not the empty list an empty PHP array encodes as.
+        $given = $method === 'POST' ? [] : self::queryInput($query);
+        $input = $method === 'POST' ? $body : ($given === [] ? '{}' : (string) Js::jsonStringify($given));
 
         self::$passed = [];
         [$status, $headers, $out] = self::json(200, ['data' => self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'")]);

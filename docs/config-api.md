@@ -115,7 +115,13 @@ await posts.create({ title: "Hi" });  await posts.update(42, { title: "Hello" })
 await posts.system.list();   // trusted: no access rules, every draft
 ```
 
-- `search` matches the title, content and text fields the visitor may read.
+- `search` finds the rows where every word of the text starts a word in the
+  title, the content or a text field the visitor may read (`tea` finds
+  "Teapots", not "steal"). It narrows the same read, so the rows, `count()` and
+  the order are what the visitor gets without it, filtered: a draft, a row the
+  read rule hides, or a word only in a field the visitor may not read is never
+  found and never counted. It runs on a search index First keeps in step with
+  every write ([decision](decisions/2026-11-13-search-index.md)).
 - `paginate` takes `limit` (20 by default, at most 100) and the `cursor` the
   previous page returned.
 - A kind the visitor may not read at all throws the API's 401 or 403. A row
@@ -425,7 +431,7 @@ registered once.
 | `uid` | `false` (`true` with `sync`) | stable immutable `uid` on every row |
 | `sync` | none | project-relative `*.md` or `*.json` pattern for `first sync` |
 | `agents` | `true` | expose operations as WordPress abilities |
-| `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
+| `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. The site's sitemap (`/wp-sitemap.xml`) lists the kind's items a signed-out visitor may read. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
 
 Collections need a title and physical names of at most 14 characters (WordPress
 prefixes `first_`). Built-in route names are reserved. User projections retain
@@ -449,6 +455,14 @@ A source bundle a host stored earlier is read on the new layout instead, and
 is never refused.
 
 ### Upgrading authoring
+
+Storage is chosen only by the builder: `collection()` is always WordPress
+posts and `table()` is always a SQL table. A collection that asked for table
+storage with `editor: false` is written as `table()`; `collection()` refuses
+the option at its location. The rows of a site that deployed such a collection
+stay in the table they are in. Bind the name as below and the change is a
+rename of the declaration: `first build` writes no migration, so nothing is
+moved or dropped.
 
 Replace named builders with unnamed `collection()` or `table()` and register
 under `collections` or `tables`. Keep the logical keys, existing physical storage
@@ -551,7 +565,9 @@ answers exactly what core answers under First's rules.
 | `POST /__first/api/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
 | `GET /__first/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
 | `POST /__first/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
+| `GET /__first/api/v1/search?q=…[&kinds=a,b][&limit=n]` | | `{ data: { q, results: [{ kind, rows }] } }`: the same search on every kind, as the caller; a kind the caller may not read is left out |
 | `GET /__first/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
+| `GET /__first/api/v1/openapi.json` | | the API as an OpenAPI 3.1 document; public |
 
 Rows are First rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
 `published` or `private`. Errors are RFC 9457 problem documents (`code`,
@@ -559,6 +575,43 @@ Rows are First rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
 with `X-WP-Nonce`, an application password, or a First Identity bearer token.
 The API is served before the theme loads; it never uses 0.8's `/__zero/config`,
 `/__zero/run`, `/__zero/auth/*` or `/__zero/realtime/events`.
+
+### The OpenAPI document
+
+`first build` writes `first/_generated/openapi.json`: the app's API as an
+OpenAPI 3.1 document. Commit it with the client. It comes from the same schema
+as the typed client and the app's Abilities, so the three describe one field
+one way:
+
+- A kind has the components `Post`, `PostInsert`, `PostPatch` and `PostFilter`,
+  named as the client's types are. The row, the create input and the patch are
+  the JSON Schemas the kind's Abilities publish.
+- Every operation the API serves is there: each kind's list, get, create,
+  update and delete (less any its `api` flags switch off), revisions, `/me`,
+  each global, each action (with `GET` when it is `readonly`), file buckets,
+  sync, services, and WordPress's own `posts`, `pages`, `comments`, `media`,
+  `categories`, `tags`, `menus` and `settings` where the app declares none of
+  that name. An action with a `signature` is left out: it is a webhook for the
+  one service that holds its secret, and `GET /__first/api/v1` leaves it out too.
+- An operation's `operationId` names it by kind and operation (`posts.list`,
+  `actions.greet`, `sync.notes.read`); where the typed client has a call for
+  the request, it is that call's name. Its description says who may call it, and
+  `x-first-access` carries the rule's short name (`anyone`, a role, `owner`,
+  `self`, or `rule` for one written as a function). A field with its own
+  access rule carries `x-first-access` too, and a field a caller may not read is
+  absent from rows.
+- Errors are the `Problem` component, served as `application/problem+json`.
+  `securitySchemes` lists the three ways to sign in.
+
+The running site serves the same document at
+`GET /__first/api/v1/openapi.json`, with the site's own address in `servers`.
+It needs no sign-in and is the same for everyone: it describes the app's kinds,
+fields, globals and actions, as `GET /__first/api/v1` does, and never says who
+may see which row.
+
+```sh
+curl https://example.test/__first/api/v1/openapi.json
+```
 
 ## Locales
 
@@ -767,6 +820,8 @@ the live rows before it runs any of them:
 | A field becomes required with `.default(v)` | rows without a value get `v`, then it applies |
 | A field becomes required, no default, and rows lack it | refused: `required_field_missing` with the count |
 | A kind or field is removed and holds rows | refused: `drop_has_rows` with the count, until the deploy passes `--drop=name=rows` |
+| A `table()` that holds rows is declared with `collection()` | refused: `drop_has_rows` with the count. Storage follows the builder, so the build plans the table's drop and moves no rows. To keep the rows, don't pass `--drop`: delete the new, undeployed migration file, restore `snapshot.json` from the last deployed build (`git checkout`), declare `table()` again and build; no migration is written. Building `table()` on top of the drop instead writes a second migration that recreates the table, and the drop before it is still refused |
+| A `collection()` that holds posts is declared with `table()` | applies: the build creates an empty SQL table and warns. The posts stay in `wp_posts` and the app no longer reads them; nothing moves them |
 | A field's type or length narrows (`.max(100)`, `.unique()`, text to integer, ...) and values wouldn't fit | refused: `value_does_not_fit` with the count; MySQL would truncate or convert them |
 | `--drop=name=rows` doesn't match the live count | refused: `drop_count_mismatch` with the live count |
 | A table the app didn't create (`existingTable`) loses, renames or retypes a field, or loses its kind | refused: `drop_adopted_table`, even when empty, until the deploy passes `--drop` |
@@ -852,13 +907,53 @@ These are build errors with the same message the runtime returns.
 ## defineConfig
 
 `defineConfig({ name?, collections?, tables?, users?, globals?, hooks?, actions?,
-jobs?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend? })`. `name` (a slug,
+jobs?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend?, runtimeSchema? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `first-app-<name>`.
 `admin: true` ships the optional admin screens as a fourth plugin,
 `first-admin`; by default the build emits none. `frontend` says who renders the
 public site: leave it out for the theme (or `first/app` when it exists), `false`
 for backend only, or an external site's `https://` address (`http://` only on
 localhost) so links, previews and feeds point there.
+
+### Runtime schema changes
+
+`runtimeSchema: true` lets the running site add fields to its `collection()` kinds without a build
+(spec §2.10, [decision record](decisions/2026-11-13-runtime-schema.md)). It is off by default, and
+with it off nothing below exists.
+
+- **What a change is.** `{ "format": 1, "changes": [{ "op": "addField", "kind": "articles", "field":
+  "subtitle", "definition": { "type": "text", "rules": { "max": 120 } } }] }`. A definition is the
+  field as `schema.php` stores it: `type` (`text`, `integer`, `real`, `boolean`, `date`,
+  `timestamp`, `json`, `email`, `url`, `richText`, `media`, `mediaList`, `select`, `group`,
+  `repeater`, `blocks`), and where they apply `notNull`, `enum`, `multiple`, `multiline`, `accept`,
+  `default` (`{ "value": … }` with one string, number or boolean, or `{ "now": true }`), `rules`
+  (`min`, `max`), `fields`, `layouts` and `ui`.
+- **Rules.** The compiler's, with the compiler's diagnostic code in the refusal (`F3001`, `F2001`,
+  `F3101`). The site adds its own: a field is optional or has a default (`schema_required`); a
+  name every kind has or will have is not available (`schema_reserved`); a name that any build
+  which ran on the site stores as another type keeps that type (`schema_retype`), so two builds
+  the host serves at once never read one value two ways; and anything that is not adding a field
+  to a collection is `schema_build_only`, with the source edit to make. Fields of a translated or
+  synced collection are build-only for now.
+- **Hooks.** A `beforeCreate` or `beforeUpdate` hook sees only the fields its build declares. The
+  runtime fields of the write are kept aside while it runs and added back to what it returns.
+- **Versions.** An accepted change is the next row of `<prefix>first__schema_versions`: version,
+  parent, the build it was validated on, who applied it, when, the change in stored form, and a
+  hash chained to the parent's. Rows are never updated or deleted. A change names the version it
+  was made against; when another was applied first it is refused with 409 `schema_conflict`.
+- **Loading.** The active version's fields are in one autoloaded option,
+  `first_<app>_runtime_schema`. A request adds them to the compiled schema and does nothing else.
+  A field the build declares itself is never replaced. The new field is post meta
+  `first_<field>`, registered and added to the kind's field group like a compiled one, from the
+  request after the change. `GET /__first/api/v1` reports `runtimeSchema: { version, hash, build }`.
+- **In the project.** `first/_generated/runtime-schema.json` (`{ "format": 1, "version", "hash",
+  "collections": { "<kind>": { "columns": { … } } } }`) lists a site's fields for the build, which
+  declares them as if they were authored. A build that lacks the site's fields does not drop
+  them: they stay active, with their data.
+
+This release has the store, the loader, the rules and the build's reading of the lock. Applying a
+change is `First\Wp\SchemaVersions::of($plugin)->apply($parent, $changeSet, $actor)` from PHP;
+the Abilities, the `first schema` commands, `first pull` and the admin screen are not built yet.
 
 ## Plugin packages
 

@@ -5,7 +5,8 @@
  * Removed: the app's options (schema hash) and every capability WordPress derives from its post types
  * on every role (whatever granted them).
  * Kept: content (posts and their fields, `editor: false` tables, globals, media, private files), the
- * app's migration ledger rows, and its queued jobs with their Action Scheduler deliveries, so
+ * app's migration ledger rows, the site's runtime schema versions and its active one (spec §2.10:
+ * they are schema that exists nowhere else until `first pull`), and its queued jobs with their Action Scheduler deliveries, so
  * installing the app again picks everything straight back up and runs the queued work. To drop queued
  * work for good, `wp first jobs cancel <id>` before deleting the plugin; drop content with a database
  * tool. (The jobs tables are shared and record no owning app, so uninstall can't safely pick rows.)

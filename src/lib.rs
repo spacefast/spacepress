@@ -18,16 +18,19 @@ pub mod diag;
 pub mod eval;
 pub mod extract;
 pub mod ir;
+pub mod json_schema;
 pub mod kind_url;
 pub mod layout;
 pub mod loader;
 pub mod lower;
 pub mod migrate;
 pub mod num;
+pub mod openapi;
 pub mod pages;
 pub mod pipeline;
 pub mod platform;
 pub mod plugins;
+pub mod runtime_schema;
 pub mod schema;
 pub mod schema_php;
 pub mod services_config;
@@ -64,6 +67,7 @@ mod runtime_files {
 #[cfg(feature = "cli")]
 mod docs_files {
     include!(concat!(env!("OUT_DIR"), "/docs_files.rs"));
+    include!(concat!(env!("OUT_DIR"), "/skills_files.rs"));
 }
 
 pub mod bundle;

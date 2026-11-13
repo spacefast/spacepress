@@ -1673,3 +1673,136 @@ fn content_blocks_refuse_props_a_tag_cannot_write() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The docs example (examples/docs), every content feature at once, read in Chromium as an
+/// anonymous visitor: the site is the example as built, seeded from the records a hosted compile
+/// writes for its content/docs/ folder tree (tests/differential/client/docs.mjs).
+#[test]
+fn docs_example_reads_in_the_browser() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path().join("docs");
+    copy(&root().join("examples/docs"), &project);
+    build(&project);
+    let (sources, compiled) = (work.path().join("sources"), work.path().join("compiled"));
+    for args in [
+        vec![
+            "sources".as_ref(),
+            project.as_os_str(),
+            "--out".as_ref(),
+            sources.as_os_str(),
+        ],
+        vec![
+            "compile-sources".as_ref(),
+            sources.as_os_str(),
+            compiled.as_os_str(),
+            project.as_os_str(),
+        ],
+    ] {
+        let out = first().args(&args).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .arg(compiled.join("seed"))
+        .env("FIRST_WP_THEMES", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/docs.mjs"))
+        .arg(&url)
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    // Home → the docs, by the reader's click; the doc has its title and the published tree.
+    assert_eq!(seen["home"], "First docs");
+    assert_eq!(
+        seen["intro"],
+        serde_json::json!({ "path": "/docs/introduction", "title": "Introduction · First docs", "h1": "Introduction" })
+    );
+    assert_eq!(
+        seen["tree"],
+        serde_json::json!([["Introduction", "current", []], ["Guides", "", ["Install", "Deploy"]]])
+    );
+    // The table of contents links land on the doc's headings; a component block renders.
+    assert_eq!(
+        seen["toc"],
+        serde_json::json!([
+            ["What you get", "#what-you-get", true],
+            ["How these docs work", "#how-these-docs-work", true]
+        ])
+    );
+    assert_eq!(seen["badge"], "New");
+    // Next, next: the pager walks the tree, and the open section follows the reader.
+    assert_eq!(
+        seen["install"],
+        serde_json::json!({ "path": "/docs/guides/install", "prev": "← Guides", "next": "Deploy →", "open": "Guides", "current": "Install" })
+    );
+    assert_eq!(seen["space"], serde_json::json!(["Guides", "Deploy", "To a Space"]));
+    assert_eq!(
+        seen["callout"],
+        serde_json::json!(["callout callout-tip", "Before you start", "Node 22"])
+    );
+    // A code group's tabs switch with no script; the code is highlighted in light and dark.
+    assert_eq!(seen["tabs"], serde_json::json!(["sh", "pnpm"]));
+    assert_eq!(
+        (&seen["tabsBefore"], &seen["tabsAfter"]),
+        (&serde_json::json!([true, false]), &serde_json::json!([false, true]))
+    );
+    assert_eq!(seen["title"], "pnpm");
+    assert_eq!(
+        seen["marked"],
+        serde_json::json!(["export default defineConfig({ name: \"docs\" });"])
+    );
+    assert_ne!(
+        seen["light"], seen["dark"],
+        "the keyword colour follows the colour scheme"
+    );
+    // The only scripts are the router's (the layout's links); code and components need none.
+    for script in seen["scripts"].as_array().unwrap() {
+        let script = script.as_str().unwrap();
+        assert!(
+            script.contains("interactivity") || script.contains("router.js") || script.contains("a11y"),
+            "{script}"
+        );
+    }
+    // The draft is a 404 and in no tree; the Markdown page is a page.
+    assert_eq!(seen["draft"], 404);
+    assert_eq!(seen["draftInTree"], false);
+    assert_eq!(seen["about"], serde_json::json!(["About · First docs", "First"]));
+    // Every page's Markdown twin; none for the draft, and it isn't listed.
+    assert_eq!(seen["twins"]["install"][0], 200);
+    assert!(
+        seen["twins"]["install"][2]
+            .as_str()
+            .unwrap()
+            .contains("You need **Node 22** and a WordPress site.")
+    );
+    assert_eq!(seen["twins"]["about"][0], 200);
+    assert_eq!(seen["twins"]["draft"][0], 404);
+    let llms = seen["llms"].as_str().unwrap();
+    assert!(llms.contains("/about.md") && !llms.contains("Roadmap"), "{llms}");
+}

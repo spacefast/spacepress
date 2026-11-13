@@ -34,7 +34,7 @@ final class Versions
     public const ALL = 'all';
     public const PUBLISHED = 'published';
 
-    /** @var array<string, bool> collection => whether a published row was written */
+    /** @var array<string, bool> collection => whether its `published` counter moves too */
     private static array $pending = [];
     private static bool $armed = false;
 
@@ -57,16 +57,18 @@ final class Versions
             return;
         }
         // Published before or after. A row whose status can't be told counts as published: a
-        // counter may move once too often, never once too rarely.
+        // counter may move once too often, never once too rarely. A kind without drafts has no
+        // `published` counter.
         $draft = static fn (?array $r): bool => $r === null || (array_key_exists('status', $r) && $r['status'] !== 'published');
-        self::touch($store->db, $collection, !($spec['drafts'] ?? false) || !$draft($row) || !$draft($previous));
+        self::touch($store->db, $collection, ($spec['drafts'] ?? false) && (!$draft($row) || !$draft($previous)));
     }
 
     /**
      * Counts one change to $collection in $connection's open transaction, or at once when none is
-     * open. For writes that don't pass the write pipeline (scheduled promotion).
+     * open; $published also moves the `published` counter of a kind with drafts. For writes that
+     * don't pass the write pipeline (scheduled promotion).
      */
-    public static function touch(Connection $connection, string $collection, bool $published = true): void
+    public static function touch(Connection $connection, string $collection, bool $published = false): void
     {
         self::$pending[$collection] = ($published || (self::$pending[$collection] ?? false));
         if (self::$armed) {

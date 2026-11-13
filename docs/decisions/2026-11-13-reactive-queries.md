@@ -118,6 +118,10 @@ password, identity bearer), and field rules may call compiled app code.
 | A write outside First's write path | the above, plus up to 5 minutes for a subscription answered by counter | |
 | A hidden tab | when it becomes visible | |
 
+On a site that reads from database replicas, replica lag adds to every row above. A counter read
+from a fresher replica than the data can hide a write from a subscription answered by counter
+until the five-minute window ends.
+
 ## What this is not
 
 - It is not Convex's or Supabase's push. On shared hosting without a transport there is no

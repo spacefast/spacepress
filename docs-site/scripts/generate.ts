@@ -522,6 +522,9 @@ const mediaPhp = read("runtime/First/Media/Module.php");
 const syncPhp = read("runtime/First/Sync/Routes.php");
 const servicesPhp = read("runtime/First/Services/Module.php");
 const facadePhp = read("runtime/First/Wp/Facade.php");
+const livePhp = read("runtime/First/Live/Module.php");
+const liveMaxQueries = /MAX_QUERIES = (\d+)/.exec(livePhp)?.[1];
+if (!liveMaxQueries) throw new Error("runtime/First/Live/Module.php: no MAX_QUERIES");
 const prefix = /PREFIX = '([^']+)'/.exec(facadePhp)?.[1] ?? "";
 if (!prefix) throw new Error("runtime/First/Wp/Facade.php: no PREFIX");
 const listLimit = /private const LIMIT = (\d+)/.exec(facadePhp)?.[1];
@@ -541,6 +544,7 @@ expectAllow(facadePhp, "Facade::global", "private static function global(", ["GE
 expectAllow(facadePhp, "Facade::route", "if (count($segments) === 1) {", ["GET", "HEAD", "POST"]);
 expectAllow(facadePhp, "Facade::route", "$id = self::id($kind, $segments[1]);", ["GET", "HEAD", "PATCH", "DELETE"]);
 expectAllow(facadePhp, "Facade::revisions", "if ($rest[1] !== 'restore'", ["POST"]);
+expectAllow(livePhp, "Live\\Module::serve", "public static function serve(", ["POST"]);
 expectAllow(authPhp, "Auth\\Module::route", "case 'auth/config'", ["GET"]);
 expectAllow(authPhp, "Auth\\Module::route", "case 'auth/guest'", ["POST"]);
 expectAllow(authPhp, "Auth\\Module::route", "case 'auth/session'", ["DELETE"]);
@@ -594,6 +598,7 @@ const openapi = {
 	tags: [
 		{ name: "Collections", description: "One set of routes for each kind and table in your config, and for WordPress's own kinds." },
 		{ name: "Revisions", description: "Saved versions of a row, for collections with revisions." },
+		{ name: "Live", description: "Reads a page is subscribed to, answered with \"not modified\" or the fresh result." },
 		{ name: "Actions", description: "Named server functions from `actions` in your config." },
 		{ name: "Globals", description: "Single records, such as site settings, from `globals` in your config." },
 		{ name: "Media", description: "WordPress media library uploads." },
@@ -640,6 +645,12 @@ const openapi = {
 		},
 		"/{collection}/{id}/revisions/{revision}/restore": {
 			post: op("Revisions", "restoreRevision", "Restore a revision", "Makes the revision the current row.", { parameters: [collection, id, param("revision", "The revision ID.", { type: "integer" })] }),
+		},
+		"/_live": {
+			post: op("Live", "subscribedReads", "Refresh subscribed reads", `Takes up to ${liveMaxQueries} reads, each with the \`token\` of the answer you last got, and answers each one as the signed-in user: \`{ changed: false, token }\` when what you hold is current, \`{ changed: true, token, data }\` with the fresh result, \`{ error }\` with the read's problem, or \`{ pending: true }\` when the request ran out of time. \`data\` also has \`poll\`, the shortest and longest wait between two requests. The generated client's \`subscribe\` calls it.`, {
+				...body("`{ queries: [{ kind, op, args, id, token }] }`: `kind` is a collection or table key, `op` is `list`, `paginate`, `get` or `count`, `args` are that call's arguments, `id` is the row for `get`, and `token` is what the previous answer returned."),
+				responses: { "200": ok("One result per read, in order, under `data.results`."), default: problem },
+			}),
 		},
 		"/actions/{name}": {
 			post: op("Actions", "callAction", "Call an action", "Runs the action's Ability through WordPress's Abilities run route with the input you send and returns its result. The action's `access` rule decides who may call it. A `readonly` action also answers `GET` with `?input=<json>`.", {

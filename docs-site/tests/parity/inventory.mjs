@@ -48,6 +48,21 @@ function element(html, open) {
   return undefined;
 }
 const links = (html) => [...(html ?? "").matchAll(/<a\b[^>]*>/g)].map((m) => attr(m[0], "href")).filter((href) => href !== undefined);
+/**
+ * The sidebar as a reader sees it: each link's label and path, in order, under the heading of the
+ * group it sits in (Blume's `meta.ts` titles and order), or none at the top level.
+ */
+function sidebarOf(tree) {
+  const out = [];
+  let group = null;
+  for (const m of (tree ?? "").matchAll(/<p\b[^>]*>(.*?)<\/p>|<\/div><\/li>|<a\b([^>]*)>(.*?)<\/a>/gs)) {
+    if (m[1] !== undefined) group = text(m[1]);
+    else if (m[0].startsWith("</div>")) group = null;
+    else if (m[2] !== undefined && group !== null && out.at(-1)?.group !== group && text(m[3]) === group) continue; // the group heading's own link
+    else out.push({ label: text(m[3]), href: attr(`<a ${m[2]}>`, "href"), group });
+  }
+  return out;
+}
 
 const files = [...walk(dist)].sort();
 const redirects = {};
@@ -85,7 +100,18 @@ for (const file of files.filter((f) => f.endsWith(".html") && f !== "/404.html")
     markdown: attr(find((t) => /type="text\/markdown"/.test(t)) ?? "", "href") ?? null,
     ogImage: pathOf(attr(find((t) => /property="og:image"/.test(t)) ?? "", "content")) ?? null,
     tab: current ? attr(current, "href") : null,
-    sidebar: links(element(html, "<nav data-blume-nav-tree")),
+    sidebar: sidebarOf(element(html, "<nav data-blume-nav-tree")),
+    // The links in the head that point readers and agents at other forms of the site.
+    head: tags
+      .filter((t) => /^<link\b/.test(t) && /rel="(describedby|ai-catalog|ard|alternate)"/.test(t))
+      .map((t) => ({ rel: attr(t, "rel"), href: pathOf(attr(t, "href")), type: attr(t, "type") ?? null }))
+      .sort((a, b) => `${a.rel} ${a.href}`.localeCompare(`${b.rel} ${b.href}`)),
+    social: {
+      title: attr(find((t) => /property="og:title"/.test(t)) ?? "", "content") ?? null,
+      card: attr(find((t) => /name="twitter:card"/.test(t)) ?? "", "content") ?? null,
+    },
+    // The tour's stops: each one an anchor a link can name.
+    stops: [...main.matchAll(/<section\b[^>]*\sid="([^"]+)"/g)].map((m) => m[1]),
     edit: attr([...html.matchAll(/<a\b[^>]*>/g)].map((m) => m[0]).find((a) => /\/edit\/main\//.test(a)) ?? "", "href") ?? null,
     toc: links(toc).filter((href) => href.startsWith("#")).map((href) => href.slice(1)),
     prev: pagerLinks.find((l) => l.label.startsWith("Previous"))?.href ?? null,
@@ -96,10 +122,18 @@ for (const file of files.filter((f) => f.endsWith(".html") && f !== "/404.html")
 // The Markdown twin of each page (`/getting-started.md`), and the agent skill files.
 const markdown = files.filter((f) => f.endsWith(".md") && !machinery.some((re) => re.test(f)));
 const mdx = files.filter((f) => f.endsWith(".mdx"));
-// /files/ is what scripts/build-showcase.ts writes (each example's files, blueprint and plugins);
+// _headers and _redirects are the host's configuration, not files it serves; what they do is
+// recorded below. /files/ is what scripts/build-showcase.ts writes (each example's files, blueprint and plugins);
 // its blobs and plugin files are named by content and version, so only its top-level entries are
 // recorded.
-const other = files.filter((f) => !f.endsWith(".html") && !/\.mdx?$/.test(f) && !machinery.some((re) => re.test(f)) && !/^\/files\/(blobs|plugins)\//.test(f));
+const other = files.filter((f) => !f.endsWith(".html") && !/\.mdx?$/.test(f) && !machinery.some((re) => re.test(f)) && !/^\/files\/(blobs|plugins)\//.test(f) && !/^\/_(headers|redirects)$/.test(f));
+// The response headers _headers sets, by path pattern (`/*.md`), for the suite to check.
+const headers = {};
+let pattern = null;
+for (const line of readFileSync(path.join(dist, "_headers"), "utf8").split("\n")) {
+  if (/^\S/.test(line)) pattern = line.trim();
+  else if (line.trim() && pattern) (headers[pattern] ??= []).push(line.trim());
+}
 const dropped = files.filter((f) => machinery.some((re) => re.test(f)) && !f.startsWith("/_astro/"));
 
 // A REST reference page names its operation as a line of its own: `GET /posts`.
@@ -115,8 +149,6 @@ for (const page of Object.values(pages)) {
     continue;
   }
   const key = page.tab;
-  // A section heading that is a link repeats the link of its first page: one entry.
-  page.sidebar = [...new Set(page.sidebar)];
   if (sidebars[key] && JSON.stringify(sidebars[key]) !== JSON.stringify(page.sidebar)) throw new Error(`two sidebars under ${key}`);
   sidebars[key] = page.sidebar;
   delete page.sidebar;
@@ -126,5 +158,5 @@ const site = (url) => pathOf(url).replace(/(.)\/$/, "$1");
 const sitemap = [...readFileSync(path.join(dist, "sitemap.xml"), "utf8").matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => site(m[1])).sort();
 const llms = [...readFileSync(path.join(dist, "llms.txt"), "utf8").matchAll(/\]\((https?:[^)]+)\)/g)].map((m) => site(m[1]));
 
-writeFileSync(out, JSON.stringify({ pages, sidebars, redirects, markdown, mdx, files: other, sitemap, llms, dropped }, null, "\t") + "\n");
+writeFileSync(out, JSON.stringify({ pages, sidebars, redirects, headers, markdown, mdx, files: other, sitemap, llms, dropped }, null, "\t") + "\n");
 console.log(`${Object.keys(pages).length} pages, ${Object.keys(redirects).length} redirects, ${markdown.length} Markdown twins, ${mdx.length} .mdx, ${other.length} other files, ${dropped.length} dropped`);

@@ -6,13 +6,15 @@ import { fileURLToPath } from "node:url";
 // way GitHub Pages serves it, from PARITY_DIST (default: dist/). With PARITY_BASE_URL it reads a
 // deployed site instead and starts no server.
 const here = path.dirname(fileURLToPath(import.meta.url));
-const deployed = process.env.PARITY_BASE_URL;
+// A base URL is a directory: every path the suite asks for is relative to it.
+const deployed = process.env.PARITY_BASE_URL?.replace(/\/?$/, "/");
 const port = 4322;
 
 export default defineConfig({
 	testDir: here,
 	testMatch: "parity.spec.ts",
 	fullyParallel: true,
+	forbidOnly: true,
 	reporter: "list",
 	use: { baseURL: deployed ?? `http://127.0.0.1:${port}/` },
 	webServer: deployed

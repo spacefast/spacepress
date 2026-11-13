@@ -9,6 +9,11 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
+interface SidebarEntry {
+	label: string;
+	href: string;
+	group: string | null;
+}
 interface PageRecord {
 	title: string;
 	h1: string;
@@ -23,11 +28,15 @@ interface PageRecord {
 	next: string | null;
 	sidebar?: true;
 	operation?: string | null;
+	head: { rel: string; href: string; type: string | null }[];
+	social: { title: string | null; card: string | null };
+	stops: string[];
 }
 interface Inventory {
 	pages: Record<string, PageRecord>;
-	sidebars: Record<string, string[]>;
+	sidebars: Record<string, SidebarEntry[]>;
 	redirects: Record<string, { to: string; status: number }>;
+	headers: Record<string, string[]>;
 	markdown: string[];
 	mdx: string[];
 	files: string[];
@@ -61,7 +70,14 @@ test.describe("every page", () => {
 				const image = await meta('meta[property="og:image"]', "content");
 				expect(new URL(image!).pathname).toMatch(new RegExp(`${escape(record.ogImage)}$`));
 			}
-			if (record.edit !== null) await expect(page.getByRole("link", { name: "Edit on GitHub" })).toHaveAttribute("href", /^https:\/\/github\.com\/spacefast\/zero\/edit\/main\/docs-site\//);
+			// The page's own source file; its extension may change with the source format.
+			if (record.edit !== null) await expect(page.getByRole("link", { name: "Edit on GitHub" })).toHaveAttribute("href", new RegExp(`^${escape(record.edit.replace(/\.mdx$/, ""))}\\.mdx?$`));
+			for (const link of record.head) {
+				const href = await page.locator(`head link[rel="${link.rel}"]${link.type ? `[type="${link.type}"]` : ""}`).evaluateAll((ls) => ls.map((l) => new URL((l as HTMLLinkElement).href).pathname));
+				expect(href.map(local), `${route}: <link rel="${link.rel}">`).toContain(link.href);
+			}
+			if (record.social.title !== null) expect(await meta('meta[property="og:title"]', "content")).toBe(record.social.title);
+			if (record.social.card !== null) expect(await meta('meta[name="twitter:card"]', "content")).toBe(record.social.card);
 		});
 	}
 });
@@ -69,7 +85,7 @@ test.describe("every page", () => {
 test.describe("navigation", () => {
 	for (const route of routes) {
 		const record = inventory.pages[route]!;
-		if (record.tab === null && !record.sidebar && record.toc.length === 0 && !record.prev && !record.next) continue;
+		if (record.tab === null && !record.sidebar && record.toc.length === 0 && record.stops.length === 0 && !record.prev && !record.next) continue;
 		test(`${route}: tab, sidebar, table of contents, previous and next`, async ({ page }) => {
 			await page.goto(at(route));
 			if (record.tab !== null) {
@@ -77,10 +93,23 @@ test.describe("navigation", () => {
 				await expect(tabs.locator('[aria-current="page"]')).toHaveAttribute("href", new RegExp(`${escape(record.tab)}/?$`));
 			}
 			if (record.sidebar) {
-				const sidebar = page.getByRole("complementary", { name: "Primary" }).getByRole("navigation").last();
-				const hrefs = await sidebar.getByRole("link").evaluateAll((links) => links.map((a) => new URL((a as HTMLAnchorElement).href).pathname));
-				expect([...new Set(hrefs.map(local))]).toEqual(inventory.sidebars[record.tab ?? "/"]);
-				await expect(sidebar.locator('[aria-current="page"]')).toHaveAttribute("href", new RegExp(`${escape(route)}/?$`));
+				// The links in the sidebar that are not the section tabs (which a narrow screen repeats there).
+				const primary = page.getByRole("complementary", { name: "Primary" });
+				const entries = await primary.getByRole("link").evaluateAll((links) =>
+					links
+						.filter((a) => !a.closest('nav[aria-label="Sections"]'))
+						.map((a) => {
+							// The group an entry is in: the text heading the list it sits in, if any.
+							const list = a.closest("ul")?.parentElement?.closest("li");
+							const heading = list?.querySelector(":scope > :first-child")?.textContent?.trim() ?? null;
+							return { label: a.textContent!.trim(), href: new URL((a as HTMLAnchorElement).href).pathname, current: a.getAttribute("aria-current") === "page", group: heading };
+						}),
+				);
+				const want = inventory.sidebars[record.tab ?? "/"]!;
+				// Every entry it listed, with its label and group, in the same order; a section may gain one.
+				const have = entries.map((e) => `${e.group ?? ""} / ${e.label} -> ${local(e.href)}`);
+				expect(inOrder(have, want.map((e) => `${e.group ?? ""} / ${e.label} -> ${e.href}`)), `sidebar of ${route}`).toEqual([]);
+				expect(entries.filter((e) => e.current).map((e) => local(e.href)), `current entry on ${route}`).toContain(route);
 			}
 			if (record.toc.length > 0) {
 				const toc = page.getByRole("complementary", { name: "On this page" });
@@ -89,6 +118,7 @@ test.describe("navigation", () => {
 				// Each entry lands on a heading of the page.
 				for (const id of record.toc) await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
 			}
+			for (const id of record.stops) await expect(page.locator(`[id="${id}"]`), `${route}#${id}`).toHaveCount(1);
 			const pager = page.getByRole("navigation", { name: "Pagination" });
 			for (const [rel, want] of [["prev", record.prev], ["next", record.next]] as const) {
 				const link = pager.getByRole("link", { name: rel === "prev" ? /^Previous/ : /^Next/ });
@@ -128,8 +158,10 @@ test("every .mdx address still answers with the page's source", async ({ request
 		// The page's own source: front matter and the same title as its Markdown twin.
 		const text = await response.text();
 		expect(text.startsWith("---\n"), source).toBe(true);
-		const title = (await (await request.get(at(source.replace(/\.mdx$/, ".md")))).text()).match(/^title: (.*)$/m)?.[1];
-		expect(text, source).toContain(`title: ${title}`);
+		const route = source === "/index.mdx" ? "/" : source.replace(/\.mdx$/, "");
+		const h1 = inventory.pages[route]?.h1;
+		expect(h1, source).toBeTruthy();
+		expect(text.match(/^title: "?(.*?)"?$/m)?.[1], source).toBe(h1);
 	}
 });
 
@@ -137,6 +169,24 @@ test("every other file the site served is still there", async ({ request }) => {
 	for (const file of inventory.files) {
 		const response = await request.get(at(file));
 		expect(response.ok(), file).toBe(true);
+		const body = await response.body();
+		if (file.endsWith(".json")) expect(() => JSON.parse(body.toString("utf8")), file).not.toThrow();
+		if (file.endsWith(".png")) expect(body.subarray(1, 4).toString("latin1"), file).toBe("PNG");
+		if (file.endsWith(".wasm")) expect(body.subarray(0, 4).toString("latin1"), file).toBe("\0asm");
+	}
+	const robots = await (await request.get(at("/robots.txt"))).text();
+	expect(robots).toMatch(/^Sitemap: https?:\/\/\S+\/sitemap\.xml$/m);
+});
+
+test("each example's Playground blueprint installs plugins the site serves", async ({ request }) => {
+	for (const name of ["reading-list", "pantry", "blog", "full-site"]) {
+		const blueprint = await (await request.get(at(`/files/${name}.blueprint.json`))).json();
+		const own = blueprint.steps
+			.filter((step: { step: string }) => step.step === "installPlugin")
+			.map((step: { pluginData: { url: string } }) => new URL(step.pluginData.url).pathname)
+			.filter((url: string) => url.includes(`/files/plugins/${name}/`));
+		expect(own.length, name).toBeGreaterThanOrEqual(3);
+		for (const url of own) expect((await request.get(at(local(url)))).ok(), url).toBe(true);
 	}
 });
 
@@ -155,18 +205,38 @@ test("llms.txt lists every page it listed, and llms-full.txt has their text", as
 	expect(full).toContain("npm create @spacefast/first my-app");
 });
 
-test("Markdown and text files are served with their media types", async ({ request }) => {
+test("files are served with their media types", async ({ request }) => {
 	expect((await request.get(at("/getting-started.md"))).headers()["content-type"]).toMatch(/^text\/(markdown|plain)/);
 	expect((await request.get(at("/llms.txt"))).headers()["content-type"]).toMatch(/^text\/plain/);
 	expect((await request.get(at("/compiler.wasm"))).headers()["content-type"]).toBe("application/wasm");
 	expect((await request.get(at("/openapi.json"))).headers()["content-type"]).toMatch(/json/);
 });
 
+// What _headers asked of a host that applies it. GitHub Pages ignores _headers, so these hold only
+// where the host applies them: PARITY_HEADERS=1 checks them.
+test("the _headers rules the site set are kept", async ({ request }) => {
+	test.skip(!process.env.PARITY_HEADERS, "the host does not apply _headers (GitHub Pages)");
+	const examples: Record<string, string> = { "/*.md": "/getting-started.md", "/*.mdx": "/getting-started.mdx", "/*.txt": "/llms.txt", "/.well-known/agent-skills/*.md": "/.well-known/agent-skills/first/SKILL.md" };
+	for (const [pattern, lines] of Object.entries(inventory.headers)) {
+		const url = examples[pattern] ?? (pattern.includes("*") ? null : pattern);
+		if (url === null) continue;
+		const headers = (await request.get(at(url))).headers();
+		for (const line of lines) {
+			const [name, ...value] = line.split(": ");
+			if (name === "X-Powered-By") continue;
+			if (name === "Link") for (const part of value.join(": ").split(/,\s*(?=<)/)) expect(headers["link"], url).toContain(part.split(";")[0]);
+			else expect(headers[name!.toLowerCase()], `${url}: ${name}`).toBe(value.join(": "));
+		}
+	}
+});
+
 test("an unknown address is a 404 page that leads back to the docs", async ({ page }) => {
 	const response = await page.goto(at("/no-such-page"));
 	expect(response?.status()).toBe(404);
 	await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText("Page not found");
-	await expect(page.getByRole("link", { name: "Docs", exact: true }).first()).toBeVisible();
+	const main = page.getByRole("main");
+	await expect(main.getByRole("link").first()).toBeVisible();
+	await expect(main.getByRole("link", { name: /home/i }).first()).toHaveAttribute("href", /^(\.?\/|https?:\/\/[^/]+\/?)$/);
 });
 
 // --- The site's chrome -------------------------------------------------------------------------
@@ -192,15 +262,20 @@ test("the footer has the licence line and the Spacefast link", async ({ page }) 
 test("the theme follows the system and the toggle switches it and remembers it", async ({ page }) => {
 	await page.emulateMedia({ colorScheme: "dark" });
 	await page.goto(at("/getting-started"));
-	const theme = () => page.locator("html").getAttribute("data-theme");
-	expect(await theme()).toBe("dark");
-	const background = () => page.locator("body").evaluate((b) => getComputedStyle(b).backgroundColor);
-	const dark = await background();
+	// Read by what a reader sees: how light the page background is.
+	const lightness = () => page.locator("body").evaluate((b) => {
+		// Any CSS colour (rgb, oklch, …) to sRGB, through a canvas.
+		const canvas = document.createElement("canvas").getContext("2d")!;
+		canvas.fillStyle = getComputedStyle(b).backgroundColor;
+		canvas.fillRect(0, 0, 1, 1);
+		const [r, g, bl] = canvas.getImageData(0, 0, 1, 1).data;
+		return (r! + g! + bl!) / 3;
+	});
+	await expect.poll(lightness).toBeLessThan(80);
 	await page.getByRole("button", { name: "Toggle theme" }).click();
-	expect(await theme()).toBe("light");
-	expect(await background()).not.toBe(dark);
+	await expect.poll(lightness).toBeGreaterThan(175);
 	await page.reload();
-	expect(await theme()).toBe("light");
+	await expect.poll(lightness).toBeGreaterThan(175);
 });
 
 test("search finds a page by a word in its text and opens it", async ({ page }) => {
@@ -238,15 +313,17 @@ test("code is highlighted, in the light and the dark theme", async ({ page }) =>
 	const light = await colors();
 	expect(light.length).toBeGreaterThan(2);
 	await page.getByRole("button", { name: "Toggle theme" }).click();
-	const dark = await colors();
-	expect(dark).not.toEqual(light);
+	await expect.poll(colors).not.toEqual(light);
 });
 
 // --- Content components ----------------------------------------------------------------------
 
 test("a note callout renders as an aside in the text", async ({ page }) => {
 	await page.goto(at("/getting-started"));
-	await expect(page.locator("main aside").filter({ hasText: "are not published yet" })).toBeVisible();
+	const note = page.getByRole("main").getByText("are not published yet");
+	await expect(note).toBeVisible();
+	// Set apart from the text: inside an aside or a note, not an ordinary paragraph.
+	expect(await note.evaluate((el) => !!el.closest('aside, [role="note"]'))).toBe(true);
 });
 
 test("cards link to their pages, with a title and a line of text", async ({ page }) => {
@@ -262,10 +339,18 @@ test("cards link to their pages, with a title and a line of text", async ({ page
 
 test("RepoFile shows a repository file whole, highlighted", async ({ page }) => {
 	await page.goto(at("/pages"));
-	const heading = page.getByRole("heading", { name: /^A layout/ });
-	await expect(heading).toBeVisible();
-	const file = page.locator("main").getByText("export const metadata", { exact: false }).first();
+	await expect(page.getByRole("heading", { name: /^A layout/ })).toBeVisible();
+	// tests/fixtures/app-router/first/app/layout.tsx, which only this file says.
+	const file = page.getByRole("main").getByText("%s · Field Notes").first();
 	await expect(file).toBeVisible();
+	await expect(page.getByRole("main").getByText("layout.tsx", { exact: true }).first()).toBeVisible();
+	const colours = await file.evaluate((el) => {
+		let block: Element | null = el;
+		while (block && !/^(pre|code)$/i.test(block.tagName) && !(block.parentNode instanceof ShadowRoot)) block = block.parentElement;
+		const root = (block?.parentNode instanceof ShadowRoot ? block.parentNode : block) ?? el;
+		return new Set([...root.querySelectorAll("span")].map((s) => getComputedStyle(s).color)).size;
+	});
+	expect(colours).toBeGreaterThan(2);
 });
 
 test("CompiledExcerpt shows the PHP the compiler wrote for an example", async ({ page }) => {
@@ -277,13 +362,18 @@ test("CompiledExcerpt shows the PHP the compiler wrote for an example", async ({
 
 test("ExampleConfig shows an example's config with the compiler's names", async ({ page }) => {
 	await page.goto(at("/reference/wordpress-plugins"));
-	await expect(page.locator("main").getByText("defineConfig", { exact: false }).first()).toBeVisible();
+	// examples/wp-plugins/first.config.ts, shown with First's names.
+	await expect(page.getByRole("main").getByText('"classic-editor": "1.6.7"').first()).toBeVisible();
+	await expect(page.getByRole("main").getByText('from "first"').first()).toBeVisible();
 });
 
 test("PagesArtifact shows what first-pages build wrote", async ({ page }) => {
 	await page.goto(at("/pages"));
-	await expect(page.locator("main").getByText("note page template", { exact: false }).first()).toBeVisible();
-	await expect(page.locator("main").getByText("island bundle", { exact: false }).first()).toBeVisible();
+	const main = page.getByRole("main");
+	await expect(main.getByText("note page template", { exact: false }).first()).toBeVisible();
+	await expect(main.getByText('wp:group {"className":"site"}', { exact: false }).first()).toBeVisible();
+	await expect(main.getByText("island bundle", { exact: false }).first()).toBeVisible();
+	await expect(main.getByText('store("fullsite/cheer"', { exact: false }).first()).toBeVisible();
 });
 
 // --- The REST reference ---------------------------------------------------------------------
@@ -300,13 +390,16 @@ test.describe("the REST reference", () => {
 		}
 	});
 
-	test("an operation has request samples in cURL and JavaScript", async ({ page }) => {
+	test("an operation has request samples in cURL and JavaScript, one shown at a time", async ({ page }) => {
 		await page.goto(at("/rest/posts/posts-list"));
-		const tabs = page.getByRole("tablist", { name: "Request" });
-		await expect(tabs.getByRole("tab", { name: "cURL" })).toHaveAttribute("aria-selected", "true");
-		await expect(page.getByRole("tabpanel").filter({ visible: true }).first()).toContainText("curl -X GET");
-		await tabs.getByRole("tab", { name: "JavaScript" }).click();
-		await expect(page.getByRole("tabpanel").filter({ visible: true }).first()).toContainText("await fetch(");
+		const main = page.locator("main");
+		const curl = main.getByText(/curl -X GET/).first();
+		const js = main.getByText(/await fetch\(/).first();
+		await expect(curl).toBeVisible();
+		await expect(js).toBeHidden();
+		await main.getByText("JavaScript", { exact: true }).first().click();
+		await expect(js).toBeVisible();
+		await expect(curl).toBeHidden();
 	});
 
 	test("an operation lists its parameters and responses", async ({ page }) => {
@@ -324,9 +417,19 @@ test("the playground compiles the default example in the browser", async ({ page
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.goto(at("/playground"));
 	await expect(page.getByRole("heading", { level: 1 })).toHaveText("Playground");
-	await expect(page.locator("#compile-status")).toHaveAttribute("data-state", "ok", { timeout: 30_000 });
+	const status = page.getByRole("status");
+	await expect(status).toHaveText(/^Compiled reading-list\. \d+ generated files\.$/, { timeout: 30_000 });
 	await expect(page.getByRole("combobox", { name: "Example", exact: true })).toHaveValue("reading-list");
 	await expect(page.getByRole("textbox", { name: "Generated code", exact: true })).not.toHaveValue("");
+	// An edit recompiles; a config that doesn't compile shows the compiler's diagnostics.
+	const source = page.getByRole("textbox", { name: "Source code", exact: true });
+	await source.fill("export const =");
+	await expect(status).toHaveText("Fix the config to generate files.");
+	await expect(page.getByRole("alert")).not.toBeEmpty();
+	await page.getByRole("button", { name: "Reset example" }).click();
+	await expect(status).toHaveText(/^Compiled reading-list\./);
+	await page.getByRole("combobox", { name: "Example", exact: true }).selectOption("blog");
+	await expect(status).toHaveText(/^Compiled blog\./);
 	expect(errors).toEqual([]);
 });
 
@@ -334,17 +437,44 @@ test("the tour shows each stop's config next to what it compiles to", async ({ p
 	await page.goto(at("/tour"));
 	await expect(page.getByRole("link", { name: /^The pantry/ })).toHaveAttribute("href", /\/tour\/pantry$/);
 	await page.goto(at("/tour/pantry#a-hook"));
-	const stop = page.locator("#a-hook");
+	const stop = page.locator(":target");
 	await expect(stop).toContainText("beforeCreate(data)");
 	await expect(stop).toContainText("function items__beforeCreate");
 });
 
-test("an example page opens its files and runs it in WordPress Playground", async ({ page }) => {
+test("an example page lists every file, opens one, and opens one a link names", async ({ page }) => {
+	const plugins = "first/dist/wp-content/plugins";
+	const file = `${plugins}/first-app-pantry/first/app/schema.php`;
+	await page.goto(at(`/examples/pantry#file=${encodeURIComponent(file)}`));
+	await expect(page.getByRole("main").getByText("<?php").first()).toBeVisible();
+	await page.goto(at("/examples/pantry"));
+	const tree = page.getByRole("tree").first();
+	await expect(tree).toBeVisible();
+	// The tree opens on the app plugin's folder; a click shows the file.
+	await tree.getByRole("treeitem", { name: "schema.php", exact: true }).first().click();
+	await expect(tree.getByRole("treeitem", { name: "schema.php", exact: true }).first()).toHaveAttribute("aria-selected", "true");
+	await expect(page).toHaveURL(/#file=.*schema\.php$/);
+	await expect(page.getByRole("main").getByText("'name' => 'pantry'", { exact: false }).first()).toBeVisible();
+});
+
+test("an example page runs it in WordPress Playground", async ({ page }) => {
 	await page.goto(at("/examples/pantry"));
 	await expect(page.locator("main").getByText("defineConfig", { exact: false }).first()).toBeVisible();
 	await page.getByRole("button", { name: /Run in WordPress/ }).first().click();
 	await expect(page.locator("main iframe").first()).toHaveAttribute("src", /^https:\/\/playground\.wordpress\.net\/\?blueprint-url=.*%2Ffiles%2Fpantry\.blueprint\.json$/);
 });
+
+/** The entries of `want` that `have` lacks or lists out of order. */
+function inOrder(have: string[], want: string[]): string[] {
+	let at = 0;
+	const missing: string[] = [];
+	for (const entry of want) {
+		const found = have.indexOf(entry, at);
+		if (found < 0) missing.push(entry);
+		else at = found + 1;
+	}
+	return missing;
+}
 
 /** A path without a trailing slash. */
 function local(path: string): string {
@@ -356,9 +486,17 @@ function local(path: string): string {
  * refresh points on, where it serves static files only (GitHub Pages).
  */
 async function destination(request: APIRequestContext, from: string): Promise<string> {
-	const response = await request.get(at(from), { maxRedirects: 0 });
-	const location = response.headers()["location"];
-	if (response.status() >= 300 && response.status() < 400 && location) return local(new URL(location, response.url()).pathname);
+	let url = at(from);
+	let response = await request.get(url, { maxRedirects: 0 });
+	// A host that adds a trailing slash to a directory first (GitHub Pages) is not the move itself.
+	for (let hop = 0; hop < 3; hop++) {
+		const location = response.headers()["location"];
+		if (response.status() < 300 || response.status() >= 400 || !location) break;
+		const next = new URL(location, response.url());
+		if (local(next.pathname) !== local(new URL(response.url()).pathname)) return local(next.pathname);
+		url = next.href;
+		response = await request.get(url, { maxRedirects: 0 });
+	}
 	expect(response.status(), from).toBe(200);
 	const refresh = (await response.text()).match(/<meta http-equiv="refresh" content="0;\s*url=([^"]+)"/i)?.[1];
 	expect(refresh, `${from} neither redirects nor refreshes`).toBeTruthy();

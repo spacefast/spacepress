@@ -42,18 +42,23 @@ http
   .createServer((request, response) => {
     let file = resolve(request.url ?? "/");
     if (file === null) return response.writeHead(400).end("bad request");
-    if (existsSync(file) && statSync(file).isDirectory()) file = path.join(file, "index.html");
+    if (existsSync(file) && statSync(file).isDirectory()) {
+      // As GitHub Pages does: a directory without its trailing slash redirects to it.
+      const { pathname, search } = new URL(request.url ?? "/", "http://localhost");
+      if (!pathname.endsWith("/") && existsSync(path.join(file, "index.html"))) return response.writeHead(301, { location: `${pathname}/${search}` }).end();
+      file = path.join(file, "index.html");
+    }
     else if (!existsSync(file) && existsSync(`${file}.html`)) file = `${file}.html`;
     if (!existsSync(file) || !statSync(file).isFile()) {
       // As GitHub Pages does: the site's own 404 page, with a 404.
       const missing = path.join(dist, "404.html");
       if (!existsSync(missing)) return response.writeHead(404).end("not found");
       response.writeHead(404, { "content-type": types[".html"] });
-      return createReadStream(missing).pipe(response);
+      return createReadStream(missing).on("error", () => response.destroy()).pipe(response);
     }
     // /files/ is read by WordPress Playground from another origin, as on the published site.
     const cors = request.url?.startsWith(`${base}/files/`) ? { "access-control-allow-origin": "*" } : {};
     response.writeHead(200, { "content-type": types[path.extname(file)] ?? "application/octet-stream", ...cors });
-    createReadStream(file).pipe(response);
+    createReadStream(file).on("error", () => response.destroy()).pipe(response);
   })
   .listen(port, "127.0.0.1", () => console.log(`serving ${dist} at http://127.0.0.1:${port}${base}/`));

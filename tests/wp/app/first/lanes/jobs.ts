@@ -3,6 +3,7 @@
 // Lane D (§6.1): a hook that enqueues, a job with a visible effect that can be made to fail, and an
 // idempotent action built on once().
 import { action, boolean, collection, db, env, group, HttpError, integer, job, jobs, json, once, repeater, text, table } from "first";
+import { abilities } from "php/wordpress";
 
 export const jobNotes = table({
   title: text(),
@@ -18,8 +19,6 @@ export const collections = {  };
 export const tables = { jobNotes, hookNotes };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
-/** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
-export const relations = (r: unknown) => ({});
 export const actions = {
   refsEnqueue: action({
     input: { noteId: integer(), meta: json() }, access: "editor",
@@ -38,6 +37,17 @@ export const actions = {
         return { ids: rows.map((r) => r.id) };
       });
       return { ...result, f: () => 1 };
+    },
+  }),
+  // Runs the idempotent jobsOnce ability twice with different input: an Idempotency-Key sent for
+  // this action must not key those inner runs.
+  jobsTwice: action({
+    input: { note: text() },
+    access: "editor",
+    handler: async (input) => {
+      const a = await abilities.call("blog/jobs-once", { note: `${input.note}-a` });
+      const b = await abilities.call("blog/jobs-once", { note: `${input.note}-b` });
+      return { a, b };
     },
   }),
   // Inbound webhook: an HMAC over the raw body replaces the access rule.

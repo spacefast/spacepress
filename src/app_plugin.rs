@@ -32,12 +32,26 @@ pub(crate) fn files(
         files.push((at("wpml-config.xml"), wpml.into_bytes()));
     }
     files.push((at("first/app/functions.php"), built.functions_php.as_bytes().to_vec()));
+    // Each `page.md`'s Markdown, which the site stores as a WordPress Page on its first request.
+    if let Some(bodies) = crate::content_page::bodies_php(&built.schema) {
+        files.push((at("first/app/content.php"), bodies.into_bytes()));
+    }
     // Compiled `"use client"` stores, which the page loads as script modules (generator B).
     for island in built.schema.islands.values() {
         files.push((
             at(&format!("first/app/client/{}", island.file)),
             island.source.as_bytes().to_vec(),
         ));
+    }
+    // Imported stylesheets and images, named by their bytes (`crate::assets`).
+    if !built.schema.assets.is_empty() {
+        files.push((
+            at(&format!("{}/.htaccess", crate::assets::DIR)),
+            crate::assets::HTACCESS.as_bytes().to_vec(),
+        ));
+        for (name, bytes) in &built.schema.assets {
+            files.push((at(&format!("{}/{name}", crate::assets::DIR)), bytes.clone()));
+        }
     }
     for (name, sql) in migrations {
         if name.ends_with(".sql") && !name.contains('/') {

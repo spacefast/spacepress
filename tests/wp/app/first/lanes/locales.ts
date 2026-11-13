@@ -27,8 +27,6 @@ export const collections = { tours };
 export const tables = { tourLog, phrases };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
-/** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
-export const relations = (r: unknown) => ({});
 export const actions = {
   refsTranslations: action({ input: { id: integer() }, access: "editor", handler: async (input) => {
     const row = await db.query.tours.findFirst({ where: { id: input.id }, locale: "*" });

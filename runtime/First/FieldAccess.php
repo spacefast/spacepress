@@ -174,13 +174,13 @@ final class FieldAccess
                 }
             } elseif ($key === 'NOT') {
                 self::checkFilter($collection, $value, $viewer, $kptr);
+            } elseif (\First\Schema::filtersRelation($spec, $key, $value)) {
+                self::checkLink($collection, $spec['relations'][$key], $viewer, $kptr);
+                self::checkFilter($spec['relations'][$key]['collection'], $value, $viewer, $kptr);
             } elseif (isset($spec['columns'][$key])) {
                 if (self::mayHide($spec['columns'][$key], $viewer)) {
                     throw self::hidden($key, $kptr);
                 }
-            } elseif (isset($spec['relations'][$key])) {
-                self::checkLink($collection, $spec['relations'][$key], $viewer, $kptr);
-                self::checkFilter($spec['relations'][$key]['collection'], $value, $viewer, $kptr);
             }
         }
     }

@@ -51,6 +51,16 @@ front, with a typed client and cache purges that just work.
 10. Caching uses WP Cloud's Batcache and edge cache with URL purges. A frontend
     hosted elsewhere owns its own cache.
 
+Added 2026-11-13:
+
+11. A project may opt in to runtime schema changes for content kinds
+    (`runtimeSchema: true`). Each change is a numbered version stored on the
+    site and loaded over the compiled schema; `first pull` writes the versions
+    back into the project. Code and `table()` kinds stay build-only, and so does
+    anything declared in source except its label and field presentation. See [spec.md](spec.md) §2.10 and
+    [the decision record](../decisions/2026-11-13-runtime-schema.md), which
+    reverses "DB as schema source" for this subset only.
+
 ## Principles
 
 1. One concept, one declaration. A kind, action or job is declared once and
@@ -70,7 +80,7 @@ front, with a typed client and cache purges that just work.
 |---|---|---|
 | Table per export, required by default, implicit id/timestamps, types without annotations, a `convex/`-style folder in your app | Convex | no FKs or cascades |
 | Schema checked against live data at deploy, `--drop` counts, AGENTS.md | Lakebed (the origin of Zero 0.8's API) | mandatory indexes, hand-written ownership checks |
-| Implicit post fields, URL patterns, taxonomies, bylines, single live Astro loader | EmDash | DB as schema source, runtime DDL |
+| Implicit post fields, URL patterns, taxonomies, bylines, single live Astro loader; opt-in runtime changes to content kinds, stored as numbered versions (ruling 11) | EmDash | DB as the only schema source, runtime DDL |
 | `app/` conventions, `"use client"`, server actions imported into components, `metadata` | Next.js App Router | RSC wire format, JS server |
 | `.md` pages, content loaders with digests and cache hints | Astro | |
 | `queryOptions` factories | TanStack Start | |

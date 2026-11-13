@@ -24,6 +24,17 @@ $schema = [
             'columns' => [
                 'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
                 'name' => ['type' => 'text', 'notNull' => true],
+                // A unique key only editors read: a reference to it (0.3.0 captures only) must not disclose it.
+                'badge' => ['type' => 'integer', 'unique' => true, 'access' => ['read' => ['role' => 'editor']]],
+                'uid' => ['type' => 'text', 'unique' => true, 'system' => true, 'rules' => ['pattern' => ['source' => '^zr_[0-9a-f]{20}$', 'flags' => '']]],
+            ],
+        ],
+        // A synced table whose reference targets a non-id key (0.3.0 captures only).
+        'badges' => [
+            'primaryKey' => 'id', 'editor' => false, 'table' => 'first_badges', 'uid' => true, 'sync' => null, 'access' => $editor, 'api' => $api, 'relations' => [], 'hooks' => [],
+            'columns' => [
+                'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
+                'badgeId' => ['type' => 'integer', 'references' => ['collection' => 'people', 'column' => 'badge']],
                 'uid' => ['type' => 'text', 'unique' => true, 'system' => true, 'rules' => ['pattern' => ['source' => '^zr_[0-9a-f]{20}$', 'flags' => '']]],
             ],
         ],
@@ -213,6 +224,14 @@ eq('and the digest a pull by that viewer returns', $answer['digest'], pull('note
 
 // ================================================================ references and validation
 
+// A reference to a non-id key the viewer can't read refuses the same way whether its row exists or not.
+$badged = $db->insert('people', ['name' => 'Badged', 'badge' => 4242], true)[0];
+foreach ([$badged['uid'], 'zr_dddddddddddddddddddd'] as $uid) {
+    problem('a sync reference through a hidden key discloses nothing', fn () => $db->current(static fn () => \First\Sync\Wire::decode('badges',
+        ['uid' => 'zr_cccccccccccccccccccc', 'fields' => ['badgeId' => $uid], 'body' => null], viewer: new \First\Viewer(['id' => 9, 'name' => 'au', 'role' => 'author']))), 409, 'reference_violation', '/badgeId');
+}
+eq('a reader of the key resolves the reference to it', $db->current(static fn () => \First\Sync\Wire::decode('badges',
+    ['uid' => 'zr_cccccccccccccccccccc', 'fields' => ['badgeId' => $badged['uid']], 'body' => null], viewer: new \First\Viewer(['id' => 8, 'name' => 'ed', 'role' => 'editor'])))['badgeId'], 4242);
 $orphan = ['uid' => 'zr_bbbbbbbbbbbbbbbbbbbb', 'fields' => ['title' => 'Orphan', 'authorId' => 'zr_ffffffffffffffffffff'], 'body' => null];
 isProblem('unknown reference uid', req('POST', '/sync/notes', ['record' => $orphan, 'expect' => 'absent']), 409, 'reference_violation', '/authorId');
 isProblem('references are not resolved for a caller who may not write', req('POST', '/sync/notes', ['record' => $orphan, 'expect' => 'absent'], as: null), 401, 'unauthenticated');

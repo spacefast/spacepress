@@ -1122,6 +1122,14 @@ export interface ConfigInput<
    */
   publicAuthors?: boolean;
   /**
+   * Sealed mode: the only code that runs as a plugin is First's own plugins, the platform plugins,
+   * the `plugins` declared here (exact versions, checksums in the committed lock) and `use` plugin
+   * packages. Activating anything else is refused; anything else already loaded is reported. A host
+   * that mounts First through the build store can enforce the list before any plugin loads.
+   * Default `false`. See docs/sealed.md for what is and isn't guaranteed.
+   */
+  sealed?: boolean;
+  /**
    * Who renders the public site. Leave it out for the theme (or `first/app` when it exists); `false`
    * for backend only; an external site's `https://` address to point links, previews and feeds there.
    */

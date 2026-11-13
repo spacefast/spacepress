@@ -294,6 +294,10 @@ pub fn render(schema: &Schema) -> String {
     let _ = writeln!(out, "    'runtime' => '{}',", crate::platform::SERIES);
     let _ = writeln!(out, "    'name' => {},", php_str(&schema.name));
     let _ = writeln!(out, "    'admin' => {},", schema.admin);
+    if let Some(declared) = &schema.sealed {
+        let slugs: Vec<String> = declared.iter().map(|slug| php_str(slug)).collect();
+        let _ = writeln!(out, "    'sealed' => ['plugins' => [{}]],", slugs.join(", "));
+    }
     if schema.public_authors {
         out.push_str("    'publicAuthors' => true,\n");
     }

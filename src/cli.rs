@@ -23,7 +23,7 @@ pub struct Args {
     pub(crate) frozen: bool,
 }
 
-const COMMANDS: &str = include_str!("../runtime/First/Cli/commands.json");
+pub(crate) const COMMANDS: &str = include_str!("../runtime/First/Cli/commands.json");
 
 struct Entry {
     name: String,
@@ -196,6 +196,7 @@ pub fn main() -> ExitCode {
         }
         "sync" => crate::commands::sync(&rest),
         "pull" => crate::commands::pull::cli(&rest),
+        "mcp" => crate::commands::mcp::cli(&rest),
         "wp" => {
             let mut rest = rest;
             exit(crate::commands::site::take_site(&mut rest).and_then(|site| {

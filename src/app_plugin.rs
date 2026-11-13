@@ -39,6 +39,10 @@ pub(crate) fn files(
         );
         files.push((at("first/app/references.php"), php.into_bytes()));
     }
+    // Each `page.md`'s Markdown, which the site stores as a WordPress Page on its first request.
+    if let Some(bodies) = crate::content_page::bodies_php(&built.schema) {
+        files.push((at("first/app/content.php"), bodies.into_bytes()));
+    }
     // Compiled `"use client"` stores, which the page loads as script modules (generator B).
     for island in built.schema.islands.values() {
         files.push((

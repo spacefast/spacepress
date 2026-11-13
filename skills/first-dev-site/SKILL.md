@@ -38,7 +38,9 @@ compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `firs
    `admin` / `first-test-admin` (local development only).
 
 4. Inspect the site. These run inside WordPress on the dev site, as the trusted command line:
-   - `first find <kind> '{"where":{"done":false},"limit":5}'`: read records. The `query` tool of
+   - `first find <storage name> '{"where":{"done":false},"limit":5}'`: read records. A kind's
+     storage name is the snake_case form of its export name (`shoppingList` is `shopping_list`); the
+     `schema` tool lists it as `path`. The `query` tool of
      the `first` MCP server does the same.
    - `first action <name> '<json>'`: run an action.
    - `first jobs list`: queued and finished jobs. `first wp action-scheduler run --hooks=first_job`
@@ -47,7 +49,7 @@ compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `firs
    - `first wp <args>`: any WP-CLI command, for example `first wp plugin list`.
 
 5. Read the HTTP API as a visitor would: `GET <siteUrl>/__first/api/v1` describes the app, and
-   `GET <siteUrl>/__first/api/v1/<kind>` lists what an anonymous visitor may read.
+   `GET <siteUrl>/__first/api/v1/<storage name>` lists what an anonymous visitor may read.
 
 6. Stop it with `first dev stop`. The database, uploads and plugins are kept in
    `.first/dev/wordpress` for the next start.
@@ -55,7 +57,7 @@ compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `firs
 ## Verification
 
 - `first dev status --json` reports `"state":"running"`.
-- `first find <kind>` answers `{"data":[…]}`.
+- `first find <storage name>` answers `{"data":[…]}`.
 
 ## Failure modes / debugging
 

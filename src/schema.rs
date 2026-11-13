@@ -497,6 +497,16 @@ pub struct Schema {
     /// `defineConfig({ publicAuthors: true })`: core's author archives, author routes and user
     /// listings stay public, as WordPress ships them (the users kind's read rule can also allow it).
     pub public_authors: bool,
+    /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
+    /// while it runs. Holds what the build read from the lock `first pull` writes.
+    pub runtime_schema: Option<RuntimeSchema>,
+}
+
+/// The site schema version a build contains: zero and no hash before any `first pull`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RuntimeSchema {
+    pub version: u64,
+    pub hash: String,
 }
 
 impl Default for Schema {
@@ -521,6 +531,7 @@ impl Default for Schema {
             admin: false,
             frontend: None,
             public_authors: false,
+            runtime_schema: None,
         }
     }
 }

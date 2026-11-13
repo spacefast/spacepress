@@ -653,6 +653,28 @@ impl<'p> Evaluator<'p> {
         self.call_closure(f, args, span).map_err(uncaught)
     }
 
+    /// A field builder call and its modifier chain made from data (the runtime schema lock), under
+    /// the rules an authored `text().max(80)` gets.
+    pub fn field_from_data(
+        &self,
+        builder: &'static str,
+        args: &[Value],
+        modifiers: &[(&str, Vec<Value>)],
+        span: Span,
+    ) -> Result<Rc<ColBuilder>, Diag> {
+        let mut value = self.make_column(builder, args, span).map_err(uncaught)?;
+        for (name, args) in modifiers {
+            let Value::Column(column) = &value else {
+                unreachable!("a field builder returns a column")
+            };
+            value = column_method(column, name, args, span).map_err(uncaught)?;
+        }
+        match value {
+            Value::Column(column) => Ok(column),
+            _ => unreachable!("a field modifier returns a column"),
+        }
+    }
+
     pub fn key_span(&self, obj: &Value, key: &str) -> Option<Span> {
         self.key_spans.get(&(ptr_of(obj)?, key.to_string())).copied()
     }

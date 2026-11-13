@@ -13,14 +13,14 @@ nothing else chooses storage: not a field, not an option.
 
 | | Content | Database |
 |---|---|---|
-| Builders | `collection()`, `userProjection()`, `global()`, `media()` | `table()` |
+| Builders | `collection()`, `userProjection()`, `global()`, and the media library | `table()` |
 | Stored as | WordPress's own objects: posts and post meta, users and user meta, attachments, options | one SQL table per kind, `wp_first_<name>` |
-| Edited in | wp-admin and the WordPress editor, with drafts and revisions | your app, through the API and the typed client (and the optional `admin: true` screens) |
+| Edited in | wp-admin and the WordPress editor; a collection has drafts and revisions | your app, through the API and the typed client (and the optional `admin: true` screens) |
 | Other plugins | work on the same posts, users and media | don't know these tables |
-| Field types | post meta: text, cast to the field's type when read | typed columns (`BIGINT`, `DOUBLE`, `VARCHAR`, ...) |
+| Field types | a collection's fields are post meta: text, cast to the field's type when read | typed columns (`BIGINT`, `DOUBLE`, `VARCHAR`, ...) |
 | References | checked by First when it writes | a SQL foreign key between two tables; checked by First when the target is content |
-| Filter or sort on a field | one join on `wp_postmeta` per field, and no index on the value | the column itself, with the indexes `first check --json` lists |
-| Schema changes | no migration: fields are meta | a migration `first build` writes, checked against live rows at deploy |
+| Filter or sort on a field | a collection: one join on `wp_postmeta` per field, and no index on the value | the column itself, with no join; indexed when it is `.unique()` or a `ref()` to another table (`first check --json` lists them) |
+| Schema changes | no migration: a collection's fields are meta | a migration `first build` writes, checked against live rows at deploy |
 
 Use a `collection()` for what people write and publish. Use a `table()` for
 the data your app works on: rows it filters, sorts, counts or joins, rows with
@@ -41,7 +41,8 @@ site that deployed such a collection keeps its rows where they are: see
 | Read about | In |
 |---|---|
 | fields, options and access rules both halves share | [Columns](#columns), [Collections, tables and user projections](#collections-tables-and-user-projections) |
-| globals, media and files, locales, sign-in, sync, WordPress plugins | [Content](#content) |
+| the HTTP API, locales and sync, which work on both | [The `/__first/api/v1` API](#the-__firstapiv1-api), [Locales](#locales), [Sync](#sync) |
+| globals, media and files, sign-in | [Content](#content) |
 | relations, tables First didn't create, schema changes at deploy, transactions, queries | [Database](#database) |
 
 ## Project layout
@@ -123,6 +124,46 @@ await posts.system.list();   // trusted: no access rules, every draft
 - Jobs and signed webhooks have no visitor and run as the system.
   `<kind>.system.*` makes the same calls trusted anywhere.
 - `db.query` and `db.insert/update/delete` stay trusted.
+
+## WordPress plugins
+
+Use a top-level package map in `defineConfig`:
+
+```ts
+plugins: { "classic-editor": "1.6.7" }
+```
+
+Values are exact WordPress.org versions or resource objects with `version`,
+`pluginData`, optional `requires`, and a checksum (required for direct URLs).
+See [plugin dependencies](wp-plugins.md) for resources, locks and assembly.
+
+## Opinionated WordPress
+
+While a First app is the active app, it runs WordPress the way spec.md §6
+describes. The app plugin applies every switch below at runtime
+(`runtime/First/Wp/Hardening.php`). Nothing is written to `wp-config.php`,
+mu-plugins or the site's stored settings. Deactivate the app and WordPress
+behaves as it ships again. A site with the runtime plugin but no active app
+isn't changed either. None of these switches can be turned off in
+`first.config.ts`.
+
+| switch | effect |
+|---|---|
+| `xmlrpc` | `xmlrpc.php` answers 403 to every call, including `system.*` and `?rsd`; no EditURI link or `X-Pingback` header. One exception: while Jetpack's connection is loaded, its requests (`?for=jetpack`, on `xmlrpc.php` or Jetpack's `?jetpack=comms` endpoint) reach Jetpack's `jetpack.*` methods and nothing else, so a Jetpack connection (and the Akismet it sets up) keeps working. Jetpack's own `wp.getOptions` override isn't among them, and nothing of Jetpack's needs it: it serves core's password-based XML-RPC on plain `xmlrpc.php`, stock Jetpack already drops it from a signed `?for=jetpack` request, and connection checks, heartbeat and sync call only `jetpack.*` methods |
+| `pings` | pingbacks and trackbacks closed in and out; outgoing pings never sent |
+| `emoji` | no emoji detection script or styles on the front end, wp-admin or embeds; no emoji images in feeds or mail |
+| `fileEditors` | the plugin and theme file editors are refused to everyone |
+| `pluginAndThemeInstalls` | installing, uploading, updating and deleting plugins, themes and core are refused in wp-admin and REST; activation and translations stay |
+| `autoUpdates` | no automatic core, plugin or theme updates |
+| `customizer` | `customize` is refused, so `customize.php` and its links are gone |
+| `comments` | comments closed on every post type except collections with `comments: true` |
+| `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
+| `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
+| `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
+
+`GET /__first/api/v1` lists the switches in `runtime.wp.hardening`. The object cache
+is whatever the host's `object-cache.php` drop-in provides. A plugin can't
+install a drop-in, so the host supplies it (on Spacefast, the box image does).
 
 ## Mixed content and app data
 
@@ -391,16 +432,82 @@ Core `/wp/v2/<post type>` speaks First's fields and queries too:
   `OPTIONS`, and `where`/`orderBy`/`with`. Every call is First's pipeline as
   the viewer, so it answers what First's API answers.
 
+## The `/__first/api/v1` API
+
+One clean HTTP shape for clients and agents, over the core routes above. Each
+request is dispatched to the core route as the caller and only mapped, so it
+answers exactly what core answers under First's rules.
+
+| Request | Core route | Answer |
+|---|---|---|
+| `GET /__first/api/v1/<kind>?where=…&orderBy=…&with=…&search=…&limit=…&cursor=…` | `GET /wp/v2/<route>` | `{ data: rows, cursor }`; `cursor` is `null` on the last page |
+| `GET /__first/api/v1/<kind>/<id>` (`/posts/slug:hello`) | `GET /wp/v2/<route>/<id>` | `{ data: row }`; `?format=md` answers `text/markdown` |
+| `POST /__first/api/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
+| `GET /__first/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
+| `POST /__first/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
+| `GET /__first/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
+
+Rows are First rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
+`published` or `private`. Errors are RFC 9457 problem documents (`code`,
+`detail`, `pointer`). Callers authenticate the way core accepts: the cookie
+with `X-WP-Nonce`, an application password, or a First Identity bearer token.
+The API is served before the theme loads; it never uses 0.8's `/__zero/config`,
+`/__zero/run`, `/__zero/auth/*` or `/__zero/realtime/events`.
+
+## Locales
+
+```ts
+locales: { default: "en", all: ["en", "de"] },   // fallback: true by default
+```
+
+A collection with a `.localized()` field stores one row per locale. Every
+other field is shared by a post's translations and kept equal across them,
+except what each row generates for itself: `status`, `publishedAt`, `slug`,
+`uid`, and columns filled by `defaultNow()`, `$default(...)` or `$onUpdate(...)`
+(so `createdAt`/`updatedAt` are per translation). Each translation publishes
+on its own. Create a translation with
+`{ locale: "de", translationOf: <id> }`; rows carry `locale` and
+`translations` (locale → id). Reads take `?locale=de`, which returns German
+rows and, with `fallback`, the default-locale row of any group without one;
+`locale=*` returns every row. On WordPress, Polylang owns languages and
+translation groups, and the app plugin ships a `wpml-config.xml` saying which
+fields translate.
+
+## Sync
+
+Every publish seeds synced files: missing records are created, trashed records stay deleted, and no records are removed.
+Existing editable records keep their site content; the publish reports `first_seed_skipped_existing` for differing files, and `first sync` merges them.
+For tables the file wins; files without a `uid` use a stable identity derived from the collection and basename, so republishes and later syncs match the same record.
+
+```ts
+{ sync: "content/posts/*.md" }
+```
+
+`first sync [--site <url>]`, with `FIRST_APP_PASSWORD=user:pass` (or `FIRST_TOKEN=<jwt>`) in the environment, keeps
+`content/posts/<slug>.md` and the site in step: front matter for fields, the
+body as Markdown for the `content` column. Both sides may change; it merges
+per field, and writes `.first/conflicts/<uid>.md` when the same field changed on
+both (`first sync resolve <uid>` applies your edit of it).
+`--check` exits 2 when anything would change. The first sync with a site
+matches records and deletes nothing. It commits the files it wrote unless
+`--no-commit`. `first build` adds `.first/*` and `!.first/sync-base.json` to
+`.gitignore`, because the sync base is committed.
+
+What sync leaves out: `$onUpdate` columns, derived and hidden system columns,
+and fields the viewer's field access hides. References to a `uid` collection are written as that
+row's uid. When required references form a cycle that no order of writes can
+satisfy, sync reports it and writes nothing.
+
 ## Content
 
 Kinds stored as WordPress's own objects. A `collection()` is a custom post
-type, a `userProjection()` is WordPress users, a `global()` is options,
-`media()` is attachments, and translations are Polylang's. wp-admin, the
-editor, core `/wp/v2` and other plugins all work on the same rows First does.
-The sections here are the content half; [Collections, tables and user
-projections](#collections-tables-and-user-projections) has the options a
-collection takes. Private file buckets are described here beside media; their
-rows are First's own and their bytes are in the upload backend.
+type, a `userProjection()` is WordPress users, a `global()` is options, and
+media is attachments. wp-admin, the editor, core `/wp/v2` and other plugins
+all work on the same rows First does. The sections here are the content half;
+[Collections, tables and user projections](#collections-tables-and-user-projections)
+has the options a collection takes. Private file buckets are described here
+beside media; their rows are First's own and their bytes are in the upload
+backend.
 
 ### Globals
 
@@ -457,25 +564,6 @@ only at runtime; the compiler requires `env()` references. An optional
 See [upload storage](uploads.md) for provider permissions, failure recovery,
 existing-data cutover and the WordPress plugin boundary.
 
-### Locales
-
-```ts
-locales: { default: "en", all: ["en", "de"] },   // fallback: true by default
-```
-
-A collection with a `.localized()` field stores one row per locale. Every
-other field is shared by a post's translations and kept equal across them,
-except what each row generates for itself: `status`, `publishedAt`, `slug`,
-`uid`, and columns filled by `defaultNow()`, `$default(...)` or `$onUpdate(...)`
-(so `createdAt`/`updatedAt` are per translation). Each translation publishes
-on its own. Create a translation with
-`{ locale: "de", translationOf: <id> }`; rows carry `locale` and
-`translations` (locale → id). Reads take `?locale=de`, which returns German
-rows and, with `fallback`, the default-locale row of any group without one;
-`locale=*` returns every row. On WordPress, Polylang owns languages and
-translation groups, and the app plugin ships a `wpml-config.xml` saying which
-fields translate.
-
 ### Sign-in
 
 Register one `userProjection(fields, options?)` under `users: { members }`.
@@ -492,71 +580,6 @@ Anonymous visitors can write as guests (`createClient({ auth: { guests: true } }
 the first rejected write starts a guest session, and `auth.upgrade()` keeps the
 guest's rows when they sign up.
 
-### Sync
-
-Every publish seeds synced files: missing records are created, trashed records stay deleted, and no records are removed.
-Existing editable records keep their site content; the publish reports `first_seed_skipped_existing` for differing files, and `first sync` merges them.
-For `editor: false` collections the file wins; files without a `uid` use a stable identity derived from the collection and basename, so republishes and later syncs match the same record.
-
-```ts
-{ sync: "content/posts/*.md" }
-```
-
-`first sync [--site <url>]`, with `FIRST_APP_PASSWORD=user:pass` (or `FIRST_TOKEN=<jwt>`) in the environment, keeps
-`content/posts/<slug>.md` and the site in step: front matter for fields, the
-body as Markdown for the `content` column. Both sides may change; it merges
-per field, and writes `.first/conflicts/<uid>.md` when the same field changed on
-both (`first sync resolve <uid>` applies your edit of it).
-`--check` exits 2 when anything would change. The first sync with a site
-matches records and deletes nothing. It commits the files it wrote unless
-`--no-commit`. `first build` adds `.first/*` and `!.first/sync-base.json` to
-`.gitignore`, because the sync base is committed.
-
-What sync leaves out: `$onUpdate` columns, derived and hidden system columns,
-and fields the viewer's field access hides. References to a `uid` collection are written as that
-row's uid. When required references form a cycle that no order of writes can
-satisfy, sync reports it and writes nothing.
-
-### WordPress plugins
-
-Use a top-level package map in `defineConfig`:
-
-```ts
-plugins: { "classic-editor": "1.6.7" }
-```
-
-Values are exact WordPress.org versions or resource objects with `version`,
-`pluginData`, optional `requires`, and a checksum (required for direct URLs).
-See [plugin dependencies](wp-plugins.md) for resources, locks and assembly.
-
-### Opinionated WordPress
-
-While a First app is the active app, it runs WordPress the way spec.md §6
-describes. The app plugin applies every switch below at runtime
-(`runtime/First/Wp/Hardening.php`). Nothing is written to `wp-config.php`,
-mu-plugins or the site's stored settings. Deactivate the app and WordPress
-behaves as it ships again. A site with the runtime plugin but no active app
-isn't changed either. None of these switches can be turned off in
-`first.config.ts`.
-
-| switch | effect |
-|---|---|
-| `xmlrpc` | `xmlrpc.php` answers 403 to every call, including `system.*` and `?rsd`; no EditURI link or `X-Pingback` header. One exception: while Jetpack's connection is loaded, its requests (`?for=jetpack`, on `xmlrpc.php` or Jetpack's `?jetpack=comms` endpoint) reach Jetpack's `jetpack.*` methods and nothing else, so a Jetpack connection (and the Akismet it sets up) keeps working. Jetpack's own `wp.getOptions` override isn't among them, and nothing of Jetpack's needs it: it serves core's password-based XML-RPC on plain `xmlrpc.php`, stock Jetpack already drops it from a signed `?for=jetpack` request, and connection checks, heartbeat and sync call only `jetpack.*` methods |
-| `pings` | pingbacks and trackbacks closed in and out; outgoing pings never sent |
-| `emoji` | no emoji detection script or styles on the front end, wp-admin or embeds; no emoji images in feeds or mail |
-| `fileEditors` | the plugin and theme file editors are refused to everyone |
-| `pluginAndThemeInstalls` | installing, uploading, updating and deleting plugins, themes and core are refused in wp-admin and REST; activation and translations stay |
-| `autoUpdates` | no automatic core, plugin or theme updates |
-| `customizer` | `customize` is refused, so `customize.php` and its links are gone |
-| `comments` | comments closed on every post type except collections with `comments: true` |
-| `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
-| `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
-| `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
-
-`GET /__first/api/v1` lists the switches in `runtime.wp.hardening`. The object cache
-is whatever the host's `object-cache.php` drop-in provides. A plugin can't
-install a drop-in, so the host supplies it (on Spacefast, the box image does).
-
 ## Database
 
 `table()` kinds: one SQL table each, with typed columns, foreign keys and
@@ -564,6 +587,11 @@ indexes. `first add db` writes a starting point into a project that has none.
 [Collections, tables and user projections](#collections-tables-and-user-projections)
 has the options a table takes, and [Columns](#columns) the SQL type of each
 field.
+
+Relations and the `db` query API below work on collections as well: a
+content-only project uses them without `first add db`. They are here because
+a relation between two tables is the one that becomes a SQL foreign key, and
+`db` is how server code reads and writes rows.
 
 ### Relations
 
@@ -674,14 +702,19 @@ and a field inside a group, repeater or blocks has no column of its own.
 ### Transactions
 
 Tables and content share one database connection, so one transaction spans
-table rows, posts, post meta and options.
+table rows, posts and post meta.
 
-- A request to the API, an action and a job each run in one transaction. A
-  throw rolls back every write in it, to tables and to content alike.
+- A request to the API, an action, an HTTP route, a job and an editor save
+  of a collection each run in one transaction. A throw rolls back every write
+  in it, to tables and to content alike.
 - A job enqueued from a hook or an action runs after the request commits,
   never inside it.
-- Handlers in `first/wp-hooks/` run in WordPress's own request and are not in
-  a First transaction: each write commits on its own.
+- Handlers in `first/wp-hooks/` run wherever WordPress fires the hook. Outside
+  a First write (a page view, cron, a save of a post type First doesn't own)
+  there is no First transaction and each write commits on its own. When the
+  hook fires during a First write, such as `save_post` while the API or the
+  editor saves a collection, the handler's writes are in that transaction and
+  roll back with it.
 
 ### Database API (hooks and actions only)
 
@@ -709,28 +742,6 @@ These are build errors with the same message the runtime returns.
 `with: { cover: true }` on a media column puts the media row in place of the id.
 
 `await` on these calls compiles to plain blocking PHP calls.
-
-## The `/__first/api/v1` API
-
-One clean HTTP shape for clients and agents, over the core routes above. Each
-request is dispatched to the core route as the caller and only mapped, so it
-answers exactly what core answers under First's rules.
-
-| Request | Core route | Answer |
-|---|---|---|
-| `GET /__first/api/v1/<kind>?where=…&orderBy=…&with=…&search=…&limit=…&cursor=…` | `GET /wp/v2/<route>` | `{ data: rows, cursor }`; `cursor` is `null` on the last page |
-| `GET /__first/api/v1/<kind>/<id>` (`/posts/slug:hello`) | `GET /wp/v2/<route>/<id>` | `{ data: row }`; `?format=md` answers `text/markdown` |
-| `POST /__first/api/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
-| `GET /__first/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
-| `POST /__first/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
-| `GET /__first/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
-
-Rows are First rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
-`published` or `private`. Errors are RFC 9457 problem documents (`code`,
-`detail`, `pointer`). Callers authenticate the way core accepts: the cookie
-with `X-WP-Nonce`, an application password, or a First Identity bearer token.
-The API is served before the theme loads; it never uses 0.8's `/__zero/config`,
-`/__zero/run`, `/__zero/auth/*` or `/__zero/realtime/events`.
 
 ## defineConfig
 
@@ -1313,9 +1324,10 @@ export default function (postId: number, post: WP_Post, update: boolean) {
   file without a default export, another file type, or the same hook as both a
   file and a directory is a build error at that path.
 - Handlers run in WordPress's own request, whichever it is: a page view, an
-  editor save, cron, REST, WP-CLI. They are not in a First transaction. `db`
-  works and each write commits on its own; `ctx` and `HttpError` responses
-  don't apply, since there is no First request.
+  editor save, cron, REST, WP-CLI. They are in a First transaction only when the
+  hook fires during a First write (see [Transactions](#transactions)). `db`
+  works and, outside such a write, each write commits on its own; `ctx` and
+  `HttpError` responses don't apply, since there is no First request.
 - A handler that throws is logged to the PHP error log as
   `[first] first/wp-hooks/<hook>: ...`. A filter then returns the value it was given,
   so one broken handler leaves the page as WordPress rendered it. An action's

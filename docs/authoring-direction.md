@@ -105,9 +105,9 @@ does not drop data or manufacture a post/table conversion.
 | Auth identities | Preserve the existing WP-user projection | Preserve the existing WP-user projection |
 
 A new project starts with collections only. `first add db` adds the table half
-as files the author owns (see [the `first add` ruling](decisions/2026-11-13-first-add.md)),
-and [Content and database](config-api.md#content-and-database) is where the
-released docs draw the same line.
+as files the author owns (see [the `first add` decision](decisions/2026-11-13-first-add.md)),
+and [Content and database](config-api.md#content-and-database) describes the
+same split for users.
 
 Neither builder creates a second identity engine. Current auth collections
 project `wp_users`; the implementation must preserve their IDs, permissions

@@ -29,10 +29,10 @@ A First app has two halves, and each builder always stores in the same place.
 | You write | `collection()`, members, media, a `global()` | `table()` |
 | Stored as | WordPress posts, users, attachments and options | A SQL table of its own |
 | Edited in | wp-admin and the WordPress editor, with drafts and revisions | Your app, through the API and the typed client |
-| Works with | The plugins a site already runs | Typed columns, foreign keys, migrations and a schema check at deploy |
+| You get | The plugins a site already runs working on your content | Typed columns, foreign keys, migrations and a schema check at deploy |
 | Use it for | What people write and publish | Rows your app filters, sorts, counts and joins |
 
-A new app starts with content only. `first add db` adds the database half when the app needs it. Post meta has no real column types or foreign keys, and filtering and sorting on it is slow, so app-shaped data belongs in a table.
+A new app starts with content only. `first add db` adds the database half when the app needs it. Post meta has no real column types or foreign keys, and filtering and sorting on it is slow, so data your app queries belongs in a table.
 
 ## One app, every file
 

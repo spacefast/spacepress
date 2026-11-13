@@ -763,6 +763,21 @@ impl<'p> Evaluator<'p> {
         let module = self.program.modules[id].clone();
         let scope = Scope::new(None, id);
         self.module_scopes[id] = Some(scope.clone());
+        // A stylesheet or image import (`crate::assets`): no code. A CSS module's default export is
+        // its class map, an image's is its URL, and a plain stylesheet exports nothing.
+        if let Some(asset) = self.program.assets.get(&id) {
+            let default = match asset.kind {
+                crate::assets::Kind::CssModule => Some(Value::object(
+                    asset.classes.iter().map(|(k, v)| (k.clone(), Value::str(v))).collect(),
+                )),
+                crate::assets::Kind::Image => Some(Value::Asset(Rc::from(asset.file.as_str()))),
+                crate::assets::Kind::Css => None,
+            };
+            if let Some(default) = default {
+                self.exports[id].insert("default".into(), default);
+            }
+            return Ok(());
+        }
         self.evaluating[id] = true;
         // The CommonJS wrapper: `exports` starts as `module.exports`, and `require` runs its
         // target when called, as Node does.
@@ -2817,7 +2832,7 @@ impl<'p> Evaluator<'p> {
                 config @ Value::Object(_) => Ok(Value::Plugin(Rc::new(ActionVal { config, span }))),
                 _ => err_help(
                     span,
-                    "definePlugin() needs `{ name, hooks?, actions?, jobs?, routes? }`",
+                    "definePlugin() needs `{ name, hooks?, actions?, jobs? }`",
                     "pass the plugin definition as an object literal",
                 ),
             },

@@ -4298,6 +4298,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             | Value::Relation(_)
             | Value::Action(_)
             | Value::Job(_)
+            | Value::Route(_)
             | Value::Plugin(_)
             | Value::FileBucket(_)
             | Value::Bound(..) => err(

@@ -1349,12 +1349,11 @@ final class Db
     }
 
     /**
-     * Restore: the revision as stored becomes one update, as $viewer, through every update and field
-     * rule. Never a partial restore. Readable columns are sent only where the revision differs from
-     * the row (an unchanged value is no write). A column that may be hidden from the viewer is always
-     * sent, so whether the restore is allowed is decided by the rules alone, never by whether a value
-     * it can't see changed: one it may set (a write-only field) is restored, one it may not set
-     * refuses the whole restore. The answer is masked like every read.
+     * Restore: the whole revision as stored, as $viewer, in one update. Fields the viewer can read are
+     * its patch where the revision differs from the row, under every update and field rule. Fields
+     * that may be hidden from it are written from the stored revision as trusted values, after its
+     * rules pass: it sends nothing for them, so nothing about them can be probed, and a restore never
+     * leaves part of the row at a later state. The answer is masked like every read.
      */
     public function restoreRevision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
     {
@@ -1364,19 +1363,32 @@ final class Db
             $row = $this->revisionRow($collection, $pk, $revisionId);
             $opts = ['where' => [$spec['primaryKey'] => $pk]];
             $current = $this->selectDecoded($collection, $opts, '', null)[0] ?? throw HttpError::notFound("No $collection row $pk");
-            $patch = [];
+            $patch = $hidden = [];
             foreach ($spec['columns'] as $name => $col) {
-                if ($name === $spec['primaryKey'] || ($col['system'] ?? false) || isset($col['onUpdate'])) {
+                if ($name === $spec['primaryKey'] || ($col['system'] ?? false) || isset($col['onUpdate'])
+                    || Js::jsonStringify($row[$name] ?? null) === Js::jsonStringify($current[$name] ?? null)) {
                     continue;
                 }
-                $hidden = $viewer !== null && FieldAccess::mayHide($col, $viewer);
-                if ($hidden || Js::jsonStringify($row[$name] ?? null) !== Js::jsonStringify($current[$name] ?? null)) {
+                if ($viewer !== null && FieldAccess::mayHide($col, $viewer)) {
+                    $hidden[$name] = $row[$name];
+                } else {
                     $patch[$name] = $row[$name];
                 }
             }
+            if ($hidden === []) {
+                return $this->update($collection, $patch, [$spec['primaryKey'] => $pk], true, $viewer)[0]
+                    ?? throw HttpError::notFound("No $collection row $pk");
+            }
 
-            return $this->update($collection, $patch, [$spec['primaryKey'] => $pk], true, $viewer)[0]
-                ?? throw HttpError::notFound("No $collection row $pk");
+            return $this->nested(function () use ($collection, $spec, $pk, $patch, $hidden, $viewer): array {
+                $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $patch);
+                $opts = ['where' => [$spec['primaryKey'] => $pk]];
+                $existing = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer)[0]
+                    ?? throw HttpError::notFound("No $collection row $pk");
+                $written = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $patch, $viewer, $hidden));
+
+                return $this->present([$written], $collection, $viewer)[0];
+            });
         });
     }
 

@@ -76,9 +76,9 @@ final class Index
             // The runtime created or changed this table: every kind is indexed again (the shape
             // recorded for the old table no longer says what the new one holds).
             add_action('first_runtime_tables_installed', static fn () => delete_option(self::SHAPE));
-            // After every build and every runtime update, once the app runs: kinds whose searchable
-            // fields changed since they were last indexed are rebuilt by a queued job. One cached
-            // option read when nothing changed.
+            // After every build and every runtime update, once storage matches the build: kinds whose
+            // searchable fields changed since they were last indexed are rebuilt by a queued job. One
+            // cached option read when nothing changed.
             add_action('wp_loaded', static fn () => self::reindexChanged());
             // Users written outside First's pipeline (wp_insert_user, wp_update_user, the profile
             // form, identity's sign-up) report nothing: the member's entries follow core's user
@@ -95,14 +95,19 @@ final class Index
     {
         $plugin = \First\Wp\Plugin::instance();
         $collection = $plugin?->schema->auth()['collection'] ?? null;
-        if ($collection === null || $plugin->unavailable() !== null) {
+        // A user written before this build's migration ran (activation, a refused build) is
+        // indexed by the rebuild that follows the migration, not now.
+        if ($collection === null || $plugin->unavailable() !== null || !$plugin->migrated()) {
             return;
         }
         $plugin->app();
-        if (!Storage::ready()) {
+        // The schema the running Db reads, as for every other write report: a kind it doesn't hold
+        // (a Db swapped in for a task, an app without members) has no entries to keep.
+        $schema = db()->schema();
+        if (!$schema->hasCollection($collection) || !Storage::ready()) {
             return;
         }
-        $spec = db()->schema()->collection($collection);
+        $spec = $schema->collection($collection);
         $fields = self::fields($spec);
         if ($fields !== []) {
             self::refresh($collection, $spec, $id, $fields);
@@ -287,7 +292,9 @@ final class Index
         }
         $previous = get_option(self::SHAPE, null);
         $previous = is_array($previous) ? $previous : [];
-        if ($previous === $shape) {
+        // Only on storage this build migrated: a kind's table may not exist before its migration (a
+        // WP-CLI command, a refused or held-back build), and counting its rows would fail.
+        if ($previous === $shape || !$plugin->migrated()) {
             return;
         }
         db()->transaction(static function () use ($shape, $previous): void {

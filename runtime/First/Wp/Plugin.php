@@ -404,6 +404,17 @@ final class Plugin
      * runtime update alone (same app build, older ledger) is therefore an upgrade too; the per-request
      * check costs one cached option read, plus one information_schema read the first time per process.
      */
+    /**
+     * Storage matches this build: nothing refused or held back, and every migration file of the build
+     * is in the ledger. A build whose migrations haven't all run (WP-CLI before `first migrate`, a
+     * refused or held-back build, a ledger rewound by hand) may name tables that don't exist yet.
+     * One ledger read: call it where something is about to change, not on every request.
+     */
+    public function migrated(): bool
+    {
+        return $this->unavailable() === null && $this->pendingMigrations() === [];
+    }
+
     private function current(bool $fresh = false): bool
     {
         if ($fresh) {

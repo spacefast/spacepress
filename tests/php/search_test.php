@@ -200,6 +200,25 @@ check('a run of an older build\'s rebuild does nothing', (static function () use
 wp_set_current_user(0);
 eq('the reindex job brings an emptied kind back', $list('posts', 'green', null), [$public['id']]);
 
+// ---------------------------------------------------------------- only on storage this build migrated
+
+// A build whose migrations haven't all run (WP-CLI before `first migrate`, a refused build, a ledger
+// rewound by hand) may name a kind with no table: the check that queues rebuilds counts each kind's
+// rows, so it waits for the migrations instead of failing every request.
+$plugin = \First\Wp\Plugin::instance();
+$ledger = $wp->sql('SELECT * FROM `{prefix}first__migrations` WHERE `app` = ?', [$wp->app()->schema->name()]);
+check('the fixture site has migrations to rewind', $ledger !== [] && $plugin->migrated());
+$wp->exec('DELETE FROM `{prefix}first__migrations` WHERE `app` = ?', [$wp->app()->schema->name()]);
+delete_option('first_search_shape');
+$pendingBefore = count($jobs());
+\First\Search\Index::reindexChanged();
+eq('with a migration pending, nothing is counted or queued, and the shape is left unrecorded', [$plugin->migrated(), count($jobs()) - $pendingBefore, get_option('first_search_shape', null)], [false, 0, null]);
+foreach ($ledger as $row) {
+    $wp->exec('INSERT INTO `{prefix}first__migrations` (`' . implode('`, `', array_keys($row)) . '`) VALUES (' . implode(', ', array_fill(0, count($row), '?')) . ')', array_values($row));
+}
+\First\Search\Index::reindexChanged();
+check('once migrated, the check runs and records the shape', $plugin->migrated() && is_array(get_option('first_search_shape', null)));
+
 // ---------------------------------------------------------------- an index table from before keys were bytes
 
 // The first release stored ids as text (case-insensitive): the runtime's table upgrade replaces such

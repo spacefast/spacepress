@@ -790,10 +790,17 @@ pub(crate) fn compile_tree(
     actions.sort();
     let summary = serde_json::json!({"name": schema.name, "collections": collections, "tables": tables, "actions": actions,
         "identity": schema.collections.values().any(|c| c.auth), "admin": schema.admin});
-    let manifest = serde_json::json!({"format":"first.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
+    let mut manifest = serde_json::json!({"format":"first.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
         "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "pages":pages.as_ref().map(|p| format!("first-pages-{}", p.app)), "routes":routes, "pagePaths":page_paths,
-        "summary":summary, "host":crate::host_contract::manifest_host(), "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256,
-        "sealed":sealed_plugins(&built.schema, hosted_first(&built.schema, pages.as_ref().map(|p| format!("first-pages-{}", p.app))))});
+        "summary":summary, "host":crate::host_contract::manifest_host(), "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
+    let sealed = sealed_plugins(
+        &built.schema,
+        hosted_first(&built.schema, pages.as_ref().map(|p| format!("first-pages-{}", p.app))),
+    );
+    // No key when the app isn't sealed, so an unsealed app's tree hashes as it did before.
+    if let Some(sealed) = &sealed {
+        manifest["sealed"] = sealed.clone().into();
+    }
     std::fs::write(
         output.join("manifest.json"),
         serde_json::to_vec_pretty(&manifest).unwrap(),
@@ -803,10 +810,7 @@ pub(crate) fn compile_tree(
         manifest,
         identity: built.schema.collections.values().any(|c| c.auth),
         admin: built.schema.admin,
-        sealed: sealed_plugins(
-            &built.schema,
-            hosted_first(&built.schema, pages.as_ref().map(|p| format!("first-pages-{}", p.app))),
-        ),
+        sealed,
         pages: pages.as_ref().map(|p| format!("first-pages-{}", p.app)),
         name: built.schema.name,
     })
@@ -829,8 +833,8 @@ fn hosted_first(schema: &crate::schema::Schema, pages: Option<String>) -> Vec<St
 }
 
 /// A sealed app's plugin allow-list (docs/sealed.md), by directory slug: `first` (the First plugins
-/// this build ships and mounts, plus its pages plugin), the platform pins, and the WordPress plugins the
-/// config declares. `None` when the app isn't sealed. Plugin packages (`use`) are compiled into the app
+/// of this target, which its caller names), the platform pins this app needs, and the WordPress
+/// plugins the config declares. `None` when the app isn't sealed. Plugin packages (`use`) are compiled into the app
 /// plugin, so they need no entry.
 pub(crate) fn sealed_plugins(
     schema: &crate::schema::Schema,

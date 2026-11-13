@@ -13,14 +13,26 @@ const active = () => JSON.parse(wp("plugin", "list", "--status=active", "--field
 const json = (headers: Record<string, string>, method: string, path: string, body?: unknown) =>
   fetch(`${site}${path}`, { method, headers: { ...headers, ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
 
-test("the build's manifest lists exactly what may run, and the site reports it is sealed", async () => {
+const LISTED = ["action-scheduler", `first-app-${harness.plugin.replace(/^first-app-/, "")}`, "first-identity", `first-pages-${harness.plugin.replace(/^first-app-/, "")}`, "first-runtime", "hello-dolly", "mcp-adapter", "secure-custom-fields", "two-factor"];
+
+test("the build's manifest and the running app hold the same list, exactly; the site reports it is sealed", async () => {
   const listed = JSON.parse(wp("eval", "echo file_get_contents(WP_CONTENT_DIR . '/first-manifest.json') ?: '{}';") || "{}").sealed;
+  // No locales, so no Polylang; admin is off, so no first-admin.
+  assert.deepEqual(listed, LISTED);
+  assert.deepEqual(JSON.parse(wp("eval", "echo wp_json_encode(First\\Wp\\Runtime::plugin()->schema->sealed());")), LISTED, "schema.php carries the same list");
+  // Which plugin files count as listed: a listed directory's main file, and nothing shaped otherwise.
+  const allows = (file: string) => wp("eval", `echo wp_json_encode(First\\Wp\\Sealed::allows('${file}'));`) === "true";
+  assert.deepEqual(
+    ["hello-dolly/hello.php", "first-runtime/first-runtime.php", "hello-dolly.php", "hello.php", "two-factor.php", "hello-dolly/sub/evil.php", "hello-dolly/../akismet/akismet.php", "Hello-Dolly/hello.php", "polylang/polylang.php", "first-admin/first-admin.php", "akismet/akismet.php"].map(allows),
+    [true, true, false, false, false, false, false, false, false, false, false],
+  );
   const anonymous = (await (await fetch(`${site}/__first/api/v1`)).json()).data.runtime.wp.sealed;
   assert.deepEqual(anonymous, { enforced: "report" }, "a visitor learns only that the site is sealed");
   const report = (await (await fetch(`${site}/__first/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
   assert.deepEqual(report.plugins, [], "every active plugin is listed");
   assert.equal(report.enforced, "report");
-  assert.ok(listed.includes("hello-dolly") && listed.includes("first-runtime") && !listed.includes("akismet"), JSON.stringify(listed));
+  assert.deepEqual([report.dropins, report.networkPlugins], [[], []]);
+  assert.ok(report.theme.some((t: string) => /\/patterns\/\*\.php \(\d+\)$/.test(t)), JSON.stringify(report.theme));
 });
 
 test("activating an unlisted plugin is refused on every path; a listed one activates", async () => {
@@ -48,11 +60,30 @@ test("activating an unlisted plugin is refused on every path; a listed one activ
   const refused = await fetch(`${site}/wp-admin/plugins.php?action=activate&plugin=akismet%2Fakismet.php&_wpnonce=${nonce}`, { headers: { cookie }, redirect: "manual" });
   assert.notEqual(refused.headers.get("location")?.includes("activate=true"), true);
   assert.equal(active().includes("akismet"), false);
-  // The declared plugin activates on every path.
-  wp("plugin", "deactivate", "hello-dolly");
+  // The declared plugin deactivates and activates again, over REST.
+  const off = await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/hello-dolly/hello", { status: "inactive" });
+  assert.equal(off.status, 200, await off.text());
+  assert.equal(active().includes("hello-dolly"), false);
   const listed = await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/hello-dolly/hello", { status: "active" });
   assert.equal(listed.status, 200, await listed.text());
   assert.ok(active().includes("hello-dolly"));
+});
+
+test("the plugins the app runs on can't be deactivated from wp-admin or REST, so the list can't be switched off there", async () => {
+  const cookie = await loginCookie(site, "admin", `${site}/wp-admin/`);
+  const screen = await (await fetch(`${site}/wp-admin/plugins.php`, { headers: { cookie } })).text();
+  for (const [slug, file] of [["first-runtime", "first-runtime"], [harness.plugin, harness.plugin], ["two-factor", "two-factor"], ["secure-custom-fields", "secure-custom-fields"]]) {
+    const res = await json(auth("admin"), "POST", `/wp-json/wp/v2/plugins/${slug}/${file}`, { status: "inactive" });
+    assert.equal(res.status, 403, `${slug}: ${await res.text()}`);
+    assert.doesNotMatch(screen, new RegExp(`action=deactivate&amp;plugin=${slug}%2F`), `no Deactivate link for ${slug}`);
+    const nonce = wp("eval", `wp_set_current_user(1); echo wp_create_nonce('deactivate-plugin_${slug}/${file}.php');`);
+    await fetch(`${site}/wp-admin/plugins.php?action=deactivate&plugin=${slug}%2F${file}.php&_wpnonce=${nonce}`, { headers: { cookie }, redirect: "manual" });
+  }
+  assert.match(screen, /Sealed: required/);
+  const now = active();
+  for (const slug of ["first-runtime", harness.plugin, "two-factor", "secure-custom-fields"]) assert.ok(now.includes(slug), `${slug} is still active`);
+  // After those attempts the refusal still stands.
+  assert.equal((await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/akismet/akismet", { status: "active" })).status, 403);
 });
 
 test("code already loaded and not listed is reported, never deactivated or removed", async () => {
@@ -61,7 +92,7 @@ test("code already loaded and not listed is reported, never deactivated or remov
   try {
     const report = (await (await fetch(`${site}/__first/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
     assert.deepEqual(report.plugins, ["akismet/akismet.php"]);
-    assert.ok(report.muPlugins.length > 0, "the test stack's own mu-plugins are reported");
+    assert.ok(report.muPlugins.length > 0, "the test stack's own must-use plugins are listed");
     assert.ok(report.theme.some((t: string) => t.endsWith("/functions.php")), JSON.stringify(report.theme));
     // It is still active: First stops and removes nothing.
     assert.ok(active().includes("akismet"));
@@ -77,14 +108,31 @@ test("code already loaded and not listed is reported, never deactivated or remov
         return String(e.stdout); // doctor exits 1 when a check fails
       }
     };
-    const sealed = JSON.parse(doctor(`admin:${harness.users.admin.appPassword}`)).data.checks.find((c: any) => c.name === "sealed");
+    const checks = JSON.parse(doctor(`admin:${harness.users.admin.appPassword}`)).data.checks;
+    const sealed = checks.find((c: any) => c.name === "sealed");
     assert.equal(sealed.ok, false, JSON.stringify(sealed));
     assert.match(sealed.detail, /akismet\/akismet\.php/);
+    assert.doesNotMatch(sealed.detail, /functions\.php|first-harness/, "must-use plugins and theme PHP don't fail the check");
     const anonymous = JSON.parse(doctor("")).data.checks.find((c: any) => c.name === "sealed");
-    assert.match(anonymous.detail, /sign in as an administrator/);
+    assert.deepEqual([anonymous.ok, /sign in as an administrator/.test(anonymous.detail)], [false, true]);
   } finally {
     wp("eval", "update_option('active_plugins', array_values(array_diff(get_option('active_plugins'), ['akismet/akismet.php'])));");
   }
+  // With every active plugin listed, doctor's sealed check passes, though the stack has must-use
+  // plugins and a theme with PHP: those are listed for information.
+  const out = (() => {
+    try {
+      return execFileSync(process.env.FIRST_BIN!, ["doctor", process.env.FIRST_SEALED_APP!, "--site", site, "--json"], { encoding: "utf8", env: { ...process.env, FIRST_TOKEN: "", FIRST_APP_PASSWORD: `admin:${harness.users.admin.appPassword}` } });
+    } catch (e: any) {
+      return String(e.stdout);
+    }
+  })();
+  const checks = JSON.parse(out).data.checks;
+  assert.equal(checks.find((c: any) => c.name === "sealed").ok, true, JSON.stringify(checks.find((c: any) => c.name === "sealed")));
+  const other = checks.find((c: any) => c.name === "sealed: other code WordPress loads");
+  assert.deepEqual([other.ok, /functions\.php/.test(other.detail), /first-harness/.test(other.detail)], [true, true, true]);
+  const cookie = await loginCookie(site, "admin", `${site}/wp-admin/`);
+  assert.doesNotMatch(await (await fetch(`${site}/wp-admin/`, { headers: { cookie } })).text(), /This site is sealed/, "no notice when every active plugin is listed");
 });
 
 test("a host enforces the list before any plugin loads", async () => {
@@ -99,6 +147,13 @@ test("a host enforces the list before any plugin loads", async () => {
     const loaded = await (await fetch(`${site}/wp-json/`)).json();
     assert.equal(loaded.namespaces.includes("akismet/v1"), false, "Akismet's code never ran");
     assert.ok(loaded.namespaces.includes("first-identity/v1"), "First's own plugins still load");
+    // WordPress writes the option back when a plugin is activated or deactivated: the entry the
+    // host's filter hides stays stored.
+    await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/hello-dolly/hello", { status: "inactive" });
+    await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/hello-dolly/hello", { status: "active" });
+    const stored = wp("eval", "global $wpdb; echo $wpdb->get_var(\"SELECT option_value FROM $wpdb->options WHERE option_name = 'active_plugins'\");");
+    assert.match(stored, /akismet\/akismet\.php/, "sealing hides it; it is not removed from the stored list");
+    assert.match(stored, /hello-dolly\/hello\.php/);
   } finally {
     wp("eval", "unlink(WPMU_PLUGIN_DIR . '/first-sealed-host.php');");
     wp("eval", "update_option('active_plugins', array_values(array_diff(get_option('active_plugins'), ['akismet/akismet.php'])));");

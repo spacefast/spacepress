@@ -118,7 +118,7 @@ final class Schema
         return $this->raw['files'] ?? [];
     }
 
-    /** `sealed`: the declared plugin slugs a sealed site runs, or null when the site isn't sealed. */
+    /** `sealed`: the plugin directory slugs a sealed site runs (docs/sealed.md), or null when the site isn't sealed. */
     public function sealed(): ?array
     {
         $sealed = $this->raw['sealed'] ?? null;

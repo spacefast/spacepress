@@ -280,13 +280,22 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
         .into_iter()
         .map(|plugin| (plugin.slug, format!(">={}", plugin.version).into()))
         .collect();
+    let mut manifest = serde_json::json!({"first":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales});
+    // Sealed mode (docs/sealed.md): the plugin slugs this site runs, for a host to enforce. No key
+    // when the app isn't sealed.
+    if let Some(sealed) = crate::bundle::sealed_plugins(
+        &built.schema,
+        crate::app_plugin::first_plugins(&built.schema)
+            .into_iter()
+            .chain([format!("first-pages-{}", built.schema.name)]),
+    ) {
+        manifest["sealed"] = sealed.into();
+    }
     write(
         &stage.join("first-manifest.json"),
-        serde_json::to_string_pretty(
-            &serde_json::json!({"first":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales,
-                "sealed":crate::bundle::sealed_plugins(&built.schema, crate::app_plugin::first_plugins(&built.schema))}),
-        )? + "\n",
+        serde_json::to_string_pretty(&manifest)? + "\n",
     )?;
+
     super::deploy::write_metadata(&stage, built)?;
     let lock_bytes = prepared.lock_bytes()?;
     std::fs::create_dir_all(lock.parent().unwrap())?;

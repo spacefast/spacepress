@@ -18,35 +18,37 @@ use First\Schema;
  *
  * - a refusal to activate anything not on the list: wp-admin (one, bulk, network), core's REST
  *   plugins route and WP-CLI, all of which go through `activate_plugin()` and its requirement check;
- * - a report of what is loaded and not on the list (active and network-active plugins, mu-plugins,
- *   drop-ins, theme PHP), in `GET /__first/api/v1` under `runtime.wp.sealed` and in `first doctor`.
+ * - a refusal, in wp-admin and REST, to deactivate the plugins the app runs on (First's own and the
+ *   platform's): with the app stopped nothing would refuse anything;
+ * - a report: the active plugins that aren't on the list, and every must-use plugin, drop-in and theme
+ *   PHP file WordPress loads, in `GET /__first/api/v1` under `runtime.wp.sealed` and `first doctor`.
  *
- * Nothing is deactivated or deleted. A host that mounts First through the build store reads the same
+ * Someone with a shell (WP-CLI with `--skip-plugins`, the database, the file system) is outside all of
+ * this. Nothing is deactivated or deleted. A host that mounts First through the build store reads the same
  * list from the build manifest and can enforce it before any plugin loads.
  */
 final class Sealed
 {
-    /** First's own plugins, whatever the build: the runtime, identity, admin, the app and its pages. */
-    private const FIRST = ['first-runtime', 'first-identity', 'first-admin'];
-
-    /** @var ?array<string, true> plugin directory slugs that may run */
+    /** @var ?array<string, true> plugin directory slugs that may run: the list the build wrote */
     private static ?array $allowed = null;
+    /** @var array<string, true> the plugins the app can't run without: First's own and the platform's */
+    private static array $required = [];
 
     public static function apply(Schema $schema): void
     {
-        $declared = $schema->sealed();
-        if ($declared === null) {
+        $listed = $schema->sealed();
+        if ($listed === null) {
             return;
         }
-        self::$allowed = self::allowed($schema, $declared);
+        // The list is the build's (schema.php, the same one its manifests carry): nothing is added here.
+        self::$allowed = array_fill_keys($listed, true);
+        self::$required = array_fill_keys(array_filter($listed, static fn (string $slug): bool => str_starts_with($slug, 'first-') || isset(Platform::PLUGINS[$slug])), true);
         // Every activation path (wp-admin's single, bulk and network screens, core's REST plugins
         // route, WP-CLI) calls activate_plugin(), which asks this filter before it loads the plugin.
         add_filter('validate_plugin_requirements', [self::class, 'requirements'], PHP_INT_MAX, 2);
         // The screens and the REST route also ask the capability first: answer there too, so the
         // Activate link is gone and REST refuses with its own 403 before the plugin is read.
-        add_filter('map_meta_cap', static function (array $caps, string $cap, int $user, array $args): array {
-            return in_array($cap, ['activate_plugin'], true) && is_string($args[0] ?? null) && !self::allows((string) $args[0]) ? ['do_not_allow'] : $caps;
-        }, PHP_INT_MAX, 4);
+        add_filter('map_meta_cap', [self::class, 'capability'], PHP_INT_MAX, 4);
         add_filter('plugin_action_links', [self::class, 'actionLinks'], PHP_INT_MAX, 2);
         add_filter('network_admin_plugin_action_links', [self::class, 'actionLinks'], PHP_INT_MAX, 2);
         add_action('admin_notices', [self::class, 'notice']);
@@ -54,35 +56,50 @@ final class Sealed
     }
 
     /**
-     * The plugin slugs that may run: First's own and the app's, the platform pins and the plugins the
-     * config declares (schema.php), every one as a directory slug.
+     * map_meta_cap. Activating a plugin that isn't listed is refused. So is deactivating one the app
+     * can't run without (First's own and the platform's), from wp-admin and REST: with the app stopped
+     * nothing would refuse anything, so that would be the way around the list. WP-CLI doesn't ask
+     * capabilities; it stays the operator's way to take a site out of service.
      *
-     * @param list<string> $declared
-     * @return array<string, true>
+     * @param list<string> $caps
      */
-    private static function allowed(Schema $schema, array $declared): array
+    public static function capability(mixed $caps, mixed $cap, mixed $user = null, mixed $args = []): mixed
     {
-        $allowed = array_fill_keys([...self::FIRST, 'first-app-' . $schema->name(), 'first-pages-' . $schema->name(), ...array_keys(Platform::PLUGINS), ...$declared], true);
-        unset($allowed['']);
+        $plugin = is_array($args) && is_string($args[0] ?? null) ? $args[0] : null;
+        if ($plugin === null) {
+            return $caps;
+        }
+        $refused = match ($cap) {
+            'activate_plugin' => !self::allows($plugin),
+            'deactivate_plugin' => isset(self::$required[self::slug($plugin)]),
+            default => false,
+        };
 
-        return $allowed;
+        return $refused ? ['do_not_allow'] : $caps;
     }
 
-    /** A plugin file (`slug/slug.php`, `hello.php`) is allowed when its directory slug is. */
+    /** A plugin file is allowed when it is a listed plugin's main file: `<slug>/<file>.php`. */
     public static function allows(string $plugin): bool
     {
-        if (self::$allowed === null) {
-            return true;
-        }
-        $plugin = plugin_basename($plugin);
-        $slug = str_contains($plugin, '/') ? strstr($plugin, '/', true) : basename($plugin, '.php');
+        return self::$allowed === null || isset(self::$allowed[self::slug($plugin)]);
+    }
 
-        return isset(self::$allowed[$slug]);
+    /**
+     * The listed-plugin slug a plugin file belongs to: the directory of `<slug>/<file>.php`. Anything
+     * else has none: a single file in the plugins directory (`hello.php`, even one named after a listed
+     * directory), a file deeper inside a plugin, a path with `..`.
+     */
+    private static function slug(string $plugin): string
+    {
+        $plugin = plugin_basename($plugin);
+
+        return preg_match('#\A([^/]+)/[^/]+\.php\z#D', $plugin, $m) === 1 && $m[1] !== '..' && $m[1] !== '.' ? $m[1] : '';
     }
 
     public static function requirements(mixed $valid, mixed $plugin): mixed
     {
-        // WP-CLI is refused too: the list is the config, and sealed mode has no operator exception.
+        // WP-CLI's `plugin activate` comes through here too. (`wp --skip-plugins` loads no plugin, First
+        // included, so nothing is asked: that is the operator's shell, like editing the option.)
         if ($valid !== true || !is_string($plugin) || self::allows($plugin)) {
             return $valid;
         }
@@ -101,34 +118,40 @@ final class Sealed
      */
     public static function actionLinks(mixed $links, mixed $plugin): mixed
     {
-        if (!is_array($links) || !is_string($plugin) || self::allows($plugin)) {
+        if (!is_array($links) || !is_string($plugin)) {
             return $links;
         }
-        unset($links['activate'], $links['network_activate']);
-        $links['first_sealed'] = '<span title="' . esc_attr(self::message($plugin)) . '">Sealed: not in first.config.ts</span>';
+        if (!self::allows($plugin)) {
+            unset($links['activate'], $links['network_activate']);
+            $links['first_sealed'] = '<span title="' . esc_attr(self::message($plugin)) . '">Sealed: not in first.config.ts</span>';
+        } elseif (isset(self::$required[self::slug($plugin)])) {
+            unset($links['deactivate'], $links['network_deactivate']);
+            $links['first_sealed'] = '<span title="' . esc_attr('This sealed site runs on this plugin. Turn sealed mode off in first.config.ts to deactivate it here.') . '">Sealed: required</span>';
+        }
 
         return $links;
     }
 
-    /** wp-admin: what is loaded and not on the list, named, so the owner can act on it. */
+    /**
+     * wp-admin, for administrators: plugins that are active and not on the list. Those are what the
+     * owner can act on from here; must-use plugins, drop-ins and theme PHP are in the report only.
+     */
     public static function notice(): void
     {
         $report = self::report();
-        if ($report === null || !current_user_can('activate_plugins') || array_merge(...array_values(array_filter($report, 'is_array'))) === []) {
+        $unlisted = $report === null ? [] : [...$report['plugins'], ...$report['networkPlugins']];
+        if ($unlisted === [] || !current_user_can('activate_plugins')) {
             return;
         }
-        $lines = [];
-        foreach (['plugins' => 'active plugins', 'networkPlugins' => 'network-active plugins', 'muPlugins' => 'must-use plugins', 'dropins' => 'drop-ins', 'theme' => 'theme PHP'] as $key => $label) {
-            if (($report[$key] ?? []) !== []) {
-                $lines[] = $label . ': ' . implode(', ', $report[$key]);
-            }
-        }
-        echo '<div class="notice notice-warning"><p><strong>This site is sealed</strong> (sealed: true in first.config.ts), and code it doesn\'t list is loaded. First doesn\'t stop or remove it; deactivate or remove it, or declare it in first.config.ts.</p><p>'
-            . esc_html(implode('; ', $lines)) . '</p></div>';
+        echo '<div class="notice notice-warning"><p><strong>This site is sealed</strong> (sealed: true in first.config.ts), and plugins it doesn\'t list are active: '
+            . esc_html(implode(', ', $unlisted)) . '. First doesn\'t stop or remove them. Deactivate them, or declare them under <code>plugins</code> in first.config.ts and deploy.</p></div>';
     }
 
     /**
-     * What is loaded in this request and not on the list, or null when the site isn't sealed.
+     * What is loaded in this request, or null when the site isn't sealed. `plugins` and
+     * `networkPlugins` are the active plugins that aren't on the list: a sealed site has none. The
+     * rest is everything of its kind that WordPress loads, listed so the owner sees it; no config can
+     * list a must-use plugin, a drop-in or a theme, and a host's own are among them.
      *
      * @return ?array{plugins: list<string>, networkPlugins: list<string>, muPlugins: list<string>, dropins: list<string>, theme: list<string>, enforced: string}
      */
@@ -137,16 +160,16 @@ final class Sealed
         if (self::$allowed === null) {
             return null;
         }
-        $unlisted = static fn (array $plugins): array => array_values(array_filter(array_map('plugin_basename', $plugins), static fn (string $p): bool => !self::allows($p)));
+        $unlisted = static fn (array $plugins): array => array_values(array_filter(array_map('plugin_basename', array_filter($plugins, 'is_string')), static fn (string $p): bool => !self::allows($p)));
         $network = is_multisite() ? array_keys((array) get_site_option('active_sitewide_plugins', [])) : [];
 
         return [
             'plugins' => $unlisted((array) get_option('active_plugins', [])),
             'networkPlugins' => $unlisted($network),
-            // Every file WordPress loads from these: none is First's on a plain WordPress host.
             'muPlugins' => array_values(array_map('basename', wp_get_mu_plugins())),
             'dropins' => self::dropins(),
             'theme' => self::theme(),
+            // A host says so by defining the constant when it filters the plugin list ({@see \First\Loader\Loader::allowedPlugins}).
             'enforced' => defined('FIRST_SEALED_ENFORCED') && FIRST_SEALED_ENFORCED ? 'host' : 'report',
         ];
     }

@@ -2493,7 +2493,36 @@ export default defineConfig({ name: "kindurls", publicAuthors: true });
 export default defineConfig({ name: "kindurls", sealed: true });
 "#,
     );
-    assert_eq!(built["sealed"], serde_json::json!({"plugins": []}));
+    // The complete list for a plain WordPress build of this app: First's plugins it ships (identity
+    // always, admin only with `admin: true`), its pages plugin, and the platform pins (Polylang only
+    // with `locales`).
+    assert_eq!(
+        built["sealed"],
+        serde_json::json!({"plugins": ["action-scheduler", "first-app-kindurls", "first-identity", "first-pages-kindurls", "first-runtime", "mcp-adapter", "secure-custom-fields", "two-factor"]})
+    );
+    let built = schema(
+        r#"import { defineConfig } from "first";
+export default defineConfig({ name: "kindurls", sealed: true, admin: true, locales: { default: "en", all: ["en", "de"] } });
+"#,
+    );
+    assert_eq!(
+        built["sealed"],
+        serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-pages-kindurls", "first-runtime", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor"]})
+    );
+    let refused = tmp.path().join("app-sealed-refused");
+    std::fs::create_dir_all(&refused).unwrap();
+    std::fs::write(
+        refused.join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"kindurls\", sealed: \"yes\" });\n",
+    )
+    .unwrap();
+    let out = first().args(["build", "--quiet"]).arg(&refused).output().unwrap();
+    assert!(!out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("sealed must be true or false"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 /// A project whose ledger is still at `first/migrations/` is refused, never read as a first build:

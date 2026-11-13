@@ -13,5 +13,14 @@ defined('ABSPATH') || exit;
     }
     require_once $loader;
     define('FIRST_SEALED_ENFORCED', true);
-    add_filter('option_active_plugins', static fn ($active) => \First\Loader\Loader::allowedPlugins((array) $active, $sealed), PHP_INT_MAX);
+    $filter = static fn ($active) => \First\Loader\Loader::allowedPlugins((array) $active, $sealed);
+    add_filter('option_active_plugins', $filter, PHP_INT_MAX);
+    // WordPress writes the option back from what it read: the entries the filter hid stay stored.
+    add_filter('pre_update_option_active_plugins', static function ($new) use ($filter, $sealed) {
+        remove_filter('option_active_plugins', $filter, PHP_INT_MAX);
+        $stored = (array) get_option('active_plugins', []);
+        add_filter('option_active_plugins', $filter, PHP_INT_MAX);
+
+        return \First\Loader\Loader::keepUnlisted((array) $new, $stored, $sealed);
+    }, PHP_INT_MAX);
 })();

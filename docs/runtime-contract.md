@@ -62,7 +62,7 @@ versions, `scf`, `actionScheduler`, `mcpAdapter`, `twoFactor`, `polylang`, `iden
 Jetpack, and whether it has a key; never required), and `incompatibleTables`. `runtime.pendingMigrations` and
 `runtime.languages` report app migration and localization state. Identity is
 true only for a compatible implementation; the A3 placeholder does not enable it.
-`first doctor [--site URL]` (bearer token in `FIRST_TOKEN`) checks this data against the same
+`first doctor [--site URL]` (bearer token in `FIRST_TOKEN`, or `FIRST_APP_PASSWORD`) checks this data against the same
 platform policy used by runtime activation.
 
 ## schema.php

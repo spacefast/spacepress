@@ -2233,3 +2233,162 @@ fn init_configures_an_mcp_server_that_starts_from_the_project() {
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", text(&out.stdout)));
     assert_eq!(answer["result"]["structuredContent"]["name"], "agentkit", "{answer}");
 }
+
+/// The skills under skills/, in the layout of github.com/WordPress/agent-skills: one directory per
+/// skill with a SKILL.md whose front matter has `name` (the directory's name), `description` and
+/// `compatibility`, and whose body has that repository's sections.
+#[test]
+fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_that_exist() {
+    let table: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root().join("runtime/First/Cli/commands.json")).unwrap()).unwrap();
+    let commands: Vec<&str> = ["build", "site"]
+        .iter()
+        .flat_map(|group| table[*group].as_array().unwrap())
+        .map(|row| row["name"].as_str().unwrap())
+        .collect();
+    let mut names = Vec::new();
+    for entry in std::fs::read_dir(root().join("skills")).unwrap() {
+        let dir = entry.unwrap().path();
+        let name = dir.file_name().unwrap().to_str().unwrap().to_string();
+        let skill = std::fs::read_to_string(dir.join("SKILL.md")).unwrap_or_else(|_| panic!("{name}/SKILL.md"));
+        let rest = skill
+            .strip_prefix("---\n")
+            .unwrap_or_else(|| panic!("{name}: front matter first"));
+        let (front, body) = rest
+            .split_once("\n---\n")
+            .unwrap_or_else(|| panic!("{name}: front matter ends"));
+        let value = |key: &str| {
+            front
+                .lines()
+                .find_map(|line| line.strip_prefix(key)?.strip_prefix(": "))
+                .unwrap_or_else(|| panic!("{name}: {key} in the front matter"))
+                .trim_matches('"')
+        };
+        assert_eq!(value("name"), name);
+        assert!(
+            name.len() <= 64
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        );
+        assert!(
+            value("description").starts_with("Use when ") && value("description").len() <= 1024,
+            "{name}"
+        );
+        assert!(value("compatibility").len() <= 500, "{name}");
+        // The compatibility line names the versions this compiler targets.
+        let series = env!("CARGO_PKG_VERSION").rsplit_once('.').unwrap().0;
+        assert!(
+            value("compatibility").contains(&format!("First {series} ")),
+            "{name}: {}",
+            value("compatibility")
+        );
+        for section in [
+            "## When to use",
+            "## Inputs required",
+            "## Procedure",
+            "## Verification",
+            "## Failure modes / debugging",
+            "## Escalation",
+        ] {
+            assert!(body.contains(&format!("\n{section}\n")), "{name}: {section}");
+        }
+        // Short: depth is in the documentation it links.
+        assert!(skill.lines().count() <= 120, "{name}: {} lines", skill.lines().count());
+
+        // Every `first <command>` it names, in inline code or in a shell block, is in the command
+        // table (or is `first help`).
+        let mut named = Vec::new();
+        for (i, part) in skill.split("```").enumerate() {
+            if i % 2 == 1 {
+                named.extend(part.lines().map(str::trim).filter(|line| line.starts_with("first ")));
+            } else {
+                named.extend(
+                    part.split('`')
+                        .skip(1)
+                        .step_by(2)
+                        .filter(|code| code.starts_with("first ")),
+                );
+            }
+        }
+        assert!(!named.is_empty(), "{name} names no command");
+        for usage in named {
+            let words: Vec<&str> = usage.split_whitespace().skip(1).take(2).collect();
+            let two = words.join(" ");
+            assert!(
+                words[0] == "help" || commands.contains(&words[0]) || commands.contains(&two.as_str()),
+                "{name} names `{usage}`, which is not in the command table"
+            );
+        }
+        // Every documentation page it points to is committed.
+        for (at, _) in skill.match_indices("`docs") {
+            let path: &str = skill[at + 1..].split('`').next().unwrap();
+            if path.ends_with(".md") || path.ends_with(".mdx") {
+                assert!(root().join(path).is_file(), "{name} points to {path}");
+            }
+        }
+        names.push(name);
+    }
+    names.sort();
+    // One skill per task an agent performs.
+    assert_eq!(
+        names,
+        [
+            "first-add-kind",
+            "first-add-page",
+            "first-connect-mcp",
+            "first-dev-site",
+            "first-fix-diagnostic",
+            "first-migrate",
+            "first-write-action"
+        ]
+    );
+}
+
+/// The TypeScript in the skills is what an agent will copy, so it has to compile: every fenced
+/// block that names its file (`// first/…`) is written to that path in a project, and `first check`
+/// accepts the project.
+#[test]
+fn the_code_in_the_skills_compiles_as_one_project() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(
+        project.path().join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"skills\" });\n",
+    )
+    .unwrap();
+    let mut written = Vec::new();
+    for skill in files_under(&root().join("skills")) {
+        let text = std::fs::read_to_string(root().join("skills").join(&skill)).unwrap();
+        let mut blocks = text.split("```");
+        blocks.next();
+        while let (Some(block), Some(_)) = (blocks.next(), blocks.next()) {
+            let Some((language, code)) = block.split_once('\n') else {
+                continue;
+            };
+            if !matches!(language.trim(), "ts" | "tsx") {
+                continue;
+            }
+            // Blocks sit inside a numbered list: drop the list's indentation.
+            let code: String = code
+                .lines()
+                .map(|line| line.strip_prefix("   ").unwrap_or(line))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let path = code
+                .lines()
+                .next()
+                .and_then(|first| first.strip_prefix("// "))
+                .map(|rest| rest.split([' ', ':']).next().unwrap())
+                .filter(|path| path.starts_with("first/"))
+                .unwrap_or_else(|| panic!("{skill}: a ts block names its file in its first line:\n{code}"));
+            let target = project.path().join(path);
+            assert!(!target.exists(), "{skill}: {path} is written by two blocks");
+            std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+            std::fs::write(&target, code.clone() + "\n").unwrap();
+            written.push(path.to_string());
+        }
+    }
+    assert!(written.len() >= 4, "{written:?}");
+    let checked = first().arg("check").arg(project.path()).output().unwrap();
+    assert!(checked.status.success(), "{written:?}\n{}", text(&checked.stderr));
+}

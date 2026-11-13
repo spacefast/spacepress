@@ -397,6 +397,17 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "editor collection \"notes\" has no title",
         "first.config.ts:2:15",
     );
+    // Storage is chosen only by the builder: a collection can't ask for a table.
+    rejects(
+        "reject-collection-editor-false",
+        "collection() has no option `editor`",
+        "first.config.ts:2:60",
+    );
+    rejects(
+        "reject-collection-editor-false",
+        "help: storage follows the builder: collection() is always WordPress posts; use table() for a SQL table",
+        "first.config.ts:2:60",
+    );
     rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:15");
     rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:15");
     rejects(
@@ -568,6 +579,13 @@ fn rejects_hooks_that_would_misbehave_in_php() {
         "reject-list-operator",
         "`in` isn't supported on list columns; use `has`",
         "first.config.ts:5:",
+    );
+    // A structured field of a collection is spread over post meta and can't be compared. The fix
+    // names table(), where the same filter compiles; storage is never an option of collection().
+    rejects(
+        "reject-collection-group-filter",
+        "use isNull/isNotNull, or keep this data in a table()",
+        "first.config.ts:5:95",
     );
     // db.globals is typed from the global's fields, like db.query from a collection's.
     rejects(

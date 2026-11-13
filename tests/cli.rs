@@ -1656,3 +1656,85 @@ fn the_code_in_the_skills_compiles_as_one_project() {
     let checked = first().arg("check").arg(project.path()).output().unwrap();
     assert!(checked.status.success(), "{written:?}\n{}", text(&checked.stderr));
 }
+
+/// `npm create @spacefast/first` ends with `first init`: a new project has the agent files, written
+/// by the same generator from the template's own config. `--no-install` here, so the compiler is
+/// the one `FIRST_BIN` names.
+#[test]
+fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("Field Notes");
+    let scaffolded = Command::new("node")
+        .arg(root().join("packages/create-first/bin/create-first.mjs"))
+        .arg(&project)
+        .arg("--no-install")
+        .env("FIRST_BIN", env!("CARGO_BIN_EXE_first"))
+        .output()
+        .expect("node");
+    assert!(scaffolded.status.success(), "{}", text(&scaffolded.stderr));
+    let said = text(&scaffolded.stdout);
+    assert!(said.contains("Created field-notes."), "{said}");
+    assert!(
+        said.contains("AGENTS.md, .mcp.json and the agent skills describe this project"),
+        "{said}"
+    );
+    assert!(!said.contains("npx first init  "), "nothing left to run: {said}");
+    // The section is about this project: the name the scaffolder gave it and the template's kind.
+    let agents = std::fs::read_to_string(project.join("AGENTS.md")).unwrap();
+    assert!(agents.starts_with("<!-- first:begin -->\n"), "{agents}");
+    assert!(
+        agents.contains("This project is the First app `field-notes`."),
+        "{agents}"
+    );
+    assert!(agents.contains("`/wp-json/mcp/first-field-notes`"), "{agents}");
+    let schema = first().arg("check").arg(&project).arg("--json").output().unwrap();
+    assert!(
+        schema.status.success(),
+        "the template compiles: {}",
+        text(&schema.stdout)
+    );
+    let mcp: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(project.join(".mcp.json")).unwrap()).unwrap();
+    assert_eq!(
+        mcp["mcpServers"]["first"]["args"],
+        serde_json::json!(["--no-install", "first", "mcp"])
+    );
+    assert_eq!(
+        files_under(&project.join(".agents/skills")),
+        files_under(&root().join("skills"))
+    );
+    assert_eq!(
+        files_under(&project.join(".claude/skills")),
+        files_under(&root().join("skills"))
+    );
+    // Exactly what `first init` writes: nothing is out of date.
+    let current = init(&project, &["--check"]);
+    assert_eq!(current.status.code(), Some(0), "{}", text(&current.stderr));
+    // The scaffolder's own files are as before.
+    assert!(project.join("first.config.ts").is_file() && project.join("package.json").is_file());
+
+    // A compiler that cannot do it (here: one that fails) does not undo the scaffold: the project
+    // is created and the output says what to run.
+    let other = dir.path().join("second");
+    let failing = dir.path().join("failing-first");
+    std::fs::write(&failing, "#!/bin/sh\nexit 3\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&failing, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let scaffolded = Command::new("node")
+        .arg(root().join("packages/create-first/bin/create-first.mjs"))
+        .arg(&other)
+        .arg("--no-install")
+        .env("FIRST_BIN", &failing)
+        .output()
+        .unwrap();
+    assert!(scaffolded.status.success(), "{}", text(&scaffolded.stderr));
+    assert!(
+        text(&scaffolded.stdout).contains("  npx first init "),
+        "{}",
+        text(&scaffolded.stdout)
+    );
+    assert!(other.join("first.config.ts").is_file() && !other.join("AGENTS.md").exists());
+}

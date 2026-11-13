@@ -12,7 +12,9 @@ First has two MCP servers, for two different jobs:
 
 ## Set a project up for coding agents: `first init`
 
-`first init [dir]` writes what a coding agent needs into the project:
+`first init [dir]` writes what a coding agent needs into the project. A project
+made with `npm create @spacefast/first` already has them: the scaffolder runs
+`first init` once the compiler is installed.
 
 | File | What it is |
 |---|---|

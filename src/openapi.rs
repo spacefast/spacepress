@@ -568,15 +568,16 @@ impl Builder<'_> {
             "by": user,
             "at": { "type": "string", "format": "date-time" },
             "promoteAt": { "type": ["string", "null"], "format": "date-time", "description": "When a scheduled promote runs." },
+            "_rev": { "type": "string", "description": "The staged version's token, for the next stage, promote or discard." },
         });
         let mut version = json!({ "type": "object", "properties": {
             "row": row, "fields": { "type": "array", "items": { "type": "string" }, "description": "The staged fields." },
-        }, "required": ["id", "row", "fields", "by", "at", "promoteAt"] });
+        }, "required": ["id", "row", "fields", "by", "at", "promoteAt", "_rev"] });
         let mut comparison = json!({ "type": "object", "properties": {
             "changes": { "type": "array", "items": { "type": "object", "properties": {
                 "field": { "type": "string" }, "live": {}, "staged": {},
             }, "required": ["field", "live", "staged"] } },
-        }, "required": ["id", "changes", "by", "at", "promoteAt"] });
+        }, "required": ["id", "changes", "by", "at", "promoteAt", "_rev"] });
         for schema in [&mut version, &mut comparison] {
             if let (Some(props), Some(extra)) = (schema["properties"].as_object_mut(), record.as_object()) {
                 props.extend(extra.clone());
@@ -609,6 +610,10 @@ impl Builder<'_> {
             &staged,
             "delete",
             op("discard", format!("Discard the staged version of {table}"), "Ends the staged version. The live row is untouched; the discarded version stays in the row's revisions.")
+                .params([
+                    query("_rev", "The staged version's `_rev`: the discard is refused with `409 stale_revision` if it changed since.", json!({ "type": "string" })),
+                    query("takeover", "`1` takes over another user's edit lock.", json!({ "type": "string", "enum": ["1"] })),
+                ])
                 .ok(200, envelope("The revision that held it.", json!({ "type": "object", "properties": { "revision": { "type": "integer" } }, "required": ["revision"] })))
                 .errors(&[404, 409]),
         );
@@ -623,7 +628,10 @@ impl Builder<'_> {
             &format!("{staged}/promote"),
             "post",
             op("promote", format!("Promote the staged version of {table}"), "Makes the staged version live, as an update of the row by the caller: its rules, hooks, unique checks and webhooks run. With `at` (a future time) the promote is scheduled instead, and `at: null` cancels a scheduled one; both answer with the staged version.")
-                .body(body("Empty, or `at`.", json!({ "type": "object", "properties": { "at": { "type": ["string", "null"], "format": "date-time" } } })))
+                .body(body("Empty, or `at`; `_rev` and `takeover` as on a stage.", json!({ "type": "object", "properties": {
+                    "at": { "type": ["string", "null"], "format": "date-time" },
+                    "_rev": { "type": "string" }, "takeover": { "type": "boolean" },
+                } })))
                 .ok(200, envelope("The row after the promote, or the staged version when `at` was sent.", json!({ "oneOf": [row, version] })))
                 .errors(&[403, 404, 409, 422]),
         );
@@ -644,9 +652,19 @@ impl Builder<'_> {
     fn kind(&mut self, c: &Collection) {
         let name = self.names.collections[&c.table].clone();
         let (insert, patch, filter_name) = (format!("{name}Insert"), format!("{name}Patch"), format!("{name}Filter"));
-        self.components.insert(name.clone(), self.row_component(c));
+        let mut row_component = self.row_component(c);
+        let mut patch_component = js::patch(c);
+        // A kind with staged versions: every row carries `_rev`, and its writes take `_rev` and
+        // `takeover` (docs/staged.md).
+        let conditions = c.editor && c.revisions && c.staged;
+        if conditions {
+            row_component["properties"]["_rev"] = json!({ "type": "string", "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since." });
+            patch_component["properties"]["_rev"] = json!({ "type": "string", "description": "The `_rev` of your read: the write is refused with `409 stale_revision` if the row changed since." });
+            patch_component["properties"]["takeover"] = json!({ "type": "boolean", "description": "Take over another user's edit lock instead of being refused with `409 locked`." });
+        }
+        self.components.insert(name.clone(), row_component);
         self.components.insert(insert.clone(), js::insert(c));
-        self.components.insert(patch.clone(), js::patch(c));
+        self.components.insert(patch.clone(), patch_component);
         let filter = self.filter_component(c, &filter_name);
         self.components.insert(filter_name.clone(), filter);
 
@@ -843,6 +861,14 @@ impl Builder<'_> {
                 )
                 .rule(&delete)
                 .params([id.clone()])
+                .params(if c.editor && c.revisions && c.staged {
+                    vec![
+                        query("_rev", "The `_rev` of your read: the delete is refused with `409 stale_revision` if the row changed since.", json!({ "type": "string" })),
+                        query("takeover", "`1` takes over another user's edit lock.", json!({ "type": "string", "enum": ["1"] })),
+                    ]
+                } else {
+                    vec![]
+                })
                 .ok(200, envelope("The deleted row.", row.clone()))
                 .errors(&[404, 409]),
             );
@@ -1755,9 +1781,15 @@ pub fn document(schema: &Schema, services: Option<&Value>) -> Value {
             "type": { "type": "string", "description": "Always `about:blank`: `code` names the problem." },
             "title": { "type": "string", "description": "The problem in a few words." },
             "status": { "type": "integer", "description": "The HTTP status." },
-            "code": { "type": "string", "description": "A stable name for the problem, such as `unauthenticated`, `forbidden`, `not_found`, `invalid_input`, `invalid_query`, `invalid_json`, `method_not_allowed`, `unique_violation` or `reference_violation`." },
+            "code": { "type": "string", "description": "A stable name for the problem, such as `unauthenticated`, `forbidden`, `not_found`, `invalid_input`, `invalid_query`, `invalid_json`, `method_not_allowed`, `unique_violation`, `reference_violation`, `stale_revision` or `locked`." },
             "detail": { "type": "string", "description": "What went wrong, for a person." },
             "pointer": { "type": "string", "description": "A JSON pointer to the field of the request at fault, when there is one." },
+            "_rev": { "type": "string", "description": "`stale_revision`: the row's current token." },
+            "changed": { "type": "object", "description": "`stale_revision`: what changed since your read.", "properties": {
+                "fields": { "type": ["array", "null"], "items": { "type": "string" }, "description": "The fields that differ, as you may read them; null when there is no revision to compare with." },
+                "staged": { "type": "boolean", "description": "Whether someone else changed the staged version (a staged version's token only)." },
+            } },
+            "holder": { "type": "object", "description": "`locked`: who holds the edit lock.", "properties": { "id": { "type": "integer" }, "name": { "type": "string" } } },
         },
         "required": ["type", "title", "status", "code", "detail"],
     }));

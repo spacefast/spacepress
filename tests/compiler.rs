@@ -3457,7 +3457,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
         );
         let promoted = check("POST", &format!("{path}/staged/promote"), Some("editor"), &[], b"", 200);
         assert_eq!(promoted["data"][field], value);
-        check(
+        let gone = check(
             "PATCH",
             &format!("{path}/staged"),
             Some("editor"),
@@ -3465,8 +3465,63 @@ fn the_openapi_document_describes_what_the_api_answers() {
             &json(json!({ field: "Gone" })),
             200,
         );
-        check("DELETE", &format!("{path}/staged"), Some("editor"), &[], b"", 200);
+        let token = gone["data"]["_rev"].as_str().unwrap().to_string();
+        check(
+            "PATCH",
+            &format!("{path}/staged"),
+            Some("editor"),
+            &[],
+            &json(json!({ field: "Gone again" })),
+            200,
+        );
+        // A token from before the last stage: `409 stale_revision`, with what changed.
+        let stale = check(
+            "DELETE",
+            &format!("{path}/staged?_rev={token}"),
+            Some("editor"),
+            &[],
+            b"",
+            409,
+        );
+        assert_eq!(
+            (stale["code"].as_str(), stale["changed"]["staged"].as_bool()),
+            (Some("stale_revision"), Some(true))
+        );
+        let current = check("GET", &format!("{path}/staged"), Some("editor"), &[], b"", 200)["data"]["_rev"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        check(
+            "DELETE",
+            &format!("{path}/staged?_rev={current}"),
+            Some("editor"),
+            &[],
+            b"",
+            200,
+        );
         check("DELETE", &format!("{path}/staged"), Some("editor"), &[], b"", 404);
+        // The row's own `_rev`: the update that names it writes, a second one with the same is refused.
+        let read = check("GET", &path, Some("editor"), &[], b"", 200)["data"]["_rev"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        check(
+            "PATCH",
+            &path,
+            Some("editor"),
+            &[],
+            &json(json!({ field: value, "_rev": read })),
+            200,
+        );
+        let refused = check(
+            "PATCH",
+            &path,
+            Some("editor"),
+            &[],
+            &json(json!({ field: value, "_rev": read })),
+            409,
+        );
+        assert_eq!(refused["code"], "stale_revision");
     }
     check(
         "GET",

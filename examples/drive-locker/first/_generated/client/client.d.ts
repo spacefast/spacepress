@@ -1113,8 +1113,13 @@ export interface CollectionClient<K extends CollectionKey> {
 		with?: ExactWith<K, W>;
 	} & LocaleQuery<K>): Promise<RowWith<K, W>>;
 	create(data: Collections[K]["insert"]): Promise<Row<K>>;
-	update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
-	delete(id: IdOf<K>): Promise<Row<K>>;
+	/**
+	* On a collection, add `_rev` (from a read) to the patch to refuse the update when the row changed
+	* since: a 409 `stale_revision`. While someone else has the row open in the editor the update is a
+	* 409 `locked`; `takeover: true` takes over their edit lock.
+	*/
+	update(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<Row<K>>;
+	delete(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
 	/**
 	* Runs `list(q)` now and again whenever this collection (or a collection loaded through `with`)
 	* changes. Every refresh is the normal access-checked read; change notices carry no rows.
@@ -1133,7 +1138,7 @@ export interface CollectionClient<K extends CollectionKey> {
 	* staged version per item, shared by everyone who may update it; each call adds to it. Post
 	* kinds only. Every staged call needs `update` access on the row, and answers 404 without it.
 	*/
-	stage(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<StagedVersion<K>>;
+	stage(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<StagedVersion<K>>;
 	/** The staged version: the row as it would be once promoted. 404 when nothing is staged. */
 	staged(id: IdOf<K>): Promise<StagedVersion<K>>;
 	/** The staged fields whose value differs from the live row, with both values. */
@@ -1143,12 +1148,12 @@ export interface CollectionClient<K extends CollectionKey> {
 	* time) the promote is scheduled instead, and `at: null` cancels a scheduled one; both return
 	* the staged version.
 	*/
-	promote(id: IdOf<K>): Promise<Row<K>>;
+	promote(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
 	promote(id: IdOf<K>, options: {
 		at: string | null;
-	}): Promise<StagedVersion<K>>;
+	} & WriteConditions): Promise<StagedVersion<K>>;
 	/** End the staged version. It stays in the row's revisions, as `revision`. */
-	discard(id: IdOf<K>): Promise<{
+	discard(id: IdOf<K>, options?: WriteConditions): Promise<{
 		revision: number;
 	}>;
 	/** A signed link to the staged version that works without signing in for `ttl` seconds (an hour by default). */
@@ -1157,6 +1162,15 @@ export interface CollectionClient<K extends CollectionKey> {
 	}): Promise<StagedPreview>;
 }
 /** A staged version: the row once promoted, the fields that are staged, who staged last. */
+/**
+* A write's conditions on a collection's row: `_rev`, the token a read returned (the row's own, or a
+* staged version's for stage, promote and discard), refuses the write if the row changed since;
+* `takeover` takes over another user's edit lock.
+*/
+export interface WriteConditions {
+	_rev?: string;
+	takeover?: boolean;
+}
 export interface StagedVersion<K extends CollectionKey> {
 	/** The revision holding it. */
 	id: number;
@@ -1169,6 +1183,8 @@ export interface StagedVersion<K extends CollectionKey> {
 	at: string;
 	/** When a scheduled promote runs, or null. */
 	promoteAt: string | null;
+	/** The staged version's token, for the next stage, promote or discard. */
+	_rev: string;
 	/** Why the last scheduled promote did not run. */
 	error?: {
 		code: string;

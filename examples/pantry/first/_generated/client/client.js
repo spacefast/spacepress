@@ -601,6 +601,14 @@ export function createClient(options = {}) {
 			syncPolling();
 		};
 	} };
+	/** A DELETE's write conditions travel in its query: `?_rev=…&takeover=1`. */
+	function conditions(options) {
+		if (!options) return undefined;
+		const query = new URLSearchParams();
+		if (options._rev !== undefined) query.set("_rev", options._rev);
+		if (options.takeover) query.set("takeover", "1");
+		return query;
+	}
 	function collection(key) {
 		const desc = SCHEMA.collections[key];
 		const path = `/${seg(desc.path)}`;
@@ -624,7 +632,7 @@ export function createClient(options = {}) {
 			} : undefined) }),
 			create: (data) => request("POST", path, { json: data }),
 			update: (id, patch) => request("PATCH", one(id), { json: patch }),
-			delete: (id) => request("DELETE", one(id)),
+			delete: (id, options) => request("DELETE", one(id), { query: conditions(options) }),
 			revisions: {
 				list: (id) => request("GET", `${one(id)}/revisions`),
 				get: (id, rid) => request("GET", `${one(id)}/revisions/${seg(rid)}`),
@@ -634,7 +642,7 @@ export function createClient(options = {}) {
 			staged: (id) => request("GET", `${one(id)}/staged`),
 			compare: (id) => request("GET", `${one(id)}/staged/compare`),
 			promote: (id, options) => request("POST", `${one(id)}/staged/promote`, { json: options ?? {} }),
-			discard: (id) => request("DELETE", `${one(id)}/staged`),
+			discard: (id, options) => request("DELETE", `${one(id)}/staged`, { query: conditions(options) }),
 			previewLink: (id, options) => request("POST", `${one(id)}/staged/preview`, { json: options ?? {} })
 		};
 	}

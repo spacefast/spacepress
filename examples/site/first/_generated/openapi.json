@@ -277,6 +277,18 @@
             "required": true,
             "description": "The row's id.",
             "schema": { "type": "integer" }
+          },
+          {
+            "name": "_rev",
+            "in": "query",
+            "description": "The `_rev` of your read: the delete is refused with `409 stale_revision` if the row changed since.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "takeover",
+            "in": "query",
+            "description": "`1` takes over another user's edit lock.",
+            "schema": { "type": "string", "enum": ["1"] }
           }
         ],
         "responses": {
@@ -487,9 +499,13 @@
                           "type": ["string", "null"],
                           "format": "date-time",
                           "description": "When a scheduled promote runs."
+                        },
+                        "_rev": {
+                          "type": "string",
+                          "description": "The staged version's token, for the next stage, promote or discard."
                         }
                       },
-                      "required": ["id", "row", "fields", "by", "at", "promoteAt"]
+                      "required": ["id", "row", "fields", "by", "at", "promoteAt", "_rev"]
                     }
                   },
                   "required": ["data"]
@@ -557,9 +573,13 @@
                           "type": ["string", "null"],
                           "format": "date-time",
                           "description": "When a scheduled promote runs."
+                        },
+                        "_rev": {
+                          "type": "string",
+                          "description": "The staged version's token, for the next stage, promote or discard."
                         }
                       },
-                      "required": ["id", "row", "fields", "by", "at", "promoteAt"]
+                      "required": ["id", "row", "fields", "by", "at", "promoteAt", "_rev"]
                     }
                   },
                   "required": ["data"]
@@ -589,6 +609,18 @@
             "required": true,
             "description": "The row's id.",
             "schema": { "type": "integer" }
+          },
+          {
+            "name": "_rev",
+            "in": "query",
+            "description": "The staged version's `_rev`: the discard is refused with `409 stale_revision` if it changed since.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "takeover",
+            "in": "query",
+            "description": "`1` takes over another user's edit lock.",
+            "schema": { "type": "string", "enum": ["1"] }
           }
         ],
         "responses": {
@@ -672,9 +704,13 @@
                           "type": ["string", "null"],
                           "format": "date-time",
                           "description": "When a scheduled promote runs."
+                        },
+                        "_rev": {
+                          "type": "string",
+                          "description": "The staged version's token, for the next stage, promote or discard."
                         }
                       },
-                      "required": ["id", "changes", "by", "at", "promoteAt"]
+                      "required": ["id", "changes", "by", "at", "promoteAt", "_rev"]
                     }
                   },
                   "required": ["data"]
@@ -707,13 +743,15 @@
         ],
         "requestBody": {
           "required": true,
-          "description": "Empty, or `at`.",
+          "description": "Empty, or `at`; `_rev` and `takeover` as on a stage.",
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
                 "properties": {
-                  "at": { "type": ["string", "null"], "format": "date-time" }
+                  "at": { "type": ["string", "null"], "format": "date-time" },
+                  "_rev": { "type": "string" },
+                  "takeover": { "type": "boolean" }
                 }
               }
             }
@@ -752,9 +790,13 @@
                               "type": ["string", "null"],
                               "format": "date-time",
                               "description": "When a scheduled promote runs."
+                            },
+                            "_rev": {
+                              "type": "string",
+                              "description": "The staged version's token, for the next stage, promote or discard."
                             }
                           },
-                          "required": ["id", "row", "fields", "by", "at", "promoteAt"]
+                          "required": ["id", "row", "fields", "by", "at", "promoteAt", "_rev"]
                         }
                       ]
                     }
@@ -1108,6 +1150,18 @@
                 { "type": "string", "pattern": "^slug:." }
               ]
             }
+          },
+          {
+            "name": "_rev",
+            "in": "query",
+            "description": "The `_rev` of your read: the delete is refused with `409 stale_revision` if the row changed since.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "takeover",
+            "in": "query",
+            "description": "`1` takes over another user's edit lock.",
+            "schema": { "type": "string", "enum": ["1"] }
           }
         ],
         "responses": {
@@ -1362,9 +1416,13 @@
                           "type": ["string", "null"],
                           "format": "date-time",
                           "description": "When a scheduled promote runs."
+                        },
+                        "_rev": {
+                          "type": "string",
+                          "description": "The staged version's token, for the next stage, promote or discard."
                         }
                       },
-                      "required": ["id", "row", "fields", "by", "at", "promoteAt"]
+                      "required": ["id", "row", "fields", "by", "at", "promoteAt", "_rev"]
                     }
                   },
                   "required": ["data"]
@@ -1443,9 +1501,13 @@
                           "type": ["string", "null"],
                           "format": "date-time",
                           "description": "When a scheduled promote runs."
+                        },
+                        "_rev": {
+                          "type": "string",
+                          "description": "The staged version's token, for the next stage, promote or discard."
                         }
                       },
-                      "required": ["id", "row", "fields", "by", "at", "promoteAt"]
+                      "required": ["id", "row", "fields", "by", "at", "promoteAt", "_rev"]
                     }
                   },
                   "required": ["data"]
@@ -1486,6 +1548,18 @@
                 { "type": "string", "pattern": "^slug:." }
               ]
             }
+          },
+          {
+            "name": "_rev",
+            "in": "query",
+            "description": "The staged version's `_rev`: the discard is refused with `409 stale_revision` if it changed since.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "takeover",
+            "in": "query",
+            "description": "`1` takes over another user's edit lock.",
+            "schema": { "type": "string", "enum": ["1"] }
           }
         ],
         "responses": {
@@ -1580,9 +1654,13 @@
                           "type": ["string", "null"],
                           "format": "date-time",
                           "description": "When a scheduled promote runs."
+                        },
+                        "_rev": {
+                          "type": "string",
+                          "description": "The staged version's token, for the next stage, promote or discard."
                         }
                       },
-                      "required": ["id", "changes", "by", "at", "promoteAt"]
+                      "required": ["id", "changes", "by", "at", "promoteAt", "_rev"]
                     }
                   },
                   "required": ["data"]
@@ -1626,13 +1704,15 @@
         ],
         "requestBody": {
           "required": true,
-          "description": "Empty, or `at`.",
+          "description": "Empty, or `at`; `_rev` and `takeover` as on a stage.",
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
                 "properties": {
-                  "at": { "type": ["string", "null"], "format": "date-time" }
+                  "at": { "type": ["string", "null"], "format": "date-time" },
+                  "_rev": { "type": "string" },
+                  "takeover": { "type": "boolean" }
                 }
               }
             }
@@ -1671,9 +1751,13 @@
                               "type": ["string", "null"],
                               "format": "date-time",
                               "description": "When a scheduled promote runs."
+                            },
+                            "_rev": {
+                              "type": "string",
+                              "description": "The staged version's token, for the next stage, promote or discard."
                             }
                           },
-                          "required": ["id", "row", "fields", "by", "at", "promoteAt"]
+                          "required": ["id", "row", "fields", "by", "at", "promoteAt", "_rev"]
                         }
                       ]
                     }
@@ -5198,12 +5282,36 @@
           "status": { "type": "integer", "description": "The HTTP status." },
           "code": {
             "type": "string",
-            "description": "A stable name for the problem, such as `unauthenticated`, `forbidden`, `not_found`, `invalid_input`, `invalid_query`, `invalid_json`, `method_not_allowed`, `unique_violation` or `reference_violation`."
+            "description": "A stable name for the problem, such as `unauthenticated`, `forbidden`, `not_found`, `invalid_input`, `invalid_query`, `invalid_json`, `method_not_allowed`, `unique_violation`, `reference_violation`, `stale_revision` or `locked`."
           },
           "detail": { "type": "string", "description": "What went wrong, for a person." },
           "pointer": {
             "type": "string",
             "description": "A JSON pointer to the field of the request at fault, when there is one."
+          },
+          "_rev": { "type": "string", "description": "`stale_revision`: the row's current token." },
+          "changed": {
+            "type": "object",
+            "description": "`stale_revision`: what changed since your read.",
+            "properties": {
+              "fields": {
+                "type": ["array", "null"],
+                "items": { "type": "string" },
+                "description": "The fields that differ, as you may read them; null when there is no revision to compare with."
+              },
+              "staged": {
+                "type": "boolean",
+                "description": "Whether someone else changed the staged version (a staged version's token only)."
+              }
+            }
+          },
+          "holder": {
+            "type": "object",
+            "description": "`locked`: who holds the edit lock.",
+            "properties": {
+              "id": { "type": "integer" },
+              "name": { "type": "string" }
+            }
           }
         },
         "required": ["type", "title", "status", "code", "detail"]
@@ -5287,6 +5395,10 @@
             "type": "array",
             "items": { "$ref": "#/components/schemas/Post" },
             "description": "Present when the request asks for it with `with`."
+          },
+          "_rev": {
+            "type": "string",
+            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
           }
         }
       },
@@ -5311,7 +5423,15 @@
           "avatar": { "type": ["integer", "null"] },
           "userId": { "type": ["integer", "null"] },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
-          "publishedAt": { "type": ["string", "integer", "null"] }
+          "publishedAt": { "type": ["string", "integer", "null"] },
+          "_rev": {
+            "type": "string",
+            "description": "The `_rev` of your read: the write is refused with `409 stale_revision` if the row changed since."
+          },
+          "takeover": {
+            "type": "boolean",
+            "description": "Take over another user's edit lock instead of being refused with `409 locked`."
+          }
         }
       },
       "IntegerFilter": {
@@ -5498,6 +5618,10 @@
             "type": "array",
             "items": { "$ref": "#/components/schemas/Announcement" },
             "description": "Present when the request asks for it with `with`."
+          },
+          "_rev": {
+            "type": "string",
+            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
           }
         }
       },
@@ -5637,7 +5761,15 @@
           "updatedAt": { "type": ["string", "integer"] },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "integer", "null"] },
-          "locale": { "type": "string", "enum": ["en", "de"] }
+          "locale": { "type": "string", "enum": ["en", "de"] },
+          "_rev": {
+            "type": "string",
+            "description": "The `_rev` of your read: the write is refused with `409 stale_revision` if the row changed since."
+          },
+          "takeover": {
+            "type": "boolean",
+            "description": "Take over another user's edit lock instead of being refused with `409 locked`."
+          }
         }
       },
       "StringListFilter": {

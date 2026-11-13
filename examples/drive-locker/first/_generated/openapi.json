@@ -3943,12 +3943,36 @@
           "status": { "type": "integer", "description": "The HTTP status." },
           "code": {
             "type": "string",
-            "description": "A stable name for the problem, such as `unauthenticated`, `forbidden`, `not_found`, `invalid_input`, `invalid_query`, `invalid_json`, `method_not_allowed`, `unique_violation` or `reference_violation`."
+            "description": "A stable name for the problem, such as `unauthenticated`, `forbidden`, `not_found`, `invalid_input`, `invalid_query`, `invalid_json`, `method_not_allowed`, `unique_violation`, `reference_violation`, `stale_revision` or `locked`."
           },
           "detail": { "type": "string", "description": "What went wrong, for a person." },
           "pointer": {
             "type": "string",
             "description": "A JSON pointer to the field of the request at fault, when there is one."
+          },
+          "_rev": { "type": "string", "description": "`stale_revision`: the row's current token." },
+          "changed": {
+            "type": "object",
+            "description": "`stale_revision`: what changed since your read.",
+            "properties": {
+              "fields": {
+                "type": ["array", "null"],
+                "items": { "type": "string" },
+                "description": "The fields that differ, as you may read them; null when there is no revision to compare with."
+              },
+              "staged": {
+                "type": "boolean",
+                "description": "Whether someone else changed the staged version (a staged version's token only)."
+              }
+            }
+          },
+          "holder": {
+            "type": "object",
+            "description": "`locked`: who holds the edit lock.",
+            "properties": {
+              "id": { "type": "integer" },
+              "name": { "type": "string" }
+            }
           }
         },
         "required": ["type", "title", "status", "code", "detail"]

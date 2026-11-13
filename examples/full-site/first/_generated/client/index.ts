@@ -90,8 +90,13 @@ export interface CollectionClient<K extends CollectionKey> {
   /** With `locale`, the row of `id`'s translation group in that locale (or its fallback). */
   get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Promise<RowWith<K, W>>;
   create(data: Collections[K]["insert"]): Promise<Row<K>>;
-  update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
-  delete(id: IdOf<K>): Promise<Row<K>>;
+  /**
+   * On a collection, add `_rev` (from a read) to the patch to refuse the update when the row changed
+   * since: a 409 `stale_revision`. While someone else has the row open in the editor the update is a
+   * 409 `locked`; `takeover: true` takes over their edit lock.
+   */
+  update(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<Row<K>>;
+  delete(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
   /**
    * Runs `list(q)` now and again whenever this collection (or a collection loaded through `with`)
    * changes. Every refresh is the normal access-checked read; change notices carry no rows.
@@ -114,7 +119,7 @@ export interface CollectionClient<K extends CollectionKey> {
    * staged version per item, shared by everyone who may update it; each call adds to it. Post
    * kinds only. Every staged call needs `update` access on the row, and answers 404 without it.
    */
-  stage(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<StagedVersion<K>>;
+  stage(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<StagedVersion<K>>;
   /** The staged version: the row as it would be once promoted. 404 when nothing is staged. */
   staged(id: IdOf<K>): Promise<StagedVersion<K>>;
   /** The staged fields whose value differs from the live row, with both values. */
@@ -124,15 +129,25 @@ export interface CollectionClient<K extends CollectionKey> {
    * time) the promote is scheduled instead, and `at: null` cancels a scheduled one; both return
    * the staged version.
    */
-  promote(id: IdOf<K>): Promise<Row<K>>;
-  promote(id: IdOf<K>, options: { at: string | null }): Promise<StagedVersion<K>>;
+  promote(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
+  promote(id: IdOf<K>, options: { at: string | null } & WriteConditions): Promise<StagedVersion<K>>;
   /** End the staged version. It stays in the row's revisions, as `revision`. */
-  discard(id: IdOf<K>): Promise<{ revision: number }>;
+  discard(id: IdOf<K>, options?: WriteConditions): Promise<{ revision: number }>;
   /** A signed link to the staged version that works without signing in for `ttl` seconds (an hour by default). */
   previewLink(id: IdOf<K>, options?: { ttl?: number }): Promise<StagedPreview>;
 }
 
 /** A staged version: the row once promoted, the fields that are staged, who staged last. */
+/**
+ * A write's conditions on a collection's row: `_rev`, the token a read returned (the row's own, or a
+ * staged version's for stage, promote and discard), refuses the write if the row changed since;
+ * `takeover` takes over another user's edit lock.
+ */
+export interface WriteConditions {
+  _rev?: string;
+  takeover?: boolean;
+}
+
 export interface StagedVersion<K extends CollectionKey> {
   /** The revision holding it. */
   id: number;
@@ -142,6 +157,8 @@ export interface StagedVersion<K extends CollectionKey> {
   at: string;
   /** When a scheduled promote runs, or null. */
   promoteAt: string | null;
+  /** The staged version's token, for the next stage, promote or discard. */
+  _rev: string;
   /** Why the last scheduled promote did not run. */
   error?: { code: string; detail: string; at: string };
 }
@@ -893,6 +910,15 @@ export function createClient(options: ClientOptions = {}): Client {
     },
   };
 
+  /** A DELETE's write conditions travel in its query: `?_rev=…&takeover=1`. */
+  function conditions(options?: WriteConditions): URLSearchParams | undefined {
+    if (!options) return undefined;
+    const query = new URLSearchParams();
+    if (options._rev !== undefined) query.set("_rev", options._rev);
+    if (options.takeover) query.set("takeover", "1");
+    return query;
+  }
+
   function collection(key: CollectionKey) {
     const desc: { path: string } = SCHEMA.collections[key];
     const path = `/${seg(desc.path)}`;
@@ -911,7 +937,7 @@ export function createClient(options: ClientOptions = {}): Client {
       get: (id: string | number, q?: Json) => request("GET", one(id), { query: listParams(q ? { with: q.with, locale: q.locale } : undefined) }),
       create: (data: unknown) => request("POST", path, { json: data }),
       update: (id: string | number, patch: unknown) => request("PATCH", one(id), { json: patch }),
-      delete: (id: string | number) => request("DELETE", one(id)),
+      delete: (id: string | number, options?: WriteConditions) => request("DELETE", one(id), { query: conditions(options) }),
       revisions: {
         list: (id: string | number) => request("GET", `${one(id)}/revisions`),
         get: (id: string | number, rid: number) => request("GET", `${one(id)}/revisions/${seg(rid)}`),
@@ -920,8 +946,8 @@ export function createClient(options: ClientOptions = {}): Client {
       stage: (id: string | number, patch: unknown) => request("PATCH", `${one(id)}/staged`, { json: patch }),
       staged: (id: string | number) => request("GET", `${one(id)}/staged`),
       compare: (id: string | number) => request("GET", `${one(id)}/staged/compare`),
-      promote: (id: string | number, options?: { at: string | null }) => request("POST", `${one(id)}/staged/promote`, { json: options ?? {} }),
-      discard: (id: string | number) => request("DELETE", `${one(id)}/staged`),
+      promote: (id: string | number, options?: { at?: string | null } & WriteConditions) => request("POST", `${one(id)}/staged/promote`, { json: options ?? {} }),
+      discard: (id: string | number, options?: WriteConditions) => request("DELETE", `${one(id)}/staged`, { query: conditions(options) }),
       previewLink: (id: string | number, options?: { ttl?: number }) => request("POST", `${one(id)}/staged/preview`, { json: options ?? {} }),
     };
   }

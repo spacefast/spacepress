@@ -47,7 +47,7 @@ final class Schema
         }
 
         // `runtimeSchema: true` (spec §2.10): the site's active schema version adds its fields.
-        return new self(isset($raw['runtimeSchema']) ? RuntimeSchema\Loader::merge($raw) : $raw);
+        return new self(isset($raw['runtimeSchema']) ? RuntimeSchema\Loader::merge($raw, dirname($file)) : $raw);
     }
 
     /**
@@ -129,6 +129,12 @@ final class Schema
      *
      * @return array<string, string>
      */
+    /** @return array<string, array{tag: string, component: string, attributes: array, required: list<string>, children: bool}> blocks content may use, by block name */
+    public function contentBlocks(): array
+    {
+        return $this->raw['blocks'] ?? [];
+    }
+
     public function components(): array
     {
         return $this->raw['components'] ?? [];

@@ -162,6 +162,13 @@ the database, uploads and other installed plugins remain in
 `examples/pantry/.first/dev/wordpress` for the next start. The login above is
 for disposable local development only, never production.
 
+`first dev --detach` does the same in the background: it returns once the site
+is up, keeps rebuilding on save, and writes its output to
+`.first/dev/dev.log`. A coding agent's shell gets that without the flag (the
+output is not a terminal and `CLAUDECODE`, `CODEX_SANDBOX`, `AI_AGENT` or
+`AGENT` is set, outside CI); `--foreground` keeps the command attached.
+`first dev status --json` reports the URL, the port and that process.
+
 To leave the site running without watching, use `--no-watch`:
 
 ```sh

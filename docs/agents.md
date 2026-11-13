@@ -90,7 +90,7 @@ path in place of `npx --no-install first`.
 | `check` | The `first-diagnostics` envelope `first check --json` prints ([compiler diagnostics](compiler-diagnostics.md)). It writes nothing. |
 | `docs_search`, `docs_read` | First's documentation as built into this binary: the guides in `docs/` (not the design proposals or the pages for hosts and maintainers) and the docs site's pages. A long page or section read whole answers with its opening and its sections; pass `section` to read one. |
 | `commands` | The command table `first help` prints. |
-| `dev_status` | Whether the project has a local dev site, whether it runs, and its URL. |
+| `dev_status` | What `first dev status --json` reports: whether the project has a local dev site, whether it runs, its URL and port, and whether a `first dev` process is rebuilding it on save. |
 | `query` | A kind's records from the local dev site, through `first find`: `kind`, `where`, `orderBy`, `limit` (20 by default, at most 500), `offset`, `columns`, `with`. Like every request to the site, it first publishes scheduled posts that are due. |
 
 `schema`, `check`, `docs_search` and `docs_read` compile or read from the
@@ -112,6 +112,31 @@ no access rules, drafts included. They are for a developer's own dev site:
 A tool that runs a command (the compiler for `schema` and `check`, `first find`
 and the other site commands) stops it after 120 seconds, or the number of
 seconds in `FIRST_MCP_TIMEOUT`, and stops it when the client cancels the request.
+
+### Run the dev site from an agent
+
+`first dev` normally stays in the foreground until Ctrl+C, which an agent's
+shell cannot do. Two things make it usable there:
+
+- `first dev --detach` returns once the site is up. The watcher keeps running
+  in the background, rebuilds on save, and writes to `.first/dev/dev.log`.
+  `first dev stop` stops it.
+- Without the flag, `first dev` does the same by itself when its output is not a
+  terminal and one of `CLAUDECODE`, `CODEX_SANDBOX`, `AI_AGENT` or `AGENT` is
+  set to something other than empty, `0` or `false`. It says so on stderr. It
+  never does this when `CI` is set, and `--foreground` turns it off.
+
+`first dev status --json` (and the `dev_status` tool) answers from
+`.first/dev/state.json`, which `first dev` writes when the site is up:
+
+```json
+{"state":"running","url":"http://localhost:8787","port":8787,"admin":"http://localhost:8787/wp-admin/","site":"/work/my-app/.first/dev/wordpress","watching":true,"pid":41822,"log":"/work/my-app/.first/dev/dev.log","wordpress":"7.1.4","php":"8.4"}
+```
+
+`state` is `none`, `stopped` or `running`, checked against the port itself.
+`watching` is true while the recorded `first dev` process exists; after
+`--no-watch` it is false and `pid` is null. `first dev status` without `--json`
+still prints Studio's own report.
 
 The server speaks MCP revision 2026-07-28 (no handshake; `server/discover`) and,
 for clients that open with `initialize`, 2025-11-25 and 2025-06-18.

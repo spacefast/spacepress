@@ -1,10 +1,23 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
 
 const metadata = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-const help = `Create First ${metadata.version}\n\nUsage: npm create @spacefast/first@${metadata.version} <directory> [-- --no-install]\n\nCreates a backend and public frontend served by WordPress. Installs npm dependencies\nunless --no-install is supplied. Existing destinations are never overwritten.\n\nNext: cd <directory> && npm run dev\nRequires Node.js 22+ and npm. No Rust toolchain or Docker required.\n`;
+const help = `Create First ${metadata.version}\n\nUsage: npm create @spacefast/first@${metadata.version} <directory> [-- --no-install]\n\nCreates a backend and public frontend served by WordPress. Installs npm dependencies\nunless --no-install is supplied, then writes AGENTS.md, .mcp.json and skills for coding\nagents (first init). Existing destinations are never overwritten.\n\nNext: cd <directory> && npm run dev\nRequires Node.js 22+ and npm. No Rust toolchain or Docker required.\n`;
+
+// The files a coding agent reads (AGENTS.md, .mcp.json, the skills) come from `first init`, so a new
+// project gets the same ones a later `first init` writes, generated from its own config. The
+// compiler is the one npm just installed, or FIRST_BIN when the install was skipped.
+async function agentFiles(destination, installed) {
+  const first = installed ? join(destination, 'node_modules/.bin', process.platform === 'win32' ? 'first.cmd' : 'first')
+    : isAbsolute(process.env.FIRST_BIN ?? '') ? process.env.FIRST_BIN : null;
+  if (!first) return false;
+  return new Promise((done) => {
+    const child = spawn(first, ['init', destination], { stdio: ['ignore', 'ignore', 'inherit'], shell: process.platform === 'win32' });
+    child.once('error', () => done(false)); child.once('exit', (code) => done(code === 0));
+  });
+}
 
 async function main() {
   const args = process.argv.slice(2).filter((arg) => arg !== '--');
@@ -50,7 +63,8 @@ async function main() {
     });
     if (code !== 0) throw new Error(`App created at ${destination}, but npm install failed. Fix the reported download/tool error, then run npm install there. Your app was preserved.`);
   }
-  process.stdout.write(`\nCreated ${name}.\n\n  cd ${JSON.stringify(directories[0])}\n${args.includes('--no-install') ? '  npm install\n' : ''}  npm run dev\n\nOpen /wp-content/plugins/first-app-${name}/public/index.html on the printed WordPress URL.\n“Write a note” opens the native editor. See README.md for local credentials and commands.\n`);
+  const agents = await agentFiles(destination, !args.includes('--no-install'));
+  process.stdout.write(`\nCreated ${name}.\n\n  cd ${JSON.stringify(directories[0])}\n${args.includes('--no-install') ? '  npm install\n' : ''}${agents ? '' : '  npx first init    # AGENTS.md, .mcp.json and skills for coding agents\n'}  npm run dev\n\nOpen /wp-content/plugins/first-app-${name}/public/index.html on the printed WordPress URL.\n“Write a note” opens the native editor. See README.md for local credentials and commands.\n${agents ? 'AGENTS.md, .mcp.json and the agent skills describe this project to coding agents; run npx first init after changing the config.\n' : ''}`);
 }
 
 main().catch((error) => { process.stderr.write(`create-first: ${error.message}\n`); process.exitCode = 1; });

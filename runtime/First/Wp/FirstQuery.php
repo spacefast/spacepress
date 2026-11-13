@@ -30,14 +30,14 @@ final class FirstQuery
         $given = self::given($request, ['where', 'orderBy']);
         $locale = self::locale($collection, $request);
         $db = Plugin::instance()?->db() ?? throw new \LogicException('No First app');
-        $search = $search ? self::search($collection, $request, $viewer) : null;
+        $search = $search ? self::search($collection, $request) : null;
         if ($given === [] && $search === null && $locale === null) {
             return null;
         }
         $opts = App::listOptions($given);
         unset($opts['limit']);
         if ($search !== null) {
-            $opts['where'] = isset($opts['where']) ? ['AND' => [$opts['where'], $search]] : $search;
+            $opts += $search;
             $searched = true;
         }
         $pk = $db->schema()->collection($collection)['primaryKey'];
@@ -104,30 +104,29 @@ final class FirstQuery
     }
 
     /**
-     * `search`: the term in any searchable field (spec §2.6: the title, the content and every text or
-     * richText field), as a case-insensitive substring. `search_columns` narrows it to core's columns.
-     * Fields that may be hidden from the viewer are left out.
+     * `search`: every word in a searchable field the viewer may read (spec §2.6), through the search
+     * index ({@see \First\Search\Index}). `search_columns` narrows it to core's title, content and
+     * excerpt columns, each meaning the kind's own title or content field; on the users route, `name`
+     * is the member's name (`id`, `username`, `slug` and `email` aren't searchable fields).
+     *
+     * @return ?array{search: string, searchFields?: list<string>}
      */
-    private static function search(string $collection, \WP_REST_Request $request, Viewer $viewer): ?array
+    private static function search(string $collection, \WP_REST_Request $request): ?array
     {
         $term = $request['search'];
         if (!is_string($term) || $term === '') {
             return null;
         }
         $spec = Plugin::instance()?->schema->collection($collection) ?? throw new \LogicException('No First app');
-        $core = ['post_title' => $spec['title'] ?? null, 'post_content' => $spec['content'] ?? null, 'post_excerpt' => $spec['content'] ?? null];
         $columns = (array) ($request['search_columns'] ?? []);
-        $fields = $columns !== []
-            ? array_values(array_filter(array_map(static fn ($c) => $core[$c] ?? null, $columns)))
-            : array_keys(array_filter($spec['columns'], static fn (array $def, $col) => $col === ($spec['title'] ?? null) || $col === ($spec['content'] ?? null)
-                || (in_array($def['type'], ['text', 'richText'], true) && !($def['system'] ?? false)), ARRAY_FILTER_USE_BOTH));
-        // A field that may be hidden from the viewer is not searched, so a search can't probe it.
-        // (Core's own `search` over a hidden content column stays a 403: CoreAccess::queryDenial.)
-        $fields = array_values(array_filter(array_unique(array_map('strval', $fields)),
-            static fn (string $col): bool => !\First\FieldAccess::mayHide($spec['columns'][$col], $viewer)));
-        $pattern = '%' . addcslashes($term, '%_\\') . '%';
+        if ($columns === []) {
+            return ['search' => $term];
+        }
+        $core = $collection === (Plugin::instance()?->schema->auth()['collection'] ?? null)
+            ? ['name' => 'name']
+            : ['post_title' => $spec['title'] ?? null, 'post_content' => $spec['content'] ?? null, 'post_excerpt' => $spec['content'] ?? null];
 
-        return $fields === [] ? null : ['OR' => array_map(static fn (string $col) => [$col => ['ilike' => $pattern]], $fields)];
+        return ['search' => $term, 'searchFields' => array_values(array_unique(array_filter(array_map(static fn ($c) => $core[$c] ?? null, $columns))))];
     }
 
     /** @return array<string, mixed> the named query params the request supplied */

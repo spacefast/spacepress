@@ -1888,3 +1888,589 @@ fn the_added_tables_enforce_their_access_rules_on_a_real_wordpress() {
     assert_eq!(status, 200);
     assert_eq!(left["data"], serde_json::json!([]));
 }
+
+// ---------------------------------------------------------------------------------------------
+// `first init`: AGENTS.md, .mcp.json and the agent skills, written from the project's config.
+// ---------------------------------------------------------------------------------------------
+
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+/// Every file under `dir`, relative to it, sorted.
+fn files_under(dir: &Path) -> Vec<String> {
+    fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, root, out);
+            } else {
+                out.push(path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    if dir.is_dir() {
+        walk(dir, dir, &mut out);
+    }
+    out.sort();
+    out
+}
+
+fn init(project: &Path, args: &[&str]) -> Output {
+    first().arg("init").arg(project).args(args).output().unwrap()
+}
+
+#[test]
+fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_own_section() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("kit");
+    copy_tree(&agent_kit(), &project);
+    let read = |name: &str| std::fs::read_to_string(project.join(name)).unwrap();
+    // The author's own AGENTS.md and their own MCP servers are there first.
+    std::fs::write(project.join("AGENTS.md"), "# House rules\n\nTabs, not spaces.\n").unwrap();
+    std::fs::write(
+        project.join(".mcp.json"),
+        r#"{ "mcpServers": { "tracker": { "command": "tracker-mcp" } } }"#,
+    )
+    .unwrap();
+
+    // Before: --check names every file that is missing, exits 1 and writes nothing.
+    let before = init(&project, &["--check"]);
+    assert_eq!(before.status.code(), Some(1));
+    assert!(
+        text(&before.stderr).contains("out of date: AGENTS.md"),
+        "{}",
+        text(&before.stderr)
+    );
+    assert_eq!(read("AGENTS.md"), "# House rules\n\nTabs, not spaces.\n");
+    assert!(!project.join(".agents").exists());
+
+    let wrote = init(&project, &[]);
+    assert!(wrote.status.success(), "{}", text(&wrote.stderr));
+    let agents = read("AGENTS.md");
+    // The author's text stays, and the section follows it between the markers.
+    assert!(
+        agents.starts_with("# House rules\n\nTabs, not spaces.\n\n<!-- first:begin -->\n"),
+        "{agents}"
+    );
+    assert!(agents.ends_with("<!-- first:end -->\n"));
+    // It describes this project: its kinds with their access rules and API paths, its fields, its
+    // action with its endpoint, its job, its page and route, and the site's MCP endpoint.
+    for line in [
+        "This project is the First app `agentkit`.",
+        "| `shoppingList` | table | anyone | editor | editor | admin | `/__first/api/v1/shopping_list` |",
+        "| `articles` | collection | anyone | author | editor | editor | `/__first/api/v1/articles` |",
+        "- `substitutes`: `item`: ref → shoppingList, `name`: text",
+        "| `rename` | `id`: integer, `name`: text | editor | `POST /__first/api/v1/actions/rename` |",
+        "- `clearDone`: input `keep?`: integer; retried up to 2 times",
+        "| `/api/list` | route (GET) | `first/app/api/list/route.ts` |",
+        "| `/` | page | `first/app/page.tsx` |",
+        "guest < subscriber < author < editor < admin.",
+        "`/wp-json/mcp/first-agentkit`",
+    ] {
+        assert!(agents.contains(line), "{line}\nin\n{agents}");
+    }
+    // Every command of the table is listed with its arguments.
+    let table: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root().join("runtime/First/Cli/commands.json")).unwrap()).unwrap();
+    for group in ["build", "site"] {
+        for row in table[group].as_array().unwrap() {
+            let usage = format!(
+                "first {} {}",
+                row["name"].as_str().unwrap(),
+                row["args"].as_str().unwrap()
+            );
+            let line = format!("- `{}`: {}", usage.trim_end(), row["summary"].as_str().unwrap());
+            assert!(agents.contains(&line), "{line}");
+        }
+    }
+
+    // .mcp.json keeps the author's server and gains one that starts `first mcp`.
+    let mcp: serde_json::Value = serde_json::from_str(&read(".mcp.json")).unwrap();
+    assert_eq!(mcp["mcpServers"]["tracker"]["command"], "tracker-mcp");
+    assert_eq!(
+        mcp["mcpServers"]["first"],
+        serde_json::json!({ "command": "npx", "args": ["--no-install", "first", "mcp"] })
+    );
+
+    // The skills this binary carries, as committed under skills/, in both places agents read.
+    let skills = files_under(&root().join("skills"));
+    assert!(
+        skills.contains(&"first-fix-diagnostic/SKILL.md".to_string()),
+        "{skills:?}"
+    );
+    for dir in [".agents/skills", ".claude/skills"] {
+        assert_eq!(files_under(&project.join(dir)), skills, "{dir}");
+        for skill in &skills {
+            assert_eq!(
+                read(&format!("{dir}/{skill}")),
+                std::fs::read_to_string(root().join("skills").join(skill)).unwrap(),
+                "{dir}/{skill}"
+            );
+        }
+    }
+    // Each skill is listed in the section by its name.
+    assert!(agents.contains("- `first-fix-diagnostic` (`.agents/skills/first-fix-diagnostic/SKILL.md`): "));
+
+    // Now everything matches: --check exits 0, a rerun writes nothing, and `first check` has no hint.
+    let current = init(&project, &["--check"]);
+    assert_eq!(current.status.code(), Some(0), "{}", text(&current.stderr));
+    let again = init(&project, &[]);
+    assert_eq!(
+        text(&again.stdout),
+        "AGENTS.md, .mcp.json and the agent skills are up to date\n"
+    );
+    assert_eq!(read("AGENTS.md"), agents);
+    let checked = first().arg("check").arg(&project).output().unwrap();
+    assert!(checked.status.success());
+    assert!(
+        !text(&checked.stderr).contains("first init"),
+        "{}",
+        text(&checked.stderr)
+    );
+
+    // The config changes: `first check` and `first build` say so in one line, --check fails for CI
+    // and names the file, and nothing but the section is rewritten.
+    let schema = project.join("first/schema.ts");
+    let source = std::fs::read_to_string(&schema).unwrap();
+    std::fs::write(
+        &schema,
+        format!("{source}\nexport const recipes = table({{ title: text() }});\n"),
+    )
+    .unwrap();
+    std::fs::write(project.join("AGENTS.md"), format!("{agents}\n## After\n\nMine too.\n")).unwrap();
+    let hint = "hint: AGENTS.md and the agent skills no longer match this project or this compiler; run first init to update them\n";
+    for command in ["check", "build"] {
+        let ran = first().arg(command).arg(&project).output().unwrap();
+        assert!(ran.status.success(), "{}", text(&ran.stderr));
+        assert_eq!(
+            text(&ran.stderr).matches("first init").count(),
+            1,
+            "{}",
+            text(&ran.stderr)
+        );
+        assert!(text(&ran.stderr).contains(hint), "{}", text(&ran.stderr));
+    }
+    // --quiet and --json keep their output as it was.
+    let quiet = first().arg("build").arg(&project).arg("--quiet").output().unwrap();
+    assert!(!text(&quiet.stderr).contains("first init"));
+    let json = first().arg("check").arg(&project).arg("--json").output().unwrap();
+    assert!(json.stderr.is_empty(), "{}", text(&json.stderr));
+    let stale = init(&project, &["--check"]);
+    assert_eq!(stale.status.code(), Some(1));
+    assert_eq!(
+        text(&stale.stderr),
+        "out of date: AGENTS.md\nrun first init to update them\n"
+    );
+    let updated = init(&project, &[]);
+    assert_eq!(text(&updated.stdout), "wrote AGENTS.md\n");
+    let agents = read("AGENTS.md");
+    assert!(agents.starts_with("# House rules\n\nTabs, not spaces.\n\n<!-- first:begin -->\n"));
+    assert!(
+        agents.ends_with("<!-- first:end -->\n\n## After\n\nMine too.\n"),
+        "{agents}"
+    );
+    assert_eq!(agents.matches("<!-- first:begin -->").count(), 1);
+    assert!(agents.contains("| `recipes` | table |"));
+    assert_eq!(init(&project, &["--check"]).status.code(), Some(0));
+
+    // A skill edited in the project is out of date like any other file, and is written back.
+    let skill = project.join(".claude/skills/first-fix-diagnostic/SKILL.md");
+    std::fs::write(&skill, "changed").unwrap();
+    let edited = init(&project, &["--check"]);
+    assert_eq!(
+        text(&edited.stderr),
+        "out of date: .claude/skills/first-fix-diagnostic/SKILL.md\nrun first init to update them\n"
+    );
+    assert!(init(&project, &[]).status.success());
+    assert_eq!(
+        std::fs::read_to_string(&skill).unwrap(),
+        std::fs::read_to_string(root().join("skills/first-fix-diagnostic/SKILL.md")).unwrap()
+    );
+
+    // A `first` server the author configured themselves is theirs: it is never replaced.
+    std::fs::write(
+        project.join(".mcp.json"),
+        r#"{"mcpServers":{"first":{"command":"/opt/first","args":["mcp","--allow-writes"]}}}"#,
+    )
+    .unwrap();
+    assert_eq!(init(&project, &["--check"]).status.code(), Some(0));
+    assert!(init(&project, &[]).status.success());
+    assert_eq!(
+        read(".mcp.json"),
+        r#"{"mcpServers":{"first":{"command":"/opt/first","args":["mcp","--allow-writes"]}}}"#
+    );
+}
+
+#[test]
+fn init_refuses_what_it_cannot_describe_and_leaves_other_projects_without_a_hint() {
+    // A project that never ran `first init` gets no hint about it.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("first.config.ts"), CONFIG).unwrap();
+    let checked = first().arg("check").arg(dir.path()).output().unwrap();
+    assert!(checked.status.success());
+    assert!(
+        !text(&checked.stderr).contains("first init"),
+        "{}",
+        text(&checked.stderr)
+    );
+    // Nor does one whose AGENTS.md is the author's alone.
+    std::fs::write(dir.path().join("AGENTS.md"), "# Mine\n").unwrap();
+    let checked = first().arg("check").arg(dir.path()).output().unwrap();
+    assert!(
+        !text(&checked.stderr).contains("first init"),
+        "{}",
+        text(&checked.stderr)
+    );
+
+    // A project that does not compile has nothing to describe: the diagnostic, exit 1, no files.
+    std::fs::write(
+        dir.path().join("first.config.ts"),
+        CONFIG.replace("title: text()", "title: nothing()"),
+    )
+    .unwrap();
+    let broken = init(dir.path(), &[]);
+    assert_eq!(broken.status.code(), Some(1));
+    assert!(
+        text(&broken.stderr).contains("first.config.ts:2:"),
+        "{}",
+        text(&broken.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("AGENTS.md")).unwrap(),
+        "# Mine\n"
+    );
+    assert!(!dir.path().join(".mcp.json").exists() && !dir.path().join(".agents").exists());
+    std::fs::write(dir.path().join("first.config.ts"), CONFIG).unwrap();
+
+    // One marker without the other: the author's file is not guessed at.
+    std::fs::write(dir.path().join("AGENTS.md"), "# Mine\n<!-- first:begin -->\nhalf\n").unwrap();
+    let half = init(dir.path(), &[]);
+    assert_eq!(half.status.code(), Some(1));
+    assert!(
+        text(&half.stderr).contains("without the other"),
+        "{}",
+        text(&half.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("AGENTS.md")).unwrap(),
+        "# Mine\n<!-- first:begin -->\nhalf\n"
+    );
+    // An .mcp.json that is not JSON is the author's to fix; nothing is written over it.
+    std::fs::write(dir.path().join("AGENTS.md"), "# Mine\n").unwrap();
+    std::fs::write(dir.path().join(".mcp.json"), "{ not json").unwrap();
+    let invalid = init(dir.path(), &[]);
+    assert_eq!(invalid.status.code(), Some(1));
+    assert!(
+        text(&invalid.stderr).contains(".mcp.json is not valid JSON"),
+        "{}",
+        text(&invalid.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join(".mcp.json")).unwrap(),
+        "{ not json"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("AGENTS.md")).unwrap(),
+        "# Mine\n"
+    );
+
+    // No project, and an option it does not take.
+    let empty = tempfile::tempdir().unwrap();
+    let none = init(empty.path(), &[]);
+    assert_eq!(none.status.code(), Some(1));
+    assert!(
+        text(&none.stderr).starts_with("no first.config.ts in "),
+        "{}",
+        text(&none.stderr)
+    );
+    assert_eq!(std::fs::read_dir(empty.path()).unwrap().count(), 0);
+    let bad = first().args(["init", "--force"]).output().unwrap();
+    assert_eq!(bad.status.code(), Some(2));
+    assert!(text(&bad.stderr).contains("usage: first init [dir] [--check]"));
+}
+
+/// The server `.mcp.json` names is one a client can start: the command as written, run in the
+/// project with the project's own `first` in `node_modules/.bin`, answers `server/discover`.
+#[cfg(unix)]
+#[test]
+fn init_configures_an_mcp_server_that_starts_from_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("kit");
+    copy_tree(&agent_kit(), &project);
+    assert!(init(&project, &[]).status.success());
+    let bin = project.join("node_modules/.bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_first"), bin.join("first")).unwrap();
+    let config: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(project.join(".mcp.json")).unwrap()).unwrap();
+    let server = &config["mcpServers"]["first"];
+    let mut command = Command::new(server["command"].as_str().unwrap());
+    command
+        .args(
+            server["args"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|arg| arg.as_str().unwrap()),
+        )
+        .current_dir(&project);
+    let request = serde_json::json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": { "name": "schema", "arguments": {}, "_meta": modern_meta() } });
+    let out = run_with_stdin(command, &format!("{request}\n"));
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let answer: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", text(&out.stdout)));
+    assert_eq!(answer["result"]["structuredContent"]["name"], "agentkit", "{answer}");
+}
+
+/// The skills under skills/, in the layout of github.com/WordPress/agent-skills: one directory per
+/// skill with a SKILL.md whose front matter has `name` (the directory's name), `description` and
+/// `compatibility`, and whose body has that repository's sections.
+#[test]
+fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_that_exist() {
+    let table: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root().join("runtime/First/Cli/commands.json")).unwrap()).unwrap();
+    let commands: Vec<&str> = ["build", "site"]
+        .iter()
+        .flat_map(|group| table[*group].as_array().unwrap())
+        .map(|row| row["name"].as_str().unwrap())
+        .collect();
+    let mut names = Vec::new();
+    for entry in std::fs::read_dir(root().join("skills")).unwrap() {
+        let dir = entry.unwrap().path();
+        let name = dir.file_name().unwrap().to_str().unwrap().to_string();
+        let skill = std::fs::read_to_string(dir.join("SKILL.md")).unwrap_or_else(|_| panic!("{name}/SKILL.md"));
+        let rest = skill
+            .strip_prefix("---\n")
+            .unwrap_or_else(|| panic!("{name}: front matter first"));
+        let (front, body) = rest
+            .split_once("\n---\n")
+            .unwrap_or_else(|| panic!("{name}: front matter ends"));
+        let value = |key: &str| {
+            front
+                .lines()
+                .find_map(|line| line.strip_prefix(key)?.strip_prefix(": "))
+                .unwrap_or_else(|| panic!("{name}: {key} in the front matter"))
+                .trim_matches('"')
+        };
+        assert_eq!(value("name"), name);
+        assert!(
+            name.len() <= 64
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        );
+        assert!(
+            value("description").starts_with("Use when ") && value("description").len() <= 1024,
+            "{name}"
+        );
+        assert!(value("compatibility").len() <= 500, "{name}");
+        // The compatibility line names the versions this compiler targets.
+        let series = env!("CARGO_PKG_VERSION").rsplit_once('.').unwrap().0;
+        assert!(
+            value("compatibility").contains(&format!("First {series} ")),
+            "{name}: {}",
+            value("compatibility")
+        );
+        for section in [
+            "## When to use",
+            "## Inputs required",
+            "## Procedure",
+            "## Verification",
+            "## Failure modes / debugging",
+            "## Escalation",
+        ] {
+            assert!(body.contains(&format!("\n{section}\n")), "{name}: {section}");
+        }
+        // Short: depth is in the documentation it links.
+        assert!(skill.lines().count() <= 120, "{name}: {} lines", skill.lines().count());
+
+        // Every `first <command>` it names, in inline code or in a shell block, is in the command
+        // table (or is `first help`).
+        let mut named = Vec::new();
+        for (i, part) in skill.split("```").enumerate() {
+            if i % 2 == 1 {
+                named.extend(part.lines().map(str::trim).filter(|line| line.starts_with("first ")));
+            } else {
+                named.extend(
+                    part.split('`')
+                        .skip(1)
+                        .step_by(2)
+                        .filter(|code| code.starts_with("first ")),
+                );
+            }
+        }
+        assert!(!named.is_empty(), "{name} names no command");
+        for usage in named {
+            let words: Vec<&str> = usage.split_whitespace().skip(1).take(2).collect();
+            let two = words.join(" ");
+            assert!(
+                words[0] == "help" || commands.contains(&words[0]) || commands.contains(&two.as_str()),
+                "{name} names `{usage}`, which is not in the command table"
+            );
+        }
+        // Every documentation page it points to is committed.
+        for (at, _) in skill.match_indices("`docs") {
+            let path: &str = skill[at + 1..].split('`').next().unwrap();
+            if path.ends_with(".md") || path.ends_with(".mdx") {
+                assert!(root().join(path).is_file(), "{name} points to {path}");
+            }
+        }
+        names.push(name);
+    }
+    names.sort();
+    // One skill per task an agent performs.
+    assert_eq!(
+        names,
+        [
+            "first-add-kind",
+            "first-add-page",
+            "first-connect-mcp",
+            "first-dev-site",
+            "first-fix-diagnostic",
+            "first-migrate",
+            "first-write-action"
+        ]
+    );
+}
+
+/// The TypeScript in the skills is what an agent will copy, so it has to compile: every fenced
+/// block that names its file (`// first/…`) is written to that path in a project, and `first check`
+/// accepts the project.
+#[test]
+fn the_code_in_the_skills_compiles_as_one_project() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(
+        project.path().join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"skills\" });\n",
+    )
+    .unwrap();
+    let mut written = Vec::new();
+    for skill in files_under(&root().join("skills")) {
+        let text = std::fs::read_to_string(root().join("skills").join(&skill)).unwrap();
+        let mut blocks = text.split("```");
+        blocks.next();
+        while let (Some(block), Some(_)) = (blocks.next(), blocks.next()) {
+            let Some((language, code)) = block.split_once('\n') else {
+                continue;
+            };
+            if !matches!(language.trim(), "ts" | "tsx") {
+                continue;
+            }
+            // Blocks sit inside a numbered list: drop the list's indentation.
+            let code: String = code
+                .lines()
+                .map(|line| line.strip_prefix("   ").unwrap_or(line))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let path = code
+                .lines()
+                .next()
+                .and_then(|first| first.strip_prefix("// "))
+                .map(|rest| rest.split([' ', ':']).next().unwrap())
+                .filter(|path| path.starts_with("first/"))
+                .unwrap_or_else(|| panic!("{skill}: a ts block names its file in its first line:\n{code}"));
+            let target = project.path().join(path);
+            assert!(!target.exists(), "{skill}: {path} is written by two blocks");
+            std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+            std::fs::write(&target, code.clone() + "\n").unwrap();
+            written.push(path.to_string());
+        }
+    }
+    assert!(written.len() >= 4, "{written:?}");
+    let checked = first().arg("check").arg(project.path()).output().unwrap();
+    assert!(checked.status.success(), "{written:?}\n{}", text(&checked.stderr));
+}
+
+/// `npm create @spacefast/first` ends with `first init`: a new project has the agent files, written
+/// by the same generator from the template's own config. `--no-install` here, so the compiler is
+/// the one `FIRST_BIN` names.
+#[test]
+fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("Field Notes");
+    let scaffolded = Command::new("node")
+        .arg(root().join("packages/create-first/bin/create-first.mjs"))
+        .arg(&project)
+        .arg("--no-install")
+        .env("FIRST_BIN", env!("CARGO_BIN_EXE_first"))
+        .output()
+        .expect("node");
+    assert!(scaffolded.status.success(), "{}", text(&scaffolded.stderr));
+    let said = text(&scaffolded.stdout);
+    assert!(said.contains("Created field-notes."), "{said}");
+    assert!(
+        said.contains("AGENTS.md, .mcp.json and the agent skills describe this project"),
+        "{said}"
+    );
+    assert!(!said.contains("npx first init  "), "nothing left to run: {said}");
+    // The section is about this project: the name the scaffolder gave it and the template's kind.
+    let agents = std::fs::read_to_string(project.join("AGENTS.md")).unwrap();
+    assert!(agents.starts_with("<!-- first:begin -->\n"), "{agents}");
+    assert!(
+        agents.contains("This project is the First app `field-notes`."),
+        "{agents}"
+    );
+    assert!(agents.contains("`/wp-json/mcp/first-field-notes`"), "{agents}");
+    let schema = first().arg("check").arg(&project).arg("--json").output().unwrap();
+    assert!(
+        schema.status.success(),
+        "the template compiles: {}",
+        text(&schema.stdout)
+    );
+    let mcp: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(project.join(".mcp.json")).unwrap()).unwrap();
+    assert_eq!(
+        mcp["mcpServers"]["first"]["args"],
+        serde_json::json!(["--no-install", "first", "mcp"])
+    );
+    assert_eq!(
+        files_under(&project.join(".agents/skills")),
+        files_under(&root().join("skills"))
+    );
+    assert_eq!(
+        files_under(&project.join(".claude/skills")),
+        files_under(&root().join("skills"))
+    );
+    // Exactly what `first init` writes: nothing is out of date.
+    let current = init(&project, &["--check"]);
+    assert_eq!(current.status.code(), Some(0), "{}", text(&current.stderr));
+    // The scaffolder's own files are as before.
+    assert!(project.join("first.config.ts").is_file() && project.join("package.json").is_file());
+
+    // A compiler that cannot do it (here: one that fails) does not undo the scaffold: the project
+    // is created and the output says what to run.
+    let other = dir.path().join("second");
+    let failing = dir.path().join("failing-first");
+    std::fs::write(&failing, "#!/bin/sh\nexit 3\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&failing, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let scaffolded = Command::new("node")
+        .arg(root().join("packages/create-first/bin/create-first.mjs"))
+        .arg(&other)
+        .arg("--no-install")
+        .env("FIRST_BIN", &failing)
+        .output()
+        .unwrap();
+    assert!(scaffolded.status.success(), "{}", text(&scaffolded.stderr));
+    assert!(
+        text(&scaffolded.stdout).contains("  npx first init "),
+        "{}",
+        text(&scaffolded.stdout)
+    );
+    assert!(other.join("first.config.ts").is_file() && !other.join("AGENTS.md").exists());
+}

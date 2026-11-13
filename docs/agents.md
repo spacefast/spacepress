@@ -10,11 +10,59 @@ First has two MCP servers, for two different jobs:
 | What it answers | the project's schema, compiler diagnostics, First's documentation, the command table, the dev site | one tool per collection operation and action |
 | Access | the local files, and the local dev site | a WordPress user's access rules |
 
+## Set a project up for coding agents: `first init`
+
+`first init [dir]` writes what a coding agent needs into the project. A project
+made with `npm create @spacefast/first` already has them: the scaffolder runs
+`first init` once the compiler is installed.
+
+| File | What it is |
+|---|---|
+| `AGENTS.md` | A section between `<!-- first:begin -->` and `<!-- first:end -->`: this project's kinds with their fields, access rules and API paths, its actions, jobs, pages and routes, the roles, the site's endpoints, every `first` command, and the skills. |
+| `.mcp.json` | A server named `first` that starts `first mcp` (below). |
+| `.agents/skills/`, `.claude/skills/` | The skills this compiler carries, one per task (below). |
+
+The section is generated from the compiled project and from the command table,
+so it describes this project, not First in general. Commit all of it.
+
+The skills are in the layout of
+[WordPress/agent-skills](https://github.com/WordPress/agent-skills): a
+directory per skill with a `SKILL.md` whose front matter says when to use it.
+Each is a short procedure that links to the documentation for depth:
+
+| Skill | Task |
+|---|---|
+| `first-add-kind` | Add a kind or a field, a `ref()`, an access rule; rename or remove a field. |
+| `first-write-action` | Write an `action()` or a `job()`. |
+| `first-add-page` | Add a page, a layout or an HTTP route under `first/app/`. |
+| `first-fix-diagnostic` | Read a compiler diagnostic and fix its cause. |
+| `first-dev-site` | Run the local dev site and inspect it. |
+| `first-connect-mcp` | Connect an MCP client to a site's runtime endpoint. |
+| `first-migrate` | Convert a Zero 0.8 app, or import another CMS's schema. |
+
+- Text outside the two markers in `AGENTS.md` is yours. A rerun replaces the
+  section and nothing else.
+- A server already named `first` in `.mcp.json`, and every other server, is
+  left as it is.
+- The skill files are First's: a rerun writes them back as this compiler has them.
+- A project with its own `CLAUDE.md` should import the file with a line
+  `@AGENTS.md`; `first init` says so when it is missing.
+
+When the config or the compiler changes, the files go out of date. `first check`,
+`first build` and `first dev` then print one line:
+
+```text
+hint: AGENTS.md and the agent skills no longer match this project or this compiler; run first init to update them
+```
+
+Only a project that ran `first init` gets the hint. In CI, `first init --check`
+writes nothing, names each file that would change, and exits 1 when there is one.
+
 ## Develop a project with a coding agent: `first mcp`
 
 `first mcp [dir]` serves the project in `dir` (default: the current directory)
-to a coding agent on stdin and stdout. Register it with the agent you use. For
-Claude Code, in the project's `.mcp.json`:
+to a coding agent on stdin and stdout. `first init` registers it in `.mcp.json`.
+To register it by hand, for Claude Code, in the project's `.mcp.json`:
 
 ```json
 {

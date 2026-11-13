@@ -35,7 +35,8 @@ MIT AND GPL-2.0-or-later. The plugins written under
 first/dist/wp-content/plugins (first-runtime, first-identity, first-app-<name>) are
 GPL-2.0-or-later and each carries the license text. Files the compiler
 generates from your first.config.ts (schema.php, functions.php, migrations,
-first/_generated/db.d.ts, first/_generated/client/types.ts and schema.ts) are yours. The client's
+first/_generated/db.d.ts, first/_generated/openapi.json, first/_generated/client/types.ts and
+schema.ts) are yours. The client's
 index.ts and README.md are copied from runtime/client/ and stay MIT; the
 copy ships with its LICENSE.
 
@@ -51,3 +52,7 @@ Third-party code keeps its own license and is not relicensed by this file:
   package and its license. Rust dependencies are under their own permissive
   licenses, recorded in each crate's metadata and license files (Cargo.lock
   names the crates and versions).
+
+  tests/fixtures/openapi-3.1.schema.json is the OpenAPI Initiative's JSON
+  Schema for OpenAPI 3.1 documents (Apache-2.0), unmodified. A test validates
+  the generated openapi.json with it; no build ships it.

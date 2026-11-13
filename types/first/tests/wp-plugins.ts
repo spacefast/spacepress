@@ -19,6 +19,10 @@ defineConfig({ collections: {}, plugins });
 defineConfig({ collections: {}, admin: true });
 // @ts-expect-error admin is a boolean, not a settings object
 defineConfig({ collections: {}, admin: { menu: true } });
+// Runtime schema changes are a boolean opt-in.
+defineConfig({ collections: {}, runtimeSchema: true });
+// @ts-expect-error runtimeSchema is a boolean
+defineConfig({ collections: {}, runtimeSchema: "fields" });
 
 // @ts-expect-error URL archives require an authored checksum.
 const unpinned: WordPressPlugin = { version: "1.0", pluginData: { resource: "url", url: "https://example.org/plugin.zip" } };

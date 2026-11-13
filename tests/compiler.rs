@@ -397,8 +397,30 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "editor collection \"notes\" has no title",
         "first.config.ts:2:15",
     );
+    // Storage is chosen only by the builder: a collection can't ask for a table.
+    rejects(
+        "reject-collection-editor-false",
+        "collection() has no option `editor`",
+        "first.config.ts:2:60",
+    );
+    rejects(
+        "reject-collection-editor-false",
+        "help: storage follows the builder: collection() is always WordPress posts; use table() for a SQL table",
+        "first.config.ts:2:60",
+    );
     rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:15");
     rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:15");
+    // The client declares `Query<T>`: a global of that name would declare a second `Query` type.
+    rejects(
+        "reject-global-client-query",
+        "\"query\" is reserved by generated client types",
+        "first.config.ts:2:15",
+    );
+    rejects(
+        "reject-reserved-search",
+        "\"search\" is reserved",
+        "first.config.ts:2:16",
+    );
     rejects(
         "reject-post-type-length",
         "WordPress post types are limited to 20 characters and First prefixes `first_`",
@@ -568,6 +590,13 @@ fn rejects_hooks_that_would_misbehave_in_php() {
         "reject-list-operator",
         "`in` isn't supported on list columns; use `has`",
         "first.config.ts:5:",
+    );
+    // A structured field of a collection is spread over post meta and can't be compared. The fix
+    // names table(), where the same filter compiles; storage is never an option of collection().
+    rejects(
+        "reject-collection-group-filter",
+        "use isNull/isNotNull, or keep this data in a table()",
+        "first.config.ts:5:95",
     );
     // db.globals is typed from the global's fields, like db.query from a collection's.
     rejects(
@@ -1659,7 +1688,13 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
             .output()
             .unwrap()
     };
-    assert_eq!(sync(&["--check"]).status.code(), Some(2));
+    let check = sync(&["--check"]);
+    assert_eq!(
+        check.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
     let first = sync(&[]);
     assert_eq!(
         first.status.code(),
@@ -2810,5 +2845,1246 @@ export default defineConfig({ name: "p", actions: { a: action({ access: "anyone"
     assert!(
         projections < 5 * facts,
         "the effects solver repeats work: {projections} projections for {facts} facts"
+    );
+}
+
+/// A request to the facade with any body and headers: (status, content type, body text).
+fn api(
+    server: &Server,
+    method: &str,
+    path: &str,
+    user: Option<&str>,
+    headers: &[(&str, &str)],
+    body: &[u8],
+) -> (u16, String, String) {
+    let mut s = TcpStream::connect(("127.0.0.1", server.port)).unwrap();
+    let mut head = format!(
+        "{method} /__first/api/v1{path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: {}\r\n",
+        body.len()
+    );
+    if let Some(user) = user {
+        head += &format!(
+            "Authorization: Basic {}\r\n",
+            base64(server.credential(user).as_bytes())
+        );
+    }
+    if !headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+    {
+        head += "Content-Type: application/json\r\n";
+    }
+    for (name, value) in headers {
+        head += &format!("{name}: {value}\r\n");
+    }
+    // One write: php -S rejects requests whose head arrives in pieces.
+    let mut request = (head + "\r\n").into_bytes();
+    request.extend_from_slice(body);
+    s.write_all(&request).unwrap();
+    let mut raw = Vec::new();
+    s.read_to_end(&mut raw).unwrap();
+    let raw = String::from_utf8_lossy(&raw).into_owned();
+    let (head, text) = raw.split_once("\r\n\r\n").unwrap_or((raw.as_str(), ""));
+    let status: u16 = head
+        .get(9..12)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| panic!("bad response to {method} {path}: {raw:?}"));
+    let content_type = head
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-type")
+                .then(|| value.trim().to_string())
+        })
+        .unwrap_or_default();
+    (status, content_type, text.to_string())
+}
+
+/// `first build` writes the app's API as an OpenAPI 3.1 document (spec §7), and the document is
+/// true: it validates against the OpenAPI 3.1 schema, and every answer of a real WordPress site to
+/// a request the document describes matches the response schema the document gives for that
+/// operation and status. The fixture has one of everything the API serves, and every operation in
+/// the document is called at least once.
+#[test]
+fn the_openapi_document_describes_what_the_api_answers() {
+    use serde_json::{Value, json};
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("openapi");
+    copy(&root().join("tests/fixtures/openapi"), &project);
+    let out = first().arg("build").arg(&project).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let text = std::fs::read_to_string(project.join("first/_generated/openapi.json")).unwrap();
+    let document: Value = serde_json::from_str(&text).unwrap();
+
+    // The document is an OpenAPI 3.1 document (the schema OpenAPI publishes for 3.1), and each
+    // schema in it compiles as JSON Schema 2020-12 with every `$ref` resolved.
+    const DOCUMENT: &str = "https://first.test/openapi.json";
+    let mut schemas = boon::Schemas::new();
+    let mut compiler = boon::Compiler::new();
+    compiler.set_default_draft(boon::Draft::V2020_12);
+    let meta: Value =
+        serde_json::from_slice(&std::fs::read(root().join("tests/fixtures/openapi-3.1.schema.json")).unwrap()).unwrap();
+    let meta_id = meta["$id"].as_str().unwrap().to_string();
+    compiler.add_resource(&meta_id, meta).unwrap();
+    // Answers are checked against the document read strictly: an object schema that lists its
+    // properties allows no others, so a field the API returns and the document leaves out fails
+    // here. (The published document stays open, as a client should tolerate a new field.)
+    fn closed(schema: &mut Value, field_map: bool) {
+        match schema {
+            Value::Object(map) => {
+                if !field_map
+                    && map.get("properties").is_some_and(Value::is_object)
+                    && !map.contains_key("additionalProperties")
+                {
+                    map.insert("additionalProperties".into(), Value::Bool(false));
+                }
+                for (key, child) in map.iter_mut() {
+                    closed(child, !field_map && key == "properties");
+                }
+            }
+            Value::Array(items) => items.iter_mut().for_each(|item| closed(item, false)),
+            _ => {}
+        }
+    }
+    let mut strict = document.clone();
+    closed(&mut strict, false);
+    compiler.add_resource(DOCUMENT, strict).unwrap();
+    let openapi = compiler.compile(&meta_id, &mut schemas).unwrap();
+    if let Err(error) = schemas.validate(&document, openapi) {
+        panic!("first/_generated/openapi.json is not an OpenAPI 3.1 document:\n{error:#}");
+    }
+    assert_eq!(document["openapi"], "3.1.0");
+    // Every named schema is valid JSON Schema, the ones only requests use included.
+    for name in document["components"]["schemas"].as_object().unwrap().keys() {
+        compiler
+            .compile(&format!("{DOCUMENT}#/components/schemas/{name}"), &mut schemas)
+            .unwrap_or_else(|e| panic!("components.schemas.{name}: {e}"));
+    }
+    let mut ids = std::collections::HashSet::new();
+    for item in document["paths"].as_object().unwrap().values() {
+        for operation in item.as_object().unwrap().values() {
+            let id = operation["operationId"].as_str().unwrap();
+            assert!(ids.insert(id.to_string()), "two operations are named {id}");
+        }
+    }
+
+    // Running twice writes the same bytes: the document is committed, so it must not churn.
+    let again = first().arg("build").arg(&project).output().unwrap();
+    assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
+    assert_eq!(
+        std::fs::read_to_string(project.join("first/_generated/openapi.json")).unwrap(),
+        text
+    );
+
+    let pointer = |s: &str| s.replace('~', "~0").replace('/', "~1");
+    // Every operation, by `METHOD path`, with the ones a request has matched.
+    let mut operations: std::collections::BTreeMap<String, bool> = std::collections::BTreeMap::new();
+    for (path, item) in document["paths"].as_object().unwrap() {
+        for method in item.as_object().unwrap().keys() {
+            operations.insert(format!("{} {path}", method.to_uppercase()), false);
+        }
+    }
+    let templates: Vec<String> = document["paths"].as_object().unwrap().keys().cloned().collect();
+    // The path template a request path belongs to: a literal segment wins over a parameter.
+    let template_of = |path: &str| -> String {
+        let path = path.split('?').next().unwrap();
+        let segments: Vec<&str> = path.split('/').collect();
+        let mut best: Option<(usize, &String)> = None;
+        for template in &templates {
+            let parts: Vec<&str> = template.split('/').collect();
+            if parts.len() != segments.len() {
+                continue;
+            }
+            let mut literals = 0;
+            let matches = parts.iter().zip(&segments).all(|(part, segment)| {
+                if part.starts_with('{') {
+                    !segment.is_empty()
+                } else {
+                    literals += 1;
+                    part == segment
+                }
+            });
+            if matches && best.is_none_or(|(n, _)| literals > n) {
+                best = Some((literals, template));
+            }
+        }
+        best.unwrap_or_else(|| panic!("the document has no path for {path}"))
+            .1
+            .clone()
+    };
+
+    let content = project.join("first/dist/wp-content");
+    let mut child = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("serve")
+        .arg(&content)
+        .env("FIRST_WP_IDENTITY", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .expect("php");
+    let mut line = String::new();
+    std::io::BufReader::new(child.stdout.take().unwrap())
+        .read_line(&mut line)
+        .expect("the served site's description");
+    let served: Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("serve: {line}"));
+    let server = Server {
+        child,
+        port: served["url"]
+            .as_str()
+            .unwrap()
+            .rsplit(':')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap(),
+        users: served["users"].clone(),
+        as_user: None,
+        dir: served["dir"].as_str().unwrap().to_string(),
+    };
+
+    // One request: the answer must be the status expected, in the content type the document gives
+    // that status, and match its schema. Returns the decoded JSON body (null for other types).
+    let mut check = |method: &str,
+                     path: &str,
+                     user: Option<&str>,
+                     headers: &[(&str, &str)],
+                     body: &[u8],
+                     expect: u16|
+     -> Value {
+        let (status, content_type, text) = api(&server, method, path, user, headers, body);
+        assert_eq!(status, expect, "{method} {path} as {user:?}: {text}");
+        let template = template_of(path);
+        let key = format!("{method} {template}");
+        let covered = operations
+            .get_mut(&key)
+            .unwrap_or_else(|| panic!("the document has no operation {key}"));
+        *covered |= status < 300;
+        let operation = &document["paths"][&template][method.to_lowercase()];
+        if status < 300 {
+            // What was sent is what the document says the operation takes: each query argument is
+            // one of its parameters, and a JSON body matches its request schema.
+            let declared: Vec<&str> = operation["parameters"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|p| match p["$ref"].as_str() {
+                    Some(reference) => document.pointer(reference.trim_start_matches('#')).unwrap(),
+                    None => p,
+                })
+                .filter(|p| p["in"] == "query")
+                .map(|p| p["name"].as_str().unwrap())
+                .collect();
+            let declared_headers: Vec<String> = operation["parameters"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|p| p["in"] == "header")
+                .map(|p| p["name"].as_str().unwrap().to_ascii_lowercase())
+                .collect();
+            for (name, _) in headers {
+                let name = name.to_ascii_lowercase();
+                assert!(
+                    name == "content-type" || name == "authorization" || declared_headers.contains(&name),
+                    "{key} was sent the header `{name}`, which the document does not list: {declared_headers:?}"
+                );
+            }
+            for pair in path
+                .split_once('?')
+                .map(|(_, q)| q)
+                .unwrap_or("")
+                .split('&')
+                .filter(|p| !p.is_empty())
+            {
+                let name = pair.split('=').next().unwrap();
+                assert!(
+                    declared.contains(&name),
+                    "{key} was sent `{name}`, which the document does not list: {declared:?}"
+                );
+            }
+            let sent_json = !headers
+                .iter()
+                .any(|(name, _)| name.eq_ignore_ascii_case("content-type"));
+            if sent_json && !body.is_empty() {
+                let location = format!(
+                    "{DOCUMENT}#/paths/{}/{}/requestBody/content/application~1json/schema",
+                    pointer(&template),
+                    method.to_lowercase()
+                );
+                let schema = compiler
+                    .compile(&location, &mut schemas)
+                    .unwrap_or_else(|e| panic!("{key}: the request schema does not compile: {e}"));
+                let sent: Value = serde_json::from_slice(body).unwrap();
+                if let Err(error) = schemas.validate(&sent, schema) {
+                    panic!(
+                        "{method} {path} was accepted with a body the document does not describe:\n{error:#}\n{sent}"
+                    );
+                }
+            }
+        }
+        let responses = &operation["responses"];
+        let (code, described) = match responses.get(status.to_string()) {
+            Some(response) => (status.to_string(), response),
+            None => ("default".to_string(), &responses["default"]),
+        };
+        // A response is given inline or as the shared problem response.
+        let (base, described) = match described["$ref"].as_str() {
+            Some(reference) => (
+                reference.to_string(),
+                document.pointer(reference.trim_start_matches('#')).unwrap(),
+            ),
+            None => (
+                format!(
+                    "#/paths/{}/{}/responses/{code}",
+                    pointer(&template),
+                    method.to_lowercase()
+                ),
+                described,
+            ),
+        };
+        let media = content_type.split(';').next().unwrap().trim().to_string();
+        let types = described["content"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{key} {code} has no content"));
+        let media_key = if types.contains_key(&media) {
+            media.clone()
+        } else {
+            "*/*".to_string()
+        };
+        assert!(
+            types.contains_key(&media_key),
+            "{key} answered {status} as {media}, which the document does not list: {text}"
+        );
+        if media != "application/json" && media != "application/problem+json" {
+            return Value::Null;
+        }
+        let json: Value = serde_json::from_str(&text).unwrap_or_else(|_| panic!("{key}: not JSON: {text}"));
+        let location = format!("{DOCUMENT}{base}/content/{}/schema", pointer(&media_key));
+        let schema = compiler
+            .compile(&location, &mut schemas)
+            .unwrap_or_else(|e| panic!("{key} {code}: the response schema does not compile: {e}"));
+        if let Err(error) = schemas.validate(&json, schema) {
+            panic!(
+                "{method} {path} as {user:?} answered {status} with a body the document does not describe:\n{error:#}\n{text}"
+            );
+        }
+        json
+    };
+    let json = |value: Value| value.to_string().into_bytes();
+    let query = |name: &str, value: &Value| -> String {
+        let encoded: String = value
+            .to_string()
+            .bytes()
+            .map(|b| match b {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' => (b as char).to_string(),
+                other => format!("%{other:02X}"),
+            })
+            .collect();
+        format!("{name}={encoded}")
+    };
+
+    // The document itself, as the site serves it: the built file, with this site as its server.
+    let live = check("GET", "/openapi.json", None, &[], b"", 200);
+    assert_eq!(live["servers"][0]["url"], format!("{}/__first/api/v1", server.url()));
+    assert_eq!(live["paths"], document["paths"]);
+    assert_eq!(live["components"], document["components"]);
+    let described = check("GET", "/", None, &[], b"", 200);
+    assert_eq!(described["data"]["name"], "openapi");
+
+    // Collections: every operation, as the roles its rules name.
+    let ada = check(
+        "POST",
+        "/authors",
+        Some("editor"),
+        &[],
+        &json(json!({ "name": "Ada", "email": "ada@example.test" })),
+        201,
+    );
+    let author = ada["data"]["id"].as_i64().unwrap();
+    assert_eq!(ada["data"]["email"], "ada@example.test");
+    check("POST", "/authors", None, &[], &json(json!({ "name": "Nobody" })), 401);
+    check(
+        "POST",
+        "/authors",
+        Some("subscriber"),
+        &[],
+        &json(json!({ "name": "Nobody" })),
+        403,
+    );
+    check(
+        "POST",
+        "/authors",
+        Some("editor"),
+        &[],
+        &json(json!({ "email": "x@example.test" })),
+        422,
+    );
+    check("POST", "/authors", Some("editor"), &[], b"{", 400);
+    check(
+        "POST",
+        "/authors",
+        Some("editor"),
+        &[],
+        &json(json!({ "name": "Twin", "email": "ada@example.test" })),
+        409,
+    );
+    // A field only editors read is absent for everyone else, as the row schema says it may be.
+    let listed = check("GET", "/authors", None, &[], b"", 200);
+    assert!(listed["data"][0].get("email").is_none(), "{listed}");
+    assert_eq!(
+        check("GET", "/authors", Some("editor"), &[], b"", 200)["data"][0]["email"],
+        "ada@example.test"
+    );
+    check("GET", &format!("/authors/{author}"), None, &[], b"", 200);
+    check(
+        "PATCH",
+        &format!("/authors/{author}"),
+        Some("editor"),
+        &[],
+        &json(json!({ "name": "Ada L." })),
+        200,
+    );
+    let saved = check(
+        "GET",
+        &format!("/authors/{author}/revisions"),
+        Some("editor"),
+        &[],
+        b"",
+        200,
+    );
+    let first_save = saved["data"].as_array().unwrap().last().unwrap()["id"]
+        .as_i64()
+        .unwrap();
+    assert_eq!(
+        check(
+            "GET",
+            &format!("/authors/{author}/revisions/{first_save}"),
+            Some("editor"),
+            &[],
+            b"",
+            200
+        )["data"]["name"],
+        "Ada"
+    );
+    assert_eq!(
+        check(
+            "POST",
+            &format!("/authors/{author}/revisions/{first_save}/restore"),
+            Some("editor"),
+            &[],
+            b"",
+            200
+        )["data"]["name"],
+        "Ada"
+    );
+    check(
+        "PATCH",
+        &format!("/authors/{author}"),
+        Some("editor"),
+        &[],
+        &json(json!({ "name": "Ada L." })),
+        200,
+    );
+
+    let note = check(
+        "POST",
+        "/notes",
+        Some("editor"),
+        &[],
+        &json(json!({
+            "title": "First note", "body": "<p>Tea</p>", "rating": 4.5, "tags": ["home"], "author": author,
+            "seo": { "heading": "H" }, "steps": [{ "label": "one" }],
+            "sections": [{ "layout": "quote", "text": "q" }, { "layout": "rule" }],
+            "extra": { "source": "x" }, "due": "2026-12-01", "remindAt": "2026-12-01T10:00:00Z", "link": "https://example.test/a",
+        })),
+        201,
+    );
+    let id = note["data"]["id"].as_i64().unwrap();
+    let draft = check(
+        "POST",
+        "/notes",
+        Some("editor"),
+        &[],
+        &json(json!({ "title": "Draft", "status": "draft" })),
+        201,
+    );
+    let draft_id = draft["data"]["id"].as_i64().unwrap();
+    check(
+        "POST",
+        "/notes",
+        Some("editor"),
+        &[],
+        &json(json!({ "title": "Bad", "rating": 9 })),
+        422,
+    );
+    // A list with every query argument the document names; a draft is an editor's to see.
+    let with_author = check(
+        "GET",
+        "/notes?with=author,cover&orderBy=-id&limit=1&offset=0&search=First&status=published",
+        None,
+        &[],
+        b"",
+        200,
+    );
+    assert_eq!(with_author["data"][0]["author"]["name"], "Ada L.", "{with_author}");
+    let filtered = check(
+        "GET",
+        &format!(
+            "/notes?{}",
+            query(
+                "where",
+                &json!({ "rating": { "gte": 4 }, "tags": { "has": "home" }, "OR": [{ "pinned": false }] })
+            )
+        ),
+        None,
+        &[],
+        b"",
+        200,
+    );
+    assert_eq!(filtered["data"].as_array().unwrap().len(), 1, "{filtered}");
+    assert_eq!(
+        check("GET", "/notes", None, &[], b"", 200)["data"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let paged = check("GET", "/notes?limit=1", Some("editor"), &[], b"", 200);
+    let cursor = paged["cursor"].as_str().expect("a second page").to_string();
+    check(
+        "GET",
+        &format!("/notes?limit=1&cursor={cursor}"),
+        Some("editor"),
+        &[],
+        b"",
+        200,
+    );
+    check("GET", "/notes?limit=0", None, &[], b"", 400);
+    check("GET", "/notes?where=%7B", None, &[], b"", 400);
+    check("GET", &format!("/notes/{id}?with=author"), None, &[], b"", 200);
+    check("GET", "/notes/slug:first-note", None, &[], b"", 200);
+    check("GET", &format!("/notes/{id}?format=md"), None, &[], b"", 200);
+    check("GET", &format!("/notes/{draft_id}"), None, &[], b"", 404);
+    check(
+        "PATCH",
+        &format!("/notes/{id}"),
+        Some("editor"),
+        &[],
+        &json(json!({ "title": "First note, edited", "pinned": true })),
+        200,
+    );
+    check(
+        "PATCH",
+        &format!("/notes/{id}"),
+        Some("author"),
+        &[],
+        &json(json!({ "title": "No" })),
+        403,
+    );
+    let revisions = check("GET", &format!("/notes/{id}/revisions"), Some("editor"), &[], b"", 200);
+    let revision = revisions["data"].as_array().unwrap().last().unwrap()["id"]
+        .as_i64()
+        .unwrap();
+    assert_eq!(
+        check(
+            "GET",
+            &format!("/notes/{id}/revisions/{revision}"),
+            Some("editor"),
+            &[],
+            b"",
+            200
+        )["data"]["title"],
+        "First note"
+    );
+    assert_eq!(
+        check(
+            "POST",
+            &format!("/notes/{id}/revisions/{revision}/restore"),
+            Some("editor"),
+            &[],
+            b"",
+            200
+        )["data"]["title"],
+        "First note"
+    );
+    check("GET", &format!("/notes/{id}/revisions"), Some("author"), &[], b"", 404);
+    check(
+        "GET",
+        &format!("/authors/{author}/revisions/999999"),
+        Some("editor"),
+        &[],
+        b"",
+        404,
+    );
+    check("DELETE", &format!("/notes/{draft_id}"), Some("author"), &[], b"", 403);
+    check("DELETE", &format!("/notes/{draft_id}"), Some("editor"), &[], b"", 200);
+
+    // A table anyone may add to. Its delete is switched off, so the document has no such operation.
+    let tally = check(
+        "POST",
+        "/tallies",
+        None,
+        &[("Idempotency-Key", "tally-1")],
+        &json(json!({ "label": "a" })),
+        201,
+    );
+    // The document offers `Idempotency-Key` on this create: a repeat gives the first row, adds none.
+    let again = check(
+        "POST",
+        "/tallies",
+        None,
+        &[("Idempotency-Key", "tally-1")],
+        &json(json!({ "label": "a" })),
+        201,
+    );
+    assert_eq!(again["data"]["id"], tally["data"]["id"], "{again}");
+    // A post kind's create is core's insert and takes no key, so the document offers none there.
+    assert!(
+        !document["paths"]["/notes"]["post"]["parameters"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|p| p["name"] == "Idempotency-Key"),
+        "{}",
+        document["paths"]["/notes"]["post"]
+    );
+    let tally_id = tally["data"]["id"].as_i64().unwrap();
+    check(
+        "GET",
+        &format!(
+            "/tallies?orderBy=-count&{}",
+            query("where", &json!({ "count": { "gte": 0 } }))
+        ),
+        None,
+        &[],
+        b"",
+        200,
+    );
+    check("GET", &format!("/tallies/{tally_id}"), None, &[], b"", 200);
+    check(
+        "PATCH",
+        &format!("/tallies/{tally_id}"),
+        Some("editor"),
+        &[],
+        &json(json!({ "count": 3 })),
+        200,
+    );
+    check(
+        "PATCH",
+        &format!("/tallies/{tally_id}"),
+        None,
+        &[],
+        &json(json!({ "count": 4 })),
+        401,
+    );
+    assert!(document["paths"]["/tallies/{id}"].get("delete").is_none());
+    let (status, _, _) = api(
+        &server,
+        "DELETE",
+        &format!("/tallies/{tally_id}"),
+        Some("admin"),
+        &[],
+        b"",
+    );
+    assert_eq!(status, 405);
+
+    // Subscribed reads: one request answers each as the caller, and the token makes the next
+    // answer "not modified". `members` reads only the caller's own row: none for a visitor.
+    let queries = json!({ "queries": [
+        { "kind": "notes", "op": "list", "args": { "orderBy": { "id": "asc" }, "limit": 2 } },
+        { "kind": "notes", "op": "count" },
+        { "kind": "notes", "op": "paginate", "args": { "limit": 1 } },
+        { "kind": "notes", "op": "get", "id": id },
+        { "kind": "members", "op": "list" },
+    ] });
+    let first = check("POST", "/_live", None, &[], &json(queries.clone()), 200);
+    let results = first["data"]["results"].as_array().unwrap();
+    assert!(results.iter().all(|r| r["changed"] == true), "{first}");
+    assert_eq!(results[4]["data"], json!([]), "a visitor reads no member");
+    let mut again = queries.clone();
+    for (query, result) in again["queries"].as_array_mut().unwrap().iter_mut().zip(results) {
+        if let Some(token) = result.get("token") {
+            query["token"] = token.clone();
+        }
+    }
+    let second = check("POST", "/_live", None, &[], &json(again), 200);
+    assert_eq!(
+        second["data"]["results"][0],
+        json!({ "changed": false, "token": second["data"]["results"][0]["token"] })
+    );
+    check("POST", "/_live", None, &[], &json(json!({ "queries": [] })), 422);
+    check("POST", "/_live", None, &[], b"{", 400);
+    // The document's `maxItems` is the runtime's limit: that many are answered, one more is refused.
+    let max = document["paths"]["/_live"]["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+        ["queries"]["maxItems"]
+        .as_u64()
+        .unwrap() as usize;
+    let count = json!({ "kind": "notes", "op": "count" });
+    let at_max = check(
+        "POST",
+        "/_live",
+        None,
+        &[],
+        &json(json!({ "queries": vec![count.clone(); max] })),
+        200,
+    );
+    assert_eq!(at_max["data"]["results"].as_array().unwrap().len(), max);
+    check(
+        "POST",
+        "/_live",
+        None,
+        &[],
+        &json(json!({ "queries": vec![count; max + 1] })),
+        422,
+    );
+
+    // Users: a member reads and changes their own row only.
+    let me = check("GET", "/me", Some("subscriber"), &[], b"", 200);
+    let subscriber = me["data"]["id"].as_i64().unwrap();
+    assert_eq!(
+        (me["data"]["role"].as_str(), me["data"]["plan"].as_str()),
+        (Some("subscriber"), Some("free"))
+    );
+    assert_eq!(check("GET", "/me", None, &[], b"", 200)["data"], Value::Null);
+    assert_eq!(check("GET", "/members", None, &[], b"", 200)["data"], json!([]));
+    assert_eq!(
+        check("GET", "/members", Some("subscriber"), &[], b"", 200)["data"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        check("GET", "/members", Some("admin"), &[], b"", 200)["data"]
+            .as_array()
+            .unwrap()
+            .len()
+            > 1
+    );
+    check(
+        "GET",
+        &format!("/members/{subscriber}"),
+        Some("subscriber"),
+        &[],
+        b"",
+        200,
+    );
+    check(
+        "PATCH",
+        &format!("/members/{subscriber}"),
+        Some("subscriber"),
+        &[],
+        &json(json!({ "plan": "pro" })),
+        200,
+    );
+    let member = check(
+        "POST",
+        "/members",
+        Some("admin"),
+        &[],
+        &json(json!({ "email": "new@example.test", "name": "New", "password": "a-long-enough-password-1" })),
+        201,
+    );
+    check(
+        "POST",
+        "/members",
+        None,
+        &[],
+        &json(json!({ "email": "other@example.test", "name": "Other" })),
+        401,
+    );
+    check(
+        "POST",
+        "/members",
+        Some("editor"),
+        &[],
+        &json(json!({ "email": "other@example.test", "name": "Other" })),
+        403,
+    );
+    // The users kind also answers at `/users`, the spec's name for it.
+    assert_eq!(
+        check("GET", "/users", Some("subscriber"), &[], b"", 200)["data"][0]["id"],
+        subscriber
+    );
+    check(
+        "GET",
+        &format!("/users/{subscriber}"),
+        Some("subscriber"),
+        &[],
+        b"",
+        200,
+    );
+    check(
+        "PATCH",
+        &format!("/users/{subscriber}"),
+        Some("subscriber"),
+        &[],
+        &json(json!({ "plan": "free" })),
+        200,
+    );
+    let aliased = check(
+        "POST",
+        "/users",
+        Some("admin"),
+        &[],
+        &json(json!({ "email": "alias@example.test", "name": "Alias", "password": "a-long-enough-password-2" })),
+        201,
+    );
+    check(
+        "DELETE",
+        &format!("/users/{}", aliased["data"]["id"]),
+        Some("admin"),
+        &[],
+        b"",
+        200,
+    );
+    check(
+        "DELETE",
+        &format!("/members/{}", member["data"]["id"]),
+        Some("admin"),
+        &[],
+        b"",
+        200,
+    );
+
+    // Globals and actions.
+    assert_eq!(check("GET", "/site", None, &[], b"", 200)["data"]["perPage"], 10);
+    check(
+        "PATCH",
+        "/site",
+        Some("editor"),
+        &[],
+        &json(json!({ "motto": "Hi" })),
+        200,
+    );
+    check("PATCH", "/site", None, &[], &json(json!({ "motto": "No" })), 401);
+    check(
+        "PATCH",
+        "/site",
+        Some("editor"),
+        &[],
+        &json(json!({ "perPage": 500 })),
+        422,
+    );
+    assert_eq!(
+        check("POST", "/actions/greet", None, &[], &json(json!({ "who": "Ada" })), 200)["data"]["greeting"],
+        "Hello, Ada"
+    );
+    check("POST", "/actions/greet", None, &[], &json(json!({})), 422);
+    // A read-only action answers GET too, with no input, `?input=`, or its arguments in the query.
+    assert_eq!(check("GET", "/actions/tallyCount", None, &[], b"", 200)["data"], 3);
+    assert_eq!(
+        check(
+            "GET",
+            &format!("/actions/tallyCount?{}", query("input", &json!({}))),
+            None,
+            &[],
+            b"",
+            200
+        )["data"],
+        3
+    );
+    check("POST", "/actions/tallyCount", None, &[], b"{}", 200);
+    check("GET", "/actions/tallyCount?unknown=1", None, &[], b"", 422);
+    assert_eq!(
+        check(
+            "POST",
+            "/actions/stamp",
+            Some("editor"),
+            &[("Idempotency-Key", "stamp-1")],
+            &json(json!({ "label": "x" })),
+            200
+        )["data"],
+        json!(["x", 1])
+    );
+    check("POST", "/actions/stamp", None, &[], &json(json!({ "label": "x" })), 401);
+    check(
+        "POST",
+        "/actions/stamp",
+        Some("subscriber"),
+        &[],
+        &json(json!({ "label": "x" })),
+        403,
+    );
+
+    // Private files: the owner uploads and reads; the signed link alone downloads.
+    let boundary = "----first-openapi";
+    let multipart = |name: &str, mime: &str, bytes: &[u8]| -> Vec<u8> {
+        let mut body = format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\nContent-Type: {mime}\r\n\r\n").into_bytes();
+        body.extend_from_slice(bytes);
+        body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+        body
+    };
+    let form = format!("multipart/form-data; boundary={boundary}");
+    let file = check(
+        "POST",
+        "/files/decks",
+        Some("author"),
+        &[("Content-Type", &form)],
+        &multipart("deck.txt", "text/plain", b"slides"),
+        201,
+    );
+    let file_id = file["data"]["id"].as_i64().unwrap();
+    check(
+        "POST",
+        "/files/decks",
+        None,
+        &[("Content-Type", &form)],
+        &multipart("deck.txt", "text/plain", b"slides"),
+        401,
+    );
+    check("GET", &format!("/files/decks/{file_id}"), Some("author"), &[], b"", 200);
+    check(
+        "GET",
+        &format!("/files/decks/{file_id}"),
+        Some("subscriber"),
+        &[],
+        b"",
+        403,
+    );
+    let signed = file["data"]["url"].as_str().unwrap();
+    let download = &signed[signed.find("/files/decks/").unwrap()..];
+    check("GET", download, None, &[], b"", 200);
+    check(
+        "GET",
+        &format!("/files/decks/{file_id}/download?exp=1&sig=0"),
+        None,
+        &[],
+        b"",
+        403,
+    );
+    check(
+        "DELETE",
+        &format!("/files/decks/{file_id}"),
+        Some("author"),
+        &[],
+        b"",
+        200,
+    );
+
+    // Media: the library's rows, uploads and edits.
+    let png = std::fs::read(root().join("tests/fixtures/app-migrate/omitted/assets/logo.png")).unwrap();
+    let uploaded = check(
+        "POST",
+        "/media",
+        Some("author"),
+        &[("Content-Type", &form)],
+        &multipart("logo.png", "image/png", &png),
+        201,
+    );
+    let media = uploaded["data"]["id"].as_i64().unwrap();
+    check(
+        "POST",
+        "/media",
+        None,
+        &[("Content-Type", &form)],
+        &multipart("logo.png", "image/png", &png),
+        401,
+    );
+    assert_eq!(
+        check("GET", "/media", None, &[], b"", 200)["data"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    check("GET", &format!("/media/{media}"), None, &[], b"", 200);
+    assert_eq!(
+        check(
+            "PATCH",
+            &format!("/media/{media}"),
+            Some("editor"),
+            &[],
+            &json(json!({ "alt": "The logo" })),
+            200
+        )["data"]["alt"],
+        "The logo"
+    );
+    check(
+        "PATCH",
+        &format!("/media/{media}"),
+        Some("editor"),
+        &[],
+        &json(json!({ "nope": 1 })),
+        422,
+    );
+    // A media field holds an id, and the media row once `with` asks for it.
+    check(
+        "PATCH",
+        &format!("/notes/{id}"),
+        Some("editor"),
+        &[],
+        &json(json!({ "cover": media })),
+        200,
+    );
+    let covered = check("GET", &format!("/notes/{id}?with=cover"), None, &[], b"", 200);
+    assert_eq!(covered["data"]["cover"]["id"], media, "{covered}");
+    check("DELETE", &format!("/media/{media}"), Some("editor"), &[], b"", 200);
+    check("GET", "/media/999999", None, &[], b"", 404);
+
+    // WordPress's own kinds, in First's field names.
+    let hello = check("GET", "/posts?search=Hello", None, &[], b"", 200);
+    assert_eq!(hello["data"][0]["slug"], "hello-world", "{hello}");
+    let post = check(
+        "POST",
+        "/posts",
+        Some("editor"),
+        &[],
+        &json(json!({ "title": "Core post", "content": "Body", "status": "draft" })),
+        201,
+    );
+    let post_id = post["data"]["id"].as_i64().unwrap();
+    check("POST", "/posts", None, &[], &json(json!({ "title": "No" })), 401);
+    check("POST", "/posts", Some("editor"), &[], &json(json!({ "nope": 1 })), 422);
+    check("GET", "/posts/slug:hello-world", None, &[], b"", 200);
+    check("GET", "/posts/1?format=md", None, &[], b"", 200);
+    check("GET", &format!("/posts/{post_id}"), None, &[], b"", 401);
+    check(
+        "PATCH",
+        &format!("/posts/{post_id}"),
+        Some("editor"),
+        &[],
+        &json(json!({ "status": "published", "sticky": true })),
+        200,
+    );
+    check("DELETE", &format!("/posts/{post_id}"), Some("editor"), &[], b"", 200);
+    let page = check(
+        "POST",
+        "/pages",
+        Some("editor"),
+        &[],
+        &json(json!({ "title": "About", "order": 2 })),
+        201,
+    );
+    let page_id = page["data"]["id"].as_i64().unwrap();
+    check("GET", "/pages", None, &[], b"", 200);
+    check("GET", &format!("/pages/{page_id}"), None, &[], b"", 200);
+    check(
+        "PATCH",
+        &format!("/pages/{page_id}"),
+        Some("editor"),
+        &[],
+        &json(json!({ "title": "About us" })),
+        200,
+    );
+    check("DELETE", &format!("/pages/{page_id}"), Some("editor"), &[], b"", 200);
+    for kind in ["categories", "tags"] {
+        let term = check(
+            "POST",
+            &format!("/{kind}"),
+            Some("editor"),
+            &[],
+            &json(json!({ "name": "News" })),
+            201,
+        );
+        let term_id = term["data"]["id"].as_i64().unwrap();
+        check("GET", &format!("/{kind}"), None, &[], b"", 200);
+        check("GET", &format!("/{kind}/slug:news"), None, &[], b"", 200);
+        check("GET", &format!("/{kind}/{term_id}"), None, &[], b"", 200);
+        check(
+            "PATCH",
+            &format!("/{kind}/{term_id}"),
+            Some("editor"),
+            &[],
+            &json(json!({ "description": "The news" })),
+            200,
+        );
+        check("DELETE", &format!("/{kind}/{term_id}"), Some("editor"), &[], b"", 200);
+        check("GET", &format!("/{kind}/999999"), None, &[], b"", 404);
+    }
+    // Comments are closed on the post until someone opens them: core's refusal is a problem too.
+    // On a kind with `comments: true` (the fixture's notes) the create answers with the new comment.
+    let created = check(
+        "POST",
+        "/comments",
+        Some("editor"),
+        &[],
+        &json(json!({ "on": id, "content": "First!" })),
+        201,
+    );
+    assert_eq!(created["data"]["on"], id, "{created}");
+    check(
+        "POST",
+        "/comments",
+        Some("editor"),
+        &[],
+        &json(json!({ "on": 1, "content": "Nice" })),
+        403,
+    );
+    let comments = check("GET", "/comments", None, &[], b"", 200);
+    let comment = comments["data"][0]["id"].as_i64().unwrap();
+    check("GET", &format!("/comments/{comment}"), None, &[], b"", 200);
+    check(
+        "PATCH",
+        &format!("/comments/{comment}"),
+        Some("editor"),
+        &[],
+        &json(json!({ "content": "Edited" })),
+        200,
+    );
+    check("DELETE", &format!("/comments/{comment}"), Some("editor"), &[], b"", 200);
+    check("GET", "/menus", None, &[], b"", 200);
+    check("GET", "/menus/nowhere", None, &[], b"", 404);
+    assert_eq!(
+        check("GET", "/settings", None, &[], b"", 200)["data"]["timezone"],
+        "UTC"
+    );
+    assert_eq!(
+        check(
+            "PATCH",
+            "/settings",
+            Some("admin"),
+            &[],
+            &json(json!({ "tagline": "Notes" })),
+            200
+        )["data"]["tagline"],
+        "Notes"
+    );
+    check(
+        "PATCH",
+        "/settings",
+        Some("editor"),
+        &[],
+        &json(json!({ "tagline": "No" })),
+        403,
+    );
+
+    // Sign-in: First Identity is installed here, so a guest gets tokens and can sign out with them.
+    assert_eq!(
+        check("GET", "/auth/config", None, &[], b"", 200)["data"]["guests"],
+        true
+    );
+    let guest = check("POST", "/auth/guest", None, &[], b"", 201);
+    let bearer = format!("Bearer {}", guest["data"]["accessToken"].as_str().unwrap());
+    assert_eq!(
+        check("GET", "/me", None, &[("Authorization", &bearer)], b"", 200)["data"]["role"],
+        "guest"
+    );
+    check("DELETE", "/auth/session", None, &[("Authorization", &bearer)], b"", 200);
+    check("DELETE", "/auth/session", None, &[], b"", 401);
+
+    // Services and sync.
+    let found = check("GET", "/services/search?collection=notes&q=First", None, &[], b"", 200);
+    assert_eq!(found["data"]["results"][0]["id"], id, "{found}");
+    check("GET", "/services/search?collection=notes&q=F", None, &[], b"", 422);
+    check("GET", "/services/search?collection=nope&q=First", None, &[], b"", 404);
+    // The site-wide search, and `search` on a table, answer as the document says.
+    let site_wide = check(
+        "GET",
+        "/search?q=first&kinds=notes,tallies&limit=5",
+        None,
+        &[],
+        b"",
+        200,
+    );
+    assert_eq!(site_wide["data"]["results"][0]["kind"], "notes", "{site_wide}");
+    check("GET", "/search?q=%3F%3F", None, &[], b"", 400);
+    check("GET", "/tallies?search=a", None, &[], b"", 200);
+    let records = check("GET", "/sync/authors?first=10", Some("editor"), &[], b"", 200);
+    let record = &records["data"]["records"][0];
+    check("GET", "/sync/authors", None, &[], b"", 401);
+    check(
+        "POST",
+        "/sync/authors",
+        Some("editor"),
+        &[],
+        &json(json!({ "record": record["record"], "expect": record["digest"] })),
+        200,
+    );
+    check(
+        "POST",
+        "/sync/authors",
+        Some("editor"),
+        &[],
+        &json(json!({ "record": {} })),
+        422,
+    );
+    // A record the site has not seen creates a row: 201, with the stored digest. The site fills the
+    // defaults the file left out, so it answers with the record as stored.
+    let fresh = check(
+        "POST",
+        "/sync/authors",
+        Some("editor"),
+        &[],
+        &json(
+            json!({ "record": { "uid": "zr_0123456789abcdef0123", "fields": { "name": "Synced" }, "body": null }, "expect": "absent" }),
+        ),
+        201,
+    );
+    assert_eq!(
+        (
+            fresh["data"]["status"].as_str(),
+            fresh["data"]["record"]["fields"]["name"].as_str()
+        ),
+        (Some("normalized"), Some("Synced")),
+        "{fresh}"
+    );
+    check(
+        "POST",
+        "/sync/authors/convert",
+        Some("editor"),
+        &[],
+        &json(json!({ "text": "# Hi", "direction": "toBlocks" })),
+        200,
+    );
+    check(
+        "POST",
+        "/sync/authors/merge",
+        Some("editor"),
+        &[],
+        &json(json!({ "base": "a\n", "ours": "a\nb\n", "theirs": "a\n" })),
+        200,
+    );
+    check(
+        "POST",
+        "/sync/authors/trash",
+        Some("subscriber"),
+        &[],
+        &json(json!({ "uid": record["record"]["uid"], "expect": record["digest"] })),
+        403,
+    );
+    check("DELETE", &format!("/authors/{author}"), Some("editor"), &[], b"", 403);
+    let current = check("GET", "/sync/authors", Some("editor"), &[], b"", 200);
+    check(
+        "POST",
+        "/sync/authors/trash",
+        Some("admin"),
+        &[],
+        &json(json!({ "uid": record["record"]["uid"], "expect": current["data"]["records"][0]["digest"] })),
+        200,
+    );
+    let second = check(
+        "POST",
+        "/authors",
+        Some("editor"),
+        &[],
+        &json(json!({ "name": "Grace" })),
+        201,
+    );
+    check(
+        "DELETE",
+        &format!("/authors/{}", second["data"]["id"]),
+        Some("admin"),
+        &[],
+        b"",
+        200,
+    );
+    check("DELETE", &format!("/notes/{id}"), Some("editor"), &[], b"", 200);
+
+    // A path outside the document is a problem document as well.
+    let (status, content_type, _) = api(&server, "GET", "/nope", None, &[], b"");
+    assert_eq!((status, content_type.as_str()), (404, "application/problem+json"));
+
+    // A theme menu location needs a theme that registers one; the harness's block theme has none,
+    // so `GET /menus/{location}` is asserted above only as the 404 for a location that isn't there.
+    let uncalled: Vec<&String> = operations
+        .iter()
+        .filter(|(key, called)| !**called && key.as_str() != "GET /menus/{location}")
+        .map(|(key, _)| key)
+        .collect();
+    assert!(
+        uncalled.is_empty(),
+        "no request to these operations of the document succeeded, so their success schemas never ran: {uncalled:?}"
     );
 }

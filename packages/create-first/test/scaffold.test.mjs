@@ -13,11 +13,17 @@ const command = fileURLToPath(new URL('../bin/create-first.mjs', import.meta.url
 test('scaffolder explains usage and creates a portable app without touching occupied destinations', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'first-scaffold-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const run = (args) => exec(process.execPath, [command, ...args], { cwd: root });
+  // No compiler in reach: FIRST_BIN is the only one a --no-install scaffold can use.
+  const { FIRST_BIN: _, ...env } = process.env;
+  const run = (args) => exec(process.execPath, [command, ...args], { cwd: root, env });
   assert.match((await run(['--help'])).stdout, /npm run dev/);
   await assert.rejects(run(['example', '--unknown']), (error) => error.code === 1);
   const app = join(root, 'My -- app');
-  assert.match((await run([app, '--no-install'])).stdout, /Created my-app/);
+  const created = (await run([app, '--no-install'])).stdout;
+  assert.match(created, /Created my-app/);
+  // Without a compiler the agent files are one command away, and the output says which.
+  assert.match(created, /npm install\n  npx first init /);
+  assert.deepEqual((await readdir(app)).filter((name) => /AGENTS|mcp|agents|claude/i.test(name)), []);
   const manifest = JSON.parse(await readFile(join(app, 'package.json'), 'utf8'));
   assert.equal(manifest.name, 'my-app');
   assert.equal(manifest.scripts.dev, 'first dev');

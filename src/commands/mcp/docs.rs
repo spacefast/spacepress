@@ -202,8 +202,8 @@ pub(super) fn search(query: &str, limit: usize) -> Vec<Value> {
     hits.into_iter().take(limit).map(|(_, _, hit)| hit).collect()
 }
 
-/// One page, or one section of it with its subsections. A long page read whole answers with its
-/// outline and its opening, so a reader picks a section instead of receiving all of it.
+/// One page with its outline, or one section of it with its subsections. A long page read whole
+/// answers with its opening only, so a reader picks a section instead of receiving all of it.
 pub(super) fn read(name: &str, section: Option<&str>) -> Result<Value, String> {
     let (path, text) = find(name).ok_or_else(|| {
         format!("no documentation page {name}; docs_search finds pages, and resources/list names every one")
@@ -215,7 +215,7 @@ pub(super) fn read(name: &str, section: Option<&str>) -> Result<Value, String> {
         .filter(|s| (1..=3).contains(&s.level))
         .map(|s| s.heading)
         .collect();
-    let mut out = json!({ "path": path, "title": title(path, body, front_title) });
+    let mut out = json!({ "path": path, "title": title(path, body, front_title), "sections": outline });
     if let Some(wanted) = section {
         let at = all
             .iter()
@@ -247,7 +247,6 @@ pub(super) fn read(name: &str, section: Option<&str>) -> Result<Value, String> {
         }
         out["text"] = json!(body[..end].trim_end());
         out["truncated"] = json!(true);
-        out["sections"] = json!(outline);
         out["next"] = json!("read one section by passing its name as `section`");
     }
     Ok(out)

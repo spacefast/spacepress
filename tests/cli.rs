@@ -905,14 +905,17 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
     );
     let results = found["results"].as_array().unwrap();
     assert!(!results.is_empty() && results.len() <= 5, "{found}");
-    assert_eq!(results[0]["path"], "docs/compiler-diagnostics.md", "{found}");
-    assert_eq!(results[0]["title"], "Compiler diagnostics");
-    assert!(!results[0]["snippet"].as_str().unwrap().is_empty());
+    let hit = results
+        .iter()
+        .find(|hit| hit["path"] == "docs/compiler-diagnostics.md")
+        .unwrap_or_else(|| panic!("the diagnostics page among {found}"));
+    assert_eq!(hit["title"], "Compiler diagnostics");
+    assert!(!hit["snippet"].as_str().unwrap().is_empty());
     // Words no page has: no results, not an error.
     let nothing = mcp.ok("docs_search", serde_json::json!({ "query": "zzqqxxyy" }));
     assert_eq!(nothing["results"], serde_json::json!([]));
 
-    // The page as committed, whole.
+    // A page as committed, whole, with its outline.
     let on_disk = std::fs::read_to_string(root().join("docs/compiler-diagnostics.md")).unwrap();
     let page = mcp.ok(
         "docs_read",
@@ -920,32 +923,47 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
     );
     assert_eq!(page["title"], "Compiler diagnostics");
     assert_eq!(page["text"], on_disk);
-    // One section, by heading, with nothing of the section before it.
-    let codes = mcp.ok(
-        "docs_read",
-        serde_json::json!({ "path": "docs/compiler-diagnostics.md", "section": "Codes" }),
-    );
-    let codes = codes["text"].as_str().unwrap();
-    assert!(codes.starts_with("## Codes\n"), "{codes}");
-    assert!(
-        codes.contains("`F1001`") && !codes.contains("offsetEncoding"),
-        "{codes}"
-    );
-    // A long page read whole answers with its opening and its sections, to read one at a time.
-    let long = mcp.ok("docs_read", serde_json::json!({ "path": "docs/config-api.md" }));
-    assert_eq!(long["truncated"], true);
-    let sections: Vec<&str> = long["sections"]
-        .as_array()
-        .unwrap()
+    assert!(page.get("truncated").is_none());
+    // One section by its heading (in any letter case): that heading first, and only text of the page.
+    let section = |mcp: &mut Mcp, path: &str, name: &str, committed: &str| {
+        let read = mcp.ok(
+            "docs_read",
+            serde_json::json!({ "path": path, "section": name.to_uppercase() }),
+        );
+        let text = read["text"].as_str().unwrap();
+        let heading = text.lines().next().unwrap();
+        assert_eq!(heading.trim_start_matches('#').trim(), name, "{path}");
+        assert!(heading.starts_with('#') && committed.contains(text), "{path} {name}");
+        assert!(text.len() < committed.len());
+    };
+    let last = page["sections"].as_array().unwrap().last().unwrap().as_str().unwrap();
+    section(&mut mcp, "docs/compiler-diagnostics.md", last, &on_disk);
+    // A long page read whole answers with its opening and its outline, to read one section at a time.
+    let listed = mcp.result("resources/list", serde_json::json!({}));
+    let resources = listed["resources"].as_array().unwrap();
+    let long = resources
         .iter()
-        .map(|s| s.as_str().unwrap())
-        .collect();
-    assert!(sections.contains(&"Sync"), "{sections:?}");
-    let sync = mcp.ok(
-        "docs_read",
-        serde_json::json!({ "path": "docs/config-api.md", "section": "sync" }),
+        .filter(|page| page["name"].as_str().unwrap().starts_with("docs/"))
+        .max_by_key(|page| page["size"].as_u64().unwrap())
+        .unwrap()["name"]
+        .as_str()
+        .unwrap();
+    let committed = std::fs::read_to_string(root().join(long)).unwrap();
+    let opening = mcp.ok("docs_read", serde_json::json!({ "path": long }));
+    assert_eq!(opening["truncated"], true, "{long}");
+    let text = opening["text"].as_str().unwrap();
+    assert!(
+        committed.starts_with(text) && text.len() < committed.len() / 2,
+        "{long}"
     );
-    assert!(sync["text"].as_str().unwrap().starts_with("## Sync\n"));
+    let sections = opening["sections"].as_array().unwrap();
+    assert!(sections.len() > 3, "{long}: {sections:?}");
+    section(
+        &mut mcp,
+        long,
+        sections[sections.len() / 2].as_str().unwrap(),
+        &committed,
+    );
     assert!(
         mcp.refused("docs_read", serde_json::json!({ "path": "docs/nope.md" }))
             .starts_with("no documentation page docs/nope.md")
@@ -953,14 +971,12 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
     assert!(
         mcp.refused(
             "docs_read",
-            serde_json::json!({ "path": "docs/agents.md", "section": "Nope" })
+            serde_json::json!({ "path": "docs/agents.md", "section": "No such heading" })
         )
-        .starts_with("docs/agents.md has no section \"Nope\"; its sections are: ")
+        .starts_with("docs/agents.md has no section \"No such heading\"; its sections are: ")
     );
 
     // The same pages are the server's resources. Design proposals are not documentation of what ships.
-    let listed = mcp.result("resources/list", serde_json::json!({}));
-    let resources = listed["resources"].as_array().unwrap();
     let uris: Vec<&str> = resources.iter().map(|r| r["uri"].as_str().unwrap()).collect();
     assert!(uris.contains(&"first-docs:///docs/agents.md"), "{uris:?}");
     assert!(

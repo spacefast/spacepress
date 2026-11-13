@@ -408,6 +408,17 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "help: storage follows the builder: collection() is always WordPress posts; use table() for a SQL table",
         "first.config.ts:2:60",
     );
+    // On table() the same option gets its own builder's name and fix.
+    rejects(
+        "reject-table-editor-false",
+        "table() has no option `editor`",
+        "first.config.ts:2:55",
+    );
+    rejects(
+        "reject-table-editor-false",
+        "help: storage follows the builder: table() is always a SQL table; remove the option",
+        "first.config.ts:2:55",
+    );
     rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:15");
     rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:15");
     rejects(

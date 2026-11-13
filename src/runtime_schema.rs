@@ -19,6 +19,7 @@ use crate::schema::{ColType, Column, DefaultKind, RuntimeSchema};
 use crate::value::Value;
 use indexmap::IndexMap;
 use serde_json::{Map, Value as Json};
+use std::path::Path;
 
 /// Relative to the directory that holds `first.config.ts`.
 pub const LOCK: &str = "first/_generated/runtime-schema.json";
@@ -630,6 +631,59 @@ fn value(json: &Json) -> Value {
         Json::Array(items) => Value::array(items.iter().map(value).collect()),
         Json::Object(map) => Value::object(map.iter().map(|(k, v)| (k.clone(), value(v))).collect()),
     }
+}
+
+/// Which of the build's fields its compiled code can name: `first/app/references.php`.
+///
+/// The compiler keeps no record of which row fields a hook, action, job or page reads, so this is
+/// the safe approximation: a field is "referenced" when its name occurs as a word anywhere in a
+/// source file the build loaded: the project's own and every plugin package it imports. Generated
+/// files and the lock don't count. A name that occurs nowhere can't be read by compiled code except
+/// through a key computed at run time, and that reads "no value", which an optional field's type
+/// already allows.
+///
+/// So a field of the build may be hidden on the running site only when it is optional and not in
+/// this list; in practice, a field that entered the build through the lock and that no code uses
+/// yet. The site reads the file when a change is proposed and when a removed name is declared by
+/// the build it runs, never otherwise.
+pub fn references(schema: &crate::schema::Schema, root: &Path) -> Json {
+    let lock = root.join(LOCK);
+    let generated = root.join("first/_generated");
+    let sources = crate::diag::sources(|path| !path.starts_with(&generated) && path != lock);
+    let mut words = std::collections::HashSet::new();
+    for source in &sources {
+        let mut word = String::new();
+        for c in source.chars().chain([' ']) {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '$' {
+                word.push(c);
+            } else if !word.is_empty() {
+                words.insert(std::mem::take(&mut word));
+            }
+        }
+    }
+    let named = |fields: Vec<&String>| -> Json {
+        let mut names: Vec<&String> = fields.into_iter().filter(|name| words.contains(*name)).collect();
+        names.sort();
+        Json::from(names.into_iter().cloned().collect::<Vec<_>>())
+    };
+    let mut collections = Map::new();
+    for (name, c) in &schema.collections {
+        collections.insert(name.clone(), named(c.columns.keys().collect()));
+    }
+    let mut globals = Map::new();
+    for (name, g) in &schema.globals {
+        globals.insert(name.clone(), named(g.fields.keys().collect()));
+    }
+    let mut kinds: Vec<&String> = schema
+        .collections
+        .iter()
+        .map(|(name, c)| (name, &c.key))
+        .filter(|(name, key)| words.contains(*name) || words.contains(*key))
+        .map(|(name, _)| name)
+        .chain(schema.globals.keys().filter(|name| words.contains(*name)))
+        .collect();
+    kinds.sort();
+    serde_json::json!({ "format": FORMAT, "kinds": kinds, "collections": collections, "globals": globals })
 }
 
 /// A compiled column as the lock stores it: the array `schema.php` holds for it, as JSON. `None`

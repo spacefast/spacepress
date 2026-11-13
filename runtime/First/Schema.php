@@ -47,7 +47,7 @@ final class Schema
         }
 
         // `runtimeSchema: true` (spec §2.10): the site's active schema version adds its fields.
-        return new self(isset($raw['runtimeSchema']) ? RuntimeSchema\Loader::merge($raw) : $raw);
+        return new self(isset($raw['runtimeSchema']) ? RuntimeSchema\Loader::merge($raw, dirname($file)) : $raw);
     }
 
     /**

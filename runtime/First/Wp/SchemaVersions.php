@@ -57,7 +57,7 @@ final class SchemaVersions
     public function propose(mixed $changeSet): array
     {
         $state = Loader::state($this->plugin->schema->name());
-        $resolved = Changes::resolve(Loader::compiled(), $state, $changeSet);
+        $resolved = Changes::resolve(Loader::compiled(), $state, $changeSet, Loader::references());
 
         return ['parent' => (int) $state['version'], 'changes' => $resolved['changes'], 'effects' => $this->effects($resolved['changes'], $resolved['state'])];
     }
@@ -91,7 +91,7 @@ final class SchemaVersions
             if ((int) ($state['version'] ?? 0) !== $newest['version'] || ($state['format'] ?? null) !== Loader::FORMAT) {
                 $state = $this->replay($rows);
             }
-            $resolved = Changes::resolve(Loader::compiled(), $state, $changeSet);
+            $resolved = Changes::resolve(Loader::compiled(), $state, $changeSet, Loader::references());
             $row = ['app' => $app, 'version' => $parent + 1, 'parent' => $parent, 'format' => Loader::FORMAT, 'build' => $this->plugin->buildHash(),
                 'actor' => $actor, 'changes' => $resolved['changes'], 'createdAt' => gmdate('Y-m-d\TH:i:s.000\Z')];
             $row['hash'] = self::hashOf($newest['hash'], $row);
@@ -171,6 +171,93 @@ final class SchemaVersions
     }
 
     /**
+     * The site's active version as the project keeps it: `first/_generated/runtime-schema.json`
+     * (`first pull` writes exactly this). `first build` declares what it lists, so a build made from
+     * it contains the site's changes.
+     */
+    public function lock(): array
+    {
+        $rows = $this->list();
+        $state = $rows === [] ? Loader::EMPTY : $this->replay($rows);
+
+        return Changes::lock($state);
+    }
+
+    /**
+     * What a build that is about to run on this site would do to the site's runtime changes.
+     * Nothing is ever dropped: changes the build doesn't contain stay active and are listed in
+     * `kept`; names the site removed that the build's code uses are active again and listed in
+     * `restored`. `refusals` are the cases where the build and the site disagree about stored data: a
+     * name both declare with different stored types.
+     *
+     * @return array{site: array{version: int, hash: string}, build: array{version: int, hash: string}, kept: list<string>, restored: list<string>, refusals: list<array{code: string, name: string, message: string, fix: string}>}
+     */
+    public function deployCheck(): array
+    {
+        $rows = $this->list();
+        $state = $rows === [] ? Loader::EMPTY : $this->replay($rows);
+        $compiled = Loader::compiled();
+        $build = ['version' => (int) ($compiled['runtimeSchema']['version'] ?? 0), 'hash' => (string) ($compiled['runtimeSchema']['hash'] ?? '')];
+        $kept = $refusals = [];
+        $differs = static function (string $name, string $site, string $built) use (&$refusals): void {
+            $refusals[] = ['code' => 'runtime_type_differs', 'name' => $name,
+                'message' => "$name is a $site field on this site (a runtime schema change) and a $built field in this build; its stored values are {$site}s.",
+                'fix' => "Declare $name as $site in the project (run `first pull` to take the site's definition), or give the build's field another name."];
+        };
+        foreach (['collections' => 'columns', 'globals' => 'fields'] as $section => $inner) {
+            foreach ($state[$section] ?? [] as $kind => $entry) {
+                foreach ($entry[$inner] ?? [] as $field => $definition) {
+                    $built = $compiled[$section][$kind][$inner][$field] ?? null;
+                    if ($built === null) {
+                        $kept[] = "$kind.$field";
+                    } elseif ($built['type'] !== $definition['type']) {
+                        $differs("$kind.$field", $definition['type'], $built['type']);
+                    }
+                }
+            }
+            foreach ($state['added'][$section] ?? [] as $kind => $stored) {
+                if (!isset($compiled[$section][$kind])) {
+                    $kept[] = $kind;
+                    continue;
+                }
+                foreach ($stored['fields'] as $field => $definition) {
+                    $built = $compiled[$section][$kind][$inner][$field] ?? null;
+                    if ($built !== null && $built['type'] !== $definition['type']) {
+                        $differs("$kind.$field", $definition['type'], $built['type']);
+                    }
+                }
+            }
+            // A removed name keeps its values; a build that declares it again must read them as they were stored.
+            foreach ($state['removed'][$section] ?? [] as $kind => $removed) {
+                foreach ($removed['fields'] ?? [] as $field => $type) {
+                    $built = $compiled[$section][$kind][$inner][$field] ?? null;
+                    if ($built !== null && $built['type'] !== $type) {
+                        $differs("$kind.$field", $type, $built['type']);
+                    }
+                }
+            }
+        }
+        // What the site removed and this build declares in a way that can't be hidden: active again.
+        $restored = [];
+        $references = Loader::references();
+        foreach (['collections' => 'columns', 'globals' => 'fields'] as $section => $inner) {
+            foreach ($state['removed'][$section] ?? [] as $kind => $removed) {
+                if (($removed['kind'] ?? false) && isset($compiled[$section][$kind]) && !Loader::hidableKind($compiled, $references, $section, $kind)) {
+                    $restored[] = $kind;
+                }
+                foreach (($removed['kind'] ?? false) ? [] : $removed['fields'] ?? [] as $field => $_) {
+                    if (isset($compiled[$section][$kind][$inner][$field]) && !Loader::hidableField($compiled, $references, $section, $kind, (string) $field)) {
+                        $restored[] = "$kind.$field";
+                    }
+                }
+            }
+        }
+        $newest = $rows === [] ? ['version' => 0, 'hash' => ''] : end($rows);
+
+        return ['site' => ['version' => $newest['version'], 'hash' => $newest['hash']], 'build' => $build, 'kept' => $kept, 'restored' => $restored, 'refusals' => $refusals];
+    }
+
+    /**
      * The change set that undoes version `$version`: what a rollback applies as a new version. The
      * versions since must not build on it (a field added to a kind it added, say); the rules that
      * refuse such a change set say which.
@@ -194,7 +281,7 @@ final class SchemaVersions
     /** What each change does to stored data, for a person or an agent to read before applying. */
     private function effects(array $changes, array $after): array
     {
-        $schema = Loader::apply(Loader::compiled(), $after);
+        $schema = Loader::apply(Loader::compiled(), $after, Loader::references());
         // Counted by type name, so a collection that isn't registered (not added yet, or removed) is counted too.
         $items = static fn (string $postType): int => (int) $GLOBALS['wpdb']->get_var($GLOBALS['wpdb']->prepare(
             "SELECT COUNT(*) FROM {$GLOBALS['wpdb']->posts} WHERE post_type = %s AND post_status NOT IN ('auto-draft', 'inherit')", $postType));

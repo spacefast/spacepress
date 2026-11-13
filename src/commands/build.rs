@@ -104,6 +104,14 @@ fn write_new(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
     file.write_all(content.as_ref())
 }
 
+/// Compiles the project and writes `first/_generated/` only: what `first pull` runs after it
+/// changes the runtime schema lock, so the types and the typed client follow the lock. The error
+/// is the rendered diagnostic.
+pub(super) fn refresh(project: &Path) -> Result<(), String> {
+    let built = build(project, false).map_err(|d| diag::render(&d, project))?;
+    emit_project(project, &built).map_err(|e| e.to_string())
+}
+
 /// Writes `first/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks and the typed client.
 fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let migrations = migrations_dir(project);

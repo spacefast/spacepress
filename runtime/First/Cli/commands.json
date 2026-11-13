@@ -7,6 +7,7 @@
     { "name": "check", "args": "[dir] [--json] [--frozen]", "summary": "compile and report problems; write nothing" },
     { "name": "doctor", "args": "[dir] [--out dir] [--site url] [--json]", "summary": "check a build, and a running site (FIRST_TOKEN)" },
     { "name": "sync", "args": "[status | resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--json]", "summary": "content files <-> site records (FIRST_APP_PASSWORD or FIRST_TOKEN)" },
+    { "name": "pull", "args": "[dir] [--site url] [--check]", "summary": "write a site's runtime schema versions to first/_generated/runtime-schema.json (FIRST_APP_PASSWORD or FIRST_TOKEN)" },
     { "name": "abilities pull", "args": "[dir] --site url [--only vendor/*]", "summary": "lock a site's abilities into first/_generated/abilities.json (FIRST_APP_PASSWORD)" },
     { "name": "migrate app", "args": "--from zero-0.8 <capsule-dir> --out <new-dir> [--space id] [--dry-run] [--json]", "summary": "convert a Zero 0.8 app" },
     { "name": "migrate config", "args": "--from emdash|payload|sanity|zero <input> --out <new/first.config.ts>", "summary": "import another CMS's schema" },

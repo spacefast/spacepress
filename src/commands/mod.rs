@@ -3,6 +3,7 @@ pub(crate) mod build;
 pub(crate) mod deploy;
 mod dev;
 mod doctor;
+pub(crate) mod pull;
 pub(crate) mod site;
 mod sync;
 

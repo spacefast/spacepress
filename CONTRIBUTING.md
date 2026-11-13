@@ -39,8 +39,8 @@ showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
    and a build error where neither is sound.
 5. **Emit.** The output is MySQL migrations (diffed against one committed
    snapshot), `schema.php`, `functions.php`, `first/_generated/db.d.ts` (types `db` in your
-   editor), the typed client, and the PHP runtime: the database layer, the
-   REST API, the hook pipeline, and the JS-semantics helpers.
+   editor), the typed client, `first/_generated/openapi.json`, and the PHP runtime: the database
+   layer, the REST API, the hook pipeline, and the JS-semantics helpers.
 
 The crate is a library plus the `first` binary. The core (`loader`, `lower`, `eval`, `extract`,
 `compile`, `migrate`, `client`, `schema_php`, tied together by `pipeline`) does no I/O of its own:
@@ -85,7 +85,8 @@ owns (`src/commands/add.rs`). A module is one row in `MODULES` there plus its fi
 `docs/decisions/2026-11-13-first-add.md` for the rules every module keeps.
 
 `first build` writes new migrations to `first/_generated/migrations/`, the typed client to
-`first/_generated/client/`, `first/_generated/db.d.ts`, `first/_generated/wp-plugins.lock.json` and, with plugin
+`first/_generated/client/`, `first/_generated/db.d.ts`, `first/_generated/openapi.json`,
+`first/_generated/wp-plugins.lock.json` and, with plugin
 packages, `first/_generated/plugins.lock.json` (all committed; `--frozen` or `CI` refuses
 plugin grants the lock doesn't hold),
 and the artifact to `first/dist/wp-content`: plugin folders, ZIPs, pinned
@@ -218,6 +219,7 @@ checks remain available. They are not dependencies of `spacefast`.
 | `src/migrate.rs` | snapshots and migration planning |
 | `src/schema_php.rs` | `schema.php` and `first/_generated/db.d.ts` |
 | `src/client.rs` | `first/_generated/client/types.ts` and `schema.ts` |
+| `src/openapi.rs`, `src/json_schema.rs` | `first/_generated/openapi.json`, with the JSON Schemas the Abilities publish |
 | `src/wp_plugins/` | plugin acquisition, checksums and the lock |
 | `src/sync/` | the `first sync` CLI |
 | `src/cli.rs`, `src/commands/site.rs` | the command table, and forwarding to WP-CLI |

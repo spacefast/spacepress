@@ -18,6 +18,8 @@ pub const DB_TYPES: &str = "first/_generated/db.d.ts";
 pub const ROUTES_TYPES: &str = "first/_generated/routes.d.ts";
 /// The typed client.
 pub const CLIENT: &str = "first/_generated/client";
+/// The app's HTTP API as an OpenAPI 3.1 document.
+pub const OPENAPI: &str = "first/_generated/openapi.json";
 /// The pinned WordPress plugin dependencies `first build` installs.
 pub const WP_PLUGINS_LOCK: &str = "first/_generated/wp-plugins.lock.json";
 /// Written by `first build`, ignored by git.

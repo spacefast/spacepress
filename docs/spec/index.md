@@ -56,8 +56,8 @@ Added 2026-11-13:
 11. A project may opt in to runtime schema changes for content kinds
     (`runtimeSchema: true`). Each change is a numbered version stored on the
     site and loaded over the compiled schema; `first pull` writes the versions
-    back into the project. Code, `table()` kinds and anything declared in source
-    stay build-only. See [spec.md](spec.md) §2.10 and
+    back into the project. Code and `table()` kinds stay build-only, and so does
+    anything declared in source except its label and field presentation. See [spec.md](spec.md) §2.10 and
     [the decision record](../decisions/2026-11-13-runtime-schema.md), which
     reverses "DB as schema source" for this subset only.
 

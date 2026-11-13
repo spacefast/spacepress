@@ -56,6 +56,11 @@ final class AppRouter
         }
         self::$instance = new self($plugin, $app);
         add_filter('do_parse_request', [self::$instance, 'handlers'], 0);
+        // A 0.3.0 capture's `routes` config, read onto this table (`legacyRoutes`), never owned the
+        // front end: the theme keeps rendering everything its routes don't serve.
+        if ($app['legacyRoutes'] ?? false) {
+            return;
+        }
         // After the frontend-mode gate (-1) and a kind URL's old-slug redirect (0).
         add_action('template_redirect', [self::$instance, 'claim'], 1);
         add_filter('redirect_canonical', static fn (string|false $redirect): string|false => self::$instance?->serving ? false : $redirect, 10, 1);
@@ -133,6 +138,18 @@ final class AppRouter
         return null;
     }
 
+    /**
+     * A 0.3.0 `routes` table's routes for one request method (HEAD as GET), in table order: 0.3.0
+     * matched a path only among the routes of its method, so `GET /a/b` and `POST /a/:id` both serve.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function legacyRoutes(string $method): array
+    {
+        $method = $method === 'HEAD' ? 'GET' : $method;
+        return array_values(array_filter($this->app['routes'], fn (array $route): bool => isset($this->file($route['handler'] ?? null)['methods'][$method])));
+    }
+
     /** WordPress's and First's own entry points (the compiler's list): never a page, never the app's 404 (spec §5). */
     private function reserved(string $path): bool
     {
@@ -171,8 +188,15 @@ final class AppRouter
             return $parse;
         }
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
-        $match = self::match($this->app['routes'], $path);
+        $legacy = $this->app['legacyRoutes'] ?? false;
+        $match = self::match($legacy ? $this->legacyRoutes($method) : $this->app['routes'], $path);
         if ($match === null) {
+            // 0.3.0 answered a path its routes serve with another method with a 405.
+            if ($legacy && self::match($this->app['routes'], $path) !== null) {
+                $this->emit(405, ['Content-Type' => 'application/problem+json'], (string) Js::jsonStringify([
+                    'type' => 'about:blank', 'title' => 'Method not allowed', 'status' => 405, 'code' => 'method_not_allowed', 'detail' => "$method is not allowed on $path",
+                ]));
+            }
             return $parse;
         }
         $route = $match['route'];
@@ -220,8 +244,9 @@ final class AppRouter
         $query = RouteRequest::query((string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '')));
         $url = RouteRequest::url((string) ($_SERVER['HTTP_HOST'] ?? (wp_parse_url(home_url('/'), PHP_URL_HOST) ?? '')), (string) ($_SERVER['REQUEST_URI'] ?? '/'));
         // An unsigned handler reads as its caller, like a page; a signed webhook runs as the
-        // system (spec §3), so its reads are trusted.
-        $viewer = $spec['signature'] !== null ? null : new Viewer($user);
+        // system (spec §3), so its reads are trusted. A 0.3.0 `routes` handler's reads were
+        // trusted (`db` in hooks, actions and routes), and still are.
+        $viewer = $spec['signature'] !== null || $legacy ? null : new Viewer($user);
         [$status, $out, $body] = Seam::asViewer($viewer, fn (): array => $this->plugin->app()->serveRoute(
             ['name' => (string) $route['id'], 'route' => $spec, 'params' => $params],
             $method, $path, $query, (string) file_get_contents('php://input'), $headers, $user, $url,

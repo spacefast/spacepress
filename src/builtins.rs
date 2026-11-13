@@ -88,7 +88,7 @@ pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("first", &["collection", "table", "userProjection"], overload("fields: object, options?: object", arity(1, 2), None, None)),
     ("first", &["global"], overload("name: string, fields: object, options?: object", arity(2, 3), None, None)),
     ("first", &["defineRelations"], overload("schema: object, relations: function", arity(2, 2), None, None)),
-    ("first", &["defineConfig", "action", "job", "env"], overload("one configuration or environment name", arity(1, 1), None, None)),
+    ("first", &["defineConfig", "action", "job", "route", "env"], overload("one configuration or environment name", arity(1, 1), None, None)),
     ("first", &["files"], overload("name: string, options: object", arity(2, 2), None, None)),
     ("first", &["relation"], overload("options?: object", arity(0, 1), None, None)),
     ("field", &["text", "slug", "media"], overload("options?: object", arity(0, 1), None, None)),

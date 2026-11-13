@@ -171,7 +171,7 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
                 return Err(Diag::new(span, format!("{path} exports both `access` and `signature`"))
                     .help("keep `signature` for a signed webhook (it authenticates the caller), or `access` for everyone else"));
             }
-            (None, Some(s)) => file.signature = Some(extract::signature_config(s, span)?),
+            (None, Some(s)) => file.signature = Some(extract::signature_config(s, span, ev.legacy())?),
             (Some(a), None) => {
                 file.access = Some(match a {
                     Value::Str(s)
@@ -237,6 +237,7 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         routes: program.app.routes.iter().map(route).collect(),
         not_found: program.app.not_found.as_ref().map(route),
         files,
+        legacy_routes: false,
     });
     Ok(())
 }

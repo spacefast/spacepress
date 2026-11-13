@@ -126,5 +126,45 @@ $gone = $db->insert('members', ['email' => 'gone@example.test', 'name' => 'Gone'
 $db->delete('members', ['id' => $gone['id']]);
 eq('deleting a member deletes the WordPress user', [get_userdata((int) $gone['id']), $db->findFirst('members', ['where' => ['id' => $gone['id']]])], [false, null]);
 
+// ================================================================ search over members
+
+$prefix = $wp->connection()->prefix();
+$entries = static fn (int $id): array => array_column($wp->sql("SELECT `field`, `body` FROM `{$prefix}first__search` WHERE `kind` = ? AND `item` = ?", [new \First\Wp\Bytes('members'), new \First\Wp\Bytes((string) $id)]), 'body', 'field');
+/** @return array{list<int>|int, string} the ids core's users route returns for a search and its X-WP-Total, or the error's status and code */
+$coreUsers = static function (array $params, string|int $as) use ($wp): array {
+    $wp->actAs($as);
+    try {
+        $request = new WP_REST_Request('GET', '/wp/v2/users');
+        $request->set_query_params($params);
+        $response = rest_do_request($request);
+    } finally {
+        wp_set_current_user(0);
+    }
+    if ($response->is_error()) {
+        return [$response->get_status(), (string) ($response->as_error()->get_error_code())];
+    }
+    $ids = array_map(static fn (array $u): int => (int) $u['id'], (array) $response->get_data());
+    sort($ids);
+
+    return [$ids, (string) ($response->get_headers()['X-WP-Total'] ?? '')];
+};
+// A user changed by WordPress itself (wp-admin's user screen, another plugin) is re-indexed: core's
+// user hooks report it, as First's own writes do.
+wp_update_user(['ID' => $boId, 'display_name' => 'Bo Zephyr']);
+eq('a core user update re-indexes the member', $entries($boId)['name'] ?? null, 'Bo Zephyr');
+eq('the member finds themself by the new name', array_column($call('GET', '/members', null, $boId, ['search' => 'zephyr'])[1]['data'] ?? [], 'id'), [$boId]);
+// Core's users route searches through First as the reader: the read rule ("self") decides, not core's
+// `list_users`, and core's own search over login and email (fields no reader is matched on) is off.
+eq('core /wp/v2/users?search= finds the reader\'s own row', $coreUsers(['search' => 'zephyr'], $boId), [[$boId], '1']);
+eq('an administrator, whom "self" limits too, finds nobody else and counts nobody', $coreUsers(['search' => 'zephyr'], 'admin'), [[], '0']);
+eq('nor by email, which is not a searchable field', $coreUsers(['search' => 'bo@example.test'], 'admin'), [[], '0']);
+eq('search_columns=name searches the name', $coreUsers(['search' => 'zephyr', 'search_columns' => ['name']], $boId), [[$boId], '1']);
+eq('search_columns=email matches nothing: email is not a searchable field', $coreUsers(['search' => 'bo', 'search_columns' => ['email']], $boId), [[], '0']);
+$late = wp_insert_user(['user_login' => 'late', 'user_email' => 'late@example.test', 'user_pass' => 'late password 1', 'display_name' => 'Late Quokka']);
+eq('a user created by WordPress is indexed', $entries($late)['name'] ?? null, 'Late Quokka');
+require_once ABSPATH . 'wp-admin/includes/user.php';
+wp_delete_user($late);
+eq('a user deleted by WordPress leaves no entries', $entries($late), []);
+
 require dirname(__DIR__) . '/identity/native-auth-storage.php';
 finish('auth_test');

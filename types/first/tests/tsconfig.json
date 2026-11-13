@@ -15,6 +15,12 @@
       ],
       "php/wordpress": [
         "../wordpress.d.ts"
+      ],
+      "first/content": [
+        "../content.d.ts"
+      ],
+      "first/app": [
+        "../app.d.ts"
       ]
     }
   },

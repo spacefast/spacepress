@@ -397,8 +397,24 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "editor collection \"notes\" has no title",
         "first.config.ts:2:15",
     );
+    // Storage is chosen only by the builder: a collection can't ask for a table.
+    rejects(
+        "reject-collection-editor-false",
+        "collection() has no option `editor`",
+        "first.config.ts:2:60",
+    );
+    rejects(
+        "reject-collection-editor-false",
+        "help: storage follows the builder: collection() is always WordPress posts; use table() for a SQL table",
+        "first.config.ts:2:60",
+    );
     rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:15");
     rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:15");
+    rejects(
+        "reject-reserved-search",
+        "\"search\" is reserved",
+        "first.config.ts:2:16",
+    );
     rejects(
         "reject-post-type-length",
         "WordPress post types are limited to 20 characters and First prefixes `first_`",
@@ -568,6 +584,13 @@ fn rejects_hooks_that_would_misbehave_in_php() {
         "reject-list-operator",
         "`in` isn't supported on list columns; use `has`",
         "first.config.ts:5:",
+    );
+    // A structured field of a collection is spread over post meta and can't be compared. The fix
+    // names table(), where the same filter compiles; storage is never an option of collection().
+    rejects(
+        "reject-collection-group-filter",
+        "use isNull/isNotNull, or keep this data in a table()",
+        "first.config.ts:5:95",
     );
     // db.globals is typed from the global's fields, like db.query from a collection's.
     rejects(
@@ -1659,7 +1682,13 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
             .output()
             .unwrap()
     };
-    assert_eq!(sync(&["--check"]).status.code(), Some(2));
+    let check = sync(&["--check"]);
+    assert_eq!(
+        check.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
     let first = sync(&[]);
     assert_eq!(
         first.status.code(),
@@ -3934,6 +3963,18 @@ fn the_openapi_document_describes_what_the_api_answers() {
     assert_eq!(found["data"]["results"][0]["id"], id, "{found}");
     check("GET", "/services/search?collection=notes&q=F", None, &[], b"", 422);
     check("GET", "/services/search?collection=nope&q=First", None, &[], b"", 404);
+    // The site-wide search, and `search` on a table, answer as the document says.
+    let site_wide = check(
+        "GET",
+        "/search?q=first&kinds=notes,tallies&limit=5",
+        None,
+        &[],
+        b"",
+        200,
+    );
+    assert_eq!(site_wide["data"]["results"][0]["kind"], "notes", "{site_wide}");
+    check("GET", "/search?q=%3F%3F", None, &[], b"", 400);
+    check("GET", "/tallies?search=a", None, &[], b"", 200);
     let records = check("GET", "/sync/authors?first=10", Some("editor"), &[], b"", 200);
     let record = &records["data"]["records"][0];
     check("GET", "/sync/authors", None, &[], b"", 401);

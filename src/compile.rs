@@ -8,6 +8,8 @@
 
 mod annotations;
 mod app;
+mod content;
+pub use content::{CONTENT_EXPORTS, CONTENT_TYPES};
 mod classes;
 mod client;
 mod effects;
@@ -7699,6 +7701,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if let Some(name) = self.app_builtin(callee)? {
             return self.app_call(name, args, span);
         }
+        if let Some(name) = self.content_builtin(callee)? {
+            return self.content_call(name, args, span);
+        }
         match &callee.kind {
             ExprKind::Member {
                 obj,
@@ -10149,7 +10154,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "`{op}` on `{}` isn't supported on editor collections; filter on a scalar column",
                         col.name
                     ),
-                    "on WordPress this value is spread over many postmeta rows; use isNull/isNotNull, or `editor: false`",
+                    "on WordPress this value is spread over many postmeta rows; use isNull/isNotNull, or keep this data in a table()",
                 );
             }
             Ok(())

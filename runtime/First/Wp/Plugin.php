@@ -104,6 +104,7 @@ final class Plugin
         ContentPages::register($this);
         KindUrls::register($this);
         MarkdownTwins::register();
+        Sitemap::register($this);
         Purges::register($this);
         Hooks::register($this);
         add_action('admin_menu', [$this, 'adminMenu'], 9);
@@ -386,6 +387,10 @@ final class Plugin
     private function migrateNow(): array
     {
         $applied = $this->migrator()->migrate();
+        if (($compiled = \First\RuntimeSchema\Loader::compiled()) !== null) {
+            // `runtimeSchema`: runtime changes are checked against the fields of every build that ran here.
+            \First\RuntimeSchema\Loader::rememberDeclared($compiled);
+        }
         delete_option($this->refusalOption());
         IdentityBridge::provision();
         $this->backfillMembers();
@@ -399,6 +404,17 @@ final class Plugin
      * runtime update alone (same app build, older ledger) is therefore an upgrade too; the per-request
      * check costs one cached option read, plus one information_schema read the first time per process.
      */
+    /**
+     * Storage matches this build: nothing refused or held back, and every migration file of the build
+     * is in the ledger. A build whose migrations haven't all run (WP-CLI before `first migrate`, a
+     * refused or held-back build, a ledger rewound by hand) may name tables that don't exist yet.
+     * One ledger read: call it where something is about to change, not on every request.
+     */
+    public function migrated(): bool
+    {
+        return $this->unavailable() === null && $this->pendingMigrations() === [];
+    }
+
     private function current(bool $fresh = false): bool
     {
         if ($fresh) {
@@ -437,6 +453,12 @@ final class Plugin
         return hash_file('sha256', $this->dir . '/first/app/schema.php');
     }
 
+    /** Identifies the compiled schema this request runs: what a runtime schema version was validated on. */
+    public function buildHash(): string
+    {
+        return $this->schemaHash();
+    }
+
     // ================================================================ registration
 
     public function registerPostTypes(): void
@@ -453,14 +475,15 @@ final class Plugin
                 'show_in_rest' => true,
                 'rest_base' => $type,
                 'menu_icon' => 'dashicons-database',
-                'supports' => array_values(array_filter(['title', ($spec['content'] ?? null) !== null ? 'editor' : null, ($spec['revisions'] ?? false) ? 'revisions' : null, ($spec['comments'] ?? false) ? 'comments' : null, 'author', 'custom-fields'])),
+                'supports' => array_values(array_filter(['title', ($spec['content'] ?? null) !== null ? 'editor' : null, ($spec['revisions'] ?? false) ? 'revisions' : null, ($spec['comments'] ?? false) ? 'comments' : null, 'author', 'custom-fields', ($spec['hierarchical'] ?? false) ? 'page-attributes' : null])),
                 // Singular differs from plural so `edit_<type>` stays a primitive cap. Every cap of the type
                 // is answered from the collection's access rules (CoreAccess::mapMetaCap), not from roles.
                 'capability_type' => [$type . '_item', $type],
                 'capabilities' => ['create_posts' => 'create_' . $type],
                 'map_meta_cap' => true,
                 'rest_controller_class' => PostsController::class,
-                'hierarchical' => false,
+                // A hierarchical kind's items nest (`parent`, `order`), so the editor offers a parent and an order.
+                'hierarchical' => (bool) ($spec['hierarchical'] ?? false),
                 'has_archive' => false,
                 'rewrite' => false,
                 'query_var' => false,

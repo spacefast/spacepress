@@ -500,6 +500,7 @@ route); the facade maps input and output only. Everything else → 404 problem.
 | `POST /actions/{name}` (`GET` when readonly) | `/wp-abilities/v1/abilities/<app>/<name>/run` | 200 `{data: result}` |
 | `GET /me`, `/settings`, `/menus[/{location}]` | `/wp/v2/users/me`, `/wp/v2/settings`, `/wp/v2/menu-locations` + `/wp/v2/menu-items` | 200 `{data}` |
 | `/auth/*`, `/sync/*`, `/services/*`, `/files/*`, `/media/{id}/file/*` | First's own routes (no core route) | as each documents |
+| `GET /openapi.json` | the app plugin's `first/app/openapi.json` (`First\OpenApi`), with this site in `servers` | 200, the OpenAPI 3.1 document itself, `Cache-Control: public, max-age=300` |
 
 Kinds are the app's collections, tables and users kind, plus WordPress's
 own (`posts`, `pages`, `comments`, `media`, `categories`, `tags`, `menus`)
@@ -509,7 +510,8 @@ Authentication is core REST's (cookie and nonce, an application password,
 or a First Identity bearer); CORS headers and `OPTIONS` preflights are
 core's; `_method` and `X-HTTP-Method-Override` work as on `/wp-json`. Every
 answer is `Cache-Control: private, no-store` with `Vary: Origin, Cookie,
-Authorization`, except file streams.
+Authorization`, except file streams and `/openapi.json`, which is the same for
+every caller.
 
 Success body: `{"data": ...}` with `Content-Type: application/json`.
 Failure body (RFC 9457), `Content-Type: application/problem+json`:

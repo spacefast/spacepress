@@ -29,7 +29,8 @@ test("the plugin list names every plugin first build installs", async ({ page })
 
 test("the REST reference has a page per operation", async ({ page }) => {
 	await page.goto("./rest");
-	await expect(page.getByRole("link", { name: "List rows" }).first()).toBeVisible();
+	// The reference is the blog example's own document, so its operations are named after its kinds.
+	await expect(page.getByRole("link", { name: "List posts" }).first()).toBeVisible();
 });
 
 test("agents can read the docs as Markdown", async ({ request }) => {

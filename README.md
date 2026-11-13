@@ -84,6 +84,7 @@ built 2 collections, 0 globals, 1 hooks, 1 actions -> first/dist/wp-content in 6
 | MySQL migrations, diffed against the last build | `first/_generated/migrations/0001_init.sql` |
 | A typed client: `first.posts.list({ with: { writer: true } })` and friends | `first/_generated/client/` |
 | Editor types, so `db` in your hooks knows your schema | `first/_generated/db.d.ts` |
+| The API as an OpenAPI 3.1 document, also served by the site | `first/_generated/openapi.json`, `/__first/api/v1/openapi.json` |
 | An HTTP API for every collection, global and action, with relations loaded through `with`, over WordPress's REST routes | `/__first/api/v1/...` |
 | Sign-in, sessions, roles, guests, passkeys and MFA | the `first-identity` plugin |
 | A dashboard: WordPress admin, with a post type and a field group generated for each collection that has an editor | Posts and Authors menus in `wp-admin` |
@@ -167,8 +168,9 @@ curl -u "$AUTH" -X POST $BASE/actions/consume -d '{"itemId":1}'
 
 `first check` compiles without writing anything; `first build` writes the
 plugins to `first/dist/wp-content/` without booting anything. Commit
-`first/_generated/migrations/`, `first/_generated/client/`, `first/_generated/db.d.ts` and
-`first/_generated/wp-plugins.lock.json`; `.first/` is local build and development state.
+`first/_generated/migrations/`, `first/_generated/client/`, `first/_generated/db.d.ts`,
+`first/_generated/openapi.json` and `first/_generated/wp-plugins.lock.json`; `.first/` is local
+build and development state.
 
 Want a seeded app to click through? [The showcase](examples/showcase/README.md)
 includes structured fields, collection/table relations, image delivery, a

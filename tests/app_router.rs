@@ -977,6 +977,25 @@ fn frontend_modes_on_wordpress() {
     assert_eq!(external["note status"], 308);
     assert_eq!(external["post"][0], 308);
 
+    // Authors: the users kind's read rule gives a visitor the editor's row only. The editor is a
+    // public author, as WordPress ships one; the admin, who also has a published post, is closed
+    // like a login nobody has. Core's own users route stays closed for both.
+    assert_eq!(
+        theme["authors"],
+        serde_json::json!({
+            "listed": 200,
+            "unlisted": 404,
+            "unknown": 404,
+            "listed by id": [301, "/author/editor/"],
+            "unlisted by id": 404,
+            "both ids": 404,
+            "listed embed": [false, "/author/editor/"],
+            "unlisted embed": [true, ""],
+            "core route": [401, 401]
+        }),
+        "{theme}"
+    );
+
     // One sitemap, through core's (`wp-sitemap.xml`): core's own files for posts, pages, terms and
     // authors, and First's provider with a file per kind that has a `url` and readable items. Only
     // what a signed-out visitor may read is in it: no draft, no private or password-protected item,

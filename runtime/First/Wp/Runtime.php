@@ -38,6 +38,8 @@ final class Runtime
         // the runtime loads, because a plugin (Polylang in its REST context) may resolve the current user
         // before the app's own plugin has booted.
         add_filter('application_password_is_api_request', static fn (bool $api): bool => $api || Facade::path() !== null);
+        // A scoped application password signs in only where an active app enforces its scope.
+        add_action('wp_authenticate_application_password_errors', [AgentScope::class, 'authenticating'], 10, 3);
         register_activation_hook($runtimeFile, [self::class, 'activate']);
         // A site that ran a build from before the rename to First moves its stored names first, before
         // any table, option or post type of First's exists (ZeroNames). Managed apps do it in initialize().

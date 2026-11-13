@@ -320,9 +320,12 @@ final class Kinds
                 $out['date_gmt'] = is_string($value) ? substr($value, 0, 19) : $value;
             } elseif (in_array($col, ['locale', 'translationOf'], true) && ($spec['localized'] ?? false)) {
                 $out[$col] = $value; // a translation's language and group (PostsController::firstWrite)
+            } elseif (isset(PostMeta::fields($spec)[$col])) {
+                // A field: core's `meta`, which core's permission check and First's rules on it read.
+                $meta[$col] = $value;
             } else {
-                // Every other field, known or not (`uid`, a typo): First's pipeline on the core route
-                // decides it, as for any write (PostsController::firstWrite reads `first`).
+                // Anything else (`uid`, a typo): First's pipeline decides it (PostsController::firstWrite
+                // reads `first`), so an unknown field is First's 422, not core's silent ignore.
                 $first[$col] = $value;
             }
         }

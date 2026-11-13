@@ -54,7 +54,7 @@ test('the host-compiled full site serves its first/app pages, hydrates its clien
   assert.equal(home.status, 200);
   assert.match(home.text, /<title>Home · Field Notes<\/title>/);
   assert.match(home.text, /<h1>Notes from the field<\/h1>/);
-  assert.match(home.text, /<a href="\/notes\/hosted-light"[^>]*>Hosted light<\/a>/);
+  assert.match(home.text, new RegExp(`<a href="${base}/notes/hosted-light"[^>]*>Hosted light</a>`), 'a <Link> to the note');
   assert.doesNotMatch(home.text, /Hidden draft/);
   assert.equal(home.headers.get('cache-control'), 'public, s-maxage=300, max-age=0, must-revalidate', "an anonymous visitor's page is shared");
   // The layout's stylesheet, from the app plugin under a content-hashed name, cached for a year.

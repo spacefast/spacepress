@@ -114,7 +114,7 @@ const exampleChecks: Record<string, { title: string; run: (base: string, admin: 
 			const visitor = browser(base, { signedOut: true });
 			const list = await visitor("/notes/");
 			assert.equal(list.status, 200);
-			assert.match(list.body, /<a href="\/notes\/dawn-on-the-ridge"[^>]*>Dawn on the ridge<\/a>/);
+			assert.match(list.body, /<a href="[^"]*\/notes\/dawn-on-the-ridge"[^>]*>Dawn on the ridge<\/a>/);
 			assert.doesNotMatch(list.body, /Notes for next week/, "a draft is listed to a signed-out visitor");
 			const note = await visitor("/notes/dawn-on-the-ridge");
 			assert.equal(note.status, 200);

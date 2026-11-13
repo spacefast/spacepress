@@ -183,7 +183,7 @@ access to personal data**. Grant more explicitly, one flag at a time:
 | Flag | Grants |
 |---|---|
 | `--write` | creates, updates, deletes and abilities that aren't `readonly` |
-| `--personal` | email fields, fields with a read rule, and a user's own account details |
+| `--personal` | reading and setting email fields and fields with a read rule, and reading a user's own account details |
 | `--abilities=blog/posts-list,blog/*` | only these abilities; no other route but the app's schema |
 
 ```sh
@@ -200,10 +200,24 @@ A scope only narrows. The user's role, each kind's access rules and its field
 rules still decide first, so a subscriber's credential with `--write` writes
 what a subscriber may. It is enforced wherever the app can be reached: the
 abilities run route, the MCP server, `/__first/api/v1`, core's `/wp/v2` routes,
-`/batch/v1` sub-requests, `?rest_route=` and method overrides. A scoped
-credential can't read or change application passwords, so it can't widen
-itself or mint another. `GET /__first/api/v1` reports the scope of the
-credential asking, under `runtime.credential`.
+`/batch/v1` sub-requests, `?rest_route=` and method overrides. `GET
+/__first/api/v1` reports the scope of the credential asking, under
+`runtime.credential`.
+
+Whatever its grants and its user's role, a scoped credential can't do the
+things that would remove its own limits:
+
+- read or change application passwords, so it can't widen itself or mint another;
+- change the account it signs in as: its password, email, login, roles or
+  sign-in methods (First Identity's and Two Factor's routes). With `--write
+  --personal` it can still edit the rest of the profile;
+- administer the site: plugins and themes (deactivating First would switch the
+  scope off), site settings, creating or promoting users, and any other plugin's
+  route that asks one of those capabilities.
+
+An agent that has to do one of these needs an unscoped credential, which is a
+choice its owner makes on purpose. A credential limited to named abilities also
+sees only those in core's abilities list and in the MCP tool list.
 
 A refusal is a 403 with the code `scope` (`first_scope` on core routes; a tool
 error over MCP) and says which grant is missing. Without `personal`, emails and
@@ -211,9 +225,12 @@ restricted fields are left out of every row, user and comment, and a filter,
 sort or search on one is a 403 rather than a quiet probe.
 
 Application passwords made before First's flows, and any created by other
-clients through WordPress's own API, have no scope and work exactly as
+clients or plugins outside First's flows, have no scope and work exactly as
 WordPress ships them. A scoped password signs in only where its scope is
-enforced: with no First app active it is refused, never widened.
+enforced: with the app plugin deactivated it is refused, never widened. The
+refusal lives in the `first-runtime` plugin, so removing that plugin (by
+someone with file or WP-CLI access; a scoped credential can't) leaves a scoped
+password an ordinary one. Revoke agent passwords before uninstalling First.
 
 For a disposable local Studio site:
 

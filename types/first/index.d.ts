@@ -1116,6 +1116,11 @@ export interface ConfigInput<
   /** Ship the optional admin screens (`first-admin`) with the build. Default `false`. */
   admin?: boolean;
   /**
+   * Let the running site add fields to its collections, each change stored there as a numbered
+   * schema version. The build declares the versions listed in `first/_generated/runtime-schema.json`. Default `false`.
+   */
+  runtimeSchema?: boolean;
+  /**
    * Who renders the public site. Leave it out for the theme (or `first/app` when it exists); `false`
    * for backend only; an external site's `https://` address to point links, previews and feeds there.
    */

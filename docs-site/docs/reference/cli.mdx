@@ -42,7 +42,7 @@ These commands run inside WordPress. On a local site, run them as `first <comman
 | `wp first update <collection> <where json> <set json>` | Update records. |
 | `wp first delete <collection> <where json>` | Delete records. |
 | `wp first publish-due` | Publish scheduled records that are due. |
-| `wp first identity account\|suspend\|restore\|revoke\|erase <user-id> \| app add --name=n --redirect=uri --origin=o [--id=app_id] \| webhook-add <url> \| webhook-remove <id> \| webhooks \| maintenance \| rotate-keys` | First Identity accounts, applications, webhooks and keys. |
+| `wp first identity account\|suspend\|restore\|revoke\|erase <user-id> \| app add --name=n --redirect=uri --origin=o [--id=app_id] \| agent add <user> --name=n [--write] [--personal] [--abilities=a,b] \| agent list <user> \| agent grant <user> <id> [--write] [--personal] [--abilities=a,b] \| agent revoke <user> <id> \| webhook-add <url> \| webhook-remove <id> \| webhooks \| maintenance \| rotate-keys` | First Identity accounts, applications, agent credentials, webhooks and keys. |
 
 `first wp <WP-CLI arguments>` runs any WP-CLI command on the local site. For example, `first wp plugin list`.
 

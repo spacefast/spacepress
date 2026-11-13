@@ -122,21 +122,61 @@ to MCP reads and writes. Trusted action handlers explicitly filter by owner.
 
 ### Create an application password
 
-On a hosted WordPress site, use HTTPS. Sign in to WordPress, open **Users →
-Profile → Application Passwords**, and create a password for your agent. Use a
-separate account with the role and data access the agent needs.
-
-For a disposable local Studio site, create one with WP-CLI:
+An agent signs in with a WordPress application password. Create one for the
+agent alone, scoped to what it needs:
 
 ```sh
-./target/debug/first wp --site examples/pantry user application-password create admin agent-guide --porcelain
+first identity agent add editor --name=claims-agent
+```
+
+The password is printed once. A new agent credential is **read-only and has no
+access to personal data**. Grant more explicitly, one flag at a time:
+
+| Flag | Grants |
+|---|---|
+| `--write` | creates, updates, deletes and abilities that aren't `readonly` |
+| `--personal` | email fields, fields with a read rule, and a user's own account details |
+| `--abilities=blog/posts-list,blog/*` | only these abilities; no other route but the app's schema |
+
+```sh
+first identity agent list editor                         # every application password of editor, with its scope
+first identity agent grant editor <id> --write           # replace the scope of one password
+first identity agent revoke editor <id>
+```
+
+The same choices are on **Users → Profile → Application Passwords**: a password
+created there is read-only with no personal data unless its *Allow writes* or
+*Allow personal data* box is ticked, and the list shows each password's scope.
+
+A scope only narrows. The user's role, each kind's access rules and its field
+rules still decide first, so a subscriber's credential with `--write` writes
+what a subscriber may. It is enforced wherever the app can be reached: the
+abilities run route, the MCP server, `/__first/api/v1`, core's `/wp/v2` routes,
+`/batch/v1` sub-requests, `?rest_route=` and method overrides. A scoped
+credential can't read or change application passwords, so it can't widen
+itself or mint another. `GET /__first/api/v1` reports the scope of the
+credential asking, under `runtime.credential`.
+
+A refusal is a 403 with the code `scope` (`first_scope` on core routes; a tool
+error over MCP) and says which grant is missing. Without `personal`, emails and
+restricted fields are left out of every row, user and comment, and a filter,
+sort or search on one is a 403 rather than a quiet probe.
+
+Application passwords made before First's flows, and any created by other
+clients through WordPress's own API, have no scope and work exactly as
+WordPress ships them. A scoped password signs in only where its scope is
+enforced: with no First app active it is refused, never widened.
+
+For a disposable local Studio site:
+
+```sh
+./target/debug/first --site examples/pantry identity agent add admin --name=agent-guide
 ```
 
 The local site must be running. For another app, replace `examples/pantry` with
 its project directory. Use `username:application-password` for HTTP Basic auth.
 An application password is different from the WordPress login password and the
-first-identity browser access token. Revoke it from the same profile page when
-it is no longer needed.
+first-identity browser access token.
 
 Build the Authorization header locally, without putting the password in shell
 history:

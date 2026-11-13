@@ -186,7 +186,9 @@ final class AppRouter
             return $parse;
         }
         $path = $this->path();
-        if ($path === null) {
+        // A root catch-all never answers WordPress's, First's or the host's own paths (the host's
+        // `/__spacefast/connectors/*` and `/__spacefast/client.js` among them), as `claim()` doesn't.
+        if ($path === null || $this->reserved($path)) {
             return $parse;
         }
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));

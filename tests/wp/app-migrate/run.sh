@@ -35,19 +35,9 @@ docker compose -p "$FIRST_WP_PROJECT" cp "$here/indexes.php" cli:/tmp/first-app-
 docker compose -p "$FIRST_WP_PROJECT" exec -T db mariadb -uroot -pfirst-test-root -e \
   "CREATE DATABASE first_adopt_other; GRANT ALL ON first_adopt_other.* TO 'wordpress'@'%';"
 "$wp/harness.sh" wp eval-file /tmp/first-app-migrate-indexes.php
-# A separate source candidate proves the portable first-identity gate on a fresh site. The fixture's
-# connector roles are refused (their credentials and grants don't migrate), so this lane converts a
-# copy without them, as tests/app_migrate.rs does.
-cp -R tests/fixtures/app-migrate/content "$work/content-source"
-python3 - "$work/content-source/server/index.ts" <<'PY'
-import sys
-path = sys.argv[1]
-source = open(path).read()
-start = source.index("  connectors: {")
-end = start + source[start:].index("  },\n") + len("  },\n")
-open(path, "w").write(source[:start] + source[end:])
-PY
-"$first" migrate app --from zero-0.8 "$work/content-source" --out "$work/content" > "$work/content-report.json"
+# A separate source candidate proves the portable first-identity gate on a fresh site. Its connector
+# roles travel in the candidate's sf.jsonc, which WordPress never reads.
+"$first" migrate app --from zero-0.8 tests/fixtures/app-migrate/content --out "$work/content" > "$work/content-report.json"
 "$first" build "$work/content" --quiet >/dev/null
 "$wp/harness.sh" down >/dev/null
 "$wp/harness.sh" up --wp-content "$work/content/first/dist/wp-content" > "$work/content-harness.json"

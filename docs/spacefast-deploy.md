@@ -85,9 +85,10 @@ curl --fail-with-body 'https://your-space.example/__first/api/v1/actions/hello' 
 ```
 
 Use the action's declared input and access rule. A successful call returns
-`{ "data": ... }`. The generated client supplies the same contracts at
-`/__spacefast/client.js` and `/__spacefast/client.d.ts`. The version-specific
-app companion is `/__spacefast/zero/client.js` with its `client.d.ts`.
+`{ "data": ... }`. The generated client in `first/_generated/client/` supplies
+the same contracts. `/__spacefast/client.js` is Spacefast's own client, for
+connectors, the Spacefast Share session and collaboration, not the app's (see
+[Connectors](#connectors)).
 
 A custom method and path, such as `GET /api/feed.json` or a
 `POST /webhooks/stripe` that answers plain text, is a
@@ -105,15 +106,60 @@ setup.
 `watch` works with no setup on Spacefast:
 
 ```ts
-import { createClient } from "/__spacefast/client.js";
+import { createClient } from "./first/_generated/client/index.ts";
 
 createClient().todos.watch({ where: { done: false } }, (todos) => render(todos));
 ```
 
 Spacefast registers a Publisher that sends each commit's change notice to the
-Space's realtime room. The `/__spacefast/client.js` bundle registers the
-matching Cast transport, so every client on the page uses it. Without a live
+Space's realtime room. Spacefast loads the matching Cast transport on the
+Space's pages, and it registers with every client on the page. Without a live
 connection, watched reads poll. See [Live updates](realtime.md) for the API.
+
+## Connectors
+
+A First app uses [Spacefast connectors](https://spacefast.com/docs/connectors)
+like any other Space. Declare roles in the Spacefast config, `connectors` in
+`sf.jsonc` or `spacefast.config.ts` beside `first.config.ts`, and call them from
+the page. Spacefast answers `/__spacefast/connectors/<role>/<tool>` and
+`/__spacefast/client.js` before WordPress runs, so no First route can take
+those paths. A root catch-all leaves them alone on other hosts too.
+
+```jsonc
+// sf.jsonc
+{ "connectors": { "crm": { "connector": "hubspot", "tools": ["list_deals"] } } }
+```
+
+`sf client` writes the typed `spacefast.generated.ts` at the project root, for a
+frontend you build yourself:
+
+```ts
+import { space } from "./spacefast.generated";
+
+const deals = await space.connectors.crm.list_deals({ stage: "won" });
+```
+
+A page without a build imports `space` from `/__spacefast/client.js`. A
+`"use client"` component under `first/app/` can't import packages, so it calls
+the route itself:
+
+```tsx
+"use client";
+import { useState } from "first/client";
+
+export function Deals() {
+  const [deals, setDeals] = useState("");
+  const load = async () => {
+    const response = await window.fetch("/__spacefast/connectors/crm/list_deals");
+    const answer = await response.json();
+    setDeals(answer.state === "ok" ? JSON.stringify(answer.data) : answer.message);
+  };
+  return <button onClick={load}>Load deals {deals}</button>;
+}
+```
+
+Server code can't call connectors on First yet: there is no connector API in
+`first`, and actions, hooks and routes can't reach a role.
 
 ## Migrate an existing 0.8 Space
 

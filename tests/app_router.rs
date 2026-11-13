@@ -1682,3 +1682,39 @@ fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A root catch-all answers every path of the app, and never one WordPress, First or the host
+/// owns: on Spacefast `/__spacefast/connectors/*` and `/__spacefast/client.js` are the host's.
+#[test]
+fn a_root_catch_all_leaves_reserved_paths_alone() {
+    let project = fixture("app-router-reserved", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_router_reserved.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    assert_eq!(seen["app path"], serde_json::json!([200, "app"]), "{seen}");
+    assert_eq!(seen["app path POST"], serde_json::json!([200, "app"]), "{seen}");
+    for reserved in [
+        "connector GET",
+        "connector POST",
+        "space client",
+        "first",
+        "zero",
+        "rest",
+    ] {
+        assert_eq!(seen[reserved][1], "not the app", "{reserved}: {seen}");
+    }
+}

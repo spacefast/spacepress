@@ -38,7 +38,8 @@ final class Surfaces
             return; // the runtime loaded outside WordPress (the pure PHP suites): nothing to serve
         }
         add_filter('first_ability_operations', [self::class, 'operations'], 10, 2);
-        add_filter('user_has_cap', [self::class, 'grant'], 10, 4);
+        add_action('init', [self::class, 'grant']);
+        add_action('wp_create_application_password', [self::class, 'inheritDeny'], 10, 2);
         add_action('admin_menu', [self::class, 'menu']);
         // Outside the app's command transaction: applying takes the schema lock and commits its own.
         $command = static fn () => Runtime::command('schema', self::wpCli(...));
@@ -53,14 +54,22 @@ final class Surfaces
             ?? throw HttpError::notFound('This app does not use runtime schema changes (runtimeSchema: true in first.config.ts)');
     }
 
-    /** Administrators hold `first_apply_schema` until a role or user record says otherwise. */
-    public static function grant(array $all, array $caps, array $args, \WP_User $user): array
-    {
-        if (in_array(self::APPLY, $caps, true) && !array_key_exists(self::APPLY, $all) && !empty($all['manage_options'])) {
-            $all[self::APPLY] = true;
-        }
+    /** Records that the administrator role was given `first_apply_schema` once, so it is never given again. */
+    private const GRANTED = 'first_schema_apply_granted';
 
-        return $all;
+    /**
+     * Gives the administrator role `first_apply_schema` the first time an app with runtime schema
+     * changes runs on the site, and never again: from then on it is an ordinary capability, and
+     * `wp cap remove administrator first_apply_schema` (or `wp user remove-cap`) takes it away for good.
+     */
+    public static function grant(): void
+    {
+        $plugin = Runtime::plugin();
+        if ($plugin === null || SchemaVersions::of($plugin) === null || get_option(self::GRANTED) !== false) {
+            return;
+        }
+        get_role('administrator')?->add_cap(self::APPLY);
+        update_option(self::GRANTED, gmdate('c'), false);
     }
 
     /** The application password that signed this request, or null. */
@@ -90,16 +99,87 @@ final class Surfaces
         return 'first_' . (Runtime::plugin()?->schema->name() ?? 'app') . '_schema_apply_denied';
     }
 
-    /** Whether the current request may apply: the capability, and a credential that isn't denied. */
+    /**
+     * What signed this request, for the deny list: `['kind' => 'application-password', 'uuid' => …]`,
+     * `['kind' => 'bearer']` for a First Identity access token, or `['kind' => 'session']` (a
+     * wp-admin cookie, or WP-CLI, which never reaches the ability).
+     */
+    private static function signedWith(): array
+    {
+        $credential = self::credential();
+        if ($credential !== null) {
+            return ['kind' => 'application-password', 'uuid' => $credential['uuid']];
+        }
+        $bearer = class_exists(\First\Identity\Bearer::class) ? \First\Identity\Bearer::token() : null;
+
+        return $bearer !== null ? ['kind' => 'bearer'] : ['kind' => 'session'];
+    }
+
+    /** @return list<array{user: int, credential?: string, password?: string}> */
+    private static function denied(): array
+    {
+        $denied = get_option(self::deniedOption(), []);
+
+        return array_values(array_filter(is_array($denied) ? $denied : [], static fn (mixed $entry): bool => is_array($entry) && is_int($entry['user'] ?? null)));
+    }
+
+    /** Whether a deny entry covers this user signing in this way. */
+    private static function covers(array $entry, int $user, array $signed): bool
+    {
+        if ($entry['user'] !== $user) {
+            return false;
+        }
+        if (isset($entry['password'])) {
+            return ($signed['uuid'] ?? null) === $entry['password'];
+        }
+
+        return ($entry['credential'] ?? null) === $signed['kind'];
+    }
+
+    /**
+     * Whether the current request may apply: the capability, and a credential the deny list
+     * (`first_<app>_schema_apply_denied`) doesn't cover. An entry names a user and either one
+     * application password (`password`: its UUID) or a kind of credential (`credential`:
+     * `application-password` for all of that user's passwords, present and future; `bearer` for
+     * every First Identity access token they are issued). A wp-admin session is never denied this
+     * way: take the capability from the user instead.
+     */
     private static function mayApply(): bool
     {
         if (!current_user_can(self::APPLY)) {
             return false;
         }
-        $credential = self::credential();
-        $denied = get_option(self::deniedOption(), []);
+        $signed = self::signedWith();
+        $user = get_current_user_id();
+        foreach (self::denied() as $entry) {
+            if (self::covers($entry, $user, $signed)) {
+                return false;
+            }
+        }
 
-        return $credential === null || !in_array($credential['uuid'], is_array($denied) ? $denied : [], true);
+        return true;
+    }
+
+    /**
+     * A password created while a denied one signed the request is denied too: otherwise a denied,
+     * unscoped password could mint a fresh one through core's route and apply with that.
+     */
+    public static function inheritDeny(int $userId, array $item): void
+    {
+        $plugin = Runtime::plugin();
+        if ($plugin === null || SchemaVersions::of($plugin) === null) {
+            return;
+        }
+        $signed = self::signedWith();
+        $denied = self::denied();
+        foreach ($denied as $entry) {
+            if ($signed['kind'] === 'application-password' && self::covers($entry, $userId, $signed) && isset($entry['password'])) {
+                $denied[] = ['user' => $userId, 'password' => (string) $item['uuid']];
+                update_option(self::deniedOption(), $denied, false);
+
+                return;
+            }
+        }
     }
 
     /** A version as the surfaces show it: without the app name, which every row shares. */

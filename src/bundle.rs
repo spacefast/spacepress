@@ -684,13 +684,7 @@ pub(crate) fn compile_tree(
             }
         }
     }
-    let mut routes: Vec<(&str, &str)> = built
-        .schema
-        .routes
-        .values()
-        .map(|r| (r.path.as_str(), r.method.as_str()))
-        .chain(app_routes.iter().map(|(p, m)| (p.as_str(), m.as_str())))
-        .collect();
+    let mut routes: Vec<(&str, &str)> = app_routes.iter().map(|(p, m)| (p.as_str(), m.as_str())).collect();
     routes.sort();
     routes.dedup();
     let routes: Vec<_> = routes

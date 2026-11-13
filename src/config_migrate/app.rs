@@ -437,6 +437,18 @@ fn convert(
         sources.remove(&entry);
     }
     sources.insert(canonical, transformed.config);
+    for (path, text) in transformed.routes {
+        if sources.contains_key(&path) {
+            return Err(fail(
+                "",
+                format!(
+                    "{} exists beside a converted endpoint's route file; rename one",
+                    path.display()
+                ),
+            ));
+        }
+        sources.insert(path, text);
+    }
     if let Some(content) = transformed.content_config {
         sources.insert(PathBuf::from("server/__z08-content.ts"), content);
     }

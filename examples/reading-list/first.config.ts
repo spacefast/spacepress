@@ -1,11 +1,10 @@
 // A reading list that uses each part of a First app once: a WordPress collection, a SQL table,
-// per-user access, hooks, an action, a background job, a public route and two npm packages.
+// per-user access, hooks, an action, a background job, and (in first/app/) a public route that
+// uses two npm packages.
 import {
   collection, table, text, integer, timestamp, richText, slug,
-  defineConfig, action, job, jobs, route, db, HttpError, ref,
+  defineConfig, action, job, jobs, db, HttpError, ref,
 } from "first";
-import escapeHtml from "escape-html";
-import ms from "ms";
 import { mine, ownerId, signedIn } from "./first/lib/owner";
 
 // A collection is stored as WordPress posts, so it gets the editor, drafts and revisions.
@@ -66,22 +65,6 @@ export default defineConfig({
         const all = await db.query.reads.findMany({ where: { bookId } });
         const minutesRead = all.reduce((sum, r) => sum + r.minutes, 0);
         await db.update(books).set({ minutesRead }).where({ id: bookId });
-      },
-    }),
-  },
-  routes: {
-    // A route answers on the site's own path, outside /wp-json.
-    shelf: route({
-      method: "GET",
-      path: "/shelf.html",
-      access: "anyone",
-      async handler() {
-        const list = await db.query.books.findMany({ columns: { title: true, minutesRead: true } });
-        // escape-html and ms are npm packages. The compiler turns their code into PHP too.
-        const items = list
-          .map((b) => `<li>${escapeHtml(b.title)}: ${ms(b.minutesRead * 60_000, { long: true })}</li>`)
-          .join("");
-        return { headers: { "content-type": "text/html; charset=utf-8" }, body: `<ul>${items}</ul>` };
       },
     }),
   },

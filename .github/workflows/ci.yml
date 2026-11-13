@@ -111,8 +111,9 @@ jobs:
         run: |
           npm ci --prefix examples/npm-compat --ignore-scripts --no-audit --no-fund
           FIRST_BIN="$GITHUB_WORKSPACE/target/debug/first" node examples/npm-compat/verify.mjs --isolated
+      # Every app under examples/ compiles (files-sdk, a probe of what doesn't yet, is left out).
       - if: matrix.shard == 'rest'
-        run: target/debug/first check examples/showcase
+        run: scripts/check-examples.sh target/debug/first
       - name: Zero 0.8 census tool
         if: matrix.shard == 'rest'
         env:

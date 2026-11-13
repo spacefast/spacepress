@@ -135,7 +135,6 @@ pub enum Value {
     Relation(Rc<RelVal>),
     Action(Rc<ActionVal>),
     Job(Rc<ActionVal>),
-    Route(Rc<ActionVal>),
     /// `definePlugin({ name, hooks, actions, jobs, routes })`, registered in `defineConfig({ use })`.
     Plugin(Rc<ActionVal>),
     FileBucket(Rc<FileBucketVal>),
@@ -275,7 +274,6 @@ pub enum Builtin {
     DefinePlugin,
     Action,
     Job,
-    Route,
     Files,
     Env,
     Once,
@@ -590,7 +588,6 @@ impl Value {
             Value::Relation(_) => "a relation".into(),
             Value::Action(_) => "an action".into(),
             Value::Job(_) => "a job".into(),
-            Value::Route(_) => "a route".into(),
             Value::Plugin(_) => "a plugin".into(),
             Value::FileBucket(_) => "a file bucket".into(),
             Value::Env(n) => format!("env({n:?})"),

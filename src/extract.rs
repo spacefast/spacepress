@@ -42,9 +42,6 @@ pub enum Slot {
     JobHandler {
         job: String,
     },
-    RouteHandler {
-        route: String,
-    },
     /// A `wp-hooks/` handler; `index` is its place in `Schema::wp_hooks`.
     WpHook {
         index: usize,
@@ -122,7 +119,6 @@ const CONFIG_KEYS: &[&str] = &[
     "hooks",
     "actions",
     "jobs",
-    "routes",
     "webhooks",
     "files",
     "media",
@@ -209,7 +205,11 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 span_of(ev, config, key, config_span),
                 format!("defineConfig() has no option `{key}`"),
             );
-            if let Some(s) = suggest(key, CONFIG_KEYS.iter().copied()) {
+            if key == "routes" {
+                d = d.help(
+                    "an HTTP route is a file now: first/app/<path>/route.ts exporting `access` (or `signature`) and GET, POST, … handlers",
+                );
+            } else if let Some(s) = suggest(key, CONFIG_KEYS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
             }
             return Err(d);
@@ -503,7 +503,6 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         )?;
     }
     phase2_jobs(&cfg_map, ev, config_span, &mut out)?;
-    routes(&cfg_map, config_span, &mut out)?;
     if let Some(v) = cfg_map.get("use").filter(|v| !matches!(v, Value::Undef)) {
         uses(v, span_of(ev, config, "use", config_span), ev, &mut out)?;
     }
@@ -717,12 +716,7 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
                 .help("call the package's export: use: [seo({ ... })]"));
         };
         let o = object(&p.config, p.span, "definePlugin")?;
-        keys(
-            &o,
-            &["name", "hooks", "actions", "jobs", "routes"],
-            p.span,
-            "definePlugin",
-        )?;
+        keys(&o, &["name", "hooks", "actions", "jobs"], p.span, "definePlugin")?;
         let name = string(o.get("name"), p.span, "plugin name")?;
         if !(valid_ident(&name)
             && name
@@ -751,9 +745,6 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
         }
         if let Some(j) = o.get("jobs").filter(|v| !matches!(v, Value::Undef)) {
             jobs(j, ev, p.span, out, owner)?;
-        }
-        if let Some(r) = o.get("routes").filter(|v| !matches!(v, Value::Undef)) {
-            plugin_routes(r, p.span, out, owner)?;
         }
         for root in &mut out.roots[first..] {
             root.plugin = Some(index);
@@ -1829,7 +1820,6 @@ fn fn_name(owner: &Owner, what: &str, path: &[String]) -> String {
         Owner::Action(a) => format!("action__{a}"),
         Owner::Job(j) => format!("job__{j}"),
         Owner::FileBucket(f) => format!("files__{f}"),
-        Owner::Route(r) => format!("route__{r}"),
     };
     format!("{base}__{what}__{}", path.join("__"))
 }
@@ -3069,168 +3059,6 @@ fn jobs(
         );
     }
     Ok(())
-}
-
-/// `routes: { name: route({ method, path, access | signature, handler }) }` (docs/config-api.md#http-routes).
-fn routes(cfg: &IndexMap<String, Value>, span: Span, out: &mut Extracted) -> Result<()> {
-    match cfg.get("routes").filter(|v| !matches!(v, Value::Undef)) {
-        Some(v) => plugin_routes(v, span, out, None),
-        None => Ok(()),
-    }
-}
-
-/// `routes.<name>`; a plugin's are registered as `<plugin>_<name>` and share the app's path rules.
-fn plugin_routes(v: &Value, span: Span, out: &mut Extracted, plugin: Option<(usize, &str)>) -> Result<()> {
-    for (name, value) in object(v, span, "routes")? {
-        let Value::Route(r) = value else {
-            return Err(Diag::new(span, format!("routes.{name} must use route()"))
-                .help("write route({ method, path, access, handler })"));
-        };
-        if !valid_ident(&name) {
-            return Err(Diag::new(r.span, format!("\"{name}\" isn't a valid route name")).help("use an identifier"));
-        }
-        let o = object(&r.config, r.span, "route")?;
-        keys(
-            &o,
-            &["method", "path", "access", "signature", "handler"],
-            r.span,
-            "route",
-        )?;
-        let method = string(o.get("method"), r.span, "route method")?;
-        if !matches!(method.as_str(), "GET" | "POST" | "PUT" | "PATCH" | "DELETE") {
-            return Err(Diag::new(r.span, format!("route method {method} is not supported"))
-                .help("use GET, POST, PUT, PATCH or DELETE; GET also answers HEAD"));
-        }
-        let path = route_path(&string(o.get("path"), r.span, "route path")?, r.span)?;
-        let shape = route_shape(&path);
-        let name = registered(plugin, &name);
-        if let Some((other, _)) = out
-            .schema
-            .routes
-            .iter()
-            .find(|(_, r)| r.method == method && route_shape(&r.path) == shape)
-        {
-            return Err(Diag::new(
-                r.span,
-                format!("routes.{name} and routes.{other} both match {method} {path}"),
-            )
-            .help("give each method and path one route"));
-        }
-        let owner = Owner::Route(name.clone());
-        let (access, signature) = match (
-            o.get("access").filter(|v| !matches!(v, Value::Undef)),
-            o.get("signature").filter(|v| !matches!(v, Value::Undef)),
-        ) {
-            (Some(_), Some(_)) => {
-                return Err(Diag::new(r.span, "signature cannot be combined with access")
-                    .help("remove access; signature authenticates the caller"));
-            }
-            (None, None) => {
-                return Err(Diag::new(r.span, format!("routes.{name} needs access or signature"))
-                    .help("a route is public only when it says so: access: \"anyone\""));
-            }
-            (Some(a), None) => (
-                access_rule(a, r.span, &owner, "access", format!("route__{name}__access"), out)?,
-                None,
-            ),
-            (None, Some(s)) => (Access::anyone(), Some(signature_config(s, r.span)?)),
-        };
-        let Some(Value::Closure(handler)) = o.get("handler") else {
-            return Err(Diag::new(r.span, format!("routes.{name} needs a handler function"))
-                .help("add handler(req, ctx) { return { status, headers, body }; }"));
-        };
-        out.roots.push(Root {
-            closure: handler.clone(),
-            slot: Slot::RouteHandler { route: name.clone() },
-            name: format!("route__{name}"),
-            plugin: plugin.map(|(i, _)| i),
-        });
-        out.schema.routes.insert(
-            name,
-            crate::schema::Route {
-                method,
-                path,
-                handler: String::new(),
-                access,
-                signature,
-            },
-        );
-    }
-    Ok(())
-}
-
-fn route_shape(path: &str) -> String {
-    path.split('/')
-        .map(|s| {
-            if s.starts_with(':') {
-                ":"
-            } else if s.starts_with('*') {
-                "*"
-            } else {
-                s
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-/// First segments WordPress, First and the host own; a route may not shadow them.
-const RESERVED_ROUTE_FIRST: &[&str] = &[
-    ".well-known",
-    "__spacefast",
-    "__zero",
-    "identity",
-    "index.php",
-    "wp-config.php",
-];
-
-fn route_path(path: &str, span: Span) -> Result<String> {
-    let bad = |why: &str| {
-        Diag::new(span, format!("route path {path:?} {why}")).help(
-            "write an absolute path of literal segments, :name parameters and an optional last *rest, like /api/feed.json, /hooks/:provider or /files/*path",
-        )
-    };
-    let Some(rest) = path.strip_prefix('/') else {
-        return Err(bad("must start with /"));
-    };
-    let rest = rest.strip_suffix('/').unwrap_or(rest);
-    if rest.is_empty() {
-        return Err(bad("cannot be the site root; the root belongs to pages or the theme"));
-    }
-    let mut params = std::collections::HashSet::new();
-    let segments: Vec<&str> = rest.split('/').collect();
-    for (i, &segment) in segments.iter().enumerate() {
-        if let Some(param) = segment.strip_prefix('*') {
-            // `*name` takes the rest of the path: one or more segments, so it must come last.
-            if i + 1 != segments.len() {
-                return Err(bad("has a *catch-all that is not the last segment"));
-            }
-            if !valid_ident(param) || !params.insert(param) {
-                return Err(bad("has an invalid or repeated *catch-all name"));
-            }
-        } else if let Some(param) = segment.strip_prefix(':') {
-            if !valid_ident(param) || !params.insert(param) {
-                return Err(bad("has an invalid or repeated :parameter"));
-            }
-        } else if segment.is_empty()
-            || segment == "."
-            || segment == ".."
-            || !segment
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"._~-".contains(&b))
-        {
-            return Err(bad("has an invalid segment"));
-        }
-    }
-    let first = rest.split('/').next().unwrap_or_default().to_ascii_lowercase();
-    if first.starts_with(':')
-        || first.starts_with('*')
-        || crate::pages::RESERVED_FIRST.contains(&first.as_str())
-        || RESERVED_ROUTE_FIRST.contains(&first.as_str())
-    {
-        return Err(bad("starts with a segment WordPress or First owns"));
-    }
-    Ok(format!("/{rest}"))
 }
 
 use crate::wordpress::abilities::kebab;

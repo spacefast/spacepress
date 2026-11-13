@@ -530,7 +530,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 
 | 0.8 capability | v2 equivalent | Converter | Needs a person |
 | --- | --- | --- | --- |
-| `endpoint({ method, path, readOnly })` for GET, POST, PUT, PATCH, DELETE | [`route()`](config-api.md#http-routes) at the same method and path; v2 prefers literal segments over `:params`, as 0.8 did | Auto, **WP** | Unsafe methods need `X-WP-Nonce` for a signed-in caller, otherwise they run anonymously (a review entry says so); v2 adds `Cache-Control: private, no-store` unless the endpoint sets its own |
+| `endpoint({ method, path, readOnly })` for GET, POST, PUT, PATCH, DELETE | a [`first/app/**/route.ts`](config-api.md#http-routes) handler at the same method and path (`:id` becomes a `[id]` folder, a final `:splat` a `[...splat]` folder plus a route at the bare prefix); v2 prefers literal segments over params, as 0.8 did | Auto, **WP** | Unsafe methods need `X-WP-Nonce` for a signed-in caller, otherwise they run anonymously (a review entry says so); v2 adds `Cache-Control: private, no-store` unless the endpoint sets its own |
 | `json()`, `text()`, `empty()`, `redirect()`, plain values, `undefined` → 204 | The same status, headers and body | Auto, **WP** | — |
 | `request.text()`, `json()`, `headers.get/has`, `query.get/getAll/has`, `params`, `method` | `req.body`, `req.headers`, `req.query` (URLSearchParams semantics: first value, byte-exact names), `req.params` | Auto, **WP** | — |
 | `request.json().catch(fn)`, `text().catch(fn)`, and a returned `json()`/`text()` | The same read; invalid JSON calls `fn` as 0.8's rejection did | Auto | — |

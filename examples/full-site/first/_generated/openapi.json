@@ -26,10 +26,7 @@
     },
     { "name": "Media", "description": "The WordPress media library." },
     { "name": "Account", "description": "The signed-in user and their session." },
-    {
-      "name": "Live",
-      "description": "Reads a page is subscribed to, kept current without a push transport."
-    },
+    { "name": "Search", "description": "One search over every kind with a searchable field." },
     { "name": "Schema", "description": "The app described to its clients." }
   ],
   "paths": {
@@ -69,8 +66,8 @@
           {
             "name": "search",
             "in": "query",
-            "description": "Text to find in the title, the content and every text field the caller may read.",
-            "schema": { "type": "string" }
+            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
+            "schema": { "type": "string", "maxLength": 200 }
           },
           {
             "name": "status",
@@ -2738,11 +2735,11 @@
         }
       }
     },
-    "/_live": {
-      "post": {
-        "tags": ["Live"],
-        "operationId": "live.refresh",
-        "summary": "Refresh subscribed reads",
+    "/search": {
+      "get": {
+        "tags": ["Search"],
+        "operationId": "search",
+        "summary": "Search the site",
         "x-first-access": "anyone",
         "security": [
           {},
@@ -2750,47 +2747,31 @@
           { "applicationPassword": [] },
           { "bearer": [] }
         ],
-        "description": "Takes up to 20 reads, each with the `token` of the answer the caller last got, and answers each one as the caller, with every access rule and field rule applied. The typed client's `subscribe` calls it. An answer never says that something changed which the caller may not read.\n\nAccess: Anyone may do this, signed in or not.",
-        "requestBody": {
-          "required": true,
-          "description": "The subscribed reads.",
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "queries": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "kind": {
-                          "type": "string",
-                          "enum": ["notes", "cheers"],
-                          "description": "The kind, by the name the typed client uses."
-                        },
-                        "op": { "type": "string", "enum": ["list", "paginate", "get", "count"] },
-                        "args": {
-                          "type": "object",
-                          "description": "The arguments of that call on the kind: `where`, `orderBy`, `limit`, `offset` or `cursor`, `with`, `search`, `locale`."
-                        },
-                        "id": { "type": ["integer", "string"], "description": "The row of a `get`; or give `args.where`." },
-                        "token": { "type": "string", "description": "What the previous answer to the same read returned. Opaque." }
-                      },
-                      "required": ["kind", "op"]
-                    },
-                    "minItems": 1,
-                    "maxItems": 20
-                  }
-                },
-                "required": ["queries"]
-              }
-            }
+        "description": "Runs the kinds' `search` on every kind with a searchable field, as the caller. A kind the caller may not read is left out, and so is a `kinds` name that is not a searchable kind.\n\nAccess: Anyone may do this, signed in or not.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "The words to find.",
+            "schema": { "type": "string", "maxLength": 200 }
+          },
+          {
+            "name": "kinds",
+            "in": "query",
+            "description": "Only these kinds, comma-separated: `notes`.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Rows per kind: 10 unless given, and never more than 50.",
+            "schema": { "type": "integer", "minimum": 1, "default": 10 }
           }
-        },
+        ],
         "responses": {
           "200": {
-            "description": "One result per read, in order, and the wait the client keeps between two requests.",
+            "description": "The matching rows, by kind; a kind with none is absent.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2799,30 +2780,27 @@
                     "data": {
                       "type": "object",
                       "properties": {
+                        "q": { "type": "string" },
                         "results": {
                           "type": "array",
                           "items": {
                             "type": "object",
-                            "description": "`{ changed: true, token, data }` with the read's result as the caller reads it; `{ changed: false, token }` when what the caller holds is current; `{ error }` with the read's problem; `{ pending: true }` when the request ran out of time (ask again).",
                             "properties": {
-                              "changed": { "type": "boolean" },
-                              "token": { "type": "string" },
-                              "data": {},
-                              "error": { "$ref": "#/components/schemas/Problem" },
-                              "pending": { "type": "boolean" }
-                            }
+                              "kind": { "type": "string", "enum": ["notes"] },
+                              "rows": {
+                                "type": "array",
+                                "items": {
+                                  "anyOf": [
+                                    { "$ref": "#/components/schemas/Note" }
+                                  ]
+                                }
+                              }
+                            },
+                            "required": ["kind", "rows"]
                           }
-                        },
-                        "poll": {
-                          "type": "object",
-                          "properties": {
-                            "minMs": { "type": "integer" },
-                            "maxMs": { "type": "integer" }
-                          },
-                          "required": ["minMs", "maxMs"]
                         }
                       },
-                      "required": ["results", "poll"]
+                      "required": ["q", "results"]
                     }
                   },
                   "required": ["data"]
@@ -2831,9 +2809,6 @@
             }
           },
           "400": { "$ref": "#/components/responses/Problem" },
-          "405": { "$ref": "#/components/responses/Problem" },
-          "413": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
       }

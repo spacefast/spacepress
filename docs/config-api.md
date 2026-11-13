@@ -115,7 +115,13 @@ await posts.create({ title: "Hi" });  await posts.update(42, { title: "Hello" })
 await posts.system.list();   // trusted: no access rules, every draft
 ```
 
-- `search` matches the title, content and text fields the visitor may read.
+- `search` finds the rows where every word of the text starts a word in the
+  title, the content or a text field the visitor may read (`tea` finds
+  "Teapots", not "steal"). It narrows the same read, so the rows, `count()` and
+  the order are what the visitor gets without it, filtered: a draft, a row the
+  read rule hides, or a word only in a field the visitor may not read is never
+  found and never counted. It runs on a search index First keeps in step with
+  every write ([decision](decisions/2026-11-13-search-index.md)).
 - `paginate` takes `limit` (20 by default, at most 100) and the `cursor` the
   previous page returned.
 - A kind the visitor may not read at all throws the API's 401 or 403. A row
@@ -319,7 +325,7 @@ registered once.
 | `uid` | `false` (`true` with `sync`) | stable immutable `uid` on every row |
 | `sync` | none | project-relative `*.md` or `*.json` pattern for `first sync` |
 | `agents` | `true` | expose operations as WordPress abilities |
-| `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
+| `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. The site's sitemap (`/wp-sitemap.xml`) lists the kind's items a signed-out visitor may read. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
 
 Collections need a title and physical names of at most 14 characters (WordPress
 prefixes `first_`). Built-in route names are reserved. User projections retain
@@ -343,6 +349,14 @@ A source bundle a host stored earlier is read on the new layout instead, and
 is never refused.
 
 ### Upgrading authoring
+
+Storage is chosen only by the builder: `collection()` is always WordPress
+posts and `table()` is always a SQL table. A collection that asked for table
+storage with `editor: false` is written as `table()`; `collection()` refuses
+the option at its location. The rows of a site that deployed such a collection
+stay in the table they are in. Bind the name as below and the change is a
+rename of the declaration: `first build` writes no migration, so nothing is
+moved or dropped.
 
 Replace named builders with unnamed `collection()` or `table()` and register
 under `collections` or `tables`. Keep the logical keys, existing physical storage
@@ -445,6 +459,7 @@ answers exactly what core answers under First's rules.
 | `POST /__first/api/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
 | `GET /__first/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
 | `POST /__first/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
+| `GET /__first/api/v1/search?q=…[&kinds=a,b][&limit=n]` | | `{ data: { q, results: [{ kind, rows }] } }`: the same search on every kind, as the caller; a kind the caller may not read is left out |
 | `GET /__first/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
 | `GET /__first/api/v1/openapi.json` | | the API as an OpenAPI 3.1 document; public |
 
@@ -699,6 +714,8 @@ the live rows before it runs any of them:
 | A field becomes required with `.default(v)` | rows without a value get `v`, then it applies |
 | A field becomes required, no default, and rows lack it | refused: `required_field_missing` with the count |
 | A kind or field is removed and holds rows | refused: `drop_has_rows` with the count, until the deploy passes `--drop=name=rows` |
+| A `table()` that holds rows is declared with `collection()` | refused: `drop_has_rows` with the count. Storage follows the builder, so the build plans the table's drop and moves no rows. To keep the rows, don't pass `--drop`: delete the new, undeployed migration file, restore `snapshot.json` from the last deployed build (`git checkout`), declare `table()` again and build; no migration is written. Building `table()` on top of the drop instead writes a second migration that recreates the table, and the drop before it is still refused |
+| A `collection()` that holds posts is declared with `table()` | applies: the build creates an empty SQL table and warns. The posts stay in `wp_posts` and the app no longer reads them; nothing moves them |
 | A field's type or length narrows (`.max(100)`, `.unique()`, text to integer, ...) and values wouldn't fit | refused: `value_does_not_fit` with the count; MySQL would truncate or convert them |
 | `--drop=name=rows` doesn't match the live count | refused: `drop_count_mismatch` with the live count |
 | A table the app didn't create (`existingTable`) loses, renames or retypes a field, or loses its kind | refused: `drop_adopted_table`, even when empty, until the deploy passes `--drop` |

@@ -104,6 +104,7 @@ final class Plugin
         ContentPages::register($this);
         KindUrls::register($this);
         MarkdownTwins::register();
+        Sitemap::register($this);
         Purges::register($this);
         Hooks::register($this);
         add_action('admin_menu', [$this, 'adminMenu'], 9);
@@ -389,6 +390,8 @@ final class Plugin
         delete_option($this->refusalOption());
         IdentityBridge::provision();
         $this->backfillMembers();
+        // A kind whose searchable fields changed is re-indexed by a queued job, once the app runs.
+        add_action('init', static fn () => \First\Search\Index::reindexChanged(), PHP_INT_MAX);
         update_option($this->schemaOption(), $this->schemaHash(), false);
 
         return $applied;

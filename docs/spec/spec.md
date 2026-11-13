@@ -478,9 +478,9 @@ run on a box or in wasm. Check its crate API before depending on it.
   - `db.query`, `db.insert`, `db.update` and `db.delete`;
   - review of `first/_generated/migrations/*.sql`;
   - the generated `first/client/` source.
-- **Pages:** the `first_<name>` post types for kinds WordPress already has,
-  `@spacefast/first-pages`, `first/pages.json`, `load()`, `<Show>`, `orElse()`,
-  `count()`, `collectionPage()` and `<Island>`.
+- **Pages:** the `first_<name>` post types for kinds WordPress already has.
+  Deleted: `@spacefast/first-pages`, `first/pages.json`, `load()`, `<Show>`,
+  `orElse()`, `count()`, `collectionPage()` and `<Island>`.
 
 ## 9. Zero 0.8 and Lakebed → this
 

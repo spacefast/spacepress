@@ -183,12 +183,12 @@ serialization if a page wants block output.
   - derived values compiled to both JS and PHP.
 - Node-vs-PHP HTML parity tests.
 
-**Delete after it lands:**
-- `packages/pages`'s `symbolic.ts`, the request-data refusals in `check.ts`, and `first-pages build`;
-- Renderer.php's token and region machinery (keep its escaping policy, island SSR call and routes);
-- `first/pages.json` and the capture checks in `src/pages.rs`;
-- `load()`, `<Show>`, `orElse()`, `count()` and `<Island>`;
-- `docs/design-pages-and-agents.md` §4.3's block-region output model, which this replaces.
+**Deleted** (the full-site cutover): `packages/pages` with `first-pages build`, the
+`runtime/pages` renderer, `first/pages.json` and its capture checks (`src/pages.rs`),
+and `load()`, `<Show>`, `orElse()`, `count()` and `<Island>`. A capture that
+still carries `pages/` or `first/pages.json` is refused, on both bundle formats.
+`docs/design-pages-and-agents.md` §4.3's block-region output model is replaced
+too.
 
 Monorepo `legacy/zero-0.8` keeps its Preact island code until live 0.8 Spaces move; nothing is reused from it.
 

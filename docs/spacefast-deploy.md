@@ -19,17 +19,6 @@ Static files in `public/` are published as they are.
    sf first check
    ```
 
-   If the project has `pages/`, render them locally first and commit the
-   result:
-
-   ```sh
-   sf first build
-   npx @spacefast/first-pages build
-   ```
-
-   `first-pages build` writes `first/pages.json`, the render artifact. The host
-   cannot run page modules, so it builds the pages plugin from this file.
-
 3. Publish to your Space:
 
    ```sh
@@ -38,13 +27,10 @@ Static files in `public/` are published as they are.
 
    The CLI captures `.first-source/app.first.json`, `vendor.first.json`, and
    `manifest.json`, then uploads those private bundles and the public assets.
-   The app bundle carries `first/pages.json` and the page sources it was
-   rendered from. Capture, check, and source migration use the CLI's bundled
-   WebAssembly compiler. Publishing does not need a native First executable.
-
-   Capture refuses a stale render with `first_source_needs_local_capture`, for
-   example after a page or `first.config.ts` changed. Run `first-pages build`
-   again and publish.
+   The app bundle carries `first/app/` pages and components with the
+   stylesheets and SVGs they import. Capture, check, and source migration use
+   the CLI's bundled WebAssembly compiler. Publishing does not need a native
+   First executable.
 
 4. Wait for the publish receipt to report readiness. Open its Space URL and
    check a page, a collection read, an action and any route before handing the
@@ -54,10 +40,9 @@ The hosted MCP publish tool also accepts raw `first.config.ts`, relative `.ts`
 modules, and `public/`. The host captures raw source when `.first-source/` is
 absent. Host capture resolves relative imports and the `first` module.
 
-If host capture reports `first_source_needs_local_capture`, the project needs a
-local step. Either an import needs package resolution, or `pages/` has no
-current render. Install the project's dependencies, run `first-pages build` when
-the project has pages, and publish with `sf publish`. The CLI captures supported
+If host capture reports `first_source_needs_local_capture`, an import needs
+package resolution. Install the project's dependencies and publish with
+`sf publish`. The CLI captures supported
 installed package sources into the vendor bundle. The host never runs npm
 install or JavaScript.
 
@@ -156,13 +141,13 @@ Versions in one environment share its latest forward schema. Bind media and
 request origins to that Space. The [migration guide](migrating-from-zero.md#retire-imported-spacefast-sessions)
 lists the extra rules for Spaces moved from an earlier Zero.
 
-A compiled version with `"pages": "first-pages-<app>"` in its manifest ships a
-third plugin beside `first-runtime` and `first-app-<app>`. Mount it after the app,
-from the same version: `plugins/first-pages-<app>/first-pages-<app>.php` under
-`.first-compiled/`. Its URLs (pages and their `assets/`) and the app's routes
-are WordPress front-controller requests on the Space hostname, so send unknown
-paths to WordPress rather than answering 404 at the edge. Serve the plugin's
-`assets/` directory as static files of that version.
+The app's `first/app/` pages (`pagePaths` in the manifest) and routes (`routes`)
+are WordPress front-controller requests on the Space hostname, so send those
+paths to WordPress rather than answering 404 at the edge. The stylesheets and
+SVGs they import are static files of the version, under the app plugin's
+`first/app/assets/`, named by a hash of their bytes: serve them with a long
+cache lifetime. A bundle captured for the old pages renderer (`pages/`,
+`first/pages.json`) is refused.
 
 Unscoped cron and WP-CLI must load no app. Each scoped job needs the Space,
 environment, and version before entering the same database and cache scope as

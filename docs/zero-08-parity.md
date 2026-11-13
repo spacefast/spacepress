@@ -549,11 +549,11 @@ those four. No refused corpus app is blocked by endpoints any more.
 
 | 0.8 capability | v2 equivalent | Converter | Needs a person |
 | --- | --- | --- | --- |
-| Static `pages/*.tsx` (no hooks, event attributes, browser globals, clocks, client or kit imports) | `pages/<path>/page.tsx`, rendered at capture, served by WordPress; relative imports are adjusted for the move | Auto, **WP** (hosted compile) | Run `first-pages build` and commit `first/pages.json` |
-| `client/index.tsx` static `Layout` | `pages/layout.tsx` | Auto, **WP** | — |
+| Static `pages/*.tsx` (no hooks, event attributes, browser globals, clocks, client or kit imports) | `first/app/<path>/page.tsx`, compiled to PHP and rendered by WordPress on each request; the data modules beside them move to `first/app/` too, so relative imports keep working | Auto, **WP** (hosted compile) | — |
+| `client/index.tsx` static `Layout` | `first/app/layout.tsx` | Auto, **WP** | — |
 | Client app without pages (`client/` served as a single-page app) | Static files in `public/`: the client compiled to browser modules, mounted by `public/index.html`, with `public/first/client.js` answering `@spacefast/zero/client` | Auto (native CLI and the WebAssembly compiler give the same files) | Check each screen on the candidate; reads refresh on this browser's writes and on focus |
-| `"use client"` pages with `useQuery`, `useMutation`, `useAction`, `useState`, `useAuth` | `load()` reads as the visitor, plus `<Island>` with an Interactivity store calling actions | Refused, lists what each page uses | Port each page |
-| `usePaginatedQuery` | In a client app without pages: the bridge calls the paginated action, passing `{ numItems, cursor }` to the handler's `PaginationOptions` parameter. In a `"use client"` page: an island over the paginated action | Auto in a client app; refused in a page | Port pages |
+| `"use client"` pages with `useQuery`, `useMutation`, `useAction`, `useState`, `useAuth` | A `first/app/` page that reads as the visitor, plus `"use client"` components that call actions | Refused, lists what each page uses | Port each page |
+| `usePaginatedQuery` | In a client app without pages: the bridge calls the paginated action, passing `{ numItems, cursor }` to the handler's `PaginationOptions` parameter. In a `"use client"` page: a `"use client"` component over the paginated action | Auto in a client app; refused in a page | Port pages |
 | `@spacefast/zero/kit` components | **missing**: plain markup and CSS | Refused | Restyle |
 | `@spacefast/zero/charts` | **missing** | Refused | **Gap** |
 | `@spacefast/zero/context` (`ContextPage`, editor) | **missing** | Refused | **Gap** |

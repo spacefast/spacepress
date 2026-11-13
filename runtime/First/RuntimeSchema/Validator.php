@@ -49,10 +49,32 @@ final class Validator
         if (in_array($name, ['title', 'content', 'slug'], true)) {
             throw Refused::rule('F3001', $at, "`$name` names a designated field; declare it in source");
         }
+
+        return self::definition($at, $name, $definition, self::COLLECTION);
+    }
+
+    public const COLLECTION = 'collection';
+    public const GLOBAL = 'global';
+
+    /** One field of a collection or a global, whatever kind it joins. Returns the stored definition. */
+    public static function definition(string $at, string $name, mixed $definition, string $place): array
+    {
         $stored = self::build($definition, $at);
+        if ($place === self::GLOBAL && $stored['type'] === 'blocks') {
+            throw Refused::rule('F3001', $at, "blocks() isn't allowed on a global field (`$name`)");
+        }
         self::check($name, $stored, $at, 1);
+        if ($place === self::GLOBAL && ($stored['notNull'] ?? false) && !isset($stored['default'])) {
+            throw Refused::rule('F3001', $at, "a global field is required unless it has a default (`$name`)");
+        }
 
         return $stored;
+    }
+
+    /** `.ui()` on its own, for a presentation override. */
+    public static function presentation(mixed $ui, string $at): array
+    {
+        return self::ui($ui, $at);
     }
 
     /** The builder call and its modifiers: shape, then the evaluator's rules. Returns the stored form. */

@@ -19,9 +19,18 @@ system table (`SystemTables`), created on the plugin's upgrade check like the jo
   `Extensions::onWritten` inside its transaction. The row's entries are replaced there, so the index
   commits and rolls back with the write: there is no window where a committed row is unsearchable
   or a rolled-back one is.
+- The entries are written from the row as stored when the report runs, not from the report's own
+  copy. An after-hook that writes the row again reports first; the outer report then reads the same
+  final row, so an older snapshot is never the last thing indexed.
+- Users are also written by WordPress itself (`wp_insert_user`, the profile screen, sign-up), which
+  doesn't go through the pipeline. The members kind's entries follow core's `user_register`,
+  `profile_update` and `deleted_user` hooks, re-read from the stored user the same way.
 - A kind whose searchable fields change in a build is rebuilt by a runtime job, `first.search.reindex`,
   through the existing outbox and Action Scheduler, a batch of rows per run. Nothing is polled; no
-  cron, tick or worker is added.
+  cron, tick or worker is added. The rebuild clears nothing first: each run re-indexes its batch, row
+  by row under a lock, and the last run deletes the entries of rows that no longer exist and of fields
+  that are no longer searchable. A run carries the build's field list as its generation, and a run of
+  an older generation does nothing.
 
 **Access is decided by the read, never by the index.** The index holds every row, published or not,
 because whether a row is visible depends on who asks. A search compiles to one more condition on
@@ -33,6 +42,11 @@ what the reader would get by listing the kind and filtering by hand.
 - **Hidden fields.** Each field is its own index row, and the condition names only the fields the
   reader may read in every row (`FieldAccess::mayHide`, the rule the old search already used). A
   value in a hidden field never qualifies a row, so it can't be found, counted or inferred.
+- **No refusal.** Because a search only consults readable fields, it is never refused for a hidden
+  field (the old `LIKE` search answered 403 when the content was hidden). Core's users route
+  (`/wp/v2/users?search=`) used to run core's own search over login, nicename and email, outside
+  First's read; it now selects members through First as the reader, with core's search off, and
+  `X-WP-Total` counts the same members.
 - **No relevance ranking.** A score would be computed over text the reader may not see (MySQL's
   FULLTEXT relevance uses document frequencies across the whole index), and ordering by it leaks
   through rank. Results keep the kind's own order (`orderBy`, else its default), as before.
@@ -45,6 +59,24 @@ registers on the SQLite connection, with Unicode case folding like the MySQL col
 term at the start of a word. The two differ in what MySQL leaves out: InnoDB ignores its stopwords
 and words shorter than `innodb_ft_min_token_size` (3), which the SQLite path matches. The tests run on
 SQLite; the MySQL statement is exercised by the WordPress suite on MariaDB.
+
+Three more differences are accepted rather than papered over:
+
+- **Read after write.** InnoDB applies FULLTEXT changes at commit, so `MATCH` inside the transaction
+  that wrote a row doesn't see its new text (a hook that searches for the row it just saved finds
+  the old entries). Requests and jobs search after their writes commit, so readers see every
+  committed write. The SQLite path sees the transaction's own writes.
+- **Accents and underscores.** The table's `utf8mb4_unicode_ci` collation makes MySQL ignore accents
+  (`cafe` finds `café`), and MySQL's parser keeps `_` inside a word (`bar` doesn't find `foo_bar`). The
+  SQLite path folds case only, and starts a new word after `_`.
+- **Keys are bytes.** `kind`, `item` and `field` are `VARBINARY`, so ids that differ only in case are
+  distinct and no collation is involved in the join. The SQLite translator turns `CAST(… AS BINARY)`
+  into text, which never equals a BLOB, so there the join reads the stored id as text instead.
+
+**Timing.** The index holds every row, readable or not, and the condition is evaluated inside the
+reader's query. How long a search takes can vary with how many rows match, including rows the reader
+can't see. That is a weak channel (noise from the rest of the request dominates it), the same one any
+filtered list has, and it is not closed here.
 
 **One site-wide endpoint.** `GET /__first/api/v1/search?q=…` runs the same search on every kind with
 a searchable field and an API list, as the caller, and returns the matching rows per kind. A kind the

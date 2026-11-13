@@ -246,8 +246,8 @@ Fields every kind gets:
 | `access` | all | the defaults above. Values: `"anyone"`, a role, `"author"`, `"org"`, a filter object, or `(ctx) => boolean \| filter` |
 | `comments` | post kinds | `false` for your collections; `true` for `posts` (core default) |
 | `search` | all with rows | text, richText and title fields |
-| `hierarchical` | collections, taxonomies | `false` |
-| `sync` | collections, tables | none; `"content/posts/*.md"` |
+| `hierarchical` | collections, taxonomies | `false`; on a collection it adds `parent` and `order` (built, [decision](../decisions/2026-11-13-docs-kind.md)) |
+| `sync` | collections, tables | none; `"content/posts/*.md"`, or `"content/docs/**/*.md"` for a hierarchical kind's folder tree |
 | `abilities` | all | tools for signed-in agents; `{ public: true }` for anonymous |
 | `label`, `icon` | all | from the name |
 | `storageName`, `was` | all with rows | snake_case name; rename |

@@ -1,6 +1,10 @@
 //! Embeds the runtime into the binary: every file under `runtime/` (PHP runtime,
 //! WordPress stores, plugin template, client runtime). New files are picked up
 //! without code changes; `first build` decides which go where.
+//!
+//! Also embeds the documentation `first mcp` searches and reads (`docs_files.rs`): the guides and
+//! references in `docs/*.md` and the docs site's pages in `docs-site/docs/`, so an answer matches
+//! the binary that gave it.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -40,6 +44,59 @@ fn collect(dir: &Path, root: &Path, out: &mut Vec<String>) {
     }
 }
 
+/// The pages under `dir` with one of `extensions`, as paths relative to the repository root.
+fn docs(dir: &Path, repo: &Path, recurse: bool, extensions: &[&str], out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let mut entries: Vec<_> = entries.filter_map(Result::ok).collect();
+    entries.sort_by_key(|e| e.file_name());
+    for e in entries {
+        let path = e.path();
+        if path.is_dir() {
+            if recurse {
+                docs(&path, repo, recurse, extensions, out);
+            }
+        } else if path
+            .extension()
+            .is_some_and(|x| extensions.iter().any(|want| x == *want))
+        {
+            let rel = path.strip_prefix(repo).expect("under the repository");
+            out.push(rel.to_string_lossy().replace('\\', "/"));
+        }
+    }
+}
+
+/// `docs/*.md` is what an author reads. Design proposals and provenance records describe decisions
+/// and plans, some of them never built, so they stay out of what `first mcp` answers from; so do the
+/// subdirectories (the target spec, decision records, spikes, benchmarks).
+fn is_guide(rel: &str) -> bool {
+    let name = rel.rsplit('/').next().unwrap_or(rel);
+    !(name.starts_with("design-") || matches!(name, "authoring-direction.md" | "research-adoption.md"))
+}
+
+fn embed_docs(manifest: &Path, out_dir: &Path) {
+    println!("cargo:rerun-if-changed=docs");
+    println!("cargo:rerun-if-changed=docs-site/docs");
+    let mut files = Vec::new();
+    docs(&manifest.join("docs"), manifest, false, &["md"], &mut files);
+    files.retain(|rel| is_guide(rel));
+    docs(
+        &manifest.join("docs-site/docs"),
+        manifest,
+        true,
+        &["md", "mdx"],
+        &mut files,
+    );
+    let mut src =
+        String::from("/// (path relative to the repository root, contents)\npub const DOCS: &[(&str, &str)] = &[\n");
+    for f in &files {
+        let abs = manifest.join(f);
+        println!("cargo:rerun-if-changed={}", abs.display());
+        let _ = writeln!(src, "    ({f:?}, include_str!({:?})),", abs.display().to_string());
+    }
+    src.push_str("];\n");
+    std::fs::write(out_dir.join("docs_files.rs"), src).expect("write docs_files.rs");
+}
+
 fn main() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("manifest dir");
     let root = Path::new(&manifest).join("runtime");
@@ -53,6 +110,8 @@ fn main() {
         let _ = writeln!(src, "    ({f:?}, include_bytes!({:?})),", abs.display().to_string());
     }
     src.push_str("];\n");
-    let out = Path::new(&std::env::var("OUT_DIR").expect("out dir")).join("runtime_files.rs");
-    std::fs::write(out, src).expect("write runtime_files.rs");
+    let out_dir = std::env::var("OUT_DIR").expect("out dir");
+    let out_dir = Path::new(&out_dir);
+    std::fs::write(out_dir.join("runtime_files.rs"), src).expect("write runtime_files.rs");
+    embed_docs(Path::new(&manifest), out_dir);
 }

@@ -26,6 +26,18 @@ export default defineConfig({
 });
 `;
 
+// `first mcp` over stdio: one request per tool call, then end of input, which stops the server.
+async function mcp(flags, env, calls) {
+  const meta = { 'io.modelcontextprotocol/protocolVersion': '2026-07-28', 'io.modelcontextprotocol/clientCapabilities': {} };
+  const running = exec(first, ['mcp', ...flags], { env, timeout: 600000, maxBuffer: 4 * 1024 * 1024 });
+  running.child.stdin.end(calls.map(([name, args], id) => JSON.stringify({
+    jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args, _meta: meta },
+  })).join('\n') + '\n');
+  const answers = (await running).stdout.trim().split('\n').map((line) => JSON.parse(line));
+  assert.deepEqual(answers.map((answer) => answer.id), calls.map((_, id) => id));
+  return answers.map((answer) => answer.result);
+}
+
 async function freePort() {
   const server = createServer();
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
@@ -98,6 +110,29 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   const status = JSON.parse(await command(['dev', 'status', project], env));
   assert.equal(status.isOnline, true);
   const base = status.siteUrl.replace(/\/$/, '');
+  // A coding agent's view of the same site: its state and URL, a read, and (only when the server
+  // was started with --allow-writes) a write and an action, all through the site commands.
+  const [devStatus, refusedInsert] = await mcp([project], env, [
+    ['dev_status', {}],
+    ['insert', { kind: 'items', rows: [{ name: 'Not written' }] }],
+  ]);
+  assert.deepEqual(devStatus.structuredContent, {
+    state: 'running', url: base, admin: `${base}/wp-admin/`, site: await realpath(site), wordpress: status.wpVersion, php: status.phpVersion,
+  });
+  assert.equal(refusedInsert.isError, true);
+  const [inserted, read, updated, ran, all] = await mcp([project, '--allow-writes'], env, [
+    ['insert', { kind: 'items', rows: [{ name: 'From an agent' }] }],
+    ['query', { kind: 'items', where: { name: 'From an agent' }, columns: { name: true } }],
+    ['update', { kind: 'items', where: { name: 'From an agent' }, set: { name: 'Renamed by an agent' } }],
+    ['run_action', { name: 'version', input: {} }],
+    ['query', { kind: 'items' }],
+  ]);
+  assert.equal(inserted.isError, false, JSON.stringify(inserted));
+  assert.deepEqual(read.structuredContent, { data: [{ name: 'From an agent' }] });
+  assert.equal(updated.isError, false, JSON.stringify(updated));
+  assert.deepEqual(ran.structuredContent, { data: 'first' });
+  // The refused insert wrote nothing: the one row is the allowed server's.
+  assert.deepEqual(all.structuredContent.data.map((row) => row.name), ['Renamed by an agent']);
   const wp = (...args) => command(['wp', '--site', project, ...args], env);
   const password = await wp('user', 'application-password', 'create', 'admin', 'first-acceptance', '--porcelain');
   const authorization = `Basic ${Buffer.from(`admin:${password}`).toString('base64')}`;
@@ -162,6 +197,7 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   await wp('plugin', 'activate', 'acceptance-extra');
   await command(['dev', 'stop', project], env);
   assert.equal(JSON.parse(await command(['dev', 'status', project], env)).isOnline, false);
+  assert.equal((await mcp([project], env, [['dev_status', {}]]))[0].structuredContent.state, 'stopped');
   session = foreground(['dev', project], env);
   let cursor = await session.wait('Watching config');
   assert.equal(JSON.parse(await command(['dev', 'status', project], env)).siteUrl, status.siteUrl);

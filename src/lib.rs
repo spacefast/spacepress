@@ -57,6 +57,11 @@ mod runtime_files {
     include!(concat!(env!("OUT_DIR"), "/runtime_files.rs"));
 }
 
+#[cfg(feature = "cli")]
+mod docs_files {
+    include!(concat!(env!("OUT_DIR"), "/docs_files.rs"));
+}
+
 pub mod bundle;
 #[cfg(feature = "host")]
 mod zero_bundle;

@@ -1,10 +1,69 @@
 # Use your First app from an agent
 
+First has two MCP servers, for two different jobs:
+
+| | Development time | Runtime |
+|---|---|---|
+| What it is | `first mcp`, in the `first` binary | the site's endpoint, `/wp-json/mcp/first-<app>` |
+| Who uses it | a coding agent working on the project's source | any agent using the app's data and actions |
+| Transport | stdio | Streamable HTTP |
+| What it answers | the project's schema, compiler diagnostics, First's documentation, the command table, the dev site | one tool per collection operation and action |
+| Access | the local files, and the local dev site | a WordPress user's access rules |
+
+## Develop a project with a coding agent: `first mcp`
+
+`first mcp [dir]` serves the project in `dir` (default: the current directory)
+to a coding agent on stdin and stdout. Register it with the agent you use. For
+Claude Code, in the project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "first": { "command": "npx", "args": ["--no-install", "first", "mcp"] }
+  }
+}
+```
+
+For Codex: `codex mcp add first -- npx --no-install first mcp`. `--no-install`
+runs the `first` the project already has from `@spacefast/first-cli` and never
+downloads a package by that name. With a compiler built from source, use its
+path in place of `npx --no-install first`.
+
+| Tool | What it returns |
+|---|---|
+| `schema` | The project's kinds with their fields, access rules, relations and hooks; globals, actions, jobs, pages and HTTP routes, file buckets, roles, the Abilities the site registers, and the endpoints. `kind` narrows it to one kind. |
+| `check` | The `first-diagnostics` envelope `first check --json` prints ([compiler diagnostics](compiler-diagnostics.md)). It writes nothing. |
+| `docs_search`, `docs_read` | First's documentation as built into this binary: `docs/*.md` and the docs site's pages. A long page read whole answers with its opening and its sections; pass `section` to read one. |
+| `commands` | The command table `first help` prints. |
+| `dev_status` | Whether the project has a local dev site, whether it runs, and its URL. |
+| `query` | A kind's records from the local dev site, through `first find`: `kind`, `where`, `orderBy`, `limit`, `offset`, `columns`, `with`. |
+
+`schema`, `check`, `docs_search` and `docs_read` compile or read from the
+binary and need no site. `schema` and `check` read the files as they are at each
+call, so an edit shows up without restarting the server. The same documentation
+pages are also the server's resources, as `first-docs:///<path>`.
+
+`query` and the write tools run as the trusted command line, like `first find`:
+no access rules, drafts included. They are for a developer's own dev site:
+
+- Without a flag, `query` reads this project's dev site and refuses any `site`.
+  `first mcp --allow-remote-read` lets it read another site, named as `--site`
+  names one: a project directory, a deployment workspace or a WP-CLI `@alias`.
+- The write tools are not listed without `--allow-writes`. With it, `run_action`,
+  `insert` and `update` run `first action`, `first insert` and `first update` on
+  this project's dev site. They take no `site`, so they never reach another one.
+- There is no delete tool.
+
+The server speaks MCP revision 2026-07-28 (no handshake; `server/discover`) and,
+for clients that open with `initialize`, 2025-11-25 and 2025-06-18.
+
+## Use the running app: the site's MCP endpoint
+
 Connect an agent to the same data and actions your frontend uses. First registers
 them with WordPress's core Abilities API. The required MCP Adapter plugin exposes
 them through an app-specific Streamable HTTP server.
 
-## Find the endpoint and tools
+### Find the endpoint and tools
 
 For `defineConfig({ name: "subscriptions", ... })`, connect to:
 
@@ -57,7 +116,7 @@ as REST. An application password authenticates a WordPress user; it does not
 bypass that user's access. In the subscriptions app, owner filters also apply
 to MCP reads and writes. Trusted action handlers explicitly filter by owner.
 
-## Create an application password
+### Create an application password
 
 On a hosted WordPress site, use HTTPS. Sign in to WordPress, open **Users →
 Profile → Application Passwords**, and create a password for your agent. Use a
@@ -88,7 +147,7 @@ unset FIRST_APP_PASSWORD
 This snippet uses Bash. Launch the agent from that shell to inherit
 `FIRST_MCP_AUTH`. Keep credentials out of repository configuration and transcripts.
 
-## Connect Claude Code
+### Connect Claude Code
 
 Put this in your project's `.mcp.json`:
 
@@ -111,7 +170,7 @@ to inspect the connection and available tools. Claude Code documents HTTP
 servers, headers, and environment expansion in its
 [MCP reference](https://code.claude.com/docs/en/mcp).
 
-## Connect Claude Desktop
+### Connect Claude Desktop
 
 For a local stdio connection, install Node.js and add this entry to
 `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS.
@@ -142,7 +201,7 @@ forwards stdio to the site's HTTP endpoint with Basic authentication. The
 describes Claude Desktop's configuration file and server loading.
 Reload Claude Desktop after saving the configuration.
 
-## Connect Codex
+### Connect Codex
 
 Add this to `~/.codex/config.toml`:
 
@@ -202,7 +261,7 @@ HTML pages, Markdown pages, `/llms.txt` and `robots.txt` send a
 add_filter('first_content_signal', fn () => 'search=yes, ai-input=no, ai-train=no');
 ```
 
-## Verify with a real site
+### Verify with a real site
 
 The repository includes a protocol probe that initializes an MCP session, lists
 tool names, and calls a list tool. It prints response bodies without credentials:

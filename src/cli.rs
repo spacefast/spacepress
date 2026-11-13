@@ -193,6 +193,7 @@ pub fn main() -> ExitCode {
             ExitCode::from(2)
         }
         "sync" => crate::commands::sync(&rest),
+        "mcp" => crate::commands::mcp::cli(&rest),
         "wp" => {
             let mut rest = rest;
             exit(crate::commands::site::take_site(&mut rest).and_then(|site| {

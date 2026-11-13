@@ -50,6 +50,9 @@ default) adds `commands/`, `sync/`, `config_migrate/`, plugin downloads and the 
 `cargo build --lib --no-default-features --profile wasm --target wasm32-unknown-unknown` and
 serves it as the docs site's playground compiler (see [`docs-site/README.md`](docs-site/README.md)).
 
+`build.rs` also embeds `docs/*.md` (design proposals excepted) and `docs-site/docs/` for
+`first mcp`'s `docs_search` and `docs_read`, so a documentation change needs a rebuild to show there.
+
 The runtime under `runtime/` is embedded into the binary by `build.rs` and
 written out by `first build` into the `first-runtime`, `first-identity` and
 `first-app-<name>` plugins. `first build` decides which files go where; new
@@ -58,7 +61,7 @@ files under `runtime/` are picked up without code changes.
 ## The commands
 
 `first help` prints every command, grouped. **Build** commands (`dev`, `build`,
-`check`, `doctor`, `sync`, `abilities pull`, `migrate app|config`, `deploy`) run in the `first`
+`check`, `doctor`, `mcp`, `sync`, `abilities pull`, `migrate app|config`, `deploy`) run in the `first`
 binary against the project's files (`abilities pull` reads a site's abilities
 into the committed `first/_generated/abilities.json`). **Site** commands (`migrate`, `seed`,
 `jobs`, `run`, `identity`, …) are implemented once, as `wp first <command>` in

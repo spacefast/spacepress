@@ -288,9 +288,14 @@ final class WpSite
         // and a fatal error as text, not WordPress's "critical error" page.
         ini_set('display_errors', 'stderr');
         add_filter('wp_php_error_message', static fn (string $message, array $error): string => $error['message'] . ' in ' . $error['file'] . ':' . $error['line'], 10, 2);
-        add_filter('wp_die_handler', static fn () => static function (mixed $message): never {
+        // WordPress reports a fatal error through wp_die() with `exit => false`, from inside a
+        // shutdown function. Exiting there would skip every shutdown function registered later:
+        // the suite's own cleanup, so its php -S child and its site directory would stay behind.
+        add_filter('wp_die_handler', static fn () => static function (mixed $message, mixed $title = '', mixed $args = []): void {
             fwrite(STDERR, 'wp_die: ' . (is_string($message) ? $message : json_encode($message)) . "\n");
-            exit(255);
+            if (!is_array($args) || ($args['exit'] ?? true)) {
+                exit(255);
+            }
         });
         $plugin = \First\Wp\Runtime::plugin() ?? throw new RuntimeException('the First app did not boot: ' . $this->debugLog());
         if ($plugin->unavailable() !== null) {
@@ -304,13 +309,19 @@ final class WpSite
         return is_file("$this->content/debug.log") ? (string) file_get_contents("$this->content/debug.log") : '(no debug.log)';
     }
 
-    public function destroy(): void
+    /** Stops the php -S child; `startServer()` starts a new one (a new process: no cached code). */
+    public function stopServer(): void
     {
         if ($this->server !== null) {
             proc_terminate($this->server);
             proc_close($this->server);
             $this->server = null;
         }
+    }
+
+    public function destroy(): void
+    {
+        $this->stopServer();
         if (is_dir($this->dir)) {
             exec('rm -rf ' . escapeshellarg($this->dir));
         }
@@ -355,6 +366,12 @@ final class WpSite
         }
 
         return $out;
+    }
+
+    /** The php -S child's process id, or null when no server runs. */
+    public function serverPid(): ?int
+    {
+        return $this->server === null ? null : (proc_get_status($this->server)['pid'] ?? null);
     }
 
     /** Whether the php -S child is still running. */
@@ -419,6 +436,24 @@ final class WpSite
         } finally {
             wp_set_current_user(0);
         }
+    }
+
+    /**
+     * The `serveRoute` match for a `first/app/` HTTP handler, as the app router finds it: the
+     * route whose pattern takes `$path`, that file's `$method` handler, and its access rule.
+     *
+     * @return array{name: string, params: array<string, string>, route: array<string, mixed>}
+     */
+    public function route(string $method, string $path): array
+    {
+        $app = $this->plugin()->schema->app();
+        $match = \First\Wp\AppRouter::match($app['routes'], $path) ?? throw new \RuntimeException("no route takes $path");
+        $file = $app['files'][$match['route']['handler'] ?? $match['route']['page']];
+        return [
+            'name' => (string) $match['route']['id'],
+            'params' => array_map(static fn ($v) => is_array($v) ? implode('/', $v) : $v, $match['params']),
+            'route' => ['handler' => $file['methods'][$method] ?? throw new \RuntimeException("$path has no $method"), 'access' => $file['access'] ?? ['allow' => false], 'signature' => $file['signature'] ?? null],
+        ];
     }
 
     /** Where an upload URL of this site lives on disk. */

@@ -175,7 +175,7 @@ fn app_router_serves_pages_on_wordpress() {
         .lines()
         .map(|l| l.split(']').next().unwrap().trim_start_matches("- ["))
         .collect();
-    assert_eq!(titles, ["About", "Notes", "Home"], "{llms}");
+    assert_eq!(titles, ["About", "Field guide", "Colophon", "Notes", "Home"], "{llms}");
     // WordPress keeps its own URLs.
     assert_eq!(seen["rest"], 200);
     assert_eq!(seen["feed"], 200);
@@ -234,6 +234,252 @@ export function slug({ params }: PageProps<"notes/[slug]">): string {
     let _ = std::fs::remove_dir_all(project);
 }
 
+/// `page.md` is a real WordPress Page (rendering.md §2): the file is its first version, the route
+/// renders it inside its layouts, an editor changes it in wp-admin, and nothing of a draft or a
+/// guarded page reaches an anonymous visitor (tests/php/app_content.php).
+#[test]
+fn page_md_is_a_wordpress_page() {
+    let project = fixture("app-router", "content");
+    build(&project);
+    // A later build of the same app: one file changed in each of three ways, one removed, one added.
+    let second = fixture("app-router", "content-second");
+    let app = second.join("first/app");
+    std::fs::remove_dir_all(app.join("hidden")).unwrap();
+    std::fs::create_dir_all(app.join("news")).unwrap();
+    std::fs::write(app.join("news/page.md"), "# News\n\nNothing yet.\n").unwrap();
+    std::fs::write(app.join("colophon/page.md"), "# Colophon\n\nSet in a serif.\n").unwrap();
+    let guide = app.join("(site)/guide/page.md");
+    std::fs::write(
+        &guide,
+        std::fs::read_to_string(&guide)
+            .unwrap()
+            .replace("one per walk", "one per outing"),
+    )
+    .unwrap();
+    build(&second);
+    // A third build takes two pages away from visitors: one becomes a draft, one moves under a guard.
+    let third = fixture("app-router", "content-third");
+    let app = third.join("first/app");
+    std::fs::remove_dir_all(app.join("hidden")).unwrap();
+    std::fs::remove_dir_all(app.join("colophon")).unwrap();
+    std::fs::create_dir_all(app.join("account/colophon")).unwrap();
+    std::fs::write(
+        app.join("account/colophon/page.md"),
+        "# Members only colophon\n\nFor members.\n",
+    )
+    .unwrap();
+    let guide = app.join("(site)/guide/page.md");
+    std::fs::write(
+        &guide,
+        std::fs::read_to_string(&guide)
+            .unwrap()
+            .replace("title: Field guide", "title: Field guide\nstatus: draft"),
+    )
+    .unwrap();
+    build(&third);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_content.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .arg(second.join("first/dist/wp-content"))
+        .arg(third.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    for dir in [&project, &second, &third] {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    let text = |v: &serde_json::Value| v.as_str().unwrap_or_default().to_string();
+    let shared = "public, s-maxage=300, max-age=0, must-revalidate";
+    let private = "private, no-store, max-age=0";
+
+    // The file's Markdown is stored as blocks in a Page, and the route renders that Page inside
+    // its layout, with the front matter as its metadata and the anonymous cache policy.
+    let guide = &seen["guide"];
+    assert_eq!(guide["status"], 200);
+    assert_eq!(guide["title"], "Field guide · Field Notes");
+    assert_eq!(guide["description"], "How the notes are kept.");
+    assert!(text(&guide["canonical"]).ends_with("/guide"), "{guide}");
+    assert_eq!(guide["cache"], shared);
+    let body = text(&guide["body"]);
+    assert!(body.starts_with(r#"<div class="site"><nav>"#), "{body}");
+    assert!(
+        body.contains(
+            r#"<main><h1 class="wp-block-post-title">Field guide</h1><div class="entry-content wp-block-post-content">"#
+        ),
+        "{body}"
+    );
+    assert!(
+        body.contains("Notes are kept in <b>plain text</b>, one per walk."),
+        "{body}"
+    );
+    assert!(
+        body.contains(r#"<h2 class="wp-block-heading">What to carry</h2>"#),
+        "{body}"
+    );
+    assert!(body.contains(r#"<a href="https://example.com/map">map</a>"#), "{body}");
+    assert!(
+        body.contains(r#"<pre class="wp-block-code language-sh"><code>first build"#),
+        "{body}"
+    );
+    let stored = &seen["guide stored"];
+    assert_eq!(
+        (
+            &stored["type"],
+            &stored["status"],
+            &stored["title"],
+            &stored["slug"],
+            &stored["excerpt"]
+        ),
+        (
+            &serde_json::json!("page"),
+            &serde_json::json!("publish"),
+            &serde_json::json!("Field guide"),
+            &serde_json::json!("guide"),
+            &serde_json::json!("How the notes are kept.")
+        )
+    );
+    assert!(
+        text(&stored["content"]).starts_with("<!-- wp:paragraph -->"),
+        "{stored}"
+    );
+    // The route's path is the Page's permalink, and WordPress's own address for it redirects there.
+    assert!(text(&stored["link"]).ends_with("/guide"), "{stored}");
+    assert_eq!(seen["by id"][0], 301);
+    assert!(text(&seen["by id"][1]).ends_with("/guide"), "{}", seen["by id"]);
+    // Its Markdown twin, advertised by the HTML page.
+    assert_eq!(
+        seen["guide twin"],
+        serde_json::json!([
+            200,
+            "# Field guide\n\nNotes are kept in **plain text**, one per walk.\n\n## What to carry\n\n- A pencil\n- A [map](https://example.com/map)\n\n```sh\nfirst build\n```\n",
+            "text/markdown; charset=UTF-8"
+        ])
+    );
+    assert!(text(&seen["guide twin link"][0]).contains("/guide.md>; rel=\"alternate\""));
+    // Without front matter the first heading is the title, shown once; HTML in the file is text.
+    let colophon = text(&seen["colophon"]["body"]);
+    assert_eq!(seen["colophon"]["title"], "Colophon · Field Notes");
+    assert_eq!(colophon.matches("Colophon").count(), 1, "{colophon}");
+    assert!(
+        colophon.contains("&lt;script&gt;alert(1)&lt;/script&gt;") && !colophon.contains("<script>alert"),
+        "{colophon}"
+    );
+    assert!(text(&seen["colophon"]["canonical"]).ends_with("/colophon"));
+
+    // A draft: stored for its editors, a 404 for everyone else, HTML and twin alike, and uncached.
+    assert_eq!(seen["hidden stored"]["status"], "draft");
+    assert_eq!(seen["hidden"]["status"], 404);
+    assert_eq!(seen["hidden"]["cache"], private);
+    assert!(!text(&seen["hidden"]["body"]).contains("ninth"));
+    assert_ne!(seen["hidden"]["description"], "Not for visitors yet.");
+    assert_eq!(seen["hidden as subscriber"], 404);
+    assert_eq!(seen["hidden as editor"]["status"], 200);
+    assert_eq!(seen["hidden as editor"]["cache"], private);
+    assert!(text(&seen["hidden as editor"]["body"]).contains("The launch is on the ninth."));
+    assert_eq!(
+        (&seen["hidden twin"], &seen["hidden twin as editor"]),
+        (&serde_json::json!(404), &serde_json::json!(404)),
+        "a twin is the same for everyone"
+    );
+    // Under a layout guard the Page is stored private: the guard decides who reads it, and it
+    // has no twin.
+    assert_eq!(seen["terms anonymous"], serde_json::json!([302, true]));
+    assert_eq!(seen["terms stored"]["status"], "private");
+    assert_eq!(seen["terms subscriber"]["status"], 200);
+    assert_eq!(seen["terms subscriber"]["cache"], private);
+    assert!(
+        text(&seen["terms subscriber"]["body"])
+            .contains(r#"<section class="account"><h1 class="wp-block-post-title">Member terms</h1>"#)
+    );
+    assert_eq!(seen["terms twin"], 404);
+    // WordPress's own public surfaces (REST, search, sitemap, feed, llms.txt) show neither.
+    assert_eq!(seen["leaks"], serde_json::json!([]));
+    // A public page is listed once in llms.txt, under the app's pages, linking the route's twin.
+    let llms = text(&seen["llms"]);
+    assert_eq!(llms.matches("[Field guide](").count(), 1, "{llms}");
+    assert!(llms.contains("/guide.md)"), "{llms}");
+
+    // An editor's change in wp-admin is what the route and its twin show, and it purges the URL.
+    let edited = &seen["guide edited"];
+    assert_eq!(edited["title"], "Field guide, revised · Field Notes");
+    assert_eq!(edited["description"], "Edited on the site.");
+    assert!(text(&edited["body"]).contains("<p class=\"wp-block-paragraph\">Edited in the block editor.</p>"));
+    assert_eq!(
+        seen["guide edited twin"],
+        "# Field guide, revised\n\nEdited in the block editor.\n"
+    );
+    let purged: Vec<String> = seen["purged"].as_array().unwrap().iter().map(text).collect();
+    for path in ["/guide", "/guide/", "/guide.md", "/llms.txt"] {
+        assert!(purged.contains(&path.to_string()), "{path} in {purged:?}");
+    }
+    // Unsaved changes show from the editor's own Preview link only.
+    assert!(text(&seen["preview as editor"]["body"]).contains("Not saved yet."));
+    assert_eq!(seen["preview as editor"]["cache"], private);
+    // WordPress refuses a preview link whose nonce isn't the viewer's own, before any page renders.
+    assert_eq!(seen["preview without nonce"], serde_json::json!([403, false]));
+    assert_eq!(seen["preview anonymous"], serde_json::json!([403, false]));
+    // A password locks the body for every visitor (the page is cached for all of them).
+    for key in ["locked", "locked with cookie"] {
+        let body = if key == "locked" {
+            text(&seen[key]["body"])
+        } else {
+            text(&seen[key])
+        };
+        assert!(
+            body.contains("This content is password protected.") && !body.contains("Edited in"),
+            "{key}: {body}"
+        );
+    }
+    assert_ne!(seen["locked"]["description"], "Edited on the site.");
+    assert_eq!(
+        seen["locked twin"],
+        "# Field guide, revised\n\nThis content is password protected.\n"
+    );
+    assert_eq!(seen["unpublished"], serde_json::json!([404, 404]));
+    assert_eq!(seen["republished"], 200);
+
+    // The next build: a changed file updates a Page nobody edited, a new file makes a Page, the
+    // Page an editor changed keeps their version, and a removed file leaves its Page on the site.
+    assert!(text(&seen["second colophon"]["body"]).contains("Set in a serif."));
+    assert_eq!(seen["second colophon stored"]["id"], seen["colophon stored"]["id"]);
+    assert!(text(&seen["second news"]["body"]).contains("Nothing yet."));
+    assert!(text(&seen["second guide"]["body"]).contains("Edited in the block editor."));
+    assert_eq!(seen["second hidden"], 404);
+    assert_eq!(seen["second hidden stored"]["id"], seen["hidden stored"]["id"]);
+    // The third build: a file that now says `status: draft` unpublishes its Page even though the
+    // site edited it (the editor's text stays), and the site having lost its record of the Pages
+    // changes nothing: each is found again, not overwritten and not duplicated.
+    assert_eq!(seen["third guide"], serde_json::json!([404, 404]));
+    assert_eq!(seen["third guide stored"]["id"], seen["guide stored"]["id"]);
+    assert_eq!(seen["third guide stored"]["status"], "draft");
+    assert_eq!(seen["third guide stored"]["title"], "Field guide, revised");
+    assert!(text(&seen["third guide stored"]["content"]).contains("Edited in the block editor."));
+    // A page moved under a guard is private from its first request.
+    assert_eq!(seen["third colophon anonymous"], 302);
+    assert_eq!(seen["third colophon stored"]["status"], "private");
+    assert!(text(&seen["third colophon subscriber"]["body"]).contains("For members."));
+    assert!(text(&seen["third old colophon"]["content"]).contains("Kept by the site."));
+    assert_eq!(seen["third leaks"], serde_json::json!([]));
+    // Storing happens once per build, under a lock. While a second process was in the middle of
+    // storing the second build, a request stored nothing: `/news` was not there yet and the
+    // colophon was still the first build's. The second process then finished normally.
+    assert_eq!(seen["holder"], serde_json::json!(["storing", "stored", 0]));
+    assert_eq!(seen["while locked"]["news"], 404, "{}", seen["while locked"]);
+    assert_eq!(seen["while locked"]["news stored"], serde_json::json!({ "count": 0 }));
+    assert!(text(&seen["while locked"]["colophon stored"]).contains("Set in a system font."));
+    // Six routes over the three builds, one Page each.
+    assert_eq!(seen["pages"], serde_json::json!([1, 1, 1, 1, 1, 1]));
+}
+
 fn rejects(dir: &Path, files: &[(&str, &str)], message: &str, at: &str) {
     let _ = std::fs::remove_dir_all(dir);
     std::fs::create_dir_all(dir).unwrap();
@@ -255,6 +501,79 @@ fn rejects(dir: &Path, files: &[(&str, &str)], message: &str, at: &str) {
         stderr.contains(&format!("--> {at}")),
         "expected location {at} in:\n{stderr}"
     );
+}
+
+/// A stylesheet the compiler can't serve as it is, and an import that isn't code or an asset, are
+/// build errors at the line, with the fix.
+#[test]
+fn refuses_stylesheets_it_cannot_copy_with_a_fix() {
+    let dir = std::env::temp_dir().join(format!("first-app-css-{}", std::process::id()));
+    let page = |import: &str| format!("{import}\nexport default function P() {{ return <p/>; }}\n");
+    let styled = page("import \"./x.css\";");
+    let module = page("import s from \"./x.module.css\";");
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &styled),
+            ("first/app/x.css", "@import \"normalize.css\";\n.a {}\n"),
+        ],
+        "`@import` in an imported stylesheet isn't supported",
+        "first/app/x.css:1:1",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &styled),
+            ("first/app/x.css", ".a {\n  background: url(./bg.png);\n}\n"),
+        ],
+        "`url(./bg.png)` is relative to the stylesheet",
+        "first/app/x.css:2:15",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &module),
+            ("first/app/x.module.css", ":global(.a) {}\n"),
+        ],
+        "`:global` isn't supported in CSS modules",
+        "first/app/x.module.css:1:1",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &module),
+            ("first/app/x.module.css", ".a { composes: b; }\n"),
+        ],
+        "`composes` isn't supported in CSS modules",
+        "first/app/x.module.css:1:6",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/page.tsx", &page("import data from \"./x.json\";")),
+            ("first/app/x.json", "{}"),
+        ],
+        "can't import \"./x.json\": expected TypeScript or JavaScript source",
+        "first/app/page.tsx:1:1",
+    );
+    // A client component renders in the browser too; an image URL comes in as a prop.
+    rejects(
+        &dir,
+        &[
+            (
+                "first/app/page.tsx",
+                "import { C } from \"../components/C\";\nexport default function P() { return <C />; }\n",
+            ),
+            (
+                "first/components/C.tsx",
+                "\"use client\";\nimport logo from \"./logo.svg\";\nexport function C() { return <img src={logo} />; }\n",
+            ),
+            ("first/components/logo.svg", "<svg/>"),
+        ],
+        "a \"use client\" component can't import first/components/logo.svg",
+        "first/components/C.tsx",
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// Shapes the router can't serve, and route files that would silently do nothing, are build
@@ -301,6 +620,46 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &[("first/app/wp-admin/page.tsx", page)],
         "would shadow /wp-admin",
         "first/app/wp-admin",
+    );
+    // page.md: one page with one URL, a title, and only the front matter keys it reads.
+    rejects(
+        &dir,
+        &[("first/app/docs/[slug]/page.md", "# Doc\n")],
+        "app/docs/[slug]/page.md is below `[slug]`: a page.md is one page with one URL",
+        "first/app/docs/[slug]/page.md:1:1",
+    );
+    rejects(
+        &dir,
+        &[("first/app/about/page.md", "---\ntitle: About\ndescripton: Us\n---\n")],
+        "page.md has no front matter key `descripton`",
+        "first/app/about/page.md:3:1",
+    );
+    rejects(
+        &dir,
+        &[("first/app/about/page.md", "Just text.\n")],
+        "app/about/page.md has no title",
+        "first/app/about/page.md:1:1",
+    );
+    rejects(
+        &dir,
+        &[("first/app/about/page.md", "---\ntitle: About\nstatus: private\n---\n")],
+        "`status` must be published or draft",
+        "first/app/about/page.md:3:1",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/about/page.md", "# About\n"),
+            ("first/app/about/page.tsx", page),
+        ],
+        "app/about has both page.tsx and page.md",
+        "first/app/about/page.md",
+    );
+    rejects(
+        &dir,
+        &[("first/app/about/page.mdx", "# About\n")],
+        "page.mdx isn't a route file",
+        "first/app/about/page.mdx",
     );
     rejects(
         &dir,
@@ -737,7 +1096,8 @@ fn refuses_client_code_outside_the_subset() {
 /// The record's browser check: compiled client components on a real WordPress page, in Chromium
 /// with `SCRIPT_DEBUG` (the Interactivity runtime's development build, the one that warns).
 /// Hydration changes nothing in the server HTML, the runtime logs no warnings, a click calls the
-/// server action and updates the label, and effects and shared state follow state changes.
+/// server action and updates the label, effects and shared state follow state changes, and a CSS
+/// module's class switches with state and styles the element.
 #[test]
 fn client_components_hydrate_in_the_browser() {
     assert!(
@@ -791,6 +1151,15 @@ fn client_components_hydrate_in_the_browser() {
             &serde_json::json!("2"),
             &serde_json::json!("40")
         )
+    );
+    // The CSS module's class is renamed on both sides, and the stylesheet the page links applies.
+    assert_eq!(
+        (&seen["toggleBefore"], &seen["toggleAfter"]),
+        (
+            &serde_json::json!(["toggle_off", "rgb(10, 20, 30)", "off"]),
+            &serde_json::json!(["toggle_on", "rgb(200, 40, 40)", "on"])
+        ),
+        "{seen}"
     );
 }
 
@@ -847,4 +1216,74 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         seen["purged"],
         serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])
     );
+}
+
+/// Stylesheets and SVGs that pages, layouts and components import (docs/spec/tsx-to-php.md,
+/// "Accepted"), on WordPress over HTTP: each page links its layouts' and its own stylesheets once,
+/// in import order (the root layout's first), from the app plugin, with content-hashed names; a CSS
+/// module's classes are renamed `<stem>_<class>` on the element and in the served file, and an SVG
+/// import is its URL.
+#[test]
+fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
+    let project = fixture("app-assets", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_assets.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let files = |page: &str| -> Vec<String> {
+        seen[page]["links"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| {
+                assert_eq!(l["status"].as_i64(), Some(200), "{l}");
+                assert!(l["type"].as_str().unwrap().starts_with("text/css"), "{l}");
+                l["file"].as_str().unwrap().split('-').next().unwrap().to_string()
+            })
+            .collect()
+    };
+    // The layout's site.css first, then the page's module, then the client component's module.
+    assert_eq!(files("about"), ["site", "page", "counter"], "{seen}");
+    assert_eq!(files("plain"), ["site"], "{seen}");
+    // A page.md has no imports of its own: it links what the layouts above it import.
+    assert_eq!(seen["colophon"]["status"], 200, "{seen}");
+    assert_eq!(files("colophon"), ["site"], "{seen}");
+    assert_eq!(seen["colophon"]["classes"]["div"][0], "site", "{seen}");
+    let css = |page: &str, i: usize| seen[page]["links"][i]["css"].as_str().unwrap().to_string();
+    assert_eq!(
+        css("about", 0),
+        ":root { --ink: #1d2420; }\nbody { margin: 0; color: var(--ink); }\n.site { max-width: 48rem; }\n"
+    );
+    assert_eq!(
+        css("about", 1),
+        ".page_title { font-size: 2rem; }\n.page_card .page_title { color: #1f4d3a; }\n@media (min-width: 40rem) { .page_card { padding: 1rem; } }\n"
+    );
+    assert_eq!(
+        css("about", 2),
+        ".counter_button { border: 0; }\n.counter_on { background: #1f4d3a; }\n"
+    );
+    // The plain stylesheet's link is the same file on both pages.
+    assert_eq!(seen["about"]["links"][0]["file"], seen["plain"]["links"][0]["file"]);
+    assert_eq!(
+        seen["about"]["classes"],
+        serde_json::json!({ "div": ["site"], "section": ["page_card"], "h1": ["page_title"], "button": ["counter_button"] }),
+        "{seen}"
+    );
+    let image = &seen["about"]["images"][0];
+    assert_eq!(image["status"].as_i64(), Some(200), "{image}");
+    assert!(image["type"].as_str().unwrap().starts_with("image/svg+xml"), "{image}");
+    assert!(image["src"].as_str().unwrap().starts_with("compass-"), "{image}");
+    assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
 }

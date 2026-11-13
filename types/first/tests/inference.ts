@@ -3,7 +3,8 @@ import {
   action, db, defineConfig, integer, text, job, email,
   type AccessCtx, type BlockValue, type BeforeHookCtx, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx,
 } from "first";
-import { authors, comments, items, locations, posts, relations, entities, settings, shoppingList } from "./schema";
+import { authors, comments, items, locations, posts, entities, settings, shoppingList } from "./schema";
+import type { AppRelations } from "./register";
 
 export type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 export declare function expectType<T extends true>(): void;
@@ -63,24 +64,27 @@ expectType<Equal<(typeof settings)["$inferSelect"], { siteTitle: string; postsPe
 expectType<Equal<(typeof settings)["$inferUpdate"]["postsPerPage"], number | undefined>>();
 
 async function queries() {
-  const withLocation = await db.query.items.findMany({ with: { location: true } });
-  expectType<Equal<(typeof withLocation)[number]["location"], Location | null>>();
+  // A loaded `ref()` field holds the row in place of its id; without `with` it holds the id.
+  const withLocation = await db.query.items.findMany({ with: { locationId: true } });
+  expectType<Equal<(typeof withLocation)[number]["locationId"], Location | null>>();
+  const plain = await db.query.items.findFirst();
+  expectType<Equal<NonNullable<typeof plain>["locationId"], number | null>>();
 
-  // optional: false -> not nullable
-  const entry = await db.query.shoppingList.findFirst({ with: { item: true } });
-  expectType<Equal<NonNullable<typeof entry>["item"], Item>>();
+  // A required ref -> not nullable once loaded.
+  const comment = await db.query.comments.findFirst({ with: { postId: true } });
+  expectType<Equal<NonNullable<typeof comment>["postId"]["id"], number>>();
 
   // columns pick + nested with
   const loc = await db.query.locations.findFirst({
     columns: { name: true },
-    with: { items: { columns: { id: true }, with: { location: true }, limit: 5 } },
+    with: { items: { columns: { id: true }, with: { locationId: true }, limit: 5 } },
   });
-  expectType<Equal<typeof loc, { name: string; items: { id: number; location: Location | null }[] } | undefined>>();
+  expectType<Equal<typeof loc, { name: string; items: { id: number; locationId: Location | null }[] } | undefined>>();
 
   // columns omit
   const lists = await db.query.shoppingList.findMany({
     columns: { done: false },
-    where: { item: { location: { kind: "fridge" } }, OR: [{ done: true }, { name: { like: "%milk%" } }] },
+    where: { itemId: { locationId: { kind: "fridge" } }, OR: [{ done: true }, { itemId: 3 }, { itemId: { in: [1, 2] } }] },
     orderBy: { name: "asc" },
   });
   expectType<Equal<keyof (typeof lists)[number], "id" | "itemId" | "name">>();
@@ -95,9 +99,9 @@ async function queries() {
   const news = await db.query.posts.findMany({
     where: { tags: { has: "news" }, photos: { isNull: true }, seo: { isNotNull: true }, status: { in: ["draft", "scheduled"] } },
     orderBy: { publishedAt: "desc" },
-    with: { author: true },
+    with: { authorId: true },
   });
-  expectType<Equal<(typeof news)[number]["author"], Author | null>>();
+  expectType<Equal<(typeof news)[number]["authorId"], Author | null>>();
   await db.update(posts).set({ status: "published", sections: [{ layout: "quote", text: "hi" }] }).where({ tags: { eq: [] } });
 
   // db.globals is typed from the registered config.
@@ -121,7 +125,6 @@ export default defineConfig({
   locales: { default: "en", all: ["en", "de"] },
   name: "fixture",
   collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
-  relations,
   globals: { settings },
   hooks: {
     posts: {

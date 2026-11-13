@@ -654,7 +654,7 @@ Design and measurements: [the decision](decisions/2026-11-13-reactive-queries.md
   and, for a collection with drafts, a `published` counter (it moves only when a row is published
   before or after the write). `Live\Versions` listens on `Extensions::onWritten` and writes the
   counters through `Connection::beforeCommit`, as the transaction's last statements. A rollback
-  writes none. `Live\Versions::touch($connection, $collection, $published = true)` counts a write
+  writes none. `Live\Versions::touch($connection, $collection, $published = false)` counts a write
   that doesn't pass the write pipeline; scheduled promotion calls it.
 - **`Connection::beforeCommit(callable)`** runs a callback just before `COMMIT` of the outermost
   transaction (at once when none is open). A throw rolls the transaction back.

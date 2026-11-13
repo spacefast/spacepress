@@ -9,7 +9,7 @@ use oxc_span::SourceType;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub(super) fn parse(path: &Path, text: &str) -> Result<Vec<Stmt>, Failure> {
     let arena = Allocator::default();
@@ -383,6 +383,8 @@ pub(super) struct Transformed {
     /// The 0.8 path of each GET endpoint the candidate serves as a route at the same path: what an
     /// sf.jsonc cron can keep calling.
     pub get_paths: BTreeSet<String>,
+    /// `first/app/**/route.ts` for the converted endpoints, by path below `first/`.
+    pub routes: BTreeMap<PathBuf, String>,
 }
 
 /// The v2 input names `handler` gives a 0.8 handler's parameters after the context, in order.
@@ -813,12 +815,16 @@ pub(super) fn app(
             }
         }
     }
-    let mut routes: Vec<(String, String)> = Vec::new();
+    // Each endpoint's handler, exported from the server module; `served` says which method and
+    // path calls which handler, and becomes the `first/app/**/route.ts` files.
+    let mut endpoints: Vec<String> = Vec::new();
+    let mut served: Vec<(String, String, String)> = Vec::new();
     let mut prefixes: Vec<(String, String, String, String)> = Vec::new();
-    // Writing GET endpoints, by index in `routes`: refused if they turn out to read the visitor.
+    // Writing GET endpoints, by index in `endpoints`: refused if they turn out to read the visitor.
     let mut writing_gets: Vec<(usize, String, Span)> = Vec::new();
     let mut get_paths: BTreeSet<String> = BTreeSet::new();
     let mut seen = BTreeSet::new();
+    let mut paths: BTreeMap<String, String> = BTreeMap::new();
     if let Some(group) = root.get("endpoints") {
         for (name, e) in obj(group, "/endpoints")? {
             let at = pointer("/endpoints", &name);
@@ -853,9 +859,20 @@ pub(super) fn app(
                 };
                 let route = super::endpoints::route(&method, &path, read_only, &at)?;
                 let shape = route_shape(&route.path);
-                if !seen.insert((route.method.clone(), shape)) {
+                if !seen.insert((route.method.clone(), shape.clone())) {
                     return Err(fail(&at, "two endpoints share a method and path shape"));
                 }
+                // One `first/app/` folder serves every method at a path, so its parameters have one name.
+                if let Some(other) = paths.get(&shape).filter(|p| **p != route.path) {
+                    return Err(fail(
+                        &at,
+                        format!(
+                            "two endpoints share a path shape with different parameter names ({other} and {})",
+                            route.path
+                        ),
+                    ));
+                }
+                paths.insert(shape, route.path.clone());
                 if names.contains(&name) {
                     return Err(fail(&at, "endpoint name collides with a query, mutation or action"));
                 }
@@ -885,21 +902,20 @@ pub(super) fn app(
                         get_paths.insert(path);
                     }
                     calls.extend(ctx_calls);
-                    let (prefixed, generated): (Vec<_>, Vec<_>) =
-                        generated.into_iter().partition(|g| g.starts_with(PREFIX_MARK));
                     helpers.extend(generated);
-                    if let (Some(prefix), Some(code)) = (&route.prefix, prefixed.into_iter().next()) {
+                    if let Some(prefix) = &route.prefix {
                         prefixes.push((
                             route.method.clone(),
                             prefix.clone(),
                             at.clone(),
-                            code[PREFIX_MARK.len()..].to_string(),
+                            endpoint_function(&name),
                         ));
                     }
                     if route.writes && route.method == "GET" {
-                        writing_gets.push((routes.len(), at.clone(), e.span));
+                        writing_gets.push((endpoints.len(), at.clone(), e.span));
                     }
-                    routes.push((route.path.clone(), code));
+                    endpoints.push(code);
+                    served.push((route.method.clone(), route.path.clone(), endpoint_function(&name)));
                     entries.push(entry(
                         &at,
                         "mapped",
@@ -908,9 +924,9 @@ pub(super) fn app(
                             route.method, route.path
                         ),
                     ));
-                    let identity = routes.last().is_some_and(|(_, c): &(String, String)| {
-                        c.contains("__z08subject") || c.contains("__z08ctx.user")
-                    });
+                    let identity = endpoints
+                        .last()
+                        .is_some_and(|c| c.contains("__z08subject") || c.contains("__z08ctx.user"));
                     if route.method != "GET" && (signed_in || identity) {
                         entries.push(entry(&at, "review", "a signed-in caller of an unsafe-method route must send X-WP-Nonce; without it the request runs anonymously"));
                     }
@@ -1015,16 +1031,13 @@ pub(super) fn app(
     for h in &mut handlers {
         *h = settle(h);
     }
-    for (_, code) in &mut routes {
-        *code = settle(code);
-    }
-    for (_, _, _, code) in &mut prefixes {
+    for code in &mut endpoints {
         *code = settle(code);
     }
     // Once the 401 gates are settled, a writing GET reads the visitor exactly when its code names
     // the user or subject (a helper's read brings the subject gate along).
     for (index, at, span) in writing_gets {
-        let code = &routes[index].1;
+        let code = &endpoints[index];
         if ["__z08ctx.user", "__z08subject", "__z08Subject"]
             .iter()
             .any(|name| code.contains(name))
@@ -1050,19 +1063,19 @@ pub(super) fn app(
         ));
     }
     // An exact endpoint at the prefix wins over the splat in 0.8 (exact paths are served first).
-    for (method, prefix, at, code) in prefixes {
+    for (method, prefix, at, function) in prefixes {
         if seen.insert((method.clone(), route_shape(&prefix))) {
             entries.push(entry(
                 &at,
                 "mapped",
                 format!("{method} {prefix} also reaches this handler with an empty splat, as in 0.8"),
             ));
-            routes.push((prefix, code));
+            served.push((method, prefix, function));
         }
     }
     if handlers
         .iter()
-        .chain(routes.iter().map(|(_, c)| c))
+        .chain(endpoints.iter())
         .any(|h| h.contains("__z08Subject("))
     {
         entries.push(entry(
@@ -1071,7 +1084,7 @@ pub(super) fn app(
             "ctx.auth.userId reads each member's copied Space Users subject (usr_...); users created after migration answer wp:<id>. Rows owned by 0.8 guest:<id> identities keep their stored owner but no v2 user maps to them, and anonymous writes answer 401 so the v2 client can start a guest session.",
         ));
     }
-    let uses_crypto = handlers.iter().chain(routes.iter().map(|(_, c)| c)).any(|h| {
+    let uses_crypto = handlers.iter().chain(endpoints.iter()).any(|h| {
         ["__z08Sha256(", "__z08Hmac(", "__z08TimingSafeEqual("]
             .iter()
             .any(|f| h.contains(f))
@@ -1085,7 +1098,7 @@ pub(super) fn app(
     }
     if handlers
         .iter()
-        .chain(routes.iter().map(|(_, c)| c))
+        .chain(endpoints.iter())
         .any(|h| h.contains("__z08Mail.send("))
     {
         entries.push(entry(
@@ -1095,7 +1108,7 @@ pub(super) fn app(
         ));
     }
     let mut config = String::from(
-        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, number as __z08Number, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, route as __z08Route, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"first\";\n",
+        "import { action as __z08Action, boolean as __z08Boolean, db as __z08Db, defineConfig as __z08Config, HttpError as __z08HttpError, json as __z08Json, number as __z08Number, table as __z08Table, text as __z08Text, email as __z08Email, userProjection as __z08Users, collection as __z08Collection, richText as __z08RichText, mail as __z08Mail, type InferSelectModel, type HookCtx as __z08HookCtx, type RouteRequest as __z08RouteRequest } from \"first\";\n",
     );
     if uses_crypto {
         config.push_str(CRYPTO_PRELUDE);
@@ -1103,7 +1116,7 @@ pub(super) fn app(
     if helpers.iter().any(|h| h == GRAVATAR) {
         config.push_str("import { createHash as __z08GravatarHash } from \"node:crypto\";\n");
     }
-    if !routes.is_empty() || !responses.is_empty() {
+    if !endpoints.is_empty() || !responses.is_empty() {
         config.push_str(super::endpoints::PRELUDE);
         config.push_str(&responses);
     }
@@ -1150,6 +1163,9 @@ pub(super) fn app(
         }
     }
     config.push_str("function __z08Key(id: string): number {\n  const n = Number(id);\n  if (!/^[1-9][0-9]*$/.test(id) || n > 9007199254740991) throw new __z08HttpError(422, \"legacy_id_range\", \"Expected a positive safe integer ID.\");\n  return n;\n}\n");
+    for code in &endpoints {
+        config.push_str(code);
+    }
     config.push_str(&format!(
         "export default __z08Config({{ name: {}, tables: {{ {} {} }},",
         q(&name),
@@ -1185,10 +1201,6 @@ pub(super) fn app(
             "Project WordPress users as members; migrate Spacefast accounts and sessions before activation.",
         ));
     }
-    if !routes.is_empty() {
-        let routes: Vec<&str> = routes.iter().map(|(_, code)| code.as_str()).collect();
-        config.push_str(&format!("routes: {{\n{}\n}},", routes.join(",\n")));
-    }
     config.push_str(&format!("actions: {{\n{}\n}} }});\n", handlers.join(",\n")));
     entries.push(if tables.values().any(|t| t.physical.is_none()) {
         entry("", "review", "Fresh tables: the candidate creates new, empty v2 tables and copies no 0.8 rows. Bind --space instead to adopt a published Space's tables. Sessions, client routes and deployment activation need separate validation. No deployment is performed.")
@@ -1203,6 +1215,7 @@ pub(super) fn app(
         handlers: client_handlers,
         declares_posts,
         get_paths,
+        routes: route_files(&served),
     })
 }
 
@@ -2012,16 +2025,13 @@ fn endpoint(
     if r.logs {
         r.helpers.push(LOG.into());
     }
-    let handler = format!("access: \"anyone\", async handler({req}, __z08ctx) {{\n{gate}{subject}{body}\n}}");
-    let code = route_entry(name, &route.method, &route.path, &handler);
-    // 0.8's `/a/:splat` answered `/a` too; v2's `*splat` needs a segment, so the same handler can
-    // also take the bare prefix, where `params.splat` reads "". The caller decides whether it may.
-    if let Some(prefix) = &route.prefix {
-        r.helpers.push(format!(
-            "{PREFIX_MARK}{}",
-            route_entry(&format!("{name}__z08prefix"), &route.method, prefix, &handler)
-        ));
-    }
+    // Exported for the generated `first/app/**/route.ts`, which serves it at the 0.8 method and
+    // path. 0.8's `/a/:splat` answered `/a` too; v2's `[...splat]` needs a segment, so the caller
+    // may serve the same function at the bare prefix, where `params.splat` reads "".
+    let code = format!(
+        "export async function {}({req}: __z08RouteRequest, __z08ctx: __z08HookCtx): Promise<__z08RouteResult> {{\n{gate}{subject}{body}\n}}\n",
+        endpoint_function(name)
+    );
     Ok((code, r.helpers, r.calls))
 }
 
@@ -2072,16 +2082,43 @@ fn body_read<'e>(e: &'e Expr, req: &str) -> Option<&'e str> {
 /// The refusal for a request use with no faithful v2 route form (`Z08_ENDPOINT_REQUEST_API`).
 const REQUEST_API: &str = "this request API has no v2 route equivalent; port it explicitly";
 
-/// Marks the bare-prefix route `endpoint()` returns among its helpers.
-const PREFIX_MARK: &str = "\0prefix-route\0";
+/// The exported server-module function that serves the 0.8 endpoint `name`.
+fn endpoint_function(name: &str) -> String {
+    format!("__z08Endpoint_{name}")
+}
 
-fn route_entry(name: &str, method: &str, path: &str, handler: &str) -> String {
-    format!(
-        "{}: __z08Route({{ method: {}, path: {}, {handler} }})",
-        q(name),
-        q(method),
-        q(path)
-    )
+/// The `first/app/` route files that serve each converted endpoint at its 0.8 method and path,
+/// keyed by their path below `first/`: `/api/notes/:id` is `app/api/notes/[id]/route.ts`.
+fn route_files(served: &[(String, String, String)]) -> BTreeMap<PathBuf, String> {
+    let mut by_path: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+    for (method, path, function) in served {
+        by_path.entry(path).or_default().push((method, function));
+    }
+    by_path
+        .into_iter()
+        .map(|(path, methods)| {
+            let segments: Vec<String> = path
+                .trim_matches('/')
+                .split('/')
+                .map(|s| match (s.strip_prefix(':'), s.strip_prefix('*')) {
+                    (Some(name), _) => format!("[{name}]"),
+                    (_, Some(name)) => format!("[...{name}]"),
+                    _ => s.to_string(),
+                })
+                .collect();
+            let file = Path::new("app").join(segments.join("/")).join("route.ts");
+            let up = "../".repeat(segments.len() + 1);
+            let functions: BTreeSet<&str> = methods.iter().map(|(_, f)| *f).collect();
+            let mut text = format!(
+                "// The 0.8 endpoints at {path}, served from the converted server module.\nimport {{ {} }} from \"{up}server/index\";\n\nexport const access = \"anyone\";\n",
+                functions.into_iter().collect::<Vec<_>>().join(", ")
+            );
+            for (method, function) in methods {
+                text.push_str(&format!("export const {method} = {function};\n"));
+            }
+            (file, text)
+        })
+        .collect()
 }
 
 struct Rewrite<'a> {
@@ -3178,7 +3215,7 @@ impl Rewrite<'_> {
                 // Uppercase on both sides.
                 "method" => Ok(true),
                 // 0.8's URL: https, the normalized host and the URI with share-link secrets
-                // redacted, which v2 builds the same way (First\Wp\HttpRoutes::url).
+                // redacted, which v2 builds the same way (First\Wp\RouteRequest::url).
                 "url" => Ok(true),
                 other => refuse(other),
             };

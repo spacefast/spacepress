@@ -48,16 +48,43 @@ final class Facade
      */
     public static function firstRow(string $collection, int $id, \First\Viewer $viewer): ?object
     {
+        $key = $collection . "\0" . ($viewer->user['id'] ?? 0) . "\0" . ($viewer->user['role'] ?? '');
+        if (!isset(self::$rows[$key]) || !array_key_exists($id, self::$rows[$key])) {
+            self::prefetch($collection, [$id], $viewer);
+        }
+        $row = self::$rows[$key][$id] ?? null;
+
+        return $row === null ? null : (object) PostMeta::values($collection, $row, array_map('strval', array_keys($row)));
+    }
+
+    /** @var array<string, array<int, ?array>> First's rows by collection and viewer, then id, for this dispatch's page */
+    private static array $rows = [];
+
+    /**
+     * First's rows for $ids as $viewer reads them, in one query: a list page costs one read for all
+     * its rows, not one per row. Ids the read rule leaves out are recorded as null.
+     *
+     * @param list<int> $ids
+     */
+    public static function prefetch(string $collection, array $ids, \First\Viewer $viewer): void
+    {
+        $key = $collection . "\0" . ($viewer->user['id'] ?? 0) . "\0" . ($viewer->user['role'] ?? '');
+        $missing = array_values(array_diff(array_map('intval', $ids), array_keys(self::$rows[$key] ?? [])));
+        if ($missing === []) {
+            return;
+        }
         $db = Plugin::instance()?->db() ?? throw new \LogicException('No First app');
         $pk = $db->schema()->collection($collection)['primaryKey'];
         $all = \First\Locale\Module::localized($collection) ? ['locale' => '*'] : [];
         try {
-            $row = $db->findFirst($collection, ['where' => [$pk => $id]] + $all, $viewer);
+            $found = $db->findMany($collection, ['where' => [$pk => ['in' => $missing]]] + $all, $viewer);
         } catch (HttpError) {
-            return null;
+            $found = [];
         }
-
-        return $row === null ? null : (object) PostMeta::values($collection, $row, array_map('strval', array_keys($row)));
+        $byId = array_column($found, null, $pk);
+        foreach ($missing as $id) {
+            self::$rows[$key][$id] = $byId[$id] ?? null;
+        }
     }
 
     private const LIMIT = 50;
@@ -193,7 +220,8 @@ final class Facade
         self::gate($kind, ['PATCH' => 'update', 'DELETE' => 'delete'][$method] ?? 'get');
         $item = "$base/" . rawurlencode((string) $id);
         if ($method === 'PATCH') {
-            $row = self::dispatch('POST', $item, self::context($kind), Kinds::input($kind, self::body($body)));
+            $patch = self::body($body);
+            $row = self::outside($kind, 'update', $id, fn () => self::dispatch('POST', $item, self::context($kind), Kinds::input($kind, $patch)), $patch);
 
             return self::json(200, ['data' => Kinds::row($kind, $row)]);
         }
@@ -212,7 +240,7 @@ final class Facade
 
                 return self::json(200, ['data' => $before]);
             }
-            $out = self::dispatch('DELETE', $item, $params);
+            $out = self::outside($kind, 'delete', $id, fn () => self::dispatch('DELETE', $item, $params));
 
             return self::json(200, ['data' => Kinds::row($kind, $out['previous'] ?? $out)]);
         }
@@ -281,7 +309,7 @@ final class Facade
         $next = $offset + $limit;
         $cursor = $next < $total ? rtrim(strtr(base64_encode((string) json_encode(['offset' => $next])), '+/', '-_'), '=') : null;
 
-        $rows = array_values(array_filter(array_map(static fn (array $r) => Kinds::row($kind, $r), $rows), static fn ($r) => $r !== null));
+        $rows = array_values(array_filter(Kinds::rows($kind, $rows), static fn ($r) => $r !== null));
 
         return self::json(200, ['data' => $rows, 'cursor' => $cursor]);
     }
@@ -344,11 +372,28 @@ final class Facade
                 $request->set_header($header, $value);
             }
         }
-        $response = Abilities\Register::withSentInput($name, $input, static fn () => self::run($request));
+        // The only elevation the facade makes: for this one run, an `agents: false` ability (hidden
+        // from core REST discovery and MCP) is shown to core's run route, which still runs every check
+        // of its own (input, permission callback, output). Nothing else the facade dispatches sees it.
+        $previous = self::$running;
+        self::$running = $name;
+        try {
+            $response = Abilities\Register::withSentInput($name, $input, static fn () => self::run($request));
+        } finally {
+            self::$running = $previous;
+        }
         $data = self::unwrap($response);
         self::$passed = array_intersect_key($response->get_headers(), ['Idempotent-Replayed' => true]);
 
         return $data;
+    }
+
+    private static ?string $running = null;
+
+    /** The ability the API is running through core's run route right now, if any. */
+    public static function running(): ?string
+    {
+        return self::$running;
     }
 
     /** @var array<string, string> response headers of the last ability run the facade passes on */
@@ -384,11 +429,13 @@ final class Facade
 
     private static function run(\WP_REST_Request $request): \WP_REST_Response
     {
+        self::$rows = []; // each core dispatch reads its own page fresh: nothing outlives it
         self::$depth++;
         self::$methods[] = $request->get_method();
         try {
             return rest_do_request($request);
         } finally {
+            self::$rows = [];
             array_pop(self::$methods);
             self::$depth--;
         }
@@ -541,6 +588,33 @@ final class Facade
     }
 
     /**
+     * A write core's permission check refused, on a post kind's row its $op rule doesn't cover for this
+     * viewer: First's answer for such a row, a 404 (a row outside the rule is not found, §1.6). Core's
+     * check still decides; only the problem it answers changes. Refusals of a covered row (a field
+     * rule, a data-dependent rule) keep their status and pointer.
+     */
+    private static function outside(array $kind, string $op, int|string $id, callable $dispatch, array $data = []): mixed
+    {
+        try {
+            return $dispatch();
+        } catch (HttpError $e) {
+            $viewer = CoreAccess::viewer();
+            if ($kind['type'] !== 'post' || !in_array($e->status, [401, 403], true) || $e->pointer !== null || $viewer === null) {
+                throw $e;
+            }
+            // As First's write pipeline answers: a rule that refuses this viewer (and this data) is
+            // 401/403; a filter that leaves the row out is a 404.
+            $spec = $kind['spec'];
+            $rule = \First\Access::collectionRules($spec)[$op];
+            if (\First\Access::evaluate($rule, $viewer, $op, $op === 'update' ? $data : null, $spec['columns'], (string) $kind['name']) === false
+                || CoreAccess::covers((string) $kind['name'], $op, $id, $viewer)) {
+                throw $e;
+            }
+            throw HttpError::notFound("No {$kind['name']} row with id $id");
+        }
+    }
+
+    /**
      * A kind's `api` flags: an operation switched off (`api: { delete: false }`) is a 405 on the API,
      * as its ability is unregistered. Core's own routes keep serving wp-admin and the block editor.
      */
@@ -591,17 +665,25 @@ final class Facade
             throw HttpError::notFound("$collection keeps no revisions");
         }
         $viewer = CoreAccess::viewer();
-        // Revisions need the update rule on the row; a row outside it is a 404, whoever asks (§1.6:
-        // a revision list never says that a row exists).
-        if ($viewer === null || !CoreAccess::covers($collection, 'update', $id, $viewer)) {
-            throw HttpError::notFound("No $collection row $id");
-        }
         $route = "{$kind['route']}/" . rawurlencode((string) $id) . '/revisions';
         $db = Plugin::instance()?->db() ?? throw new \LogicException('No First app');
+        // Core's revisions route decides (its edit_post check is First's update rule, through
+        // map_meta_cap); a refusal is a 404 here, whoever asks: a revision list never says that a row
+        // exists (§1.6).
+        $hidden = static function (callable $dispatch) use ($collection, $id): mixed {
+            try {
+                return $dispatch();
+            } catch (HttpError $e) {
+                throw in_array($e->status, [401, 403], true) ? HttpError::notFound("No $collection row $id") : $e;
+            }
+        };
+        if ($viewer === null) {
+            throw HttpError::notFound("No $collection row $id");
+        }
         if ($rest === []) {
             \First\App::allow($method, ['GET', 'HEAD']);
             $out = [];
-            foreach ((array) self::dispatch('GET', $route, ['context' => 'view', 'per_page' => 100, '_fields' => 'id,author,date_gmt']) as $r) {
+            foreach ((array) $hidden(fn () => self::dispatch('GET', $route, ['context' => 'view', 'per_page' => 100, '_fields' => 'id,author,date_gmt'])) as $r) {
                 if (wp_is_post_autosave((int) $r['id'])) {
                     continue;
                 }
@@ -616,7 +698,7 @@ final class Facade
             throw HttpError::notFound("No revision {$rest[0]}");
         }
         $rid = (int) $rest[0];
-        self::dispatch('GET', "$route/$rid", ['_fields' => 'id']); // core's own check that it is one of this post's
+        $hidden(fn () => self::dispatch('GET', "$route/$rid", ['_fields' => 'id'])); // core's check: one of this post's, and readable
         $row = $db->revision($collection, $id, $rid, $viewer); // First's snapshot, masked for this viewer
         if (count($rest) === 1) {
             \First\App::allow($method, ['GET', 'HEAD']);

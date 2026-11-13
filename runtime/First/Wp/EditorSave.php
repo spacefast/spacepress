@@ -16,7 +16,7 @@ use First\HttpError;
  * Before it commits, a signed-in user's save is authorized on what it actually changed: the row
  * before against the row after, whichever form field, `acf` alias or core column wrote it. First's
  * field write rules run on that change, then the create rule, or the update rule with that data, as
- * on `/first/v1`. A refusal rolls the whole save back: core REST answers with First's 401/403 (code and
+ * in First's write pipeline. A refusal rolls the whole save back: core REST answers with First's 401/403 (code and
  * pointer), wp-admin with an error page. Calls with no signed-in user (WP-CLI, cron, other plugins'
  * code) are WordPress's trusted callers and are not authorized here, as on every core API.
  *
@@ -144,7 +144,7 @@ final class EditorSave
 
             return CoreAccess::error($e->error);
         } catch (HttpError | \First\JsError $e) {
-            // A First hook refused the save (§1.7): the editor sees its status and message, as /first/v1 answers.
+            // A First hook refused the save (§1.7): the editor sees its status and message, as the API answers.
             self::rollback();
             $problem = \First\App::problem($e);
 
@@ -166,9 +166,15 @@ final class EditorSave
      */
     private static function checkCoreFields(string $collection, \WP_REST_Request $request, array $declared, ?array $before): void
     {
+        self::checkColumns($collection, $declared, $before);
+    }
+
+    /** First's rules (min, max, pattern, validate) on the core columns (title, content, slug) in $values. */
+    private static function checkColumns(string $collection, array $values, ?array $before): void
+    {
         $spec = Plugin::instance()?->schema->collection($collection) ?? [];
         $core = array_filter([$spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null]);
-        $values = array_intersect_key($declared, array_flip($core));
+        $values = array_intersect_key($values, array_flip($core));
         if ($values === []) {
             return;
         }
@@ -338,7 +344,7 @@ final class EditorSave
     /**
      * The save as the signed-in user wrote it: the columns it supplied (form fields, `acf` selectors and
      * aliases, core columns) and every column it changed, with their saved values. Field write rules
-     * run on those, as on `/first/v1` (an unchanged hidden value is still refused, so no value can be
+     * run on those, as on the API (an unchanged hidden value is still refused, so no value can be
      * probed), then the create rule, or the update rule with that data: a filter must match the row
      * as it was before the save, as the API's update selector does.
      */
@@ -378,6 +384,9 @@ final class EditorSave
             }
             $changed = array_keys(array_filter(array_diff_key($after, $generated), static fn ($v, $col) => !\First\Js::sameJson($v, $before[$col] ?? null), ARRAY_FILTER_USE_BOTH));
             $patch = array_intersect_key($after, array_flip([...$changed, ...$open['supplied']]));
+            // Title, content and slug a save changed (an autosave of one's own draft, a quick edit, any
+            // wp_update_post) follow First's rules on those columns, as a REST save's do.
+            self::checkColumns($collection, array_intersect_key($patch, array_flip($changed)), $before);
             $supplied = $open['owner'] === 'restore' ? $patch : self::groupPatch($spec['columns'], $patch, $before, $open['declared'] ?? []);
             $data = $patch;
             FieldAccess::checkWrite('update', $collection, $data, $before, $viewer, $supplied, stored: true);

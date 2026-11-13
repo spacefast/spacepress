@@ -11,7 +11,7 @@ namespace First\Wp;
  * - Lists: a read rule that denies is 401/403; a filtering rule (or draft visibility) limits the
  *   query to the rows it covers, so pagination counts only those. `search` and `slug` can't probe a
  *   column hidden from the viewer.
- * - Items: a row the read rule filters out is 404, as on `/first/v1`.
+ * - Items: a row the read rule filters out is 404, as in First's read pipeline.
  * - Every response, in every context, drops the fields the viewer can't read.
  * - Creates and updates run in one transaction ({@see EditorSave}) that First's rules authorize on the
  *   save's own data before it commits; a refusal is First's 401/403 and nothing is saved.
@@ -48,7 +48,23 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function get_items($request)
     {
-        return $this->readRequest($request, fn () => $this->readItems($request));
+        if (!Facade::dispatching() || ($viewer = CoreAccess::viewer()) === null) {
+            return $this->readRequest($request, fn () => $this->readItems($request));
+        }
+        // The API reshapes each item into First's row: read the whole page's rows in one query.
+        $prefetch = function (mixed $posts, mixed $query) use ($viewer): mixed {
+            if (is_array($posts) && $query instanceof \WP_Query && $query->get('post_type') === $this->post_type) {
+                Facade::prefetch($this->collection, array_map(static fn ($p) => (int) ($p instanceof \WP_Post ? $p->ID : $p), $posts), $viewer);
+            }
+
+            return $posts;
+        };
+        add_filter('the_posts', $prefetch, 10, 2);
+        try {
+            return $this->readRequest($request, fn () => $this->readItems($request));
+        } finally {
+            remove_filter('the_posts', $prefetch, 10);
+        }
     }
 
     private function readItems(\WP_REST_Request $request)
@@ -149,6 +165,17 @@ final class PostsController extends \WP_REST_Posts_Controller
         return parent::check_read_permission($post) && current_user_can('read_post', $post->ID);
     }
 
+    /**
+     * The API reshapes each item into First's row and never reads core's `_links` (HAL links; for a
+     * post, one revisions query per item). Its own dispatches leave them out; core's clients keep them.
+     */
+    public function get_fields_for_response($request)
+    {
+        $fields = parent::get_fields_for_response($request);
+
+        return Facade::dispatching() ? array_values(array_diff($fields, ['_links'])) : $fields;
+    }
+
     public function prepare_item_for_response($item, $request)
     {
         $stored = Plugin::instance()?->db()->editorRow($this->collection, (int) $item->ID);
@@ -165,12 +192,6 @@ final class PostsController extends \WP_REST_Posts_Controller
         return CoreAccess::strip($response, $this->collection, $stored, CoreAccess::viewer());
     }
 
-    /** The API's writes are First's pipeline's to decide (firstWrite): its create rule, as the viewer. */
-    public function create_item_permissions_check($request)
-    {
-        return Facade::dispatching() ? true : parent::create_item_permissions_check($request);
-    }
-
     /**
      * An update rule that is a function may refuse without data and allow this request's data: core's
      * `edit_post` (which also guards revisions and wp-admin) stays the strict answer, and only this
@@ -179,9 +200,6 @@ final class PostsController extends \WP_REST_Posts_Controller
      */
     public function update_item_permissions_check($request)
     {
-        if (Facade::dispatching()) {
-            return true; // firstWrite: First's update rule and field rules, as the viewer
-        }
         $allowed = parent::update_item_permissions_check($request);
         if (!is_wp_error($allowed) || $allowed->get_error_code() !== 'rest_cannot_edit') {
             return $allowed;
@@ -256,16 +274,30 @@ final class PostsController extends \WP_REST_Posts_Controller
             $viewer = CoreAccess::viewer() ?? throw new \First\HttpError(403, 'suspended', 'This account is suspended');
             $db = $plugin->db();
             $pk = $spec['primaryKey'];
-            $row = $db->transaction(function () use ($db, $viewer, $data, $id, $pk) {
+            $row = $db->transaction(function () use ($db, $viewer, $data, $id, $pk, $request) {
                 $previous = $db->actor();
                 $db->setActor($viewer->user);
                 try {
-                    return $id === null
+                    $row = $id === null
                         ? $db->insert($this->collection, $data, true, $viewer)[0]
                         : ($db->update($this->collection, $data, [$pk => $id], true, $viewer)[0] ?? throw \First\HttpError::notFound("No {$this->collection} row with $pk $id"));
                 } finally {
                     $db->setActor($previous);
                 }
+                // The rest of core's create_item/update_item after its save, in the same transaction:
+                // `rest_insert_{type}`, the registered REST fields, `rest_after_insert_{type}`. Other
+                // plugins hooked there see the API's writes as they see core's.
+                clean_post_cache((int) $row[$pk]);
+                $post = get_post((int) $row[$pk]) ?: throw new \LogicException("Post {$row[$pk]} vanished");
+                do_action("rest_insert_{$this->post_type}", $post, $request, $id === null);
+                $fields = $this->update_additional_fields_for_object($post, $request);
+                if (is_wp_error($fields)) {
+                    throw new \First\HttpError((int) ($fields->get_error_data()['status'] ?? 400), 'invalid_input', $fields->get_error_message());
+                }
+                $post = get_post((int) $row[$pk]);
+                do_action("rest_after_insert_{$this->post_type}", $post, $request, $id === null);
+
+                return $row;
             });
         } catch (\First\HttpError | \First\JsError $e) {
             $problem = \First\App::problem($e);

@@ -89,6 +89,7 @@ $db->transaction(static function () use ($db, $list): void {
 });
 eq('a transaction counts once per kind it wrote, however many rows', $counter('todos'), 1);
 eq('each kind has its own counter', $counter('lists'), 1);
+eq('a kind without drafts keeps one counter, not two', $wp->sql('SELECT `kind`, `scope` FROM {prefix}first__versions ORDER BY `kind`, `scope`'), [['kind' => 'lists', 'scope' => 'all'], ['kind' => 'todos', 'scope' => 'all']]);
 try {
     $db->transaction(static function () use ($db): void {
         $db->insert('todos', ['title' => 'doomed']);

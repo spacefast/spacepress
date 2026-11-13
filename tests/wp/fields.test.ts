@@ -1,4 +1,4 @@
-// Field-level access over /wp-json/first/v1 on real WordPress (phase 2 §4.3), with the lane B
+// Field-level access over /__first/api/v1 on real WordPress (phase 2 §4.3), with the lane B
 // fixtures in tests/wp/app/first/lanes/fields.ts: post-backed (SCF meta) and table rows are stripped,
 // including `with` rows, for anonymous, an owning author, an editor and an admin; refusals and
 // group merges reach postmeta. The policy matrix lives in tests/php/db_test.php.
@@ -35,20 +35,20 @@ test("reads remove the columns a viewer may not read, per row and in with rows",
   assert.deepEqual([editor.email, editor.salary], ["other@example.test", 20]);
 
   const editorClient = createClient({ url: api, headers: auth("editor") });
-  const withTeam = await editorClient.fieldStaff.get(mine.id, { with: { team: true } });
-  assert.deepEqual([withTeam.team?.name, "budget" in (withTeam.team ?? {})], [`Core ${run}`, false], "a with-loaded parent is stripped");
-  const withMembers = await createClient({ url: api }).fieldTeams.get(team.id, { with: { members: true } });
-  assert.deepEqual(withMembers.members.map((m) => ["email" in m, "salary" in m]), [[false, false], [false, false]], "with-loaded children are stripped");
-  assert.equal((await ok("GET", `/field_staff/${mine.id}?with=team`, { as: "admin" })).team.budget, 1000);
+  const withTeam = await editorClient.fieldStaff.get(mine.id, { with: { teamId: true } });
+  assert.deepEqual([withTeam.teamId?.name, "budget" in (withTeam.teamId ?? {})], [`Core ${run}`, false], "a with-loaded parent is stripped");
+  const withMembers = await createClient({ url: api }).fieldTeams.get(team.id, { with: { fieldStaff: true } });
+  assert.deepEqual(withMembers.fieldStaff.map((m) => ["email" in m, "salary" in m]), [[false, false], [false, false]], "with-loaded children are stripped");
+  assert.equal((await ok("GET", `/field_staff/${mine.id}?with=teamId`, { as: "admin" })).teamId.budget, 1000);
   assert.equal(first("find", "field_staff", JSON.stringify({ where: { id: mine.id } }))[0].notes.private, "secret", "trusted reads see everything");
 });
 
 // The selector policy itself is held in tests/php/db_test.php; here one postmeta-backed filter and one
 // relation filter across post↔table prove the WordPress path reaches it.
-test("filters on a hidden column are refused over /first/v1", async () => {
+test("filters on a hidden column are refused over /__first/api/v1", async () => {
   const forbidden = (pointer: string) => ({ status: 403, code: "forbidden", pointer });
   await problem("GET", `/field_staff${where({ email: { like: "o%" } })}`, {}, forbidden("/where/email"));
-  await problem("GET", `/field_staff${where({ team: { budget: { gt: 500 } } })}`, { as: "editor" }, forbidden("/where/team/budget"));
+  await problem("GET", `/field_staff${where({ teamId: { budget: { gt: 500 } } })}`, { as: "editor" }, forbidden("/where/teamId/budget"));
 });
 
 test("a write to a column the viewer can't set is refused and saves nothing", async () => {

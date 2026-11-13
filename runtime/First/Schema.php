@@ -112,12 +112,6 @@ final class Schema
         return $this->raw['auth'] ?? ['collection' => null, 'guests' => true, 'accessTtl' => 300, 'refreshTtl' => 2592000];
     }
 
-    /** @return array<string, array{method: string, path: string, handler: string, access: array, signature: ?array}> */
-    public function routes(): array
-    {
-        return $this->raw['routes'] ?? [];
-    }
-
     /**
      * Server components: `components/<file>.tsx#<export>` => the compiled function in `FirstApp`,
      * which takes the props object and returns `\First\Html`.
@@ -290,6 +284,28 @@ final class Schema
         }
 
         return $col;
+    }
+
+    /** Filter operators on a field (`{ gt: 1, OR: [...] }`). */
+    public const FIELD_OPS = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'notLike', 'ilike', 'notIlike', 'isNull', 'isNotNull', 'has', 'NOT', 'OR', 'AND'];
+
+    /**
+     * Whether a filter on `$key` goes through its relation: a `ref()` field is both the id column and
+     * the relation (`where: { location: 5 }` filters the id, `where: { location: { name: "x" } }`
+     * filters through it), so an object whose keys aren't all field operators means the relation.
+     */
+    public static function filtersRelation(array $spec, string $key, mixed $value): bool
+    {
+        if (!isset($spec['relations'][$key])) {
+            return false;
+        }
+        if (!isset($spec['columns'][$key])) {
+            return true;
+        }
+        $value = $value instanceof JsObject ? $value->p : ($value instanceof \stdClass ? get_object_vars($value) : $value);
+
+        return is_array($value) && $value !== [] && !array_is_list($value)
+            && array_diff(array_map('strval', array_keys($value)), self::FIELD_OPS) !== [];
     }
 
     // ================================================================ generators

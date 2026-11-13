@@ -422,17 +422,6 @@ pub struct WpHook {
     pub handler: String,
 }
 
-/// `routes.<name>`: one HTTP method and path served outside the REST namespace.
-#[derive(Debug, Clone)]
-pub struct Route {
-    pub method: String,
-    /// Normalized: leading `/`, no trailing slash except `/`, `:name` parameter segments.
-    pub path: String,
-    pub handler: String,
-    pub access: Access,
-    pub signature: Option<Json>,
-}
-
 #[derive(Debug, Clone)]
 pub struct Job {
     pub input: IndexMap<String, Column>,
@@ -466,7 +455,6 @@ pub enum Owner {
     Action(String),
     Job(String),
     FileBucket(String),
-    Route(String),
 }
 
 /// A column (or a sub-field of one): `[col]`, `[col, sub]`, `[col, layout, sub]`, ...
@@ -484,13 +472,15 @@ pub struct Schema {
     pub globals: IndexMap<String, Global>,
     pub actions: IndexMap<String, Action>,
     pub jobs: IndexMap<String, Job>,
-    pub routes: IndexMap<String, Route>,
     /// `wp-hooks/` handlers, in registration order.
     pub wp_hooks: Vec<WpHook>,
     /// Server components (`first/components/<file>.tsx#<export>`) → their compiled PHP function.
     pub components: IndexMap<String, String>,
     /// `"use client"` components (generator B): namespace → its store module.
     pub islands: IndexMap<String, Island>,
+    /// Imported stylesheets and images (`crate::assets`), by output file name below
+    /// `first/app/assets/`.
+    pub assets: IndexMap<String, Vec<u8>>,
     /// `first/app/`: the route table and each route file's compiled exports (docs/spec/rendering.md).
     pub app: Option<App>,
     /// Hooks or WordPress functions hand `WP_Post`/`WP_User` views to compiled code.
@@ -514,11 +504,11 @@ impl Default for Schema {
             globals: IndexMap::new(),
             actions: IndexMap::new(),
             jobs: IndexMap::new(),
-            routes: IndexMap::new(),
             wp_hooks: Vec::new(),
             components: IndexMap::new(),
             app: None,
             islands: IndexMap::new(),
+            assets: IndexMap::new(),
             wp_views: false,
             files: IndexMap::new(),
             webhooks: Vec::new(),
@@ -543,7 +533,7 @@ impl Schema {
             Owner::Global(g) => &self.globals[g].fields,
             Owner::Action(a) => &self.actions[a].input,
             Owner::Job(j) => &self.jobs[j].input,
-            Owner::FileBucket(_) | Owner::Route(_) => unreachable!("buckets and routes have no columns"),
+            Owner::FileBucket(_) => unreachable!("buckets have no columns"),
         };
         let mut col = &top[&at.path[0]];
         let mut rest = &at.path[1..];
@@ -565,7 +555,7 @@ impl Schema {
             Owner::Global(g) => &mut self.globals.get_mut(g).expect("global").fields,
             Owner::Action(a) => &mut self.actions.get_mut(a).expect("action").input,
             Owner::Job(j) => &mut self.jobs.get_mut(j).expect("job").input,
-            Owner::FileBucket(_) | Owner::Route(_) => unreachable!("buckets and routes have no columns"),
+            Owner::FileBucket(_) => unreachable!("buckets have no columns"),
         };
         let mut col = top.get_mut(&at.path[0]).expect("column");
         let mut rest = &at.path[1..];
@@ -634,6 +624,11 @@ pub struct App {
     pub not_found: Option<AppRoute>,
     /// Route file (relative to `first/`) → its compiled exports.
     pub files: IndexMap<String, AppFile>,
+    /// Content-owned pages (`page.md`), by route id: what the site stores as a WordPress Page.
+    pub content: IndexMap<String, crate::content_page::Page>,
+    /// The table is a 0.3.0 capture's `routes` config (`extract::legacy::routes`), served as 0.3.0
+    /// served it: matched per method, reads trusted, the front end left to the theme.
+    pub legacy_routes: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -646,6 +641,8 @@ pub struct AppRoute {
     pub handler: Option<String>,
     pub layouts: Vec<String>,
     pub error: Option<String>,
+    /// The stylesheets the page and its layouts import, in link order (`assets::stylesheets`).
+    pub styles: Vec<String>,
     /// The kind whose `url` this page serves (spec §2.7), with each pattern placeholder's folder
     /// parameter: the page receives that kind's `item`, and a missing one is a 404.
     pub kind: Option<(String, Vec<(String, String)>)>,

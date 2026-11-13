@@ -710,12 +710,12 @@ eq('CLI runs in a transaction', [$code, $out['error']['code'] ?? null, $db->find
 eq('CLI action', [$code, $out['data']['qty'] ?? null], [0, 7]);
 eq('CLI usage error', $cli('frobnicate')[0], 1);
 
-// ================================================================ REST: the WordPress route
+// ================================================================ HTTP: First's API on WordPress
 
-// Through the web server (php -S on this site), as a client sees it: /wp-json/first/v1 answers with
+// Through the web server (php -S on this site), as a client sees it: /__first/api/v1 answers with
 // First's envelopes, problem documents and headers.
 $port = $wp->startServer();
-$base = "http://127.0.0.1:$port/wp-json/first/v1";
+$base = "http://127.0.0.1:$port/__first/api/v1";
 
 /** @return array{status: int, headers: array<string, string>, body: string, json: mixed} */
 function http(string $method, string $path, mixed $body = null, ?string $raw = null, array $headers = []): array
@@ -756,11 +756,11 @@ $isProblem = function (string $label, array $r, int $status, string $code, ?stri
     );
 };
 
-$r = http('GET', '/_schema');
-check('GET /_schema', $r['status'] === 200 && $r['json']['data']['collections']['items']['columns']['qty']['type'] === 'integer'
+$r = http('GET', '');
+check('GET /__first/api/v1 (the schema)', $r['status'] === 200 && $r['json']['data']['kinds']['items']['columns']['qty']['type'] === 'integer'
     && isset($r['json']['data']['actions']['restock']['input']['amount']), $r);
 check('schema exposes no function names', !str_contains($r['body'], '__') && !str_contains($r['body'], 'hooks') && !str_contains($r['body'], 'handler'), $r['body']);
-eq('the runtime reports the WordPress platform in /_schema', [$r['json']['data']['runtime']['wp']['database']['kind'], $r['json']['data']['runtime']['wp']['incompatibleTables']], ['sqlite', []]);
+eq('the runtime reports the WordPress platform in the schema', [$r['json']['data']['runtime']['wp']['database']['kind'], $r['json']['data']['runtime']['wp']['incompatibleTables']], ['sqlite', []]);
 
 $r = http('POST', '/items', ['name' => 'widget', 'price' => 2.0, 'locationId' => $garage['id']]);
 $widget = $r['json']['data'] ?? [];
@@ -780,9 +780,8 @@ $isProblem('GET missing id', http('GET', '/items/999999'), 404, 'not_found');
 $isProblem('GET non-integer id', http('GET', '/items/abc'), 404, 'not_found');
 $isProblem('unknown collection', http('GET', '/widgets'), 404, 'not_found');
 
-// A malformed JSON body is refused by WordPress's REST server before First runs (rest_invalid_json);
-// in-process, First's own parser answers invalid_json.
-eq('invalid JSON body is refused by the REST server', [http('POST', '/items', raw: '{"name":')['status'], http('POST', '/items', raw: '{"name":')['json']['code'] ?? null], [400, 'rest_invalid_json']);
+// A malformed JSON body is refused before anything runs: the API's own parser answers invalid_json.
+eq('invalid JSON body is refused', [http('POST', '/items', raw: '{"name":')['status'], http('POST', '/items', raw: '{"name":')['json']['code'] ?? null], [400, 'invalid_json']);
 eq('… and by First itself', [$wp->call('POST', '/items', '{"name":')[0], $wp->call('POST', '/items', '{"name":')[1]['code'] ?? null], [400, 'invalid_json']);
 $isProblem('coercion error with pointer', http('POST', '/items', ['name' => 'x', 'qty' => 'lots']), 422, 'invalid_input', '/qty');
 $isProblem('missing required', http('POST', '/items', ['qty' => 1]), 422, 'invalid_input', '/name');
@@ -1373,11 +1372,20 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
             ['body' => ['type' => 'text', 'notNull' => true]]),
         'tags' => $table('tags', ['read' => ['role' => 'admin'], 'create' => $anyone, 'update' => $anyone],
             ['name' => ['type' => 'text', 'notNull' => true], 'noteId' => ['type' => 'integer', 'references' => ['collection' => 'notes', 'column' => 'id']]]),
+        // A reference to a unique key that isn't `id`: only 0.3.0 captures still declare one
+        // (docs/decisions/2026-11-11-authoring-surface.md, rulings 21 and 22). `badge` is admin-only.
+        'badges' => $table('badges', ['read' => $anyone, 'create' => $anyone, 'update' => $anyone, 'delete' => $anyone],
+            ['code' => ['type' => 'integer', 'unique' => true], 'badge' => ['type' => 'integer', 'unique' => true, 'access' => ['read' => ['role' => 'admin'], 'update' => $anyone]]]),
+        'holders' => $table('holders', ['read' => ['role' => 'admin'], 'create' => $anyone, 'update' => $anyone],
+            ['code' => ['type' => 'integer', 'references' => ['collection' => 'badges', 'column' => 'code']],
+             'badge' => ['type' => 'integer', 'references' => ['collection' => 'badges', 'column' => 'badge']]]),
     ]]);
     $wp->exec('CREATE TABLE {prefix}first_subscribers (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `email` VARCHAR(191) NOT NULL, `note` LONGTEXT, PRIMARY KEY (`id`), UNIQUE KEY `email_unique` (`email`)) ENGINE=InnoDB');
     $wp->exec('CREATE TABLE {prefix}first_people (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `name` LONGTEXT NOT NULL, `ssn` VARCHAR(191), PRIMARY KEY (`id`), UNIQUE KEY `ssn_unique` (`ssn`)) ENGINE=InnoDB');
     $wp->exec('CREATE TABLE {prefix}first_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `body` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB');
     $wp->exec('CREATE TABLE {prefix}first_tags (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `name` LONGTEXT NOT NULL, `noteId` BIGINT UNSIGNED, PRIMARY KEY (`id`), CONSTRAINT `first_tags_noteId_fk` FOREIGN KEY (`noteId`) REFERENCES {prefix}first_notes (`id`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}first_badges (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `code` BIGINT, `badge` BIGINT, PRIMARY KEY (`id`), UNIQUE KEY `code_unique` (`code`), UNIQUE KEY `badge_unique` (`badge`)) ENGINE=InnoDB');
+    $wp->exec('CREATE TABLE {prefix}first_holders (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `code` BIGINT, `badge` BIGINT, PRIMARY KEY (`id`), CONSTRAINT `first_holders_code_fk` FOREIGN KEY (`code`) REFERENCES {prefix}first_badges (`code`), CONSTRAINT `first_holders_badge_fk` FOREIGN KEY (`badge`) REFERENCES {prefix}first_badges (`badge`)) ENGINE=InnoDB');
     $store = \First\Wp\CompositeStore::create($schema, $wp->connection());
     $db = new \First\Db($store, $schema, \First\db()->media());
     $previous = \First\Db::instance();
@@ -1431,6 +1439,21 @@ eq('/_schema access.fields summaries', $described['access']['fields'], ['email' 
         }
         eq('refused deletes preserve both parents', $count('notes'), 2);
         eq('trusted writes (hooks, CLI) check existence only', $db->insert('tags', ['name' => 'w', 'noteId' => $note['id']], true)[0]['noteId'], $note['id']);
+
+        // References to a key other than `id` (0.3.0 captures only).
+        [$b1, $b2] = $db->insert('badges', [['code' => 701001, 'badge' => 889001], ['code' => 701002, 'badge' => 889002]], true);
+        eq('a reference to a non-id unique key links by that key', $db->insert('holders', ['code' => 701001], true, $admin)[0]['code'], 701001);
+        problem('a missing non-id key is a reference violation', fn () => $db->insert('holders', ['code' => 709999], true, $anon), 409, 'reference_violation', '/code');
+        foreach ([889001, 889999] as $badge) {
+            problem('a key the viewer can\'t read refuses alike whether it exists or not', fn () => $db->insert('holders', ['badge' => $badge], true, $anon), 409, 'reference_violation', '/badge');
+        }
+        eq('readers of the key link by it', $db->insert('holders', ['badge' => 889002], true, $admin)[0]['badge'], 889002);
+        // Holders are admin-only: an editor can't tell referenced keys from free ones, so neither changes.
+        $db->update('holders', ['code' => null], ['code' => 701001], true);
+        foreach ([$b1, $b2] as $parent) {
+            problem('changing a referenced non-id key is refused, children or not', fn () => $db->update('badges', ['code' => $parent['code'] + 10], ['id' => $parent['id']], true, $editor), 409, 'reference_violation');
+        }
+        eq('refused key changes keep both keys', array_column($db->findMany('badges', ['orderBy' => ['id' => 'asc']]), 'code'), [701001, 701002]);
     } finally {
         \First\Db::setInstance($previous);
     }

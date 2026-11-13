@@ -15,11 +15,9 @@ A First app is one `first.config.ts`. It imports its building blocks from `"firs
 | `collections` | Editorial content stored as WordPress posts, with the WordPress editor. Build each one with `collection()`. |
 | `tables` | App data in SQL tables of their own. Build each one with `table()`. |
 | `users` | Fields on WordPress users. Build each one with `userProjection()`. |
-| `relations` | Links between collections and tables. Build them with `defineRelations()`. |
 | `globals` | Key = the name used in `db.globals.<key>` and `/globals/<key>`. |
 | `hooks` | Functions that run before or after a create, update or delete. |
 | `actions` | Named endpoints at `POST /__first/api/v1/actions/<name>`. Build each one with `action()`. |
-| `routes` | Custom HTTP endpoints on the site's own paths, outside `/wp-json`. |
 | `jobs` | Background work that runs after the request, on Action Scheduler. Build each one with `job()`. |
 | `webhooks` | Signed HTTP calls the app sends when rows change. |
 | `services` | Private native forms, queued mail, publication search and server-priced checkout. |
@@ -33,6 +31,14 @@ A First app is one `first.config.ts`. It imports its building blocks from `"firs
 | `use` | Plugin packages, registered in order: `use: [seo({ ... })]`. Each one's capabilities are inferred from its compiled code and granted by the committed `first/_generated/plugins.lock.json`. |
 
 ## Columns
+
+### `ref`
+
+A reference to a row of `kind` (its `id`): the field holds the id, `with: { field: true }` loads the row in its place, and `kind` gets a list of the referencing rows named after this kind. Pass `() => kind` for a kind declared later or for the kind itself.
+
+```ts
+export declare function ref(kind: AnyCollection | (() => AnyCollection)): ColumnBuilder<"integer", number, true, false>;
+```
 
 ### `integer`
 
@@ -216,20 +222,6 @@ export declare function userProjection<TCols extends ColumnsConfig, TUid extends
 ): Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">;
 ```
 
-## Relations
-
-### `defineRelations`
-
-```ts
-export declare function defineRelations<TSchema extends Schema>(
-  schema: TSchema,
-): Relations<TSchema, {}>;
-export declare function defineRelations<
-  TSchema extends Schema,
-  TConfig extends RelationsConfig<TSchema>,
->(schema: TSchema, relations: (r: RelationsBuilder<TSchema>) => TConfig): Relations<TSchema, TConfig>;
-```
-
 ## Hooks, actions, globals, config
 
 ### `action`
@@ -291,7 +283,6 @@ export declare function definePlugin<TSchema extends Schema = Schema>(definition
   hooks?: Hooks<TSchema>;
   actions?: Record<string, AnyAction>;
   jobs?: Record<string, AnyJob>;
-  routes?: Record<string, Route>;
 }): Plugin;
 ```
 
@@ -306,21 +297,6 @@ export declare function job<TInput extends ColumnsConfig>(definition: {
   agents?: boolean;
   handler: (input: InferActionInput<TInput>, ctx: JobCtx) => Awaitable<void>;
 }): Job<TInput>;
-```
-
-### `route`
-
-One method and path served by a compiled handler, in one transaction (`docs/config-api.md#http-routes`). Exactly one of `access` (who may call) or `signature` (an HMAC over the raw body; the caller is anonymous).
-
-```ts
-export declare function route(definition: {
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  path: RoutePath;
-  handler: (req: RouteRequest, ctx: HookCtx) => Awaitable<RouteResponse>;
-} & (
-  | { access: GateRule<Record<string, never>>; signature?: never }
-  | { signature: { secret: EnvValue; header: string; scheme: "first" | "hmac-sha256" }; access?: never }
-)): Route;
 ```
 
 ### `once`

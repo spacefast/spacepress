@@ -21,6 +21,10 @@
 			"description": "Saved versions of a row, for collections with revisions."
 		},
 		{
+			"name": "Live",
+			"description": "Reads a page is subscribed to, answered with \"not modified\" or the fresh result."
+		},
+		{
 			"name": "Actions",
 			"description": "Named server functions from `actions` in your config."
 		},
@@ -537,6 +541,43 @@
 						}
 					}
 				]
+			}
+		},
+		"/_live": {
+			"post": {
+				"tags": [
+					"Live"
+				],
+				"operationId": "subscribedReads",
+				"summary": "Refresh subscribed reads",
+				"description": "Takes up to 20 reads, each with the `token` of the answer you last got, and answers each one as the signed-in user: `{ changed: false, token }` when what you hold is current, `{ changed: true, token, data }` with the fresh result, `{ error }` with the read's problem, or `{ pending: true }` when the request ran out of time. `data` also has `poll`, the shortest and longest wait between two requests. The generated client's `subscribe` calls it.",
+				"responses": {
+					"200": {
+						"description": "One result per read, in order, under `data.results`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Data"
+								}
+							}
+						}
+					},
+					"default": {
+						"$ref": "#/components/responses/Problem"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"description": "`{ queries: [{ kind, op, args, id, token }] }`: `kind` is a collection or table key, `op` is `list`, `paginate`, `get` or `count`, `args` are that call's arguments, `id` is the row for `get`, and `token` is what the previous answer returned.",
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true
+							}
+						}
+					}
+				}
 			}
 		},
 		"/actions/{name}": {

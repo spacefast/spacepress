@@ -157,6 +157,7 @@ isn't changed either. None of these switches can be turned off in
 | `autoUpdates` | no automatic core, plugin or theme updates |
 | `customizer` | `customize` is refused, so `customize.php` and its links are gone |
 | `comments` | comments closed on every post type except collections with `comments: true` |
+| `authors` | the site's users aren't listed to the public: core's user routes, author archives, `?author=N`, the users sitemap and oEmbed's author fields (see [Authors](#authors)) |
 | `schemaLock` | the app's schema is changed in `first.config.ts` and nowhere on the site (see [Schema lock](#schema-lock)) |
 | `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
 | `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
@@ -229,6 +230,40 @@ WP-CLI is not refused. It is the operator's trusted channel, as it is for
 that runs on the site (another plugin, a theme's `functions.php`) can register
 what it likes in code: the lock is about edits made on the site, not about code
 that is deployed to it.
+
+### Authors
+
+WordPress ships with several ways for a visitor to enumerate a site's users,
+each showing a login or the display name WordPress fills from it. While a First
+app is active they are closed to visitors who aren't signed in:
+
+| route | answer |
+|---|---|
+| `/wp/v2/users`, `/wp/v2/users/<id>`, the same through `?rest_route=`, `/batch/v1` or any letter case | 401 |
+| a post's REST `_embed=author` | the embed holds that 401, not the user |
+| `?author=<id>` (core redirects it to `/author/<login>/`), `?author_name=`, `/author/<login>/`, its feed and its `.md` twin | 404, no redirect |
+| the users sitemap (`/wp-sitemap-users-1.xml`), and its entry in `/wp-sitemap.xml` | gone |
+| a post's oEmbed `author_name` and `author_url` | the site's name and address, as core answers for a post with no author |
+| `/__first/api/v1/users` | follows the core route (401) |
+
+Signed-in users and credentials keep core's answers (the block editor's author
+picker), and the users kind's read rule decides what First's API shows. A
+scoped agent credential without `personal` sees what core shows anyone
+([agents](agents.md)).
+
+Authors are public, as WordPress ships them, when the app says so: either set
+
+```ts
+export default defineConfig({ publicAuthors: true });
+```
+
+or give the users kind a read rule that lets anyone read users
+(`access: { read: "anyone" }`). `GET /__first/api/v1` reports which applies under
+`runtime.wp.publicAuthors`.
+
+A post's byline and its feed's `<dc:creator>` still show the author's display
+name, which is what a site publishes on purpose. Set a display name that isn't
+the login (WordPress's default) for users whose login should stay private.
 
 ## Mixed content and app data
 

@@ -1116,6 +1116,12 @@ export interface ConfigInput<
   /** Ship the optional admin screens (`first-admin`) with the build. Default `false`. */
   admin?: boolean;
   /**
+   * Keep the site's authors public as WordPress ships them: author archives, `?author=N`, the users
+   * sitemap, author names in oEmbed and unauthenticated `/wp/v2/users`. Default `false`: closed, unless
+   * the users kind's read rule lets anyone read users.
+   */
+  publicAuthors?: boolean;
+  /**
    * Who renders the public site. Leave it out for the theme (or `first/app` when it exists); `false`
    * for backend only; an external site's `https://` address to point links, previews and feeds there.
    */

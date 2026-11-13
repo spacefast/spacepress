@@ -107,6 +107,12 @@ final class Schema
         return $this->raw['files'] ?? [];
     }
 
+    /** `publicAuthors`: core's author archives and user listings stay public (spec §6). */
+    public function publicAuthors(): bool
+    {
+        return ($this->raw['publicAuthors'] ?? false) === true;
+    }
+
     public function auth(): array
     {
         return $this->raw['auth'] ?? ['collection' => null, 'guests' => true, 'accessTtl' => 300, 'refreshTtl' => 2592000];

@@ -494,6 +494,9 @@ pub struct Schema {
     pub admin: bool,
     /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `first/app`.
     pub frontend: Option<crate::kind_url::Frontend>,
+    /// `defineConfig({ publicAuthors: true })`: core's author archives, author routes and user
+    /// listings stay public, as WordPress ships them (the users kind's read rule can also allow it).
+    pub public_authors: bool,
 }
 
 impl Default for Schema {
@@ -517,6 +520,7 @@ impl Default for Schema {
             locales: None,
             admin: false,
             frontend: None,
+            public_authors: false,
         }
     }
 }

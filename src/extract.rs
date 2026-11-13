@@ -126,6 +126,7 @@ const CONFIG_KEYS: &[&str] = &[
     "locales",
     "plugins",
     "admin",
+    "publicAuthors",
     "services",
     "use",
     "frontend",
@@ -242,6 +243,12 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         }
     };
     out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
+    out.schema.public_authors = bool_option(
+        &cfg_map,
+        "publicAuthors",
+        false,
+        span_of(ev, config, "publicAuthors", config_span),
+    )?;
     out.schema.frontend = match cfg_map.get("frontend") {
         None | Some(Value::Undef) => None,
         Some(Value::Bool(false)) => Some(crate::kind_url::Frontend::Off),

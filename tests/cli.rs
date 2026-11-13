@@ -1039,6 +1039,31 @@ fn mcp_commands_is_the_command_table_and_dev_status_reports_a_project_with_no_si
         mcp.ok("dev_status", serde_json::json!({})),
         serde_json::json!({ "state": "none", "start": "first dev" })
     );
+    // `first dev status --json` is the same report, and starts nothing either.
+    let status = first()
+        .args(["dev", "status", "--json"])
+        .arg(project.path())
+        .output()
+        .unwrap();
+    assert!(status.status.success(), "{}", text(&status.stderr));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&status.stdout).unwrap(),
+        serde_json::json!({ "state": "none", "start": "first dev" })
+    );
+    // The flags belong to the commands that take them.
+    for misplaced in [
+        &["dev", "--json"][..],
+        &["dev", "stop", "--detach"],
+        &["build", "--detach"],
+    ] {
+        let out = first().args(misplaced).arg(project.path()).output().unwrap();
+        assert_eq!(out.status.code(), Some(2), "{misplaced:?}: {}", text(&out.stderr));
+        assert!(
+            text(&out.stderr).starts_with("unknown option "),
+            "{}",
+            text(&out.stderr)
+        );
+    }
     let no_site =
         "this project has no dev site yet; start one with `first dev` (`first dev --no-watch` starts it and returns)";
     assert_eq!(mcp.refused("query", serde_json::json!({ "kind": "notes" })), no_site);

@@ -94,8 +94,9 @@ pub(super) fn list(options: &Options) -> Vec<Value> {
         tool(
             "dev_status",
             "The local dev site",
-            "Whether this project has a local WordPress dev site, whether it is running, and its URL. `first dev` \
-             creates and starts it; `first dev stop` stops it and keeps its data.",
+            "Whether this project has a local WordPress dev site, whether it is running, its URL and port, and \
+             whether a `first dev` process is rebuilding it on save (`watching`, `pid`, `log`). `first dev --detach` \
+             starts it in the background; `first dev stop` stops it and keeps its data.",
             object(json!({}), &[]),
             read.clone(),
         ),

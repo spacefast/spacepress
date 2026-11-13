@@ -115,7 +115,13 @@ await posts.create({ title: "Hi" });  await posts.update(42, { title: "Hello" })
 await posts.system.list();   // trusted: no access rules, every draft
 ```
 
-- `search` matches the title, content and text fields the visitor may read.
+- `search` finds the rows where every word of the text starts a word in the
+  title, the content or a text field the visitor may read (`tea` finds
+  "Teapots", not "steal"). It narrows the same read, so the rows, `count()` and
+  the order are what the visitor gets without it, filtered: a draft, a row the
+  read rule hides, or a word only in a field the visitor may not read is never
+  found and never counted. It runs on a search index First keeps in step with
+  every write ([decision](decisions/2026-11-13-search-index.md)).
 - `paginate` takes `limit` (20 by default, at most 100) and the `cursor` the
   previous page returned.
 - A kind the visitor may not read at all throws the API's 401 or 403. A row
@@ -345,6 +351,14 @@ is never refused.
 
 ### Upgrading authoring
 
+Storage is chosen only by the builder: `collection()` is always WordPress
+posts and `table()` is always a SQL table. A collection that asked for table
+storage with `editor: false` is written as `table()`; `collection()` refuses
+the option at its location. The rows of a site that deployed such a collection
+stay in the table they are in. Bind the name as below and the change is a
+rename of the declaration: `first build` writes no migration, so nothing is
+moved or dropped.
+
 Replace named builders with unnamed `collection()` or `table()` and register
 under `collections` or `tables`. Keep the logical keys, existing physical storage
 and committed migration snapshots. The snapshot format and runtime storage
@@ -446,7 +460,9 @@ answers exactly what core answers under First's rules.
 | `POST /__first/api/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
 | `GET /__first/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
 | `POST /__first/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
+| `GET /__first/api/v1/search?q=…[&kinds=a,b][&limit=n]` | | `{ data: { q, results: [{ kind, rows }] } }`: the same search on every kind, as the caller; a kind the caller may not read is left out |
 | `GET /__first/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
+| `GET /__first/api/v1/openapi.json` | | the API as an OpenAPI 3.1 document; public |
 
 Rows are First rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
 `published` or `private`. Errors are RFC 9457 problem documents (`code`,
@@ -454,6 +470,43 @@ Rows are First rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
 with `X-WP-Nonce`, an application password, or a First Identity bearer token.
 The API is served before the theme loads; it never uses 0.8's `/__zero/config`,
 `/__zero/run`, `/__zero/auth/*` or `/__zero/realtime/events`.
+
+### The OpenAPI document
+
+`first build` writes `first/_generated/openapi.json`: the app's API as an
+OpenAPI 3.1 document. Commit it with the client. It comes from the same schema
+as the typed client and the app's Abilities, so the three describe one field
+one way:
+
+- A kind has the components `Post`, `PostInsert`, `PostPatch` and `PostFilter`,
+  named as the client's types are. The row, the create input and the patch are
+  the JSON Schemas the kind's Abilities publish.
+- Every operation the API serves is there: each kind's list, get, create,
+  update and delete (less any its `api` flags switch off), revisions, `/me`,
+  each global, each action (with `GET` when it is `readonly`), file buckets,
+  sync, services, and WordPress's own `posts`, `pages`, `comments`, `media`,
+  `categories`, `tags`, `menus` and `settings` where the app declares none of
+  that name. An action with a `signature` is left out: it is a webhook for the
+  one service that holds its secret, and `GET /__first/api/v1` leaves it out too.
+- An operation's `operationId` names it by kind and operation (`posts.list`,
+  `actions.greet`, `sync.notes.read`); where the typed client has a call for
+  the request, it is that call's name. Its description says who may call it, and
+  `x-first-access` carries the rule's short name (`anyone`, a role, `owner`,
+  `self`, or `rule` for one written as a function). A field with its own
+  access rule carries `x-first-access` too, and a field a caller may not read is
+  absent from rows.
+- Errors are the `Problem` component, served as `application/problem+json`.
+  `securitySchemes` lists the three ways to sign in.
+
+The running site serves the same document at
+`GET /__first/api/v1/openapi.json`, with the site's own address in `servers`.
+It needs no sign-in and is the same for everyone: it describes the app's kinds,
+fields, globals and actions, as `GET /__first/api/v1` does, and never says who
+may see which row.
+
+```sh
+curl https://example.test/__first/api/v1/openapi.json
+```
 
 ## Locales
 
@@ -662,6 +715,8 @@ the live rows before it runs any of them:
 | A field becomes required with `.default(v)` | rows without a value get `v`, then it applies |
 | A field becomes required, no default, and rows lack it | refused: `required_field_missing` with the count |
 | A kind or field is removed and holds rows | refused: `drop_has_rows` with the count, until the deploy passes `--drop=name=rows` |
+| A `table()` that holds rows is declared with `collection()` | refused: `drop_has_rows` with the count. Storage follows the builder, so the build plans the table's drop and moves no rows. To keep the rows, don't pass `--drop`: delete the new, undeployed migration file, restore `snapshot.json` from the last deployed build (`git checkout`), declare `table()` again and build; no migration is written. Building `table()` on top of the drop instead writes a second migration that recreates the table, and the drop before it is still refused |
+| A `collection()` that holds posts is declared with `table()` | applies: the build creates an empty SQL table and warns. The posts stay in `wp_posts` and the app no longer reads them; nothing moves them |
 | A field's type or length narrows (`.max(100)`, `.unique()`, text to integer, ...) and values wouldn't fit | refused: `value_does_not_fit` with the count; MySQL would truncate or convert them |
 | `--drop=name=rows` doesn't match the live count | refused: `drop_count_mismatch` with the live count |
 | A table the app didn't create (`existingTable`) loses, renames or retypes a field, or loses its kind | refused: `drop_adopted_table`, even when empty, until the deploy passes `--drop` |

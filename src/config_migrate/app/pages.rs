@@ -1,7 +1,7 @@
-//! 0.8 pages that are static markup become v2 TSX pages at the same URL.
+//! 0.8 pages that are static markup become `first/app/` pages at the same URL.
 //!
-//! v2 pages render once at capture and WordPress serves the result per request, so only a page
-//! whose output never depends on the browser maps mechanically: no hooks, no `@spacefast/zero/*`
+//! A `first/app/` page compiles to PHP and renders on each request, so a page whose output never
+//! depends on the browser maps mechanically: no hooks, no `@spacefast/zero/*`
 //! component or client import, no event handlers, and no imports other than relative TypeScript
 //! data modules. Everything else is refused with what it uses and where to port it.
 use super::super::{Failure, fail, pointer};
@@ -18,7 +18,7 @@ pub(super) struct Page {
     pub imports: Vec<String>,
 }
 
-/// Maps `pages/<path>.tsx` to `pages/<path>/page.tsx`, or explains the refusal.
+/// Maps `pages/<path>.tsx` to `first/app/<path>/page.tsx`, or explains the refusal.
 pub(super) fn page(relative: &Path, text: &str, at: &str) -> Result<Page, Failure> {
     let name = relative.to_string_lossy().replace('\\', "/");
     let Some(stem) = name.strip_prefix("pages/").and_then(|n| n.strip_suffix(".tsx")) else {
@@ -34,7 +34,7 @@ pub(super) fn page(relative: &Path, text: &str, at: &str) -> Result<Page, Failur
     {
         return Err(fail(
             at,
-            "a parameterized 0.8 page route has no static v2 page; port it to collectionPage() (docs/pages.md)",
+            "a parameterized 0.8 page route needs a manual port: a first/app/<path>/[param]/page.tsx that reads its row (docs/pages.md)",
         ));
     }
     let imports = static_markup(text, at)?;
@@ -45,9 +45,9 @@ pub(super) fn page(relative: &Path, text: &str, at: &str) -> Result<Page, Failur
         .collect::<Option<Vec<_>>>()
         .ok_or_else(|| fail(at, "a page import leaves the capsule"))?;
     let dir = if segments.is_empty() {
-        "pages".to_string()
+        APP.to_string()
     } else {
-        format!("pages/{}", segments.join("/"))
+        format!("{APP}/{}", segments.join("/"))
     };
     // `pages/a/index.tsx` stays in its directory; `pages/a/b.tsx` moves one level down.
     let moved = usize::from(relative.file_stem().is_some_and(|s| s != "index"));
@@ -58,7 +58,10 @@ pub(super) fn page(relative: &Path, text: &str, at: &str) -> Result<Page, Failur
     })
 }
 
-/// `client/index.tsx`'s `Layout` becomes `pages/layout.tsx` when it is static markup.
+/// Where converted pages go in the candidate.
+pub(super) const APP: &str = "first/app";
+
+/// `client/index.tsx`'s `Layout` becomes `first/app/layout.tsx` when it is static markup.
 pub(super) fn layout(text: &str, at: &str) -> Result<Option<String>, Failure> {
     let arena = Allocator::default();
     let parsed = Parser::new(&arena, text, SourceType::tsx()).parse();
@@ -90,7 +93,7 @@ pub(super) fn layout(text: &str, at: &str) -> Result<Option<String>, Failure> {
         .replace("export function Layout(", "export default function Layout(")
         .replace(
             "import type { ComponentChildren } from \"preact\";",
-            "import type { LayoutProps } from \"@spacefast/first-pages\";",
+            "import type { LayoutProps } from \"first/app\";",
         )
         .replace(
             "{ children }: { children: ComponentChildren }",
@@ -256,21 +259,6 @@ fn relocate(text: &str, extra: usize) -> String {
         } else {
             spec.starts_with("../").then(|| format!("{up}{spec}"))
         }
-    })
-}
-
-/// Points a converted page's imports of the app's own modules (`../shared/plans`) into the Zero
-/// root, where the candidate moves them (`../first/shared/plans`). `file` is the page's path in the
-/// candidate (`pages/pricing/page.tsx`); an import that resolves inside `pages/` is unchanged.
-pub(super) fn into_zero_root(file: &str, text: &str) -> String {
-    // Directories between the candidate root and the page, so `ups` reaching it leaves `pages/`.
-    let depth = file.split('/').count() - 1;
-    rewrite_imports(text, |spec| {
-        let ups = spec.split('/').take_while(|s| *s == "..").count();
-        (spec.starts_with("../") && ups >= depth).then(|| {
-            let prefix = "../".repeat(ups);
-            format!("{prefix}{}/{}", crate::layout::ROOT, &spec[prefix.len()..])
-        })
     })
 }
 

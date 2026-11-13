@@ -43,8 +43,7 @@ final class Store
         if (!is_array($manifest) || ($manifest['format'] ?? null) !== self::FORMAT
             || !is_string($manifest['name'] ?? null) || preg_match('/\A[a-z0-9-]+\z/D', $manifest['name']) !== 1
             || !self::validId($manifest['runtime'] ?? null) || !self::validId($manifest['app'] ?? null)
-            || !is_bool($manifest['identity'] ?? null) || !is_bool($manifest['admin'] ?? null)
-            || !(($manifest['pages'] ?? null) === null || $manifest['pages'] === 'first-pages-' . $manifest['name'])) {
+            || !is_bool($manifest['identity'] ?? null) || !is_bool($manifest['admin'] ?? null)) {
             throw new \RuntimeException("Invalid First build manifest $build");
         }
         return $manifest;
@@ -235,9 +234,6 @@ final class Loader
             \First\Wp\Runtime::mount($runtime . '/first-runtime/first-runtime.php', $app, $variables);
             if ($manifest['admin']) {
                 require_once $runtime . '/first-admin/first-admin.php';
-            }
-            if ($manifest['pages'] !== null) {
-                require_once $root . '/app/' . $manifest['app'] . '/plugins/' . $manifest['pages'] . '/' . $manifest['pages'] . '.php';
             }
         };
         if (doing_action('plugins_loaded') || did_action('plugins_loaded') > 0) {

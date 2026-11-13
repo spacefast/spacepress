@@ -621,19 +621,22 @@ content/docs/
   the editor's page attributes edit them, and `:path` in the url is the parent chain.
 - A file's name is its slug and its folder its parent; front matter never holds either. Put
   `order: 2` in front matter to sort; siblings with the same order sort by title.
-- Slugs are unique in the kind, so two folders can't both hold an `install.md`.
+- A folder tree's file slugs are unique, so two folders can't both hold an `install.md`; a file
+  without a `uid` is identified by its slug, so moving it keeps its page. On the site, as in
+  WordPress, a slug is unique among siblings, and URLs resolve the whole path.
 - `first sync` moves a file when its page moves on the site, and turns a page that gains children
-  into its folder's `index.md`.
+  into its folder's `index.md`; an `index.md` you wrote stays one, and moving a folder moves its
+  pages.
 
 A page reads the navigation from `"first/content"`, as the visitor:
 
 ```tsx
-// first/app/docs/[...path]/page.tsx
+// first/app/docs/[[...path]]/page.tsx  (or [...path]; /docs itself is first/app/docs/page.tsx)
 import { docs } from "first:db";
 import { Content, type PageProps } from "first/app";
 import { nav, pager, headings } from "first/content";
 
-export default async function Doc({ item }: PageProps<"docs/[...path]">) {
+export default async function Doc({ item }: PageProps<"docs/[[...path]]">) {
   const tree = await nav(docs, item);           // [{ id, title, href, current, open, children }]
   const { prev, next } = await pager(docs, item);
   const toc = headings(item);                   // [{ depth: 2 | 3, text, id }]

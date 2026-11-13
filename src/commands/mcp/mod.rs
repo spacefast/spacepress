@@ -14,20 +14,34 @@
 //! - 2025-11-25 and 2025-06-18: the `initialize` handshake, then requests without that metadata.
 //!
 //! A request that does neither is refused, so no method is ever answered under a guessed revision.
-//! Requests are answered one at a time, in the order they arrive.
+//!
+//! Requests are answered one at a time, in the order they arrive, by one thread. The thread that
+//! reads stdin only queues them and acts on `notifications/cancelled`: a request still queued is
+//! dropped, and the one being answered has the command it is waiting on stopped. A cancelled request
+//! gets no response. When stdin closes, the requests already received are answered and the server
+//! exits, so `printf … | first mcp` works; nothing it runs outlives the timeout.
+//!
+//! The compiler runs in a process of its own for each `schema` and `check` (`first mcp <dir>
+//! --compile`, an internal form of this command): a long-lived server then keeps nothing from one
+//! compile to the next, and a compile is bounded and cancellable like any other command.
 
+mod child;
 mod docs;
 mod tools;
 
 use serde_json::{Map, Value, json};
+use std::collections::HashSet;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::{Arc, Mutex, mpsc};
+use std::time::Duration;
 
 /// Revisions without a handshake, newest first.
 const MODERN: &[&str] = &["2026-07-28"];
-/// Revisions that open with `initialize`, newest first. 2025-03-26 and earlier are not served: they
-/// oblige a server to accept JSON-RPC batches.
+/// Revisions that open with `initialize`, newest first. 2025-03-26 is not served: it obliges a
+/// server to accept JSON-RPC batches. A client that asks for it, or for anything older, is answered
+/// with the newest of these and decides for itself, as the lifecycle rules say.
 const LEGACY: &[&str] = &["2025-11-25", "2025-06-18"];
 
 const PROTOCOL_VERSION: &str = "io.modelcontextprotocol/protocolVersion";
@@ -50,6 +64,8 @@ const LEGACY_RESOURCE_NOT_FOUND: i64 = -32002;
 const FIXED_TTL_MS: u64 = 3_600_000;
 
 const USAGE: &str = "usage: first mcp [dir] [--allow-remote-read] [--allow-writes]";
+/// Seconds a command run for a tool may take: `FIRST_MCP_TIMEOUT` overrides it.
+const TIMEOUT: u64 = 120;
 
 pub(crate) struct Options {
     /// The project directory, canonical.
@@ -58,6 +74,32 @@ pub(crate) struct Options {
     pub(crate) allow_remote_read: bool,
     /// The write tools are listed, for this project's dev site only.
     pub(crate) allow_writes: bool,
+    /// How long a command run for a tool may take before it is stopped.
+    timeout: Duration,
+    flight: Arc<Mutex<Flight>>,
+}
+
+/// What the thread reading stdin needs to know to act on a cancellation.
+#[derive(Default)]
+struct Flight {
+    /// Requests received and not answered yet, by id.
+    pending: HashSet<String>,
+    /// Those the client cancelled: none of them is answered.
+    cancelled: HashSet<String>,
+    /// The one being answered,
+    current: Option<String>,
+    /// the command it is waiting on,
+    child: Option<u32>,
+    /// and whether that command is to stop (as soon as it starts, if it has not).
+    stop: bool,
+}
+
+/// A request's id as a key: `1` and `"1"` are different ids.
+fn request_key(message: &Value) -> Option<String> {
+    let id = message
+        .get("id")
+        .filter(|id| id.is_string() || id.is_i64() || id.is_u64())?;
+    message.get("method")?.as_str().map(|_| id.to_string())
 }
 
 struct RpcError {
@@ -88,48 +130,125 @@ enum Era {
 }
 
 pub(crate) fn cli(args: &[String]) -> ExitCode {
-    let mut options = Options {
-        project: PathBuf::from("."),
-        allow_remote_read: false,
-        allow_writes: false,
+    let usage = |message: String| {
+        eprintln!("{message}\n{USAGE}");
+        ExitCode::from(2)
     };
+    let (mut project, mut allow_remote_read, mut allow_writes, mut compile) = (None, false, false, false);
     for arg in args {
         match arg.as_str() {
-            "--allow-remote-read" => options.allow_remote_read = true,
-            "--allow-writes" => options.allow_writes = true,
-            other if other.starts_with('-') => {
-                eprintln!("unknown option {other} for first mcp\n{USAGE}");
-                return ExitCode::from(2);
+            "--allow-remote-read" => allow_remote_read = true,
+            "--allow-writes" => allow_writes = true,
+            // The server's own way to compile in a separate process; not an author's option.
+            "--compile" => compile = true,
+            other if other.starts_with('-') => return usage(format!("unknown option {other} for first mcp")),
+            other if project.is_some() => {
+                return usage(format!("first mcp takes one project directory, not also {other}"));
             }
-            other => options.project = PathBuf::from(other),
+            other => project = Some(PathBuf::from(other)),
         }
     }
-    options.project = match options.project.canonicalize() {
-        Ok(project) => project,
-        Err(error) => {
-            eprintln!("{}: {error}\n{USAGE}", options.project.display());
-            return ExitCode::from(2);
-        }
+    let project = project.unwrap_or_else(|| PathBuf::from("."));
+    let project = match project.canonicalize() {
+        Ok(canonical) if canonical.is_dir() => canonical,
+        Ok(_) => return usage(format!("{} is not a directory", project.display())),
+        Err(error) => return usage(format!("{}: {error}", project.display())),
     };
+    if compile {
+        println!("{}", tools::compiled(&project));
+        return ExitCode::SUCCESS;
+    }
+    let timeout = match std::env::var("FIRST_MCP_TIMEOUT") {
+        Err(_) => TIMEOUT,
+        Ok(seconds) => match seconds.parse::<u64>() {
+            Ok(seconds) if seconds > 0 => seconds,
+            _ => return usage(format!("FIRST_MCP_TIMEOUT is a number of seconds, not {seconds:?}")),
+        },
+    };
+    let flight = Arc::new(Mutex::new(Flight::default()));
     let mut server = Server {
-        options,
+        options: Options {
+            project,
+            allow_remote_read,
+            allow_writes,
+            timeout: Duration::from_secs(timeout),
+            flight: flight.clone(),
+        },
         initialized: false,
     };
-    let stdin = std::io::stdin();
-    let mut stdout = std::io::stdout().lock();
-    for line in stdin.lock().lines() {
-        // End of input, or input that is not text: the client is gone.
-        let Ok(line) = line else { break };
-        if line.trim().is_empty() {
-            continue;
-        }
-        for message in server.receive(&line) {
-            // A message is one line: serde_json escapes every newline inside a string.
-            if writeln!(stdout, "{message}").and_then(|()| stdout.flush()).is_err() {
-                return ExitCode::SUCCESS;
+    // `None` is a line that is not JSON.
+    let (queue, queued) = mpsc::channel::<Option<Value>>();
+    let worker = std::thread::spawn(move || {
+        let mut stdout = std::io::stdout().lock();
+        for message in queued {
+            let key = message.as_ref().and_then(request_key);
+            if let Some(key) = &key {
+                let mut flight = server.options.flight.lock().expect("flight");
+                // Cancelled while it waited its turn: never started, never answered.
+                if flight.cancelled.remove(key) {
+                    flight.pending.remove(key);
+                    continue;
+                }
+                flight.current = Some(key.clone());
+                flight.stop = false;
+            }
+            let answers = server.receive(message);
+            if let Some(key) = &key {
+                let mut flight = server.options.flight.lock().expect("flight");
+                flight.current = None;
+                flight.pending.remove(key);
+                if flight.cancelled.remove(key) {
+                    continue;
+                }
+            }
+            for answer in answers {
+                // A message is one line: serde_json escapes every newline inside a string.
+                if writeln!(stdout, "{answer}").and_then(|()| stdout.flush()).is_err() {
+                    return;
+                }
             }
         }
+    });
+    let mut input = std::io::stdin().lock();
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        // End of input, or a failed read: the client is gone.
+        if !input.read_until(b'\n', &mut line).is_ok_and(|read| read > 0) {
+            break;
+        }
+        let text = line.trim_ascii();
+        if text.is_empty() {
+            continue;
+        }
+        // Bytes that are not UTF-8 are not JSON either: answered as a parse error, like any other.
+        let message = serde_json::from_slice::<Value>(text).ok();
+        if let Some(message) = &message {
+            let mut flight = flight.lock().expect("flight");
+            if message["method"] == "notifications/cancelled" && message.get("id").is_none() {
+                let key = message["params"]["requestId"].to_string();
+                if flight.pending.contains(&key) {
+                    if flight.current.as_ref() == Some(&key) {
+                        flight.stop = true;
+                        if let Some(pid) = flight.child {
+                            child::stop(pid);
+                        }
+                    }
+                    flight.cancelled.insert(key);
+                }
+                continue;
+            }
+            if let Some(key) = request_key(message) {
+                flight.pending.insert(key);
+            }
+        }
+        if queue.send(message).is_err() {
+            break;
+        }
     }
+    // The requests already received are answered before the server exits.
+    drop(queue);
+    let _ = worker.join();
     ExitCode::SUCCESS
 }
 
@@ -184,46 +303,48 @@ impl Server {
         )
     }
 
-    /// One line from the client: the messages to write back, none for a notification.
-    fn receive(&mut self, line: &str) -> Vec<Value> {
-        let Ok(message) = serde_json::from_str::<Value>(line) else {
+    /// One message from the client (`None`: a line that was not JSON): the messages to write back,
+    /// none for a notification.
+    fn receive(&mut self, message: Option<Value>) -> Vec<Value> {
+        let Some(message) = message else {
             return vec![failure(None, RpcError::new(PARSE_ERROR, "Parse error: not JSON"))];
         };
-        let Some(request) = message.as_object() else {
-            let what = if message.is_array() {
-                "JSON-RPC batches are not part of the protocol revisions this server speaks"
-            } else {
-                "a message is a JSON object"
-            };
-            return vec![failure(
-                None,
+        let invalid = |id: Option<&Value>, what: &str| {
+            vec![failure(
+                id,
                 RpcError::new(INVALID_REQUEST, format!("Invalid request: {what}")),
-            )];
+            )]
+        };
+        let Some(request) = message.as_object() else {
+            return invalid(
+                None,
+                if message.is_array() {
+                    "JSON-RPC batches are not part of the protocol revisions this server speaks"
+                } else {
+                    "a message is a JSON object"
+                },
+            );
         };
         let id = request.get("id");
         if id.is_some_and(|id| !(id.is_string() || id.is_i64() || id.is_u64())) {
-            return vec![failure(
-                None,
-                RpcError::new(INVALID_REQUEST, "Invalid request: id is a string or an integer"),
-            )];
+            return invalid(None, "id is a string or an integer");
         }
-        let Some(method) = request.get("method").and_then(Value::as_str) else {
+        let method = match request.get("method") {
+            Some(Value::String(method)) => method.as_str(),
+            Some(_) => return invalid(id, "method is a string"),
             // A response. This server sends no requests, so there is nothing it answers.
-            return Vec::new();
+            None if request.contains_key("result") || request.contains_key("error") => return Vec::new(),
+            None => return invalid(id, "a message has a method"),
         };
         if request.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
             return match id {
-                Some(_) => vec![failure(
-                    id,
-                    RpcError::new(INVALID_REQUEST, "Invalid request: jsonrpc is \"2.0\""),
-                )],
+                Some(_) => invalid(id, "jsonrpc is \"2.0\""),
                 None => Vec::new(),
             };
         }
         let Some(id) = id else {
-            // A notification is never answered. `notifications/initialized` needs nothing, and
-            // `notifications/cancelled` names a request that has already been answered, because
-            // requests are answered in order.
+            // A notification is never answered. `notifications/initialized` needs nothing, and the
+            // thread that reads stdin has already acted on `notifications/cancelled`.
             return Vec::new();
         };
         let empty = Map::new();
@@ -324,6 +445,12 @@ impl Server {
                 true,
             ),
             (Era::Modern, "subscriptions/listen") => {
+                if !params.get("notifications").is_some_and(Value::is_object) {
+                    return Err(RpcError::new(
+                        INVALID_PARAMS,
+                        "Invalid params: subscriptions/listen needs notifications",
+                    ));
+                }
                 // Nothing this server lists ever changes, so the stream it opens honours no
                 // notification type and stays silent until the client cancels it or leaves.
                 Ok(vec![json!({

@@ -66,12 +66,57 @@ fn docs(dir: &Path, repo: &Path, recurse: bool, extensions: &[&str], out: &mut V
     }
 }
 
-/// `docs/*.md` is what an author reads. Design proposals and provenance records describe decisions
-/// and plans, some of them never built, so they stay out of what `first mcp` answers from; so do the
-/// subdirectories (the target spec, decision records, spikes, benchmarks).
+/// The `docs/*.md` pages `first mcp` answers from: what someone building an app with First reads.
+const GUIDES: &[&str] = &[
+    "admin.md",
+    "agents.md",
+    "class-compilation.md",
+    "compiler-diagnostics.md",
+    "config-api.md",
+    "config-migration.md",
+    "deployment.md",
+    "examples.md",
+    "first-compatibility.md",
+    "identity-api.md",
+    "identity-security.md",
+    "installation.md",
+    "language-support.md",
+    "migrating-from-zero.md",
+    "npm-compatibility.md",
+    "pages.md",
+    "realtime.md",
+    "services.md",
+    "spacefast-deploy.md",
+    "uploads.md",
+    "wp-plugins.md",
+];
+/// The ones it leaves out: design proposals and records of decisions and plans (some never built),
+/// and pages for hosts, for the compiler's own maintainers, or about one migration's progress. An
+/// agent that searched them would answer with APIs an app does not have.
+const NOT_GUIDES: &[&str] = &[
+    "api-cutover-0.3.md",
+    "authoring-direction.md",
+    "dependencies.md",
+    "emdash-coverage.md",
+    "host-contract.md",
+    "research-adoption.md",
+    "runtime-contract.md",
+    "spacefast-host-checklist.md",
+    "zero-08-parity.md",
+];
+
+/// Whether `docs/<name>` is embedded. Every page is in one list or the other, so a new page is a
+/// decision and not an accident; `design-*.md` are proposals and never embedded.
 fn is_guide(rel: &str) -> bool {
     let name = rel.rsplit('/').next().unwrap_or(rel);
-    !(name.starts_with("design-") || matches!(name, "authoring-direction.md" | "research-adoption.md"))
+    if GUIDES.contains(&name) {
+        return true;
+    }
+    assert!(
+        name.starts_with("design-") || NOT_GUIDES.contains(&name),
+        "docs/{name} is in neither GUIDES nor NOT_GUIDES in build.rs: decide whether `first mcp` should answer from it"
+    );
+    false
 }
 
 fn embed_docs(manifest: &Path, out_dir: &Path) {

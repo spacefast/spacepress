@@ -23,6 +23,7 @@ final class Module
 {
     public static function register(): void
     {
+        Surfaces::register();
         Extensions::route('schema-versions', self::route(...));
     }
 

@@ -297,6 +297,8 @@ final class Register
             array_push($ops, ...self::global($app, $label, (string) $name, $global));
         }
         array_push($ops, ...self::media($app, $label));
+        // Features add their own operations here (runtime schema changes: First\RuntimeSchema\Surfaces).
+        $ops = apply_filters('first_ability_operations', $ops, $app);
         if (($enqueue = Module::enqueuer()) !== null) {
             foreach ($schema->jobs() as $name => $job) {
                 if ($job['agents'] ?? false) {

@@ -21,6 +21,7 @@
     { "name": "seed", "args": "--records=<dir> [--dry-run]", "summary": "first-sync content from compiled records" },
     { "name": "jobs", "args": "list [--state=s] | run <id> | retry <id> | cancel <id> | maintain | tick [--limit=n] [--budget-ms=ms]", "summary": "inspect and drive background jobs" },
     { "name": "abilities", "args": "", "summary": "list the app's abilities" },
+    { "name": "schema", "args": "list | diff <version> | apply <file|-> [--parent=<n>] | rollback <version> [--parent=<n>]", "summary": "the site's runtime schema versions (runtimeSchema: true)" },
     { "name": "run", "args": "<ability> [--input=<json>]", "summary": "run an ability" },
     { "name": "action", "args": "<name> [json]", "summary": "call an action as the trusted CLI" },
     { "name": "find", "args": "<collection> [json options]", "summary": "read records" },

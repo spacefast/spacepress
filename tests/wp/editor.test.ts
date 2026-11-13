@@ -197,13 +197,13 @@ test("editor password writes invalidate visibility and keep relations private", 
   const row = await ok("POST", "/posts", { as: "editor", body: { title: `Password write ${run}`, status: "published" } });
   const id = row.id;
   await ok("POST", "/comments", { as: "editor", body: { postId: id, name: "Visibility", body: "Related" } });
-  const comments = () => ok("GET", `/comments?with=post&where=${encodeURIComponent(JSON.stringify({ postId: id }))}`, { as: "subscriber" });
-  assert.equal((await comments())[0].post.id, id);
+  const comments = () => ok("GET", `/comments?with=postId&where=${encodeURIComponent(JSON.stringify({ postId: id }))}`, { as: "subscriber" });
+  assert.equal((await comments())[0].postId.id, id);
   const protectedPost = await http("POST", `${core}/first_posts/${id}`, { as: "editor", body: { password: "editor-secret" } });
   assert.equal(protectedPost.status, 200);
-  assert.equal((await comments())[0].post, null);
+  assert.equal((await comments())[0].postId, null);
   assert.equal((await http("GET", `${core}/first_posts/${id}?password=editor-secret`)).status, 200);
   const cleared = await http("POST", `${core}/first_posts/${id}`, { as: "editor", body: { password: "" } });
   assert.equal(cleared.status, 200);
-  assert.equal((await comments())[0].post.id, id);
+  assert.equal((await comments())[0].postId.id, id);
 });

@@ -207,7 +207,7 @@ export interface ReadPatch {
 	ownerId?: number;
 }
 export interface ReadWith {
-	book?: true | {
+	bookId?: true | {
 		where?: BookFilter;
 		orderBy?: BookOrder;
 		limit?: number;
@@ -239,7 +239,7 @@ export interface ReadFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | BookFilter;
 	minutes?: number | null | {
 		eq?: number | null;
 		ne?: number | null;
@@ -276,7 +276,6 @@ export interface ReadFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	book?: true | BookFilter;
 	AND?: ReadFilter[];
 	OR?: ReadFilter[];
 	NOT?: ReadFilter;
@@ -339,10 +338,10 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly book: {
+				readonly bookId: {
 					readonly kind: "one";
 					readonly collection: "books";
-					readonly optional: true;
+					readonly optional: false;
 				};
 			};
 			readonly media: readonly [];

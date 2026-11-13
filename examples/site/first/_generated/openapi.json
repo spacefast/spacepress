@@ -5391,14 +5391,14 @@
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "null"], "format": "date-time" },
           "uid": { "type": ["string", "null"] },
+          "_rev": {
+            "type": "string",
+            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
+          },
           "posts": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/Post" },
             "description": "Present when the request asks for it with `with`."
-          },
-          "_rev": {
-            "type": "string",
-            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
           }
         }
       },
@@ -5604,6 +5604,10 @@
           "uid": { "type": ["string", "null"] },
           "locale": { "type": "string", "enum": ["en", "de"] },
           "translations": { "type": ["object", "array", "string", "number", "integer", "boolean", "null"] },
+          "_rev": {
+            "type": "string",
+            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
+          },
           "comments": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/Comment" },
@@ -5618,10 +5622,6 @@
             "type": "array",
             "items": { "$ref": "#/components/schemas/Announcement" },
             "description": "Present when the request asks for it with `with`."
-          },
-          "_rev": {
-            "type": "string",
-            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
           }
         }
       },

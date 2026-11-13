@@ -658,7 +658,9 @@ impl Builder<'_> {
         // `takeover` (docs/staged.md).
         let conditions = c.editor && c.revisions && c.staged;
         if conditions {
-            row_component["properties"]["_rev"] = json!({ "type": "string", "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since." });
+            row_component["properties"]["_rev"]["description"] = json!(
+                "A token of the row as read: send it back with a write to refuse the write if the row changed since."
+            );
             patch_component["properties"]["_rev"] = json!({ "type": "string", "description": "The `_rev` of your read: the write is refused with `409 stale_revision` if the row changed since." });
             patch_component["properties"]["takeover"] = json!({ "type": "boolean", "description": "Take over another user's edit lock instead of being refused with `409 locked`." });
         }

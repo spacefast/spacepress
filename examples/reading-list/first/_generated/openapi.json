@@ -3487,14 +3487,14 @@
           },
           "status": { "type": "string", "enum": ["draft", "published", "scheduled"] },
           "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+          "_rev": {
+            "type": "string",
+            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
+          },
           "reads": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/Read" },
             "description": "Present when the request asks for it with `with`."
-          },
-          "_rev": {
-            "type": "string",
-            "description": "A token of the row as read: send it back with a write to refuse the write if the row changed since."
           }
         }
       },

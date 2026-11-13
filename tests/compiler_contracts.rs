@@ -4698,11 +4698,19 @@ fn openapi_schemas_are_the_registered_ability_schemas() {
                 compared += 1;
             }
             if c.api.update {
-                assert_eq!(
-                    components[format!("{name}Patch")],
-                    registered[format!("{app}/{k}-update")]["input"]["properties"]["patch"],
-                    "{source}: {name}Patch"
-                );
+                // The API's PATCH body also carries the write's conditions, `_rev` and `takeover`
+                // (docs/staged.md); the ability takes them beside `patch`, not inside it.
+                let mut body = components[format!("{name}Patch")].clone();
+                let ability = &registered[format!("{app}/{k}-update")]["input"]["properties"];
+                for condition in ["_rev", "takeover"] {
+                    let taken = body["properties"].as_object_mut().unwrap().remove(condition);
+                    assert_eq!(
+                        taken.map(|t| t["type"].clone()),
+                        ability.get(condition).map(|a| a["type"].clone()),
+                        "{source}: {name}Patch and the update ability take `{condition}` alike"
+                    );
+                }
+                assert_eq!(body, ability["patch"], "{source}: {name}Patch");
                 compared += 1;
             }
         }

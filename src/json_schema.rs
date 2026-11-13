@@ -111,7 +111,13 @@ pub fn row(c: &Collection) -> Value {
         .filter(|col| !col.hidden)
         .map(|col| (col.name.clone(), column(col, true)))
         .collect();
-    json!({ "type": "object", "properties": props })
+    let mut row = json!({ "type": "object", "properties": props });
+    // A kind with staged versions: every row the API and abilities give out carries its `_rev`
+    // (docs/staged.md), as `Wp\Abilities\Register` declares it.
+    if c.editor && c.revisions && c.staged {
+        row["properties"]["_rev"] = json!({ "type": "string" });
+    }
+    row
 }
 
 /// The columns a write may set: on an update, not the primary key or the generated `uid`.

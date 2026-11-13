@@ -55,7 +55,9 @@ serves it as the docs site's playground compiler (see [`docs-site/README.md`](do
 `docs/` fails the build until it is added to `GUIDES` (embedded) or `NOT_GUIDES` (left out) in
 `build.rs`. It embeds `skills/` the same way: each `skills/<name>/SKILL.md` is an agent skill in the layout of
 [WordPress/agent-skills](https://github.com/WordPress/agent-skills), and `first init` writes them
-into a project. Every command a skill names must exist: run it before you write it down.
+into a project. Every command a skill names must exist: run it before you write it down. `tests/cli.rs`
+checks the layout, that each `first <command>` is in the command table, that each linked page is
+committed, and that the TypeScript in the skills compiles as one project.
 
 The runtime under `runtime/` is embedded into the binary by `build.rs` and
 written out by `first build` into the `first-runtime`, `first-identity` and

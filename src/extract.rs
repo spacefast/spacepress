@@ -893,7 +893,11 @@ fn collection_options(
     for k in o.keys() {
         if !COLLECTION_OPTIONS.contains(&k.as_str()) {
             let mut d = Diag::new(span(k), format!("collection() has no option `{k}`"));
-            if let Some(s) = suggest(k, COLLECTION_OPTIONS.iter().copied()) {
+            if k == "editor" {
+                d = d.help(
+                    "storage follows the builder: collection() is always WordPress posts; use table() for a SQL table",
+                );
+            } else if let Some(s) = suggest(k, COLLECTION_OPTIONS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
             }
             return Err(d);

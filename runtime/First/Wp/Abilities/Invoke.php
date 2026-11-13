@@ -77,7 +77,7 @@ final class Invoke
             }
             [$method, $path, $query, $body] = ($op['call'])($input);
             if ($body !== null) { $body = \First\Seam::inputToJs($body, $op['bodyShape']); }
-            $response = $app->invokeResponse($method, $path, $query, $body, self::viewer(), Register::headers());
+            $response = $app->invokeResponse($method, $path, $query, $body, self::viewer(), Register::headers($op['name']));
             Register::responded($response->headers);
             $data = $response->data;
 

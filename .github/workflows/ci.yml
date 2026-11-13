@@ -422,6 +422,8 @@ jobs:
         run: FIRST_WP_PROJECT=first-wp-wordpress FIRST_WP_PORT=8898 tests/wp/wordpress/run.sh
       - name: Opinionated WordPress hardening, and stock WordPress without an app
         run: FIRST_WP_PROJECT=first-wp-hardening FIRST_WP_PORT=8896 tests/wp/hardening/run.sh
+      - name: Sealed mode on its own stack
+        run: FIRST_WP_PROJECT=first-wp-sealed FIRST_WP_PORT=8895 tests/wp/hardening/sealed-run.sh
 
   wp-s3:
     if: github.event_name != 'pull_request'

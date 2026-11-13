@@ -5,6 +5,7 @@ pub(crate) mod deploy;
 mod describe;
 mod dev;
 mod doctor;
+pub(crate) mod init;
 pub(crate) mod mcp;
 pub(crate) mod site;
 mod sync;

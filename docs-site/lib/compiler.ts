@@ -63,7 +63,8 @@ export interface Output {
   /**
    * Every file of the `first-app-<name>` plugin `first build` writes, by path below the plugins
    * directory: the `.sql` files under `first/_generated/migrations/` in the request and this
-   * compile's new migrations.
+   * compile's new migrations. Its `first/app/openapi.json` is the app's API as an OpenAPI 3.1
+   * document, the file `first build` also writes to `first/_generated/openapi.json`.
    */
   appPlugin: Record<string, string>;
   /** First's plugins for this app, in activation order. */

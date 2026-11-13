@@ -317,6 +317,7 @@ registered once.
 | `label` | title-cased physical name | wp-admin menus, client docs |
 | `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
 | `revisions` | `true` for collections, `false` for tables | collections always keep native revisions; tables may opt in |
+| `staged` | `true` for collections | collections only; [staged versions](staged.md): a change saved beside the live item, then compared, promoted or discarded. `false` turns them off |
 | `comments` | `false` | collections only; WordPress comments on the post type. Comments are closed on every kind that doesn't set it ([opinionated WordPress](#opinionated-wordpress)) |
 | `title` | a `title: text()` column | WordPress post title; must be a required `text()` for collections |
 | `content` | a `content: richText()` column | WordPress post content |

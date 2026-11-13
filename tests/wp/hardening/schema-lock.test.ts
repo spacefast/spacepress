@@ -42,8 +42,7 @@ const DRIFT: [what: string, ability: string, input: Record<string, unknown>][] =
   ["a field group named as one of First's", "scf/create-field-group", group(`group_first_drift${run}`)],
   ["a field group named as one of First's, in another letter case", "scf/create-field-group", group(`group_FIRST_drift${run}`)],
   ["a field with one of First's field keys", "scf/create-field-group", group(`group_drift_d${run}`, { fields: [field("field_first_notes_mood")] })],
-  ["a field of the site's own that writes one of First's meta keys", "scf/create-field-group", group(`group_drift_j${run}`, { location: [[{ param: "user_form", operator: "==", value: "all" }]], fields: [{ ...field(`field_drift_j${run}`), name: "first_mood" }] })],
-  ["an options page that stores under First's option names", "scf/create-ui-options-page", { key: `ui_options_page_drift_b${run}`, title: "Drift", page_title: "Drift", menu_slug: `drift-${run}`, post_id: "first_global" }],
+  ["an options page that takes a global's place, under its option prefix", "scf/create-ui-options-page", { key: `ui_options_page_drift_b${run}`, title: "Drift", page_title: "Drift", menu_slug: `drift-${run}`, post_id: "first_global_banner" }],
   ["an imported field group on a First kind", "scf/import-field-group", group(`group_drift_e${run}`, { location: onKind("first_memos") })],
   ["a field added to First's field group", "scf/create-field", { ...field(`field_drift_f${run}`), parent: "group_first_notes" }],
   ["a post type with a First name", "scf/create-post-type", { key: `post_type_drift${run}`, title: "Drift", post_type: "first_drift" }],
@@ -150,6 +149,16 @@ test("wp-admin's field group screen and SCF's import tool are refused with a pag
   assert.equal(imported.status, 403, (await imported.clone().text()).slice(0, 300));
   assert.match(await imported.text(), /Refused: .*first\.config\.ts/);
   assert.equal(stored(`group_drift_h${run}`, `field_group_drift_h${run}`), 0, "neither the group nor its fields were stored");
+  // A post type whose name WordPress stores as First's (`register_post_type` strips the dot and lowers
+  // the case), through the same tool.
+  const hijack = new FormData();
+  hijack.set("_acf_nonce", hidden(importForm, "_acf_nonce"));
+  hijack.set("import_type", "json");
+  hijack.set("acf_import_file", new Blob([JSON.stringify([{ key: `post_type_drift_k${run}`, title: "Hijack", post_type: ".First_Notes", labels: { name: "Hijack" }, public: true }])], { type: "application/json" }), "drift.json");
+  const imported2 = await fetch(`${site}/wp-admin/edit.php?post_type=acf-field-group&page=acf-tools`, { method: "POST", redirect: "manual", headers: { cookie }, body: hijack });
+  assert.equal(imported2.status, 403);
+  assert.equal(stored(`post_type_drift_k${run}`), 0);
+  assert.equal(wp("eval", "echo get_post_type_object('first_notes')->labels->name;"), "Notes", "First's post type is registered as First registers it");
   // A field of First's nested inside a repeater of the site's own group is found too.
   const nested = group(`group_drift_i${run}`, { fields: [{ ...field(`field_rep${run}`), type: "repeater", sub_fields: [field("field_first_notes_mood")] }] });
   refused(await ability("scf/create-field-group", nested), "a nested field with one of First's keys");
@@ -197,16 +206,33 @@ test("registered meta: a First field is written through First's validation or no
   await write({ meta: { first_mood: "raw", first_undeclared: "raw" } });
   assert.deepEqual(JSON.parse(wp("eval", `echo wp_json_encode([get_post_meta(${note}, 'first_mood', true), metadata_exists('post', ${note}, 'first_undeclared')]);`)), ["calm", false]);
   // wp-admin's Custom Fields box (its AJAX) can't add or change one of First's keys either.
+  // The box's nonce, bound to this browser session as the box's own form would carry it.
   const cookie = await loginCookie(site, "admin", `${site}/wp-admin/`);
-  const nonce = wp("eval", `wp_set_current_user(${harness.users.admin.id}); echo wp_create_nonce('add-meta');`);
-  for (const key of ["first_mood", "first_undeclared"]) {
-    await fetch(`${site}/wp-admin/admin-ajax.php`, {
-      method: "POST",
-      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ action: "add-meta", post_id: String(note), metakeyinput: key, metavalue: "boxed", "_ajax_nonce-add-meta": nonce }),
-    });
+  const logged = cookie.split("; ").find((c) => c.startsWith("wordpress_logged_in_")) ?? assert.fail("no session cookie");
+  const [name, value] = [logged.slice(0, logged.indexOf("=")), decodeURIComponent(logged.slice(logged.indexOf("=") + 1))];
+  const nonce = wp("eval", `$_COOKIE['${name}'] = base64_decode('${Buffer.from(value).toString("base64")}'); wp_set_current_user(${harness.users.admin.id}); echo wp_create_nonce('add-meta');`);
+  const box = (key: string) => fetch(`${site}/wp-admin/admin-ajax.php`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ action: "add-meta", post_id: String(note), metakeyinput: key, metavalue: "boxed", "_ajax_nonce-add-meta": nonce }),
+  });
+  // The control: the box works for a key of the site's own.
+  await box(`plain_${run}`);
+  assert.equal(wp("post", "meta", "get", String(note), `plain_${run}`), "boxed");
+  // First's keys, in every form the database matches them by: letter case and accents.
+  for (const key of ["first_mood", "First_Mood", "FIRST_MOOD", "fírst_mood", "first_undeclared"]) {
+    await box(key);
   }
-  assert.deepEqual(JSON.parse(wp("eval", `echo wp_json_encode([get_post_meta(${note}, 'first_mood', true), metadata_exists('post', ${note}, 'first_undeclared')]);`)), ["calm", false]);
+  // `_first_mood` is SCF's reference to First's field, written by First's own save.
+  const keys = sql(`SELECT meta_key FROM wp_postmeta WHERE post_id = ${note} AND (meta_key LIKE '%mood%' OR meta_key LIKE '%undeclared%') ORDER BY meta_key`).map((r) => r.meta_key);
+  assert.deepEqual(keys, ["_first_mood", "first_mood"], "only First's own keys, written by First");
+  assert.equal(wp("post", "meta", "get", String(note), "first_mood"), "calm");
+  // A field of the site's own posted on the First note's form writes nothing there.
+  const own = await ability("scf/create-field-group", group(`group_site_on_post${run}`));
+  assert.equal(own.status, 200, JSON.stringify(own.body));
+  const posted = await fetch(item, { method: "POST", headers: { "content-type": "application/json", ...auth("admin") }, body: JSON.stringify({ acf: { [`field_group_site_on_post${run}`]: "stray" } }) });
+  assert.ok(posted.status < 500, String(posted.status));
+  assert.equal(wp("eval", `echo wp_json_encode(metadata_exists('post', ${note}, 'drift'));`), "false", "the site's field wrote nothing on the First note");
 });
 
 test("roles: a role First creates and the capabilities of a First kind keep their definition", async () => {

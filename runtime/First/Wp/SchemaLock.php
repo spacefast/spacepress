@@ -18,7 +18,7 @@ use First\Schema;
  *   as posts, so the refusal sits where WordPress saves a post ({@see saving()}), and judges what is
  *   stored and every SCF form the request carries. SCF's abilities are refused before they run.
  * - Writing a value through a field First didn't register: onto a First kind's post, a global's
- *   options, or one of First's meta or option names ({@see value()}).
+ *   options page, or the user meta and options First's own fields write ({@see value()}).
  * - Changing a role First creates, or a capability of a First kind on any role ({@see roles()}), or
  *   one of First's own options from wp-admin's all-options screen ({@see option()}).
  *
@@ -47,6 +47,10 @@ final class SchemaLock
     private static array $postTypes = [];
     /** @var array<string, true> SCF options pages First registers: menu slugs and post ids */
     private static array $optionsPages = [];
+    /** @var array<string, true> the user meta and option names First's fields write */
+    private static array $userMeta = [];
+    /** @var array<string, true> */
+    private static array $options = [];
     /** Set while an SCF ability runs: a refusal from its save becomes the ability's own error. */
     private static ?string $abilityRefused = null;
     private static int $abilities = 0;
@@ -62,7 +66,16 @@ final class SchemaLock
         foreach ($schema->globals() as $global) {
             self::$optionsPages[self::norm($global['wp']['menuSlug'])] = true;
             self::$optionsPages[self::norm($global['wp']['postId'])] = true;
+            foreach (array_keys($global['fields']) as $field) {
+                // SCF keeps a value as `<postId>_<field>` and its field key as `_<postId>_<field>`.
+                self::$options[self::norm($global['wp']['postId'] . '_' . $field)] = true;
+            }
         }
+        $users = $schema->auth()['collection'] ?? null;
+        foreach ($users === null ? [] : array_keys($schema->collection($users)['columns']) as $col) {
+            self::$userMeta[self::norm(WpUserStore::META . $col)] = true;
+        }
+        self::$userMeta[self::norm(WpUserStore::ROLE_META)] = true;
         add_filter('wp_insert_post_empty_content', [self::class, 'saving'], PHP_INT_MAX, 2);
         add_filter('wp_pre_execute_ability', [self::class, 'ability'], 10, 3);
         add_action('wp_before_execute_ability', static function (string $name): void {
@@ -291,8 +304,8 @@ final class SchemaLock
     /**
      * acf/pre_update_value: SCF saves every field a form or call posts, wherever its group applies. A
      * value written through a field First didn't register is skipped when it lands on a First kind's
-     * post, a global's options or one of First's meta or option names (`first_…`); the rest of the save
-     * goes on. First's own fields are SCF's local fields.
+     * post, a global's options page, or one of the user meta and option names First's own fields write;
+     * the rest of the save goes on. First's own fields are SCF's local fields.
      */
     public static function value(mixed $check, mixed $value, mixed $postId, mixed $field): mixed
     {
@@ -300,11 +313,10 @@ final class SchemaLock
             return $check;
         }
         $target = acf_decode_post_id($postId);
-        $name = self::norm($field['name'] ?? null);
         $first = match ($target['type']) {
-            'post' => self::firstType(get_post_type((int) $target['id'])) || ($target['id'] > 0 && str_starts_with($name, self::PREFIX) && self::firstType(get_post_type((int) $target['id']))),
-            'user' => str_starts_with($name, self::PREFIX),
-            'option' => isset(self::$optionsPages[self::norm($target['id'])]) || str_starts_with(self::norm($target['id'] . '_' . ($field['name'] ?? '')), self::PREFIX),
+            'post' => self::firstType(get_post_type((int) $target['id'])),
+            'user' => isset(self::$userMeta[self::norm($field['name'] ?? null)]),
+            'option' => isset(self::$optionsPages[self::norm($target['id'])]) || isset(self::$options[self::norm($target['id'] . '_' . ($field['name'] ?? ''))]),
             default => false,
         };
 

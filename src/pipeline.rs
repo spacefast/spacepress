@@ -353,7 +353,10 @@ pub fn build(
                 && tables[stored]["auth"] != true
                 && next["editor"] == true
             {
-                let kind = ext.collections.iter().find(|c| snapshot["tables"].get(c.table()) == Some(next));
+                let kind = ext
+                    .collections
+                    .iter()
+                    .find(|c| snapshot["tables"].get(c.table()) == Some(next));
                 let key = kind.map_or(stored.as_str(), |c| schema.collections[c.table()].key.as_str());
                 return Err(Diag::new(
                     kind.map_or(config_span, |c| c.span),

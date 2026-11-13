@@ -83,6 +83,8 @@ Many Markdown pages are a kind, synced from a folder tree and rendered by one ca
 
 <RepoFile path="tests/fixtures/docs-kind/first/app/docs/[...path]/page.tsx" />
 
+A component can be used inside the Markdown as a block: its file lists it with `export const blocks = ["Callout"]`, and the Markdown writes `<Callout type="warning">…</Callout>` on lines of its own. In WordPress it is a block the editor inserts and edits, rendered through the component; `first sync` writes it back as the same tag. The test app's [`Callout.tsx`](https://github.com/spacefast/zero/blob/main/tests/fixtures/docs-kind/first/components/Callout.tsx) has two.
+
 `"first/content"` gives the page its navigation, read as the visitor from the published tree: `nav(kind, item)` (the tree, with the current page and its ancestors marked), `pager(kind, item)` (previous and next, reading the tree top to bottom) and `headings(item)` (the `##` and `###` headings, with the ids the page renders them with).
 
 ### Typed search, a guard, HTTP handlers

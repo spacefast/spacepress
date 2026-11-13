@@ -44,11 +44,12 @@ final class Changes
     /**
      * @param array $compiled the build's `schema.php` ({@see Loader::compiled()})
      * @param array $state the site's newest version ({@see Loader::state()})
+     * @param ?array $references the build's references index ({@see Loader::references()})
      * @param array $declared the stored types every build on the site declared ({@see Loader::declared()})
      * @return array{changes: list<array>, state: array} the changes in stored form and the state after them
      * @throws Refused
      */
-    public static function resolve(array $compiled, array $state, mixed $changeSet, array $declared = []): array
+    public static function resolve(array $compiled, array $state, mixed $changeSet, ?array $references = null, array $declared = []): array
     {
         if (!is_array($changeSet) || ($changeSet['format'] ?? null) !== Loader::FORMAT) {
             throw new Refused('schema_format', 'A change set is { "format": ' . Loader::FORMAT . ', "changes": [...] }; this runtime reads format ' . Loader::FORMAT, null, '/format');
@@ -70,7 +71,7 @@ final class Changes
                 throw new Refused('schema_format', 'A change is an object with an `op`', null, $pointer);
             }
             try {
-                $one = self::one(Loader::apply($compiled, $state), $compiled, $state, $change, $pointer, $declared);
+                $one = self::one(Loader::apply($compiled, $state, $references), $compiled, $state, $change, $pointer, $references, $declared);
             } catch (Refused $refused) {
                 // A rule from the validator has no pointer of its own: it is about this change's definition.
                 throw $refused->pointer !== null ? $refused : new Refused($refused->errorCode, $refused->getMessage(), $refused->diagnostic, "$pointer/definition");
@@ -90,7 +91,7 @@ final class Changes
      *
      * @param array $schema the schema as it stands before this change: the build plus the state
      */
-    private static function one(array $schema, array $compiled, array $state, array $change, string $pointer, array $declared): array
+    private static function one(array $schema, array $compiled, array $state, array $change, string $pointer, ?array $references, array $declared): array
     {
         $shape = static function (array $keys) use ($change, $pointer): void {
             if (array_diff(array_keys($change), ['op', ...$keys]) !== [] || array_diff($keys, array_keys($change)) !== []) {
@@ -203,8 +204,8 @@ final class Changes
                 if ($stored === null) {
                     throw self::sourceOwned("$kind.$field", isset($compiled[$section][$kind][$inner][$field]), "$pointer/field");
                 }
-                if (isset($compiled[$section][$kind][$inner][$field])) {
-                    throw new Refused('schema_in_use', "$kind.$field: the build declares `$field` too, so compiled code may use it. Remove it from the project's schema and from first/_generated/runtime-schema.json, then build and deploy", null, "$pointer/field");
+                if (isset($compiled[$section][$kind][$inner][$field]) && !Loader::hidableField($compiled, $references, $section, $kind, $field)) {
+                    throw new Refused('schema_in_use', "$kind.$field: the build declares `$field` and it is required or named in the project's code, so compiled code may use it. Remove it from the project's code and from first/_generated/runtime-schema.json, then build and deploy", null, "$pointer/field");
                 }
 
                 return ['op' => 'removeField', $global ? 'global' : 'kind' => $kind, 'field' => $field, 'was' => $stored['type']];
@@ -219,8 +220,8 @@ final class Changes
                 if ($stored === null) {
                     throw self::sourceOwned($kind, isset($compiled[$section][$kind]), "$pointer/$key");
                 }
-                if (isset($compiled[$section][$kind])) {
-                    throw new Refused('schema_in_use', "$kind: the build declares `$kind` too, so compiled code may use it. Remove it from the project and from first/_generated/runtime-schema.json, then build and deploy", null, "$pointer/$key");
+                if (isset($compiled[$section][$kind]) && !Loader::hidableKind($compiled, $references, $section, $kind)) {
+                    throw new Refused('schema_in_use', "$kind: the build declares `$kind` and the project's code names it, so compiled code may use it. Remove it from the project's code and from first/_generated/runtime-schema.json, then build and deploy", null, "$pointer/$key");
                 }
                 $types = array_map(static fn (array $field): string => $field['type'], $stored['fields'] + ($state[$section][$kind][$global ? 'fields' : 'columns'] ?? []));
 
@@ -331,12 +332,22 @@ final class Changes
                 case 'removeCollection':
                 case 'removeGlobal':
                     unset($state['added'][$section][$kind], $state['compiled'][$section][$kind], $state[$section][$kind], $state['overrides'][$section][$kind]);
-                    $state['removed'][$section][$kind] = ['fields' => $change['was'] + ($state['removed'][$section][$kind]['fields'] ?? [])];
+                    $state['removed'][$section][$kind] = ['kind' => true, 'fields' => $change['was'] + ($state['removed'][$section][$kind]['fields'] ?? [])];
                     break;
             }
         }
 
         return self::tidy($state);
+    }
+
+    /**
+     * A state as `first/_generated/runtime-schema.json`: what the compiler reads
+     * (src/runtime_schema.rs). `removed` and `compiled` are the site's own and stay there.
+     */
+    public static function lock(array $state): array
+    {
+        return ['format' => Loader::FORMAT, 'version' => (int) ($state['version'] ?? 0), 'hash' => (string) ($state['hash'] ?? '')]
+            + array_intersect_key($state, ['collections' => 1, 'globals' => 1, 'added' => 1, 'overrides' => 1]);
     }
 
     /** No empty maps or null overrides: two states that mean the same are the same bytes. */

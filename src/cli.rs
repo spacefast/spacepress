@@ -203,6 +203,7 @@ pub fn main() -> ExitCode {
             ExitCode::from(2)
         }
         "sync" => crate::commands::sync(&rest),
+        "pull" => crate::commands::pull::cli(&rest),
         "mcp" => crate::commands::mcp::cli(&rest),
         "init" => crate::commands::init::cli(&rest),
         "wp" => {

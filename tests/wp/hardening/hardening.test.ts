@@ -31,7 +31,7 @@ const INSTALL_CAPS = ["install_plugins", "upload_plugins", "update_plugins", "de
 
 test("the active app lists every switch it applies", async () => {
   const schema = (await (await fetch(`${harness.url}/__first/api/v1`, { headers: auth("admin") })).json()) as { data: { runtime: { wp: { hardening: string[] } } } };
-  assert.deepEqual(schema.data.runtime.wp.hardening, ["xmlrpc", "pings", "emoji", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "permalinks", "timezone", "blockTheme"]);
+  assert.deepEqual(schema.data.runtime.wp.hardening, ["xmlrpc", "pings", "emoji", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "schemaLock", "permalinks", "timezone", "blockTheme"]);
 });
 
 test("xmlrpc: every call is refused, system methods included, and nothing advertises the endpoint", async () => {

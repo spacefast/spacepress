@@ -102,18 +102,18 @@ setup.
 
 ## Live updates
 
-`watch` works with no setup on Spacefast:
+Subscriptions work with no setup on Spacefast:
 
 ```ts
 import { createClient } from "/__spacefast/client.js";
 
-createClient().todos.watch({ where: { done: false } }, (todos) => render(todos));
+createClient().todos.list({ where: { done: false } }).subscribe((todos) => render(todos));
 ```
 
 Spacefast registers a Publisher that sends each commit's change notice to the
 Space's realtime room. The `/__spacefast/client.js` bundle registers the
 matching Cast transport, so every client on the page uses it. Without a live
-connection, watched reads poll. See [Live updates](realtime.md) for the API.
+connection, subscriptions poll. See [Live updates](realtime.md) for the API.
 
 ## Migrate an existing 0.8 Space
 

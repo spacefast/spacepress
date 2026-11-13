@@ -301,6 +301,14 @@ pub fn render(schema: &Schema) -> String {
             let _ = writeln!(out, "    'frontend' => {},", php_str(url));
         }
     }
+    if let Some(runtime) = &schema.runtime_schema {
+        let _ = writeln!(
+            out,
+            "    'runtimeSchema' => ['version' => {}, 'hash' => {}],",
+            runtime.version,
+            php_str(&runtime.hash)
+        );
+    }
     out.push_str("    'site' => ['uidPrefix' => 'zr_'],\n");
     let _ = writeln!(
         out,

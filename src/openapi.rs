@@ -642,11 +642,11 @@ impl Builder<'_> {
             ])
             .ok(200, page(row.clone()))
             .errors(&[400]);
-            if c.editor {
+            if !js::searchable(c).is_empty() {
                 op = op.params([query(
                     "search",
-                    "Text to find in the title, the content and every text field the caller may read.",
-                    json!({ "type": "string" }),
+                    "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
+                    json!({ "type": "string", "maxLength": 200 }),
                 )]);
             }
             if c.drafts {
@@ -1435,6 +1435,40 @@ impl Builder<'_> {
         }
     }
 
+    /// `GET /search`: the same search on every kind with a searchable field and a list.
+    fn search(&mut self) {
+        let kinds: Vec<&Collection> = self
+            .schema
+            .collections
+            .values()
+            .filter(|c| c.api.list && !js::searchable(c).is_empty())
+            .collect();
+        if kinds.is_empty() {
+            return;
+        }
+        let names: Vec<&str> = kinds.iter().map(|c| c.table.as_str()).collect();
+        let rows: Vec<Value> = kinds
+            .iter()
+            .map(|c| reference(&self.names.collections[&c.table]))
+            .collect();
+        self.tag("Search", "One search over every kind with a searchable field.");
+        self.paths.add("/search", "get", Op::new("Search", "search", "Search the site", "Runs the kinds' `search` on every kind with a searchable field, as the caller. A kind the caller may not read is left out, and so is a `kinds` name that is not a searchable kind.")
+            .rule(&Access::anyone())
+            .params([
+                json!({ "name": "q", "in": "query", "required": true, "description": "The words to find.", "schema": { "type": "string", "maxLength": 200 } }),
+                query("kinds", &format!("Only these kinds, comma-separated: {}.", names.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ")), json!({ "type": "string" })),
+                query("limit", "Rows per kind: 10 unless given, and never more than 50.", json!({ "type": "integer", "minimum": 1, "default": 10 })),
+            ])
+            .ok(200, envelope("The matching rows, by kind; a kind with none is absent.", json!({ "type": "object", "properties": {
+                "q": { "type": "string" },
+                "results": { "type": "array", "items": { "type": "object", "properties": {
+                    "kind": { "type": "string", "enum": names },
+                    "rows": { "type": "array", "items": { "anyOf": rows } },
+                }, "required": ["kind", "rows"] } },
+            }, "required": ["q", "results"] })))
+            .errors(&[400]));
+    }
+
     /// Who is asking, and the sign-in routes First Identity adds.
     fn account(&mut self) {
         self.tag("Account", "The signed-in user and their session.");
@@ -1670,6 +1704,7 @@ pub fn document(schema: &Schema, services: Option<&Value>) -> Value {
     if let Some(services) = services {
         b.services(services);
     }
+    b.search();
     b.tag("Schema", "The app described to its clients.");
     b.paths.add("/", "get", Op::new("Schema", "schema", "Describe the app", "The app's kinds with the WordPress route behind each, their fields and access rules, its globals and its actions. `first sync` and `first doctor` read it.")
         .rule(&Access::anyone())

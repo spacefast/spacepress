@@ -25,13 +25,12 @@ Build the Authorization header locally, without putting the password in shell
 history:
 
 ```sh
-read -r -s -p 'WordPress username:application-password: ' FIRST_APP_PASSWORD
-printf '\n'
+printf 'WordPress username:application-password: '; stty -echo; read -r FIRST_APP_PASSWORD; stty echo; echo
 export FIRST_MCP_AUTH="Basic $(printf %s "$FIRST_APP_PASSWORD" | base64 | tr -d '\n')"
 unset FIRST_APP_PASSWORD
 ```
 
-This snippet uses Bash. Launch the agent from that shell to inherit
+This works in bash, zsh and sh. Launch the agent from that shell to inherit
 `FIRST_MCP_AUTH`. Keep credentials out of repository configuration and transcripts.
 
 ## Claude Code

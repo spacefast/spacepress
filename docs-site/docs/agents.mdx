@@ -52,10 +52,17 @@ Each is a short procedure that links to the documentation for depth:
 | `first-migrate` | Convert a Zero 0.8 app, or import another CMS's schema. |
 
 - Text outside the two markers in `AGENTS.md` is yours. A rerun replaces the
-  section and nothing else.
+  section and nothing else. A marker counts only on a line of its own, so prose
+  that quotes one is left alone.
 - A server already named `first` in `.mcp.json`, and every other server, is
-  left as it is.
+  left as it is. The entry is inserted into the file's text, so its formatting
+  and numbers are unchanged.
 - The skill files are First's: a rerun writes them back as this compiler has them.
+  Delete `.claude/skills` or `.agents/skills` if you do not use that agent; a
+  rerun does not bring it back.
+- Files keep their permissions, and an `AGENTS.md` that links to another file of
+  the project (`CLAUDE.md`) is written through the link. A skills directory that
+  links outside the project is refused, before anything is written.
 - A project with its own `CLAUDE.md` should import the file with a line
   `@AGENTS.md`; `first init` says so when it is missing.
 

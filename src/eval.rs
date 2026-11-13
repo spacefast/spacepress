@@ -1024,6 +1024,26 @@ impl<'p> Evaluator<'p> {
                     Ctl::Err(d)
                 });
         }
+        if source == crate::loader::CONTENT_MODULE {
+            return crate::compile::CONTENT_EXPORTS
+                .iter()
+                .find(|e| **e == name)
+                .map(|e| Value::Builtin(Builtin::Content(e)))
+                .or_else(|| crate::compile::CONTENT_TYPES.contains(&name).then_some(Value::Undef))
+                .ok_or_else(|| {
+                    let mut d = Diag::new(span, format!("\"first/content\" has no export named `{name}`"));
+                    if let Some(s) = suggest(
+                        name,
+                        crate::compile::CONTENT_EXPORTS
+                            .iter()
+                            .chain(crate::compile::CONTENT_TYPES)
+                            .copied(),
+                    ) {
+                        d = d.help(format!("did you mean `{s}`?"));
+                    }
+                    Ctl::Err(d)
+                });
+        }
         if source == crate::loader::APP_MODULE {
             return crate::app::export(name)
                 .map(|e| Value::Builtin(Builtin::App(e)))
@@ -2965,6 +2985,11 @@ impl<'p> Evaluator<'p> {
                 span,
                 format!("`{name}` runs only inside a \"use client\" component"),
                 "call it in the component's body",
+            ),
+            Builtin::Content(name) => err_help(
+                span,
+                format!("`{name}` from \"first/content\" can't run while the config is built"),
+                "call it in a page, layout or component",
             ),
             Builtin::App(name) => err_help(
                 span,

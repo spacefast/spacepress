@@ -15,7 +15,7 @@ namespace First;
 final class Db
 {
     private const MAX_HOOK_DEPTH = 8;
-    private const QUERY_OPTS = ['where', 'orderBy', 'limit', 'offset', 'columns', 'with'];
+    private const QUERY_OPTS = ['where', 'orderBy', 'limit', 'offset', 'columns', 'with', 'search', 'searchFields'];
 
     private static ?self $instance = null;
     private static ?self $current = null;
@@ -257,6 +257,19 @@ final class Db
                 array_push($guards, ...$this->readGuards($collection, $viewer));
             }
             $filterViewer ??= $viewer;
+            // `search`: the rows whose searchable fields this reader may read hold every word, as one
+            // more condition on this same read (docs/decisions/2026-11-13-search-index.md).
+            if (array_key_exists('search', $opts)) {
+                $search = $opts['search'];
+                unset($opts['search']);
+                if ($search !== null && !is_string($search)) {
+                    throw HttpError::invalidQuery('search must be a string', $ptr . '/search');
+                }
+                if (is_string($search) && trim($search) !== '') {
+                    array_push($guards, ...Search\Module::guard($collection, $search, $filterViewer, $opts['searchFields'] ?? null));
+                }
+            }
+            unset($opts['searchFields']);
 
             return Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
                 $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer));

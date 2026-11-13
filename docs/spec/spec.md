@@ -407,6 +407,11 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
 In every mode, wp-admin, login, First sign-in, `/wp-json`, Action Scheduler,
 media, the markdown versions of pages and `llms.txt` keep working.
 
+The sitemap is core's (`/wp-sitemap.xml`): core's providers for posts, terms and
+users, plus one First provider for `app/` pages and kinds with a `url`. It lists
+only what a signed-out visitor may read under First's access rules. `frontend:
+false` has no sitemap; with an external frontend its entries point there.
+
 ## 6. Config and the opinionated WordPress
 
 ```ts

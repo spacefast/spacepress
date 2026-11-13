@@ -609,6 +609,41 @@ values slashed as WordPress expects), as a signed-out visitor, and suppresses
 the headers WordPress would send for the HTML page. Call it at most once per
 request.
 
+## The sitemap (`Wp\Sitemap`)
+
+The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
+`robots.txt`). Core renders the index, each file, the stylesheets and the
+`robots.txt` line; First writes no XML.
+
+- **Core's providers** list posts, pages, terms and authors as on any
+  WordPress site, with the links First's kind `url` patterns filter. First
+  narrows them in two ways: a password-protected post is left out
+  (`wp_sitemaps_posts_query_args`), and with a users kind an author is listed
+  only when a signed-out visitor may read that user's row
+  (`wp_sitemaps_users_query_args`).
+- **First's provider** (`first`, registered on `wp_sitemaps_init` with
+  `wp_register_sitemap_provider()`) adds a file per kind that has a `url`,
+  `/wp-sitemap-first-<kind>-<n>.xml`, and one for `first/app/` pages,
+  `/wp-sitemap-first-app-pages-<n>.xml`. A file holds up to
+  `wp_sitemaps_get_max_urls('first')` URLs (2000), as core's do.
+- **Only what a signed-out visitor may read.** A kind's rows are selected by
+  First's read pipeline as an anonymous viewer, so the read rule, a filter the
+  rule returns and draft visibility decide, exactly as for a visitor's
+  `posts.list()`. A kind readers must sign in for has no file. A
+  password-protected item is left out. The sitemap is one document: a signed-in
+  editor, or a visitor holding a post password's cookie, gets the same file.
+- **App pages** are the ones `/llms.txt` lists (no parameters, no layout
+  `guard`, a 200 for a signed-out visitor), less the home page (core lists it)
+  and any page whose metadata says `robots: { index: false }`.
+- **Front-end modes.** `frontend: false` has no public pages, so sitemaps are
+  off (`wp_sitemaps_enabled`) and core answers their URLs with a 404. With an
+  external frontend the sitemap is still answered here, and every `<loc>` is at
+  that site, like every other link.
+- **`first_sitemap_entry` filter** (`array $entry, string $subtype`): change one
+  entry of First's files, or return an empty value to leave the URL out. Core's
+  own filters (`wp_sitemaps_posts_entry`, `wp_sitemaps_max_urls`,
+  `wp_sitemaps_add_provider`, ...) work as on any site.
+
 ## URL purges (`Wp\Purges`)
 
 After a committed write to public content, the v2 app plugin announces the
@@ -624,8 +659,8 @@ listens and purges those URLs from Batcache and the edge. With no listener
 - **Paths, root-relative with their query:** the item's URL before and after
   the write (a slug change purges both), the home page, the posts page, the
   post type archive, every term archive the post had or has, the author
-  archive, page 2 of each listing, the feed, `/llms.txt`, and every page
-  URL's `.md` twin. A term edit or delete purges its archive and page 2, and a
+  archive, page 2 of each listing, the feed, `/llms.txt`, the sitemap index
+  and the sitemap file that lists the item, and every page URL's `.md` twin. A term edit or delete purges its archive and page 2, and a
   slug change purges both the old and the new archive. Adding or removing a
   post's terms (`wp_set_object_terms()`, `wp_remove_object_terms()`) purges
   page 1 and page 2 of every term archive it joined or left. Deeper listing pages fall back to the edge's `s-maxage`

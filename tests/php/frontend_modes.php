@@ -27,6 +27,23 @@ $note = \First\db()->insert('notes', ['title' => 'Hello note', 'slug' => 'hello-
 $draft = \First\db()->insert('notes', ['title' => 'Draft note', 'slug' => 'draft-note', 'status' => 'draft']);
 $entry = \First\db()->insert('journal', ['title' => 'Day one', 'slug' => 'day-one', 'status' => 'published', 'publishedAt' => '2026-03-04T10:00:00.000Z']);
 $noteId = (int) (\First\db()->findFirst('notes', ['where' => ['slug' => 'hello-note']])['id']);
+// For the sitemap: rows a visitor may not read, in every way a rule can say so.
+\First\db()->insert('drafts', ['title' => 'Desk only', 'slug' => 'desk-only', 'status' => 'published']);
+\First\db()->insert('briefs', ['title' => 'Open brief', 'slug' => 'open-brief', 'status' => 'published']);
+\First\db()->insert('briefs', ['title' => 'Embargoed brief', 'slug' => 'embargoed-brief', 'embargoed' => true, 'status' => 'published']);
+\First\db()->insert('briefs', ['title' => 'Draft brief', 'slug' => 'draft-brief', 'status' => 'draft']);
+\First\db()->insert('memos', ['title' => 'A memo', 'status' => 'published']);
+\First\db()->insert('notes', ['title' => 'Locked note', 'slug' => 'locked-note', 'status' => 'published']);
+wp_update_post(['ID' => (int) \First\db()->findFirst('notes', ['where' => ['slug' => 'locked-note']])['id'], 'post_password' => 'secret']);
+wp_insert_post(['post_type' => 'post', 'post_status' => 'draft', 'post_title' => 'Core draft', 'post_name' => 'core-draft']);
+wp_insert_post(['post_type' => 'post', 'post_status' => 'private', 'post_title' => 'Core private', 'post_name' => 'core-private']);
+wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Core locked', 'post_name' => 'core-locked', 'post_password' => 'secret']);
+// Two authors with a published post each; only the editor's user row is a visitor's to read.
+wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'By the editor', 'post_name' => 'by-the-editor', 'post_author' => $site->userId('editor')]);
+\First\db()->update('members', ['listed' => true], ['id' => $site->userId('editor')]);
+// Those core writes ran outside a transaction, so their purge waits for the end of the request;
+// this process is many requests long, so end that one here.
+\First\Wp\Purges::flush();
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
@@ -96,5 +113,56 @@ wp_cache_delete('test_purges', 'options');
 $purged = get_option('test_purges', []);
 $out['renamed purges'] = array_values(array_intersect(['/notes/hello-note/', '/notes/hello-note.md', '/notes/renamed-note/', '/notes/renamed-note.md'], $purged));
 $out['new url'] = $got('/notes/renamed-note/')['status'];
+// The sitemap, as a crawler reads it: the index, then every file it names. Core renders the XML.
+$locs = static function (string $xml): array {
+    $doc = @simplexml_load_string($xml);
+    $out = [];
+    foreach ($doc === false ? [] : $doc->children() as $entry) {
+        $out[] = (string) $entry->loc;
+    }
+    return $out;
+};
+$index = $got('/wp-sitemap.xml');
+$files = $locs($index['body']);
+$listed = [];
+foreach ($files as $file) {
+    $listed[$strip($file)] = array_map($strip, $locs(fetch($file)['body']));
+}
+$out['sitemap'] = [
+    'status' => $index['status'],
+    'files' => array_map($strip, $files),
+    'urls' => $listed,
+    'robots' => (bool) preg_match('#^Sitemap: .*/wp-sitemap\.xml$#m', $got('/robots.txt')['body']),
+    'unknown kind' => $got('/wp-sitemap-first-memos-1.xml')['status'],
+    'past the end' => $got('/wp-sitemap-first-notes-2.xml')['status'],
+    // An editor's own request lists what a visitor sees: the sitemap is one document for everyone.
+    'as editor' => (static function () use ($site, $url, $locs, $strip): array {
+        $id = $site->userId('editor');
+        $expires = time() + 3600;
+        $cookie = wp_generate_auth_cookie($id, $expires, 'logged_in', WP_Session_Tokens::get_instance($id)->create($expires));
+        $ch = curl_init("$url/wp-sitemap-first-briefs-1.xml");
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_HTTPHEADER => ['Cookie: ' . LOGGED_IN_COOKIE . '=' . rawurlencode($cookie)]]);
+        return array_map($strip, $locs((string) curl_exec($ch)));
+    })(),
+    // A visitor who has entered a post's password still gets the document everyone gets.
+    'with a post password' => (static function () use ($url, $locs, $strip): array {
+        require_once ABSPATH . WPINC . '/class-phpass.php';
+        $cookie = 'Cookie: wp-postpass_' . COOKIEHASH . '=' . rawurlencode((new PasswordHash(8, true))->HashPassword('secret'));
+        $out = [];
+        foreach (['/wp-sitemap-first-notes-1.xml', '/wp-sitemap-posts-post-1.xml'] as $file) {
+            $ch = curl_init($url . $file);
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_HTTPHEADER => [$cookie]]);
+            $out[$file] = array_map($strip, $locs((string) curl_exec($ch)));
+        }
+        return $out;
+    })(),
+];
+// A write purges the sitemap files that list the item, with its other URLs.
+delete_option('test_purges');
+wp_set_current_user(1);
+\First\db()->update('briefs', ['title' => 'Open brief, revised'], ['slug' => 'open-brief']);
+$site->actAs(null);
+wp_cache_delete('test_purges', 'options');
+$out['sitemap']['purged'] = array_values(array_filter(get_option('test_purges', []), static fn (string $p): bool => str_contains($p, 'wp-sitemap')));
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

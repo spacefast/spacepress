@@ -1,0 +1,49 @@
+# One sitemap, through WordPress core's
+
+Date: 2026-11-13. Status: accepted. Spec: [spec.md](../spec/spec.md) §2.7, §5.
+
+## Problem
+
+A First site has three sources of public URLs: WordPress's own posts, pages, terms and authors;
+kinds with a `url` pattern; and `first/app/` pages. Core's sitemap (`wp_sitemaps`) knew only the
+first. A kind's post type is registered `public => false` (it stays out of core's public lists and
+is `publicly_queryable` instead), so core's posts provider skips it, and core knows nothing of app
+routes. Core's posts provider also selects by `post_status = publish` alone: it has no notion of a
+First read rule.
+
+## Decision
+
+Keep core's sitemap as the only one and add to it through core's API.
+
+- **One provider, `first`**, registered with `wp_register_sitemap_provider()` on `wp_sitemaps_init`.
+  It has a sub-sitemap per kind with a `url` and one for app pages. Core renders the index, the
+  files, the stylesheets and the `robots.txt` line; First writes no XML and adds no rewrite rule.
+- **Kinds are listed by First's provider, not by making their post types public.** Flipping
+  `public` would also put them in core's menus, searches and archives, and core's provider would
+  list every published row whatever the kind's read rule says.
+- **The rows are the ones an anonymous viewer reads**, selected by the read pipeline
+  (`Db::findMany` and `Db::count` with a signed-out `Viewer`), not by a second query that restates
+  the rules. A rule that refuses visitors gives the kind no file at all, so the index does not even
+  name it. The request's own user never matters: the sitemap is one cacheable document.
+- **Password-protected content is left out**, from core's files as well. Core lists such posts; a
+  visitor cannot read them, and the brief for this work is "nothing not publicly readable".
+- **Authors follow the users kind's read rule** when the app has one: core's users provider is
+  narrowed to the users an anonymous viewer may read.
+- **App pages reuse `/llms.txt`'s list** (no parameters, no layout guard, renders for a visitor),
+  less pages that say `robots: { index: false }` and the home page, which core already lists.
+  A route with parameters is listed through its kind when it serves a kind's `url`; other
+  parameterized routes have no enumerable set of URLs and are not listed.
+- **Front-end modes.** `frontend: false` disables sitemaps (`wp_sitemaps_enabled`). An external
+  frontend gets the sitemap from this site with every entry at its own address; this site answers
+  the sitemap before its redirect to the frontend, as it answers feeds.
+- **Purges.** A write announces the sitemap index and the file that lists the item with the
+  item's other URLs, so a host's page cache drops them.
+
+## Not done
+
+App pages are found by rendering each parameterless page as a visitor, once per sitemap request,
+as `/llms.txt` does. A site with very many such pages would want that list computed at build time;
+static prerender, which would provide it, is not on main yet.
+
+Term archives of First taxonomies are not added: `taxonomy()` kinds are not on main yet, and core's
+taxonomies provider will list them once they register as public taxonomies.

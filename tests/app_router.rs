@@ -644,6 +644,99 @@ fn frontend_modes_on_wordpress() {
     assert_eq!(external["note status"], 308);
     assert_eq!(external["post"][0], 308);
 
+    // One sitemap, through core's (`wp-sitemap.xml`): core's own files for posts, pages, terms and
+    // authors, and First's provider with a file per kind that has a `url` and readable items. Only
+    // what a signed-out visitor may read is in it: no draft, no private or password-protected item,
+    // no row a filter rule hides (`briefs`), no kind readers must sign in for (`drafts`), and no
+    // kind without a `url` (`memos`).
+    let sitemap = &theme["sitemap"];
+    assert_eq!(sitemap["status"], 200, "{sitemap}");
+    assert_eq!(
+        sitemap["files"],
+        serde_json::json!([
+            "/wp-sitemap-posts-post-1.xml",
+            "/wp-sitemap-posts-page-1.xml",
+            "/wp-sitemap-taxonomies-category-1.xml",
+            "/wp-sitemap-users-1.xml",
+            "/wp-sitemap-first-notes-1.xml",
+            "/wp-sitemap-first-journal-1.xml",
+            "/wp-sitemap-first-briefs-1.xml"
+        ]),
+        "{sitemap}"
+    );
+    assert_eq!(
+        sitemap["urls"],
+        serde_json::json!({
+            "/wp-sitemap-posts-post-1.xml": ["/hello-world/", "/by-the-editor/"],
+            "/wp-sitemap-posts-page-1.xml": ["/", "/sample-page/"],
+            "/wp-sitemap-taxonomies-category-1.xml": ["/category/uncategorized/"],
+            // Both admin and the editor have a published post; the users kind's read rule shows a
+            // visitor the editor's row only, so only that author archive is listed.
+            "/wp-sitemap-users-1.xml": ["/author/editor/"],
+            "/wp-sitemap-first-notes-1.xml": ["/notes/renamed-note/"],
+            "/wp-sitemap-first-journal-1.xml": ["/journal/2026/day-one/"],
+            "/wp-sitemap-first-briefs-1.xml": ["/briefs/open-brief/"]
+        }),
+        "{sitemap}"
+    );
+    // The sitemap is one document for every caller: an editor, who reads the embargoed brief and
+    // the draft, is shown what a visitor is shown.
+    assert_eq!(sitemap["as editor"], serde_json::json!(["/briefs/open-brief/"]));
+    // Nor does a post password's cookie add the protected note or post: neither is listed at all.
+    assert_eq!(
+        sitemap["with a post password"],
+        serde_json::json!({
+            "/wp-sitemap-first-notes-1.xml": ["/notes/renamed-note/"],
+            "/wp-sitemap-posts-post-1.xml": ["/hello-world/", "/by-the-editor/"]
+        }),
+        "{sitemap}"
+    );
+    assert_eq!(sitemap["robots"], true);
+    // A kind with nothing to list has no file, and a page past the end is a 404, as in core.
+    assert_eq!(
+        (&sitemap["unknown kind"], &sitemap["past the end"]),
+        (&serde_json::json!(404), &serde_json::json!(404))
+    );
+    // A write purges the index and the file that lists the item.
+    assert_eq!(
+        sitemap["purged"],
+        serde_json::json!(["/wp-sitemap.xml", "/wp-sitemap-first-briefs-1.xml"])
+    );
+    // With first/app/, its public pages are listed too: not the guarded one, not the one whose
+    // metadata says `robots: { index: false }`, and not a route with parameters.
+    assert_eq!(
+        app["sitemap"]["urls"]["/wp-sitemap-first-app-pages-1.xml"],
+        serde_json::json!(["/about/"]),
+        "{}",
+        app["sitemap"]
+    );
+    assert_eq!(
+        app["sitemap"]["urls"]["/wp-sitemap-first-notes-1.xml"],
+        sitemap["urls"]["/wp-sitemap-first-notes-1.xml"]
+    );
+    // `frontend: false` has no public pages, so no sitemap; an external frontend's sitemap is
+    // answered here, with every entry at that site.
+    assert_eq!(off["sitemap"]["status"], 404, "{}", off["sitemap"]);
+    assert_eq!(off["sitemap"]["robots"], false);
+    assert_eq!(external["sitemap"]["status"], 200, "{}", external["sitemap"]);
+    let everywhere: Vec<&str> = external["sitemap"]["urls"]
+        .as_object()
+        .unwrap()
+        .values()
+        .flat_map(|urls| urls.as_array().unwrap())
+        .map(|url| url.as_str().unwrap())
+        .collect();
+    assert!(
+        everywhere.contains(&"https://front.example/notes/renamed-note/")
+            && everywhere.contains(&"https://front.example/hello-world/")
+            && everywhere.contains(&"https://front.example/"),
+        "{everywhere:?}"
+    );
+    assert!(
+        everywhere.iter().all(|url| url.starts_with("https://front.example/")),
+        "{everywhere:?}"
+    );
+
     for (name, mode) in [("theme", &theme), ("app", &app), ("off", &off), ("external", &external)] {
         assert_eq!(
             (&mode["rest"], &mode["rest note"], &mode["feed"]),

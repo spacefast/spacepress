@@ -7,7 +7,7 @@ namespace First;
 /** The one ordered list of runtime feature modules, registered once per process. */
 final class Features
 {
-    private const MODULES = [Media\Module::class, Sync\Module::class, Abilities\Module::class, Jobs\Module::class, Services\Module::class, FieldAccess::class, Auth\Module::class, Locale\Module::class, Realtime\Module::class, Render\Cache::class, OpenApi::class, RuntimeSchema\Module::class];
+    private const MODULES = [Media\Module::class, Sync\Module::class, Abilities\Module::class, Jobs\Module::class, Services\Module::class, FieldAccess::class, Auth\Module::class, Locale\Module::class, Realtime\Module::class, Render\Cache::class, OpenApi::class, Search\Module::class, RuntimeSchema\Module::class];
     private static bool $registered = false;
 
     public static function register(): void

@@ -353,7 +353,7 @@ final class Staged
      */
     public static function cli(array $args, array $flags): mixed
     {
-        $usage = new HttpError(400, 'invalid_command', 'Usage: wp first staged list [<kind>] | show|compare|promote|discard <kind> <id> | stage <kind> <id> <json> (promote takes --at=<ISO time> or --cancel)');
+        $usage = new HttpError(400, 'invalid_command', 'Usage: wp first staged list [<kind>] | show|compare|promote|discard <kind> <id> | stage <kind> <id> <json> (each write takes --rev=<token>; promote takes --at=<ISO time> or --cancel)');
         $command = $args[0] ?? '';
         if ($command === 'list') {
             $plugin = Plugin::instance() ?? throw new \LogicException('No First app');
@@ -371,15 +371,24 @@ final class Staged
             return $out;
         }
         [$collection, $pk] = [$args[1] ?? throw $usage, $args[2] ?? throw $usage];
+        // `--rev=<token>` refuses the write when the item changed since that read, as on the API.
+        $rev = is_string($flags['rev'] ?? null) ? $flags['rev'] : null;
 
         return match ($command) {
             'show' => self::get($collection, $pk, null),
             'compare' => self::compare($collection, $pk, null),
-            'discard' => self::discard($collection, $pk, null),
+            'discard' => self::discard($collection, $pk, null, $rev),
             'promote' => isset($flags['at']) || isset($flags['cancel'])
-                ? self::schedule($collection, $pk, isset($flags['cancel']) ? null : $flags['at'], null)
-                : self::promote($collection, $pk, null),
-            'stage' => self::stage($collection, $pk, Js::decodeJson($args[3] ?? throw $usage), null),
+                ? self::schedule($collection, $pk, isset($flags['cancel']) ? null : $flags['at'], null, $rev)
+                : self::promote($collection, $pk, null, $rev),
+            'stage' => self::stage($collection, $pk, (static function () use ($args, $usage, $rev): mixed {
+                $patch = Js::decodeJson($args[3] ?? throw $usage);
+                if ($rev !== null && $patch instanceof \First\JsObject) {
+                    $patch->p[Rev::FIELD] = $rev;
+                }
+
+                return $patch;
+            })(), null),
             default => throw $usage,
         };
     }

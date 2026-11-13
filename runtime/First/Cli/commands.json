@@ -28,7 +28,7 @@
     { "name": "update", "args": "<collection> <where json> <set json>", "summary": "update records" },
     { "name": "delete", "args": "<collection> <where json>", "summary": "delete records" },
     { "name": "publish-due", "args": "", "summary": "publish scheduled records that are due" },
-    { "name": "staged", "args": "list [<kind>] | show|compare|discard <kind> <id> | stage <kind> <id> <json> | promote <kind> <id> [--at=<ISO time> | --cancel]", "summary": "staged versions of post kinds: list, stage, compare, promote, discard" },
+    { "name": "staged", "args": "list [<kind>] | show|compare|discard <kind> <id> | stage <kind> <id> <json> | promote <kind> <id> [--at=<ISO time> | --cancel] (writes take --rev=<token>)", "summary": "staged versions of post kinds: list, stage, compare, promote, discard" },
     { "name": "identity", "args": "account|suspend|restore|revoke|erase <user-id> | app add --name=n --redirect=uri --origin=o [--id=app_id] | webhook-add <url> | webhook-remove <id> | webhooks | maintenance | rotate-keys", "summary": "First Identity accounts, applications, webhooks and keys" },
     { "name": "migrate-legacy", "args": "<content-model.php | -> [--dry-run] [--space=id]", "summary": "move content from an original Zero site" },
     { "name": "migrate-legacy-users", "args": "--space=id [--dry-run]", "summary": "move an original Zero site's users" },

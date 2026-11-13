@@ -467,6 +467,14 @@ eq('wp first staged promote --cancel', $site->cli('staged', 'promote', 'posts', 
 eq('wp first staged promote', [$code, $out['data']['title'] ?? null, $out['data']['memo'] ?? null, array_slice($notes($pid), -1)], [0, 'Staged from the CLI', 'cli memo', ['Staged by an agent -> Staged from the CLI by nobody']]);
 $site->cli('staged', 'stage', 'posts', (string) $pid, '{"title":"x"}');
 eq('wp first staged discard', [$site->cli('staged', 'discard', 'posts', (string) $pid)[0], $stagedPosts($pid)], [0, []]);
+$site->cli('staged', 'stage', 'posts', (string) $pid, '{"title":"cli rev"}');
+[, $shown] = $site->cli('staged', 'show', 'posts', (string) $pid);
+$token = $shown['data']['_rev'];
+$site->cli('staged', 'stage', 'posts', (string) $pid, '{"title":"cli rev, again"}');
+[$code, $out] = $site->cli('staged', 'promote', 'posts', (string) $pid, "--rev=$token");
+eq('wp first staged promote --rev refuses a stale token', [$code, $out['error']['code'] ?? null], [1, 'stale_revision']);
+[, $shown] = $site->cli('staged', 'show', 'posts', (string) $pid);
+eq('… and takes the current one', $site->cli('staged', 'discard', 'posts', (string) $pid, '--rev=' . $shown['data']['_rev'])[0], 0);
 [$code, $out] = $site->cli('staged', 'frobnicate', 'posts', (string) $pid);
 eq('an unknown staged command is a usage error', [$code, $out['error']['code'] ?? null], [1, 'invalid_command']);
 

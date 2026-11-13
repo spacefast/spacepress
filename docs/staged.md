@@ -127,6 +127,46 @@ working when the staged version is promoted or discarded, or when the site's sal
 previewed page is sent `no-store`, `noindex` and `no-referrer`, and is never stored by Batcache.
 Markdown twins ignore the token.
 
+## Read before you write: `_rev`
+
+Every row of a collection the API, the client or an ability returns carries `_rev`, an opaque token
+of the row as it was read. Send it back with a write to refuse the write if the row changed since:
+
+| Write | Where `_rev` goes | Which token |
+|---|---|---|
+| `PATCH /<kind>/<id>`, `<kind>-update` | in the body / input, beside the fields | the row's |
+| `DELETE /<kind>/<id>`, `<kind>-delete` | `?_rev=` / input | the row's |
+| stage, promote, discard (API, abilities, `wp first staged … --rev=`) | body, query or input | the staged version's (`_rev` of a stage, read or compare) |
+| `POST /<kind>/<id>/revisions/<rid>/restore` | body | the row's |
+
+A stale token is refused with `409 stale_revision`. The problem carries the row's current `_rev`
+and `changed`: `fields`, the fields that differ since your read as you may read them (a field
+hidden from you is never named, changed or not), and for a staged token `staged: true` when someone
+else changed the staged version. Read again, look at what changed, and decide whether to retry.
+
+With nothing staged, the row's own `_rev` is accepted where a staged one is expected, so a read
+starts a stage. The row's `_rev` is the same for every reader and does not change when someone
+stages, so it says nothing about whether a staged version exists.
+
+Leaving `_rev` out is an unconditional write, as on WordPress's own routes.
+
+## Edit locks
+
+First uses WordPress's own edit lock, `_edit_lock`, which the block editor and the classic editor
+set while someone has the item open and refresh with their heartbeat (it lapses 150 seconds after
+the last one). While another user holds it, these are refused with `409 locked` and the holder
+(`holder: { id, name }`):
+
+- the API's update, delete, revision restore, stage, promote, discard and scheduled promote;
+- the abilities for the same steps;
+- core REST's update, delete and revision restore of the item (`/wp/v2/<post type>/<id>`).
+
+Reading again does not clear it. Send `takeover: true` (`?takeover=1` on a DELETE, `takeover` in an
+ability's input) to take the lock first, as the editor's **Take over** button does; the old holder's
+editor then shows that someone took over. Both checks apply only to a caller the row's update rule
+covers: anyone else gets the missing row's 404 and learns of no lock or token. The trusted CLI and
+cron never meet a lock. wp-admin's own edit screen keeps WordPress's lock dialog.
+
 ## Who can tell that a staged version exists
 
 Only a caller who passes the item's update rule, or who holds a valid preview token.

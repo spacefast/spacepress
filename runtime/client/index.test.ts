@@ -174,6 +174,10 @@ test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSO
   await first.posts.promote(1, { at: null });
   await first.posts.promote(1);
   await first.posts.discard(1);
+  await first.posts.update(1, { title: "Yo", _rev: "r1", takeover: true });
+  await first.posts.delete(1, { _rev: "r2", takeover: true });
+  await first.posts.promote(1, { _rev: "r3" });
+  await first.posts.discard(1, { _rev: "r4" });
   await first.posts.previewLink(1, { ttl: 600 });
   await first.globals.settings.get();
   await first.globals.settings.update({ tagline: "x" });
@@ -182,7 +186,7 @@ test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSO
   await first.auth.me();
   await first.schema();
   assert.deepEqual(
-    seen.map((s) => `${s.method} ${s.path} ${s.body.toString()}`),
+    seen.map((s) => `${s.method} ${s.path}${s.query.size ? `?${s.query}` : ""} ${s.body.toString()}`),
     [
       'POST /__first/api/v1/posts {"title":"Hi"}',
       'PATCH /__first/api/v1/posts/1 {"title":"Yo"}',
@@ -197,6 +201,10 @@ test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSO
       'POST /__first/api/v1/posts/1/staged/promote {"at":null}',
       "POST /__first/api/v1/posts/1/staged/promote {}",
       "DELETE /__first/api/v1/posts/1/staged ",
+      'PATCH /__first/api/v1/posts/1 {"title":"Yo","_rev":"r1","takeover":true}',
+      "DELETE /__first/api/v1/posts/1?_rev=r2&takeover=1 ",
+      'POST /__first/api/v1/posts/1/staged/promote {"_rev":"r3"}',
+      "DELETE /__first/api/v1/posts/1/staged?_rev=r4 ",
       'POST /__first/api/v1/posts/1/staged/preview {"ttl":600}',
       "GET /__first/api/v1/settings ",
       'PATCH /__first/api/v1/settings {"tagline":"x"}',

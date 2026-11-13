@@ -833,8 +833,8 @@ fn hosted_first(schema: &crate::schema::Schema, pages: Option<String>) -> Vec<St
 }
 
 /// A sealed app's plugin allow-list (docs/sealed.md), by directory slug: `first` (the First plugins
-/// of this target, which its caller names), the platform pins this app needs, and the WordPress
-/// plugins the config declares. `None` when the app isn't sealed. Plugin packages (`use`) are compiled into the app
+/// of this target, which its caller names), First's admin, the platform pins this app needs, and
+/// the WordPress plugins the config declares. `None` when the app isn't sealed. Plugin packages (`use`) are compiled into the app
 /// plugin, so they need no entry.
 pub(crate) fn sealed_plugins(
     schema: &crate::schema::Schema,
@@ -843,6 +843,9 @@ pub(crate) fn sealed_plugins(
     let declared = schema.sealed.as_ref()?;
     let mut slugs: Vec<String> = first
         .into_iter()
+        // First's admin is First's own plugin: listed whether or not this build ships it
+        // (`admin: true`), so a sealed site never refuses it however it is installed.
+        .chain(["first-admin".to_string()])
         .chain(
             crate::platform::plugins(schema.locales.is_some())
                 .into_iter()

@@ -165,12 +165,13 @@ fn a_sealed_build_lists_the_plugins_a_host_lets_load() {
     first::host::sources(&project, &sources).unwrap();
     let built = first::host::compile_to_store(&sources, &root, &sources, None).unwrap();
     let listed = built.manifest.sealed.expect("a sealed build lists its plugins");
-    // Exactly the plugins this host mounts for this app: no identity (no users kind), no admin, no
-    // pages, no Polylang (no locales).
+    // Exactly the plugins this host mounts for this app, plus First's admin (always listed): no
+    // identity (no users kind), no pages, no Polylang (no locales).
     assert_eq!(
         listed,
         [
             "action-scheduler",
+            "first-admin",
             "first-app-pantry",
             "first-runtime",
             "mcp-adapter",

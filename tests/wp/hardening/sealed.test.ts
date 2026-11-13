@@ -13,18 +13,18 @@ const active = () => JSON.parse(wp("plugin", "list", "--status=active", "--field
 const json = (headers: Record<string, string>, method: string, path: string, body?: unknown) =>
   fetch(`${site}${path}`, { method, headers: { ...headers, ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
 
-const LISTED = ["action-scheduler", `first-app-${harness.plugin.replace(/^first-app-/, "")}`, "first-identity", `first-pages-${harness.plugin.replace(/^first-app-/, "")}`, "first-runtime", "hello-dolly", "mcp-adapter", "secure-custom-fields", "two-factor"];
+const LISTED = ["action-scheduler", "first-admin", `first-app-${harness.plugin.replace(/^first-app-/, "")}`, "first-identity", `first-pages-${harness.plugin.replace(/^first-app-/, "")}`, "first-runtime", "hello-dolly", "mcp-adapter", "secure-custom-fields", "two-factor"];
 
 test("the build's manifest and the running app hold the same list, exactly; the site reports it is sealed", async () => {
   const listed = JSON.parse(wp("eval", "echo file_get_contents(WP_CONTENT_DIR . '/first-manifest.json') ?: '{}';") || "{}").sealed;
-  // No locales, so no Polylang; admin is off, so no first-admin.
+  // No locales, so no Polylang. First's admin is listed though this build doesn't ship it.
   assert.deepEqual(listed, LISTED);
   assert.deepEqual(JSON.parse(wp("eval", "echo wp_json_encode(First\\Wp\\Runtime::plugin()->schema->sealed());")), LISTED, "schema.php carries the same list");
   // Which plugin files count as listed: a listed directory's main file, and nothing shaped otherwise.
   const allows = (file: string) => wp("eval", `echo wp_json_encode(First\\Wp\\Sealed::allows('${file}'));`) === "true";
   assert.deepEqual(
     ["hello-dolly/hello.php", "first-runtime/first-runtime.php", "hello-dolly.php", "hello.php", "two-factor.php", "hello-dolly/sub/evil.php", "hello-dolly/../akismet/akismet.php", "Hello-Dolly/hello.php", "polylang/polylang.php", "first-admin/first-admin.php", "akismet/akismet.php"].map(allows),
-    [true, true, false, false, false, false, false, false, false, false, false],
+    [true, true, false, false, false, false, false, false, false, true, false],
   );
   const anonymous = (await (await fetch(`${site}/__first/api/v1`)).json()).data.runtime.wp.sealed;
   assert.deepEqual(anonymous, { enforced: "report" }, "a visitor learns only that the site is sealed");
@@ -84,6 +84,44 @@ test("the plugins the app runs on can't be deactivated from wp-admin or REST, so
   for (const slug of ["first-runtime", harness.plugin, "two-factor", "secure-custom-fields"]) assert.ok(now.includes(slug), `${slug} is still active`);
   // After those attempts the refusal still stands.
   assert.equal((await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/akismet/akismet", { status: "active" })).status, 403);
+});
+
+test("First's admin is First's own: a sealed site activates it though the build doesn't ship it, and it saves through REST", async () => {
+  // Installed beside the build (sealed-run.sh), not declared, and `admin: true` isn't set.
+  assert.equal(active().includes("first-admin"), false);
+  const on = await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/first-admin/first-admin", { status: "active" });
+  assert.equal(on.status, 200, await on.text());
+  try {
+    assert.ok(active().includes("first-admin"));
+    const report = (await (await fetch(`${site}/__first/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
+    assert.deepEqual(report.plugins, [], "it isn't reported as unlisted");
+    // Its own routes answer, and a save it makes through core's routes isn't the schema lock's to
+    // refuse: a row of a First kind created and edited as the admin's editor does.
+    for (const route of ["/wp-json/wp/v2/view-config?kind=postType&name=first_notes", "/wp-json/wp/v2/field-collections?kind=postType&name=first_notes", "/wp-json/wp/v2/editor"]) {
+      const res = await json(auth("admin"), "GET", route);
+      assert.ok(res.status < 500 && res.status !== 403, `${route}: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    }
+    const created = await json(auth("admin"), "POST", "/wp-json/wp/v2/first_notes", { title: "From the admin", status: "publish", meta: { mood: "calm" } });
+    assert.equal(created.status, 201, await created.clone().text());
+    const id = (await created.json()).id;
+    const edited = await json(auth("admin"), "POST", `/wp-json/wp/v2/first_notes/${id}`, { title: "Edited in the admin", meta: { mood: "bright" } });
+    const row = await edited.json();
+    assert.deepEqual([edited.status, row.title.raw ?? row.title.rendered, row.meta.mood], [200, "Edited in the admin", "bright"]);
+    // And the saves its screens make through First's API: a row, and a global's values.
+    const viaApi = await json(auth("admin"), "PATCH", `/__first/api/v1/notes/${id}`, { mood: "steady" });
+    assert.equal((await viaApi.json()).data.mood, "steady");
+    const global = await json(auth("admin"), "PATCH", "/__first/api/v1/banner", { motto: "From the admin" });
+    assert.equal((await global.json()).data.motto, "From the admin");
+    // The admin's page is served.
+    const cookie = await loginCookie(site, "admin", `${site}/first-admin/`);
+    const page = await fetch(`${site}/first-admin/`, { headers: { cookie }, redirect: "manual" });
+    assert.equal(page.status, 200, String(page.headers.get("location")));
+    // It isn't one of the plugins the site can't run without: it deactivates, classic wp-admin stays.
+    const off = await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/first-admin/first-admin", { status: "inactive" });
+    assert.equal(off.status, 200, await off.text());
+  } finally {
+    wpTry("plugin", "deactivate", "first-admin");
+  }
 });
 
 test("code already loaded and not listed is reported, never deactivated or removed", async () => {

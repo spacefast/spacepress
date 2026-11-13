@@ -2493,12 +2493,12 @@ export default defineConfig({ name: "kindurls", publicAuthors: true });
 export default defineConfig({ name: "kindurls", sealed: true });
 "#,
     );
-    // The complete list for a plain WordPress build of this app: First's plugins it ships (identity
-    // always, admin only with `admin: true`), its pages plugin, and the platform pins (Polylang only
-    // with `locales`).
+    // The complete list for a plain WordPress build of this app: First's own plugins (its admin and
+    // its pages plugin always, whether or not this build ships them) and the platform pins (Polylang
+    // only with `locales`).
     assert_eq!(
         built["sealed"],
-        serde_json::json!({"plugins": ["action-scheduler", "first-app-kindurls", "first-identity", "first-pages-kindurls", "first-runtime", "mcp-adapter", "secure-custom-fields", "two-factor"]})
+        serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-pages-kindurls", "first-runtime", "mcp-adapter", "secure-custom-fields", "two-factor"]})
     );
     let built = schema(
         r#"import { defineConfig } from "first";

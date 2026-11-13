@@ -14,7 +14,7 @@ With `sealed: true`, the only code that runs as a plugin is:
 
 | Code | Where it comes from |
 |---|---|
-| First's own plugins: `first-runtime`, `first-identity`, `first-admin` with `admin: true`, the app plugin `first-app-<name>`, and its pages plugin `first-pages-<name>` | shipped in the compiler and built from this project (`first build`, and `first-pages build` for pages) |
+| First's own plugins: `first-runtime`, `first-identity`, First's admin `first-admin` (whether or not the build ships it), the app plugin `first-app-<name>`, and its pages plugin `first-pages-<name>` | shipped in the compiler and built from this project (`first build`, and `first-pages build` for pages) |
 | the platform plugins First pins: Secure Custom Fields, Action Scheduler, MCP Adapter, Two Factor, and Polylang when the config sets `locales` ([wp-plugins.md](wp-plugins.md)) | exact versions with checksums in First's release |
 | the plugins the config declares under `plugins` | exact versions, with checksums in the committed `first/_generated/wp-plugins.lock.json` |
 | plugin packages under `use` (`definePlugin`) | compiled into the app plugin; see [below](#plugin-packages) |

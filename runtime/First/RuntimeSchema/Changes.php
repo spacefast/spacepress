@@ -154,6 +154,13 @@ final class Changes
                         throw new Refused('schema_retype', "$kind.$field: `$kind` was removed with `$field` stored as $type, and its values are still there. Add `$field` as $type again, or give the field another name", null, "$pointer/definition/fields/$field/type");
                     }
                 }
+                // A build that ran here declared this kind and stored its fields; the same name means
+                // the same stored types.
+                foreach (($declared[$global ? 'globals' : 'collections'][$kind] ?? []) as $field => $type) {
+                    if (isset($stored['fields'][$field]) && $stored['fields'][$field]['type'] !== $type) {
+                        throw new Refused('schema_retype', "$kind.$field: a build that ran on this site stores `$field` of `$kind` as $type. Add it as $type, or give the field another name", null, "$pointer/definition/fields/$field/type");
+                    }
+                }
                 foreach ($stored['fields'] as $field => $definition) {
                     self::named($kind, (string) $field, $global ? [] : ['id', 'title', 'content'], "$pointer/definition/fields/$field");
                 }

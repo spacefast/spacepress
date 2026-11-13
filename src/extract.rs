@@ -1161,8 +1161,10 @@ fn collection_options(
     let hierarchical = flag("hierarchical")?.unwrap_or(false);
     if hierarchical {
         if !editor {
-            return Err(Diag::new(span("hierarchical"), "only collection() kinds can be hierarchical")
-                .help("a table() nests through an ordinary `parent: ref(() => kind).optional()` field"));
+            return Err(
+                Diag::new(span("hierarchical"), "only collection() kinds can be hierarchical")
+                    .help("a table() nests through an ordinary `parent: ref(() => kind).optional()` field"),
+            );
         }
         for reserved in ["parent", "order"] {
             if let Some(b) = c.columns.get(reserved) {

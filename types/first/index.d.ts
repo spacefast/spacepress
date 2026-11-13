@@ -392,8 +392,10 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Declares a rename: this table was stored as `old` (its name in first/_generated/migrations/snapshot.json).
    * The deploy renames the table and keeps its rows. table() only. */
   was?: string;
-  /** Project-relative Markdown/JSON files; implies uid: true. */
+  /** Project-relative Markdown/JSON files; implies uid: true. A `**` folder before the file pattern (`content/docs/` then `**` then `/*.md`) reads a folder tree into a hierarchical collection. */
   sync?: `${string}/*.md` | `${string}/*.json`;
+  /** Items nest like WordPress Pages: adds `parent` and `order`, and `:path` in `url` is the parent chain. collection() only. */
+  hierarchical?: boolean;
   uid?: boolean;
   /** Expose through WordPress abilities/MCP. Default true. */
   agents?: boolean;

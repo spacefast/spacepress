@@ -71,6 +71,20 @@ A `page.md` is a real WordPress Page. The file is its first version: the first r
 - It has a Markdown twin at its URL plus `.md` and a line in `/llms.txt` when anyone may read it, and none otherwise.
 - A `page.md` is one page with one URL, so it can't sit below `[slug]`. For many Markdown files, sync a folder into a kind and render it from a `page.tsx`.
 
+### A docs section: a folder of Markdown as a kind
+
+Many Markdown pages are a kind, synced from a folder tree and rendered by one catch-all page. The router's test app for it is [`tests/fixtures/docs-kind`](https://github.com/spacefast/zero/tree/main/tests/fixtures/docs-kind).
+
+<RepoFile path="tests/fixtures/docs-kind/first/schema.ts" />
+
+- `hierarchical: true` adds `parent` and `order`, stored as WordPress stores a Page's parent and menu order, so the block editor's page attributes edit them.
+- `sync: "content/docs/**/*.md"` reads the folder tree. A file's name is its slug and its folder its parent; a folder's `index.md` is the page the folder stands for. Put `order` in front matter; siblings with the same order sort by title.
+- `first sync` carries it both ways: a page moved in wp-admin moves its file.
+
+<RepoFile path="tests/fixtures/docs-kind/first/app/docs/[...path]/page.tsx" />
+
+`"first/content"` gives the page its navigation, read as the visitor from the published tree: `nav(kind, item)` (the tree, with the current page and its ancestors marked), `pager(kind, item)` (previous and next, reading the tree top to bottom) and `headings(item)` (the `##` and `###` headings, with the ids the page renders them with).
+
 ### Typed search, a guard, HTTP handlers
 
 <RepoFile path="tests/fixtures/app-router/first/app/notes/page.tsx" />

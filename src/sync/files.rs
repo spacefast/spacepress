@@ -51,7 +51,8 @@ pub fn tree_place(rel: &str, format: &str) -> Result<(String, Option<String>), S
             && !s.starts_with('-')
             && !s.ends_with('-')
             && !s.contains("--")
-            && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+            && s.bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
     };
     for name in folders.iter().chain(std::iter::once(&slug)) {
         if !valid(name) {
@@ -76,7 +77,11 @@ pub fn tree_path(ancestors: &[&str], slug: &str, has_children: bool, format: &st
     } else {
         out.push(slug);
         let (last, dirs) = out.split_last().expect("one slug at least");
-        if dirs.is_empty() { format!("{last}.{format}") } else { format!("{}/{last}.{format}", dirs.join("/")) }
+        if dirs.is_empty() {
+            format!("{last}.{format}")
+        } else {
+            format!("{}/{last}.{format}", dirs.join("/"))
+        }
     }
 }
 
@@ -107,7 +112,12 @@ mod tree_tests {
         assert_eq!(tree_path(&[], "guides", true, "md"), "guides/index.md");
         assert_eq!(tree_path(&["guides"], "install", false, "md"), "guides/install.md");
         assert_eq!(tree_path(&["guides"], "deploy", true, "md"), "guides/deploy/index.md");
-        for rel in ["install.md", "guides/index.md", "guides/install.md", "guides/deploy/index.md"] {
+        for rel in [
+            "install.md",
+            "guides/index.md",
+            "guides/install.md",
+            "guides/deploy/index.md",
+        ] {
             let (slug, parent) = tree_place(rel, "md").unwrap();
             let ancestors: Vec<&str> = parent
                 .as_deref()

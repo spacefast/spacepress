@@ -585,9 +585,8 @@ pub(crate) fn compile_tree(
             // Below the sync folder: what a folder-tree file is named by, and its stable identity.
             let below = relative(&sync_dir, &path).map_err(io)?;
             let place = if nested {
-                let (slug, parent) =
-                    crate::sync::files::tree_place(&below, sync["format"].as_str().unwrap_or("md"))
-                        .map_err(|message| diagnostic(1, message))?;
+                let (slug, parent) = crate::sync::files::tree_place(&below, sync["format"].as_str().unwrap_or("md"))
+                    .map_err(|message| diagnostic(1, message))?;
                 let slug_col = collection.slug.clone().expect("a folder-tree sync has a slug");
                 for (key, what) in [(slug_col.as_str(), "slug"), ("parent", "parent")] {
                     if fields.contains_key(key) {
@@ -617,6 +616,22 @@ pub(crate) fn compile_tree(
                 return Err(diagnostic(1, format!("duplicate sync uid {uid}")));
             }
             if let Some(parent) = place {
+                // Slugs are unique in a kind, so a page's URL is found by its last segment.
+                let slug = fields[collection.slug.as_deref().unwrap_or("slug")]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
+                if let Some((other, _)) = by_path.iter().find(|(p, _)| {
+                    crate::sync::files::tree_place(p, sync["format"].as_str().unwrap_or("md"))
+                        .is_ok_and(|(s, _)| s == slug)
+                }) {
+                    return Err(diagnostic(
+                        1,
+                        format!(
+                            "{below} and {other} both have the slug `{slug}`; a kind's slugs are unique, so rename one"
+                        ),
+                    ));
+                }
                 parents.push((records.len(), parent));
                 by_path.insert(below, uid.clone());
             }
@@ -642,7 +657,10 @@ pub(crate) fn compile_tree(
                 }
             }
             let mut ordered: Vec<(usize, serde_json::Value)> = depth.into_iter().zip(records).collect();
-            ordered.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1["path"].as_str().cmp(&b.1["path"].as_str())));
+            ordered.sort_by(|a, b| {
+                a.0.cmp(&b.0)
+                    .then_with(|| a.1["path"].as_str().cmp(&b.1["path"].as_str()))
+            });
             records = ordered.into_iter().map(|(_, r)| r).collect();
         }
         seeds.push((

@@ -8,6 +8,8 @@
 
 mod annotations;
 mod app;
+mod content;
+pub use content::{CONTENT_EXPORTS, CONTENT_TYPES};
 mod classes;
 mod client;
 mod effects;
@@ -7698,6 +7700,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         if let Some(name) = self.app_builtin(callee)? {
             return self.app_call(name, args, span);
+        }
+        if let Some(name) = self.content_builtin(callee)? {
+            return self.content_call(name, args, span);
         }
         match &callee.kind {
             ExprKind::Member {

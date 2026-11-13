@@ -1659,7 +1659,13 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
             .output()
             .unwrap()
     };
-    assert_eq!(sync(&["--check"]).status.code(), Some(2));
+    let check = sync(&["--check"]);
+    assert_eq!(
+        check.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
     let first = sync(&[]);
     assert_eq!(
         first.status.code(),

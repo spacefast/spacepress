@@ -309,13 +309,19 @@ final class WpSite
         return is_file("$this->content/debug.log") ? (string) file_get_contents("$this->content/debug.log") : '(no debug.log)';
     }
 
-    public function destroy(): void
+    /** Stops the php -S child; `startServer()` starts a new one (a new process: no cached code). */
+    public function stopServer(): void
     {
         if ($this->server !== null) {
             proc_terminate($this->server);
             proc_close($this->server);
             $this->server = null;
         }
+    }
+
+    public function destroy(): void
+    {
+        $this->stopServer();
         if (is_dir($this->dir)) {
             exec('rm -rf ' . escapeshellarg($this->dir));
         }

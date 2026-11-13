@@ -43,8 +43,9 @@ This is the runtime endpoint. To work on the project's source, use the `first` s
    unset FIRST_APP_PASSWORD
    ```
 
-4. Add the server to the client, reading the header from the environment.
-   Claude Code, in `.mcp.json`:
+4. Add the server to the client, reading the header from the environment: `references/clients.md`
+   has the configuration for Claude Code, Claude Desktop and Codex. For Claude Code, in
+   `.mcp.json`:
 
    ```json
    {
@@ -56,14 +57,6 @@ This is the runtime endpoint. To work on the project's source, use the `first` s
        }
      }
    }
-   ```
-
-   Codex, in `~/.codex/config.toml`:
-
-   ```toml
-   [mcp_servers.first-my-app]
-   url = "https://your-site.example/wp-json/mcp/first-my-app"
-   env_http_headers = { Authorization = "FIRST_MCP_AUTH" }
    ```
 
    Start the client from the shell that exported `FIRST_MCP_AUTH`.

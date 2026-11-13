@@ -627,6 +627,8 @@ content/docs/
 - `first sync` moves a file when its page moves on the site, and turns a page that gains children
   into its folder's `index.md`; an `index.md` you wrote stays one, and moving a folder moves its
   pages.
+- Pages edited in wp-admin can come back to the repository as a pull request, and Markdown merged
+  in git can go to the site, on a schedule: [Content in git](../docs-site/docs/publishing/content-in-git.mdx).
 
 A page reads the navigation from `"first/content"`, as the visitor:
 
@@ -718,6 +720,12 @@ both (`first sync resolve <uid>` applies your edit of it).
 matches records and deletes nothing. It commits the files it wrote unless
 `--no-commit`. `first build` adds `.first/*` and `!.first/sync-base.json` to
 `.gitignore`, because the sync base is committed.
+
+`first sync --pr [--repo owner/name] [--base branch]`, with `GITHUB_TOKEN` as well, runs the sync on
+a temporary worktree of the default branch instead of the checkout, and opens one pull request (or
+updates the open one) with the site's changes; conflict files go in it, listed in a comment. It
+needs no `gh`. [Content in git](../docs-site/docs/publishing/content-in-git.mdx) describes the loop,
+the permissions it needs and the conflicts.
 
 What sync leaves out: `$onUpdate` columns, derived and hidden system columns,
 and fields the viewer's field access hides. References to a `uid` collection are written as that

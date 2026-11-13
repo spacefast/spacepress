@@ -15,9 +15,7 @@ async function live(as: Role | undefined, queries: Query[]): Promise<Result[]> {
   return r.json.data.results;
 }
 const one = async (as: Role | undefined, query: Query) => (await live(as, [query]))[0];
-const prefix = sql("SHOW TABLES LIKE '%first\\_\\_versions'")[0];
-const versions = Object.values(prefix)[0];
-const counter = (kind: string, scope = "all") => Number(sql(`SELECT version FROM ${versions} WHERE kind = '${kind}' AND scope = '${scope}'`)[0]?.version ?? 0);
+const counter = (kind: string, scope = "all") => Number(sql(`SELECT version FROM wp_first__versions WHERE kind = '${kind}' AND scope = '${scope}'`)[0]?.version ?? 0);
 
 test("concurrent writers: every committed transaction is counted once, and no write is lost to a subscriber", async () => {
   const where = { body: { like: `Race ${run}%` } };
@@ -112,6 +110,21 @@ test("a write a hook rolls back counts nothing", async () => {
   const r = await http("POST", `${api}/job_notes`, { as: "editor", body: { title: "Explode" } });
   assert.equal(r.status, 500);
   assert.equal(counter("job_notes"), before);
+});
+
+test("the counter is part of the write's transaction: a write whose counter can't be written doesn't commit", async () => {
+  const title = `Uncounted ${run}`;
+  sql("RENAME TABLE wp_first__versions TO wp_first__versions_away");
+  try {
+    const r = await http("POST", `${api}/guest_notes`, { as: "subscriber", body: { body: title } });
+    assert.equal(r.status, 500, JSON.stringify(r.json));
+  } finally {
+    sql("RENAME TABLE wp_first__versions_away TO wp_first__versions");
+  }
+  assert.deepEqual(sql(`SELECT id FROM wp_first_guest_notes WHERE body = '${title}'`), [], "the row rolled back with its counter");
+  const before = counter("guest_notes");
+  await ok("POST", "/guest_notes", { as: "subscriber", body: { body: title } });
+  assert.equal(counter("guest_notes"), before + 1, "and the next write counts as usual");
 });
 
 test("the request is bounded and never cached", async () => {

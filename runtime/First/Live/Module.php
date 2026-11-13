@@ -364,7 +364,10 @@ final class Module
         $schema = $db->schema();
         $spec = $schema->collection($collection);
         $guards = $db->readScope($collection, $viewer);
-        if ($collection === ($schema->auth()['collection'] ?? null) || ($spec['builtin'] ?? null) !== null) {
+        // A read extension that may drop rows (Extensions::onRead without `constraintSafe`) is a
+        // row filter the scope above doesn't show.
+        if ($collection === ($schema->auth()['collection'] ?? null) || ($spec['builtin'] ?? null) !== null
+            || !\First\Extensions::constraintReadsSafe()) {
             return null;
         }
         foreach ($spec['columns'] as $def) {

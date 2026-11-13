@@ -134,6 +134,28 @@ eq('a write outside the result is not modified, after one read', [$same['changed
 [$settled, $n] = $reads(static fn () => $ask(null, $top + ['token' => $same['token']]));
 eq('and the next poll is answered by counter again', [$settled['changed'], $n], [false, []]);
 
+// A write that commits while a poll's read is running: the token keeps the counters from before
+// the read, so the next poll runs the read again instead of trusting a result that missed the write.
+$racing = false;
+\First\Extensions::onRead(static function (array $rows, string $collection) use (&$racing, $db): array {
+    if ($racing && $collection === 'todos') {
+        $racing = false;
+        $db->insert('todos', ['title' => 'landed mid-read']);
+    }
+
+    return $rows;
+}, true);
+// (A list: its rows pass the read hook above, after its SQL ran.)
+$all = ['kind' => 'todos', 'op' => 'list', 'args' => ['orderBy' => ['id' => 'asc'], 'limit' => 100]];
+$c0 = $ask(null, $all);
+$db->insert('todos', ['title' => 'six']);
+$racing = true;
+$c1 = $ask(null, $all + ['token' => $c0['token']]);
+eq('the poll answers what its read saw', [$c1['changed'], count($plain($c1['data']))], [true, count($plain($c0['data'])) + 1]);
+check('the write landed during that read', $racing === false);
+$c2 = $ask(null, $all + ['token' => $c1['token']]);
+eq('and the next poll holds the write that landed during it', [$c2['changed'], count($plain($c2['data'] ?? []))], [true, count($plain($c0['data'])) + 2]);
+
 // ---------------------------------------------------------------- every operation
 
 $page = $ask(null, ['kind' => 'todos', 'op' => 'paginate', 'args' => ['orderBy' => ['id' => 'asc'], 'limit' => 2]]);

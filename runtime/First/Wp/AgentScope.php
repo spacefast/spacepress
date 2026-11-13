@@ -140,9 +140,31 @@ final class AgentScope
     {
         if ($error instanceof \WP_Error && is_array($item) && array_key_exists(self::KEY, $item)
             && (Runtime::plugin() === null || (defined('XMLRPC_REQUEST') && XMLRPC_REQUEST))) {
-            $error->add('first_scope', 'This application password is scoped by First and can be used only on the REST API of a site with an active First app.', ['status' => 403]);
+            self::$unenforced = new \WP_Error('first_scope', 'This application password is scoped by First and can be used only on the REST API of a site with an active First app.', ['status' => 403]);
+            $error->merge_from(self::$unenforced);
         }
     }
+
+    /**
+     * rest_authentication_errors: the refusal above, as the request's answer. Core can resolve the user
+     * more than once in a request and keeps only its last answer, so the refusal is kept here; without
+     * this the request would go on as a visitor, which is narrower but says nothing about why.
+     */
+    public static function unenforced(mixed $result): mixed
+    {
+        if (is_wp_error($result) || Runtime::plugin() !== null || !isset($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'])) {
+            return $result;
+        }
+        // Core skipped application passwords when it first resolved the user (at `init`, before the
+        // request was known to be REST): check this one now, as core's own REST resolve would.
+        if (self::$unenforced === null && !is_user_logged_in()) {
+            wp_authenticate_application_password(null, (string) $_SERVER['PHP_AUTH_USER'], (string) $_SERVER['PHP_AUTH_PW']);
+        }
+
+        return self::$unenforced ?? $result;
+    }
+
+    private static ?\WP_Error $unenforced = null;
 
     // ================================================================ routes
 

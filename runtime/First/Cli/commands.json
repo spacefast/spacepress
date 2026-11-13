@@ -1,8 +1,8 @@
 {
   "build": [
-    { "name": "dev", "args": "[dir] [--port n] [--no-watch] [--allow-destructive]", "summary": "start the local WordPress site and rebuild on change" },
+    { "name": "dev", "args": "[dir] [--port n] [--no-watch | --detach | --foreground] [--allow-destructive]", "summary": "start the local WordPress site and rebuild on change" },
     { "name": "dev stop", "args": "[dir]", "summary": "stop the local site, keeping its data" },
-    { "name": "dev status", "args": "[dir]", "summary": "report the local site" },
+    { "name": "dev status", "args": "[dir] [--json]", "summary": "report the local site" },
     { "name": "build", "args": "[dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]", "summary": "write the WordPress plugins to first/dist/wp-content" },
     { "name": "check", "args": "[dir] [--json] [--frozen]", "summary": "compile and report problems; write nothing" },
     { "name": "add", "args": "<module> [dir]", "summary": "add a module to the project as files you own; never overwrites one. Modules: db (SQL tables)" },

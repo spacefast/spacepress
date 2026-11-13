@@ -192,6 +192,11 @@ else fails the build (`F1220`), so there is never a second users table or a
 | `global(fields, opts?)` | `register_setting` group | anyone reads; `admin` writes |
 | `files(opts)` | private file bucket | the uploader and `editor` read |
 
+Storage is chosen only by the builder. `collection()` is always WordPress
+posts and `table()` is always a SQL table; no option moves a kind from one to
+the other. A new project has content only, and `first add db` adds example
+tables, a note on migrations and typed client calls.
+
 Fields every kind gets:
 
 | Kind | Fields |

@@ -174,6 +174,12 @@ The router answers on `template_redirect`, before the theme. wp-admin, login,
 WordPress itself resolves (a post, a category archive) keep the theme until a
 route serves them.
 
+The site's sitemap is WordPress's own, `/wp-sitemap.xml`. It lists the app's
+pages that have no parameters and no `guard` and render for a signed-out
+visitor, unless the page's metadata says `robots: { index: false }`, and the
+items of every kind with a `url` that a signed-out visitor may read. A draft, a
+row an access rule hides and a password-protected item are never in it.
+
 ## The `pages/` pipeline (being replaced)
 
 Until the cutover finishes, root `pages/` still builds through the separate Node

@@ -375,6 +375,8 @@ pub(super) struct Transformed {
     pub config: String,
     pub content_config: Option<String>,
     pub connector_roles: Value,
+    /// Where each role in `connector_roles` is declared, for refusals that point at it.
+    pub connector_spans: BTreeMap<String, Span>,
     /// Each converted query, mutation and action, as the client bridge calls it.
     pub handlers: Vec<ClientHandler>,
     /// The capsule declared `collections.posts` itself, so 0.8 built no posts from content/posts/
@@ -582,7 +584,10 @@ pub(super) fn app(
             }
         }
     }
+    // Capsule roles, normalized (`owner` is `personal`). `app.rs` writes them into the candidate's
+    // Spacefast config, where the Space serves them as before (see `connector_config`).
     let mut connector_roles = serde_json::Map::new();
+    let mut connector_spans = BTreeMap::new();
     if let Some(connectors) = root.get("connectors") {
         for (name, e) in obj(connectors, "/connectors")? {
             let at = pointer("/connectors", &name);
@@ -609,15 +614,8 @@ pub(super) fn app(
             })();
             match parsed {
                 Ok(v) => {
+                    connector_spans.insert(name.clone(), e.span);
                     connector_roles.insert(name, v);
-                    // The role's credentials and grants stay behind, so the connector stops working.
-                    errors.push(
-                        fail(
-                            &at,
-                            format!("{}: its credentials and grants are not migrated, so calls through it would stop working", super::omitted::CONNECTORS),
-                        )
-                        .spanned(e.span, Path::new("")),
-                    );
                 }
                 Err(err) => errors.push(err.spanned(e.span, Path::new(""))),
             }
@@ -1212,6 +1210,7 @@ pub(super) fn app(
         config,
         content_config,
         connector_roles: Value::Object(connector_roles),
+        connector_spans,
         handlers: client_handlers,
         declares_posts,
         get_paths,
@@ -2586,7 +2585,7 @@ impl Rewrite<'_> {
                     "unsupported context service; ctx.jwt.sign has no First counterpart yet (First's node:crypto has hashes and HMAC, no Ed25519 signing, and adding it waits on an owner ruling). Sign the token in a service you call with fetch, or keep the app on 0.8"
                 }
                 "connectors" => {
-                    "unsupported context service; ctx.connectors needs a connector broker First doesn't have yet. Call the provider's API with fetch and a credential from process.env, or keep the app on 0.8"
+                    "server code can't call connectors on First yet; the candidate keeps the capsule's roles in sf.jsonc, so call the role from the page with @spacefast/client (`space.connectors.<role>.<tool>()`), or keep the app on 0.8"
                 }
                 "storage" => {
                     "unsupported context service; ctx.storage maps to First file buckets, which the converter doesn't write. Port the calls to a bucket by hand"

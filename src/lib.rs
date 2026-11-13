@@ -27,7 +27,6 @@ pub mod lower;
 pub mod migrate;
 pub mod num;
 pub mod openapi;
-pub mod pages;
 pub mod pipeline;
 pub mod platform;
 pub mod plugins;

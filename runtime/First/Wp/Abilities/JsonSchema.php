@@ -98,12 +98,15 @@ final class JsonSchema
         return self::input($props + $virtual, $required);
     }
 
-    /** Update patch: every writable column, all optional. */
+    /** Update patch: every writable column, all optional; a users kind's also takes a new `password` (Auth\Module::password). */
     public static function patch(array $spec): array
     {
         $props = [];
         foreach (self::writable($spec, false) as $name => $col) {
             $props[$name] = self::column($col);
+        }
+        if (($spec['auth'] ?? false) && !isset($props['password'])) {
+            $props['password'] = ['type' => 'string'];
         }
 
         return ['type' => 'object', 'properties' => $props];

@@ -216,6 +216,13 @@ final class Facade
 
             return self::json($status, ['data' => $data]);
         }
+        if ($kind['type'] === 'post' && ($segments[2] ?? null) === 'staged' && count($segments) <= 4) {
+            // A kind's staged versions ({@see Staged}): First's own, with no core route to map.
+            self::gate($kind, 'update');
+            [$status, $data] = Staged::route((string) $kind['name'], self::id($kind, $segments[1]), $method, array_slice($segments, 3), $query, self::body($body));
+
+            return self::json($status, ['data' => $data]);
+        }
         if (count($segments) !== 2) {
             throw HttpError::notFound("No route for $path");
         }

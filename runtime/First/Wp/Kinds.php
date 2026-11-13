@@ -200,6 +200,30 @@ final class Kinds
         ];
     }
 
+    /** @var array<int, array> First's media rows read ahead for the page being shaped ({@see rows()}) */
+    private static array $media = [];
+
+    /**
+     * A page of core items as First's rows. For media, First's own rows are read in one query for the
+     * whole page, not one per item.
+     *
+     * @param list<array> $items
+     * @return list<mixed>
+     */
+    public static function rows(array $kind, array $items): array
+    {
+        if ($kind['type'] !== 'media' || $items === []) {
+            return array_map(static fn (array $item) => self::row($kind, $item), $items);
+        }
+        $db = Plugin::instance()?->db();
+        self::$media = $db === null ? [] : $db->media()->getMany(array_values(array_filter(array_map(static fn (array $i) => (int) ($i['id'] ?? 0), $items))));
+        try {
+            return array_map(static fn (array $item) => self::row($kind, $item), $items);
+        } finally {
+            self::$media = [];
+        }
+    }
+
     private static function mediaRow(array $item): array
     {
         $details = is_array($item['media_details'] ?? null) ? $item['media_details'] : [];
@@ -212,7 +236,7 @@ final class Kinds
 
         // First's own media row (its named sizes, focal point, file name and size) when First runs the
         // site; core's fields fill the rest (spec §2.1).
-        $first = isset($item['id']) ? Plugin::instance()?->db()->mediaGet((int) $item['id']) : null;
+        $first = isset($item['id']) ? (self::$media[(int) $item['id']] ?? Plugin::instance()?->db()->mediaGet((int) $item['id'])) : null;
 
         return (is_array($first) ? $first : []) + [
             'id' => $item['id'] ?? null,

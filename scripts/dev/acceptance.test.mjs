@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawn, execFile } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
+import { watch } from 'node:fs';
 import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
@@ -77,7 +78,9 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
       catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error; }
     }
   }
-  const env = { ...process.env, PATH: tools };
+  // Whatever runs this suite, `first dev` sees no agent and no CI unless a step below says so.
+  const { CI: _ci, CLAUDECODE: _claude, CODEX_SANDBOX: _codex, AI_AGENT: _ai, AGENT: _agent, ...inherited } = process.env;
+  const env = { ...inherited, PATH: tools };
   await writeFile(join(project, 'first.config.ts'), config('first'));
   await writeFile(join(project, 'public/index.html'), '<h1>Native First dev</h1>');
   let session;
@@ -116,9 +119,15 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
     ['dev_status', {}],
     ['insert', { kind: 'items', rows: [{ name: 'Not written' }] }],
   ]);
-  assert.deepEqual(devStatus.structuredContent, {
-    state: 'running', url: base, admin: `${base}/wp-admin/`, site: await realpath(site), wordpress: status.wpVersion, php: status.phpVersion,
-  });
+  // Started with --no-watch: the site runs, and no process is rebuilding it.
+  const expected = {
+    state: 'running', url: base, port: Number(new URL(base).port), admin: `${base}/wp-admin/`, site: await realpath(site),
+    watching: false, pid: null, log: null, wordpress: status.wpVersion, php: status.phpVersion,
+  };
+  assert.deepEqual(devStatus.structuredContent, expected);
+  // `first dev status --json` is the same report, from the state file `first dev` wrote.
+  assert.deepEqual(JSON.parse(await command(['dev', 'status', project, '--json'], env)), expected);
+  assert.equal(JSON.parse(await readFile(join(project, '.first/dev/state.json'), 'utf8')).url, base);
   assert.equal(refusedInsert.isError, true);
   const [inserted, read, updated, ran, all] = await mcp([project, '--allow-writes'], env, [
     ['insert', { kind: 'items', rows: [{ name: 'From an agent' }] }],
@@ -198,6 +207,7 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   await command(['dev', 'stop', project], env);
   assert.equal(JSON.parse(await command(['dev', 'status', project], env)).isOnline, false);
   assert.equal((await mcp([project], env, [['dev_status', {}]]))[0].structuredContent.state, 'stopped');
+  assert.deepEqual(JSON.parse(await command(['dev', 'status', project, '--json'], env)), { ...expected, state: 'stopped' });
   session = foreground(['dev', project], env);
   let cursor = await session.wait('Watching config');
   assert.equal(JSON.parse(await command(['dev', 'status', project], env)).siteUrl, status.siteUrl);
@@ -220,7 +230,8 @@ if (defined('WP_CLI') && WP_CLI) {
   await command(['dev', 'stop', project], env);
   assert.deepEqual(await interruptedExit, [0, null]);
   await rm(failurePlugin);
-  session = foreground(['dev', project], env);
+  // --foreground keeps the command attached even where it would go to the background by itself.
+  session = foreground(['dev', project, '--foreground'], { ...env, CLAUDECODE: '1' });
   cursor = await session.wait('Watching config');
   const recovered = JSON.parse(await readFile(join(project, '.first/dev/owner.json'), 'utf8'));
   assert.equal(recovered.pending, undefined);
@@ -247,6 +258,43 @@ if (defined('WP_CLI') && WP_CLI) {
   await command(['dev', 'stop', project], env);
   assert.deepEqual(await exit, [0, null]);
   assert.equal(JSON.parse(await command(['dev', 'status', project], env)).isOnline, false);
+  // --detach: the command returns once the site is up, and a background process keeps rebuilding.
+  const started = await command(['dev', project, '--detach'], env);
+  assert.match(started, new RegExp(`Website:   ${base}/`));
+  const background = JSON.parse(await command(['dev', 'status', project, '--json'], env));
+  const log = join(await realpath(project), '.first/dev/dev.log');
+  assert.deepEqual(background, { ...expected, watching: true, pid: background.pid, log });
+  assert.ok(Number.isSafeInteger(background.pid) && background.pid !== process.pid);
+  assert.match(started, new RegExp(`Running in the background \\(pid ${background.pid}\\)`));
+  process.kill(background.pid, 0); // it exists
+  const waitForLog = (text) => new Promise((done, fail) => {
+    const timeout = setTimeout(() => finish(new Error(`Timed out waiting for ${text} in ${log}`)), 180000);
+    const watcher = watch(join(project, '.first/dev'), () => void check());
+    const finish = (error) => { clearTimeout(timeout); watcher.close(); error ? fail(error) : done(); };
+    const check = () => readFile(log, 'utf8').then((content) => { if (content.includes(text)) finish(); }, () => {});
+    void check();
+  });
+  // A second start, attached or not, is refused and leaves the running session's log alone.
+  await assert.rejects(command(['dev', project, '--detach'], env), /Another first dev command owns this project/);
+  assert.match(await readFile(log, 'utf8'), /Website:/);
+  await writeFile(join(project, 'first.config.ts'), config('background', 'shelf: text().optional(),', false));
+  await waitForLog('Updated. Refresh');
+  assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'background');
+  // An agent's shell (no terminal, CLAUDECODE set) gets the same without the flag; here the
+  // session above still owns the project, so the background start is what is refused.
+  await assert.rejects(command(['dev', project], { ...env, CLAUDECODE: '1' }), /running in the background, because CLAUDECODE is set[^]*Another first dev command owns this project/);
+  await command(['dev', 'stop', project], env);
+  // `dev stop` returns when the watcher has released the project; the process itself ends just after.
+  await new Promise((done, fail) => {
+    const deadline = setTimeout(() => finish(new Error(`The background first dev (pid ${background.pid}) is still running after dev stop`)), 60000);
+    const finish = (error) => { clearTimeout(deadline); clearInterval(probe); error ? fail(error) : done(); };
+    const gone = () => { try { process.kill(background.pid, 0); } catch (error) { if (error.code === 'ESRCH') finish(); } };
+    const probe = setInterval(gone, 100); gone();
+  });
+  // The stopped watcher is no longer on record, so a later process with its number is not taken for it.
+  const recorded = JSON.parse(await readFile(join(project, '.first/dev/state.json'), 'utf8'));
+  assert.deepEqual([recorded.pid, recorded.log, recorded.url], [null, null, base]);
+  assert.deepEqual(JSON.parse(await command(['dev', 'status', project, '--json'], env)), { ...expected, state: 'stopped' });
   await writeFile(join(project, 'first.config.ts'), config('deliberate', '', false));
   await command(['dev', project, '--no-watch', '--allow-destructive'], env);
   assert.equal(await api('/actions/version', { method: 'POST', body: {} }), 'deliberate');

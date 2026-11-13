@@ -7,6 +7,7 @@ mod dev;
 mod doctor;
 pub(crate) mod init;
 pub(crate) mod mcp;
+pub(crate) mod pull;
 pub(crate) mod site;
 mod sync;
 

@@ -111,6 +111,7 @@ final class Plugin
         MarkdownTwins::register();
         Sitemap::register($this);
         Purges::register($this);
+        Staged::register($this);
         Hooks::register($this);
         add_action('admin_menu', [$this, 'adminMenu'], 9);
         // A plugin updated by copying files in has no activation; the first request of any kind
@@ -152,7 +153,10 @@ final class Plugin
                 if (is_string($mark)) {
                     Migrator::locked($this->connection(), $this->schemaOption(), fn () => $this->migrator()->markApplied($mark));
                 }
-                [$code, $out] = [0, \First\Js::jsonStringify(['data' => ['applied' => $this->migrateLocked()]])];
+                $applied = $this->migrateLocked();
+                // With runtimeSchema: what this build leaves to the site's own schema versions (spec §2.10).
+                $runtime = SchemaVersions::of($this)?->deployCheck();
+                [$code, $out] = [0, \First\Js::jsonStringify(['data' => ['applied' => $applied] + ($runtime === null ? [] : ['runtimeSchema' => array_diff_key($runtime, ['refusals' => true])])])];
             } catch (\Throwable $e) {
                 [$code, $out] = [1, \First\Js::jsonStringify(['error' => \First\App::problem($e)])];
             }
@@ -391,6 +395,12 @@ final class Plugin
 
     private function migrateNow(): array
     {
+        // A build that reads a runtime field's stored values as another type is refused before any
+        // table changes, with the rest of the deploy's refusals (spec §2.10).
+        $runtime = SchemaVersions::of($this)?->deployCheck();
+        if (($runtime['refusals'] ?? []) !== []) {
+            throw new SchemaRefused(array_map(static fn (array $r): array => $r + ['rows' => 0], $runtime['refusals']));
+        }
         $applied = $this->migrator()->migrate();
         if (($compiled = \First\RuntimeSchema\Loader::compiled()) !== null) {
             // `runtimeSchema`: runtime changes are checked against the fields of every build that ran here.

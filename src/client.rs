@@ -299,10 +299,12 @@ pub(crate) fn reserved_type_name(name: &str) -> bool {
     RESERVED_TYPE_NAMES.contains(&upper_first(name).as_str())
 }
 
-struct ClientNames {
-    collections: IndexMap<String, String>,
-    globals: IndexMap<String, String>,
-    actions: IndexMap<String, String>,
+/// The interface name of each kind, global and action. The OpenAPI document names its components
+/// with them (`openapi.rs`).
+pub(crate) struct ClientNames {
+    pub(crate) collections: IndexMap<String, String>,
+    pub(crate) globals: IndexMap<String, String>,
+    pub(crate) actions: IndexMap<String, String>,
 }
 
 fn claim_names(mut name: String, suffixes: &[&str], used: &mut HashSet<String>) -> String {
@@ -316,7 +318,7 @@ fn claim_names(mut name: String, suffixes: &[&str], used: &mut HashSet<String>) 
     name
 }
 
-fn names(schema: &Schema) -> ClientNames {
+pub(crate) fn names(schema: &Schema) -> ClientNames {
     let mut out = ClientNames {
         collections: IndexMap::new(),
         globals: IndexMap::new(),

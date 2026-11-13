@@ -257,6 +257,13 @@ fn setup() -> (PathBuf, Site) {
     let _ = std::fs::remove_dir_all(&project);
     std::fs::create_dir_all(project.join("content/notes")).unwrap();
     std::fs::write(project.join("first.config.ts"), CONFIG).unwrap();
+    // A component content may use as a block (`<Note kind="tip">…</Note>` in a Markdown file).
+    std::fs::create_dir_all(project.join("first/components")).unwrap();
+    std::fs::write(
+        project.join("first/components/Note.tsx"),
+        "export const blocks = [\"Note\"];\nexport function Note({ kind, children }: { kind: \"tip\" | \"warning\"; children?: JSX.Element }) {\n  return <aside className={kind}>{children}</aside>;\n}\n",
+    )
+    .unwrap();
     let out = first().arg("build").arg(&project).output().unwrap();
     assert!(out.status.success(), "build: {}", String::from_utf8_lossy(&out.stderr));
     // A fresh WordPress on SQLite with the built plugins active, served by php -S: one JSON line with
@@ -2140,6 +2147,107 @@ fn a_file_edited_while_resolve_deletes_it_is_kept() {
 /// and its name its slug, so neither is written in front matter; a page moved on the site moves
 /// its file, and a page that gains children becomes its folder's index file.
 #[test]
+fn a_folder_tree_keeps_drafts_empty_folders_and_moved_folders() {
+    let (project, site) = setup();
+    let dir = project.join("content/docs");
+    let tree = |dir: &Path| {
+        let mut files: Vec<String> = Vec::new();
+        let mut pending = vec![dir.to_path_buf()];
+        while let Some(d) = pending.pop() {
+            for e in std::fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                if p.is_dir() {
+                    pending.push(p);
+                } else {
+                    files.push(p.strip_prefix(dir).unwrap().to_string_lossy().into_owned());
+                }
+            }
+        }
+        files.sort();
+        files
+    };
+    let ok = |out: &std::process::Output| {
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    std::fs::create_dir_all(dir.join("guides/deploy")).unwrap();
+    std::fs::create_dir_all(dir.join("faq")).unwrap();
+    std::fs::write(dir.join("guides/index.md"), "---\ntitle: Guides\n---\nHow to.\n").unwrap();
+    std::fs::write(
+        dir.join("guides/deploy/index.md"),
+        "---\ntitle: Deploy\n---\nShip it.\n",
+    )
+    .unwrap();
+    // Named to sort before `index.md`, so it is pushed before its folder's page.
+    std::fs::write(dir.join("guides/deploy/aws.md"), "---\ntitle: AWS\n---\nOn AWS.\n").unwrap();
+    // A folder the author made before writing its pages: it stays a folder.
+    std::fs::write(dir.join("faq/index.md"), "---\ntitle: FAQ\n---\nAsked.\n").unwrap();
+    ok(&sync(&project, &site, &["--only", "docs"]));
+    assert_eq!(
+        tree(&dir),
+        [
+            "faq/index.md",
+            "guides/deploy/aws.md",
+            "guides/deploy/index.md",
+            "guides/index.md"
+        ],
+        "a push leaves the author's files where they are"
+    );
+
+    // An editor starts a draft under Guides in wp-admin: WordPress gives it no slug yet.
+    let guides = site.rows("docs").into_iter().find(|r| r["slug"] == "guides").unwrap();
+    let (s, draft) = site.call(
+        "POST",
+        "/docs",
+        Some(serde_json::json!({ "title": "Not yet", "status": "draft", "parent": guides["id"] })),
+    );
+    assert_eq!(s, 201, "{draft}");
+    // As the block editor saves a new draft: no post_name until it is published.
+    site.sql(&format!(
+        "UPDATE {{prefix}}posts SET post_name = '' WHERE ID = {}",
+        draft["data"]["id"]
+    ));
+    ok(&sync(&project, &site, &["--only", "docs"]));
+    let draft_file = tree(&dir)
+        .into_iter()
+        .find(|f| f.starts_with("guides/zr_"))
+        .unwrap_or_else(|| panic!("a slugless draft is named by its uid: {:?}", tree(&dir)));
+    ok(&sync(&project, &site, &["--only", "docs"]));
+    assert!(
+        dir.join(&draft_file).exists(),
+        "the next run reads the draft's file back"
+    );
+    let kept = site.rows("docs").into_iter().find(|r| r["title"] == "Not yet");
+    assert!(
+        kept.is_some_and(|r| r["status"] == "draft"),
+        "and the draft stays a draft, not trashed"
+    );
+
+    // The author moves the deploy folder to the top; its pages follow it.
+    std::fs::rename(dir.join("guides/deploy"), dir.join("deploy")).unwrap();
+    ok(&sync(&project, &site, &["--only", "docs"]));
+    let files = tree(&dir);
+    assert!(
+        files.contains(&"deploy/aws.md".to_string()) && files.contains(&"deploy/index.md".to_string()),
+        "{files:?}"
+    );
+    let rows = site.rows("docs");
+    let deploy = rows.iter().find(|r| r["slug"] == "deploy").unwrap();
+    let aws = rows.iter().find(|r| r["slug"] == "aws").unwrap();
+    assert_eq!(deploy["parent"], serde_json::Value::Null, "{rows:?}");
+    assert_eq!(aws["parent"], deploy["id"], "{rows:?}");
+    // And the tree is settled: nothing left to do.
+    let again = data(&sync(&project, &site, &["--only", "docs", "--check"]));
+    assert_eq!(again["pending"], serde_json::json!([]), "{again}");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
 fn a_folder_tree_syncs_with_a_hierarchical_kind_both_ways() {
     let (project, site) = setup();
     let dir = project.join("content/docs");
@@ -2220,6 +2328,48 @@ fn a_folder_tree_syncs_with_a_hierarchical_kind_both_ways() {
     );
     assert!(read(&project, "content/docs/guides/install/linux.md").contains("Use the package."));
     // A second run changes nothing: the tree and the files agree.
+    let again = data(&sync(&project, &site, &["--only", "docs", "--check"]));
+    assert_eq!(again["pending"], serde_json::json!([]), "{again}");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+/// A component block in a synced Markdown file round-trips through `first sync`: pushed as the
+/// app's block with its Markdown as inner blocks, edited on the site, and pulled back as the tag.
+#[test]
+fn a_component_block_in_markdown_syncs_both_ways() {
+    let (project, site) = setup();
+    let dir = project.join("content/docs");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("tips.md"),
+        "---\ntitle: Tips\n---\nBefore.\n\n<Note kind=\"tip\">\nUse **sync**.\n</Note>\n\nAfter.\n",
+    )
+    .unwrap();
+    let out = sync(&project, &site, &["--only", "docs"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let row = site
+        .rows("docs")
+        .into_iter()
+        .find(|r| r["slug"] == "tips")
+        .expect("tips");
+    let body = row["body"].as_str().unwrap();
+    assert!(body.contains("<!-- wp:notes/note {\"kind\":\"tip\"} -->"), "{body}");
+    assert!(body.contains("<p>Use <b>sync</b>.</p>"), "{body}");
+    // On the site the block's prop changes; the pull writes the same tag with the new value.
+    let edited = body.replace("{\"kind\":\"tip\"}", "{\"kind\":\"warning\"}");
+    let (s, answer) = site.call(
+        "PATCH",
+        &format!("/docs/{}", row["id"]),
+        Some(serde_json::json!({ "body": edited })),
+    );
+    assert_eq!(s, 200, "{answer}");
+    let out = sync(&project, &site, &["--only", "docs"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let file = read(&project, "content/docs/tips.md");
+    assert!(
+        file.ends_with("Before.\n\n<Note kind=\"warning\">\nUse **sync**.\n</Note>\n\nAfter.\n"),
+        "{file}"
+    );
     let again = data(&sync(&project, &site, &["--only", "docs", "--check"]));
     assert_eq!(again["pending"], serde_json::json!([]), "{again}");
     let _ = std::fs::remove_dir_all(&project);

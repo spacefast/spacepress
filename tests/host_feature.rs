@@ -93,7 +93,7 @@ fn host_capture_carries_markdown_pages() {
     };
     assert_eq!(
         php(&format!(
-            "$s = require '{}'; $p = $s['app']['content']['about']; echo $p['path'], '|', $p['title'], '|', $p['status'];",
+            "$s = require '{}'; $p = $s['app']['content']['/about']; echo $p['path'], '|', $p['title'], '|', $p['status'];",
             app.join("schema.php").display()
         )),
         "/about|About|publish"
@@ -103,7 +103,7 @@ fn host_capture_carries_markdown_pages() {
             "$b = require '{}'; echo json_encode($b);",
             app.join("content.php").display()
         )),
-        r#"{"about":"\nWho we are.\n"}"#
+        r#"{"\/about":"\nWho we are.\n"}"#
     );
 }
 

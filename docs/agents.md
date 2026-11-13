@@ -1,6 +1,7 @@
-# Use your First app from an agent
+# First and agents
 
-First has two MCP servers, for two different jobs:
+An agent meets a First project in two places: while the project is being
+written, and when the app runs. First has an MCP server for each:
 
 | | Development time | Runtime |
 |---|---|---|
@@ -9,6 +10,10 @@ First has two MCP servers, for two different jobs:
 | Transport | stdio | Streamable HTTP |
 | What it answers | the project's schema, compiler diagnostics, First's documentation, the command table, the dev site | one tool per collection operation and action |
 | Access | the local files, and the local dev site | a WordPress user's access rules |
+
+`first init` sets the first one up in a project, with an `AGENTS.md` section and
+the skills that carry the step-by-step procedures. This page is the reference
+for both servers; the procedures are in the skills.
 
 ## Set a project up for coding agents: `first init`
 
@@ -41,10 +46,17 @@ Each is a short procedure that links to the documentation for depth:
 | `first-migrate` | Convert a Zero 0.8 app, or import another CMS's schema. |
 
 - Text outside the two markers in `AGENTS.md` is yours. A rerun replaces the
-  section and nothing else.
+  section and nothing else. A marker counts only on a line of its own, so prose
+  that quotes one is left alone.
 - A server already named `first` in `.mcp.json`, and every other server, is
-  left as it is.
+  left as it is. The entry is inserted into the file's text, so its formatting
+  and numbers are unchanged.
 - The skill files are First's: a rerun writes them back as this compiler has them.
+  Delete `.claude/skills` or `.agents/skills` if you do not use that agent; a
+  rerun does not bring it back.
+- Files keep their permissions, and an `AGENTS.md` that links to another file of
+  the project (`CLAUDE.md`) is written through the link. A skills directory that
+  links outside the project is refused, before anything is written.
 - A project with its own `CLAUDE.md` should import the file with a line
   `@AGENTS.md`; `first init` says so when it is missing.
 
@@ -83,7 +95,7 @@ path in place of `npx --no-install first`.
 | `check` | The `first-diagnostics` envelope `first check --json` prints ([compiler diagnostics](compiler-diagnostics.md)). It writes nothing. |
 | `docs_search`, `docs_read` | First's documentation as built into this binary: the guides in `docs/` (not the design proposals or the pages for hosts and maintainers) and the docs site's pages. A long page or section read whole answers with its opening and its sections; pass `section` to read one. |
 | `commands` | The command table `first help` prints. |
-| `dev_status` | Whether the project has a local dev site, whether it runs, and its URL. |
+| `dev_status` | What `first dev status --json` reports: whether the project has a local dev site, whether it runs, its URL and port, and whether a `first dev` process is rebuilding it on save. |
 | `query` | A kind's records from the local dev site, through `first find`: `kind`, `where`, `orderBy`, `limit` (20 by default, at most 500), `offset`, `columns`, `with`. Like every request to the site, it first publishes scheduled posts that are due. |
 
 `schema`, `check`, `docs_search` and `docs_read` compile or read from the
@@ -105,6 +117,31 @@ no access rules, drafts included. They are for a developer's own dev site:
 A tool that runs a command (the compiler for `schema` and `check`, `first find`
 and the other site commands) stops it after 120 seconds, or the number of
 seconds in `FIRST_MCP_TIMEOUT`, and stops it when the client cancels the request.
+
+### Run the dev site from an agent
+
+`first dev` normally stays in the foreground until Ctrl+C, which an agent's
+shell cannot do. Two things make it usable there:
+
+- `first dev --detach` returns once the site is up. The watcher keeps running
+  in the background, rebuilds on save, and writes to `.first/dev/dev.log`.
+  `first dev stop` stops it.
+- Without the flag, `first dev` does the same by itself when its output is not a
+  terminal and one of `CLAUDECODE`, `CODEX_SANDBOX`, `AI_AGENT` or `AGENT` is
+  set to something other than empty, `0` or `false`. It says so on stderr. It
+  never does this when `CI` is set, and `--foreground` turns it off.
+
+`first dev status --json` (and the `dev_status` tool) answers from
+`.first/dev/state.json`, which `first dev` writes when the site is up:
+
+```json
+{"state":"running","url":"http://localhost:8787","port":8787,"admin":"http://localhost:8787/wp-admin/","site":"/work/my-app/.first/dev/wordpress","watching":true,"pid":41822,"log":"/work/my-app/.first/dev/dev.log","wordpress":"7.1.4","php":"8.4"}
+```
+
+`state` is `none`, `stopped` or `running`, checked against the port itself.
+`watching` is true while the recorded `first dev` process exists; after
+`--no-watch` it is false and `pid` is null. `first dev status` without `--json`
+still prints Studio's own report.
 
 The server speaks MCP revision 2026-07-28 (no handshake; `server/discover`) and,
 for clients that open with `initialize`, 2025-11-25 and 2025-06-18.
@@ -148,6 +185,13 @@ filters, ordering, pagination, and declared relation loads. Update takes
 wrap rows in `{ "rows": [...] }`; action results have the handler's shape.
 Always inspect `tools/list` for the actual input schema before calling a tool.
 
+A `collection()` also has one tool per step of its [staged version](staged.md):
+`<kind>-stage`, `<kind>-staged-get`, `<kind>-staged-compare`,
+`<kind>-staged-promote`, `<kind>-staged-discard` and `<kind>-staged-preview`.
+An agent can stage a change to a published item, read the comparison, and
+leave the promote to a person, or to a credential that is allowed that tool.
+`table()` kinds, such as the ones in this app, have none.
+
 `api: { delete: false }` removes that operation. `agents: false` keeps the
 underlying ability registered for PHP and WP-CLI, while hiding it from public
 ability REST discovery and the app's MCP server. Globals also expose get and
@@ -168,105 +212,95 @@ as REST. An application password authenticates a WordPress user; it does not
 bypass that user's access. In the subscriptions app, owner filters also apply
 to MCP reads and writes. Trusted action handlers explicitly filter by owner.
 
-### Create an application password
+### Who the agent is
 
-On a hosted WordPress site, use HTTPS. Sign in to WordPress, open **Users →
-Profile → Application Passwords**, and create a password for your agent. Use a
-separate account with the role and data access the agent needs.
+The endpoint authenticates as core does. An agent connects as a WordPress user
+with an application password, sent as HTTP Basic auth, and gets that user's
+access and no more: the kinds' access rules, field permissions, hooks and
+transactions apply to every tool call as they do on the API. An application
+password is not the user's login password and not a First Identity browser token.
 
-For a disposable local Studio site, create one with WP-CLI:
+### Scoped agent credentials
 
-```sh
-./target/debug/first wp --site examples/pantry user application-password create admin agent-guide --porcelain
+`first identity agent add <user> --name=<name>` creates an application password
+for one agent. It is **read-only and has no access to personal data** until a
+flag grants more:
+
+| Flag | Grants |
+|---|---|
+| `--write` | creates, updates, deletes and abilities that aren't `readonly` |
+| `--personal` | reading and setting email fields and fields with a read rule, and reading a user's own account details |
+| `--abilities=blog/posts-list,blog/*` | only these abilities; no other route but the app's schema |
+
+`first identity agent list|grant|revoke` manage them, and **Users → Profile →
+Application Passwords** offers the same choices (*Allow writes*, *Allow personal
+data*) and shows each password's scope.
+
+A scope only narrows. The user's role, each kind's access rules and its field
+rules still decide first, so a subscriber's credential with `--write` writes
+what a subscriber may. It is enforced wherever the app can be reached: the
+abilities run route, the MCP server, `/__first/api/v1`, core's `/wp/v2` routes,
+`/batch/v1` sub-requests, `?rest_route=` and method overrides. `GET
+/__first/api/v1` reports the scope of the credential asking, under
+`runtime.credential`.
+
+Whatever its grants and its user's role, a scoped credential can't do the
+things that would remove its own limits:
+
+- read or change application passwords, so it can't widen itself or mint another;
+- change the account it signs in as: its password, email, login, roles or
+  sign-in methods (First Identity's and Two Factor's routes). With `--write
+  --personal` it can still edit the rest of the profile;
+- administer the site: plugins and themes (deactivating First would switch the
+  scope off), site settings, creating or promoting users, and any other plugin's
+  route that asks one of those capabilities.
+
+An agent that has to do one of these needs an unscoped credential, which is a
+choice its owner makes on purpose. A credential limited to named abilities also
+sees only those in core's abilities list and in the MCP tool list.
+
+A refusal is a 403 with the code `scope` (`first_scope` on core routes; a tool
+error over MCP) and says which grant is missing. Without `personal`, emails and
+restricted fields are left out of every row, user and comment, and a filter,
+sort or search on one is a 403 rather than a quiet probe.
+
+Application passwords made before First's flows, and any created by other
+clients or plugins outside First's flows, have no scope and work exactly as
+WordPress ships them. A scoped password signs in only where its scope is
+enforced: with the app plugin deactivated it is refused, never widened. The
+refusal lives in the `first-runtime` plugin, so removing that plugin (by
+someone with file or WP-CLI access; a scoped credential can't) leaves a scoped
+password an ordinary one. Revoke agent passwords before uninstalling First.
+
+### Connect a client
+
+The steps are the `first-connect-mcp` skill, which `first init` writes into the
+project: [`skills/first-connect-mcp/SKILL.md`](../skills/first-connect-mcp/SKILL.md)
+finds the endpoint, creates a scoped agent credential and builds the header
+without writing the password down, and
+[`references/clients.md`](../skills/first-connect-mcp/references/clients.md)
+has the configuration for Claude Code, Claude Desktop and Codex.
+
+### Check an endpoint by hand
+
+The endpoint is MCP over Streamable HTTP. `POST` an `initialize` request with
+the `Authorization` header, `Content-Type: application/json` and
+`Accept: application/json, text/event-stream`. Later requests repeat the
+`Mcp-Session-Id` header the answer carried and send `MCP-Protocol-Version` with
+the negotiated version. The repository's
+[`mcp-proof.mjs`](../examples/subscriptions/scripts/mcp-proof.mjs) does exactly
+that against any built First app (`FIRST_SITE`, `FIRST_APP`, `FIRST_TOOL`, and
+`FIRST_APP_PASSWORD=user:application-password` in the environment), and prints
+the `initialize` answer, the tool names and one tool call:
+
+```jsonl
+{"endpoint":"http://localhost:8794/wp-json/mcp/first-pantry"}
+{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"prompts":{"listChanged":false},"resources":{"subscribe":false,"listChanged":false},"tools":{"listChanged":false}},"serverInfo":{"name":"Pantry","version":"0.3.0"},"instructions":"First app pantry"}}
+{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"pantry-locations-list"},{"name":"pantry-locations-get"},{"name":"pantry-locations-create"},{"name":"pantry-locations-update"},{"name":"pantry-locations-delete"},{"name":"pantry-items-list"},{"name":"pantry-items-get"},{"name":"pantry-items-create"},{"name":"pantry-items-update"},{"name":"pantry-items-delete"},{"name":"pantry-shopping-list-list"},{"name":"pantry-shopping-list-get"},{"name":"pantry-shopping-list-create"},{"name":"pantry-shopping-list-update"},{"name":"pantry-shopping-list-delete"},{"name":"pantry-consume"},{"name":"pantry-expiring-soon"},{"name":"pantry-media-list"},{"name":"pantry-media-get"},{"name":"pantry-media-delete"}]}}
+{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"{\"rows\":[]}"}],"isError":false,"structuredContent":{"rows":[]}}}
 ```
 
-The local site must be running. For another app, replace `examples/pantry` with
-its project directory. Use `username:application-password` for HTTP Basic auth.
-An application password is different from the WordPress login password and the
-first-identity browser access token. Revoke it from the same profile page when
-it is no longer needed.
-
-Build the Authorization header locally, without putting the password in shell
-history:
-
-```sh
-read -r -s -p 'WordPress username:application-password: ' FIRST_APP_PASSWORD
-printf '\n'
-export FIRST_MCP_AUTH="Basic $(printf %s "$FIRST_APP_PASSWORD" | base64 | tr -d '\n')"
-unset FIRST_APP_PASSWORD
-```
-
-This snippet uses Bash. Launch the agent from that shell to inherit
-`FIRST_MCP_AUTH`. Keep credentials out of repository configuration and transcripts.
-
-### Connect Claude Code
-
-Put this in your project's `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "first-subscriptions": {
-      "type": "http",
-      "url": "https://your-site.example/wp-json/mcp/first-subscriptions",
-      "headers": {
-        "Authorization": "${FIRST_MCP_AUTH}"
-      }
-    }
-  }
-}
-```
-
-Start Claude Code from the shell where you exported `FIRST_MCP_AUTH`. Open `/mcp`
-to inspect the connection and available tools. Claude Code documents HTTP
-servers, headers, and environment expansion in its
-[MCP reference](https://code.claude.com/docs/en/mcp).
-
-### Connect Claude Desktop
-
-For a local stdio connection, install Node.js and add this entry to
-`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS.
-On Windows, the file is `%APPDATA%\Claude\claude_desktop_config.json`.
-Merge the entry into any existing `mcpServers` object.
-
-```json
-{
-  "mcpServers": {
-    "first-subscriptions": {
-      "command": "npx",
-      "args": ["-y", "@automattic/mcp-wordpress-remote@0.5.5"],
-      "env": {
-        "WP_API_URL": "https://your-site.example/wp-json/mcp/first-subscriptions",
-        "WP_API_USERNAME": "YOUR_WORDPRESS_LOGIN",
-        "WP_API_PASSWORD": "YOUR_APPLICATION_PASSWORD",
-        "OAUTH_ENABLED": "false"
-      }
-    }
-  }
-}
-```
-
-Replace the uppercase values in this local file. Do not commit it. The
-[WordPress remote proxy](https://www.npmjs.com/package/@automattic/mcp-wordpress-remote)
-forwards stdio to the site's HTTP endpoint with Basic authentication. The
-[MCP local-server guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers)
-describes Claude Desktop's configuration file and server loading.
-Reload Claude Desktop after saving the configuration.
-
-### Connect Codex
-
-Add this to `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.first-subscriptions]
-url = "https://your-site.example/wp-json/mcp/first-subscriptions"
-env_http_headers = { Authorization = "FIRST_MCP_AUTH" }
-```
-
-Launch Codex from the shell where you exported `FIRST_MCP_AUTH`. This sends the
-complete Basic header. `bearer_token_env_var` is for Bearer tokens and does not
-encode an application password. See the official
-[Codex MCP documentation](https://developers.openai.com/codex/mcp).
+`tests/wp/abilities.test.ts` runs the same exchange on every change.
 
 ## Read pages as Markdown
 
@@ -312,39 +346,3 @@ HTML pages, Markdown pages, `/llms.txt` and `robots.txt` send a
 ```php
 add_filter('first_content_signal', fn () => 'search=yes, ai-input=no, ai-train=no');
 ```
-
-### Verify with a real site
-
-The repository includes a protocol probe that initializes an MCP session, lists
-tool names, and calls a list tool. It prints response bodies without credentials:
-
-```sh
-./target/debug/first dev examples/pantry --no-watch --port 8794
-# Create an application password with the command above, then enter it privately.
-read -r -s -p 'WordPress username:application-password: ' FIRST_APP_PASSWORD
-printf '\n'
-export FIRST_APP_PASSWORD
-FIRST_SITE=http://localhost:8794 FIRST_APP=pantry \
-  node examples/subscriptions/scripts/mcp-proof.mjs
-unset FIRST_APP_PASSWORD
-```
-
-Pantry is used here because the subscriptions example currently encounters the
-compiler diagnostic recorded in its [README](../examples/subscriptions/README.md).
-That diagnostic prevents building or starting the subscriptions backend. The
-proof below concerns the shipped MCP integration, not a running subscriptions app.
-Client configuration keys above were checked against each client's linked
-reference. Those interactive client applications were not launched in this proof.
-
-Observed on a local WordPress Studio site rebuilt from main `ef0a42e3`, using
-the MCP Adapter bundled by `first build`:
-
-```jsonl
-{"endpoint":"http://localhost:8794/wp-json/mcp/first-pantry"}
-{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"prompts":{"listChanged":false},"resources":{"subscribe":false,"listChanged":false},"tools":{"listChanged":false}},"serverInfo":{"name":"Pantry","version":"0.3.0"},"instructions":"First app pantry"}}
-{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"pantry-locations-list"},{"name":"pantry-locations-get"},{"name":"pantry-locations-create"},{"name":"pantry-locations-update"},{"name":"pantry-locations-delete"},{"name":"pantry-items-list"},{"name":"pantry-items-get"},{"name":"pantry-items-create"},{"name":"pantry-items-update"},{"name":"pantry-items-delete"},{"name":"pantry-shopping-list-list"},{"name":"pantry-shopping-list-get"},{"name":"pantry-shopping-list-create"},{"name":"pantry-shopping-list-update"},{"name":"pantry-shopping-list-delete"},{"name":"pantry-consume"},{"name":"pantry-expiring-soon"},{"name":"pantry-media-list"},{"name":"pantry-media-get"},{"name":"pantry-media-delete"}]}}
-{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"{\"rows\":[]}"}],"isError":false,"structuredContent":{"rows":[]}}}
-```
-
-The probe reduces `tools/list` to tool names for readability. The initialize
-and call responses above are otherwise unmodified JSON-RPC responses.

@@ -88,4 +88,4 @@ or files: a converted project that compiles is a starting point, not a finished 
 - Never run a migration command with `--site` against a production site on your own.
 
 Reference: `docs/config-migration.md` (EmDash, Payload, Sanity), `docs/migrating-from-zero.md` and
-`docs/zero-08-parity.md` (Zero 0.8).
+`docs/zero-08-parity.md` (Zero 0.8; in the repository, not served by `docs_read`).

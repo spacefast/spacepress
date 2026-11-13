@@ -389,6 +389,20 @@ final class AppRouter
         foreach ($kind['params'] as $field => $param) {
             if ($field === 'id' && ctype_digit($value($param))) {
                 $where = [$spec['primaryKey'] => (int) $value($param)];
+            } elseif ($field === 'path' && ($spec['hierarchical'] ?? false)) {
+                // The whole path, parent by parent: a slug is unique among its siblings only.
+                $post = get_page_by_path($value($param), OBJECT, (string) $spec['wp']['postType']);
+                if (!$post instanceof \WP_Post) {
+                    return null;
+                }
+                // Under an unpublished page, a page is as unreachable as in the tree: its path
+                // would name the draft. Editors preview a draft's children in wp-admin.
+                foreach (get_post_ancestors($post) as $ancestor) {
+                    if (get_post_status($ancestor) !== 'publish') {
+                        return null;
+                    }
+                }
+                $where = [$spec['primaryKey'] => $post->ID];
             } elseif (($field === 'slug' || $field === 'path') && ($spec['slug'] ?? null) !== null) {
                 $parts = explode('/', $value($param));
                 $where = [$spec['slug'] => (string) end($parts)];

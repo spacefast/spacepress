@@ -45,7 +45,8 @@ final class Nav
     private static function items(string $kind): array
     {
         $viewer = Seam::viewer();
-        $key = $kind . ':' . ($viewer?->user['id'] ?? 0);
+        // Trusted code (no viewer) and an anonymous visitor read different rows: never share a key.
+        $key = $kind . ':' . ($viewer === null ? 'trusted' : ($viewer->user['id'] ?? 0));
         if (isset(self::$items[$key])) {
             return self::$items[$key];
         }
@@ -53,7 +54,8 @@ final class Nav
         $where = ($spec['drafts'] ?? false) ? ['status' => 'published'] : [];
         $rows = Db::instance()->findMany($kind, [
             'where' => $where,
-            'orderBy' => ['order' => 'asc'],
+            // The id breaks ties, so which items a section past the limit leaves out is stable.
+            'orderBy' => ['order' => 'asc', $spec['primaryKey'] => 'asc'],
             'limit' => self::LIMIT,
             'columns' => [$spec['primaryKey'] => true, $spec['title'] => true, 'parent' => true, 'order' => true],
         ], $viewer);
@@ -69,7 +71,8 @@ final class Nav
             $out[] = ['id' => $id, 'title' => (string) $row[$spec['title']], 'parent' => $row['parent'] === null ? null : (int) $row['parent'], 'order' => (int) $row['order'], 'href' => $path];
         }
         // Order, then title, so siblings with the same order keep a stable, readable order.
-        usort($out, static fn (array $a, array $b): int => [$a['order'], $a['title'], $a['id']] <=> [$b['order'], $b['title'], $b['id']]);
+        // Titles compare as people read them: case aside, numbers by value ("Step 9" before "Step 10").
+        usort($out, static fn (array $a, array $b): int => [$a['order'], strnatcasecmp($a['title'], $b['title']), $a['id']] <=> [$b['order'], 0, $b['id']]);
 
         return self::$items[$key] = $out;
     }
@@ -99,11 +102,8 @@ final class Nav
             foreach ($children[$parent] ?? [] as $item) {
                 $below = $depth > 1 ? $build($item['id'], $depth - 1) : [];
                 $open = $item['id'] === $current || array_filter($below, static fn (JsObject $c): bool => $c->p['current'] || $c->p['open']) !== [];
-                $node = ['id' => $item['id'], 'title' => $item['title'], 'href' => $item['href'], 'current' => $item['id'] === $current, 'open' => $open];
-                if ($depth > 1) {
-                    $node['children'] = new JsArray($below);
-                }
-                $out[] = new JsObject($node);
+                // Every level has `children`; below the last level the list is empty.
+                $out[] = new JsObject(['id' => $item['id'], 'title' => $item['title'], 'href' => $item['href'], 'current' => $item['id'] === $current, 'open' => $open, 'children' => new JsArray($below)]);
             }
             return $out;
         };
@@ -149,7 +149,7 @@ final class Nav
         $html = self::render($blocks);
         if ($html !== '') {
             self::listen();
-            self::$anchored[md5($html)] = true;
+            self::$anchored[md5($blocks)] = true;
         }
         $out = [];
         foreach (self::scan($html) as [$depth, $text, $id]) {
@@ -170,7 +170,9 @@ final class Nav
     /**
      * `the_content`, once headings() ran in this request: the same content, rendered for the page
      * (`<Content value={item.content} />`), gets the ids headings() reported, so its links land.
-     * do_blocks runs at priority 9; this runs right after it, on exactly that output.
+     * The content is recognised by its block markup, as `the_content` receives it, not by its
+     * rendered HTML: blocks with per-request ids (gallery, navigation, search) render differently
+     * each time. The ids are added last, after shortcodes and embeds, counting headings in order.
      */
     private static function listen(): void
     {
@@ -179,8 +181,16 @@ final class Nav
             return;
         }
         $on = true;
-        // Same priority as do_blocks, added later, so it runs on do_blocks' output.
-        add_filter('the_content', static fn (string $html): string => isset(self::$anchored[md5($html)]) ? self::headingIds($html) : $html, 9);
+        $marked = false;
+        add_filter('the_content', static function (string $source) use (&$marked): string {
+            $marked = isset(self::$anchored[md5($source)]);
+            return $source;
+        }, PHP_INT_MIN);
+        add_filter('the_content', static function (string $html) use (&$marked): string {
+            $mine = $marked;
+            $marked = false;
+            return $mine ? self::headingIds($html) : $html;
+        }, PHP_INT_MAX);
     }
 
     /**

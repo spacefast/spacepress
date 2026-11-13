@@ -81,7 +81,11 @@ Many Markdown pages are a kind, synced from a folder tree and rendered by one ca
 - `sync: "content/docs/**/*.md"` reads the folder tree. A file's name is its slug and its folder its parent; a folder's `index.md` is the page the folder stands for. Put `order` in front matter; siblings with the same order sort by title.
 - `first sync` carries it both ways: a page moved in wp-admin moves its file.
 
-<RepoFile path="tests/fixtures/docs-kind/first/app/docs/[...path]/page.tsx" />
+<RepoFile path="tests/fixtures/docs-kind/first/app/docs/[[...path]]/page.tsx" />
+
+A component can be used inside the Markdown as a block: its file lists it with `export const blocks = ["Callout"]`, and the Markdown writes `<Callout type="warning">…</Callout>` on lines of its own. In WordPress it is a block the editor inserts and edits, rendered through the component; `first sync` writes it back as the same tag. The test app's [`Callout.tsx`](https://github.com/spacefast/zero/blob/main/tests/fixtures/docs-kind/first/components/Callout.tsx) has two.
+
+Code fences are highlighted on the server when the page renders, in light and dark themes, with no script: ```` ```ts title="first.config.ts" {2} ```` titles the block and marks line 2, and blocks that share `group="install"` show as tabs. They are WordPress code blocks underneath, so the editor edits them and `first sync` writes the fence back.
 
 `"first/content"` gives the page its navigation, read as the visitor from the published tree: `nav(kind, item)` (the tree, with the current page and its ancestors marked), `pager(kind, item)` (previous and next, reading the tree top to bottom) and `headings(item)` (the `##` and `###` headings, with the ids the page renders them with).
 

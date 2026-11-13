@@ -14,6 +14,7 @@ first/app/
 ├── not-found.tsx              # the 404 for URLs no route serves, and for notFound()
 ├── error.tsx                  # a render error (logged; the page shows only this)
 ├── about/page.tsx             # /about
+├── colophon/page.md           # /colophon: a WordPress Page an editor can change
 ├── (marketing)/pricing/page.tsx  # /pricing: a group adds no segment
 ├── notes/page.tsx             # /notes?page=2, with export const search
 ├── notes/[slug]/page.tsx      # /notes/<slug>: params.slug
@@ -26,6 +27,7 @@ first/app/
 | Name | Meaning |
 |---|---|
 | `page.tsx` | A route. It may also export `POST`, `PUT`, `PATCH` or `DELETE` handlers for its URL. |
+| `page.md` | A route whose content is a WordPress Page (see [Markdown pages](#markdown-pages)). |
 | `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page. |
 | `layout.tsx` | Wraps every page below it, outermost first. May export `guard`. |
 | `not-found.tsx` | At the root only. |
@@ -92,13 +94,85 @@ checked against the app's routes and `PageProps<"notes/[slug]">` types
 { "compilerOptions": { "jsx": "react-jsx", "jsxImportSource": "first" } }
 ```
 
+## Markdown pages
+
+```md
+---
+title: Colophon
+description: How this site is made.
+---
+
+Set in a system font, served by **WordPress**.
+```
+
+A `page.md` is a real WordPress Page. The file is its first version: the first
+request after a build stores the Markdown as blocks in a Page, with the front
+matter as its title, excerpt and status. From then on an editor changes it in
+wp-admin, in the block editor, and the route shows what they saved.
+
+- It renders inside the `layout.tsx` files above it, and a layout's `guard`
+  protects it, like a `page.tsx`. Its `<title>` and description come from the
+  stored Page, so an editor's change to either shows.
+- Front matter: `title`, `description`, `status` (`published` or `draft`),
+  `canonical` and `robots: { index, follow }`. Without `title`, the first
+  `# Heading` is the title. Any other key is a build error at its line: fields
+  of your own belong to a kind with `sync`, where they have a type.
+- A later version of the file replaces the Page only while nobody edited the
+  Page on the site. An edited Page keeps the site's version, and the log names
+  the file. Removing the file leaves the Page in WordPress; nothing is deleted.
+  The exception is taking a page away from visitors: a file that newly says
+  `status: draft`, or moves under a `guard`, unpublishes an edited Page too,
+  and leaves its text alone.
+- The route's path is the Page's address. WordPress's own address for it
+  redirects there, and the editor's Preview button shows unsaved changes on the route.
+- A draft is a 404 for visitors and shows to people who can edit it. A Page
+  under a `guard` is stored private, so WordPress's REST API, search, sitemap
+  and feeds never list it. A password set in wp-admin locks the body for every
+  visitor.
+- It has a Markdown twin at `/colophon.md` and a line in `/llms.txt` when
+  anyone may read it, and none otherwise.
+- A `page.md` is one page with one URL, so it can't sit below `[slug]`. For
+  many Markdown files, sync a folder into a kind and render it from a `page.tsx`.
+
+The ruling and its alternatives are in
+[the decision](decisions/2026-11-13-content-pages.md).
+
+## Stylesheets and images
+
+```tsx
+// first/app/layout.tsx
+import "./site.css";
+// first/app/notes/[slug]/page.tsx
+import styles from "./note.module.css";
+import compass from "./compass.svg";
+
+<article className={styles.note}><img src={compass} alt="" /></article>
+```
+
+- `import "./x.css"` links the stylesheet on every page whose page or layouts
+  import it, directly or through a component. Each file is linked once, in
+  import order, the root layout's first.
+- `import styles from "./x.module.css"` renames each class to
+  `<file stem>_<class>` (`note.module.css`'s `.dek` is `note_dek`), and
+  `styles.dek` is that name. If two modules define the same class name, the
+  later one by path gets a number (`note_dek2`). A `"use client"` component may
+  import a CSS module, and its class can depend on state.
+- `import logo from "./x.svg"` gives the file's URL.
+- Every file is copied into the app plugin under `first/app/assets/`, named by a
+  hash of its bytes, with a year's cache. A changed file gets a new URL.
+- These are refused at the line, with the fix: `@import` (import each file from
+  TSX), a relative `url(...)` (put the file in `public/` and write
+  `url(/name.png)`), `:global`, `:local` and `composes` in a module, and an SVG
+  imported by a `"use client"` component (pass the URL as a prop). Other files,
+  binary images and fonts among them, go in `public/`, by their URL.
+
 ## On WordPress
 
 The router answers on `template_redirect`, before the theme. wp-admin, login,
 `/wp-json`, feeds, robots and First's own paths never reach it. When
 `first/app/` exists, a URL no route serves renders `not-found.tsx`. URLs
 WordPress itself resolves (a post, a category archive) keep the theme until a
-route serves them. Responses are `private, no-store` for now.
+route serves them.
 
 ## The `pages/` pipeline (being replaced)
 
@@ -311,7 +385,7 @@ page runs:
 | `item.titel` | `unknown_field` (with a suggestion) | the schema's field name |
 | `import { db } from "first"` | `trusted_db` | `load({ content })` |
 | async components, `Date.now()`, `new Date()`, `Math.random()`, browser globals | `async_component`, `dynamic_call`, `browser_global` | `load()`, stored fields, an island |
-| catch-all, parallel and intercepting routes, `template.tsx`, `page.md` | `route_shape` | supported files |
+| catch-all, parallel and intercepting routes, `template.tsx` | `route_shape` | supported files |
 
 Markup errors come from First Blocks' own mapper and serializer (for example
 `style_prop_unsupported`, `unmappable_element`); pages reuse it unchanged.

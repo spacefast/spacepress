@@ -363,15 +363,19 @@ pub fn render(schema: &Schema) -> String {
                 None => "null".into(),
             };
             format!(
-                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'kind' => {kind}]",
+                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}], 'kind' => {kind}]",
                 php_str(&r.id),
                 php_str(&r.pattern),
                 opt(&r.page),
                 opt(&r.handler),
                 r.layouts.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", "),
-                opt(&r.error)
+                opt(&r.error),
+                r.styles.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", ")
             )
         };
+        if app.legacy_routes {
+            out.push_str("        'legacyRoutes' => true,\n");
+        }
         out.push_str("        'routes' => [\n");
         for r in &app.routes {
             let _ = writeln!(out, "            {},", route(r));
@@ -391,6 +395,9 @@ pub fn render(schema: &Schema) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+        if !app.content.is_empty() {
+            out.push_str(&crate::content_page::schema_php(app));
+        }
         out.push_str("        'files' => [\n");
         for (path, f) in &app.files {
             let methods = f

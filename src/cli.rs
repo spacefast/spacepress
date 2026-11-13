@@ -23,7 +23,7 @@ pub struct Args {
     pub(crate) frozen: bool,
 }
 
-const COMMANDS: &str = include_str!("../runtime/First/Cli/commands.json");
+pub(crate) const COMMANDS: &str = include_str!("../runtime/First/Cli/commands.json");
 
 struct Entry {
     name: String,
@@ -157,6 +157,7 @@ pub fn main() -> ExitCode {
             match rest.first() {
                 None => print!("{}", help()),
                 Some(name) => match usage(&rest.join(" ")).or_else(|| usage(name)) {
+                    Some(text) if name == "add" => print!("{text}\n{}", crate::commands::add::modules()),
                     Some(text) => println!("{text}"),
                     None => {
                         eprint!("no command {name}\n{}", help());
@@ -178,6 +179,7 @@ pub fn main() -> ExitCode {
             ExitCode::from(2)
         }
         "deploy" => crate::commands::deploy::adapter(&rest),
+        "add" => crate::commands::add::cli(&rest),
         "abilities" if rest.first().is_some_and(|sub| sub == "pull") => crate::commands::abilities::cli(&rest),
         "abilities" if rest.first().is_some_and(|sub| !sub.starts_with('-')) => {
             eprintln!(
@@ -193,6 +195,7 @@ pub fn main() -> ExitCode {
             ExitCode::from(2)
         }
         "sync" => crate::commands::sync(&rest),
+        "mcp" => crate::commands::mcp::cli(&rest),
         "wp" => {
             let mut rest = rest;
             exit(crate::commands::site::take_site(&mut rest).and_then(|site| {

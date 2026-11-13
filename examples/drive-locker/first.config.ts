@@ -1,6 +1,6 @@
 import {
-  action, date, db, defineConfig, defineRelations, email, HttpError,
-  integer, job, jobs, json, table, text, timestamp, userProjection, type AccessConfig, number, select,
+  action, date, db, defineConfig, email, HttpError,
+  integer, job, jobs, json, table, text, timestamp, userProjection, type AccessConfig, number, select, ref,
 } from "first";
 import { HEALTH } from "./first/lib/health";
 
@@ -29,7 +29,7 @@ export const drives = table({
   interface: text().min(1).max(80),
   purchasedOn: date().optional(),
   warrantyUntil: date().optional(),
-  placeId: integer().references(() => places.id, { onDelete: "set null" }).optional(),
+  placeId: ref(places).optional(),
   status: select(["in-use", "spare", "failed", "retired"]).default("spare"),
   notes: text({ multiline: true }).optional(),
   tags: json<string[]>().$default(() => []),
@@ -38,7 +38,7 @@ export const drives = table({
 
 export const healthReadings = table({
   ownerId,
-  driveId: integer().references(() => drives.id, { onDelete: "cascade" }),
+  driveId: ref(drives).onDelete("cascade"),
   readOn: date(),
   powerOnHours: integer().min(0),
   wearPercent: number().min(0).max(100),
@@ -48,7 +48,7 @@ export const healthReadings = table({
 
 export const contents = table({
   ownerId,
-  driveId: integer().references(() => drives.id, { onDelete: "cascade" }),
+  driveId: ref(drives).onDelete("cascade"),
   description: text().min(1).max(500),
   usedGb: number().min(0),
   lastBackupOn: date().optional(),
@@ -60,16 +60,6 @@ const members = userProjection({
 }, { access: { read: "self", create: false, update: "self", delete: false } });
 
 const tables = { drives, places, healthReadings, contents };
-const relations = defineRelations({ ...tables, members }, (r) => ({
-  drives: {
-    place: r.one.places({ from: r.drives.placeId, to: r.places.id }),
-    healthReadings: r.many.healthReadings(),
-    contents: r.many.contents(),
-  },
-  places: { drives: r.many.drives() },
-  healthReadings: { drive: r.one.drives({ from: r.healthReadings.driveId, to: r.drives.id }) },
-  contents: { drive: r.one.drives({ from: r.contents.driveId, to: r.drives.id }) },
-}));
 
 function actor(id: number | undefined): number {
   if (id === undefined) throw new HttpError(401, "unauthenticated", "Sign in to your drive locker.");
@@ -99,7 +89,6 @@ export default defineConfig({
   name: "drive-locker",
   tables,
   users: { members },
-  relations,
   hooks: {
     places: {
       beforeCreate(data, ctx) {
@@ -220,11 +209,11 @@ export default defineConfig({
         const ownerId = actor(ctx.user?.id);
         const needle = query.trim().toLowerCase();
         if (!needle) throw new HttpError(422, "invalid_input", "Enter a serial, label, model or content description.");
-        const inventory = await db.query.drives.findMany({ where: { ownerId }, columns: { serialKey: false }, with: { place: true, contents: true }, orderBy: { label: "asc" } });
+        const inventory = await db.query.drives.findMany({ where: { ownerId }, columns: { serialKey: false }, with: { placeId: true, contents: true }, orderBy: { label: "asc" } });
         return inventory.filter((drive) => drive.serial.toLowerCase().includes(needle) ||
           drive.label.toLowerCase().includes(needle) || drive.model.toLowerCase().includes(needle) ||
           drive.contents.some((entry) => entry.ownerId === ownerId && entry.description.toLowerCase().includes(needle)))
-          .map((drive) => ({ drive, place: drive.place, contents: drive.contents }));
+          .map((drive) => ({ drive, place: drive.placeId, contents: drive.contents }));
       },
     }),
     capacityReport: action({
@@ -261,7 +250,7 @@ export default defineConfig({
         const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
         return await db.query.drives.findMany({
           where: { ownerId: actor(ctx.user?.id), warrantyUntil: { gte: today, lte: cutoff }, status: { ne: "retired" } },
-          columns: { serialKey: false }, orderBy: { warrantyUntil: "asc" }, with: { place: true },
+          columns: { serialKey: false }, orderBy: { warrantyUntil: "asc" }, with: { placeId: true },
         });
       },
     }),

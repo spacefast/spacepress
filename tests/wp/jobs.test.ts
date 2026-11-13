@@ -214,6 +214,18 @@ test("once() and Idempotency-Key replay instead of running again", async () => {
   assert.equal((await res.json()).code, "idempotency_mismatch");
 });
 
+test("an Idempotency-Key belongs to the run it was sent with, not to abilities that run calls", async () => {
+  const twice = await fetch(`${api}/actions/jobsTwice`, {
+    method: "POST",
+    headers: { ...auth("editor"), "content-type": "application/json", "idempotency-key": `outer-${run}` },
+    body: JSON.stringify({ note: `twice-${run}` }),
+  });
+  const body = await twice.json();
+  // Before, both inner runs inherited the outer key: the second failed with 409 idempotency_mismatch.
+  assert.equal(twice.status, 200, JSON.stringify(body));
+  assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_first_job_notes WHERE title IN ('once twice-${run}-a', 'once twice-${run}-b')`)[0].n, "2", "both inner runs ran");
+});
+
 // ---- webhooks (D2): a local receiver the WordPress container reaches through host.docker.internal.
 
 test("a committed write reaches a local receiver through Action Scheduler, signed, retried after a 500", async (t) => {

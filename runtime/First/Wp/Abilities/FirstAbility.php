@@ -16,8 +16,8 @@ final class FirstAbility extends \WP_Ability
 {
     public function get_meta_item(string $key, $default_value = null)
     {
-        if ($key === 'show_in_rest' && Facade::dispatching()) {
-            return true;
+        if ($key === 'show_in_rest' && Facade::running() === $this->get_name()) {
+            return true; // the one named elevation: the app's own API runs its own ability
         }
 
         return parent::get_meta_item($key, $default_value);

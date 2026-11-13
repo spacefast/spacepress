@@ -100,7 +100,7 @@ export interface DrivePatch {
 	replacementNeededAt?: string | null;
 }
 export interface DriveWith {
-	place?: true | {
+	placeId?: true | {
 		where?: PlaceFilter;
 		orderBy?: PlaceOrder;
 		limit?: number;
@@ -290,7 +290,7 @@ export interface DriveFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | PlaceFilter;
 	status?: "in-use" | "spare" | "failed" | "retired" | null | {
 		eq?: "in-use" | "spare" | "failed" | "retired" | null;
 		ne?: "in-use" | "spare" | "failed" | "retired" | null;
@@ -341,7 +341,6 @@ export interface DriveFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	place?: true | PlaceFilter;
 	healthReadings?: true | HealthReadingFilter;
 	contents?: true | ContentFilter;
 	AND?: DriveFilter[];
@@ -466,7 +465,7 @@ export interface HealthReadingPatch {
 	tempC?: number;
 }
 export interface HealthReadingWith {
-	drive?: true | {
+	driveId?: true | {
 		where?: DriveFilter;
 		orderBy?: DriveOrder;
 		limit?: number;
@@ -510,7 +509,7 @@ export interface HealthReadingFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | DriveFilter;
 	readOn?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -571,7 +570,6 @@ export interface HealthReadingFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	drive?: true | DriveFilter;
 	AND?: HealthReadingFilter[];
 	OR?: HealthReadingFilter[];
 	NOT?: HealthReadingFilter;
@@ -600,7 +598,7 @@ export interface ContentPatch {
 	lastBackupOn?: string | null;
 }
 export interface ContentWith {
-	drive?: true | {
+	driveId?: true | {
 		where?: DriveFilter;
 		orderBy?: DriveOrder;
 		limit?: number;
@@ -644,7 +642,7 @@ export interface ContentFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | DriveFilter;
 	description?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -685,7 +683,6 @@ export interface ContentFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	drive?: true | DriveFilter;
 	AND?: ContentFilter[];
 	OR?: ContentFilter[];
 	NOT?: ContentFilter;
@@ -804,12 +801,11 @@ export type WhereIsOutput = ({
 		interface: string;
 		purchasedOn: string | null;
 		warrantyUntil: string | null;
-		placeId: number | null;
+		placeId: Place | null;
 		status: "in-use" | "spare" | "failed" | "retired";
 		notes: string | null;
 		tags: string[];
 		replacementNeededAt: string | null;
-		place: Place | null;
 		contents: Content[];
 	};
 	place: Place | null;
@@ -854,12 +850,11 @@ export type WarrantyExpiringOutput = ({
 	interface: string;
 	purchasedOn: string | null;
 	warrantyUntil: string | null;
-	placeId: number | null;
+	placeId: Place | null;
 	status: "in-use" | "spare" | "failed" | "retired";
 	notes: string | null;
 	tags: string[];
 	replacementNeededAt: string | null;
-	place: Place | null;
 })[];
 export interface RetireInput {
 	driveId: number;
@@ -956,7 +951,7 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly place: {
+				readonly placeId: {
 					readonly kind: "one";
 					readonly collection: "places";
 					readonly optional: true;
@@ -1000,10 +995,10 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly drive: {
+				readonly driveId: {
 					readonly kind: "one";
 					readonly collection: "drives";
-					readonly optional: true;
+					readonly optional: false;
 				};
 			};
 			readonly media: readonly [];
@@ -1017,10 +1012,10 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly drive: {
+				readonly driveId: {
 					readonly kind: "one";
 					readonly collection: "drives";
-					readonly optional: true;
+					readonly optional: false;
 				};
 			};
 			readonly media: readonly [];

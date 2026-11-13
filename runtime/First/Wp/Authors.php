@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace First\Wp;
 
 use First\Access;
+use First\HttpError;
 use First\Schema;
 use First\Viewer;
 
@@ -54,15 +55,46 @@ final class Authors
      * rest_pre_dispatch: a visitor who isn't signed in reads no user from core's routes, listed or one
      * by one, directly, through `?rest_route=`, a batch or an embed. Core answers a signed-out request
      * for a user it won't show this way.
+     *
+     * One case is left to its own rule: First's API reading an app's users kind. There First selects
+     * the rows by the kind's read rule and returns its own row for each ({@see UserMeta}), so a
+     * signed-out visitor gets what that rule gives anyone, which is nothing unless the app says so.
      */
     private static function route(Schema $schema, mixed $result, mixed $request): mixed
     {
         if ($result !== null || !$request instanceof \WP_REST_Request || !preg_match(self::USERS, $request->get_route())
-            || is_user_logged_in() || self::public($schema)) {
+            || is_user_logged_in() || self::public($schema) || self::ruled($schema, $request)) {
             return $result;
         }
 
         return new \WP_Error('rest_user_cannot_view', __('Sorry, you are not allowed to list users.'), ['status' => rest_authorization_required_code()]);
+    }
+
+    /**
+     * Whether this is First's API reading the app's users kind, where the kind's read rule decides. A
+     * list is the rule's to answer: its own 401 when it needs a signed-in user, else the rows it gives
+     * a signed-out viewer. One user is passed on only when the rule
+     * gives that row to a signed-out viewer; every other id, real or not, gets the same 401, so the
+     * answer doesn't say which ids exist.
+     */
+    private static function ruled(Schema $schema, \WP_REST_Request $request): bool
+    {
+        $users = $schema->auth()['collection'] ?? null;
+        if ($users === null || !Facade::dispatching() || $request->get_method() !== 'GET') {
+            return false;
+        }
+        $route = strtolower(untrailingslashit($request->get_route()));
+        if ($route === '/wp/v2/users') {
+            return true;
+        }
+        if (!preg_match('#^/wp/v2/users/(\d+)$#', $route, $m)) {
+            return false;
+        }
+        try {
+            return Plugin::instance()?->db()->findFirst($users, ['where' => ['id' => (int) $m[1]]], new Viewer(null)) !== null;
+        } catch (HttpError) {
+            return false;
+        }
     }
 
     /**

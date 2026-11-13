@@ -17,6 +17,9 @@ pub struct Args {
     pub(crate) site: Option<String>,
     pub(crate) json: bool,
     pub(crate) no_watch: bool,
+    /// `first dev`: run in the background, or stay attached whatever is driving the command.
+    pub(crate) detach: bool,
+    pub(crate) foreground: bool,
     pub(crate) allow_destructive: bool,
     pub(crate) preserve_data: Option<PathBuf>,
     /// Refuse plugin grants the committed lock doesn't hold (also on whenever `CI` is set).
@@ -96,6 +99,8 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
         site: None,
         json: false,
         no_watch: false,
+        detach: false,
+        foreground: false,
         allow_destructive: false,
         preserve_data: None,
         frozen: false,
@@ -106,6 +111,9 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
         match a.as_str() {
             "stop" | "status" if command == "dev" && args.rest.is_empty() => args.rest.push(a),
             "--no-watch" if command == "dev" => args.no_watch = true,
+            "--detach" if command == "dev" && args.rest.is_empty() => args.detach = true,
+            "--foreground" if command == "dev" && args.rest.is_empty() => args.foreground = true,
+            "--json" if command == "dev" && args.rest.first().is_some_and(|mode| mode == "status") => args.json = true,
             "--allow-destructive" if command == "dev" => args.allow_destructive = true,
             "--preserve-data" if command == "build" => {
                 args.preserve_data = Some(PathBuf::from(
@@ -195,6 +203,7 @@ pub fn main() -> ExitCode {
             ExitCode::from(2)
         }
         "sync" => crate::commands::sync(&rest),
+        "pull" => crate::commands::pull::cli(&rest),
         "mcp" => crate::commands::mcp::cli(&rest),
         "init" => crate::commands::init::cli(&rest),
         "wp" => {

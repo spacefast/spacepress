@@ -48,7 +48,23 @@ final class PostsController extends \WP_REST_Posts_Controller
 
     public function get_items($request)
     {
-        return $this->readRequest($request, fn () => $this->readItems($request));
+        if (!Facade::dispatching() || ($viewer = CoreAccess::viewer()) === null) {
+            return $this->readRequest($request, fn () => $this->readItems($request));
+        }
+        // The API reshapes each item into First's row: read the whole page's rows in one query.
+        $prefetch = function (mixed $posts, mixed $query) use ($viewer): mixed {
+            if (is_array($posts) && $query instanceof \WP_Query && $query->get('post_type') === $this->post_type) {
+                Facade::prefetch($this->collection, array_map(static fn ($p) => (int) ($p instanceof \WP_Post ? $p->ID : $p), $posts), $viewer);
+            }
+
+            return $posts;
+        };
+        add_filter('the_posts', $prefetch, 10, 2);
+        try {
+            return $this->readRequest($request, fn () => $this->readItems($request));
+        } finally {
+            remove_filter('the_posts', $prefetch, 10);
+        }
     }
 
     private function readItems(\WP_REST_Request $request)
@@ -147,6 +163,17 @@ final class PostsController extends \WP_REST_Posts_Controller
     public function check_read_permission($post)
     {
         return parent::check_read_permission($post) && current_user_can('read_post', $post->ID);
+    }
+
+    /**
+     * The API reshapes each item into First's row and never reads core's `_links` (HAL links; for a
+     * post, one revisions query per item). Its own dispatches leave them out; core's clients keep them.
+     */
+    public function get_fields_for_response($request)
+    {
+        $fields = parent::get_fields_for_response($request);
+
+        return Facade::dispatching() ? array_values(array_diff($fields, ['_links'])) : $fields;
     }
 
     public function prepare_item_for_response($item, $request)

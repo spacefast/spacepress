@@ -288,9 +288,14 @@ final class WpSite
         // and a fatal error as text, not WordPress's "critical error" page.
         ini_set('display_errors', 'stderr');
         add_filter('wp_php_error_message', static fn (string $message, array $error): string => $error['message'] . ' in ' . $error['file'] . ':' . $error['line'], 10, 2);
-        add_filter('wp_die_handler', static fn () => static function (mixed $message): never {
+        // WordPress reports a fatal error through wp_die() with `exit => false`, from inside a
+        // shutdown function. Exiting there would skip every shutdown function registered later:
+        // the suite's own cleanup, so its php -S child and its site directory would stay behind.
+        add_filter('wp_die_handler', static fn () => static function (mixed $message, mixed $title = '', mixed $args = []): void {
             fwrite(STDERR, 'wp_die: ' . (is_string($message) ? $message : json_encode($message)) . "\n");
-            exit(255);
+            if (!is_array($args) || ($args['exit'] ?? true)) {
+                exit(255);
+            }
         });
         $plugin = \First\Wp\Runtime::plugin() ?? throw new RuntimeException('the First app did not boot: ' . $this->debugLog());
         if ($plugin->unavailable() !== null) {
@@ -355,6 +360,12 @@ final class WpSite
         }
 
         return $out;
+    }
+
+    /** The php -S child's process id, or null when no server runs. */
+    public function serverPid(): ?int
+    {
+        return $this->server === null ? null : (proc_get_status($this->server)['pid'] ?? null);
     }
 
     /** Whether the php -S child is still running. */

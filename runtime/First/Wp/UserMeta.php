@@ -63,7 +63,9 @@ final class UserMeta
                 }
                 $missing = new \WP_Error('rest_user_invalid_id', __('Invalid user ID.'), ['status' => 404]);
                 if ($allowed !== true) {
-                    return is_wp_error($allowed) && $allowed->get_error_code() === 'rest_forbidden_context' ? $allowed : $missing;
+                    // Signed out, the caller is asked to sign in (401), as First's read rule answers
+                    // an anonymous viewer; signed in, a user it may not read is a missing one.
+                    return get_current_user_id() === 0 || (is_wp_error($allowed) && $allowed->get_error_code() === 'rest_forbidden_context') ? $allowed : $missing;
                 }
                 $viewer = CoreAccess::viewer();
                 try {

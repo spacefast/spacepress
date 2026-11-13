@@ -72,7 +72,8 @@ final class Authors
 
     /**
      * Whether this is First's API reading the app's users kind, where the kind's read rule decides. A
-     * list holds the rows the rule gives a signed-out viewer. One user is passed on only when the rule
+     * list is the rule's to answer: its own 401 when it needs a signed-in user, else the rows it gives
+     * a signed-out viewer. One user is passed on only when the rule
      * gives that row to a signed-out viewer; every other id, real or not, gets the same 401, so the
      * answer doesn't say which ids exist.
      */

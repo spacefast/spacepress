@@ -122,10 +122,11 @@ test("the users kind: rows as First reads them, writes through First's rules, cr
   assert.deepEqual([own.json.data.email, own.json.data.role, own.json.data.name, own.json.data.notes], [trusted.email, "subscriber", trusted.name, {}]);
   assert.equal((await f("GET", `/members/${harness.users.admin.id}`, { as: "subscriber" })).status, 404);
   assert.deepEqual((await f("GET", "/members", { as: "subscriber" })).json.data.map((m: any) => m.id), [sub], "the list holds what `self` allows");
-  // Signed out, the kind's read rule still decides on First's API: `self` gives a visitor no row, and
-  // one user is the same 401 whether the id exists or not. Core's own route lists nobody at all.
+  // Signed out, the kind's read rule still decides on First's API: `self` asks a visitor to sign in
+  // (First's own answer, naming the kind), and one user is the same 401 whether the id exists or not.
+  // Core's own route lists nobody at all.
   const anonymous = await f("GET", "/members");
-  assert.deepEqual([anonymous.status, anonymous.json.data], [200, []]);
+  assert.deepEqual([anonymous.status, anonymous.json.code, anonymous.json.detail], [401, "unauthenticated", "Sign in to do read members"]);
   for (const id of [sub, harness.users.admin.id, 99999999]) {
     const one = await f("GET", `/members/${id}`);
     assert.deepEqual([one.status, one.json.code], [401, "unauthenticated"], `member ${id}`);

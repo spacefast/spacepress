@@ -10103,7 +10103,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "NOT" => self.filter(table, v, allow_relations)?,
                 name => {
                     let c = &self.schema.collections[table];
-                    if let Some(col) = c.columns.get(name) {
+                    // A `ref()` field is both the id column and the relation: an object of other
+                    // than field operators filters through the relation.
+                    let through = c.relations.contains_key(name)
+                        && (!c.columns.contains_key(name)
+                            || matches!(&v.kind, ExprKind::Object(ps) if !ps.is_empty() && ps.iter().any(|p| !matches!(p, Prop::KV(PropKey::Static(k), _) if FILTER_OPS.contains(&k.as_str())))));
+                    if let Some(col) = c.columns.get(name).filter(|_| !through) {
                         let col = col.clone();
                         let editor = c.editor;
                         self.field_filter(&col, v, editor)?

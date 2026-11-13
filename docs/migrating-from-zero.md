@@ -415,7 +415,7 @@ field becomes a column:
 | `datetime` | `timestamp()` |
 | `enum` / `enum` + `multiple` | `select([...])` / `select([...]).many()` |
 | `media` / `media` + `multiple` | `media()` / `media().many()` |
-| `reference` to `projects` | `projectId: integer().references(...)` plus a `project` relation |
+| `reference` named `project` to `projects` | `projectId: ref(projects)` (`with: { projectId: true }` loads the row) |
 
 Original Zero kept a deleted target's id in a reference. The new Zero doesn't
 keep dangling ids: an optional reference is cleared when its target goes

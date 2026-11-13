@@ -22,7 +22,7 @@ software. The API will move. Read [Status](#status) before you build on it.
 // first.config.ts
 import {
   collection, table, text, richText, slug, integer, timestamp, media,
-  defineRelations, defineConfig, action, db, HttpError,
+  ref, defineConfig, action, db, HttpError,
 } from "first";
 
 export const authors = collection({
@@ -34,7 +34,7 @@ export const posts = collection({
   title: text().max(120),
   slug: slug({ source: "title" }).optional(),
   body: richText().optional(),
-  authorId: integer().references(() => authors.id, { onDelete: "set null" }).optional(),
+  writer: ref(authors).optional(),
   updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()),
 }, {
   content: "body",
@@ -43,21 +43,14 @@ export const posts = collection({
 
 export const collections = { authors, posts };
 export const stock = table({
-  postId: integer().references(() => posts.id).optional(),
+  post: ref(posts).optional(),
   quantity: integer().default(0),
 });
 export const tables = { stock };
 
-export const relations = defineRelations({ ...collections, ...tables }, (r) => ({
-  posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }) },
-  authors: { posts: r.many.posts() },
-  stock: { post: r.one.posts({ from: r.stock.postId, to: r.posts.id }) },
-}));
-
 export default defineConfig({
   name: "journal",
   collections, tables,
-  relations,
   hooks: {
     posts: {
       beforeCreate(data) {
@@ -89,7 +82,7 @@ built 2 collections, 0 globals, 1 hooks, 1 actions -> first/dist/wp-content in 6
 | You get | Where |
 |---|---|
 | MySQL migrations, diffed against the last build | `first/_generated/migrations/0001_init.sql` |
-| A typed client: `first.posts.list({ with: { author: true } })` and friends | `first/_generated/client/` |
+| A typed client: `first.posts.list({ with: { writer: true } })` and friends | `first/_generated/client/` |
 | Editor types, so `db` in your hooks knows your schema | `first/_generated/db.d.ts` |
 | An HTTP API for every collection, global and action, with relations loaded through `with`, over WordPress's REST routes | `/__first/api/v1/...` |
 | Sign-in, sessions, roles, guests, passkeys and MFA | the `first-identity` plugin |
@@ -209,10 +202,10 @@ const first = createClient({
 });
 
 const author = await first.authors.create({ name: "Alice" });
-const post = await first.posts.create({ title: "  Hello, First  ", authorId: author.id });
+const post = await first.posts.create({ title: "  Hello, First  ", writer: author.id });
 console.log(post.slug, post.status);                       // hello-first published
-const posts = await first.posts.list({ with: { author: true }, orderBy: { updatedAt: "desc" } });
-console.log(posts[0]?.author?.name);                       // Alice
+const posts = await first.posts.list({ with: { writer: true }, orderBy: { updatedAt: "desc" } });
+console.log(posts[0]?.writer?.name);                       // Alice
 console.log(await first.actions.publishedCount({}));        // { count: 1 }
 ```
 

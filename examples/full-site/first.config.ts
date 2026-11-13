@@ -1,6 +1,6 @@
 // A small editorial site: the config holds the collections and access rules, first/app/ the TSX
 // pages and HTTP routes, and first/actions.ts the public `cheer` action. Pages read as the visitor.
-import { collection, table, text, integer, richText, slug, timestamp, defineConfig, defineRelations } from "first";
+import { collection, table, text, integer, richText, slug, timestamp, defineConfig, ref } from "first";
 
 const STAFF = ["author", "editor", "admin"];
 
@@ -28,19 +28,13 @@ export const notes = collection({
 
 // Reader applause per note. Anyone may read counts; only the cheer action writes them.
 export const cheers = table({
-  noteId: integer().unique().references(() => notes.id, { onDelete: "cascade" }),
+  noteId: ref(notes).unique().onDelete("cascade"),
   count: integer().default(0),
 }, { access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
-
-export const relations = defineRelations({ notes, cheers }, (r) => ({
-  notes: { cheers: r.many.cheers() },
-  cheers: { note: r.one.notes({ from: r.cheers.noteId, to: r.notes.id, optional: false }) },
-}));
 
 export default defineConfig({
   name: "fullsite",
   collections: { notes },
   tables: { cheers },
-  relations,
   admin: false,
 });

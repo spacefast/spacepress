@@ -212,6 +212,71 @@ fn refuses_with_pages(carried: &str) {
     assert!(!work.path().join("out").exists(), "{carried}: nothing is written");
 }
 
+/// Rewrites one file of a copy of the 0.3.0 capture and re-hashes the app bundle, as a client that
+/// predates the rename would have captured that source.
+fn edited_capture(work: &Path, path: &str, edit: impl FnOnce(&str) -> String) -> PathBuf {
+    let bundle = work.join("edited");
+    copy_dir(&Path::new(FIXTURE).join("sources"), &bundle);
+    let mut app: serde_json::Value = serde_json::from_slice(&fs::read(bundle.join("app.zero.json")).unwrap()).unwrap();
+    let source = app["files"][path].as_str().unwrap().to_string();
+    app["files"][path] = edit(&source).into();
+    let bytes = serde_json::to_vec(&app).unwrap();
+    fs::write(bundle.join("app.zero.json"), &bytes).unwrap();
+    let mut manifest = manifest(&bundle);
+    manifest["app_sha256"] = {
+        use sha2::Digest;
+        sha2::Sha256::digest(&bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+            .into()
+    };
+    fs::write(bundle.join("manifest.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
+    bundle
+}
+
+/// The 0.3.0 reading keeps `.references()`, to `id` or to another unique key, and `defineRelations`
+/// (docs/decisions/2026-11-11-authoring-surface.md, rulings 21 and 22): the schema they compile to is
+/// the shape the runtime's non-id reference checks (tests/php) are written against.
+#[test]
+fn a_zero_capture_keeps_its_references_and_relations() {
+    let work = tempfile::tempdir().unwrap();
+    let bundle = edited_capture(work.path(), "zero.config.ts", |source| {
+        source
+            .replace(
+                "import { collection, table,",
+                "import { collection, table, defineRelations,",
+            )
+            .replace(
+                "export const pages = collection({",
+                "export const links = table({\n  noteId: integer().notNull().references(() => notes.id, { onDelete: \"cascade\" }),\n  noteSlug: text().max(191).references(() => notes.slug),\n});\nexport const relations = defineRelations({ notes, links }, (r) => ({\n  links: { note: r.one.notes({ from: r.links.noteId, to: r.notes.id, optional: false }) },\n  notes: { links: r.many.links() },\n}));\n\nexport const pages = collection({",
+            )
+            .replace("  tables: { notes },", "  tables: { notes, links },\n  relations,")
+    });
+    let out = work.path().join("out");
+    first::bundle::compile(&bundle, &out, &bundle, None).unwrap();
+    let schema = std::process::Command::new("php")
+        .args(["-r", "echo json_encode(require $argv[1]);"])
+        .arg(out.join("plugins/first-app-notes/first/app/schema.php"))
+        .output()
+        .unwrap();
+    assert!(schema.status.success(), "{}", String::from_utf8_lossy(&schema.stderr));
+    let schema: serde_json::Value = serde_json::from_slice(&schema.stdout).unwrap();
+    let links = &schema["collections"]["links"];
+    assert_eq!(links["columns"]["noteId"]["references"]["column"], "id");
+    assert_eq!(links["columns"]["noteId"]["references"]["onDelete"], "cascade");
+    assert_eq!(links["columns"]["noteId"]["notNull"], true);
+    assert_eq!(links["columns"]["noteSlug"]["references"]["collection"], "notes");
+    assert_eq!(links["columns"]["noteSlug"]["references"]["column"], "slug");
+    assert_eq!(
+        links["columns"]["noteSlug"].get("notNull"),
+        None,
+        "a plain 0.3.0 field is nullable"
+    );
+    assert_eq!(links["relations"]["note"]["from"], "noteId");
+    assert_eq!(schema["collections"]["notes"]["relations"]["links"]["to"], "noteId");
+}
+
 /// What a deployed 0.3.0 Space's next version serves its pages: recompiled from its stored
 /// `zero.source-bundle.v1`, its generated client, run under Node, calls First's API at
 /// `/__first/api/v1` (tests/wp/zero-upgrade proves what the site answers there and on the old paths).

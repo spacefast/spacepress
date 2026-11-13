@@ -101,6 +101,8 @@ final class Plugin
         });
         Facade::register($this);
         AppRouter::register($this);
+        // Components content may use as blocks (first/components: `export const blocks`).
+        add_action('init', [\First\Content\Blocks::class, 'register'], 5);
         ContentPages::register($this);
         KindUrls::register($this);
         MarkdownTwins::register();

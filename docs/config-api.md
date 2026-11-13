@@ -644,6 +644,35 @@ export default async function Doc({ item }: PageProps<"docs/[...path]">) {
 The tree is the published items the visitor may read, siblings by order then title, four levels
 deep. `headings()` gives the ids the page renders its headings with.
 
+### Components in Markdown
+
+A component in `first/components/` can be used in synced Markdown as a block
+([decision](decisions/2026-11-13-components-in-markdown.md)). Its file lists it:
+
+```tsx
+// first/components/Callout.tsx
+export const blocks = ["Callout"];
+export function Callout({ type, title, children }: { type: "note" | "warning"; title?: string; children?: JSX.Element }) {
+  return <aside className={`callout callout-${type}`}>{title && <p>{title}</p>}{children}</aside>;
+}
+```
+
+```md
+<Callout type="warning" title="Before you start">
+Back up the **database**.
+</Callout>
+
+<Badge label="New" count={3} />
+```
+
+- In WordPress it is a block (`<app>/callout`) the editor inserts and edits; the site renders it
+  through the component, with the inner content as `children`.
+- In the file it is the tag, on lines of its own. Values are `"text"`, `{true}`, `{false}` or
+  `{number}`; the content between the tags is Markdown. `first sync` writes the block back as the
+  same tag.
+- Props are text, a choice of text literals, numbers and booleans; anything else is a build error.
+  A tag the site doesn't know, an unknown prop, a wrong value or an unclosed tag is refused.
+
 ### Seeding and `first sync`
 
 Every publish seeds synced files: missing records are created, trashed records stay deleted, and no records are removed.

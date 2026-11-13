@@ -166,13 +166,14 @@ pub fn build(
     let mut ext =
         extract::extract(&config, &mut ev, config_span, &dir_name).map_err(|d| d.phase(diag::Code::Schema))?;
     wp_hooks(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
-    components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
+    let blocks = components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     app::register(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::content_page::register(program, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::runtime_schema::apply(runtime_lock.as_ref(), &mut ev, &mut ext)?;
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;
+    let component_props;
     let islands;
     let wordpress_uses;
     let catalog = crate::wordpress::abilities::Catalog::new(&schema, &read_lock(program)?);
@@ -186,6 +187,7 @@ pub fn build(
         c.resolve_json_types().map_err(|d| d.phase(diag::Code::Compile))?;
         let slots = c.compile_roots(&roots).map_err(|d| d.phase(diag::Code::Compile))?;
         action_results = std::mem::take(&mut c.action_results);
+        component_props = std::mem::take(&mut c.component_props);
         islands = std::mem::take(&mut c.islands);
         wordpress_uses = std::mem::take(&mut c.wordpress_uses);
         for ((slot, name), root) in slots.iter().zip(&roots) {
@@ -318,6 +320,16 @@ pub fn build(
                 actions: analysis.server_actions.iter().cloned().collect(),
             },
         );
+    }
+    // Components content may use as blocks, with their props as the block's attributes.
+    for (component, span) in blocks {
+        let props = component_props
+            .get(&component)
+            .cloned()
+            .unwrap_or(crate::types::Ty::Obj(Default::default()));
+        let block = crate::content_blocks::block(&schema.name, &component, &props, span)
+            .map_err(|d| d.phase(diag::Code::Compile))?;
+        schema.blocks.push(block);
     }
     schema.wp_views =
         !wordpress_uses.is_empty() && wordpress_uses.iter().any(|u| u.kind != compile::WordPressKind::Ability);
@@ -515,10 +527,53 @@ fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extra
 /// compiled component, called with one props object (docs/decisions/2026-11-08-tsx-to-php.md).
 /// The capital is React's own rule for what a JSX tag can name; other exports are helpers and are
 /// ignored, as in any module.
-fn components(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extract::Extracted) -> Result<(), Diag> {
+///
+/// A file may also say which of its components content can use as blocks:
+/// `export const blocks = ["Callout"]` (`crate::content_blocks`).
+fn components(
+    program: &loader::Program,
+    ev: &mut eval::Evaluator,
+    ext: &mut extract::Extracted,
+) -> Result<Vec<(String, Span)>, Diag> {
     use crate::value::Value;
+    let mut blocks = Vec::new();
     for (path, module) in &program.components {
         let exports = ev.run_module(*module)?;
+        let span = Span {
+            file: program.modules[*module].file,
+            start: 0,
+            end: 0,
+        };
+        if let Some(listed) = exports.get("blocks") {
+            let names = match listed {
+                Value::Array(a) => a
+                    .borrow()
+                    .iter()
+                    .map(|v| match v {
+                        Value::Str(s) => Ok(s.to_string()),
+                        _ => Err(()),
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+                    .ok(),
+                _ => None,
+            };
+            let Some(names) = names else {
+                return Err(Diag::new(span, "`blocks` is a list of this file's component names")
+                    .help("write `export const blocks = [\"Callout\"]`"));
+            };
+            for name in names {
+                if !matches!(exports.get(&name), Some(Value::Closure(_)))
+                    || !name.starts_with(|c: char| c.is_ascii_uppercase())
+                {
+                    return Err(Diag::new(
+                        span,
+                        format!("`blocks` names `{name}`, which {path} doesn't export as a component"),
+                    )
+                    .help("list components this file exports, by their capitalized name"));
+                }
+                blocks.push((format!("{path}#{name}"), span));
+            }
+        }
         for (export, value) in &exports {
             let Value::Closure(closure) = value else { continue };
             if !export.starts_with(|c: char| c.is_ascii_uppercase()) {
@@ -535,7 +590,7 @@ fn components(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut ext
             });
         }
     }
-    Ok(())
+    Ok(blocks)
 }
 
 /// The committed plugin grant, read like the other compiler inputs; absent until the first build.

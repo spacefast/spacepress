@@ -21,7 +21,9 @@ compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `firs
 ## Procedure
 
 1. Pick the builder. `collection()` is a WordPress post type: block editor, drafts, revisions.
-   `table()` is a SQL table for rows the app owns (likes, orders, ratings).
+   `table()` is a SQL table for rows the app owns (likes, orders, ratings). A project with no
+   tables yet can start from `first add db`, which writes an example `first/tables.ts` and a note,
+   `first/DATABASE.md`, on how tables work.
 
 2. Export the kind from a file under `first/` (by convention `first/schema.ts`). The export name is
    the kind's name everywhere: the API path, the typed client, `first:db`.

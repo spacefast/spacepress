@@ -187,6 +187,8 @@ export async function publishPlugins(content, managed) {
 const IGNORED_NAMES = new Set(['.first', '.git', 'node_modules']);
 const GENERATED = new Set(['first/_generated', 'first/dist']);
 const ignoredPath = (name) => IGNORED_NAMES.has(name.split('/').at(-1)) || GENERATED.has(name);
+// What a build reads: TypeScript, `public/` files, and the Markdown pages under `first/app/`.
+const isSource = (name) => /\.[cm]?[jt]sx?$/.test(name) || name.split('/')[0] === 'public' || /^first\/app\/(.*\/)?page\.md$/.test(name);
 
 export async function sourceDigest(project) {
   const digest = createHash('sha256');
@@ -198,7 +200,7 @@ export async function sourceDigest(project) {
       if (ignoredPath(name) || entry.isSymbolicLink()) continue;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) await visit(path, `${name}/`);
-      else if (/\.[cm]?[jt]sx?$/.test(name) || name.startsWith('public/')) {
+      else if (isSource(name)) {
         digest.update(name); digest.update(await readFile(path));
       }
     }
@@ -244,7 +246,7 @@ export async function watchSources(project, onChange, onError) {
                   // Discover new directories before notifying: files may have been created
                   // before their directory acquired its own watch handle.
                   void refresh().then(changed, failed);
-                } else if (/\.[cm]?[jt]sx?$/.test(name) || name.split(/[\\/]/)[0] === 'public') {
+                } else if (isSource(name)) {
                   changed();
                 }
               });

@@ -8,17 +8,15 @@ Open `/wp-content/plugins/first-app-__ZERO_APP_NAME__/public/index.html` on the 
 
 Edit `first.config.ts` for your backend and `public/` for your frontend. First rebuilds on save; refresh your browser to see updates. WordPress serves the frontend, API, login and admin at one origin. No separate frontend server is needed. An external frontend framework is optional; this starter has none. Ordinary page templates can be added when supported by your compiler version.
 
-## Content first, a database when you need one
+## Content first, SQL tables when you need them
 
-This starter is content only. `notes` is a `collection()`: its rows are WordPress posts, edited in wp-admin with drafts and revisions, and the plugins a site runs see them like any other post.
-
-When the app needs data of its own (orders, bookings, votes), add SQL tables:
+This starter is content only. `notes` is a `collection()`: its rows are WordPress posts (the post type `first_notes`), edited in wp-admin with drafts and revisions. When the app needs rows it filters, sorts, counts or joins (orders, bookings, votes), add tables:
 
 ```sh
 npx first add db
 ```
 
-That writes `first/tables.ts` with two example `table()` kinds, typed client calls for them and a note on migrations. It never overwrites a file. Use a collection for what people write and publish, and a table for rows the app filters, sorts, counts and joins: post meta has no real column types or foreign keys, and filtering and sorting on it is slow.
+That writes `first/tables.ts` with two example `table()` kinds, typed client calls and `first/DATABASE.md`, which says when to use which. It never overwrites a file.
 
 ## Commands
 
@@ -31,6 +29,8 @@ npm run status
 npm run wp -- core version   # WordPress's own WP-CLI
 npm run stop                 # stop the site, preserve its SQLite data
 ```
+
+## Next
 
 `client.ts` demonstrates the generated typed client. The static frontend uses same-origin REST directly. Backend TypeScript compiles to PHP and supports a documented subset; it is not a Node.js server. Run `npm run check` when adding library code.
 

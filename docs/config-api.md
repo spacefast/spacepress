@@ -673,6 +673,29 @@ Back up the **database**.
 - Props are text, a choice of text literals, numbers and booleans; anything else is a build error.
   A tag the site doesn't know, an unknown prop, a wrong value or an unclosed tag is refused.
 
+### Code blocks
+
+A fenced code block is highlighted when its page renders, in light and dark themes, with no
+script on the page ([decision](decisions/2026-11-13-code-blocks.md)). The fence takes a title,
+lines to mark and a group; blocks with one group show as tabs:
+
+````md
+```ts title="first.config.ts" {2,4-5}
+import { defineConfig } from "first";
+```
+
+```sh group="install"
+npm install first
+```
+
+```sh title="pnpm" group="install"
+pnpm add first
+```
+````
+
+It is WordPress's own code block underneath, so the block editor edits it, and `first sync` writes
+the same fence back. 185 languages; `text` (or any unknown language) shows the code as written.
+
 ### Seeding and `first sync`
 
 Every publish seeds synced files: missing records are created, trashed records stay deleted, and no records are removed.
@@ -1028,8 +1051,24 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   a runtime name, or a removed one, with another stored type is refused before any table changes,
   with the fix (usually: `first pull`, then build).
 
-Applying a change is `First\Wp\SchemaVersions::of($plugin)->apply($parent, $changeSet, $actor)`
-from PHP; the Abilities, the `first schema` commands and the admin screen are not built yet.
+- **Agents (Abilities and MCP).** `<app>/schema-read` returns the active version, every stored
+  version with its changes, and what a deploy of the running build would keep.
+  `<app>/schema-propose` takes `{ changes }` and returns them in stored form with their effect on
+  stored data; it writes nothing. `<app>/schema-apply` takes `{ parent, changes }` and stores the
+  next version. Read and propose run over GET, so `changes` may also be one JSON string there. All
+  three are tools on the app's MCP server. Reading and proposing need `manage_options`. Applying
+  needs `first_apply_schema`, which administrators hold by default: take it from a role or user
+  (`wp cap remove administrator first_apply_schema`) to stop them applying, or deny one
+  application password by listing its UUID in the option `first_<app>_schema_apply_denied`. Each
+  version records the user and, when one signed the request, the application password's UUID and
+  name (never the secret).
+- **Commands.** `first schema list | diff <version> | apply <file|-> [--parent=<n>] | rollback
+  <version> [--parent=<n>]` (`wp first schema …` on a server). `apply` takes a JSON list of changes
+  (or a whole change set) and applies it on the newest version unless `--parent` says otherwise.
+  `rollback` applies the reverse of a version as a new version.
+- **wp-admin.** Tools → Schema versions lists every version, newest first, with who made it and
+  each change in words, and says which runtime changes the running build doesn't contain yet.
+
 Taxonomies can't be added at runtime: `taxonomy()` is not in this First version.
 
 ## Plugin packages

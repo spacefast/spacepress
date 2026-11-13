@@ -38,8 +38,17 @@ final class Markdown
             return '';
         }
 
-        // A component tag (`<Callout>`) is the app's block; everything else is the toolkit's.
-        return \First\Content\Blocks::toBlocks($markdown, static fn (string $md): string => self::asStored(self::consume($md)));
+        // A component tag (`<Callout>`) is the app's block; everything else is the toolkit's. A code
+        // fence's words after its language (`title="…" {2,4}`) become its block's attributes.
+        return \First\Content\Blocks::toBlocks($markdown, static function (string $md): string {
+            $stored = self::asStored(self::consume($md));
+            $fences = \First\Content\Code::fences($md);
+            if (array_filter($fences) === []) {
+                return $stored;
+            }
+
+            return Blocks::serialize(\First\Content\Code::attach(Blocks::parse($stored), $fences));
+        });
     }
 
     /** Stored blocks → Markdown, or 422 not_representable naming what Markdown can't carry. */
@@ -194,7 +203,7 @@ final class Markdown
     private static function produce(string $blocks): string
     {
         Blocks::boot();
-        if (str_contains($blocks, 'language-')) {
+        if (str_contains($blocks, 'language-') || str_contains($blocks, '<!-- wp:code {')) {
             $blocks = Blocks::serialize(array_map(self::fenceLanguage(...), Blocks::parse($blocks)));
         }
         try {
@@ -309,12 +318,18 @@ final class Markdown
         return $block;
     }
 
-    /** The `language` attribute the producer reads, from the class the editor keeps. */
+    /**
+     * The `language` attribute the producer reads, from the class the editor keeps, followed by the
+     * fence's other words (`title="…" {2,4}`): the producer writes the attribute after the fence.
+     */
     private static function fenceLanguage(array $block): array
     {
-        if (($block['blockName'] ?? null) === 'core/code' && !isset($block['attrs']['language'])
-            && preg_match('/(?:^|\s)language-(\S+)/', (string) ($block['attrs']['className'] ?? ''), $m) === 1) {
-            $block['attrs']['language'] = $m[1];
+        if (($block['blockName'] ?? null) === 'core/code' && !isset($block['attrs']['language'])) {
+            $language = preg_match('/(?:^|\s)language-(\S+)/', (string) ($block['attrs']['className'] ?? ''), $m) === 1 ? $m[1] : '';
+            $info = \First\Content\Code::info($block['attrs'] ?? []);
+            if ($language !== '' || $info !== '') {
+                $block['attrs']['language'] = trim(($language === '' ? 'text' : $language) . ' ' . $info);
+            }
         }
         $block['innerBlocks'] = array_map(self::fenceLanguage(...), $block['innerBlocks'] ?? []);
 

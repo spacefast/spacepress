@@ -22,6 +22,12 @@ system table (`SystemTables`), created on the plugin's upgrade check like the jo
 - The entries are written from the row as stored when the report runs, not from the report's own
   copy. An after-hook that writes the row again reports first; the outer report then reads the same
   final row, so an older snapshot is never the last thing indexed.
+- Each entry is written by its exact key: an upsert of (kind, row, field) for a field with text, a
+  delete by key for one without, and a delete of the row's entries for fields no longer searchable.
+  Deleting the row's whole key range before inserting deadlocked under concurrent creates on
+  InnoDB: a delete that matches nothing takes a gap lock, and two new rows in the same gap each
+  waited on the other's insert (about one write in forty, at 24 concurrent writers).
+  `tests/wp/search.test.ts` runs that load.
 - Users are also written by WordPress itself (`wp_insert_user`, the profile screen, sign-up), which
   doesn't go through the pipeline. The members kind's entries follow core's `user_register`,
   `profile_update` and `deleted_user` hooks, re-read from the stored user the same way.

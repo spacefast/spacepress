@@ -7,8 +7,6 @@ export const collections = {  };
 export const tables = {  };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
-/** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
-export const relations = (r: unknown) => ({});
 function refsHelper() { return 1; }
 const refsSaved: { f?: () => number } = {};
 export const actions = {

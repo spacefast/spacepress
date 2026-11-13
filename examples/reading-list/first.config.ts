@@ -3,7 +3,7 @@
 // uses two npm packages.
 import {
   collection, table, text, integer, timestamp, richText, slug,
-  defineRelations, defineConfig, action, job, jobs, db, HttpError,
+  defineConfig, action, job, jobs, db, HttpError, ref,
 } from "first";
 import { mine, ownerId, signedIn } from "./first/lib/owner";
 
@@ -22,7 +22,7 @@ export const books = collection({
 
 // A table is a plain SQL table, with its migration written for you.
 export const reads = table({
-  bookId: integer().references(() => books.id, { onDelete: "cascade" }),
+  bookId: ref(books).onDelete("cascade"),
   minutes: integer(),
   finishedAt: timestamp().defaultNow(),
   ownerId,
@@ -30,16 +30,10 @@ export const reads = table({
   access: { read: mine, create: "authenticated", update: mine, delete: mine },
 });
 
-export const relations = defineRelations({ books, reads }, (r) => ({
-  books: { reads: r.many.reads() },
-  reads: { book: r.one.books({ from: r.reads.bookId, to: r.books.id }) },
-}));
-
 export default defineConfig({
   name: "reading-list",
   collections: { books },
   tables: { reads },
-  relations,
   hooks: {
     // Hooks compile to PHP and run inside the write. Throwing rolls it back.
     reads: {

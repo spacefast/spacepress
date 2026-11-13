@@ -83,13 +83,13 @@ test("a json() meta value keeps {} apart from [] on WordPress", async () => {
 test("relation filters and `with` across post↔post and post↔table", async () => {
   const comment = await ok("POST", "/comments", { as: "editor", body: { postId: post.id, name: "Staff", body: `On meta ${run}` } });
   // post → post through a meta reference: filtered on the target's serialized meta, target attached.
-  const events = await ok("GET", "/events" + qs({ where: { post: { tags: { has: "release" } }, title: { like: `%${run}` } }, with: { post: true } }));
-  assert.deepEqual(events.map((e: any) => [e.id, e.post.id]), [[ids.A, post.id]]);
+  const events = await ok("GET", "/events" + qs({ where: { postId: { tags: { has: "release" } }, title: { like: `%${run}` } }, with: { postId: true } }));
+  assert.deepEqual(events.map((e: any) => [e.id, e.postId.id]), [[ids.A, post.id]]);
   const posts = await ok("GET", "/posts" + qs({ where: { id: post.id, tags: { has: "release" }, comments: { body: { like: `%${run}` } } }, with: { comments: true } }));
   assert.deepEqual(posts.map((p: any) => [p.id, p.comments.map((c: any) => c.id)]), [[post.id, [comment.id]]]);
   // table → post: comments filtered by their post's title (an EXISTS over wp_posts), post attached.
-  const comments = await ok("GET", "/comments" + qs({ where: { post: { title: `Meta ${run}` } }, with: { post: true } }), { as: "editor" });
-  assert.deepEqual(comments.map((c: any) => [c.id, c.post.title]), [[comment.id, `Meta ${run}`]]);
+  const comments = await ok("GET", "/comments" + qs({ where: { postId: { title: `Meta ${run}` } }, with: { postId: true } }), { as: "editor" });
+  assert.deepEqual(comments.map((c: any) => [c.id, c.postId.title]), [[comment.id, `Meta ${run}`]]);
 });
 
 test("relation filters only see target rows the viewer may read", async () => {
@@ -98,7 +98,7 @@ test("relation filters only see target rows the viewer may read", async () => {
   const byGhost = await ok("POST", "/posts", { as: "editor", body: { title: `By ghost ${run}`, authorId: ghost.id } });
   await ok("POST", "/signups", { as: "editor", body: { email: `sk-live-7-${run}@example.test`, postId: byGhost.id } });
   const where = (w: object) => qs({ where: { AND: [w, { id: byGhost.id }] } });
-  const draftOracle = where({ author: { email: { like: `price-4%${run}%` } } });
+  const draftOracle = where({ authorId: { email: { like: `price-4%${run}%` } } });
   assert.deepEqual(await ok("GET", "/posts" + draftOracle), []);
   assert.deepEqual((await ok("GET", "/posts" + draftOracle, { as: "editor" })).map((p: any) => p.id), [byGhost.id]);
   // signups are editor-only: filtering through them is denied exactly like `with`.
@@ -157,10 +157,10 @@ test("core list routes take First's where, orderBy and search", async () => {
 });
 
 test("core routes attach `with` relations as First rows", async () => {
-  const list = await http("GET", `${core}/first_events` + qs({ where: { id: ids.A }, with: "post" }));
-  assert.deepEqual(list.json.map((e: any) => [e.id, e.with.post.id, e.with.post.title]), [[ids.A, post.id, `Meta ${run}`]]);
-  const item = await http("GET", `${core}/first_events/${ids.A}` + qs({ with: { post: true } }));
-  assert.equal(item.json.with.post.id, post.id);
+  const list = await http("GET", `${core}/first_events` + qs({ where: { id: ids.A }, with: "postId" }));
+  assert.deepEqual(list.json.map((e: any) => [e.id, e.with.postId.id, e.with.postId.title]), [[ids.A, post.id, `Meta ${run}`]]);
+  const item = await http("GET", `${core}/first_events/${ids.A}` + qs({ with: { postId: true } }));
+  assert.equal(item.json.with.postId.id, post.id);
   const unknown = await http("GET", `${core}/first_events/${ids.A}?with=nope`);
   assert.deepEqual([unknown.status, unknown.json.data.pointer], [400, "/with/nope"]);
 });

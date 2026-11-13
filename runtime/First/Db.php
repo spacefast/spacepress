@@ -479,6 +479,9 @@ final class Db
         $drop = $included !== []
             ? array_diff(array_keys($known), $included)
             : array_keys(array_filter($columns, static fn ($on) => $on === false));
+        // A `ref()` field loaded by `with` holds the row in its id's place: `with` asked for it.
+        $with = is_array($opts['with'] ?? null) ? array_keys(array_filter($opts['with'], static fn ($on) => $on !== false && $on !== null)) : [];
+        $drop = array_diff($drop, array_map('strval', $with));
         $drop = array_flip($drop);
 
         return array_map(static fn (array $row) => array_diff_key($row, $drop), $rows);
@@ -628,10 +631,13 @@ final class Db
             $slot = $spec['hooks']['beforeCreate'];
             if (is_string($slot)) {
                 $fn = '\\FirstApp\\' . $slot;
+                // Fields a runtime schema change added (spec §2.10) are kept aside: the compiled hook
+                // never saw them, and a replacement object it returns must not drop them.
+                [$data, $runtime] = RuntimeSchema\Loader::split($spec, $data, RuntimeSchema\Loader::compiled() ?? ['collections' => []]);
                 $jsCtx = Seam::ctx($ctx + ['data' => $data], $columns);
                 $data = $jsCtx->p['data'];
                 $result = $fn($data, $jsCtx);
-                $data = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $data);
+                $data = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $data) + $runtime;
             } else {
                 $result = $slot($data, $ctx);
                 if (is_array($result)) { $data = $result; }
@@ -711,10 +717,11 @@ final class Db
             $slot = $spec['hooks']['beforeUpdate'];
             if (is_string($slot)) {
                 $fn = '\\FirstApp\\' . $slot;
+                [$patch, $runtime] = RuntimeSchema\Loader::split($spec, $patch, RuntimeSchema\Loader::compiled() ?? ['collections' => []]);
                 $jsCtx = Seam::ctx($ctx + ['data' => $patch], $columns);
                 $patch = $jsCtx->p['data'];
                 $result = $fn($patch, Seam::rowToJs($collection, $existing), $jsCtx);
-                $patch = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $patch);
+                $patch = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $patch) + $runtime;
             } else {
                 $result = $slot($patch, $existing, $ctx);
                 if (is_array($result)) { $patch = $result; }

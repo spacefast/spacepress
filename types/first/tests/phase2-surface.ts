@@ -1,9 +1,9 @@
-import { collection, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db , table, userProjection} from "first";
+import { collection, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db , table, userProjection, ref } from "first";
 const audit = table({ note: text() }, { agents: false });
 const authors = collection({ name: text(), email: email().optional().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true, access: { create: ctx => ctx.data?.uid !== "reserved" } });
 const posts = collection({
   title: text().localized(), content: richText().localized().optional(), slug: slug({ source: "title" }).optional(),
-  authorId: integer().references(() => authors.id).optional(), deck: file({ bucket: "decks" }).optional(),
+  authorId: ref(authors).optional().onDelete("restrict"), deck: file({ bucket: "decks" }).optional(),
   seo: group({ kind: select(["a", "b"]).optional(), enabled: boolean().optional(), label: text().optional().access({ read: ctx => ctx.data.label !== "private" }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }) }).optional().showIf({ status: "published" }),
   items: repeater({ enabled: boolean().optional(), label: text().optional().showIf({ enabled: true }) }).optional(),
   sections: blocks({ hero: { kind: text().optional(), label: text().optional().access({ update: ctx => ctx.op === "update" }).showIf({ kind: { ne: "hidden" } }) } }).optional(),

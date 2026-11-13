@@ -394,6 +394,10 @@ final class Plugin
             throw new SchemaRefused(array_map(static fn (array $r): array => $r + ['rows' => 0], $runtime['refusals']));
         }
         $applied = $this->migrator()->migrate();
+        if (($compiled = \First\RuntimeSchema\Loader::compiled()) !== null) {
+            // `runtimeSchema`: runtime changes are checked against the fields of every build that ran here.
+            \First\RuntimeSchema\Loader::rememberDeclared($compiled);
+        }
         delete_option($this->refusalOption());
         IdentityBridge::provision();
         $this->backfillMembers();

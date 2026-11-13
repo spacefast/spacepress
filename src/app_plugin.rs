@@ -46,6 +46,16 @@ pub(crate) fn files(
             island.source.as_bytes().to_vec(),
         ));
     }
+    // Imported stylesheets and images, named by their bytes (`crate::assets`).
+    if !built.schema.assets.is_empty() {
+        files.push((
+            at(&format!("{}/.htaccess", crate::assets::DIR)),
+            crate::assets::HTACCESS.as_bytes().to_vec(),
+        ));
+        for (name, bytes) in &built.schema.assets {
+            files.push((at(&format!("{}/{name}", crate::assets::DIR)), bytes.clone()));
+        }
+    }
     for (name, sql) in migrations {
         if name.ends_with(".sql") && !name.contains('/') {
             files.push((at(&format!("first/app/migrations/{name}")), sql));

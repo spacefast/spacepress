@@ -312,7 +312,7 @@
                 }
             },
             "relations": {
-                "author": {
+                "authorId": {
                     "kind": "one",
                     "collection": "authors",
                     "from": "authorId",
@@ -425,7 +425,7 @@
                 }
             },
             "relations": {
-                "post": {
+                "postId": {
                     "kind": "one",
                     "collection": "posts",
                     "from": "postId",

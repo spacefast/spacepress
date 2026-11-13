@@ -1,4 +1,5 @@
 pub(crate) mod abilities;
+pub(crate) mod add;
 pub(crate) mod build;
 pub(crate) mod deploy;
 mod dev;

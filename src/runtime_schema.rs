@@ -1150,13 +1150,12 @@ mod tests {
     #[test]
     fn a_lock_field_named_like_a_relation_of_its_kind_is_refused() {
         let project = PathBuf::from("/rtschema");
-        let schema = "import { collection, table, text, integer, defineRelations } from \"first\";\n\
+        // `ref(articles)` on a table gives `articles` the reverse relation `votes`.
+        let schema = "import { collection, table, text, ref } from \"first\";\n\
             export const articles = collection({ title: text() });\n\
-            export const votes = table({ articleId: integer().references(() => articles.id) });\n\
-            export const relations = defineRelations({ articles, votes }, (r) => ({ articles: { votes: r.many.votes() },\n\
-              votes: { article: r.one.articles({ from: r.votes.articleId, to: r.articles.id }) } }));\n";
-        let config = "import { defineConfig } from \"first\";\nimport { relations } from \"./first/schema\";\n\
-            export default defineConfig({ name: \"rtschema\", runtimeSchema: true, relations });\n";
+            export const votes = table({ article: ref(articles) });\n";
+        let config = "import { defineConfig } from \"first\";\n\
+            export default defineConfig({ name: \"rtschema\", runtimeSchema: true });\n";
         let lock = lock_of("articles", "votes", &serde_json::json!({ "type": "text" }));
         let files = BTreeMap::from([
             (project.join("first.config.ts"), config.to_string()),

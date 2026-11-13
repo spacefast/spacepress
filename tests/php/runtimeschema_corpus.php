@@ -172,6 +172,25 @@ eq('a field that came with a kind goes with the kind, not alone', $verdict($remo
 eq('a global field is removed through `global`', $verdict($set(['op' => 'removeField', 'global' => 'banner', 'field' => 'on']), $kinds, $grown['state']), 'accept');
 eq('an operation names a kind or a global, not both', $verdict($set(['op' => 'setLabel', 'kind' => 'events', 'global' => 'banner', 'label' => 'x']), $kinds, $grown['state']), '422 schema_format /changes/0');
 
+// A kind a build that ran on the site declared (and the host may still serve) keeps its fields' stored types.
+$declared = ['collections' => ['events' => ['starts' => 'text']], 'globals' => ['banner' => ['text' => 'integer']]];
+$verdictWith = static function (array $changeSet) use ($kinds, $empty, $declared): string {
+    try {
+        Changes::resolve($kinds, $empty, $changeSet, $declared);
+
+        return 'accept';
+    } catch (Refused $e) {
+        return "$e->status {$e->verdict()} $e->pointer";
+    }
+};
+eq('a collection added at runtime keeps the stored types an earlier build gave its fields',
+    [$verdictWith($set(['op' => 'addCollection', 'kind' => 'events', 'definition' => ['fields' => ['title' => ['type' => 'text', 'notNull' => true], 'starts' => ['type' => 'date']]]])),
+     $verdictWith($set(['op' => 'addCollection', 'kind' => 'events', 'definition' => ['fields' => ['title' => ['type' => 'text', 'notNull' => true], 'starts' => ['type' => 'text']]]]))],
+    ['422 schema_retype /changes/0/definition/fields/starts/type', 'accept']);
+eq('and so does a global (a field on a global the build lacks is a global the app lacks)', [$verdictWith($set(['op' => 'addGlobal', 'global' => 'banner', 'definition' => ['fields' => ['text' => ['type' => 'text']]]])),
+    $verdictWith($set(['op' => 'addGlobalField', 'global' => 'banner', 'field' => 'text', 'definition' => ['type' => 'text']]))],
+    ['422 schema_retype /changes/0/definition/fields/text/type', '422 F3001 /changes/0/definition']);
+
 // Rolling a version back is applying the reverse of its changes as a new version.
 $undoGrown = Changes::reverse($site['state'], $grown['changes']);
 eq('the reverse of a version undoes its changes, newest first', array_column($undoGrown, 'op'), ['setFieldUi', 'setLabel', 'removeField', 'removeField']);

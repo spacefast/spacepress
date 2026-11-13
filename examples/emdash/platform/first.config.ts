@@ -1,7 +1,6 @@
 import {
-  action, blocks, boolean, collection, db, defineConfig, defineRelations,
-  env, group, integer, job, jobs, json, media, repeater, richText, slug,
-  table, text,
+  action, blocks, boolean, collection, db, defineConfig, env, group, integer, job, jobs, json, media, repeater, richText, slug,
+  table, text, ref,
 } from "first";
 
 const access = { read: "anyone", create: "editor", update: "editor", delete: "editor" };
@@ -10,7 +9,7 @@ export const stories = collection({
   title: text().localized(),
   body: richText().localized().optional(),
   slug: slug({ source: "title" }).optional(),
-  writerId: integer().references(() => writers.id, { onDelete: "set null" }).optional(),
+  writerId: ref(writers).optional(),
   cover: media({ accept: "image" }).optional(),
   price: integer().optional(),
   editorNote: text().access({ read: "editor", create: "editor", update: "editor" }).optional(),
@@ -24,7 +23,7 @@ export const stories = collection({
 }, { title: "title", content: "body", drafts: true, revisions: true, access });
 export const tasks = table({
   label: text(),
-  storyId: integer().references(() => stories.id, { onDelete: "cascade" }).optional(),
+  storyId: ref(stories).optional().onDelete("cascade"),
   processed: boolean().default(false),
 }, { access });
 export const guides = collection({ title: text(), body: richText().optional(), slug: slug({ source: "title" }).optional() }, {
@@ -32,15 +31,9 @@ export const guides = collection({ title: text(), body: richText().optional(), s
 });
 export const deliveries = table({ message: text() }, { access: { read: "editor" } });
 
-const relations = defineRelations({ stories, writers, tasks }, (r) => ({
-  stories: { writer: r.one.writers({ from: r.stories.writerId, to: r.writers.id }), tasks: r.many.tasks() },
-  writers: { stories: r.many.stories() },
-  tasks: { story: r.one.stories({ from: r.tasks.storyId, to: r.stories.id }) },
-}));
-
 export default defineConfig({
   name: "platform", admin: true,
-  collections: { stories, writers, guides }, tables: { tasks, deliveries }, relations,
+  collections: { stories, writers, guides }, tables: { tasks, deliveries },
   locales: { default: "en", all: ["en", "fr"] },
   media: { sizes: { card: { width: 120, height: 120, fit: "cover" }, wide: { width: 200 } } },
   hooks: { tasks: {

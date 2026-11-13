@@ -3,8 +3,8 @@
 // settings. tests/system drives a whole user journey through this app on WordPress.
 import {
   collection, global, text, integer, boolean, timestamp, richText, media, slug, select,
-  repeater, group, blocks, email, url, defineRelations, defineConfig, action, job, jobs, env, file, files, db, HttpError,
-  table, userProjection,
+  repeater, group, blocks, email, url, defineConfig, action, job, jobs, env, file, files, db, HttpError,
+  table, userProjection, ref,
 } from "first";
 
 // Who works on the site. Everyone else (anonymous readers, guests, signed-in members) is a reader.
@@ -31,7 +31,7 @@ export const posts = collection({
   featured: boolean().default(false),
   // The desk's private notes: staff read and write them; readers' rows never carry the column.
   deskNotes: text({ multiline: true }).max(2000).access({ read: "author", create: "editor", update: "editor" }).optional(),
-  authorId: integer().references(() => authors.id, { onDelete: "set null" }).optional(),
+  authorId: ref(authors).optional(),
   // The editor shows metaTitle only while the post is indexable (SCF conditional logic).
   seo: group({ noindex: boolean().default(false), metaTitle: text().max(70).showIf({ noindex: false }).optional() }).optional(),
   related: repeater({ label: text().max(80), href: url() }).max(6).optional(),
@@ -49,13 +49,13 @@ export const posts = collection({
   access: {
     read: (ctx) => STAFF.includes(ctx.user?.role ?? "") ? true : { status: "published" },
     create: "author",
-    update: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor" ? true : { author: { userId: ctx.user?.id ?? -1 } },
+    update: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor" ? true : { authorId: { userId: ctx.user?.id ?? -1 } },
     delete: "editor",
   },
 });
 
 export const comments = table({
-  postId: integer().references(() => posts.id, { onDelete: "cascade" }),
+  postId: ref(posts).onDelete("cascade"),
   name: text().max(60),
   body: text({ multiline: true }).min(1).max(2000),
   approved: boolean().default(false),
@@ -68,13 +68,13 @@ export const comments = table({
 // Direct writes and subscriber identities stay admin-only.
 export const subscribers = table({
   email: email().unique().max(191),
-  postId: integer().references(() => posts.id, { onDelete: "set null" }).optional(),
+  postId: ref(posts).optional(),
   createdAt: timestamp().defaultNow(),
 }, { access: { create: "admin", read: "admin", update: "admin", delete: "admin" } });
 
 // Staff see announcement receipts; exact counts stay with the subscriber administrators.
 export const announcements = table({
-  postId: integer().references(() => posts.id, { onDelete: "cascade" }),
+  postId: ref(posts).onDelete("cascade"),
   recipients: integer().access({ read: "admin", update: "admin" }),
   attempt: integer(),
 }, { access: { read: "editor", create: "admin", update: "admin", delete: "admin" } });
@@ -91,18 +91,6 @@ export const tables = { comments, subscribers, announcements };
 export const users = { members };
 export const entities = { ...collections, ...tables, ...users };
 
-export const relations = defineRelations(entities, (r) => ({
-  posts: {
-    author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }),
-    comments: r.many.comments(),
-    subscribers: r.many.subscribers({ from: r.posts.id, to: r.subscribers.postId }),
-  },
-  authors: { posts: r.many.posts() },
-  comments: { post: r.one.posts({ from: r.comments.postId, to: r.posts.id, optional: false }) },
-  subscribers: { post: r.one.posts({ from: r.subscribers.postId, to: r.posts.id }) },
-  announcements: { post: r.one.posts({ from: r.announcements.postId, to: r.posts.id }) },
-}));
-
 export const settings = global("settings", {
   siteTitle: text().default("The First Review").max(80),
   tagline: text().max(160).optional(),
@@ -113,7 +101,6 @@ export const settings = global("settings", {
 export default defineConfig({
   name: "site",
   collections, tables, users,
-  relations,
   globals: { settings },
   locales: { default: "en", all: ["en", "de"] },
   // A square `card` crop of every image for listings, centred on the image's focal point.

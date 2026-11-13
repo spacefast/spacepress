@@ -670,6 +670,16 @@ impl<'p> Evaluator<'p> {
         }
     }
 
+    /// A `collection()` or `global()` call made from data (the runtime schema lock).
+    pub fn kind_from_data(&mut self, global: bool, args: Vec<Value>) -> Result<Value, Diag> {
+        let builtin = if global {
+            Builtin::DefineGlobal
+        } else {
+            Builtin::Collection(StorageKind::Collection)
+        };
+        self.call_builtin(&builtin, args, Span::NONE).map_err(uncaught)
+    }
+
     pub fn key_span(&self, obj: &Value, key: &str) -> Option<Span> {
         self.key_spans.get(&(ptr_of(obj)?, key.to_string())).copied()
     }

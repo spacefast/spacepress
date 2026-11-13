@@ -53,15 +53,46 @@ fn located(at: &str, diag: Diag, phase: Code) -> Diag {
     .phase(phase)
 }
 
-/// Declares the lock's fields on the collections `extract` produced. Does nothing, and reads
-/// nothing, unless the project set `runtimeSchema: true`.
-pub fn apply(program: &Program, ev: &mut Evaluator<'_>, ext: &mut Extracted) -> Result<(), Diag> {
-    if ext.schema.runtime_schema.is_none() {
-        return Ok(());
+/// The lock, read once per build.
+pub struct Lock {
+    version: u64,
+    hash: String,
+    /// Kinds the lock adds fields to, whether or not it lists any: (is a global, kind).
+    kinds: Vec<(bool, String)>,
+    /// Fields added to kinds: (is a global, kind, field, definition).
+    fields: Vec<(bool, String, String, Json)>,
+    /// Labels and field presentation that replace the declared ones: (is a global, kind, override).
+    overrides: Vec<(bool, String, Map<String, Json>)>,
+}
+
+fn object<'a>(value: Option<&'a Json>, at: &str, what: &str) -> Result<Option<&'a Map<String, Json>>, Diag> {
+    match value {
+        None => Ok(None),
+        Some(Json::Object(map)) => Ok(Some(map)),
+        // PHP writes an empty map as `[]`.
+        Some(Json::Array(items)) if items.is_empty() => Ok(None),
+        Some(_) => Err(refuse(at, format!("must be {what}"))),
+    }
+}
+
+fn keys(map: &Map<String, Json>, allowed: &[&str], at: &str) -> Result<(), Diag> {
+    match map.keys().find(|key| !allowed.contains(&key.as_str())) {
+        Some(key) => Err(refuse(at, format!("has no key `{key}`"))),
+        None => Ok(()),
+    }
+}
+
+/// Reads the lock and registers the kinds it adds (new collections and globals) in the config's
+/// registries, before extraction, so they are extracted and checked as authored ones are. Does
+/// nothing, and reads nothing, unless the project set `runtimeSchema: true`.
+pub fn declare(program: &Program, ev: &mut Evaluator<'_>, config: &Value) -> Result<Option<Lock>, Diag> {
+    let Value::Object(cfg) = config else { return Ok(None) };
+    if !matches!(cfg.borrow().get("runtimeSchema"), Some(Value::Bool(true))) {
+        return Ok(None);
     }
     let path = program.root.join(LOCK);
     if !program.fs.exists(&path) {
-        return Ok(());
+        return Ok(None);
     }
     let text = program
         .fs
@@ -82,11 +113,19 @@ pub fn apply(program: &Program, ev: &mut Evaluator<'_>, ext: &mut Extracted) -> 
         )
         .help("run `first pull` with this First version to rewrite the lock"));
     }
-    for key in top.keys() {
-        if !["format", "version", "hash", "collections"].contains(&key.as_str()) {
-            return Err(refuse("lock", format!("has no key `{key}`")));
-        }
-    }
+    keys(
+        top,
+        &[
+            "format",
+            "version",
+            "hash",
+            "collections",
+            "globals",
+            "added",
+            "overrides",
+        ],
+        "lock",
+    )?;
     let version = top
         .get("version")
         .and_then(Json::as_u64)
@@ -95,57 +134,303 @@ pub fn apply(program: &Program, ev: &mut Evaluator<'_>, ext: &mut Extracted) -> 
         .get("hash")
         .and_then(Json::as_str)
         .ok_or_else(|| refuse("hash", "must be the site's schema version hash"))?;
-    let empty = Map::new();
-    let collections = match top.get("collections") {
-        None => &empty,
-        Some(Json::Object(collections)) => collections,
-        Some(_) => return Err(refuse("collections", "must be an object of collections")),
+    let mut out = Lock {
+        version,
+        hash: hash.to_string(),
+        kinds: Vec::new(),
+        fields: Vec::new(),
+        overrides: Vec::new(),
     };
-    for (kind, entry) in collections {
-        let columns = entry
+    // Fields added to kinds the project declares.
+    for (global, section, inner) in [(false, "collections", "columns"), (true, "globals", "fields")] {
+        for (kind, entry) in object(top.get(section), section, "an object of kinds")?
+            .into_iter()
+            .flatten()
+        {
+            let fields = entry
+                .as_object()
+                .filter(|entry| entry.keys().all(|key| key == inner))
+                .map(|entry| object(entry.get(inner), kind, "an object of fields"))
+                .ok_or_else(|| refuse(kind, format!("must be `{{ \"{inner}\": {{ ... }} }}`")))??;
+            out.kinds.push((global, kind.clone()));
+            for (name, definition) in fields.into_iter().flatten() {
+                out.fields
+                    .push((global, kind.clone(), name.clone(), definition.clone()));
+            }
+        }
+    }
+    // Kinds the site added.
+    let added = object(
+        top.get("added"),
+        "added",
+        "`{ \"collections\": ..., \"globals\": ... }`",
+    )?;
+    if let Some(added) = added {
+        keys(added, &["collections", "globals"], "added")?;
+    }
+    for (global, section) in [(false, "collections"), (true, "globals")] {
+        let kinds = object(added.and_then(|a| a.get(section)), section, "an object of kinds")?;
+        for (name, definition) in kinds.into_iter().flatten() {
+            let def = definition
+                .as_object()
+                .ok_or_else(|| refuse(name, "a kind is `{ \"label\", \"access\", \"fields\" }`"))?;
+            keys(def, &["label", "access", "fields"], name)?;
+            let fields = object(def.get("fields"), name, "an object of fields")?
+                .filter(|fields| !fields.is_empty())
+                .ok_or_else(|| refuse(name, "a kind needs at least one field"))?;
+            let registry = if global { "globals" } else { "collections" };
+            // A name is one thing across the app (spec §1.1), whoever declared it.
+            for other in ["collections", "tables", "users", "globals", "actions", "jobs"] {
+                let taken = match cfg.borrow().get(other) {
+                    Some(Value::Object(entries)) => entries.borrow().contains_key(name),
+                    _ => false,
+                };
+                if taken && other != registry {
+                    return Err(
+                        refuse(name, format!("`{name}` already names one of the project's {other}"))
+                            .code(Code::DuplicateExport),
+                    );
+                }
+            }
+            let listed = cfg.borrow().get(registry).cloned();
+            let declared = match &listed {
+                Some(Value::Object(entries)) => entries.borrow().contains_key(name),
+                _ => false,
+            };
+            // Declared in source since the pull: the source's kind is the kind, and the lock's
+            // fields are fields added to it.
+            if declared {
+                out.kinds.push((global, name.clone()));
+                for (field, definition) in fields {
+                    out.fields
+                        .push((global, name.clone(), field.clone(), definition.clone()));
+                }
+                continue;
+            }
+            let value = kind(ev, global, name, def, fields)?;
+            let entries = match listed {
+                Some(entries @ Value::Object(_)) => entries,
+                _ => {
+                    let entries = Value::object(IndexMap::new());
+                    cfg.borrow_mut().insert(registry.to_string(), entries.clone());
+                    entries
+                }
+            };
+            let Value::Object(map) = &entries else { unreachable!() };
+            map.borrow_mut().insert(name.clone(), value);
+        }
+    }
+    let overrides = object(
+        top.get("overrides"),
+        "overrides",
+        "`{ \"collections\": ..., \"globals\": ... }`",
+    )?;
+    if let Some(overrides) = overrides {
+        keys(overrides, &["collections", "globals"], "overrides")?;
+    }
+    for (global, section) in [(false, "collections"), (true, "globals")] {
+        let kinds = object(overrides.and_then(|o| o.get(section)), section, "an object of kinds")?;
+        for (name, entry) in kinds.into_iter().flatten() {
+            let entry = entry
+                .as_object()
+                .ok_or_else(|| refuse(name, "an override is `{ \"label\", \"ui\" }`"))?;
+            keys(entry, &["label", "ui"], name)?;
+            out.overrides.push((global, name.clone(), entry.clone()));
+        }
+    }
+    Ok(Some(out))
+}
+
+/// A `collection()` or `global()` value for a kind the lock adds. The lock holds what `first pull`
+/// wrote, so a few shapes are fixed here rather than inferred: a collection's `title` is its
+/// required text field and `content`, when present, is its body.
+fn kind(
+    ev: &mut Evaluator<'_>,
+    global: bool,
+    name: &str,
+    def: &Map<String, Json>,
+    fields: &Map<String, Json>,
+) -> Result<Value, Diag> {
+    if !global {
+        // Lower case, so the kind's key is its storage name and its route, as the site stored it.
+        if !name.starts_with(|c: char| c.is_ascii_lowercase())
+            || !name
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        {
+            return Err(refuse(
+                name,
+                "a kind the lock adds has a lower-case name of letters, digits and underscores",
+            ));
+        }
+        let title = fields.get("title").and_then(Json::as_object);
+        if !title.is_some_and(|t| {
+            t.get("type") == Some(&Json::from("text"))
+                && t.get("notNull") == Some(&Json::Bool(true))
+                && !t.contains_key("enum")
+        }) {
+            return Err(refuse(name, "a collection needs `title`: a required text field"));
+        }
+        if fields
+            .get("content")
+            .is_some_and(|c| c.get("type") != Some(&Json::from("richText")))
+        {
+            return Err(refuse(name, "`content` is the body of a collection: a richText field"));
+        }
+        if fields.contains_key("slug") {
+            return Err(refuse(name, "`slug` is built in: every collection item has one"));
+        }
+    }
+    let mut columns = IndexMap::new();
+    for (field, definition) in fields {
+        columns.insert(
+            field.clone(),
+            Value::Column(builder(ev, definition, &format!("{name}.{field}"))?),
+        );
+    }
+    let mut options = IndexMap::new();
+    match def.get("label") {
+        None => {}
+        Some(Json::String(label)) if !label.is_empty() => {
+            options.insert("label".to_string(), Value::str(label));
+        }
+        Some(_) => return Err(refuse(name, "`label` must be a string that isn't empty")),
+    }
+    if let Some(access) = def.get("access") {
+        let rules = access
             .as_object()
-            .filter(|entry| entry.keys().all(|key| key == "columns"))
-            .and_then(|entry| entry.get("columns"))
-            .and_then(Json::as_object)
-            .ok_or_else(|| refuse(kind, "must be `{ \"columns\": { ... } }`"))?;
-        let Some(collection) = ext.schema.collections.get(kind) else {
+            .filter(|rules| !rules.is_empty() && rules.values().all(|rule| rule.is_string() || rule.is_boolean()))
+            .ok_or_else(|| {
+                refuse(
+                    name,
+                    "`access` maps operations to a role, \"anyone\", \"authenticated\", true or false",
+                )
+            })?;
+        options.insert("access".to_string(), value(&Json::Object(rules.clone())));
+    }
+    let mut args = vec![Value::object(columns), Value::object(options)];
+    if global {
+        args.insert(0, Value::str(name));
+    }
+    ev.kind_from_data(global, args)
+        .map_err(|d| located(name, d, Code::Evaluation))
+}
+
+/// Declares the lock's fields on the kinds `extract` produced, applies its labels and field
+/// presentation, and records the version the build contains.
+pub fn apply(lock: Option<&Lock>, ev: &mut Evaluator<'_>, ext: &mut Extracted) -> Result<(), Diag> {
+    let Some(lock) = lock else { return Ok(()) };
+    if ext.schema.runtime_schema.is_none() {
+        return Ok(());
+    }
+    for (global, kind) in &lock.kinds {
+        let exists = match global {
+            true => ext.schema.globals.contains_key(kind),
+            false => ext.schema.collections.contains_key(kind),
+        };
+        if !exists {
+            let what = if *global { "global" } else { "collection" };
             return Err(
-                refuse(kind, "this project declares no collection with that name").help(format!(
+                refuse(kind, format!("this project declares no {what} with that name")).help(format!(
                     "declare `{kind}` in the project's schema, or run `first pull` again if the site no longer has it"
                 )),
             );
-        };
-        if !collection.editor {
+        }
+        if !global && !ext.schema.collections[kind].editor {
             return Err(refuse(
                 kind,
                 "runtime fields belong to collection() kinds; this one stores its rows elsewhere",
             ));
         }
-        for (name, definition) in columns {
-            let at = format!("{kind}.{name}");
-            let column = field(ev, ext, kind, name, definition, &at)?;
-            let declared = &ext.schema.collections[kind].columns;
-            match declared.get(name) {
-                // Declared in source as well, with the same stored definition: one field.
-                Some(authored) if definition_of(authored).as_ref() == Some(definition) => {}
-                Some(_) => {
-                    return Err(refuse(&at, format!("`{name}` is already a field of `{kind}`")).help(format!(
+    }
+    for (global, kind, name, definition) in &lock.fields {
+        let at = format!("{kind}.{name}");
+        let column = field(ev, ext, *global, kind, name, definition, &at)?;
+        let (declared, relation) = match global {
+            true => (ext.schema.globals[kind].fields.get(name), false),
+            false => {
+                let c = &ext.schema.collections[kind];
+                (c.columns.get(name), c.relations.contains_key(name))
+            }
+        };
+        match declared {
+            // Declared in source as well, with the same stored definition: one field.
+            Some(authored) if definition_of(authored).as_ref() == Some(definition) => {}
+            Some(_) => {
+                return Err(
+                    refuse(&at, format!("`{name}` is already a field of `{kind}`")).help(format!(
                         "the project's source declares `{name}` differently; keep one definition, then run `first pull`"
-                    )));
+                    )),
+                );
+            }
+            None if relation => {
+                return Err(refuse(&at, format!("`{name}` is already a relation of `{kind}`")));
+            }
+            None if *global => {
+                // `global()` checks this for the fields it is given; a field added afterwards gets the same rule.
+                if column.not_null && column.default.is_none() {
+                    return Err(refuse(
+                        &at,
+                        format!("a global field is required unless it has a default (`{name}`)"),
+                    ));
                 }
-                None if ext.schema.collections[kind].relations.contains_key(name) => {
-                    return Err(refuse(&at, format!("`{name}` is already a relation of `{kind}`")));
-                }
-                None => {
-                    let collection = ext.schema.collections.get_mut(kind).expect("collection");
-                    collection.columns.insert(name.clone(), column);
-                }
+                ext.schema
+                    .globals
+                    .get_mut(kind)
+                    .expect("global")
+                    .fields
+                    .insert(name.clone(), column);
+            }
+            None => {
+                let collection = ext.schema.collections.get_mut(kind).expect("collection");
+                collection.columns.insert(name.clone(), column);
+            }
+        }
+    }
+    for (global, kind, entry) in &lock.overrides {
+        let exists = match global {
+            true => ext.schema.globals.contains_key(kind),
+            false => ext.schema.collections.contains_key(kind),
+        };
+        if !exists {
+            return Err(refuse(kind, "an override names a kind this project doesn't declare")
+                .help("run `first pull` again, or remove the entry from the lock"));
+        }
+        match entry.get("label") {
+            None => {}
+            Some(Json::String(label)) if !label.is_empty() => match global {
+                true => ext.schema.globals.get_mut(kind).expect("global").label = label.clone(),
+                false => ext.schema.collections.get_mut(kind).expect("collection").label = label.clone(),
+            },
+            Some(_) => return Err(refuse(kind, "`label` must be a string that isn't empty")),
+        }
+        for (name, ui) in object(entry.get("ui"), kind, "an object of fields")?
+            .into_iter()
+            .flatten()
+        {
+            let at = format!("{kind}.{name}");
+            // Checked as `.ui()` on a field is, by building one that carries it.
+            let carrier = serde_json::json!({ "type": "text", "ui": ui });
+            let checked = field(ev, ext, *global, kind, "ui", &carrier, &at)?.ui;
+            let column = match global {
+                true => ext.schema.globals.get_mut(kind).expect("global").fields.get_mut(name),
+                false => ext
+                    .schema
+                    .collections
+                    .get_mut(kind)
+                    .expect("collection")
+                    .columns
+                    .get_mut(name),
+            };
+            match column {
+                Some(column) if !column.system && !column.primary_key => column.ui = checked,
+                _ => return Err(refuse(&at, format!("`{kind}` has no field `{name}` to present"))),
             }
         }
     }
     ext.schema.runtime_schema = Some(RuntimeSchema {
-        version,
-        hash: hash.to_string(),
+        version: lock.version,
+        hash: lock.hash.clone(),
     });
     Ok(())
 }
@@ -154,6 +439,7 @@ pub fn apply(program: &Program, ev: &mut Evaluator<'_>, ext: &mut Extracted) -> 
 fn field(
     ev: &mut Evaluator<'_>,
     ext: &mut Extracted,
+    global: bool,
     kind: &str,
     name: &str,
     definition: &Json,
@@ -161,14 +447,14 @@ fn field(
 ) -> Result<Column, Diag> {
     // The body, the title and the slug are designations a build infers from source; a lock field
     // with one of these names would change meaning the day it moved into source.
-    if ["title", "content", "slug"].contains(&name) {
+    if !global && ["title", "content", "slug"].contains(&name) {
         return Err(refuse(
             at,
             format!("`{name}` names a designated field; declare it in source"),
         ));
     }
     let builder = builder(ev, definition, at)?;
-    crate::extract::lock_column(name, &builder, kind, ev, ext).map_err(|d| located(at, d, Code::Schema))
+    crate::extract::lock_column(name, &builder, global, kind, ev, ext).map_err(|d| located(at, d, Code::Schema))
 }
 
 /// The builder an author would have written for a stored definition. Checks the definition's shape
@@ -445,6 +731,51 @@ pub fn definition_of(column: &Column) -> Option<Json> {
     Some(Json::Object(out))
 }
 
+/// A compiled collection or global as a stored kind (`{ label?, access?, fields }`), given the
+/// label and access the definition asked for: what the site keeps for a kind it added.
+#[cfg(test)]
+fn stored_kind(schema: &crate::schema::Schema, global: bool, name: &str, asked: &Json) -> Option<Json> {
+    let mut out = Map::new();
+    if let Some(label) = asked.get("label") {
+        out.insert("label".into(), label.clone());
+    }
+    let (fields, access): (Vec<&Column>, &IndexMap<String, crate::schema::Access>) = if global {
+        let g = &schema.globals[name];
+        (g.fields.values().collect(), &g.access)
+    } else {
+        let c = &schema.collections[name];
+        (
+            c.columns
+                .values()
+                .filter(|col| !col.system && !col.primary_key)
+                .collect(),
+            &c.access,
+        )
+    };
+    if let Some(asked) = asked.get("access").and_then(Json::as_object) {
+        let mut rules = Map::new();
+        for (op, rule) in access {
+            if asked.contains_key(op) {
+                rules.insert(
+                    op.clone(),
+                    match rule {
+                        crate::schema::Access::Allow(allow) => Json::Bool(*allow),
+                        crate::schema::Access::Role(role) => Json::from(role.clone()),
+                        _ => return None,
+                    },
+                );
+            }
+        }
+        out.insert("access".into(), Json::Object(rules));
+    }
+    let mut map = Map::new();
+    for column in fields {
+        map.insert(column.name.clone(), definition_of(column)?);
+    }
+    out.insert("fields".into(), Json::Object(map));
+    Some(Json::Object(out))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -528,6 +859,113 @@ mod tests {
             }
         }
         assert!(checked >= 40, "the corpus lost its cases: {checked}");
+    }
+
+    fn lock_adding(global: bool, name: &str, definition: &Json) -> Json {
+        let section = if global { "globals" } else { "collections" };
+        serde_json::json!({ "format": FORMAT, "version": 1, "hash": "h", "added": { section: { name: definition } } })
+    }
+
+    /// The same, for whole collections and globals the site adds.
+    #[test]
+    fn the_corpus_of_added_kinds_gets_the_recorded_verdicts_from_the_compiler() {
+        let corpus: Json = serde_json::from_str(CORPUS).expect("corpus.json");
+        let mut checked = 0;
+        for case in corpus["kinds"].as_array().expect("kinds") {
+            let name = case["name"].as_str().expect("name");
+            let global = case["op"] == "addGlobal";
+            let kind = case["name_"].as_str().expect("name_");
+            checked += 1;
+            let result = build(Some(&lock_adding(global, kind, &case["definition"])));
+            match (case["compiler"].as_str().expect("compiler"), result) {
+                ("accept", Ok(schema)) => {
+                    if let Some(stored) = case.get("stored") {
+                        assert_eq!(
+                            stored_kind(&schema, global, kind, stored).as_ref(),
+                            Some(stored),
+                            "{name}: compiled to another kind than the one stored"
+                        );
+                    }
+                }
+                ("accept", Err(diag)) => panic!("{name}: refused: {} {}", code(&diag), diag.message),
+                (expected, Err(diag)) => assert_eq!(code(&diag), expected, "{name}: {}", diag.message),
+                (expected, Ok(_)) => panic!("{name}: accepted, expected {expected}"),
+            }
+        }
+        assert!(checked >= 40, "the corpus lost its kinds: {checked}");
+    }
+
+    /// The runtime builds the `schema.php` array of a kind it adds itself (`Kinds::expandCollection`
+    /// and `expandGlobal` in the PHP runtime). This is what the compiler emits for the same kinds;
+    /// tests/php/runtimeschema_corpus.php compares the two.
+    #[test]
+    fn the_schema_the_runtime_expands_added_kinds_into_is_the_compilers() {
+        let lock: Json = serde_json::from_str(include_str!("../tests/runtime-schema/kinds.lock.json")).expect("lock");
+        let schema = build(Some(&lock)).unwrap_or_else(|d| panic!("{}", d.message));
+        assert_eq!(
+            crate::schema_php::render(&schema),
+            include_str!("../tests/runtime-schema/kinds.schema.php"),
+            "tests/runtime-schema/kinds.schema.php drifted: copy tests/runtime-schema/kinds.lock.json to \
+             first/_generated/runtime-schema.json in a copy of tests/runtime-schema/base, run `first build` there, \
+             and copy first/dist/wp-content/plugins/first-app-rtschema/first/app/schema.php over it"
+        );
+    }
+
+    #[test]
+    fn the_runtimes_copy_of_the_reserved_global_names_is_the_compilers() {
+        let php = include_str!("../runtime/First/RuntimeSchema/ReservedNames.php");
+        let listed: Vec<&str> = php
+            .split_once("CLIENT_TYPES = [")
+            .and_then(|(_, rest)| rest.split_once("];"))
+            .expect("the CLIENT_TYPES list")
+            .0
+            .split(',')
+            .map(|name| name.trim().trim_matches('\''))
+            .filter(|name| !name.is_empty())
+            .collect();
+        assert_eq!(listed, crate::client::RESERVED_TYPE_NAMES);
+    }
+
+    #[test]
+    fn a_kind_the_lock_adds_that_source_now_declares_is_the_sources_kind() {
+        // `articles` is authored; the lock still lists it as added, with one field source lacks.
+        let lock = lock_adding(
+            false,
+            "articles",
+            &serde_json::json!({ "fields": { "rating": { "type": "integer" }, "subtitle": { "type": "text" } } }),
+        );
+        let schema = build(Some(&lock)).unwrap_or_else(|d| panic!("{}", d.message));
+        let columns: Vec<&str> = schema.collections["articles"]
+            .columns
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            columns,
+            ["id", "title", "body", "rating", "status", "publishedAt", "subtitle"]
+        );
+    }
+
+    #[test]
+    fn labels_and_presentation_from_the_lock_replace_the_declared_ones() {
+        let lock = serde_json::json!({ "format": FORMAT, "version": 3, "hash": "h", "overrides": { "collections": {
+            "articles": { "label": "Stories", "ui": { "rating": { "label": "Stars", "width": 50 } } } } } });
+        let schema = build(Some(&lock)).unwrap_or_else(|d| panic!("{}", d.message));
+        let articles = &schema.collections["articles"];
+        assert_eq!(articles.label, "Stories");
+        assert_eq!(
+            serde_json::to_value(&articles.columns["rating"].ui).unwrap(),
+            serde_json::json!({ "label": "Stars", "width": 50 })
+        );
+        for (ui, expected) in [
+            (serde_json::json!({ "rating": { "width": 500 } }), "F3101"),
+            (serde_json::json!({ "rating": { "colour": "red" } }), "F3101"),
+            (serde_json::json!({ "nope": { "label": "x" } }), "F3001"),
+            (serde_json::json!({ "id": { "label": "x" } }), "F3001"),
+        ] {
+            let lock = serde_json::json!({ "format": FORMAT, "version": 3, "hash": "h", "overrides": { "collections": { "articles": { "ui": ui } } } });
+            assert_eq!(code(&build(Some(&lock)).expect_err("a bad override")), expected, "{ui}");
+        }
     }
 
     #[test]

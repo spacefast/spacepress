@@ -788,16 +788,20 @@ pub fn input_column(name: &str, b: &ColBuilder, ev: &mut Evaluator<'_>, out: &mu
     column(name, b, &Owner::Action(String::new()), &[], Place::Input, ev, out)
 }
 
-/// A collection's own field read from the runtime schema lock (`crate::runtime_schema`), checked as
-/// an authored one is.
+/// A collection's or a global's own field read from the runtime schema lock
+/// (`crate::runtime_schema`), checked as an authored one is.
 pub fn lock_column(
     name: &str,
     b: &ColBuilder,
-    table: &str,
+    global: bool,
+    kind: &str,
     ev: &mut Evaluator<'_>,
     out: &mut Extracted,
 ) -> Result<Column> {
-    column(name, b, &Owner::Collection(table.to_string()), &[], Place::Top, ev, out)
+    if global {
+        return column(name, b, &Owner::Global(kind.to_string()), &[], Place::Global, ev, out);
+    }
+    column(name, b, &Owner::Collection(kind.to_string()), &[], Place::Top, ev, out)
 }
 
 pub fn slugify_name(s: &str) -> String {

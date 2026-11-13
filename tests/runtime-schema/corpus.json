@@ -1,5 +1,5 @@
 {
-  "about": "Changes to a running site's schema (docs/spec/spec.md §2.10), each with the verdict the compiler and the runtime must both give. The compiler reads a case as first/_generated/runtime-schema.json of the project in base/ (src/runtime_schema.rs); the runtime reads it as an addField change on a site that runs that build (tests/php/runtimeschema_test.php). `compiler` and `runtime` are \"accept\" or the code of the refusal: a compiler diagnostic code when both refuse, a problem code where only the running site does. `stored` is the definition both sides must end up with.",
+  "about": "Changes to a running site's schema (docs/spec/spec.md §2.10), each with the verdict the compiler and the runtime must both give. The compiler reads a case as first/_generated/runtime-schema.json of the project in base/ (src/runtime_schema.rs); the runtime reads it as an addField change on a site that runs that build (tests/php/runtimeschema_test.php). `compiler` and `runtime` are \"accept\" or the code of the refusal: a compiler diagnostic code when both refuse, a problem code where only the running site does. `stored` is the definition both sides must end up with. `kinds` are whole collections and globals added the same way (`name_` is the new kind's name).",
   "format": 1,
   "cases": [
     {
@@ -1854,6 +1854,913 @@
       "stored": {
         "type": "text"
       }
+    }
+  ],
+  "kinds": [
+    {
+      "name": "a collection with a title",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      }
+    },
+    {
+      "name": "a collection with a body and fields",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "content": {
+            "type": "richText"
+          },
+          "starts": {
+            "type": "date"
+          },
+          "venue": {
+            "type": "group",
+            "fields": {
+              "name": {
+                "type": "text"
+              },
+              "city": {
+                "type": "text"
+              }
+            }
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "content": {
+            "type": "richText"
+          },
+          "starts": {
+            "type": "date"
+          },
+          "venue": {
+            "type": "group",
+            "fields": {
+              "name": {
+                "type": "text"
+              },
+              "city": {
+                "type": "text"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "a collection with a label and access",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "label": "Events",
+        "access": {
+          "read": "anyone",
+          "create": "author",
+          "update": "editor",
+          "delete": "admin"
+        },
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "label": "Events",
+        "access": {
+          "read": "anyone",
+          "create": "author",
+          "update": "editor",
+          "delete": "admin"
+        },
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      }
+    },
+    {
+      "name": "keys are stored in a fixed order",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        },
+        "access": {
+          "delete": false,
+          "read": true
+        },
+        "label": "Events"
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "label": "Events",
+        "access": {
+          "read": true,
+          "delete": false
+        },
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      }
+    },
+    {
+      "name": "a name with an underscore and a digit",
+      "op": "addCollection",
+      "name_": "press_notes2",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      }
+    },
+    {
+      "name": "a title with a length rule",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true,
+            "rules": {
+              "max": 80
+            }
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true,
+            "rules": {
+              "max": 80
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "a required field on a new collection needs no default",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "venue": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "venue": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      }
+    },
+    {
+      "name": "two rich text fields, one of them the body",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "content": {
+            "type": "richText"
+          },
+          "aside": {
+            "type": "richText"
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "content": {
+            "type": "richText"
+          },
+          "aside": {
+            "type": "richText"
+          }
+        }
+      }
+    },
+    {
+      "name": "a collection without a title",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "starts": {
+            "type": "date"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "an optional title",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a title that is a select",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true,
+            "enum": [
+              "a"
+            ]
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "content that is not rich text",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "content": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a slug field",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "slug": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "an id field",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "id": {
+            "type": "integer"
+          }
+        }
+      },
+      "compiler": "F2001",
+      "runtime": "F2001"
+    },
+    {
+      "name": "a status field",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "status": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a name with a capital",
+      "op": "addCollection",
+      "name_": "Events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a name with a hyphen",
+      "op": "addCollection",
+      "name_": "press-notes",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a name First serves a route under",
+      "op": "addCollection",
+      "name_": "media",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a name longer than a post type allows",
+      "op": "addCollection",
+      "name_": "averyverylongname",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a collection the build declares",
+      "op": "addCollection",
+      "name_": "articles",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a name the build's table has",
+      "op": "addCollection",
+      "name_": "votes",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "F1221",
+      "runtime": "F1221"
+    },
+    {
+      "name": "an access operation collections do not have",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "access": {
+          "publish": "editor"
+        },
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "an access value that is not a role",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "access": {
+          "read": "nobody"
+        },
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "self access outside users",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "access": {
+          "read": "self"
+        },
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "an access rule that is an object",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "access": {
+          "read": {
+            "fn": "x"
+          }
+        },
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a label that is empty",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "label": "",
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "an option a stored kind does not have",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "url": "/events/:slug",
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "no fields",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {}
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a field rule inside a new collection",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "n": {
+            "type": "integer",
+            "rules": {
+              "min": 9,
+              "max": 1
+            }
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a modifier that does not fit inside a new collection",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "on": {
+            "type": "boolean",
+            "rules": {
+              "max": 1
+            }
+          }
+        }
+      },
+      "compiler": "F2001",
+      "runtime": "F2001"
+    },
+    {
+      "name": "a kind every site has",
+      "op": "addCollection",
+      "name_": "posts",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "schema_reserved"
+    },
+    {
+      "name": "a built-in field name in a new collection",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "author": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "schema_reserved"
+    },
+    {
+      "name": "a global",
+      "op": "addGlobal",
+      "name_": "banner",
+      "definition": {
+        "fields": {
+          "text": {
+            "type": "text"
+          },
+          "on": {
+            "type": "boolean",
+            "notNull": true,
+            "default": {
+              "value": false
+            }
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "fields": {
+          "text": {
+            "type": "text"
+          },
+          "on": {
+            "type": "boolean",
+            "notNull": true,
+            "default": {
+              "value": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "a global with a label and access",
+      "op": "addGlobal",
+      "name_": "banner",
+      "definition": {
+        "label": "Site banner",
+        "access": {
+          "read": "anyone",
+          "update": "admin"
+        },
+        "fields": {
+          "text": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "label": "Site banner",
+        "access": {
+          "read": "anyone",
+          "update": "admin"
+        },
+        "fields": {
+          "text": {
+            "type": "text"
+          }
+        }
+      }
+    },
+    {
+      "name": "a global with a repeater",
+      "op": "addGlobal",
+      "name_": "footer",
+      "definition": {
+        "fields": {
+          "links": {
+            "type": "repeater",
+            "fields": {
+              "label": {
+                "type": "text",
+                "notNull": true
+              },
+              "href": {
+                "type": "url",
+                "notNull": true
+              }
+            }
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "fields": {
+          "links": {
+            "type": "repeater",
+            "fields": {
+              "label": {
+                "type": "text",
+                "notNull": true
+              },
+              "href": {
+                "type": "url",
+                "notNull": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "a global name in camel case",
+      "op": "addGlobal",
+      "name_": "siteBanner",
+      "definition": {
+        "fields": {
+          "text": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "fields": {
+          "text": {
+            "type": "text"
+          }
+        }
+      }
+    },
+    {
+      "name": "a required global field without a default",
+      "op": "addGlobal",
+      "name_": "banner",
+      "definition": {
+        "fields": {
+          "text": {
+            "type": "text",
+            "notNull": true
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "blocks on a global",
+      "op": "addGlobal",
+      "name_": "banner",
+      "definition": {
+        "fields": {
+          "parts": {
+            "type": "blocks",
+            "layouts": {
+              "hero": {
+                "heading": {
+                  "type": "text"
+                }
+              }
+            }
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "an access operation globals do not have",
+      "op": "addGlobal",
+      "name_": "banner",
+      "definition": {
+        "access": {
+          "create": "admin"
+        },
+        "fields": {
+          "text": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a name the generated client uses",
+      "op": "addGlobal",
+      "name_": "role",
+      "definition": {
+        "fields": {
+          "text": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a global name with a hyphen",
+      "op": "addGlobal",
+      "name_": "my-banner",
+      "definition": {
+        "fields": {
+          "text": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a global named like the build's collection",
+      "op": "addGlobal",
+      "name_": "articles",
+      "definition": {
+        "fields": {
+          "text": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F1221",
+      "runtime": "F1221"
+    },
+    {
+      "name": "a global named like a kind every site has",
+      "op": "addGlobal",
+      "name_": "settings",
+      "definition": {
+        "fields": {
+          "text": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "schema_reserved"
     }
   ]
 }

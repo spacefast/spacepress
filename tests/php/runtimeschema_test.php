@@ -19,7 +19,24 @@ require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 $base = require dirname(__DIR__) . '/runtime-schema/base.schema.php';
-$wp = wpSite('rtschema', ['schema' => $base, 'server' => true]);
+$wp = wpSite('rtschema', ['schema' => $base, 'server' => true, 'muPlugins' => ['rtschema-propose' => <<<'PHP'
+    <?php
+    // Test only: proposes the posted change set in a fresh request, which sees the build as deployed now.
+    add_action('init', static function (): void {
+        if (parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH) !== '/__rtschema_propose') {
+            return;
+        }
+        try {
+            $out = [200, \First\Wp\SchemaVersions::of(\First\Wp\Runtime::plugin())->propose(json_decode((string) file_get_contents('php://input'), true))];
+        } catch (\First\HttpError $e) {
+            $out = [$e->status, ['code' => $e->errorCode, 'pointer' => $e->pointer]];
+        }
+        status_header($out[0]);
+        header('Content-Type: application/json');
+        echo json_encode($out[1]);
+        exit;
+    }, 99);
+    PHP]]);
 $api = $wp->url() . '/__first/api/v1';
 
 /** @return array{int, mixed} status and decoded body, as $as (a test user name) or anonymous */
@@ -79,7 +96,8 @@ check('nor does it change the schema requests see', !isset($described()['kinds']
 eq('a field the build declares can\'t be redefined', $refusal(fn () => $versions->propose($add('rating', ['type' => 'text']))), '422 F3001 /changes/0/field');
 eq('a rule the compiler has is refused with its code', $refusal(fn () => $versions->propose($add('subtitle', ['type' => 'text', 'rules' => ['min' => 9, 'max' => 2]]))), '422 F3001 /changes/0/definition');
 eq('a table() kind is build-only', $refusal(fn () => $versions->propose($add('note', ['type' => 'text'], 'votes'))), '422 F3001 /changes/0/definition');
-eq('removing a field the build declares is build-only', $refusal(fn () => $versions->propose(['format' => 1, 'changes' => [['op' => 'removeField', 'kind' => 'articles', 'field' => 'rating']]])), '422 schema_build_only /changes/0/op');
+eq('removing a field the build declares is build-only', $refusal(fn () => $versions->propose(['format' => 1, 'changes' => [['op' => 'removeField', 'kind' => 'articles', 'field' => 'rating']]])), '422 schema_build_only /changes/0/field');
+eq('renaming a field is build-only', $refusal(fn () => $versions->propose(['format' => 1, 'changes' => [['op' => 'renameField', 'kind' => 'articles', 'field' => 'rating', 'to' => 'stars']]])), '422 schema_build_only /changes/0/op');
 eq('a required field needs a default', $refusal(fn () => $versions->propose($add('subtitle', ['type' => 'text', 'notNull' => true]))), '422 schema_required /changes/0/definition/notNull');
 eq('refusals store nothing', $versions->list(), []);
 
@@ -214,10 +232,90 @@ eq('its stored values and versions are untouched', [$wp->scalar("SELECT meta_val
 $wp->writeSchema($base);
 eq('turning the flag back on brings the fields and values back', http('GET', "$api/articles/{$new['data']['id']}")[1]['data']['subtitle'], 'Now it fits');
 
+// ================================================================ new kinds, labels, removal and rollback
+$set = static fn (array ...$changes): array => ['format' => 1, 'changes' => $changes];
+$count = static fn (): int => count($GLOBALS['versions']->list());
+$next = $count();
+$kindsVersion = $versions->apply($next, $set(
+    ['op' => 'addCollection', 'kind' => 'events', 'definition' => ['label' => 'Events', 'access' => ['create' => 'author'], 'fields' => ['title' => ['type' => 'text', 'notNull' => true, 'rules' => ['max' => 60]], 'content' => ['type' => 'richText'], 'starts' => ['type' => 'date']]]],
+    ['op' => 'addGlobal', 'global' => 'banner', 'definition' => ['access' => ['update' => 'admin'], 'fields' => ['text' => ['type' => 'text'], 'on' => ['type' => 'boolean', 'notNull' => true, 'default' => ['value' => false]]]]],
+), $admin);
+$d = $described();
+eq('a collection added at runtime is a kind with its route', [$d['kinds']['events']['route'] ?? null, $d['kinds']['events']['label'] ?? null, array_keys($d['kinds']['events']['columns'] ?? [])],
+    ['/wp/v2/first_events', 'Events', ['id', 'title', 'content', 'starts', 'status', 'publishedAt']]);
+eq('and a global added at runtime is a global', array_keys($d['globals']['banner']['fields'] ?? []), ['text', 'on']);
+$tables = static fn (): array => array_merge(...array_map('array_values', $GLOBALS['wp']->sql('SHOW TABLES')));
+check('no SQL table was created for either', array_filter($tables(), static fn (string $t): bool => str_contains($t, 'first_events') || str_contains($t, 'banner')) === [], $tables());
+[$status, $event] = http('POST', "$api/events", ['title' => 'Launch', 'content' => '<p>Doors at seven.</p>', 'starts' => '2027-03-01'], 'author');
+eq('its access rule lets an author create', [$status, $event['data']['title'] ?? null, $event['data']['starts'] ?? null], [201, 'Launch', '2027-03-01']);
+eq('and refuses a subscriber', http('POST', "$api/events", ['title' => 'No'], 'subscriber')[0], 403);
+eq('its field rules are enforced', http('POST', "$api/events", ['title' => str_repeat('t', 61)], 'author')[0], 422);
+eq('an item is a post of the kind\'s type, title and body in core\'s columns', $wp->sql('SELECT post_type, post_title, post_content FROM {prefix}posts WHERE ID = ?', [$event['data']['id']]),
+    [['post_type' => 'first_events', 'post_title' => 'Launch', 'post_content' => '<p>Doors at seven.</p>']]);
+eq('anyone reads it', http('GET', "$api/events/{$event['data']['id']}")[1]['data']['title'] ?? null, 'Launch');
+eq('the global reads its defaults', http('GET', "$api/banner")[1]['data'] ?? null, ['text' => null, 'on' => false]);
+eq('an editor may not update it', http('PATCH', "$api/banner", ['on' => true], 'editor')[0], 403);
+eq('an admin may', http('PATCH', "$api/banner", ['text' => 'Sale', 'on' => true], 'admin')[1]['data'] ?? null, ['text' => 'Sale', 'on' => true]);
+
+// Names that are taken.
+eq('a collection named like the build\'s is refused', $refusal(fn () => $versions->propose($set(['op' => 'addCollection', 'kind' => 'articles', 'definition' => ['fields' => ['title' => ['type' => 'text', 'notNull' => true]]]]))), '422 F3001 /changes/0/kind');
+eq('and one named like a kind every site has', $refusal(fn () => $versions->propose($set(['op' => 'addCollection', 'kind' => 'posts', 'definition' => ['fields' => ['title' => ['type' => 'text', 'notNull' => true]]]]))), '422 schema_reserved /changes/0/kind');
+
+// Fields, a label and presentation on the new kinds; then all of it rolled back as a new version.
+$grown = $versions->apply($count(), $set(
+    ['op' => 'addField', 'kind' => 'events', 'field' => 'venue', 'definition' => ['type' => 'text']],
+    ['op' => 'setLabel', 'kind' => 'events', 'label' => 'What\'s on'],
+    ['op' => 'setFieldUi', 'kind' => 'articles', 'field' => 'rating', 'ui' => ['label' => 'Stars', 'width' => 50]],
+    ['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Stories'],
+), $admin);
+$d = $described();
+eq('a label and presentation replace the build\'s; the field\'s type does not move', [$d['kinds']['events']['label'], $d['kinds']['articles']['label'], $d['kinds']['articles']['columns']['rating']],
+    ['What\'s on', 'Stories', ['type' => 'integer', 'ui' => ['label' => 'Stars', 'width' => 50]]]);
+eq('the new field takes a value', http('PATCH', "$api/events/{$event['data']['id']}", ['venue' => 'Town hall'], 'editor')[1]['data']['venue'] ?? null, 'Town hall');
+
+$reversal = $versions->reversal($grown['version']);
+eq('the reversal of a version is its changes undone, newest first', array_column($reversal['changes'], 'op'), ['setLabel', 'setFieldUi', 'setLabel', 'removeField']);
+$rolledBack = $versions->apply($count(), $reversal, $admin);
+eq('a rollback is a new version; the one it reverses is still stored', [$rolledBack['version'], $rolledBack['parent'], $versions->list()[$grown['version'] - 1]['hash']], [$grown['version'] + 1, $grown['version'], $grown['hash']]);
+$d = $described();
+eq('after it the schema is the one before that version', [$d['kinds']['events']['label'], $d['kinds']['articles']['label'], $d['kinds']['articles']['columns']['rating'], isset($d['kinds']['events']['columns']['venue'])],
+    ['Events', 'Articles', ['type' => 'integer'], false]);
+eq('the hidden field\'s value is still stored', $wp->scalar("SELECT meta_value FROM {prefix}postmeta WHERE post_id = ? AND meta_key = 'first_venue'", [$event['data']['id']]), 'Town hall');
+eq('it can\'t come back as another type', $refusal(fn () => $versions->propose($set(['op' => 'addField', 'kind' => 'events', 'field' => 'venue', 'definition' => ['type' => 'integer']]))), '422 schema_retype /changes/0/definition/type');
+$versions->apply($count(), $set(['op' => 'addField', 'kind' => 'events', 'field' => 'venue', 'definition' => ['type' => 'text']]), $admin);
+eq('added again as the same type, its value is there', http('GET', "$api/events/{$event['data']['id']}")[1]['data']['venue'] ?? null, 'Town hall');
+
+// Removing a kind hides it; nothing is dropped.
+$removed = $versions->propose($set(['op' => 'removeCollection', 'kind' => 'events'], ['op' => 'removeGlobal', 'global' => 'banner']));
+eq('a proposal to remove a collection says how many items it hides', [$removed['effects'][0]['existingItems'], $removed['effects'][0]['note']], [1, 'hidden from the schema; its items stay in post type first_events and come back if the collection is added again']);
+$removal = $versions->apply($count(), $set(['op' => 'removeCollection', 'kind' => 'events'], ['op' => 'removeGlobal', 'global' => 'banner']), $admin);
+$d = $described();
+eq('a removed kind is gone from the schema and the API', [isset($d['kinds']['events']), isset($d['globals']['banner']), http('GET', "$api/events")[0]], [false, false, 404]);
+eq('its items and values are kept', [$wp->scalar("SELECT COUNT(*) FROM {prefix}posts WHERE post_type = 'first_events' AND post_status = 'publish'"), $wp->scalar("SELECT option_value FROM {prefix}options WHERE option_name = 'first_global_banner_text'")], [1, 'Sale']);
+eq('removing a kind the build declares is build-only', $refusal(fn () => $versions->propose($set(['op' => 'removeCollection', 'kind' => 'articles']))), '422 schema_build_only /changes/0/kind');
+$versions->apply($count(), $versions->reversal($removal['version']), $admin);
+$back = http('GET', "$api/events/{$event['data']['id']}")[1]['data'] ?? [];
+eq('rolling the removal back brings the kind and its item back, later field included', [$back['title'] ?? null, $back['starts'] ?? null, $back['venue'] ?? null], ['Launch', '2027-03-01', 'Town hall']);
+eq('and the global with its values', http('GET', "$api/banner")[1]['data'] ?? null, ['text' => 'Sale', 'on' => true]);
+problem('a version that doesn\'t exist has no reversal', fn () => $versions->reversal(999), 404, 'not_found');
+
+// A build that declares a kind the site added (after `first pull`): the build's is used.
+$declared = $base;
+$declared['collections']['events'] = ['label' => 'From the build'] + \First\RuntimeSchema\Kinds::expandCollection('events', ['fields' => ['title' => ['type' => 'text', 'notNull' => true], 'content' => ['type' => 'richText'], 'starts' => ['type' => 'date']]]);
+$wp->writeSchema($declared);
+$d = $described();
+eq('a build that declares a runtime kind uses its own declaration and keeps the runtime field on it', [$d['kinds']['events']['label'], isset($d['kinds']['events']['columns']['venue'])], ['From the build', true]);
+eq('the item is the same post', http('GET', "$api/events/{$event['data']['id']}")[1]['data']['title'] ?? null, 'Launch');
+// (This process loaded the build before that update, so it asks a fresh one, as a request would.)
+[$status, $inUse] = http('POST', $wp->url() . '/__rtschema_propose', $set(['op' => 'removeCollection', 'kind' => 'events']));
+eq('a kind the build declares can\'t be removed at runtime, whoever added it', [$status, $inUse['code'] ?? null, $inUse['pointer'] ?? null], [422, 'schema_in_use', '/changes/0/kind']);
+$wp->writeSchema($base);
+
 // ================================================================ a format this runtime doesn't know
 $state = get_option(Loader::option('rtschema'));
 update_option(Loader::option('rtschema'), ['format' => 2] + $state, true);
-check('a state in a newer format isn\'t guessed at: the site serves the build\'s schema', !isset($described()['kinds']['articles']['columns']['subtitle']));
+$d = $described();
+check('a state in a newer format isn\'t guessed at: the site serves the build\'s schema', !isset($d['kinds']['articles']['columns']['subtitle']) && !isset($d['kinds']['events']), array_keys($d['kinds']));
 update_option(Loader::option('rtschema'), $state, true);
 check('and the known format loads again', isset($described()['kinds']['articles']['columns']['subtitle']));
 

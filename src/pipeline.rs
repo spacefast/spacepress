@@ -154,6 +154,7 @@ pub fn build(
         end: 0,
     };
     exports::register(program, &mut ev, &config).map_err(|d| d.phase(diag::Code::Schema))?;
+    let runtime_lock = crate::runtime_schema::declare(program, &mut ev, &config)?;
     let dir_name = project
         .file_name()
         .map(|n| extract::slugify_name(&n.to_string_lossy()))
@@ -163,7 +164,7 @@ pub fn build(
     wp_hooks(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     app::register(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
-    crate::runtime_schema::apply(program, &mut ev, &mut ext)?;
+    crate::runtime_schema::apply(runtime_lock.as_ref(), &mut ev, &mut ext)?;
     let mut schema = ext.schema.clone();
     let roots = std::mem::take(&mut ext.roots);
     let action_results;

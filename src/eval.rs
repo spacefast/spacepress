@@ -2719,7 +2719,8 @@ impl<'p> Evaluator<'p> {
                 }
                 // 0.3.0 gave a table that declared its own primary key (`code: text().primaryKey()`)
                 // no `id`; its stored table has none.
-                if !columns.contains_key("id") && !(self.legacy && columns.values().any(|c| c.primary_key)) {
+                let own_key = self.legacy && columns.values().any(|c| c.primary_key);
+                if !columns.contains_key("id") && !own_key {
                     columns.shift_insert(0, "id".into(), Rc::new(legacy::id(span)));
                 }
                 let options = match arg(1) {

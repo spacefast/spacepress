@@ -200,7 +200,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     let span_of =
         |ev: &Evaluator<'_>, obj: &Value, key: &str, fallback: Span| ev.key_span(obj, key).unwrap_or(fallback);
     for key in cfg_map.keys() {
-        if !CONFIG_KEYS.contains(&key.as_str()) && !(ev.legacy() && legacy::CONFIG_KEYS.contains(&key.as_str())) {
+        let old_key = ev.legacy() && legacy::CONFIG_KEYS.contains(&key.as_str());
+        if !CONFIG_KEYS.contains(&key.as_str()) && !old_key {
             let mut d = Diag::new(
                 span_of(ev, config, key, config_span),
                 format!("defineConfig() has no option `{key}`"),
@@ -3342,7 +3343,7 @@ mod legacy {
             r.push(3);
             r
         };
-        table.routes.sort_by(|a, b| rank(&a.pattern).cmp(&rank(&b.pattern)));
+        table.routes.sort_by_key(|r| rank(&r.pattern));
         out.schema.app = Some(table);
         Ok(())
     }

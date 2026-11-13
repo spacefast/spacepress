@@ -253,6 +253,36 @@ test("a kind's api flags switch its operations off on the API: 405 method_not_al
   assert.equal(first("find", "notices", JSON.stringify({ where: { id: row.id } }))[0].title, `Notice ${run}`, "nothing was written");
 });
 
+test("the API's writes run core's insert hooks and other plugins' registered REST fields", async () => {
+  // tests/wp/mu-plugins/rest-insert-probe.php: a `probe_note` REST field and rest_(after_)insert hooks.
+  const hooks = (id: number) => JSON.parse(wp("eval", `echo wp_json_encode(get_post_meta(${id}, 'probe_hooks'));`));
+  const created = await f("POST", "/events", { as: "editor", body: { title: `Probe ${run}`, probe_note: "made" } });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  const id = created.json.data.id;
+  assert.equal(wp("post", "meta", "get", String(id), "probe_note"), "made", "the field's update callback ran");
+  assert.deepEqual(hooks(id), ["rest_insert_first_events:create", "rest_after_insert_first_events:create"]);
+  const patched = await f("PATCH", `/events/${id}`, { as: "editor", body: { seats: 3, probe_note: "changed" } });
+  assert.equal(patched.status, 200, JSON.stringify(patched.json));
+  assert.equal(wp("post", "meta", "get", String(id), "probe_note"), "changed");
+  assert.deepEqual(hooks(id).slice(2), ["rest_insert_first_events:update", "rest_after_insert_first_events:update"]);
+  // A field's refusal is the write's: nothing of it is kept.
+  const refused = await f("PATCH", `/events/${id}`, { as: "editor", body: { seats: 9, probe_note: "refuse" } });
+  assert.equal(refused.status, 400, JSON.stringify(refused.json));
+  assert.equal(first("find", "events", JSON.stringify({ where: { id } }))[0].seats, 3, "the refused write rolled back");
+});
+
+test("the API runs core's permission checks: a caller core refuses is refused, a row outside the rule is a 404", async () => {
+  const id = first("insert", "events", JSON.stringify({ title: `Perm ${run}` }))[0].id;
+  const anon = await f("PATCH", `/events/${id}`, { body: { seats: 1 } });
+  assert.deepEqual([anon.status, anon.json.code], [401, "unauthenticated"]);
+  const sub = await f("PATCH", `/events/${id}`, { as: "subscriber", body: { seats: 1 } });
+  assert.deepEqual([sub.status, sub.json.code], [403, "forbidden"], "the update rule refuses a subscriber's seats");
+  const reset = await f("PATCH", `/events/${id}`, { as: "subscriber", body: { extra: {} } });
+  assert.equal(reset.status, 200, "the data-dependent rule allows resetting extra to {}, through core's check");
+  const create = await f("POST", "/events", { as: "subscriber", body: { title: "x" } });
+  assert.deepEqual([create.status, create.json.code], [403, "forbidden"], "core's create_posts check refuses");
+});
+
 test("a revisions list pages like every list: { data, cursor }, nothing dropped past a page", async () => {
   const post = first("insert", "posts", JSON.stringify({ title: `Many revs ${run}`, excerpt: "0" }))[0];
   for (let i = 1; i <= 4; i++) first("update", "posts", JSON.stringify({ id: post.id }), JSON.stringify({ excerpt: String(i) }));

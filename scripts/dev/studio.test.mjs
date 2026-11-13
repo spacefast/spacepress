@@ -63,7 +63,7 @@ test('publishing replaces managed plugins while retaining extra plugins and refu
   assert.equal(await readFile(join(plugins, 'first-app-test/first-app-test.php'), 'utf8'), 'second build');
 });
 
-test('watch inputs include imported TypeScript and public files without reacting to generated output', async (t) => {
+test('watch inputs include imported TypeScript, public files and Markdown pages without reacting to generated output', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'first-dev-watch-'));
   const project = join(root, 'project');
   let watcher;
@@ -145,4 +145,17 @@ test('watch inputs include imported TypeScript and public files without reacting
   const nestedChange = await sourceDigest(project);
   assert.notEqual(nestedChange, newDirectory);
   await waitForDigest(nestedChange);
+  // A Markdown page is a build input; Markdown elsewhere (a README, notes) is not.
+  await mkdir(join(project, 'first/app/about'), { recursive: true });
+  await writeFile(join(project, 'first/app/about/page.md'), '# About');
+  const markdownPage = await sourceDigest(project);
+  assert.notEqual(markdownPage, nestedChange);
+  await waitForDigest(markdownPage);
+  await writeFile(join(project, 'first/app/about/page.md'), '# About us');
+  const markdownEdit = await sourceDigest(project);
+  assert.notEqual(markdownEdit, markdownPage);
+  await waitForDigest(markdownEdit);
+  await writeFile(join(project, 'README.md'), 'notes');
+  await writeFile(join(project, 'first/app/about/notes.md'), 'notes');
+  assert.equal(await sourceDigest(project), markdownEdit);
 });

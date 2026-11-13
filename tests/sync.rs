@@ -101,7 +101,14 @@ const vaults = table({
   name: text(),
 }, { uid: true, access: { read: "admin" } });
 
-export default defineConfig({ name: "notes", tables: { people, notes, snippets, teams, players, steps, tops, mids, bottoms, eggs, chickens, vaults, safes, heads, rungs, dossiers } });
+// A docs section: a hierarchical collection synced from a folder tree (content/docs/**/*.md).
+const docs = collection({
+  title: text(),
+  slug: slug({ source: "title" }),
+  body: richText().optional(),
+}, { content: "body", hierarchical: true, sync: "content/docs/**/*.md", access: { read: "anyone" } });
+
+export default defineConfig({ name: "notes", collections: { docs }, tables: { people, notes, snippets, teams, players, steps, tops, mids, bottoms, eggs, chickens, vaults, safes, heads, rungs, dossiers } });
 "#;
 
 struct Site {
@@ -250,6 +257,13 @@ fn setup() -> (PathBuf, Site) {
     let _ = std::fs::remove_dir_all(&project);
     std::fs::create_dir_all(project.join("content/notes")).unwrap();
     std::fs::write(project.join("first.config.ts"), CONFIG).unwrap();
+    // A component content may use as a block (`<Note kind="tip">…</Note>` in a Markdown file).
+    std::fs::create_dir_all(project.join("first/components")).unwrap();
+    std::fs::write(
+        project.join("first/components/Note.tsx"),
+        "export const blocks = [\"Note\"];\nexport function Note({ kind, children }: { kind: \"tip\" | \"warning\"; children?: JSX.Element }) {\n  return <aside className={kind}>{children}</aside>;\n}\n",
+    )
+    .unwrap();
     let out = first().arg("build").arg(&project).output().unwrap();
     assert!(out.status.success(), "build: {}", String::from_utf8_lossy(&out.stderr));
     // A fresh WordPress on SQLite with the built plugins active, served by php -S: one JSON line with
@@ -2126,5 +2140,136 @@ fn a_file_edited_while_resolve_deletes_it_is_kept() {
             .as_str()
             .is_some_and(|b| b.contains("Kept: typed during the delete."))
     }));
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+/// A folder tree of Markdown syncs with a hierarchical kind: a file's folders are its parent chain
+/// and its name its slug, so neither is written in front matter; a page moved on the site moves
+/// its file, and a page that gains children becomes its folder's index file.
+#[test]
+fn a_folder_tree_syncs_with_a_hierarchical_kind_both_ways() {
+    let (project, site) = setup();
+    let dir = project.join("content/docs");
+    std::fs::create_dir_all(dir.join("guides")).unwrap();
+    std::fs::write(dir.join("intro.md"), "---\ntitle: Intro\norder: 1\n---\nHello.\n").unwrap();
+    std::fs::write(
+        dir.join("guides/index.md"),
+        "---\ntitle: Guides\norder: 2\n---\nHow to.\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("guides/install.md"), "---\ntitle: Install\n---\nRun it.\n").unwrap();
+    let out = sync(&project, &site, &["--only", "docs"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let rows = site.rows("docs");
+    let by_slug = |slug: &str| {
+        rows.iter()
+            .find(|r| r["slug"] == slug)
+            .unwrap_or_else(|| panic!("{slug}: {rows:?}"))
+            .clone()
+    };
+    let (intro, guides, install) = (by_slug("intro"), by_slug("guides"), by_slug("install"));
+    assert_eq!(intro["parent"], serde_json::Value::Null);
+    assert_eq!(intro["order"], 1);
+    assert_eq!(guides["order"], 2);
+    assert_eq!(install["parent"], guides["id"], "a file's folder is its parent");
+    // The files carry their uid, and never their slug or parent: the path says those.
+    let install_file = read(&project, "content/docs/guides/install.md");
+    assert!(install_file.starts_with("---\nuid: zr_"), "{install_file}");
+    assert!(
+        !install_file.contains("slug:") && !install_file.contains("parent:"),
+        "{install_file}"
+    );
+
+    // On the site: Intro moves under Guides, and Install gets a child of its own.
+    let (s, moved) = site.call(
+        "PATCH",
+        &format!("/docs/{}", intro["id"]),
+        Some(serde_json::json!({ "parent": guides["id"], "order": 0 })),
+    );
+    assert_eq!(s, 200, "{moved}");
+    let (s, child) = site.call(
+        "POST",
+        "/docs",
+        Some(serde_json::json!({ "title": "On Linux", "slug": "linux", "parent": install["id"], "body": "<!-- wp:paragraph -->\n<p>Use the package.</p>\n<!-- /wp:paragraph -->" })),
+    );
+    assert_eq!(s, 201, "{child}");
+    let out = sync(&project, &site, &["--only", "docs"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let pulled = data(&out);
+    let mut files: Vec<String> = Vec::new();
+    let mut pending = vec![dir.clone()];
+    while let Some(d) = pending.pop() {
+        for e in std::fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                pending.push(p);
+            } else {
+                files.push(p.strip_prefix(&dir).unwrap().to_string_lossy().into_owned());
+            }
+        }
+    }
+    files.sort();
+    assert_eq!(
+        files,
+        [
+            "guides/index.md",
+            "guides/install/index.md",
+            "guides/install/linux.md",
+            "guides/intro.md"
+        ],
+        "the files follow the tree: {pulled}"
+    );
+    assert!(read(&project, "content/docs/guides/install/linux.md").contains("Use the package."));
+    // A second run changes nothing: the tree and the files agree.
+    let again = data(&sync(&project, &site, &["--only", "docs", "--check"]));
+    assert_eq!(again["pending"], serde_json::json!([]), "{again}");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+/// A component block in a synced Markdown file round-trips through `first sync`: pushed as the
+/// app's block with its Markdown as inner blocks, edited on the site, and pulled back as the tag.
+#[test]
+fn a_component_block_in_markdown_syncs_both_ways() {
+    let (project, site) = setup();
+    let dir = project.join("content/docs");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("tips.md"),
+        "---\ntitle: Tips\n---\nBefore.\n\n<Note kind=\"tip\">\nUse **sync**.\n</Note>\n\nAfter.\n",
+    )
+    .unwrap();
+    let out = sync(&project, &site, &["--only", "docs"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let row = site
+        .rows("docs")
+        .into_iter()
+        .find(|r| r["slug"] == "tips")
+        .expect("tips");
+    let body = row["body"].as_str().unwrap();
+    assert!(body.contains("<!-- wp:notes/note {\"kind\":\"tip\"} -->"), "{body}");
+    assert!(body.contains("<p>Use <b>sync</b>.</p>"), "{body}");
+    // On the site the block's prop changes; the pull writes the same tag with the new value.
+    let edited = body.replace("{\"kind\":\"tip\"}", "{\"kind\":\"warning\"}");
+    let (s, answer) = site.call(
+        "PATCH",
+        &format!("/docs/{}", row["id"]),
+        Some(serde_json::json!({ "body": edited })),
+    );
+    assert_eq!(s, 200, "{answer}");
+    let out = sync(&project, &site, &["--only", "docs"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let file = read(&project, "content/docs/tips.md");
+    assert!(
+        file.ends_with("Before.\n\n<Note kind=\"warning\">\nUse **sync**.\n</Note>\n\nAfter.\n"),
+        "{file}"
+    );
+    let again = data(&sync(&project, &site, &["--only", "docs", "--check"]));
+    assert_eq!(again["pending"], serde_json::json!([]), "{again}");
     let _ = std::fs::remove_dir_all(&project);
 }

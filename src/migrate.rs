@@ -871,12 +871,16 @@ pub fn destructive(prev: &Json, next: &Json) -> Vec<String> {
                         "changes the existing SQL table binding for \"{t}\"; rows are not moved"
                     ));
                 }
-                for k in def["columns"].as_object().unwrap_or(&empty).keys() {
-                    if !n["columns"].as_object().unwrap_or(&empty).contains_key(k) {
-                        out.push(format!("drops column \"{t}\".\"{k}\""));
+                let wp_table = |d: &Json| d["editor"].as_bool() == Some(false) && d["auth"].as_bool() != Some(true);
+                // A change of storage drops no column of one store in favour of the other: the
+                // warnings below say what happens to the rows.
+                if wp_table(def) == wp_table(n) {
+                    for k in def["columns"].as_object().unwrap_or(&empty).keys() {
+                        if !n["columns"].as_object().unwrap_or(&empty).contains_key(k) {
+                            out.push(format!("drops column \"{t}\".\"{k}\""));
+                        }
                     }
                 }
-                let wp_table = |d: &Json| d["editor"].as_bool() == Some(false) && d["auth"].as_bool() != Some(true);
                 if wp_table(def) && !wp_table(n) {
                     let to = if n["auth"].as_bool() == Some(true) {
                         "WordPress users"
@@ -885,6 +889,18 @@ pub fn destructive(prev: &Json, next: &Json) -> Vec<String> {
                     };
                     out.push(format!(
                         "drops the WordPress table for \"{t}\" (it becomes {to}; existing rows aren't moved)"
+                    ));
+                }
+                // The other way: rows held as posts (or users) stay where they are, and the new table
+                // starts empty. Nothing is dropped, so no deploy check stops it.
+                if !wp_table(def) && wp_table(n) {
+                    let from = if def["auth"].as_bool() == Some(true) {
+                        "WordPress users"
+                    } else {
+                        "WordPress posts"
+                    };
+                    out.push(format!(
+                        "creates an empty SQL table for \"{t}\" (its rows stay in {from}, and the app no longer reads them)"
                     ));
                 }
             }
@@ -1085,6 +1101,22 @@ mod tests {
         assert_eq!(
             destructive(&v1, &posts)[0],
             "drops the WordPress table for \"members\" (it becomes post-backed; existing rows aren't moved)"
+        );
+        // And back: posts or users declared as a table() leave their rows where they are and read an
+        // empty table. The columns the old store had are not reported as drops: nothing drops them.
+        let mut posts_fields = posts.clone();
+        posts_fields["tables"]["members"]["columns"]["status"] = col("text");
+        assert_eq!(
+            destructive(&posts_fields, &v1),
+            vec![
+                "creates an empty SQL table for \"members\" (its rows stay in WordPress posts, and the app no longer reads them)"
+            ]
+        );
+        assert_eq!(
+            destructive(&users, &v1),
+            vec![
+                "creates an empty SQL table for \"members\" (its rows stay in WordPress users, and the app no longer reads them)"
+            ]
         );
     }
 

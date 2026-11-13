@@ -244,7 +244,8 @@ final class WpSite
             $port = $this->port;
             putenv("FIRST_TEST_SERVER_PORT=$port");
             $server = proc_open(
-                [PHP_BINARY, '-S', "127.0.0.1:$port", __DIR__ . '/wp-router.php'],
+                // A suite that rewrites schema.php (an app update) is served the new file by the next request.
+                [PHP_BINARY, '-d', 'opcache.revalidate_freq=0', '-S', "127.0.0.1:$port", __DIR__ . '/wp-router.php'],
                 [1 => ['file', "$this->dir/server.log", 'a'], 2 => ['file', "$this->dir/server.log", 'a']],
                 $pipes,
                 $this->dir,
@@ -309,13 +310,19 @@ final class WpSite
         return is_file("$this->content/debug.log") ? (string) file_get_contents("$this->content/debug.log") : '(no debug.log)';
     }
 
-    public function destroy(): void
+    /** Stops the php -S child; `startServer()` starts a new one (a new process: no cached code). */
+    public function stopServer(): void
     {
         if ($this->server !== null) {
             proc_terminate($this->server);
             proc_close($this->server);
             $this->server = null;
         }
+    }
+
+    public function destroy(): void
+    {
+        $this->stopServer();
         if (is_dir($this->dir)) {
             exec('rm -rf ' . escapeshellarg($this->dir));
         }

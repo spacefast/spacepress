@@ -15,7 +15,7 @@ namespace First;
 final class Db
 {
     private const MAX_HOOK_DEPTH = 8;
-    private const QUERY_OPTS = ['where', 'orderBy', 'limit', 'offset', 'columns', 'with'];
+    private const QUERY_OPTS = ['where', 'orderBy', 'limit', 'offset', 'columns', 'with', 'search', 'searchFields'];
 
     private static ?self $instance = null;
     private static ?self $current = null;
@@ -257,6 +257,19 @@ final class Db
                 array_push($guards, ...$this->readGuards($collection, $viewer));
             }
             $filterViewer ??= $viewer;
+            // `search`: the rows whose searchable fields this reader may read hold every word, as one
+            // more condition on this same read (docs/decisions/2026-11-13-search-index.md).
+            if (array_key_exists('search', $opts)) {
+                $search = $opts['search'];
+                unset($opts['search']);
+                if ($search !== null && !is_string($search)) {
+                    throw HttpError::invalidQuery('search must be a string', $ptr . '/search');
+                }
+                if (is_string($search) && trim($search) !== '') {
+                    array_push($guards, ...Search\Module::guard($collection, $search, $filterViewer, $opts['searchFields'] ?? null));
+                }
+            }
+            unset($opts['searchFields']);
 
             return Sql::select($this->schema, $this->store, $collection, $opts, $partition, $ptr, $guards,
                 $filterViewer === null ? null : fn (string $target): array => $this->readGuards($target, $filterViewer));
@@ -709,10 +722,13 @@ final class Db
             $slot = $spec['hooks']['beforeCreate'];
             if (is_string($slot)) {
                 $fn = '\\FirstApp\\' . $slot;
+                // Fields a runtime schema change added (spec §2.10) are kept aside: the compiled hook
+                // never saw them, and a replacement object it returns must not drop them.
+                [$data, $runtime] = RuntimeSchema\Loader::split($spec, $data, RuntimeSchema\Loader::compiled() ?? ['collections' => []]);
                 $jsCtx = Seam::ctx($ctx + ['data' => $data], $columns);
                 $data = $jsCtx->p['data'];
                 $result = $fn($data, $jsCtx);
-                $data = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $data);
+                $data = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $data) + $runtime;
             } else {
                 $result = $slot($data, $ctx);
                 if (is_array($result)) { $data = $result; }
@@ -797,10 +813,11 @@ final class Db
             $slot = $spec['hooks']['beforeUpdate'];
             if (is_string($slot)) {
                 $fn = '\\FirstApp\\' . $slot;
+                [$patch, $runtime] = RuntimeSchema\Loader::split($spec, $patch, RuntimeSchema\Loader::compiled() ?? ['collections' => []]);
                 $jsCtx = Seam::ctx($ctx + ['data' => $patch], $columns);
                 $patch = $jsCtx->p['data'];
                 $result = $fn($patch, Seam::rowToJs($collection, $existing), $jsCtx);
-                $patch = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $patch);
+                $patch = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $patch) + $runtime;
             } else {
                 $result = $slot($patch, $existing, $ctx);
                 if (is_array($result)) { $patch = $result; }

@@ -188,6 +188,8 @@ final class WpPostStore implements Store
                 $col === ($spec['title'] ?? null) => new ColumnRef('{a}.post_title', '', '', 'scalar'),
                 $col === ($spec['content'] ?? null) => new ColumnRef('{a}.post_content', '', '', 'scalar'),
                 $col === ($spec['slug'] ?? null) => new ColumnRef('{a}.post_name', '', '', 'scalar'),
+                $system && $col === 'parent' && ($spec['hierarchical'] ?? false) => new ColumnRef('NULLIF({a}.post_parent, 0)', '', 'NULLIF({a}.post_parent, 0)', 'scalar'),
+                $system && $col === 'order' && ($spec['hierarchical'] ?? false) => new ColumnRef('{a}.menu_order', '', '{a}.menu_order', 'scalar'),
                 $system && $col === 'status' => new ColumnRef("CASE {a}.post_status WHEN 'publish' THEN 'published' WHEN 'future' THEN 'scheduled' ELSE 'draft' END", '', '', 'scalar'),
                 $system && $col === 'uid' => new ColumnRef($v, "LEFT JOIN `$postmeta` {j} ON {j}.post_id = {a}.ID AND {j}.meta_key = '" . self::UID_META . "'", $v, 'scalar'),
                 $system && $col === 'publishedAt' => new ColumnRef(
@@ -393,6 +395,14 @@ final class WpPostStore implements Store
         foreach ($map as $col => $field) {
             if (array_key_exists($col, $values)) {
                 $post[$field] = (string) ($values[$col] ?? '');
+            }
+        }
+        if ($spec['hierarchical'] ?? false) {
+            if (array_key_exists('parent', $values)) {
+                $post['post_parent'] = (int) ($values['parent'] ?? 0);
+            }
+            if (array_key_exists('order', $values)) {
+                $post['menu_order'] = (int) ($values['order'] ?? 0);
             }
         }
         if (array_key_exists('status', $values) && ($spec['columns']['status']['system'] ?? false)) {
@@ -660,6 +670,141 @@ final class WpPostStore implements Store
         acf_copy_metadata($postId, $revisionId);
         $parent = array_intersect_key($this->rowsWhere($collection, 'r.ID = ?', [$postId])[0] ?? [], $this->snapshotKeys($this->schema->collection($collection)));
         update_metadata('post', $revisionId, '_first_system', wp_slash(Js::jsonStringify($parent)));
+    }
+
+    // ================================================================ staged versions ({@see Staged})
+
+    /**
+     * The post name of an item's one staged revision. It is in core's autosave family, so every
+     * place that passes over autosaves passes over it: ordinary revision lists, revision pruning and
+     * core's "has the post changed" check. It is not core's own slot (`<id>-autosave-v1`), which the
+     * editors overwrite per user and delete when they find it older than the post.
+     */
+    public static function stagedName(int $pk): string
+    {
+        return $pk . '-autosave-staged-v1';
+    }
+
+    /** The id of the item's staged revision, or null when nothing is staged. */
+    public function stagedId(int $pk): ?int
+    {
+        return $this->stagedIds([$pk])[$pk] ?? null;
+    }
+
+    /**
+     * Staged revisions by item: of $pks, or of every item of $collection.
+     *
+     * @param ?list<int> $pks
+     * @return array<int, int> item id => staged revision id
+     */
+    public function stagedIds(?array $pks, ?string $collection = null): array
+    {
+        $posts = $this->db->wpdb()->posts;
+        if ($pks === null) {
+            $rows = $this->db->run(
+                "SELECT r.post_parent, r.ID, r.post_name FROM `$posts` r JOIN `$posts` p ON p.ID = r.post_parent"
+                . " WHERE r.post_type = 'revision' AND r.post_name LIKE ? AND p.post_type = ? ORDER BY r.ID",
+                ['%-autosave-staged-v1', $this->schema->collection((string) $collection)['wp']['postType']],
+            );
+        } elseif ($pks === []) {
+            return [];
+        } else {
+            $rows = $this->db->run(
+                "SELECT post_parent, ID, post_name FROM `$posts` WHERE post_type = 'revision' AND post_parent IN ("
+                . implode(', ', array_fill(0, count($pks), '?')) . ') AND post_name IN (' . implode(', ', array_fill(0, count($pks), '?')) . ') ORDER BY ID',
+                [...array_map('intval', $pks), ...array_map(self::stagedName(...), array_map('intval', $pks))],
+            );
+        }
+        $out = [];
+        foreach ($rows as $row) {
+            if ($row['post_name'] === self::stagedName((int) $row['post_parent'])) {
+                $out[(int) $row['post_parent']] = (int) $row['ID'];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Take the item's row lock for the rest of the transaction and return its staged revision id as
+     * committed now. Stagers, promoters and discarders of one item therefore run one at a time, and
+     * an item never has two staged revisions. A request whose own snapshot is older than what the
+     * lock shows (another request changed the item's post or its staged version first) is a 409 to
+     * retry, never a write on top of what it has not read.
+     */
+    public function stagedLock(int $pk): ?int
+    {
+        $read = function (string $lock) use ($pk): array {
+            $posts = $this->db->wpdb()->posts;
+            $item = $this->db->run("SELECT * FROM `$posts` WHERE ID = ?$lock", [$pk]);
+            $staged = $this->db->run("SELECT * FROM `$posts` WHERE post_parent = ? AND post_type = 'revision' AND post_name = ? ORDER BY ID$lock", [$pk, self::stagedName($pk)]);
+            $meta = array_map(fn (array $row): array => $this->db->run(
+                'SELECT meta_id, meta_key, meta_value FROM `' . $this->db->wpdb()->postmeta . "` WHERE post_id = ? ORDER BY meta_id$lock",
+                [(int) $row['ID']],
+            ), $staged);
+
+            return [$item, $staged, $meta];
+        };
+        $seen = $read('');
+        $now = $read(' FOR UPDATE');
+        if (Js::jsonStringify($seen) !== Js::jsonStringify($now)) {
+            throw new HttpError(409, 'conflict', 'This item changed while the request ran; read it again and retry');
+        }
+        $last = end($now[1]);
+
+        return $last === false ? null : (int) $last['ID'];
+    }
+
+    /**
+     * Write the item's staged revision ($rid, or a new one): the item's row as it is now with
+     * $values, the storage form of every staged field, over it. So the revision always reads back as
+     * the whole row the item would have once promoted, and wp-admin's revision screen compares it
+     * with the live post field by field. Returns the revision id.
+     *
+     * @param array<string, int|float|string|null> $values
+     */
+    public function stagedWrite(string $collection, int $pk, ?int $rid, array $values, ?int $userId): int
+    {
+        $spec = $this->schema->collection($collection);
+        $live = $this->rowsWhere($collection, 'r.ID = ?', [$pk])[0] ?? null;
+        $parent = get_post($pk);
+        if ($live === null || !$parent instanceof \WP_Post) {
+            throw new \RuntimeException("Post $pk vanished while staging");
+        }
+        $row = array_replace($live, $values);
+        $field = static fn (string $designation, string $native): string => is_string($spec[$designation] ?? null) && $spec[$designation] !== ''
+            ? (string) ($row[$spec[$designation]] ?? '') : (string) $parent->$native;
+        $post = [
+            'post_type' => 'revision', 'post_status' => 'inherit', 'post_parent' => $pk, 'post_name' => self::stagedName($pk),
+            'post_title' => $field('title', 'post_title'), 'post_content' => $field('content', 'post_content'), 'post_excerpt' => $parent->post_excerpt,
+            'post_author' => $userId ?? 0, 'post_date' => current_time('mysql'), 'post_date_gmt' => current_time('mysql', true),
+        ] + ($rid === null ? [] : ['ID' => $rid]);
+        $id = $this->db->core(static fn () => $rid === null ? wp_insert_post(wp_slash($post), true) : wp_update_post(wp_slash($post), true));
+        if ($id instanceof \WP_Error || !$id) {
+            throw new \RuntimeException('Could not save the staged version of post ' . $pk);
+        }
+        $id = (int) $id;
+        $this->db->touchPost($id);
+        $system = Js::jsonStringify(array_intersect_key($row, $this->snapshotKeys($spec)));
+        $this->db->core(static function () use ($pk, $id, $system): void {
+            acf_copy_metadata($pk, $id);
+            update_metadata('post', $id, '_first_system', wp_slash($system));
+        });
+        $this->writeMeta($spec, $id, array_diff_key($values, ['uid' => true]));
+        clean_post_cache($id);
+
+        return $id;
+    }
+
+    /**
+     * A staged revision that was promoted or discarded becomes an ordinary revision of the item: it
+     * stays in the item's history and no longer answers as its staged version.
+     */
+    public function stagedRetire(int $pk, int $rid): void
+    {
+        $this->db->touchPost($rid);
+        $this->db->run('UPDATE `' . $this->db->wpdb()->posts . '` SET post_name = ? WHERE ID = ? AND post_parent = ?', [$pk . '-revision-v1', $rid, $pk]);
+        clean_post_cache($rid);
     }
 
     /** WP cron publishes `future` posts (§6.3); reads see the new status through the CASE mapping. */

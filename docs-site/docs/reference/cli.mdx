@@ -13,14 +13,17 @@ These commands run on your machine, on the project's files.
 
 | Command | What it does |
 | --- | --- |
-| `first dev [dir] [--port n] [--no-watch] [--allow-destructive]` | Start the local WordPress site and rebuild on change. |
+| `first dev [dir] [--port n] [--no-watch \| --detach \| --foreground] [--allow-destructive]` | Start the local WordPress site and rebuild on change. |
 | `first dev stop [dir]` | Stop the local site, keeping its data. |
-| `first dev status [dir]` | Report the local site. |
+| `first dev status [dir] [--json]` | Report the local site. |
 | `first build [dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]` | Write the WordPress plugins to first/dist/wp-content. |
 | `first check [dir] [--json] [--frozen]` | Compile and report problems; write nothing. |
 | `first add <module> [dir]` | Add a module to the project as files you own; never overwrites one. Modules: db (SQL tables) |
 | `first doctor [dir] [--out dir] [--site url] [--json]` | Check a build, and a running site (FIRST_TOKEN) |
+| `first init [dir] [--check]` | Write AGENTS.md, .mcp.json and the agent skills for this project; --check exits 1 when they are out of date. |
+| `first mcp [dir] [--allow-remote-read] [--allow-writes]` | Serve the project to a coding agent as an MCP server on stdio. |
 | `first sync [status \| resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--json]` | Content files \<-\> site records (FIRST_APP_PASSWORD or FIRST_TOKEN) |
+| `first pull [dir] [--site url] [--check]` | Write a site's runtime schema versions to first/_generated/runtime-schema.json (FIRST_APP_PASSWORD or FIRST_TOKEN) |
 | `first abilities pull [dir] --site url [--only vendor/*]` | Lock a site's abilities into first/_generated/abilities.json (FIRST_APP_PASSWORD) |
 | `first deploy <inspect\|publish\|init\|status\|backup\|restore> <options>` | Artifact preflight and offline workspaces ([docs/deployment.md](https://github.com/spacefast/zero/blob/main/docs/deployment.md)) |
 
@@ -34,6 +37,7 @@ These commands run inside WordPress. On a local site, run them as `first <comman
 | `wp first seed --records=<dir> [--dry-run]` | First-sync content from compiled records. |
 | `wp first jobs list [--state=s] \| run <id> \| retry <id> \| cancel <id> \| maintain \| tick [--limit=n] [--budget-ms=ms]` | Inspect and drive background jobs. |
 | `wp first abilities` | List the app's abilities. |
+| `wp first schema list \| diff <version> \| apply <file\|-> [--parent=<n>] \| rollback <version> [--parent=<n>]` | The site's runtime schema versions (runtimeSchema: true) |
 | `wp first run <ability> [--input=<json>]` | Run an ability. |
 | `wp first action <name> [json]` | Call an action as the trusted CLI. |
 | `wp first find <collection> [json options]` | Read records. |
@@ -41,7 +45,8 @@ These commands run inside WordPress. On a local site, run them as `first <comman
 | `wp first update <collection> <where json> <set json>` | Update records. |
 | `wp first delete <collection> <where json>` | Delete records. |
 | `wp first publish-due` | Publish scheduled records that are due. |
-| `wp first identity account\|suspend\|restore\|revoke\|erase <user-id> \| app add --name=n --redirect=uri --origin=o [--id=app_id] \| webhook-add <url> \| webhook-remove <id> \| webhooks \| maintenance \| rotate-keys` | First Identity accounts, applications, webhooks and keys. |
+| `wp first staged list [<kind>] \| show\|compare\|discard <kind> <id> \| stage <kind> <id> <json> \| promote <kind> <id> [--at=<ISO time> \| --cancel]` | Staged versions of post kinds: list, stage, compare, promote, discard. |
+| `wp first identity account\|suspend\|restore\|revoke\|erase <user-id> \| app add --name=n --redirect=uri --origin=o [--id=app_id] \| agent add <user> --name=n [--write] [--personal] [--abilities=a,b] \| agent list <user> \| agent grant <user> <id> [--write] [--personal] [--abilities=a,b] \| agent revoke <user> <id> \| webhook-add <url> \| webhook-remove <id> \| webhooks \| maintenance \| rotate-keys` | First Identity accounts, applications, agent credentials, webhooks and keys. |
 
 `first wp <WP-CLI arguments>` runs any WP-CLI command on the local site. For example, `first wp plugin list`.
 

@@ -285,29 +285,10 @@ final class Seam
         }
     }
 
-    /** `search`: a case-insensitive match on the kind's title, content and text fields the viewer may read. */
-    private static function searched(string $collection, array $opts, ?Viewer $viewer): array
-    {
-        $term = $opts['search'] ?? null;
-        unset($opts['search']);
-        if (!is_string($term) || $term === '') {
-            return $opts;
-        }
-        $spec = Db::instance()->schema()->collection($collection);
-        $fields = array_keys(array_filter($spec['columns'], static fn (array $def, $col) => $col === ($spec['title'] ?? null) || $col === ($spec['content'] ?? null)
-            || (in_array($def['type'], ['text', 'richText'], true) && !($def['system'] ?? false)), ARRAY_FILTER_USE_BOTH));
-        // A field that may be hidden from the viewer is not searched, so a search can't probe it.
-        $fields = array_values(array_filter(array_map('strval', $fields), static fn (string $col): bool => $viewer === null || !FieldAccess::mayHide($spec['columns'][$col], $viewer)));
-        $match = $fields === [] ? ['OR' => []] : ['OR' => array_map(static fn (string $col) => [$col => ['ilike' => '%' . addcslashes($term, '%_\\') . '%']], $fields)];
-        $opts['where'] = isset($opts['where']) ? ['AND' => [$opts['where'], $match]] : $match;
-
-        return $opts;
-    }
-
     public static function kindList(string $collection, mixed $opts, bool $trusted): JsArray
     {
         $viewer = self::as($trusted);
-        $opts = self::searched($collection, self::query($collection, $opts), $viewer);
+        $opts = self::query($collection, $opts);
 
         return new JsArray(array_map(static fn ($row) => self::rowToJs($collection, $row), Db::instance()->findMany($collection, $opts, $viewer)));
     }
@@ -316,7 +297,7 @@ final class Seam
     public static function kindPaginate(string $collection, mixed $opts, bool $trusted): JsObject
     {
         $viewer = self::as($trusted);
-        $opts = self::searched($collection, self::query($collection, $opts), $viewer);
+        $opts = self::query($collection, $opts);
         $limit = $opts['limit'] ?? 20;
         if (!is_int($limit) || $limit < 1) {
             throw HttpError::invalidQuery('limit must be a positive integer', '/limit');
@@ -345,8 +326,8 @@ final class Seam
     public static function kindCount(string $collection, mixed $opts, bool $trusted): int
     {
         $viewer = self::as($trusted);
-        $opts = self::searched($collection, self::query($collection, $opts), $viewer);
-        return Db::instance()->count($collection, $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true]));
+        $opts = self::query($collection, $opts);
+        return Db::instance()->count($collection, $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true, 'search' => true]));
     }
 
     /**

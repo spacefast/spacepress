@@ -3,6 +3,7 @@
 //! Discovery turns the folder tree into a route table. Each route is a URL pattern plus the files
 //! that render it: `page.tsx` with the `layout.tsx` files above it, or `route.ts` for an HTTP
 //! handler with no page. `not-found.tsx` and `error.tsx` render the 404 and the render-error page.
+//! `page.md` is a page too, with the same layouts; [`crate::content_page`] reads it.
 //! The pipeline compiles the exports these files name (`default`, `metadata`, `guard`, `search`,
 //! HTTP method handlers) through the same compiler as every other root; the runtime router
 //! (`runtime/First/Wp/AppRouter.php`) matches requests against the table in `schema.php`.
@@ -118,6 +119,7 @@ pub use crate::kind_url::RESERVED_FIRST_SEGMENTS as RESERVED_FIRST;
 const MISNAMED: &[(&str, &str)] = &[
     ("page.ts", "a page renders JSX: name it page.tsx"),
     ("page.jsx", "First compiles TypeScript: name it page.tsx"),
+    ("page.mdx", "First reads Markdown: name it page.md"),
     ("page.js", "First compiles TypeScript: name it page.tsx"),
     ("layout.ts", "a layout renders JSX: name it layout.tsx"),
     ("layout.jsx", "First compiles TypeScript: name it layout.tsx"),
@@ -294,14 +296,6 @@ fn walk(
             diags.push(located(fs, &dir.join(bad), format!("{bad} isn't a route file"), *help));
         }
     }
-    if names.iter().any(|n| n == "page.md") {
-        diags.push(located(
-            fs,
-            &dir.join("page.md"),
-            "content-owned pages (page.md) aren't supported yet",
-            "write page.tsx, or keep the page as an ordinary WordPress Page",
-        ));
-    }
     let has = |n: &str| names.iter().any(|x| x == n);
     let pushed_layout = has("layout.tsx");
     if pushed_layout {
@@ -359,6 +353,26 @@ fn walk(
             });
         }
         (false, false) => {}
+    }
+    // `page.md`: a page whose content a WordPress Page holds. No module is loaded for it, so it
+    // is a route without an entry in `table.files`.
+    if has(crate::content_page::FILE) {
+        let file = dir.join(crate::content_page::FILE);
+        match ["page.tsx", "route.ts"].into_iter().find(|n| has(n)) {
+            Some(other) => diags.push(located(
+                fs,
+                &file,
+                format!("{} has both {other} and page.md", rel(dir)),
+                "a URL has one owner: keep one of the two files",
+            )),
+            None => table.routes.push(Route {
+                segments: segments.clone(),
+                kind: RouteKind::Page,
+                file: rel(&file),
+                layouts: layouts.clone(),
+                error: error.clone(),
+            }),
+        }
     }
     for path in entries {
         if !fs.is_dir(&path) || fs.is_symlink(&path) {

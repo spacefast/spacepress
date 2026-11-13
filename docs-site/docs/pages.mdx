@@ -18,6 +18,7 @@ first/app/
 ├── not-found.tsx                 the 404 for URLs no route serves, and for notFound()
 ├── error.tsx                     a render error (logged; the page shows only this)
 ├── (site)/about/page.tsx         /about: a group adds no segment
+├── colophon/page.md              /colophon: a WordPress Page an editor can change
 ├── notes/page.tsx                /notes?page=2, with export const search
 ├── notes/[slug]/page.tsx         /notes/<slug>: params.slug
 ├── docs/[[...path]]/page.tsx     /docs, /docs/a/b: params.path is a string[]
@@ -29,6 +30,7 @@ first/app/
 | Name | Meaning |
 | --- | --- |
 | `page.tsx` | A route. It may also export `POST`, `PUT`, `PATCH` or `DELETE` handlers for its URL, with `access` |
+| `page.md` | A route whose content is a WordPress Page; see [Markdown pages](#markdown-pages) |
 | `route.ts` | HTTP handlers only (`GET`, `POST`, …), for a URL with no page, with `access` or `signature` |
 | `layout.tsx` | Wraps every page below it, outermost first. May export `guard` |
 | `not-found.tsx` | At the root only |
@@ -54,6 +56,38 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 - `metadata` is an object or a function of the page's props: `title`, `description`, `canonical`, `robots: { index, follow }`. A layout's `title: { default, template }` wraps its pages' titles.
 - `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
 - `<Content value>` renders a post body through `the_content`. `<Html value>` places a literal as written and runs anything else through `wp_kses_post`.
+
+### Markdown pages
+
+<RepoFile path="tests/fixtures/app-router/first/app/(site)/guide/page.md" />
+
+A `page.md` is a real WordPress Page. The file is its first version: the first request after a build stores the Markdown as blocks in a Page, with the front matter as its title, excerpt and status. From then on an editor changes it in wp-admin, in the block editor, and the route shows what they saved.
+
+- It renders inside the `layout.tsx` files above it, and a layout's `guard` protects it, like a `page.tsx`. Its `<title>` and description come from the stored Page, so an editor's change to either shows.
+- Front matter: `title`, `description`, `status` (`published` or `draft`), `canonical` and `robots: { index, follow }`. Without `title`, the first `# Heading` is the title. Any other key is a build error at its line: fields of your own belong to a kind with `sync`, where they have a type.
+- A later version of the file replaces the Page only while nobody edited the Page on the site. An edited Page keeps the site's version, and the log names the file. Removing the file leaves the Page in WordPress; nothing is deleted. The exception is taking a page away from visitors: a file that newly says `status: draft`, or moves under a `guard`, unpublishes an edited Page too, and leaves its text alone.
+- The route's path is the Page's address. WordPress's own address for it redirects there, and the editor's Preview button shows unsaved changes on the route.
+- A draft is a 404 for visitors and shows to people who can edit it. A Page under a `guard` is stored private, so WordPress's REST API, search, sitemap and feeds never list it. A password set in wp-admin locks the body for every visitor.
+- It has a Markdown twin at its URL plus `.md` and a line in `/llms.txt` when anyone may read it, and none otherwise.
+- A `page.md` is one page with one URL, so it can't sit below `[slug]`. For many Markdown files, sync a folder into a kind and render it from a `page.tsx`.
+
+### A docs section: a folder of Markdown as a kind
+
+Many Markdown pages are a kind, synced from a folder tree and rendered by one catch-all page. The router's test app for it is [`tests/fixtures/docs-kind`](https://github.com/spacefast/zero/tree/main/tests/fixtures/docs-kind).
+
+<RepoFile path="tests/fixtures/docs-kind/first/schema.ts" />
+
+- `hierarchical: true` adds `parent` and `order`, stored as WordPress stores a Page's parent and menu order, so the block editor's page attributes edit them.
+- `sync: "content/docs/**/*.md"` reads the folder tree. A file's name is its slug and its folder its parent; a folder's `index.md` is the page the folder stands for. Put `order` in front matter; siblings with the same order sort by title.
+- `first sync` carries it both ways: a page moved in wp-admin moves its file.
+
+<RepoFile path="tests/fixtures/docs-kind/first/app/docs/[...path]/page.tsx" />
+
+A component can be used inside the Markdown as a block: its file lists it with `export const blocks = ["Callout"]`, and the Markdown writes `<Callout type="warning">…</Callout>` on lines of its own. In WordPress it is a block the editor inserts and edits, rendered through the component; `first sync` writes it back as the same tag. The test app's [`Callout.tsx`](https://github.com/spacefast/zero/blob/main/tests/fixtures/docs-kind/first/components/Callout.tsx) has two.
+
+Code fences are highlighted on the server when the page renders, in light and dark themes, with no script: ```` ```ts title="first.config.ts" {2} ```` titles the block and marks line 2, and blocks that share `group="install"` show as tabs. They are WordPress code blocks underneath, so the editor edits them and `first sync` writes the fence back.
+
+`"first/content"` gives the page its navigation, read as the visitor from the published tree: `nav(kind, item)` (the tree, with the current page and its ancestors marked), `pager(kind, item)` (previous and next, reading the tree top to bottom) and `headings(item)` (the `##` and `###` headings, with the ids the page renders them with).
 
 ### Typed search, a guard, HTTP handlers
 
@@ -98,6 +132,8 @@ The router answers on `template_redirect`, before the theme. wp-admin, login, `/
 Without `first/app/`, nothing here loads and WordPress renders the whole site with its theme.
 
 Every page also has a Markdown twin at the same URL plus `.md` (or with `Accept: text/markdown`), rendered as an anonymous visitor, and each HTML page links it. `/llms.txt` lists the app's pages that have no parameters and no guard. A page under a `guard` has no twin.
+
+The site's sitemap is WordPress's own, at `/wp-sitemap.xml`. It lists the same pages, unless a page's metadata says `robots: { index: false }`, and the items of every kind with a `url` that a signed-out visitor may read. Drafts, rows an access rule hides and password-protected items are never in it.
 
 ## The `pages/` pipeline (being replaced)
 

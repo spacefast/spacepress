@@ -23,6 +23,7 @@ use First\Js;
  *   GET/PATCH /__first/api/v1/settings      → GET /wp/v2/settings (public fields from the index for others)
  *   GET    /__first/api/v1/menus[/<loc>]    → /wp/v2/menu-locations + /wp/v2/menu-items, public locations only
  *   GET    /__first/api/v1                 → the app's schema: kinds, fields, actions (`first pull`)
+ *   …/<kind>/<id>/staged[/compare|/promote|/preview] → a post kind's staged version ({@see Staged})
  *
  * Errors are RFC 9457 problem documents mapped from core's `WP_Error`. Callers authenticate as core
  * accepts: the cookie with `X-WP-Nonce`, an application password, or a First Identity bearer token.
@@ -47,16 +48,43 @@ final class Facade
      */
     public static function firstRow(string $collection, int $id, \First\Viewer $viewer): ?object
     {
+        $key = $collection . "\0" . ($viewer->user['id'] ?? 0) . "\0" . ($viewer->user['role'] ?? '');
+        if (!isset(self::$rows[$key]) || !array_key_exists($id, self::$rows[$key])) {
+            self::prefetch($collection, [$id], $viewer);
+        }
+        $row = self::$rows[$key][$id] ?? null;
+
+        return $row === null ? null : (object) PostMeta::values($collection, $row, array_map('strval', array_keys($row)));
+    }
+
+    /** @var array<string, array<int, ?array>> First's rows by collection and viewer, then id, for this dispatch's page */
+    private static array $rows = [];
+
+    /**
+     * First's rows for $ids as $viewer reads them, in one query: a list page costs one read for all
+     * its rows, not one per row. Ids the read rule leaves out are recorded as null.
+     *
+     * @param list<int> $ids
+     */
+    public static function prefetch(string $collection, array $ids, \First\Viewer $viewer): void
+    {
+        $key = $collection . "\0" . ($viewer->user['id'] ?? 0) . "\0" . ($viewer->user['role'] ?? '');
+        $missing = array_values(array_diff(array_map('intval', $ids), array_keys(self::$rows[$key] ?? [])));
+        if ($missing === []) {
+            return;
+        }
         $db = Plugin::instance()?->db() ?? throw new \LogicException('No First app');
         $pk = $db->schema()->collection($collection)['primaryKey'];
         $all = \First\Locale\Module::localized($collection) ? ['locale' => '*'] : [];
         try {
-            $row = $db->findFirst($collection, ['where' => [$pk => $id]] + $all, $viewer);
+            $found = $db->findMany($collection, ['where' => [$pk => ['in' => $missing]]] + $all, $viewer);
         } catch (HttpError) {
-            return null;
+            $found = [];
         }
-
-        return $row === null ? null : (object) PostMeta::values($collection, $row, array_map('strval', array_keys($row)));
+        $byId = array_column($found, null, $pk);
+        foreach ($missing as $id) {
+            self::$rows[$key][$id] = $byId[$id] ?? null;
+        }
     }
 
     private const LIMIT = 50;
@@ -181,6 +209,13 @@ final class Facade
 
             return self::revisions($kind, $method, self::id($kind, $segments[1]), array_slice($segments, 3));
         }
+        if ($kind['type'] === 'post' && ($segments[2] ?? null) === 'staged' && count($segments) <= 4) {
+            // A kind's staged versions ({@see Staged}): First's own, with no core route to map.
+            self::gate($kind, 'update');
+            [$status, $data] = Staged::route((string) $kind['name'], self::id($kind, $segments[1]), $method, array_slice($segments, 3), $query, self::body($body));
+
+            return self::json($status, ['data' => $data]);
+        }
         if (count($segments) !== 2) {
             throw HttpError::notFound("No route for $path");
         }
@@ -278,7 +313,7 @@ final class Facade
         $next = $offset + $limit;
         $cursor = $next < $total ? rtrim(strtr(base64_encode((string) json_encode(['offset' => $next])), '+/', '-_'), '=') : null;
 
-        $rows = array_values(array_filter(array_map(static fn (array $r) => Kinds::row($kind, $r), $rows), static fn ($r) => $r !== null));
+        $rows = array_values(array_filter(Kinds::rows($kind, $rows), static fn ($r) => $r !== null));
 
         return self::json(200, ['data' => $rows, 'cursor' => $cursor]);
     }
@@ -302,7 +337,9 @@ final class Facade
             return $plugin->app()->handle('POST', '/actions/' . rawurlencode($name), [], $body, self::headers());
         }
         \First\App::allow($method, ($action['readonly'] ?? false) ? ['GET', 'HEAD', 'POST'] : ['POST']);
-        $input = $method === 'POST' ? $body : (string) Js::jsonStringify(self::queryInput($query));
+        // No arguments is the empty object, not the empty list an empty PHP array encodes as.
+        $given = $method === 'POST' ? [] : self::queryInput($query);
+        $input = $method === 'POST' ? $body : ($given === [] ? '{}' : (string) Js::jsonStringify($given));
 
         self::$passed = [];
         [$status, $headers, $out] = self::json(200, ['data' => self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'")]);
@@ -398,11 +435,13 @@ final class Facade
 
     private static function run(\WP_REST_Request $request): \WP_REST_Response
     {
+        self::$rows = []; // each core dispatch reads its own page fresh: nothing outlives it
         self::$depth++;
         self::$methods[] = $request->get_method();
         try {
             return rest_do_request($request);
         } finally {
+            self::$rows = [];
             array_pop(self::$methods);
             self::$depth--;
         }

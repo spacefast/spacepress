@@ -232,80 +232,84 @@ fn filter_ts(c: &Column) -> String {
     )
 }
 
+/// Names the generated client declares as types; a global may not take one.
+pub const RESERVED_TYPE_NAMES: &[&str] = &[
+    "Role",
+    "User",
+    "Media",
+    "PrivateFile",
+    "RevisionSummary",
+    "Status",
+    "Locale",
+    "Collections",
+    "Globals",
+    "Actions",
+    "Record",
+    "Partial",
+    "Pick",
+    "Omit",
+    "Extract",
+    "Exclude",
+    "PropertyKey",
+    "Promise",
+    "Error",
+    "Blob",
+    "URLSearchParams",
+    "FormData",
+    "Uint8Array",
+    "Headers",
+    "Request",
+    "RequestInit",
+    "Response",
+    "SchemaDescriptor",
+    "Descriptor",
+    "CollectionDescriptors",
+    "CollectionKey",
+    "Row",
+    "Rels",
+    "IdOf",
+    "Requested",
+    "NestedWith",
+    "RelationValue",
+    "WithValue",
+    "RowWith",
+    "OptionalKeys",
+    "ExactWith",
+    "StatusQuery",
+    "LocaleQuery",
+    "ListQuery",
+    "CollectionClient",
+    "MediaQuery",
+    "MediaClient",
+    "FileBucketClient",
+    "FilesClient",
+    "ActionsClient",
+    "GlobalsClient",
+    "Session",
+    "AuthClient",
+    "Client",
+    "ClientOptions",
+    "AuthOptions",
+    "Problem",
+    "FirstError",
+    "Json",
+    "Send",
+    "Held",
+    "Issued",
+    "OidcTokens",
+    "BrowserGlobals",
+];
+
 pub(crate) fn reserved_type_name(name: &str) -> bool {
-    matches!(
-        upper_first(name).as_str(),
-        "Role"
-            | "User"
-            | "Media"
-            | "PrivateFile"
-            | "RevisionSummary"
-            | "Status"
-            | "Locale"
-            | "Collections"
-            | "Globals"
-            | "Actions"
-            | "Record"
-            | "Partial"
-            | "Pick"
-            | "Omit"
-            | "Extract"
-            | "Exclude"
-            | "PropertyKey"
-            | "Promise"
-            | "Error"
-            | "Blob"
-            | "URLSearchParams"
-            | "FormData"
-            | "Uint8Array"
-            | "Headers"
-            | "Request"
-            | "RequestInit"
-            | "Response"
-            | "SchemaDescriptor"
-            | "Descriptor"
-            | "CollectionDescriptors"
-            | "CollectionKey"
-            | "Row"
-            | "Rels"
-            | "IdOf"
-            | "Requested"
-            | "NestedWith"
-            | "RelationValue"
-            | "WithValue"
-            | "RowWith"
-            | "OptionalKeys"
-            | "ExactWith"
-            | "StatusQuery"
-            | "LocaleQuery"
-            | "ListQuery"
-            | "CollectionClient"
-            | "MediaQuery"
-            | "MediaClient"
-            | "FileBucketClient"
-            | "FilesClient"
-            | "ActionsClient"
-            | "GlobalsClient"
-            | "Session"
-            | "AuthClient"
-            | "Client"
-            | "ClientOptions"
-            | "AuthOptions"
-            | "Problem"
-            | "FirstError"
-            | "Json"
-            | "Send"
-            | "Held"
-            | "Issued"
-            | "OidcTokens"
-            | "BrowserGlobals"
-    )
+    RESERVED_TYPE_NAMES.contains(&upper_first(name).as_str())
 }
 
-struct ClientNames {
-    collections: IndexMap<String, String>,
-    globals: IndexMap<String, String>,
-    actions: IndexMap<String, String>,
+/// The interface name of each kind, global and action. The OpenAPI document names its components
+/// with them (`openapi.rs`).
+pub(crate) struct ClientNames {
+    pub(crate) collections: IndexMap<String, String>,
+    pub(crate) globals: IndexMap<String, String>,
+    pub(crate) actions: IndexMap<String, String>,
 }
 
 fn claim_names(mut name: String, suffixes: &[&str], used: &mut HashSet<String>) -> String {
@@ -319,7 +323,7 @@ fn claim_names(mut name: String, suffixes: &[&str], used: &mut HashSet<String>) 
     name
 }
 
-fn names(schema: &Schema) -> ClientNames {
+pub(crate) fn names(schema: &Schema) -> ClientNames {
     let mut out = ClientNames {
         collections: IndexMap::new(),
         globals: IndexMap::new(),

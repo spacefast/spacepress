@@ -368,6 +368,8 @@ pub struct Collection {
     pub editor: bool,
     pub drafts: bool,
     pub revisions: bool,
+    /// `staged: false` turns staged versions off for a collection (they need its revisions).
+    pub staged: bool,
     /// `comments: true`: the post type supports WordPress comments; every other kind has them off.
     pub comments: bool,
     pub title: Option<String>,
@@ -389,6 +391,9 @@ pub struct Collection {
     pub localized: bool,
     /// `url: "/blog/:slug"`: the pattern as written (spec §2.7). Checked by [`crate::kind_url`].
     pub url: Option<String>,
+    /// `hierarchical: true` (spec §2.6): items nest under a `parent` and sort by `order`, stored as
+    /// the post's own `post_parent` and `menu_order`; `:path` in the url is the parent chain.
+    pub hierarchical: bool,
 }
 
 impl Collection {
@@ -399,6 +404,7 @@ impl Collection {
     /// Is this column a WordPress core post column (not postmeta) on WP?
     pub fn is_core_column(&self, col: &str) -> bool {
         self.columns.get(col).is_some_and(|c| c.primary_key || c.system)
+            || (self.hierarchical && matches!(col, "parent" | "order"))
             || self.title.as_deref() == Some(col)
             || self.content.as_deref() == Some(col)
             || self.slug.as_deref() == Some(col)
@@ -488,6 +494,8 @@ pub struct Schema {
     pub components: IndexMap<String, String>,
     /// `"use client"` components (generator B): namespace → its store module.
     pub islands: IndexMap<String, Island>,
+    /// Components content may use as blocks (`export const blocks` in a component file).
+    pub blocks: Vec<crate::content_blocks::Block>,
     /// Imported stylesheets and images (`crate::assets`), by output file name below
     /// `first/app/assets/`.
     pub assets: IndexMap<String, Vec<u8>>,
@@ -504,6 +512,16 @@ pub struct Schema {
     pub admin: bool,
     /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `first/app`.
     pub frontend: Option<crate::kind_url::Frontend>,
+    /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
+    /// while it runs. Holds what the build read from the lock `first pull` writes.
+    pub runtime_schema: Option<RuntimeSchema>,
+}
+
+/// The site schema version a build contains: zero and no hash before any `first pull`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RuntimeSchema {
+    pub version: u64,
+    pub hash: String,
 }
 
 impl Default for Schema {
@@ -518,6 +536,7 @@ impl Default for Schema {
             components: IndexMap::new(),
             app: None,
             islands: IndexMap::new(),
+            blocks: Vec::new(),
             assets: IndexMap::new(),
             wp_views: false,
             files: IndexMap::new(),
@@ -527,6 +546,7 @@ impl Default for Schema {
             locales: None,
             admin: false,
             frontend: None,
+            runtime_schema: None,
         }
     }
 }
@@ -634,6 +654,8 @@ pub struct App {
     pub not_found: Option<AppRoute>,
     /// Route file (relative to `first/`) → its compiled exports.
     pub files: IndexMap<String, AppFile>,
+    /// Content-owned pages (`page.md`), by URL path: what the site stores as a WordPress Page.
+    pub content: IndexMap<String, crate::content_page::Page>,
     /// The table is a 0.3.0 capture's `routes` config (`extract::legacy::routes`), served as 0.3.0
     /// served it: matched per method, reads trusted, the front end left to the theme.
     pub legacy_routes: bool,

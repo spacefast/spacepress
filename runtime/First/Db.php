@@ -1349,12 +1349,12 @@ final class Db
     }
 
     /**
-     * Restore: the revision's user columns (pk, system columns and onUpdate columns excluded) are
-     * written back from the stored copy, through the full update pipeline as $viewer. Columns the
-     * viewer can read are its patch, under every update and field rule. Columns that may be hidden
-     * from it can't be in its patch (it could neither send nor confirm them), so their stored values
-     * are written as trusted values after its rules pass: a restore restores the whole row, and the
-     * answer is masked for the viewer like every read.
+     * Restore: the revision as stored becomes one update, as $viewer, through every update and field
+     * rule. Never a partial restore. Readable columns are sent only where the revision differs from
+     * the row (an unchanged value is no write). A column that may be hidden from the viewer is always
+     * sent, so whether the restore is allowed is decided by the rules alone, never by whether a value
+     * it can't see changed: one it may set (a write-only field) is restored, one it may not set
+     * refuses the whole restore. The answer is masked like every read.
      */
     public function restoreRevision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
     {
@@ -1362,36 +1362,21 @@ final class Db
             $spec = $this->schema->collection($collection);
             $this->requireRevisable($collection, $pk, $viewer);
             $row = $this->revisionRow($collection, $pk, $revisionId);
-            // Only what the revision changes is written: an unchanged value is no write, so it needs
-            // no rule (a group whose sub-field has a conditional update rule stays as it is).
             $opts = ['where' => [$spec['primaryKey'] => $pk]];
             $current = $this->selectDecoded($collection, $opts, '', null)[0] ?? throw HttpError::notFound("No $collection row $pk");
-            $patch = $hidden = [];
+            $patch = [];
             foreach ($spec['columns'] as $name => $col) {
-                if ($name === $spec['primaryKey'] || ($col['system'] ?? false) || isset($col['onUpdate'])
-                    || Js::jsonStringify($row[$name] ?? null) === Js::jsonStringify($current[$name] ?? null)) {
+                if ($name === $spec['primaryKey'] || ($col['system'] ?? false) || isset($col['onUpdate'])) {
                     continue;
                 }
-                if ($viewer !== null && FieldAccess::mayHide($col, $viewer)) {
-                    $hidden[$name] = $row[$name];
-                } else {
+                $hidden = $viewer !== null && FieldAccess::mayHide($col, $viewer);
+                if ($hidden || Js::jsonStringify($row[$name] ?? null) !== Js::jsonStringify($current[$name] ?? null)) {
                     $patch[$name] = $row[$name];
                 }
             }
-            if ($hidden === []) {
-                return $this->update($collection, $patch, [$spec['primaryKey'] => $pk], true, $viewer)[0]
-                    ?? throw HttpError::notFound("No $collection row $pk");
-            }
 
-            return $this->nested(function () use ($collection, $spec, $pk, $patch, $hidden, $viewer): array {
-                $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $patch);
-                $opts = ['where' => [$spec['primaryKey'] => $pk]];
-                $existing = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer)[0]
-                    ?? throw HttpError::notFound("No $collection row $pk");
-                $written = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $patch, $viewer, $hidden));
-
-                return $this->present([$written], $collection, $viewer)[0];
-            });
+            return $this->update($collection, $patch, [$spec['primaryKey'] => $pk], true, $viewer)[0]
+                ?? throw HttpError::notFound("No $collection row $pk");
         });
     }
 

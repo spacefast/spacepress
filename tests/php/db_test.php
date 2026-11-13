@@ -1119,9 +1119,9 @@ $faProblem('a malformed layout is the validator\'s to report', $as('fa_alice', '
 $rev = $db->revisions('profiles', $mine['id'])[0]['id'];
 $revRow = $as('fa_alice', 'GET', "/profiles/{$mine['id']}/revisions/$rev")[1];
 eq('a revision hides what the live row hides', [array_key_exists('email', $revRow), $revRow['salary'], $revRow['notes']], [false, 10, ['public' => 'x', 'pinned' => true, 'tag' => null]]);
-// Restore replays every user column as a patch: readable values she can't set pass unchanged, but a
-// value she can neither read nor set is refused whatever it is (an update must not probe hidden values).
-// (email, hidden from her too, is the first column the replay would overwrite)
+// Restore is the whole revision or nothing: readable values are sent where they changed, and every
+// value hidden from her is sent, so the rules alone decide. One she can neither read nor set refuses
+// the restore whatever it holds (an update must not probe hidden values); email is the first.
 $faProblem('an owner can\'t restore over a value hidden from her', $as('fa_alice', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore"), 403, 'forbidden', '/email');
 eq('an admin restores the same revision', $as('fa_admin', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore")[0], 200);
 

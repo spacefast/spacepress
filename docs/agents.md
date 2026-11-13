@@ -18,10 +18,25 @@ First has two MCP servers, for two different jobs:
 |---|---|
 | `AGENTS.md` | A section between `<!-- first:begin -->` and `<!-- first:end -->`: this project's kinds with their fields, access rules and API paths, its actions, jobs, pages and routes, the roles, the site's endpoints, every `first` command, and the skills. |
 | `.mcp.json` | A server named `first` that starts `first mcp` (below). |
-| `.agents/skills/`, `.claude/skills/` | The skills this compiler carries, one per task: for example `first-fix-diagnostic`. |
+| `.agents/skills/`, `.claude/skills/` | The skills this compiler carries, one per task (below). |
 
 The section is generated from the compiled project and from the command table,
 so it describes this project, not First in general. Commit all of it.
+
+The skills are in the layout of
+[WordPress/agent-skills](https://github.com/WordPress/agent-skills): a
+directory per skill with a `SKILL.md` whose front matter says when to use it.
+Each is a short procedure that links to the documentation for depth:
+
+| Skill | Task |
+|---|---|
+| `first-add-kind` | Add a kind or a field, a `ref()`, an access rule; rename or remove a field. |
+| `first-write-action` | Write an `action()` or a `job()`. |
+| `first-add-page` | Add a page, a layout or an HTTP route under `first/app/`. |
+| `first-fix-diagnostic` | Read a compiler diagnostic and fix its cause. |
+| `first-dev-site` | Run the local dev site and inspect it. |
+| `first-connect-mcp` | Connect an MCP client to a site's runtime endpoint. |
+| `first-migrate` | Convert a Zero 0.8 app, or import another CMS's schema. |
 
 - Text outside the two markers in `AGENTS.md` is yours. A rerun replaces the
   section and nothing else.

@@ -24,7 +24,7 @@ type Graph = {
     'reads': Many<'reads'>;
   };
   'reads': {
-    'book': One<'books', true>;
+    'bookId': One<'books', false>;
   };
 };
 declare module "first" { interface Register { relations: Relations<Entities, Graph>; config: typeof config } }

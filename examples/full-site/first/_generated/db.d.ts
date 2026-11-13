@@ -23,7 +23,7 @@ type Graph = {
     'cheers': Many<'cheers'>;
   };
   'cheers': {
-    'note': One<'notes', false>;
+    'noteId': One<'notes', false>;
   };
 };
 declare module "first" { interface Register { relations: Relations<Entities, Graph> } }

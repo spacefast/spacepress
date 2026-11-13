@@ -239,7 +239,7 @@ export interface CheerPatch {
 	count?: number;
 }
 export interface CheerWith {
-	note?: true | {
+	noteId?: true | {
 		where?: NoteFilter;
 		orderBy?: NoteOrder;
 		limit?: number;
@@ -271,7 +271,7 @@ export interface CheerFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | NoteFilter;
 	count?: number | null | {
 		eq?: number | null;
 		ne?: number | null;
@@ -284,7 +284,6 @@ export interface CheerFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	note?: true | NoteFilter;
 	AND?: CheerFilter[];
 	OR?: CheerFilter[];
 	NOT?: CheerFilter;
@@ -350,7 +349,7 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly note: {
+				readonly noteId: {
 					readonly kind: "one";
 					readonly collection: "notes";
 					readonly optional: false;

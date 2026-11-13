@@ -1,8 +1,8 @@
 import {
   collection, global, text, integer, boolean, timestamp, richText, media, slug, select,
-  repeater, group, blocks, email, url, file, files, defineRelations, defineConfig, action, job, jobs, env,
+  repeater, group, blocks, email, url, file, files, defineConfig, action, job, jobs, env,
   db, HttpError,
-  table, userProjection,
+  table, userProjection, ref,
 } from "first";
 
 export const authors = collection({
@@ -23,7 +23,7 @@ export const posts = collection({
   excerpt: text({ multiline: true }).max(300).localized().optional(),
   cover: media({ accept: "image" }).optional(),
   tags: select(["news", "guide", "release"]).many().default([]),
-  authorId: integer().references(() => authors.id, { onDelete: "set null" }).optional(),
+  authorId: ref(authors).optional(),
   // Only worth filling in for published posts: the editor hides it otherwise (§4.7).
   seo: group({
     metaTitle: text().max(70).optional(),
@@ -48,13 +48,13 @@ export const posts = collection({
   access: {
     read: (ctx) => ["author", "editor", "admin"].includes(ctx.user?.role ?? "") ? true : { status: "published" },
     create: "author",
-    update: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor" ? true : { author: { userId: ctx.user?.id ?? -1 } },
+    update: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor" ? true : { authorId: { userId: ctx.user?.id ?? -1 } },
     delete: "editor",
   },
 });
 
 export const comments = table({
-  postId: integer().references(() => posts.id, { onDelete: "cascade" }),
+  postId: ref(posts).onDelete("cascade"),
   name: text().max(60),
   body: text({ multiline: true }).min(1).max(2000).validate((v) => v.includes("http://") ? "No links in comments" : true),
   approved: boolean().default(false),
@@ -76,12 +76,6 @@ export const tables = { comments };
 export const users = { members };
 export const entities = { ...collections, ...tables, ...users };
 
-export const relations = defineRelations(entities, (r) => ({
-  posts: { author: r.one.authors({ from: r.posts.authorId, to: r.authors.id }), comments: r.many.comments() },
-  authors: { posts: r.many.posts() },
-  comments: { post: r.one.posts({ from: r.comments.postId, to: r.posts.id, optional: false }) },
-}));
-
 export const settings = global("settings", {
   siteTitle: text().default("My blog").max(80),
   tagline: text().max(160).optional(),
@@ -92,7 +86,6 @@ export const settings = global("settings", {
 export default defineConfig({
   name: "blog",
   collections, tables, users,
-  relations,
   globals: { settings },
   locales: { default: "en", all: ["en", "de"] },
   // A 600×400 crop of every image for cards, centred on the image's focal point (§7.2).

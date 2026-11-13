@@ -163,7 +163,7 @@ test("GET filters core can't type are refused; as JSON strings they match REST a
   // Bracketed, `false` in these places would arrive as the truthy string "false" and invert.
   const shapes = (op: string) => [
     ["where", { id: postId, AND: [{ AND: [{ cover: { [op]: false } }] }] }],
-    ["where", { id: postId, AND: [{ author: { userId: { [op]: false } } }] }],
+    ["where", { id: postId, AND: [{ authorId: { userId: { [op]: false } } }] }],
     ["with", { comments: { where: { body: { [op]: false } } } }],
   ] as const;
   // A query string core can't type as a whole stays all strings, the typed parts included.

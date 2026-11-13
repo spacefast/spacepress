@@ -560,7 +560,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `@spacefast/zero/content` blocks (`PostLoop`, …) | `content.query` in `load()` | Refused | Port |
 | Islands (`client/` components in document pages) | `<Island>` with an Interactivity API module | Refused | Port |
 | `pages/[param].tsx` | `collectionPage()` for collection items | Refused | Port |
-| `pages/*.md`, `pages/*.html` documents | **missing** (content-owned pages are not in this release) | Refused | Move the text into a TSX page or a collection |
+| `pages/*.md`, `pages/*.html` documents | `first/app/**/page.md`, a WordPress Page ([Pages](pages.md#markdown-pages)); `.html` documents are **missing** | Refused: the migrator does not convert them | Move a Markdown document to `first/app/<path>/page.md` by hand; move other text into a TSX page or a collection |
 | `_pages/` system pages (404, access gate) | The host's own pages | Refused | — |
 | Tailwind `zero.css` | No generator: First does not compile Tailwind | Client app without pages: the published `zero.css` goes to `public/zero.css`, linked first as 0.8 linked it. It comes from `--zero-css <file>` (wasm `zeroCss`) or from a `--manifest` payload that kept its bytes; without it the app is refused with `Z08_CLIENT_STYLES` | For a version whose payload kept no bytes, compile it with 0.8's `compileZeroUtilityStylesheet` over the published source |
 | Live updates, realtime | `watch()` in the v2 client (#128) | Owned by #128 | Replace subscriptions |

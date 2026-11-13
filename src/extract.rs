@@ -200,7 +200,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     let span_of =
         |ev: &Evaluator<'_>, obj: &Value, key: &str, fallback: Span| ev.key_span(obj, key).unwrap_or(fallback);
     for key in cfg_map.keys() {
-        if !CONFIG_KEYS.contains(&key.as_str()) {
+        let old_key = ev.legacy() && legacy::CONFIG_KEYS.contains(&key.as_str());
+        if !CONFIG_KEYS.contains(&key.as_str()) && !old_key {
             let mut d = Diag::new(
                 span_of(ev, config, key, config_span),
                 format!("defineConfig() has no option `{key}`"),
@@ -503,6 +504,9 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         )?;
     }
     phase2_jobs(&cfg_map, ev, config_span, &mut out)?;
+    if let Some(v) = cfg_map.get("routes").filter(|v| !matches!(v, Value::Undef)) {
+        legacy::routes(v, span_of(ev, config, "routes", config_span), &mut out, None)?;
+    }
     if let Some(v) = cfg_map.get("use").filter(|v| !matches!(v, Value::Undef)) {
         uses(v, span_of(ev, config, "use", config_span), ev, &mut out)?;
     }
@@ -664,7 +668,7 @@ fn actions(
                     return Err(Diag::new(a.span, "signature cannot be combined with access")
                         .help("remove access; signature authenticates the caller"));
                 }
-                Some(signature_config(v, a.span)?)
+                Some(signature_config(v, a.span, ev.legacy())?)
             }
         };
         let access = match cfg.get("access") {
@@ -716,7 +720,12 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
                 .help("call the package's export: use: [seo({ ... })]"));
         };
         let o = object(&p.config, p.span, "definePlugin")?;
-        keys(&o, &["name", "hooks", "actions", "jobs"], p.span, "definePlugin")?;
+        let plugin_keys: &[&str] = if ev.legacy() {
+            &["name", "hooks", "actions", "jobs", "routes"]
+        } else {
+            &["name", "hooks", "actions", "jobs"]
+        };
+        keys(&o, plugin_keys, p.span, "definePlugin")?;
         let name = string(o.get("name"), p.span, "plugin name")?;
         if !(valid_ident(&name)
             && name
@@ -745,6 +754,9 @@ fn uses(v: &Value, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> R
         }
         if let Some(j) = o.get("jobs").filter(|v| !matches!(v, Value::Undef)) {
             jobs(j, ev, p.span, out, owner)?;
+        }
+        if let Some(r) = o.get("routes").filter(|v| !matches!(v, Value::Undef)) {
+            legacy::routes(r, p.span, out, owner)?;
         }
         for root in &mut out.roots[first..] {
             root.plugin = Some(index);
@@ -2488,7 +2500,9 @@ fn env_value(v: Option<&Value>, span: Span) -> Result<Json> {
     }
 }
 
-pub(crate) fn signature_config(v: &Value, span: Span) -> Result<Json> {
+/// `legacy`: a 0.3.0 capture, whose timestamped scheme was named `"zero"`; it reads as `"first"`,
+/// the same scheme renamed.
+pub(crate) fn signature_config(v: &Value, span: Span, legacy: bool) -> Result<Json> {
     let o = object(v, span, "signature")?;
     keys(&o, &["secret", "header", "scheme"], span, "signature")?;
     let secret = env_value(o.get("secret"), span)?;
@@ -2500,10 +2514,13 @@ pub(crate) fn signature_config(v: &Value, span: Span) -> Result<Json> {
         return Err(Diag::new(span, "signature.header must be an HTTP header name")
             .help("use stripe-signature or first-signature"));
     }
-    let scheme = string(o.get("scheme"), span, "signature.scheme")?;
+    let mut scheme = string(o.get("scheme"), span, "signature.scheme")?;
+    if legacy && scheme == "zero" {
+        scheme = "first".into();
+    }
     if scheme != "first" && scheme != "hmac-sha256" {
         return Err(
-            Diag::new(span, "signature.scheme must be zero or hmac-sha256").help("choose a supported HMAC scheme")
+            Diag::new(span, "signature.scheme must be first or hmac-sha256").help("choose a supported HMAC scheme")
         );
     }
     Ok(serde_json::json!({"secret": secret, "header": header, "scheme": scheme}))
@@ -3185,5 +3202,198 @@ mod tests {
         ] {
             assert!(!is_iso_timestamp(bad), "{bad}");
         }
+    }
+}
+
+/// The 0.3.0 authoring forms extraction still reads, for sources in a `zero.source-bundle.v1`
+/// capture only (`Evaluator::legacy`; docs/decisions/2026-11-11-authoring-surface.md, rulings 21
+/// and 22). Each maps onto the model the current forms build. Delete with `crate::zero_bundle`.
+mod legacy {
+    use super::*;
+
+    /// `defineConfig()` keys this reading accepts besides the current ones.
+    pub const CONFIG_KEYS: &[&str] = &["routes"];
+
+    /// `routes: { feed: route({ method, path, access | signature, handler }) }`, from the config or a
+    /// plugin, read onto the `first/app/` route table as one handler route per entry: its path is the
+    /// route pattern, its handler and access rule are the route file's. The table says it came from
+    /// here (`App::legacy_routes`), so the runtime serves it as 0.3.0 did: a route is matched among
+    /// those of the request's method, its reads are trusted, and the theme keeps the front end.
+    pub fn routes(v: &Value, span: Span, out: &mut Extracted, plugin: Option<(usize, &str)>) -> Result<()> {
+        let mut table = out.schema.app.take().unwrap_or_default();
+        table.legacy_routes = true;
+        for (name, value) in object(v, span, "routes")? {
+            let Value::Route(r) = value else {
+                return Err(Diag::new(span, format!("routes.{name} must use route()"))
+                    .help("write route({ method, path, access, handler })"));
+            };
+            if !valid_ident(&name) {
+                return Err(Diag::new(r.span, format!("\"{name}\" isn't a valid route name")).help("use an identifier"));
+            }
+            let o = object(&r.config, r.span, "route")?;
+            keys(
+                &o,
+                &["method", "path", "access", "signature", "handler"],
+                r.span,
+                "route",
+            )?;
+            let method = string(o.get("method"), r.span, "route method")?;
+            if !matches!(method.as_str(), "GET" | "POST" | "PUT" | "PATCH" | "DELETE") {
+                return Err(Diag::new(r.span, format!("route method {method} is not supported"))
+                    .help("use GET, POST, PUT, PATCH or DELETE; GET also answers HEAD"));
+            }
+            let path = path(&string(o.get("path"), r.span, "route path")?, r.span)?;
+            let name = registered(plugin, &name);
+            let file = format!("routes/{name}");
+            let shape = |p: &str| -> Vec<String> {
+                p.split('/')
+                    .map(|s| match s.chars().next() {
+                        Some(':') => ":".to_string(),
+                        Some('*') => "*".to_string(),
+                        _ => s.to_string(),
+                    })
+                    .collect()
+            };
+            if let Some(other) = table.routes.iter().find(|o| {
+                shape(&o.pattern) == shape(&path)
+                    && o.handler
+                        .as_ref()
+                        .and_then(|f| table.files.get(f))
+                        .is_some_and(|f| f.methods.contains_key(&method))
+            }) {
+                return Err(Diag::new(
+                    r.span,
+                    format!("routes.{name} and routes.{} both match {method} {path}", other.id),
+                )
+                .help("give each method and path one route"));
+            }
+            let mut entry = AppFile::default();
+            match (
+                o.get("access").filter(|v| !matches!(v, Value::Undef)),
+                o.get("signature").filter(|v| !matches!(v, Value::Undef)),
+            ) {
+                (Some(_), Some(_)) => {
+                    return Err(Diag::new(r.span, "signature cannot be combined with access")
+                        .help("remove access; signature authenticates the caller"));
+                }
+                (None, None) => {
+                    return Err(Diag::new(r.span, format!("routes.{name} needs access or signature"))
+                        .help("a route is public only when it says so: access: \"anyone\""));
+                }
+                (Some(Value::Closure(f)), None) => {
+                    out.roots.push(Root {
+                        closure: f.clone(),
+                        slot: Slot::AppAccess { file: file.clone() },
+                        name: format!("route__{name}__access"),
+                        plugin: plugin.map(|(i, _)| i),
+                    });
+                    entry.access = Some(Access::Fn(String::new()));
+                }
+                (Some(Value::Bool(b)), None) => entry.access = Some(Access::Allow(*b)),
+                (Some(Value::Str(s)), None) if &**s == "anyone" || &**s == "authenticated" || ROLES.contains(&&**s) => {
+                    entry.access = Some(Access::Role(s.to_string()));
+                }
+                (Some(other), None) => {
+                    return Err(Diag::new(
+                        r.span,
+                        format!("route access is {}, not a role or a function", other.describe()),
+                    )
+                    .help("use \"anyone\", \"authenticated\", a role, a boolean or (ctx) => boolean"));
+                }
+                (None, Some(s)) => entry.signature = Some(signature_config(s, r.span, true)?),
+            }
+            let Some(Value::Closure(handler)) = o.get("handler") else {
+                return Err(Diag::new(r.span, format!("routes.{name} needs a handler function"))
+                    .help("add handler(req, ctx) { return { status, headers, body }; }"));
+            };
+            out.roots.push(Root {
+                closure: handler.clone(),
+                slot: Slot::AppHandler {
+                    file: file.clone(),
+                    method: method.clone(),
+                },
+                name: format!("route__{name}"),
+                plugin: plugin.map(|(i, _)| i),
+            });
+            entry.methods.insert(method, String::new());
+            table.files.insert(file.clone(), entry);
+            table.routes.push(AppRoute {
+                id: name,
+                pattern: path,
+                page: None,
+                handler: Some(file),
+                layouts: Vec::new(),
+                error: None,
+                kind: None,
+                styles: Vec::new(),
+            });
+        }
+        // The runtime takes the first match: most specific first, as the 0.3.0 runtime ranked them
+        // (left to right, a literal before a `:param` before a `*rest`; a longer route first).
+        let rank = |p: &str| -> Vec<u8> {
+            let mut r: Vec<u8> = p
+                .trim_start_matches('/')
+                .split('/')
+                .map(|s| match s.chars().next() {
+                    Some(':') => 1,
+                    Some('*') => 2,
+                    _ => 0,
+                })
+                .collect();
+            r.push(3);
+            r
+        };
+        table.routes.sort_by_key(|r| rank(&r.pattern));
+        out.schema.app = Some(table);
+        Ok(())
+    }
+
+    /// A 0.3.0 route path: literal segments, `:name`, and a last `*name`; never one of WordPress's or
+    /// First's own first segments.
+    fn path(path: &str, span: Span) -> Result<String> {
+        let bad = |why: &str| {
+            Diag::new(span, format!("route path {path:?} {why}")).help(
+                "publish again with a client that captures First sources: an HTTP route is first/app/<path>/route.ts",
+            )
+        };
+        let Some(rest) = path.strip_prefix('/') else {
+            return Err(bad("must start with /"));
+        };
+        let rest = rest.strip_suffix('/').unwrap_or(rest);
+        if rest.is_empty() {
+            return Err(bad("cannot be the site root"));
+        }
+        let segments: Vec<&str> = rest.split('/').collect();
+        let mut params = std::collections::HashSet::new();
+        for (i, segment) in segments.iter().enumerate() {
+            if let Some(param) = segment.strip_prefix('*') {
+                if i + 1 != segments.len() {
+                    return Err(bad("has a *catch-all that is not the last segment"));
+                }
+                if !valid_ident(param) || !params.insert(param) {
+                    return Err(bad("has an invalid or repeated *catch-all name"));
+                }
+            } else if let Some(param) = segment.strip_prefix(':') {
+                if !valid_ident(param) || !params.insert(param) {
+                    return Err(bad("has an invalid or repeated :parameter"));
+                }
+            } else if segment.is_empty()
+                || *segment == "."
+                || *segment == ".."
+                || !segment
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._~-".contains(&b))
+            {
+                return Err(bad("has an invalid segment"));
+            }
+        }
+        let first = segments[0].to_ascii_lowercase();
+        if first.starts_with(':')
+            || first.starts_with('*')
+            || crate::kind_url::RESERVED_FIRST_SEGMENTS.contains(&first.as_str())
+        {
+            return Err(bad("starts with a segment WordPress or First owns"));
+        }
+        Ok(format!("/{rest}"))
     }
 }

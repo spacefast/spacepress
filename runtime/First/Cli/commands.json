@@ -5,6 +5,7 @@
     { "name": "dev status", "args": "[dir]", "summary": "report the local site" },
     { "name": "build", "args": "[dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]", "summary": "write the WordPress plugins to first/dist/wp-content" },
     { "name": "check", "args": "[dir] [--json] [--frozen]", "summary": "compile and report problems; write nothing" },
+    { "name": "add", "args": "<module> [dir]", "summary": "add a module to the project as files you own; never overwrites one. Modules: db (SQL tables)" },
     { "name": "doctor", "args": "[dir] [--out dir] [--site url] [--json]", "summary": "check a build, and a running site (FIRST_TOKEN)" },
     { "name": "mcp", "args": "[dir] [--allow-remote-read] [--allow-writes]", "summary": "serve the project to a coding agent as an MCP server on stdio" },
     { "name": "sync", "args": "[status | resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--json]", "summary": "content files <-> site records (FIRST_APP_PASSWORD or FIRST_TOKEN)" },

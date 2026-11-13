@@ -478,6 +478,9 @@ pub struct Schema {
     pub components: IndexMap<String, String>,
     /// `"use client"` components (generator B): namespace → its store module.
     pub islands: IndexMap<String, Island>,
+    /// Imported stylesheets and images (`crate::assets`), by output file name below
+    /// `first/app/assets/`.
+    pub assets: IndexMap<String, Vec<u8>>,
     /// `first/app/`: the route table and each route file's compiled exports (docs/spec/rendering.md).
     pub app: Option<App>,
     /// Hooks or WordPress functions hand `WP_Post`/`WP_User` views to compiled code.
@@ -505,6 +508,7 @@ impl Default for Schema {
             components: IndexMap::new(),
             app: None,
             islands: IndexMap::new(),
+            assets: IndexMap::new(),
             wp_views: false,
             files: IndexMap::new(),
             webhooks: Vec::new(),
@@ -620,6 +624,9 @@ pub struct App {
     pub not_found: Option<AppRoute>,
     /// Route file (relative to `first/`) → its compiled exports.
     pub files: IndexMap<String, AppFile>,
+    /// The table is a 0.3.0 capture's `routes` config (`extract::legacy::routes`), served as 0.3.0
+    /// served it: matched per method, reads trusted, the front end left to the theme.
+    pub legacy_routes: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -632,6 +639,8 @@ pub struct AppRoute {
     pub handler: Option<String>,
     pub layouts: Vec<String>,
     pub error: Option<String>,
+    /// The stylesheets the page and its layouts import, in link order (`assets::stylesheets`).
+    pub styles: Vec<String>,
     /// The kind whose `url` this page serves (spec §2.7), with each pattern placeholder's folder
     /// parameter: the page receives that kind's `item`, and a missing one is a 404.
     pub kind: Option<(String, Vec<(String, String)>)>,

@@ -42,6 +42,8 @@ pub enum Binding {
     ServerAction(String),
     /// `sharedState` exported from this module: the namespace's global `state`.
     Shared,
+    /// An imported CSS module's class map, known at build time: inlined as a JavaScript object.
+    Static(String),
 }
 
 #[derive(Debug, Default)]
@@ -115,12 +117,35 @@ pub fn analyse(
     module: &Module,
     client_module: &str,
     server_actions: &BTreeSet<String>,
+    assets: &[(String, &crate::assets::Asset)],
 ) -> Result<Analysis> {
     let (hooks, imported) = imports(module, client_module);
     let mut a = Analysis {
         namespace,
         ..Default::default()
     };
+    // Default imports of stylesheets and images, by local name.
+    for (local, asset) in assets {
+        match asset.kind {
+            crate::assets::Kind::CssModule => {
+                let fields: Vec<String> = asset
+                    .classes
+                    .iter()
+                    .map(|(k, v)| format!("{}: {}", js_str(k), js_str(v)))
+                    .collect();
+                a.bindings
+                    .insert(local.clone(), Binding::Static(format!("{{ {} }}", fields.join(", "))));
+            }
+            crate::assets::Kind::Image => {
+                return Err(refuse(
+                    f.span,
+                    format!("a \"use client\" component can't import {}", asset.source),
+                    "import the image in the server component that renders this one and pass its URL as a prop",
+                ));
+            }
+            crate::assets::Kind::Css => {}
+        }
+    }
     for (local, name) in imported {
         if server_actions.contains(&name) {
             a.bindings.insert(local, Binding::ServerAction(name));
@@ -501,8 +526,9 @@ impl Analysis {
         visit(e, &mut |x| match &x.kind {
             ExprKind::Ident(n) => match self.bindings.get(n) {
                 Some(Binding::State { .. } | Binding::Prop | Binding::Derived | Binding::Shared) => reads = true,
+                // A class map is the same on both sides: inlined into the store.
+                Some(Binding::Static(_)) | None => {}
                 Some(_) => ok = false,
-                None => {}
             },
             ExprKind::Jsx(_) | ExprKind::Await(_) | ExprKind::Func(_) => ok = false,
             _ => {}
@@ -707,6 +733,7 @@ impl Analysis {
                 Some(Binding::Derived) => format!("state.{n}"),
                 Some(Binding::Shared) => format!("state.{n}"),
                 Some(Binding::Ref) => "getElement().ref".to_string(),
+                Some(Binding::Static(js)) => format!("({js})"),
                 Some(Binding::Action) => format!(
                     "(() => {{ throw new Error({}) }})()",
                     js_str("call handlers from markup")

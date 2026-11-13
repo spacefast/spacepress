@@ -1,4 +1,4 @@
-import { collection, table, text, integer, boolean, richText, select } from "first";
+import { collection, table, text, integer, boolean, richText, select, ref } from "first";
 
 export const articles = collection({
   title: text().max(160),
@@ -12,3 +12,8 @@ export const shoppingList = table({
   aisle: select(["produce", "dairy", "pantry"]).optional(),
   done: boolean().default(false),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "admin" } });
+
+export const substitutes = table({
+  item: ref(shoppingList).onDelete("cascade"),
+  name: text(),
+});

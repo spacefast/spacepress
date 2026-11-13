@@ -766,6 +766,20 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
         list["fields"]["id"],
         serde_json::json!({ "type": "integer", "primaryKey": true, "generated": true })
     );
+    // A ref is reported as the author wrote it, with the relation it gives each side.
+    let substitutes = &schema["kinds"]["substitutes"];
+    assert_eq!(
+        substitutes["fields"]["item"],
+        serde_json::json!({ "type": "ref", "required": true, "to": "shoppingList", "onDelete": "cascade" })
+    );
+    assert_eq!(
+        substitutes["relations"],
+        serde_json::json!({ "item": { "kind": "one", "to": "shoppingList" } })
+    );
+    assert_eq!(
+        list["relations"],
+        serde_json::json!({ "substitutes": { "kind": "many", "to": "substitutes" } })
+    );
     let articles = &schema["kinds"]["articles"];
     assert_eq!(articles["type"], "collection");
     assert_eq!(articles["access"]["create"], "author");
@@ -829,7 +843,7 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
     assert!(one.get("actions").is_none());
     assert_eq!(
         mcp.refused("schema", serde_json::json!({ "kind": "recipes" })),
-        "no kind recipes; this project's kinds are: articles, shoppingList"
+        "no kind recipes; this project's kinds are: articles, shoppingList, substitutes"
     );
     mcp.finish();
 }

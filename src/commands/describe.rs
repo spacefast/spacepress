@@ -41,10 +41,15 @@ fn field(c: &Column, schema: &Schema) -> Value {
     let mut out = Map::new();
     // A single `select([...])` is stored as text with its values; an author knows it as a select.
     let single_select = c.ty == crate::schema::ColType::Text && c.enum_values.is_some();
-    out.insert(
-        "type".into(),
-        json!(if single_select { "select" } else { c.ty.builder_name() }),
-    );
+    // A `ref(kind)` is stored as the target's id; an author knows it as a ref.
+    let authored = if single_select {
+        "select"
+    } else if c.references.is_some() {
+        "ref"
+    } else {
+        c.ty.builder_name()
+    };
+    out.insert("type".into(), json!(authored));
     // A write must supply it: required, and nothing fills it in.
     if !c.optional_on_insert() && !c.derived && !c.system {
         out.insert("required".into(), json!(true));
@@ -77,11 +82,10 @@ fn field(c: &Column, schema: &Schema) -> Value {
             .collections
             .get(&reference.collection)
             .map_or(reference.collection.as_str(), |target| target.key.as_str());
-        let mut to = json!({ "kind": kind, "field": reference.column });
+        out.insert("to".into(), json!(kind));
         if let Some(action) = reference.on_delete {
-            to["onDelete"] = json!(action.sql());
+            out.insert("onDelete".into(), json!(action.sql()));
         }
-        out.insert("references".into(), to);
     }
     for (name, limit) in [("min", c.rules.min), ("max", c.rules.max)] {
         if let Some(limit) = limit {
@@ -278,20 +282,6 @@ pub(super) fn project(schema: &Schema) -> Value {
             )
         })
         .collect();
-    let mut all_routes = schema.app.as_ref().map(routes).unwrap_or_default();
-    for (name, route) in &schema.routes {
-        let mut out = json!({
-            "pattern": route.path,
-            "type": "route",
-            "methods": [route.method],
-            "access": access(&route.access),
-            "config": format!("routes.{name}"),
-        });
-        if route.signature.is_some() {
-            out["signed"] = json!(true);
-        }
-        all_routes.push(out);
-    }
     let files: Map<String, Value> = schema
         .files
         .iter()
@@ -308,7 +298,7 @@ pub(super) fn project(schema: &Schema) -> Value {
         "globals": globals,
         "actions": actions,
         "jobs": jobs,
-        "routes": all_routes,
+        "routes": schema.app.as_ref().map(routes).unwrap_or_default(),
         "files": files,
         // Lowest to highest: an access rule naming a role admits that role and every one after it.
         "roles": crate::schema::ROLES,

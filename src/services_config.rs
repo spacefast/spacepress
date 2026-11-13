@@ -202,9 +202,9 @@ fn search(at: &At<'_, '_>, schema: &Schema) -> Result<Json> {
     Ok(Json::Object(out))
 }
 
-/// Validate the evaluated `services` option with source locations and emit its private filter.
-/// Call after collection extraction, then append to the generated functions.php body.
-pub fn render(config: &Value, ev: &Evaluator<'_>, schema: &Schema, span: Span) -> Result<String> {
+/// Validate the evaluated `services` option with source locations: the config as the runtime's
+/// filter receives it, or `None` when the app has no `services`. Call after collection extraction.
+pub fn parse(config: &Value, ev: &Evaluator<'_>, schema: &Schema, span: Span) -> Result<Option<Json>> {
     let root = At {
         value: config,
         ev,
@@ -219,7 +219,7 @@ pub fn render(config: &Value, ev: &Evaluator<'_>, schema: &Schema, span: Span) -
     }
     let cfg = cfg.borrow();
     let Some(value) = cfg.get("services") else {
-        return Ok(String::new());
+        return Ok(None);
     };
     let at = root.child("services", value);
     let map = at.object(Some(&["forms", "search", "products", "checkoutReturnUrl"]))?;
@@ -271,7 +271,13 @@ pub fn render(config: &Value, ev: &Evaluator<'_>, schema: &Schema, span: Span) -
         };
         out["checkoutReturnUrl"] = json!(url.as_str());
     }
-    Ok(format!(
+    Ok(Some(out))
+}
+
+/// The private filter that hands a parsed `services` config to the runtime, for the generated
+/// functions.php body.
+pub fn php(services: &Json) -> String {
+    format!(
         r#"
 \add_filter('first_services_config', static function (array $config): array {{
     $authored = {};
@@ -286,6 +292,6 @@ pub fn render(config: &Value, ev: &Evaluator<'_>, schema: &Schema, span: Span) -
     return $config;
 }}, 10);
 "#,
-        php_json(&out)
-    ))
+        php_json(services)
+    )
 }

@@ -109,7 +109,8 @@ fn write_new(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
     file.write_all(content.as_ref())
 }
 
-/// Writes `first/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks and the typed client.
+/// Writes `first/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks, the typed
+/// client and `openapi.json`.
 fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let migrations = migrations_dir(project);
     for (name, sql) in &built.migrations {
@@ -134,6 +135,7 @@ fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
             serde_json::to_string_pretty(lock)? + "\n",
         )?;
     }
+    write(&project.join(layout::OPENAPI), crate::openapi::render(&built.openapi))?;
     let client_dir = project.join(layout::CLIENT);
     for (name, content) in &built.client_files {
         write(&client_dir.join(name), content)?;

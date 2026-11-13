@@ -293,6 +293,7 @@ checks use the Akismet a site has through Jetpack, when it has a key.
 It also hardens WordPress:
 - turns off XML-RPC, pings, emoji scripts, file editors, plugin and theme installs, core auto-updates and the Customizer;
 - disables comments everywhere except kinds that turn them on;
+- refuses edits made on the site to the schema First generates (the schema lock);
 - turns on pretty permalinks, the Space timezone and the object cache;
 - ships a minimal default block theme.
 

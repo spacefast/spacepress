@@ -163,6 +163,7 @@ isn't changed either. None of these switches can be turned off in
 | `autoUpdates` | no automatic core, plugin or theme updates |
 | `customizer` | `customize` is refused, so `customize.php` and its links are gone |
 | `comments` | comments closed on every post type except collections with `comments: true` |
+| `schemaLock` | the app's schema is changed in `first.config.ts` and nowhere on the site (see [Schema lock](#schema-lock)) |
 | `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
 | `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
 | `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
@@ -170,6 +171,70 @@ isn't changed either. None of these switches can be turned off in
 `GET /__first/api/v1` lists the switches in `runtime.wp.hardening`. The object cache
 is whatever the host's `object-cache.php` drop-in provides. A plugin can't
 install a drop-in, so the host supplies it (on Spacefast, the box image does).
+
+### Schema lock
+
+`first.config.ts` in the project's repository is the only way to change what
+First generates from it: its Secure Custom Fields field groups and options
+pages, its post types, its registered meta, and its roles and capabilities.
+First registers all of these in code on every request, so the site's database
+holds no copy of them to edit. What a site could still do is store something
+that takes their place or attaches to them. That is refused for every user,
+administrators included, with a message that names `first.config.ts`:
+
+```
+Refused: the field list of first_notes belongs to the app's schema, which First
+builds from first.config.ts. Change it there and deploy the app; it can't be
+changed on the site.
+```
+
+| refused | where |
+|---|---|
+| a field group, field, post type, taxonomy or options page saved under one of First's names (`group_first_…`, `field_first_…`, a `first_…` post type or taxonomy, a global's options page), compared as WordPress stores the name: without letter case, accents or the characters it strips | SCF's screens in wp-admin, quick edit and duplicate, its import tool, its abilities over REST (`/wp-abilities/v1/…/run`) and MCP |
+| a field group attached to a First kind's post type or a global's options page, at any depth of its fields; a taxonomy attached to a First kind | the same |
+| one of First's options (a global's values) written from wp-admin's all-options screen (`options.php`) | wp-admin |
+
+A wp-admin screen answers 403 with the message on a page. A REST call answers
+403 with the code `first_schema_locked` and the same message. Over MCP the
+refusal is the tool call's error result (`isError: true`) with the same message,
+as the MCP Adapter reports every ability error.
+
+These apply without a refusal screen, because the write that would carry them is
+another plugin's or SCF's own, and stopping it whole would break more than it
+protects:
+
+- An SCF object already in the database that is First's (stored by WP-CLI, or
+  while the app was inactive) is never loaded, so it can't register a post type
+  or taxonomy over First's or change one of First's field groups. A field group
+  stored in the database never applies to a First kind or a global's options
+  page, whatever its location rules say.
+- A value posted through a field First didn't register is not saved when it
+  lands on a First kind's post, a global's options page, or the user meta and
+  options First's own fields write. The rest of the save goes on.
+- A write to WordPress's role definitions, from any plugin or from
+  `options.php`, is saved without any change to a role First creates
+  (`first_guest`) and without a capability of a First kind added to or taken
+  from any role (`edit_others_first_notes`): the kind's access rules answer
+  those capabilities for everyone. A write that isn't a set of roles at all
+  keeps the roles as they are. The rest of the write stands, and the response
+  carries a `First-Schema-Lock` header with the message; on a wp-admin settings
+  screen it is also a settings notice.
+
+First's meta is registered in code too. Its values are content, edited through
+First's own validation on every route. Its keys are protected in every form the
+database matches them by (letter case and accents), so wp-admin's Custom Fields
+box can't add or change one.
+
+Everything else stays open: content, media, users and their roles, settings,
+other plugins' own settings and field groups, the site's own SCF field groups,
+post types, taxonomies and options pages, and activating installed plugins. A
+site's own object that is First's can still be moved to the trash or turned off.
+
+WP-CLI is not refused. It is the operator's trusted channel, as it is for
+`wp first insert`; what it stores that is First's is still never loaded. PHP
+that runs on the site (another plugin, a theme's `functions.php`) can register
+what it likes in code: the lock is about edits made on the site, not about code
+that is deployed to it.
 
 ## Mixed content and app data
 
@@ -317,6 +382,7 @@ registered once.
 | `label` | title-cased physical name | wp-admin menus, client docs |
 | `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
 | `revisions` | `true` for collections, `false` for tables | collections always keep native revisions; tables may opt in |
+| `staged` | `true` for collections | collections only; [staged versions](staged.md): a change saved beside the live item, then compared, promoted or discarded. `false` turns them off |
 | `comments` | `false` | collections only; WordPress comments on the post type. Comments are closed on every kind that doesn't set it ([opinionated WordPress](#opinionated-wordpress)) |
 | `title` | a `title: text()` column | WordPress post title; must be a required `text()` for collections |
 | `content` | a `content: richText()` column | WordPress post content |
@@ -766,8 +832,8 @@ the live rows before it runs any of them:
 | A field becomes required with `.default(v)` | rows without a value get `v`, then it applies |
 | A field becomes required, no default, and rows lack it | refused: `required_field_missing` with the count |
 | A kind or field is removed and holds rows | refused: `drop_has_rows` with the count, until the deploy passes `--drop=name=rows` |
-| A `table()` that holds rows is declared with `collection()` | refused: `drop_has_rows` with the count. Storage follows the builder, so the build plans the table's drop and moves no rows. To keep the rows, don't pass `--drop`: delete the new, undeployed migration file, restore `snapshot.json` from the last deployed build (`git checkout`), declare `table()` again and build; no migration is written. Building `table()` on top of the drop instead writes a second migration that recreates the table, and the drop before it is still refused |
-| A `collection()` that holds posts is declared with `table()` | applies: the build creates an empty SQL table and warns. The posts stay in `wp_posts` and the app no longer reads them; nothing moves them |
+| A `table()` that holds rows is declared with `collection()` | refused: `drop_has_rows` with the count. Storage follows the builder, so the build plans the table's drop and moves no rows. To keep the rows, don't pass `--drop`: delete every migration file numbered after the last deployed one, restore `snapshot.json` from the last deployed build (`git checkout`), declare `table()` again and build. The build writes no migration for this kind and plans your other changes again. Building `table()` on top of the drop instead writes a second migration that recreates the table, and the drop before it is still refused |
+| A `collection()` that holds posts is declared with `table()` | the build creates an empty SQL table and warns. The posts stay in `wp_posts` and the app no longer reads them; nothing moves them. If a `table()` refers to the kind and holds post IDs, the new foreign key can't be added and the deploy fails with that database error |
 | A field's type or length narrows (`.max(100)`, `.unique()`, text to integer, ...) and values wouldn't fit | refused: `value_does_not_fit` with the count; MySQL would truncate or convert them |
 | `--drop=name=rows` doesn't match the live count | refused: `drop_count_mismatch` with the live count |
 | A table the app didn't create (`existingTable`) loses, renames or retypes a field, or loses its kind | refused: `drop_adopted_table`, even when empty, until the deploy passes `--drop` |

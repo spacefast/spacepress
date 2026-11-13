@@ -13,9 +13,9 @@ These commands run on your machine, on the project's files.
 
 | Command | What it does |
 | --- | --- |
-| `first dev [dir] [--port n] [--no-watch] [--allow-destructive]` | Start the local WordPress site and rebuild on change. |
+| `first dev [dir] [--port n] [--no-watch \| --detach \| --foreground] [--allow-destructive]` | Start the local WordPress site and rebuild on change. |
 | `first dev stop [dir]` | Stop the local site, keeping its data. |
-| `first dev status [dir]` | Report the local site. |
+| `first dev status [dir] [--json]` | Report the local site. |
 | `first build [dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]` | Write the WordPress plugins to first/dist/wp-content. |
 | `first check [dir] [--json] [--frozen]` | Compile and report problems; write nothing. |
 | `first add <module> [dir]` | Add a module to the project as files you own; never overwrites one. Modules: db (SQL tables) |
@@ -45,6 +45,7 @@ These commands run inside WordPress. On a local site, run them as `first <comman
 | `wp first update <collection> <where json> <set json>` | Update records. |
 | `wp first delete <collection> <where json>` | Delete records. |
 | `wp first publish-due` | Publish scheduled records that are due. |
+| `wp first staged list [<kind>] \| show\|compare\|discard <kind> <id> \| stage <kind> <id> <json> \| promote <kind> <id> [--at=<ISO time> \| --cancel]` | Staged versions of post kinds: list, stage, compare, promote, discard. |
 | `wp first identity account\|suspend\|restore\|revoke\|erase <user-id> \| app add --name=n --redirect=uri --origin=o [--id=app_id] \| webhook-add <url> \| webhook-remove <id> \| webhooks \| maintenance \| rotate-keys` | First Identity accounts, applications, webhooks and keys. |
 
 `first wp <WP-CLI arguments>` runs any WP-CLI command on the local site. For example, `first wp plugin list`.

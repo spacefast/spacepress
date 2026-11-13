@@ -185,6 +185,13 @@ test("a field group already in the database never applies to a First kind", asyn
   const id = Number(sql(`SELECT ID FROM wp_posts WHERE post_name = '${key}'`)[0].ID);
   refused(await ability("scf/duplicate-field-group", { identifier: id }), "duplicating a stored group that names a First kind");
   assert.equal(Number(sql(`SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'acf-field-group' AND post_status <> 'auto-draft'`)[0].n), before, "no copy was stored");
+  // A stored object that is First's is never loaded: a post type stored around the lock under a name
+  // WordPress registers as First's (it strips the dot) doesn't replace First's registration.
+  wp("eval", `acf_import_post_type(['key' => 'post_type_cli_${run}', 'title' => 'Hijack', 'post_type' => '.first_notes', 'labels' => ['name' => 'Hijack'], 'public' => true]);`);
+  assert.equal(stored(`post_type_cli_${run}`), 1);
+  const registered = await (await fetch(`${core}/types/first_notes?context=edit`, { headers: auth("admin") })).json();
+  assert.equal(registered.name, "Notes", JSON.stringify(registered).slice(0, 200));
+  wp("post", "delete", String(sql(`SELECT ID FROM wp_posts WHERE post_name = 'post_type_cli_${run}'`)[0].ID), "--force");
   // The site can still take the stored group off the kind, or remove it.
   const moved = await ability("scf/update-field-group", { ID: id, location: onKind("post") });
   assert.equal(moved.status, 200, JSON.stringify(moved.body));
@@ -227,12 +234,24 @@ test("registered meta: a First field is written through First's validation or no
   const keys = sql(`SELECT meta_key FROM wp_postmeta WHERE post_id = ${note} AND (meta_key LIKE '%mood%' OR meta_key LIKE '%undeclared%') ORDER BY meta_key`).map((r) => r.meta_key);
   assert.deepEqual(keys, ["_first_mood", "first_mood"], "only First's own keys, written by First");
   assert.equal(wp("post", "meta", "get", String(note), "first_mood"), "calm");
-  // A field of the site's own posted on the First note's form writes nothing there.
-  const own = await ability("scf/create-field-group", group(`group_site_on_post${run}`));
+  // A field of the site's own, located on core posts only, posted on the First note's edit form: SCF
+  // saves every field the form names, wherever it applies. It writes nothing on the note.
+  const own = await ability("scf/import-field-group", group(`group_site_on_post${run}`, { fields: [{ ...field(`field_site_on_post${run}`), name: `stray_${run}` }] }));
   assert.equal(own.status, 200, JSON.stringify(own.body));
-  const posted = await fetch(item, { method: "POST", headers: { "content-type": "application/json", ...auth("admin") }, body: JSON.stringify({ acf: { [`field_group_site_on_post${run}`]: "stray" } }) });
-  assert.ok(posted.status < 500, String(posted.status));
-  assert.equal(wp("eval", `echo wp_json_encode(metadata_exists('post', ${note}, 'drift'));`), "false", "the site's field wrote nothing on the First note");
+  assert.equal(stored(`field_site_on_post${run}`), 1, "the site's field is stored");
+  const form = await (await fetch(`${site}/wp-admin/post.php?post=${note}&action=edit`, { headers: { cookie } })).text();
+  const hidden = (n: string) => form.match(new RegExp(`name=['"]${n}['"][^>]*value=['"]([^'"]*)['"]`))?.[1] ?? assert.fail(`no ${n}`);
+  const saved = await fetch(`${site}/wp-admin/post.php`, {
+    method: "POST", redirect: "manual", headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      action: "editpost", post_ID: String(note), post_type: "first_notes", _wpnonce: hidden("_wpnonce"), _acf_nonce: hidden("_acf_nonce"), _acf_screen: "post", _acf_post_id: String(note),
+      post_title: "Meta", post_status: "publish", save: "Update", originalaction: "editpost", original_post_status: "publish",
+      [`acf[field_site_on_post${run}]`]: "stray", "acf[field_first_notes_mood]": "still calm",
+    }),
+  });
+  assert.equal(saved.status, 302, (await saved.text()).slice(0, 300));
+  assert.equal(wp("eval", `echo wp_json_encode(metadata_exists('post', ${note}, 'stray_${run}'));`), "false", "the site's field wrote nothing on the First note");
+  assert.equal(wp("post", "meta", "get", String(note), "first_mood"), "still calm", "the note's own field saved, through First");
 });
 
 test("roles: a role First creates and the capabilities of a First kind keep their definition", async () => {

@@ -145,39 +145,51 @@ changed on the site.
 
 | refused | where |
 |---|---|
-| a field group, field, post type, taxonomy or options page saved under one of First's names (`group_first_…`, `field_first_…`, a `first_…` post type or taxonomy, a global's options page), in any letter case | SCF's screens in wp-admin, its import tool, its abilities over REST (`/wp-abilities/v1/…/run`) and MCP |
-| a field group attached to a First kind's post type or to a global's options page; a taxonomy attached to a First kind | the same |
-| a field of the site's own whose name is one of First's meta keys (`first_…`), on any post type or on users | the same |
+| a field group, field, post type, taxonomy or options page saved under one of First's names (`group_first_…`, `field_first_…`, a `first_…` post type or taxonomy, a global's options page), compared as WordPress stores the name: without letter case, accents or the characters it strips | SCF's screens in wp-admin, quick edit and duplicate, its import tool, its abilities over REST (`/wp-abilities/v1/…/run`) and MCP |
+| a field group attached to a First kind's post type or a global's options page, at any depth of its fields; a taxonomy attached to a First kind | the same |
+| one of First's options (a global's values) written from wp-admin's all-options screen (`options.php`) | wp-admin |
+
+A wp-admin screen answers 403 with the message on a page. A REST call answers
+403 with the code `first_schema_locked` and the same message. Over MCP the
+refusal is the tool call's error result (`isError: true`) with the same message,
+as the MCP Adapter reports every ability error.
+
+These apply without a refusal screen, because the write that would carry them is
+another plugin's or SCF's own, and stopping it whole would break more than it
+protects:
+
+- An SCF object already in the database that is First's (stored by WP-CLI, or
+  while the app was inactive) is never loaded, so it can't register a post type
+  or taxonomy over First's or change one of First's field groups. A field group
+  stored in the database never applies to a First kind or a global's options
+  page, whatever its location rules say.
+- A value posted through a field First didn't register is not saved when it
+  lands on a First kind's post, a global's options page, or the user meta and
+  options First's own fields write. The rest of the save goes on.
+- A write to WordPress's role definitions, from any plugin or from
+  `options.php`, is saved without any change to a role First creates
+  (`first_guest`) and without a capability of a First kind added to or taken
+  from any role (`edit_others_first_notes`): the kind's access rules answer
+  those capabilities for everyone. A write that isn't a set of roles at all
+  keeps the roles as they are. The rest of the write stands, and the response
+  carries a `First-Schema-Lock` header with the message; on a wp-admin settings
+  screen it is also a settings notice.
 
 First's meta is registered in code too. Its values are content, edited through
-First's own validation on every route; the keys are protected, so wp-admin's
-Custom Fields box can't add or change one.
-
-A wp-admin screen answers 403 with the message on a page. A REST or MCP call
-answers 403 with the code `first_schema_locked` and the same message.
-
-Two rules apply without a refusal screen:
-
-- A field group that is already in the database never applies to a First kind,
-  however it got there (WP-CLI, an import made while the app was inactive). The
-  kind shows and saves the fields in the config, and nothing else.
-- A write to WordPress's role definitions is saved without any change to a role
-  First creates (`first_guest`) and without a capability of a First kind added
-  to any role (`edit_others_first_notes`): the kind's access rules answer those
-  capabilities for everyone, so a stored one would do nothing but mislead. The
-  rest of the write stands, and the response carries a `First-Schema-Lock`
-  header (a notice in wp-admin) with the message. Core has no screen or route
-  for roles; this covers plugins that edit them.
+First's own validation on every route. Its keys are protected in every form the
+database matches them by (letter case and accents), so wp-admin's Custom Fields
+box can't add or change one.
 
 Everything else stays open: content, media, users and their roles, settings,
-other plugins' own settings and field groups, the site's own SCF post types and
-taxonomies, and activating installed plugins.
+other plugins' own settings and field groups, the site's own SCF field groups,
+post types, taxonomies and options pages, and activating installed plugins. A
+site's own object that is First's can still be moved to the trash or turned off.
 
 WP-CLI is not refused. It is the operator's trusted channel, as it is for
-`wp first insert`, and a field group it imports onto a First kind still never
-applies there. PHP that runs on the site (another plugin, a theme's
-`functions.php`) can register what it likes in code; the lock is about edits
-made on the site, not about code that is deployed to it.
+`wp first insert`; what it stores that is First's is still never loaded. PHP
+that runs on the site (another plugin, a theme's `functions.php`) can register
+what it likes in code: the lock is about edits made on the site, not about code
+that is deployed to it.
 
 ## Mixed content and app data
 

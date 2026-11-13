@@ -2706,3 +2706,37 @@ fn mcp_killed_by_its_client_leaves_no_command_running() {
         std::thread::yield_now();
     }
 }
+
+/// `dev_status` on a site with no state file asks Studio through `npx`; a hung `npx` (offline, a
+/// stalled registry) is stopped at the server's timeout, and the next request is answered.
+#[cfg(unix)]
+#[test]
+fn mcp_dev_status_is_bounded_by_the_servers_timeout() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    // A site `first dev` created, from before the state file.
+    std::fs::create_dir_all(project.path().join(".first/dev")).unwrap();
+    std::fs::write(project.path().join(".first/dev/owner.json"), r#"{"created":true}"#).unwrap();
+    let tools = tempfile::tempdir().unwrap();
+    let npx = tools.path().join("npx");
+    std::fs::write(&npx, "#!/bin/sh\nsleep 600\n").unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&npx, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let mut mcp = Mcp::start(project.path(), &[], |command| {
+        with_path(command, tools.path());
+        command.env("FIRST_MCP_TIMEOUT", "2");
+    });
+    mcp.modern = true;
+    let started = std::time::Instant::now();
+    let refused = mcp.refused("dev_status", serde_json::json!({}));
+    assert!(refused.contains("took longer than 2 seconds"), "{refused}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(60));
+    assert!(
+        mcp.result("server/discover", serde_json::json!({}))
+            .get("supportedVersions")
+            .is_some()
+    );
+    mcp.finish();
+}

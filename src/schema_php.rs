@@ -363,13 +363,14 @@ pub fn render(schema: &Schema) -> String {
                 None => "null".into(),
             };
             format!(
-                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'kind' => {kind}]",
+                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}], 'kind' => {kind}]",
                 php_str(&r.id),
                 php_str(&r.pattern),
                 opt(&r.page),
                 opt(&r.handler),
                 r.layouts.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", "),
-                opt(&r.error)
+                opt(&r.error),
+                r.styles.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", ")
             )
         };
         out.push_str("        'routes' => [\n");

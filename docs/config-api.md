@@ -426,7 +426,7 @@ registered once.
 | `uid` | `false` (`true` with `sync`) | stable immutable `uid` on every row |
 | `sync` | none | project-relative `*.md` or `*.json` pattern for `first sync` |
 | `agents` | `true` | expose operations as WordPress abilities |
-| `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. The site's sitemap (`/wp-sitemap.xml`) lists the kind's items a signed-out visitor may read. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
+| `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
 
 Collections need a title and physical names of at most 14 characters (WordPress
 prefixes `first_`). Built-in route names are reserved (`media`, `files`,
@@ -679,6 +679,35 @@ export default async function Doc({ item }: PageProps<"docs/[...path]">) {
 The tree is the published items the visitor may read, siblings by order then title, four levels
 deep. `headings()` gives the ids the page renders its headings with.
 
+### Components in Markdown
+
+A component in `first/components/` can be used in synced Markdown as a block
+([decision](decisions/2026-11-13-components-in-markdown.md)). Its file lists it:
+
+```tsx
+// first/components/Callout.tsx
+export const blocks = ["Callout"];
+export function Callout({ type, title, children }: { type: "note" | "warning"; title?: string; children?: JSX.Element }) {
+  return <aside className={`callout callout-${type}`}>{title && <p>{title}</p>}{children}</aside>;
+}
+```
+
+```md
+<Callout type="warning" title="Before you start">
+Back up the **database**.
+</Callout>
+
+<Badge label="New" count={3} />
+```
+
+- In WordPress it is a block (`<app>/callout`) the editor inserts and edits; the site renders it
+  through the component, with the inner content as `children`.
+- In the file it is the tag, on lines of its own. Values are `"text"`, `{true}`, `{false}` or
+  `{number}`; the content between the tags is Markdown. `first sync` writes the block back as the
+  same tag.
+- Props are text, a choice of text literals, numbers and booleans; anything else is a build error.
+  A tag the site doesn't know, an unknown prop, a wrong value or an unclosed tag is refused.
+
 ### Seeding and `first sync`
 
 Every publish seeds synced files: missing records are created, trashed records stay deleted, and no records are removed.
@@ -867,7 +896,7 @@ the live rows before it runs any of them:
 | A field becomes required with `.default(v)` | rows without a value get `v`, then it applies |
 | A field becomes required, no default, and rows lack it | refused: `required_field_missing` with the count |
 | A kind or field is removed and holds rows | refused: `drop_has_rows` with the count, until the deploy passes `--drop=name=rows` |
-| A `table()` that holds rows is declared with `collection()` | refused: `drop_has_rows` with the count. Storage follows the builder, so the build plans the table's drop and moves no rows. To keep the rows, don't pass `--drop`: delete every migration file numbered after the last deployed one, restore `snapshot.json` from the last deployed build (`git checkout`), declare `table()` again and build. The build writes no migration for this kind and plans your other changes again. Building `table()` on top of the drop instead writes a second migration that recreates the table, and the drop before it is still refused |
+| A `table()` is declared with `collection()` | refused by `first build` and `first check` at the declaration, before a migration is written: storage follows the builder. Declare it with `table()` again; its rows stay where they are and no migration is written. A ledger that already holds the table's drop (built before this refusal) is refused at deploy with `drop_has_rows`; to keep the rows, don't pass `--drop`: delete every migration file numbered after the last deployed one, restore `snapshot.json` from the last deployed build (`git checkout`), declare `table()` again and build |
 | A `collection()` that holds posts is declared with `table()` | the build creates an empty SQL table and warns. The posts stay in `wp_posts` and the app no longer reads them; nothing moves them. If a `table()` refers to the kind and holds post IDs, the new foreign key can't be added and the deploy fails with that database error |
 | A field's type or length narrows (`.max(100)`, `.unique()`, text to integer, ...) and values wouldn't fit | refused: `value_does_not_fit` with the count; MySQL would truncate or convert them |
 | `--drop=name=rows` doesn't match the live count | refused: `drop_count_mismatch` with the live count |
@@ -1015,14 +1044,27 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   collection is post type `first_<name>` with no SQL table. Both are registered like compiled
   ones, from the request after the change. `GET /__first/api/v1` reports `runtimeSchema: {
   version, hash, build }`.
-- **In the project.** `first/_generated/runtime-schema.json` lists a site's changes for the build:
-  `collections` and `globals` (fields added to declared kinds), `added` (new kinds) and `overrides`
-  (labels and presentation). The build declares them as if they were authored. A build that lacks
-  the site's changes does not drop them: they stay active, with their data.
+- **In the project.** `first pull [dir] [--site url] [--check]` writes the site's newest version to
+  `first/_generated/runtime-schema.json`: `collections` and `globals` (fields added to declared
+  kinds), `added` (new kinds) and `overrides` (labels and presentation), with the version number
+  and hash. It reads `GET /__first/api/v1/schema-versions/lock`, which answers administrators only
+  (`FIRST_APP_PASSWORD` or `FIRST_TOKEN`). Before it keeps the new lock it compiles the project
+  with it; a lock the project can't compile (it declares one of the names differently, say) is
+  not written, and the error says why. Then it refreshes `first/_generated/` (types, client).
+  `--check` exits 1 when the lock is behind the site and writes nothing. The build declares what
+  the lock lists as if it were authored, and records the version in `schema.php`.
+- **What compiled code uses.** With the flag on, `first build` writes `first/app/references.php`:
+  every field and kind name that occurs as a word in a source file it loaded. A field the build
+  declares can be removed at runtime only when it is optional and its name occurs nowhere; a kind,
+  only when its name occurs nowhere. A field your code reads, or a required one, is
+  `schema_in_use`. To remove it, delete it from your code and from the lock, build and deploy.
+- **Deploying.** A build that lacks the site's changes does not drop them: they stay active, with
+  their data, and `wp first migrate` lists them under `runtimeSchema.kept`. A build that declares
+  a runtime name, or a removed one, with another stored type is refused before any table changes,
+  with the fix (usually: `first pull`, then build).
 
-This release has the store, the loader, the rules and the build's reading of the lock. Applying a
-change is `First\Wp\SchemaVersions::of($plugin)->apply($parent, $changeSet, $actor)` from PHP;
-the Abilities, the `first schema` commands, `first pull` and the admin screen are not built yet.
+Applying a change is `First\Wp\SchemaVersions::of($plugin)->apply($parent, $changeSet, $actor)`
+from PHP; the Abilities, the `first schema` commands and the admin screen are not built yet.
 Taxonomies can't be added at runtime: `taxonomy()` is not in this First version.
 
 ## Plugin packages

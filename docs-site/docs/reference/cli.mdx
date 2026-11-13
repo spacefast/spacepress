@@ -13,9 +13,9 @@ These commands run on your machine, on the project's files.
 
 | Command | What it does |
 | --- | --- |
-| `first dev [dir] [--port n] [--no-watch] [--allow-destructive]` | Start the local WordPress site and rebuild on change. |
+| `first dev [dir] [--port n] [--no-watch \| --detach \| --foreground] [--allow-destructive]` | Start the local WordPress site and rebuild on change. |
 | `first dev stop [dir]` | Stop the local site, keeping its data. |
-| `first dev status [dir]` | Report the local site. |
+| `first dev status [dir] [--json]` | Report the local site. |
 | `first build [dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]` | Write the WordPress plugins to first/dist/wp-content. |
 | `first check [dir] [--json] [--frozen]` | Compile and report problems; write nothing. |
 | `first add <module> [dir]` | Add a module to the project as files you own; never overwrites one. Modules: db (SQL tables) |
@@ -23,6 +23,7 @@ These commands run on your machine, on the project's files.
 | `first init [dir] [--check]` | Write AGENTS.md, .mcp.json and the agent skills for this project; --check exits 1 when they are out of date. |
 | `first mcp [dir] [--allow-remote-read] [--allow-writes]` | Serve the project to a coding agent as an MCP server on stdio. |
 | `first sync [status \| resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--json]` | Content files \<-\> site records (FIRST_APP_PASSWORD or FIRST_TOKEN) |
+| `first pull [dir] [--site url] [--check]` | Write a site's runtime schema versions to first/_generated/runtime-schema.json (FIRST_APP_PASSWORD or FIRST_TOKEN) |
 | `first abilities pull [dir] --site url [--only vendor/*]` | Lock a site's abilities into first/_generated/abilities.json (FIRST_APP_PASSWORD) |
 | `first deploy <inspect\|publish\|init\|status\|backup\|restore> <options>` | Artifact preflight and offline workspaces ([docs/deployment.md](https://github.com/spacefast/zero/blob/main/docs/deployment.md)) |
 

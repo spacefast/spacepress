@@ -99,6 +99,8 @@ $out['install as editor'] = doc(fetch("$url/docs/guides/install", [$cookie('chie
 // A path that isn't the item's own: the wrong parent, a missing page, the slug alone.
 $out['wrong parent'] = fetch("$url/docs/reference/install")['status'];
 $out['missing'] = fetch("$url/docs/guides/nothing")['status'];
+// The optional catch-all's empty match: no item, so not this page (the landing page is an app page).
+$out['landing'] = fetch("$url/docs")['status'];
 $out['slug alone'] = [fetch("$url/docs/install")['status'], fetch("$url/docs/install")['headers']['location'][0] ?? null];
 // Its Markdown twin.
 $out['twin'] = [fetch("$url/docs/guides/install.md")['status'], fetch("$url/docs/guides/install.md")['body']];
@@ -115,6 +117,32 @@ wp_update_post(['ID' => $reference, 'post_parent' => $guides, 'menu_order' => 0]
 wp_set_current_user(0);
 $out['moved'] = doc(fetch("$url/docs/guides/reference"));
 $out['moved old'] = [fetch("$url/docs/reference")['status']];
+// A published page under a draft: unreachable like its parent, so not served at a path that names the draft.
+$roadmap = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'roadmap'", $type));
+wp_set_current_user($site->userId('chief'));
+$under = wp_insert_post(['post_type' => $type, 'post_status' => 'publish', 'post_title' => 'Later', 'post_name' => 'later', 'post_parent' => $roadmap]);
+wp_set_current_user(0);
+$out['under a draft'] = [fetch("$url/docs/guides/roadmap/later")['status'], fetch("$url/docs/guides/roadmap/later.md")['status']];
+wp_delete_post($under, true);
+// A WordPress Page with a doc's slug: the doc's URL is still the doc, not a redirect loop.
+$page = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Introduction', 'post_name' => 'introduction']);
+$out['page with a doc slug'] = [fetch("$url/docs/introduction")['status'], doc(fetch("$url/docs/introduction"))['h1']];
+wp_delete_post($page, true);
+// A published page with a slug a sibling elsewhere has: both are served, each at its own path.
+wp_set_current_user($site->userId('chief'));
+$twin = wp_insert_post(['post_type' => $type, 'post_status' => 'publish', 'post_title' => 'Install again', 'post_name' => 'install', 'post_parent' => $reference]);
+wp_set_current_user(0);
+$out['same slug elsewhere'] = [
+    doc(fetch("$url/docs/guides/reference/install"))['h1'],
+    doc(fetch("$url/docs/guides/install"))['h1'],
+];
+// Headings beside a block whose markup changes per render (a gallery's per-request ids): the
+// table of contents and the page's anchors still agree.
+$intro = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'introduction'", $type));
+$wpdb->update($wpdb->posts, ['post_content' => get_post_field('post_content', $intro) . "\n\n<!-- wp:gallery {\"linkTo\":\"none\"} -->\n<figure class=\"wp-block-gallery has-nested-images columns-default is-cropped\"></figure>\n<!-- /wp:gallery -->"], ['ID' => $intro]);
+clean_post_cache($intro);
+$gallery = doc(fetch("$url/docs/introduction"));
+$out['headings beside a gallery'] = [$gallery['toc'], $gallery['anchors']];
 // The query API reads the same tree.
 $out['api'] = array_map(static fn (array $r): array => [$r['slug'], $r['parent'] === null ? null : $byId[$r['parent']] ?? $r['parent'], $r['order']], \First\Seam::toPhp(\First\Seam::kindList('docs', ['orderBy' => ['order' => 'asc'], 'where' => ['parent' => null]], true)));
 

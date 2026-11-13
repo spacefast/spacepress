@@ -601,22 +601,8 @@ pub(crate) fn compile_tree(
             } else {
                 None
             };
-            let uid = match fields.shift_remove("uid") {
-                None if nested => crate::sync::uid::for_file(name, &below),
-                None => crate::sync::uid::for_file(name, &path.file_name().unwrap_or_default().to_string_lossy()),
-                Some(serde_json::Value::String(uid)) if crate::sync::uid::valid(&uid) => uid,
-                Some(_) => {
-                    return Err(diagnostic(
-                        1,
-                        "uid must be zr_ followed by 20 lowercase hex characters".into(),
-                    ));
-                }
-            };
-            if !uids.insert(uid.clone()) {
-                return Err(diagnostic(1, format!("duplicate sync uid {uid}")));
-            }
-            if let Some(parent) = place {
-                // Slugs are unique in a kind, so a page's URL is found by its last segment.
+            if place.is_some() {
+                // Slugs are unique in a kind, and a file without a uid is identified by its slug.
                 let slug = fields[collection.slug.as_deref().unwrap_or("slug")]
                     .as_str()
                     .unwrap_or_default()
@@ -632,6 +618,27 @@ pub(crate) fn compile_tree(
                         ),
                     ));
                 }
+            }
+            let uid = match fields.shift_remove("uid") {
+                None if nested => crate::sync::uid::for_tree_file(
+                    name,
+                    fields[collection.slug.as_deref().unwrap_or("slug")]
+                        .as_str()
+                        .unwrap_or_default(),
+                ),
+                None => crate::sync::uid::for_file(name, &path.file_name().unwrap_or_default().to_string_lossy()),
+                Some(serde_json::Value::String(uid)) if crate::sync::uid::valid(&uid) => uid,
+                Some(_) => {
+                    return Err(diagnostic(
+                        1,
+                        "uid must be zr_ followed by 20 lowercase hex characters".into(),
+                    ));
+                }
+            };
+            if !uids.insert(uid.clone()) {
+                return Err(diagnostic(1, format!("duplicate sync uid {uid}")));
+            }
+            if let Some(parent) = place {
                 parents.push((records.len(), parent));
                 by_path.insert(below, uid.clone());
             }

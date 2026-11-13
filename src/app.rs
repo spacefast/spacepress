@@ -633,7 +633,11 @@ pub fn serves_kind_url(route: &Route, pattern: &str) -> Option<Vec<(String, Stri
     for (part, segment) in parts.iter().zip(&route.segments) {
         match (part.strip_prefix(':'), segment) {
             (None, Segment::Literal(l)) if l == part => {}
-            (Some("path"), Segment::CatchAll(p)) => bound.push(("path".to_string(), p.clone())),
+            // `[[...path]]` too: its empty match (`/docs`) finds no item and is a 404, so the
+            // landing page stays its own `first/app/docs/page.tsx`.
+            (Some("path"), Segment::CatchAll(p) | Segment::OptionalCatchAll(p)) => {
+                bound.push(("path".to_string(), p.clone()))
+            }
             (Some(field), Segment::Param(p)) if field != "path" => bound.push((field.to_string(), p.clone())),
             _ => return None,
         }

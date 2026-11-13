@@ -81,7 +81,7 @@ Many Markdown pages are a kind, synced from a folder tree and rendered by one ca
 - `sync: "content/docs/**/*.md"` reads the folder tree. A file's name is its slug and its folder its parent; a folder's `index.md` is the page the folder stands for. Put `order` in front matter; siblings with the same order sort by title.
 - `first sync` carries it both ways: a page moved in wp-admin moves its file.
 
-<RepoFile path="tests/fixtures/docs-kind/first/app/docs/[...path]/page.tsx" />
+<RepoFile path="tests/fixtures/docs-kind/first/app/docs/[[...path]]/page.tsx" />
 
 `"first/content"` gives the page its navigation, read as the visitor from the published tree: `nav(kind, item)` (the tree, with the current page and its ancestors marked), `pager(kind, item)` (previous and next, reading the tree top to bottom) and `headings(item)` (the `##` and `###` headings, with the ids the page renders them with).
 

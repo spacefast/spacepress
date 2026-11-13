@@ -1224,6 +1224,33 @@ test("optimistic updates show at once, roll back on failure, and give way to the
   b.rollback();
   assert.deepEqual(got.at(-1), [{ id: 1, title: "one" }, { id: 2, title: "two" }]);
 
+  // A write through the client: its own refresh is the answer that replaces the update. The row
+  // is never shown twice, and settling costs no request of its own.
+  rows = [{ id: 1, title: "one" }];
+  const client = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const frames: string[][] = [];
+  const mine = client.posts.list();
+  const stop2 = mine.subscribe((d: { title: string }[]) => frames.push(d.map((r) => r.title)));
+  await tick();
+  const saving = mine.optimistic((current: { id: number; title: string }[]) => [...current, { id: -3, title: "three (saving)" }]);
+  server.requests.length = 0;
+  rows = [...rows, { id: 3, title: "three" }];
+  await client.posts.create({ title: "three" });
+  saving.settle();
+  await tick();
+  assert.deepEqual(frames, [["one"], ["one", "three (saving)"], ["one", "three"]], "saving, then saved: no frame with both or neither");
+  assert.equal(server.requests.length, 1, "one request: the write's own refresh");
+  // Settled late, after that refresh was already shown: dropped at once, with no request.
+  const late = mine.optimistic((current: { id: number; title: string }[]) => [...current, { id: -4, title: "four (saving)" }]);
+  rows = [...rows, { id: 4, title: "four" }];
+  await client.posts.create({ title: "four" });
+  await tick();
+  assert.deepEqual(frames.at(-1), ["one", "three", "four", "four (saving)"], "not settled yet: the update is still applied");
+  late.settle();
+  assert.deepEqual(frames.at(-1), ["one", "three", "four"]);
+  assert.equal(server.requests.length, 2);
+  stop2();
+
   // On a read nobody is subscribed to there is nothing to show: it does nothing.
   const none = first.authors.list().optimistic(() => []);
   none.settle();

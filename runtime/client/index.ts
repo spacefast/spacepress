@@ -914,7 +914,7 @@ export function createClient(options: ClientOptions = {}): Client {
     error?: FirstError;
     due: boolean;
     subscribers: Set<Subscriber>;
-    /** Optimistic updates, oldest first; `after` is the request an update waits to be answered past (null: unsettled). */
+    /** Optimistic updates, oldest first. `after`: the last request sent before the write was known to be committed (null: not settled). */
     overlays: { apply: (current: unknown) => unknown; after: number | null }[];
   }
   const subscriptions = new Map<string, Subscription>();
@@ -926,7 +926,11 @@ export function createClient(options: ClientOptions = {}): Client {
   let asking = false;
   let askAgain = false;
   let kicked = false;
+  // Requests are numbered as they are sent. An answer to a request sent after a write committed holds that write.
   let sent = 0;
+  let answered = 0;
+  let writes = 0;
+  let sentAtLastWrite = 0;
   let stopNotices: (() => void) | null = null;
   const page = () => (globalThis as { document?: { visibilityState?: string; addEventListener?(type: string, fn: () => void): void; removeEventListener?(type: string, fn: () => void): void } }).document;
   const hidden = () => page()?.visibilityState === "hidden";
@@ -1010,6 +1014,7 @@ export function createClient(options: ClientOptions = {}): Client {
             const { minMs, maxMs } = out.poll ?? {};
             if (typeof minMs === "number" && typeof maxMs === "number" && minMs > 0 && maxMs >= minMs) serverWindow = { min: minMs, max: maxMs };
             // A subscription ended, or ended and started again, while the request was out has no use for its answer.
+            answered = Math.max(answered, number);
             batch.forEach(([key, s], j) => {
               if (subscriptions.get(key) === s) changed = settle(s, out.results?.[j], number) || changed;
             });
@@ -1040,6 +1045,8 @@ export function createClient(options: ClientOptions = {}): Client {
   /** A write through this client: the reads of that collection (every read when unknown) are asked for at once. */
   const wrote = <T>(written: Promise<T>, collection?: string): Promise<T> =>
     written.then((result) => {
+      writes++;
+      sentAtLastWrite = sent;
       if (subscriptions.size > 0) {
         markDue((s) => collection === undefined || s.deps.has(collection));
         kick();
@@ -1094,6 +1101,7 @@ export function createClient(options: ClientOptions = {}): Client {
   function optimistic(key: string, update: (current: unknown) => unknown): { settle(): void; rollback(): void } {
     const s = subscriptions.get(key);
     const overlay = { apply: update, after: null as number | null };
+    const since = writes;
     if (s?.has) {
       s.overlays.push(overlay);
       emit(s);
@@ -1105,12 +1113,14 @@ export function createClient(options: ClientOptions = {}): Client {
     };
     return {
       settle() {
-        // Kept until an answer to a request sent from now on arrives: one already out may predate the write.
-        overlay.after = sent;
-        if (s && subscriptions.get(key) === s) {
-          s.due = true;
-          kick();
-        }
+        if (!s || !s.overlays.includes(overlay)) return;
+        // Kept until an answer that holds the write arrives: one to a request sent after the write
+        // returned (a write through this client), or else to one sent from now on.
+        overlay.after = writes > since ? sentAtLastWrite : sent;
+        if (answered > overlay.after) return drop(); // that answer is already shown
+        if (sent > overlay.after || subscriptions.get(key) !== s) return; // it is on its way
+        s.due = true;
+        kick();
       },
       rollback: drop,
     };

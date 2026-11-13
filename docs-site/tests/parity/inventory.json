@@ -554,7 +554,7 @@
 		"/pages": {
 			"title": "Pages in TSX and the Interactivity API - First",
 			"h1": "Pages in TSX and the Interactivity API",
-			"description": "Render a First app's front end from first/app/ in TSX, compiled to PHP and rendered by WordPress; and the pages/ pipeline it replaces.",
+			"description": "Render a First app's front end from first/app/ in TSX, compiled to PHP and rendered by WordPress.",
 			"canonical": "/pages",
 			"markdown": "/pages.md",
 			"ogImage": "/og/pages.png",
@@ -600,16 +600,9 @@
 				"a-docs-section-a-folder-of-markdown-as-a-kind",
 				"typed-search-a-guard-http-handlers",
 				"interactive-components-use-client",
+				"stylesheets-and-images",
 				"on-wordpress",
-				"the-pages-pipeline-being-replaced",
-				"files-and-routes",
-				"a-page-before-and-after",
-				"data-comes-per-request",
-				"metadata-css-and-assets",
-				"islands-and-the-interactivity-api",
-				"escaping",
-				"build",
-				"not-in-this-release"
+				"from-the-old-pages-renderer"
 			],
 			"prev": "/compiler",
 			"next": "/agents",

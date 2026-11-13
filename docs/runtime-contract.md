@@ -493,6 +493,7 @@ route); the facade maps input and output only. Everything else → 404 problem.
 | Method + path | Dispatched to | Success |
 |---|---|---|
 | `GET /` | the app's schema: `kinds` (each with its core `route`), `globals`, `actions`, `runtime`, `site` | 200 `{data}` |
+| `GET /search?q=…` | each searchable kind's read as the caller, with `search` (`Search\Module`); `kinds=`, `limit=` (10, at most 50) | 200 `{data: {q, results: [{kind, rows}]}}`; 400 `invalid_query` without a word |
 | `GET /{kind}` | `GET /wp/v2/<route>` with `where`, `orderBy`, `with`, `search`, `locale`, `status`; `limit` (default 50, max 100), `offset`, `cursor` | 200 `{data: [rows], cursor}` |
 | `GET /{kind}/{id}` (`slug:x`) | `GET /wp/v2/<route>/{id}`, `with` allowed; `?format=md` is `MarkdownTwins::post()` | 200 `{data: row}` / 404 `not_found` |
 | `POST /{kind}`, `PATCH /{kind}/{id}`, `DELETE /{kind}/{id}` | the core route's create, update and permanent delete, through First's write pipeline | 201/200 `{data: row}` |
@@ -654,6 +655,33 @@ The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
   entry of First's files, or return an empty value to leave the URL out. Core's
   own filters (`wp_sitemaps_posts_entry`, `wp_sitemaps_max_urls`,
   `wp_sitemaps_add_provider`, ...) work as on any site.
+
+## Search (`Search\Index`, `Search\Module`)
+
+`search` on a kind (`posts.list({ search })`, `?search=` on `/__first/api/v1/<kind>`
+and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
+
+- **The index.** `{prefix}first__search` has one row per (kind, row id, field):
+  the field's text with markup and block comments removed and entities decoded.
+  Searchable fields are the kind's title and content and every `text` and
+  `richText` field without an `enum`. The table carries a FULLTEXT key.
+- **Kept on write.** `Extensions::onWritten` replaces a row's entries inside the
+  write's transaction, for every pipeline write and every wp-admin or core REST
+  save; a rollback leaves the index as it was. When a build changes a kind's
+  searchable fields, the first request after it queues the runtime job
+  `first.search.reindex` (outbox and Action Scheduler) for each kind that has
+  rows; it re-indexes 200 rows per run and queues the next.
+- **Read.** A search becomes one condition on the kind's own read: every word
+  occurs, as the start of a word, in an indexed field the reader may read in
+  every row (`FieldAccess::mayHide`). The read rule, draft visibility and the
+  store's guards apply as on any list, so results, counts and order are the
+  reader's. There is no relevance order. MySQL and MariaDB match with
+  `MATCH ... AGAINST ('+word*' IN BOOLEAN MODE)`; the SQLite translator with
+  `FIRST_WORD_PREFIX(body, word)`, which `Wp\Connection` registers. A text with
+  no letter or digit matches nothing; at most 8 words and 200 characters.
+- `GET /search` runs the search on every kind with a searchable field and an
+  API `list`, as the caller. A kind the caller may not read, and a `kinds=`
+  name that isn't a searchable kind, are left out without a word.
 
 ## URL purges (`Wp\Purges`)
 

@@ -147,6 +147,7 @@ $public = static function () use ($url, $pid, $basic): array {
         'api item, subscriber' => fetch("$url/__first/api/v1/posts/$pid", [$basic('sub')])['body'],
         'api list' => fetch("$url/__first/api/v1/posts")['body'],
         'api search' => fetch("$url/__first/api/v1/posts?search=stagedmarker")['body'],
+        'site-wide search' => fetch("$url/__first/api/v1/search?q=stagedmarker")['body'],
         'api markdown' => fetch("$url/__first/api/v1/posts/$pid?format=md")['body'],
         'core item' => [$item['title'] ?? null, $item['content'] ?? null, $item['slug'] ?? null, $item['modified_gmt'] ?? null, $item['meta'] ?? null],
         'core item links' => [$item['_links']['version-history'] ?? null, $item['_links']['predecessor-version'] ?? null],

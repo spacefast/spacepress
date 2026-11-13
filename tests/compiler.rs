@@ -3414,6 +3414,49 @@ fn the_openapi_document_describes_what_the_api_answers() {
         "First note"
     );
     check("GET", &format!("/notes/{id}/revisions"), Some("author"), &[], b"", 404);
+    // A staged version (docs/staged.md) of each collection: stage, read, compare, preview, schedule,
+    // promote, discard. The promoted title keeps "First", which the search below looks for.
+    for (path, field, value) in [
+        (format!("/notes/{id}"), "title", "First note, staged"),
+        (format!("/authors/{author}"), "name", "Ann, staged"),
+    ] {
+        let staged = check(
+            "PATCH",
+            &format!("{path}/staged"),
+            Some("editor"),
+            &[],
+            &json(json!({ field: value })),
+            200,
+        );
+        assert_eq!(staged["data"]["row"][field], value);
+        check("GET", &format!("{path}/staged"), Some("editor"), &[], b"", 200);
+        check("GET", &format!("{path}/staged"), Some("author"), &[], b"", 404);
+        let compared = check("GET", &format!("{path}/staged/compare"), Some("editor"), &[], b"", 200);
+        assert_eq!(compared["data"]["changes"][0]["field"], field);
+        let link = check("POST", &format!("{path}/staged/preview"), Some("editor"), &[], b"", 200);
+        assert!(link["data"]["token"].is_string());
+        let at = json!({ "at": "2099-01-01T00:00:00Z" });
+        check(
+            "POST",
+            &format!("{path}/staged/promote"),
+            Some("editor"),
+            &[],
+            &json(at),
+            200,
+        );
+        let promoted = check("POST", &format!("{path}/staged/promote"), Some("editor"), &[], b"", 200);
+        assert_eq!(promoted["data"][field], value);
+        check(
+            "PATCH",
+            &format!("{path}/staged"),
+            Some("editor"),
+            &[],
+            &json(json!({ field: "Gone" })),
+            200,
+        );
+        check("DELETE", &format!("{path}/staged"), Some("editor"), &[], b"", 200);
+        check("DELETE", &format!("{path}/staged"), Some("editor"), &[], b"", 404);
+    }
     check(
         "GET",
         &format!("/authors/{author}/revisions/999999"),

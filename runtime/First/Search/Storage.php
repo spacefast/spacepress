@@ -26,6 +26,16 @@ final class Storage
         return $store->db->run(str_replace(['{search}', '"'], [self::table(), '`'], $sql), $params);
     }
 
+    /**
+     * One entry written in place, keyed by (`kind`, `item`, `field`): inserted, or its `body`
+     * replaced. Parameters: kind, item, field, body. The SQLite translator accepts MySQL's
+     * `ON DUPLICATE KEY UPDATE`.
+     */
+    public static function upsert(): string
+    {
+        return 'INSERT INTO {search} ("kind", "item", "field", "body") VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE "body" = VALUES("body")';
+    }
+
     /** A key value (`kind`, `item`, `field` are bytes), compared byte for byte on both engines. */
     public static function bytes(string $value): \First\Wp\Bytes
     {

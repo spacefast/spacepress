@@ -975,8 +975,11 @@ export function createClient(options: ClientOptions = {}): Client {
     }
     if (isObject(result.error)) {
       s.token = undefined;
-      s.error = toError(new Response(null, { status: typeof result.error.status === "number" && result.error.status >= 400 ? result.error.status : 500 }), result.error);
-      emit(s);
+      const error = toError(new Response(null, { status: typeof result.error.status === "number" && result.error.status >= 400 ? result.error.status : 500 }), result.error);
+      // A read that stays refused reports it once, not on every poll.
+      const same = s.error !== undefined && s.error.status === error.status && s.error.code === error.code && s.error.detail === error.detail;
+      s.error = error;
+      if (!same) emit(s);
       return false;
     }
     if (typeof result.token === "string") s.token = result.token;

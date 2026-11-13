@@ -1009,6 +1009,9 @@ test("a burst of notices is one more request; a refused read reports its problem
   ];
   await tick();
   assert.deepEqual([errors, rows], [["403 forbidden"], [[]]], "the refusal is that read's alone");
+  await client.actions.approveComment({ id: 1 });
+  await tick();
+  assert.deepEqual(errors, ["403 forbidden"], "a read that stays refused reports it once, not on every answer");
   // The whole request failing reaches every subscriber's onError; the subscriptions stay.
   server.errors.clear();
   server.fail = problem(503, "unavailable");

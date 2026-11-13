@@ -398,6 +398,56 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
                 (id(), opt(&[("revisions", Ty::Array(Box::new(revision)), false)])),
             ));
         }
+        // As Register::staged: one ability per step of a post kind's staged version.
+        if c.editor && c.revisions && c.staged && c.api.update {
+            let patch = types::partial(types::insert_with(schema, &c.table, &types::json_ty));
+            let user = opt(&[("id", Ty::Num, false), ("name", Ty::Str, false)]).nullable();
+            let record = [
+                ("id", Ty::Num, false),
+                ("by", user, false),
+                ("at", Ty::Str, false),
+                ("promoteAt", Ty::Str.nullable(), false),
+            ];
+            let mut version = vec![
+                ("row", row.clone(), false),
+                ("fields", Ty::Array(Box::new(Ty::Str)), false),
+            ];
+            version.extend(record.iter().cloned());
+            let version = opt(&version);
+            let mut comparison = vec![("changes", Ty::Array(Box::new(Ty::Map(Box::new(Ty::Unknown)))), false)];
+            comparison.extend(record.iter().cloned());
+            let preview = opt(&[
+                ("token", Ty::Str, false),
+                ("expiresAt", Ty::Str, false),
+                ("api", Ty::Str, false),
+                ("url", Ty::Str.nullable(), false),
+            ]);
+            out.push((
+                format!("{app}/{k}-stage"),
+                (
+                    opt(&[("id", pk.clone(), false), ("patch", patch, false)]),
+                    version.clone(),
+                ),
+            ));
+            out.push((format!("{app}/{k}-staged-get"), (id(), version)));
+            out.push((format!("{app}/{k}-staged-compare"), (id(), opt(&comparison))));
+            // The promoted row, or the staged version when `at` schedules or cancels.
+            out.push((
+                format!("{app}/{k}-staged-promote"),
+                (
+                    opt(&[("id", pk.clone(), false), ("at", Ty::Str.nullable(), true)]),
+                    Ty::Unknown,
+                ),
+            ));
+            out.push((
+                format!("{app}/{k}-staged-discard"),
+                (id(), opt(&[("revision", Ty::Num, false)])),
+            ));
+            out.push((
+                format!("{app}/{k}-staged-preview"),
+                (opt(&[("id", pk.clone(), false), ("ttl", Ty::Num, true)]), preview),
+            ));
+        }
         if c.sync.is_some() {
             out.push((
                 format!("{app}/{k}-sync-read"),

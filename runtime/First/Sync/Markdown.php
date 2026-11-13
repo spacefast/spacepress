@@ -38,7 +38,8 @@ final class Markdown
             return '';
         }
 
-        return self::asStored(self::consume($markdown));
+        // A component tag (`<Callout>`) is the app's block; everything else is the toolkit's.
+        return \First\Content\Blocks::toBlocks($markdown, static fn (string $md): string => self::asStored(self::consume($md)));
     }
 
     /** Stored blocks → Markdown, or 422 not_representable naming what Markdown can't carry. */
@@ -47,7 +48,19 @@ final class Markdown
         if (trim($blocks) === '') {
             return '';
         }
-        $unsupported = self::unsupported(Blocks::parse($blocks));
+        $parsed = Blocks::parse($blocks);
+        if (\First\Content\Blocks::has($parsed)) {
+            // Component blocks are tags; the Markdown around and inside them is written as usual,
+            // each run of other blocks through this same gate.
+            $markdown = \First\Content\Blocks::fromBlocks($parsed, static fn (string $run): string => self::fromBlocks($run));
+            $lost = self::firstLoss(self::key(self::toBlocks($markdown)), self::key(self::respellLegacy($blocks)));
+            if ($lost !== null) {
+                throw new HttpError(422, 'not_representable', "$lost can't be written as Markdown; use *.html");
+            }
+
+            return $markdown;
+        }
+        $unsupported = self::unsupported($parsed);
         if ($unsupported !== null) {
             throw new HttpError(422, 'not_representable', "$unsupported can't be written as Markdown; use *.html");
         }

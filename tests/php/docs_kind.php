@@ -118,5 +118,39 @@ $out['moved old'] = [fetch("$url/docs/reference")['status']];
 // The query API reads the same tree.
 $out['api'] = array_map(static fn (array $r): array => [$r['slug'], $r['parent'] === null ? null : $byId[$r['parent']] ?? $r['parent'], $r['order']], \First\Seam::toPhp(\First\Seam::kindList('docs', ['orderBy' => ['order' => 'asc'], 'where' => ['parent' => null]], true)));
 
+// Components in Markdown: the file's tags are the app's blocks, stored as blocks, rendered through
+// the components on the route, and written back as the same tags.
+$installPost = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'install'", $type));
+$stored = (string) get_post_field('post_content', $installPost);
+$out['blocks stored'] = array_values(array_map(static fn (array $b): array => [$b['blockName'], $b['attrs'], array_map(static fn (array $i): ?string => $i['blockName'], $b['innerBlocks'])], array_filter(parse_blocks($stored), static fn (array $b): bool => $b['blockName'] !== null)));
+$out['blocks registered'] = array_values(array_filter(array_keys(WP_Block_Type_Registry::get_instance()->get_all_registered()), static fn (string $n): bool => str_starts_with($n, 'docskind/')));
+$page = fetch("$url/docs/guides/install");
+preg_match('#<aside class="callout callout-warning".*?</aside>#s', $page['body'], $callout);
+preg_match('#<span class="badge">.*?</span>#s', $page['body'], $badge);
+$out['blocks rendered'] = [$page['status'], preg_replace('/\s+/', ' ', $callout[0] ?? ''), $badge[0] ?? null];
+$out['blocks back'] = \First\Sync\Markdown::fromBlocks($stored);
+$out['blocks twin'] = fetch("$url/docs/guides/install.md")['body'];
+// An editor changes a prop in the block editor: the file's tag follows.
+$changed = str_replace('{"type":"warning","title":"Before you start"}', '{"type":"note","title":"Before you start"}', $stored);
+$out['blocks edited back'] = \First\Sync\Markdown::fromBlocks($changed);
+// What a Markdown file can't say about a block is refused with the reason, never stored half.
+foreach ([
+    'unknown tag' => "<Tabs>\nx\n</Tabs>\n",
+    'unknown prop' => "<Callout type=\"note\" colour=\"red\">\nx\n</Callout>\n",
+    'enum' => "<Callout type=\"danger\">\nx\n</Callout>\n",
+    'required' => "<Callout>\nx\n</Callout>\n",
+    'number' => "<Badge label=\"x\" count=\"three\" />\n",
+    'unclosed' => "<Callout type=\"note\">\nx\n",
+] as $case => $markdown) {
+    try {
+        \First\Sync\Markdown::toBlocks($markdown);
+        $out['blocks refused'][$case] = null;
+    } catch (\First\HttpError $e) {
+        $out['blocks refused'][$case] = $e->getMessage();
+    }
+}
+// A tag inside a code fence is code, not a block.
+$out['blocks fenced'] = \First\Sync\Markdown::toBlocks("```md\n<Callout type=\"note\">\n```\n");
+
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

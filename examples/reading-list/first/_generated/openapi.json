@@ -453,6 +453,441 @@
         }
       }
     },
+    "/books/{id}/staged": {
+      "get": {
+        "tags": ["Books"],
+        "operationId": "books.staged",
+        "summary": "Staged version of books",
+        "x-first-access": "author",
+        "description": "The row as it would be once promoted, the fields that are staged, and who staged last. With `preview=<token>` it answers without signing in, through an anonymous visitor's field masks.\n\nAccess: Users with the `author` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; anyone else gets the 404 of a missing row, whether or not something is staged.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
+            "schema": {
+              "anyOf": [
+                { "type": "integer" },
+                { "type": "string", "pattern": "^slug:." }
+              ]
+            }
+          },
+          {
+            "name": "preview",
+            "in": "query",
+            "description": "A preview token from the preview route.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The staged version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "row": { "$ref": "#/components/schemas/Book" },
+                        "fields": {
+                          "type": "array",
+                          "items": { "type": "string" },
+                          "description": "The staged fields."
+                        },
+                        "id": { "type": "integer", "description": "The revision that holds the staged version." },
+                        "by": {
+                          "type": ["object", "null"],
+                          "properties": {
+                            "id": { "type": "integer" },
+                            "name": { "type": "string" }
+                          }
+                        },
+                        "at": { "type": "string", "format": "date-time" },
+                        "promoteAt": {
+                          "type": ["string", "null"],
+                          "format": "date-time",
+                          "description": "When a scheduled promote runs."
+                        }
+                      },
+                      "required": ["id", "row", "fields", "by", "at", "promoteAt"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "tags": ["Books"],
+        "operationId": "books.stage",
+        "summary": "Stage a change to books",
+        "x-first-access": "author",
+        "description": "Saves the fields sent into the row's staged version. The live row stays as it is until the staged version is promoted. Checked as an update would be; no hook runs.\n\nAccess: Users with the `author` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; anyone else gets the 404 of a missing row, whether or not something is staged.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
+            "schema": {
+              "anyOf": [
+                { "type": "integer" },
+                { "type": "string", "pattern": "^slug:." }
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to stage.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BookPatch" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The staged version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "row": { "$ref": "#/components/schemas/Book" },
+                        "fields": {
+                          "type": "array",
+                          "items": { "type": "string" },
+                          "description": "The staged fields."
+                        },
+                        "id": { "type": "integer", "description": "The revision that holds the staged version." },
+                        "by": {
+                          "type": ["object", "null"],
+                          "properties": {
+                            "id": { "type": "integer" },
+                            "name": { "type": "string" }
+                          }
+                        },
+                        "at": { "type": "string", "format": "date-time" },
+                        "promoteAt": {
+                          "type": ["string", "null"],
+                          "format": "date-time",
+                          "description": "When a scheduled promote runs."
+                        }
+                      },
+                      "required": ["id", "row", "fields", "by", "at", "promoteAt"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "delete": {
+        "tags": ["Books"],
+        "operationId": "books.discard",
+        "summary": "Discard the staged version of books",
+        "x-first-access": "author",
+        "description": "Ends the staged version. The live row is untouched; the discarded version stays in the row's revisions.\n\nAccess: Users with the `author` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; anyone else gets the 404 of a missing row, whether or not something is staged.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
+            "schema": {
+              "anyOf": [
+                { "type": "integer" },
+                { "type": "string", "pattern": "^slug:." }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The revision that held it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "revision": { "type": "integer" }
+                      },
+                      "required": ["revision"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/books/{id}/staged/compare": {
+      "get": {
+        "tags": ["Books"],
+        "operationId": "books.compare",
+        "summary": "Compare staged and live books",
+        "x-first-access": "author",
+        "description": "The staged fields whose value differs from the live row, with both values, as the caller may read each side.\n\nAccess: Users with the `author` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; anyone else gets the 404 of a missing row, whether or not something is staged.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
+            "schema": {
+              "anyOf": [
+                { "type": "integer" },
+                { "type": "string", "pattern": "^slug:." }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The changes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "changes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "field": { "type": "string" },
+                              "live": {},
+                              "staged": {}
+                            },
+                            "required": ["field", "live", "staged"]
+                          }
+                        },
+                        "id": { "type": "integer", "description": "The revision that holds the staged version." },
+                        "by": {
+                          "type": ["object", "null"],
+                          "properties": {
+                            "id": { "type": "integer" },
+                            "name": { "type": "string" }
+                          }
+                        },
+                        "at": { "type": "string", "format": "date-time" },
+                        "promoteAt": {
+                          "type": ["string", "null"],
+                          "format": "date-time",
+                          "description": "When a scheduled promote runs."
+                        }
+                      },
+                      "required": ["id", "changes", "by", "at", "promoteAt"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/books/{id}/staged/promote": {
+      "post": {
+        "tags": ["Books"],
+        "operationId": "books.promote",
+        "summary": "Promote the staged version of books",
+        "x-first-access": "author",
+        "description": "Makes the staged version live, as an update of the row by the caller: its rules, hooks, unique checks and webhooks run. With `at` (a future time) the promote is scheduled instead, and `at: null` cancels a scheduled one; both answer with the staged version.\n\nAccess: Users with the `author` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; anyone else gets the 404 of a missing row, whether or not something is staged.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
+            "schema": {
+              "anyOf": [
+                { "type": "integer" },
+                { "type": "string", "pattern": "^slug:." }
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Empty, or `at`.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "at": { "type": ["string", "null"], "format": "date-time" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The row after the promote, or the staged version when `at` was sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "oneOf": [
+                        { "$ref": "#/components/schemas/Book" },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "row": { "$ref": "#/components/schemas/Book" },
+                            "fields": {
+                              "type": "array",
+                              "items": { "type": "string" },
+                              "description": "The staged fields."
+                            },
+                            "id": { "type": "integer", "description": "The revision that holds the staged version." },
+                            "by": {
+                              "type": ["object", "null"],
+                              "properties": {
+                                "id": { "type": "integer" },
+                                "name": { "type": "string" }
+                              }
+                            },
+                            "at": { "type": "string", "format": "date-time" },
+                            "promoteAt": {
+                              "type": ["string", "null"],
+                              "format": "date-time",
+                              "description": "When a scheduled promote runs."
+                            }
+                          },
+                          "required": ["id", "row", "fields", "by", "at", "promoteAt"]
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/books/{id}/staged/preview": {
+      "post": {
+        "tags": ["Books"],
+        "operationId": "books.previewLink",
+        "summary": "Preview link for staged books",
+        "x-first-access": "author",
+        "description": "A signed link to the staged version that works without signing in until it expires (an hour by default, a day at most) or the staged version is promoted or discarded.\n\nAccess: Users with the `author` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; anyone else gets the 404 of a missing row, whether or not something is staged.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id, or `slug:<slug>` for the row with that slug.",
+            "schema": {
+              "anyOf": [
+                { "type": "integer" },
+                { "type": "string", "pattern": "^slug:." }
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Empty, or `ttl` in seconds.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ttl": { "type": "integer", "minimum": 60, "maximum": 86400 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The link.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "token": { "type": "string" },
+                        "expiresAt": { "type": "string", "format": "date-time" },
+                        "api": { "type": "string", "description": "Reads the staged version without signing in." },
+                        "url": {
+                          "type": ["string", "null"],
+                          "description": "The row's own page showing the staged version, when the theme renders it."
+                        }
+                      },
+                      "required": ["token", "expiresAt", "api", "url"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
     "/reads": {
       "get": {
         "tags": ["Reads"],

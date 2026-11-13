@@ -19,17 +19,19 @@ compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `firs
 1. Check the state first. With the `first` MCP server, call `dev_status`. Otherwise:
 
    ```sh
-   first dev status
+   first dev status --json
    ```
 
-   It prints JSON with `siteUrl` and `isOnline`. "No local development site. Run first dev
-   first." means none was created yet.
+   `state` is `none` (no site yet), `stopped` or `running`; `url` and `port` say where it is, and
+   `watching` whether a `first dev` process is rebuilding it on save.
 
 2. Start the site.
-   - `first dev` builds, starts WordPress and rebuilds on every save. It runs in the foreground
-     until Ctrl+C, so start it in a terminal you can leave open, not in a command you wait on.
-   - `first dev --no-watch` builds, starts WordPress and returns. Use this from a script or an
-     agent, then rebuild with `first dev --no-watch` again after edits.
+   - `first dev --detach` builds, starts WordPress and returns once the site is up. It keeps
+     rebuilding on every save in the background and logs to `.first/dev/dev.log`. Use this from
+     an agent. Plain `first dev` does the same when an agent runs it without a terminal.
+   - `first dev` in a terminal stays in the foreground until Ctrl+C.
+   - `first dev --no-watch` builds, starts WordPress and returns, with nothing watching. Run it
+     again after edits to rebuild.
    - `--port <n>` picks the port for a new site. An existing site keeps its port.
 
 3. Read the start-up output: the site URL, `/wp-admin/`, and the local login
@@ -52,7 +54,7 @@ compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `firs
 
 ## Verification
 
-- `first dev status` reports `"isOnline": true`.
+- `first dev status --json` reports `"state":"running"`.
 - `first find <kind>` answers `{"data":[…]}`.
 
 ## Failure modes / debugging
@@ -64,8 +66,8 @@ compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `firs
   then start once with `first dev --allow-destructive`.
 - A site command prints `{"error":…}` with status 503: a migration is pending or refused. Run
   `first migrate` and read its answer.
-- An edit does not show: the site runs the last successful build. Look at the `first dev` output
-  for a diagnostic, or run `first check`.
+- An edit does not show: the site runs the last successful build. Read `.first/dev/dev.log` (or
+  the `first dev` terminal) for a diagnostic, or run `first check`.
 
 ## Escalation
 

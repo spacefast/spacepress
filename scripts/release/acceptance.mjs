@@ -79,7 +79,8 @@ try {
   await new Promise((done, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', done); });
   const port = server.address().port;
   await new Promise((done) => server.close(done));
-  session = spawn('npm', ['run', 'dev', '--', '--port', String(port)], { cwd: project, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  // --foreground: this script reads the watcher's output, whatever environment runs it.
+  session = spawn('npm', ['run', 'dev', '--', '--foreground', '--port', String(port)], { cwd: project, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
   const ready = new Promise((done, fail) => {
     const deadline = setTimeout(() => finish(new Error(`Dev readiness timed out:\n${output}`)), 600000);

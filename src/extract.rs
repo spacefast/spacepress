@@ -244,7 +244,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .help("it becomes the WordPress plugin slug `first-<name>`"));
         }
     };
-    out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
+    out.schema.admin = bool_option(&cfg_map, "admin", true, span_of(ev, config, "admin", config_span))?;
     let runtime_schema = span_of(ev, config, "runtimeSchema", config_span);
     out.schema.runtime_schema = bool_option(&cfg_map, "runtimeSchema", false, runtime_schema)?.then(Default::default);
     out.schema.frontend = match cfg_map.get("frontend") {

@@ -25,8 +25,12 @@ pub const RESERVED_PATHS: &[(&str, &str)] = &[
     ),
     ("/wp-json/first-identity/v1/*", "First Identity's REST API"),
     (
+        "/wp-admin/new/*",
+        "First Admin, unless the app sets `admin: false`: wp-admin's `admin.php?page=first-admin`, with the route in the path. Route it to WordPress like the rest of `/wp-admin/`",
+    ),
+    (
         "/first-admin/*",
-        "the optional admin screens, when the app sets `admin: true`",
+        "the admin's earlier address, redirected to `/wp-admin/new/*`",
     ),
 ];
 

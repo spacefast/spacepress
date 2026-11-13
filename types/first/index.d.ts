@@ -1120,7 +1120,10 @@ export interface ConfigInput<
   locales?: TLocales;
   /** Build-only WordPress plugin dependencies. */
   plugins?: Readonly<Record<string, WordPressPlugin>>;
-  /** Ship the optional admin screens (`first-admin`) with the build. Default `false`. */
+  /**
+   * Ship First Admin (`first-admin`), the default admin at `/wp-admin/new/`, with the build. Default `true`;
+   * `false` leaves only classic wp-admin.
+   */
   admin?: boolean;
   /**
    * Let the running site add collections, globals and fields, each change stored there as a numbered

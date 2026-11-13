@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: First Admin
- * Description: WordPress admin and First collections, tables, media and globals in one optional interface.
+ * Description: The default admin for First apps: WordPress and First's collections, tables, media and globals at /wp-admin/new/. Classic wp-admin stays available.
  * Version: {{firstVersion}}
  * Requires at least: {{wpVersion}}
  * Requires PHP: {{phpVersion}}
@@ -18,7 +18,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'FIRST_ADMIN_VERSION', '{{firstVersion}}' );
 define( 'FIRST_ADMIN_FILE', __FILE__ );
-define( 'FIRST_ADMIN_REWRITE_REGEX', 'first-admin(?:/.*)?$' );
+// The upstream mount: `/wp-admin/new/<route>` is wp-admin's `admin.php?page=first-admin`.
+define( 'FIRST_ADMIN_REWRITE_REGEX', 'wp-admin/new(/.*)?$' );
 define( 'FIRST_ADMIN_REWRITE_OPTION', 'first_admin_rewrite' );
 
 register_activation_hook( __FILE__, 'first_admin_activate' );
@@ -43,75 +44,93 @@ function first_admin_boot() {
 	require_once __DIR__ . '/lib/load-libs.php';
 
 	add_action( 'init', 'first_admin_add_rewrite_rule' );
-	add_action( 'admin_init', 'first_admin_persist_rewrite_rule' );
-	add_filter( 'query_vars', 'first_admin_query_vars' );
-	add_action( 'template_redirect', 'first_admin_render_page', 0 );
+	add_filter( 'mod_rewrite_rules', 'first_admin_remove_qsa_flag' );
+	add_action( 'wp_loaded', 'first_admin_persist_rewrite_rule' );
+	add_filter( 'do_parse_request', 'first_admin_front_request', -10 );
 	add_action( 'admin_menu', 'first_admin_menu_page' );
-	add_action( 'admin_init', 'first_admin_menu_redirect' );
-	add_filter( 'plugin_row_meta', 'first_admin_plugin_meta_links', 10, 2 );
+	add_action( 'admin_init', 'first_admin_render_page' );
 	add_action( 'admin_init', 'first_admin_handle_iframe_mode' );
+	add_filter( 'login_redirect', 'first_admin_login_redirect', 10, 3 );
+	add_filter( 'plugin_row_meta', 'first_admin_plugin_meta_links', 10, 2 );
 }
 
 /**
- * The one rewrite rule: everything under /first-admin/ is the app.
+ * The upstream rule. It points outside index.php, so WordPress writes it to `.htaccess` (Apache);
+ * a server that never reads it sends the URL to index.php, where first_admin_front_request() answers.
  */
 function first_admin_add_rewrite_rule() {
-	add_rewrite_rule( FIRST_ADMIN_REWRITE_REGEX, 'index.php?first_admin=1', 'top' );
+	add_rewrite_rule( FIRST_ADMIN_REWRITE_REGEX, 'wp-admin/admin.php?page=first-admin', 'top' );
 }
 
 /**
- * Activation runs after `init` already fired for this request: register, then persist.
+ * The route is in the path; the substitution's own query must not be merged with the request's.
+ *
+ * @param string $rules The rewrite rules.
+ * @return string
+ */
+function first_admin_remove_qsa_flag( $rules ) {
+	return preg_replace( '/^(RewriteRule.*wp-admin\/new.*)\[QSA,L\]$/m', '$1[L]', $rules );
+}
+
+/**
+ * Write the rule into the server's rewrite file, once per version, on the first web request after
+ * activation or an update. WP-CLI never writes `.htaccess`, so it leaves this to that request.
+ * WordPress writes the file when it runs under Apache with mod_rewrite and the file is writable;
+ * elsewhere the pretty URL takes the redirect in first_admin_front_request().
+ */
+function first_admin_persist_rewrite_rule() {
+	if ( get_option( FIRST_ADMIN_REWRITE_OPTION ) === FIRST_ADMIN_VERSION || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+		return;
+	}
+	require_once ABSPATH . 'wp-admin/includes/file.php';
+	require_once ABSPATH . 'wp-admin/includes/misc.php';
+	first_admin_add_rewrite_rule();
+	flush_rewrite_rules( true );
+	update_option( FIRST_ADMIN_REWRITE_OPTION, FIRST_ADMIN_VERSION, true );
+	$GLOBALS['first_admin_rule_written'] = true;
+}
+
+/**
+ * Activation from wp-admin is a web request: write the rule now. From WP-CLI, the next web request does.
  */
 function first_admin_activate() {
 	if ( ! first_admin_has_app() ) {
 		return;
 	}
-	first_admin_add_rewrite_rule();
-	flush_rewrite_rules();
-	update_option( FIRST_ADMIN_REWRITE_OPTION, FIRST_ADMIN_VERSION, false );
+	delete_option( FIRST_ADMIN_REWRITE_OPTION );
+	first_admin_persist_rewrite_rule();
 }
 
 /**
- * Deactivation runs with the rule registered in this request: remove it, then persist.
+ * Deactivation runs with the rule registered in this request: remove it, then rewrite the file.
  */
 function first_admin_deactivate() {
 	global $wp_rewrite;
-	if ( $wp_rewrite instanceof WP_Rewrite && isset( $wp_rewrite->extra_rules_top[ FIRST_ADMIN_REWRITE_REGEX ] ) ) {
-		unset( $wp_rewrite->extra_rules_top[ FIRST_ADMIN_REWRITE_REGEX ] );
+	if ( $wp_rewrite instanceof WP_Rewrite ) {
+		unset( $wp_rewrite->non_wp_rules[ FIRST_ADMIN_REWRITE_REGEX ] );
 	}
-	flush_rewrite_rules();
+	flush_rewrite_rules( true );
 	delete_option( FIRST_ADMIN_REWRITE_OPTION );
 }
 
 /**
- * A plugin updated by copying files in has no activation; persist the rule once per version.
- */
-function first_admin_persist_rewrite_rule() {
-	if ( get_option( FIRST_ADMIN_REWRITE_OPTION ) === FIRST_ADMIN_VERSION ) {
-		return;
-	}
-	first_admin_add_rewrite_rule();
-	flush_rewrite_rules();
-	update_option( FIRST_ADMIN_REWRITE_OPTION, FIRST_ADMIN_VERSION, false );
-}
-
-/**
- * @param string[] $vars Public query variables.
- * @return string[]
- */
-function first_admin_query_vars( $vars ) {
-	$vars[] = 'first_admin';
-	return $vars;
-}
-
-/**
- * The URL of an admin route.
+ * The URL of an admin route: the upstream pretty form, `/wp-admin/new/<route>`.
  *
  * @param string $path Route path. Default '/'.
  * @return string
  */
 function first_admin_url( $path = '/' ) {
-	return site_url( '/first-admin/' . ltrim( $path, '/' ) );
+	return admin_url( 'new/' . ltrim( $path, '/' ) );
+}
+
+/**
+ * The same route in the form every server serves: wp-admin's `admin.php?page=first-admin&p=<route>`.
+ *
+ * @param string $path Route path. Default '/'.
+ * @return string
+ */
+function first_admin_query_url( $path = '/' ) {
+	return add_query_arg( 'p', rawurlencode( '/' . ltrim( $path, '/' ) ), admin_url( 'admin.php?page=first-admin' ) );
 }
 
 /**
@@ -124,54 +143,98 @@ function first_admin_has_app() {
 }
 
 /**
- * Serve the app for /first-admin/ (signed-in users only).
+ * The part of the request path below a mount (`/wp-admin/new`), or null when it isn't under it.
+ *
+ * @param string $path  Request path.
+ * @param string $mount Mount URL.
+ * @return string|null
  */
-function first_admin_render_page() {
-	if ( '1' !== get_query_var( 'first_admin' ) ) {
-		return;
+function first_admin_route_below( $path, $mount ) {
+	$base = untrailingslashit( (string) wp_parse_url( $mount, PHP_URL_PATH ) );
+	if ( $path === $base || str_starts_with( $path, $base . '/' ) ) {
+		return '/' . ltrim( substr( $path, strlen( $base ) ), '/' );
 	}
-	$request = wp_unslash( $_SERVER['REQUEST_URI'] ?? '' );
-	$mount = wp_parse_url( first_admin_url(), PHP_URL_PATH );
-	$return_url = first_admin_url( str_starts_with( $request, $mount ) ? substr( $request, strlen( $mount ) ) : '/' );
-	// This is a frontend page: WordPress authenticates it with the logged-in
-	// session cookie, whose scope includes the site (not the wp-admin cookie).
-	if ( force_ssl_admin() && ! is_ssl() ) {
-		wp_safe_redirect( set_url_scheme( $return_url, 'https' ) );
+	return null;
+}
+
+/**
+ * Requests for the admin that reached index.php: the old `/first-admin/<route>` (a permanent redirect
+ * to the mount), and `/wp-admin/new/<route>` on a server that does not apply the rule (one that
+ * ignores `.htaccess`): there the route takes wp-admin's query form, which every server serves.
+ *
+ * @param bool $parse Whether WordPress should parse the request.
+ * @return bool
+ */
+function first_admin_front_request( $parse ) {
+	$uri   = wp_unslash( $_SERVER['REQUEST_URI'] ?? '/' ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared, never printed.
+	$path  = (string) wp_parse_url( $uri, PHP_URL_PATH );
+	$query = (string) wp_parse_url( $uri, PHP_URL_QUERY );
+	$old   = first_admin_route_below( $path, home_url( '/first-admin' ) );
+	if ( null !== $old ) {
+		wp_safe_redirect( first_admin_url( $old ) . ( '' !== $query ? '?' . $query : '' ), 301 );
 		exit;
 	}
-	if ( ! is_user_logged_in() ) {
-		nocache_headers();
-		wp_safe_redirect( wp_login_url( $return_url ) );
+	$route = first_admin_route_below( $path, first_admin_url( '/' ) );
+	if ( null === $route ) {
+		return $parse;
+	}
+	nocache_headers();
+	// This request wrote the rule: the server serves the pretty URL from now on.
+	if ( ! empty( $GLOBALS['first_admin_rule_written'] ) && got_mod_rewrite() ) {
+		wp_safe_redirect( first_admin_url( $route ) . ( '' !== $query ? '?' . $query : '' ), 302 );
+		exit;
+	}
+	wp_safe_redirect( first_admin_query_url( $route ), 302 );
+	exit;
+}
+
+/**
+ * Serve the app for `admin.php?page=first-admin` (and `/wp-admin/new/`, which the rule maps there).
+ * admin.php has already signed the visitor in (auth_redirect) and built wp-admin's menus.
+ */
+function first_admin_render_page() {
+	if ( 'first-admin' !== ( $_GET['page'] ?? '' ) || wp_doing_ajax() ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a page render, no state change.
+		return;
+	}
+	$request = wp_unslash( $_SERVER['REQUEST_URI'] ?? '' ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared, never printed.
+	$pretty  = null !== first_admin_route_below( (string) wp_parse_url( $request, PHP_URL_PATH ), first_admin_url( '/' ) );
+	// The menu entry has no route: send it to the mount, like upstream.
+	if ( ! $pretty && ! is_string( $_GET['p'] ?? null ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		wp_safe_redirect( first_admin_url( '/' ) );
 		exit;
 	}
 	if ( ! current_user_can( 'read' ) || \First\Wp\CoreAccess::viewer() === null ) {
 		wp_die( esc_html__( 'You cannot access First Admin.', 'first-admin' ), '', array( 'response' => 403 ) );
 	}
 	nocache_headers();
-	if ( ! function_exists( 'set_current_screen' ) ) {
-		require_once ABSPATH . 'wp-admin/includes/admin.php';
-	}
 	require plugin_dir_path( __FILE__ ) . 'lib/pages/admin.php';
 	exit;
 }
 
 /**
- * One wp-admin menu entry that opens the app.
+ * After login, the default destination (wp-admin's index) is this admin. A destination the visitor
+ * asked for (any other `redirect_to`) is kept, and classic wp-admin stays one click away.
+ *
+ * @param string           $redirect_to The destination.
+ * @param string           $requested   The requested destination.
+ * @param WP_User|WP_Error $user        The user who signed in.
+ * @return string
  */
-function first_admin_menu_page() {
-	add_menu_page( __( 'First', 'first-admin' ), __( 'First', 'first-admin' ), 'read', 'first-admin', '__return_null', 'dashicons-dashboard' );
+function first_admin_login_redirect( $redirect_to, $requested, $user ) {
+	if ( ! $user instanceof WP_User || ! $user->has_cap( 'read' ) ) {
+		return $redirect_to;
+	}
+	if ( in_array( $redirect_to, array( admin_url(), 'wp-admin/' ), true ) ) {
+		return first_admin_url( '/' );
+	}
+	return $redirect_to;
 }
 
 /**
- * The menu entry is a redirect, not a page.
+ * The wp-admin menu entry that opens this admin.
  */
-function first_admin_menu_redirect() {
-	if ( 'first-admin' !== ( $_GET['page'] ?? '' ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- a redirect, no state change.
-		return;
-	}
-	$route = is_string( $_GET['p'] ?? null ) ? wp_unslash( $_GET['p'] ) : '/'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	wp_safe_redirect( first_admin_url( $route ), 302 );
-	exit;
+function first_admin_menu_page() {
+	add_menu_page( __( 'First', 'first-admin' ), __( 'First', 'first-admin' ), 'read', 'first-admin', '__return_null', 'dashicons-dashboard' );
 }
 
 /**
@@ -185,4 +248,3 @@ function first_admin_plugin_meta_links( $links, $file ) {
 	}
 	return $links;
 }
-

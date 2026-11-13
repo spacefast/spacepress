@@ -167,7 +167,7 @@ contents to detect changes before replacement; it is not a package signature.
 The canonical assembler owns `first-manifest.json`, generated plugin ZIPs, and
 `--out`. Its order is: supply exact platform pins; resolve; acquire every tree;
 copy existing output to private staging; install dependencies; emit/lint generated
-`first-runtime`, `first-identity`, `first-app-<name>` and, with `admin: true`,
+`first-runtime`, `first-identity`, `first-app-<name>` and, unless `admin: false`,
 `first-admin`, plus their ZIPs; write its
 manifest using resolved metadata; publish; persist the project lock. Preserve
 unrelated plugins and serialize the project lock/output while publishing.

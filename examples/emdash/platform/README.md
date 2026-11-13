@@ -67,7 +67,7 @@ platform_port=$(node --input-type=module -e 'import net from "node:net"; const s
 
 Use the printed WordPress URL and initial local credentials. The public journal is
 `/wp-content/plugins/first-app-platform/public/index.html`; `/wp-admin/` includes
-native content editing, media, plugins and settings; `/first-admin/` is the First
+native content editing, media, plugins and settings; `/wp-admin/new/` is the First
 surface. Create a writer, then a story. Save it as a draft, add its native SCF
 fields, and publish when ready. In First, create the French story with `locale:
 "fr"` and `translationOf` set to the English ID. English/French titles and bodies

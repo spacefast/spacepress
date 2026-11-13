@@ -230,7 +230,7 @@ checks remain available. They are not dependencies of `spacefast`.
 | `src/config_migrate/` | `first migrate config` importers |
 | `runtime/First/` | the PHP runtime (`Wp/` is the WordPress binding) |
 | `runtime/identity/` | the `first-identity` plugin and its screens |
-| `runtime/admin/` | the `first-admin` plugin and its screens, emitted with `admin: true` |
+| `runtime/admin/` | the `first-admin` plugin and its screens, emitted unless `admin: false` |
 | `runtime/wp-plugin/` | the `first-runtime` and `first-app` plugin templates |
 | `runtime/client/` | the handwritten half of the typed client |
 | `types/first/` | TypeScript declarations for `"first"` |

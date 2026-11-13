@@ -10,7 +10,7 @@ the disposable Studio administrator. The user's browser was not used.
 | --- | --- |
 | `/wp-admin/edit.php?post_type=first_tasks` | Native list showed the sample maintenance tasks. Captured `screenshots/wp-admin-list.png`. |
 | `/wp-admin/post.php?post=10&action=edit` | Classic system editor showed SCF fields for owner, room, kind, make, model, installation date, and manual ID. Captured `screenshots/wp-admin-edit.png`. |
-| `/first-admin/`, then Maintenance tasks | First Admin loaded the owner-visible task list. Captured `screenshots/first-admin.png`. |
+| `/wp-admin/new/`, then Maintenance tasks | First Admin loaded the owner-visible task list. Captured `screenshots/first-admin.png`. |
 | `/wp-admin/post-new.php?post_type=first_systems` | Creating a system without entering its automatic owner was blocked by browser required-field validation. |
 
 For the creation check, the browser filled the title with `Kitchen dishwasher`,

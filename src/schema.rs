@@ -496,7 +496,7 @@ pub struct Schema {
     pub media: Json,
     pub uploads: Option<Json>,
     pub locales: Option<Json>,
-    /// `defineConfig({ admin: true })`: the build ships the optional admin screens plugin.
+    /// The build ships the `first-admin` plugin (the default); `defineConfig({ admin: false })` leaves it out.
     pub admin: bool,
     /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `first/app`.
     pub frontend: Option<crate::kind_url::Frontend>,
@@ -531,7 +531,7 @@ impl Default for Schema {
             media: serde_json::json!({"sizes": {}}),
             uploads: None,
             locales: None,
-            admin: false,
+            admin: true,
             frontend: None,
             runtime_schema: None,
         }

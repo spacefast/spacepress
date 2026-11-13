@@ -57,6 +57,7 @@ final class Plugin
             }
         });
         CoreAccess::register();
+        AgentScope::register();
         EditorSave::register();
         ProfileForm::register();
         if (($this->schema->auth()['collection'] ?? null) !== null) {

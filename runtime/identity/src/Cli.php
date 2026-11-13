@@ -11,6 +11,7 @@ namespace First\Identity;
 final class Cli
 {
     private const USAGE = 'Usage: identity account|suspend|restore|revoke|erase <user-id> | app add --name=<n> --redirect=<uri> --origin=<origin> [--id=<app_id>]'
+        . ' | agent add <user> --name=<n> [--write] [--personal] [--abilities=<a,b>] | agent list <user> | agent grant <user> <id> [--write] [--personal] [--abilities=<a,b>] | agent revoke <user> <id>'
         . ' | webhook-add <url> | webhook-remove <id> | webhooks | maintenance | rotate-keys';
 
     /** @param list<string> $args after `identity`; @param array<string, string|true> $flags */
@@ -56,6 +57,7 @@ final class Cli
                 (string) ($flags['origin'] ?? ''),
                 (string) ($flags['id'] ?? 'app_' . bin2hex(random_bytes(8))),
             ) : throw $usage(),
+            'agent' => self::agent(array_slice($args, 1), $flags),
             'webhook-add' => Webhooks::register($value(1)),
             'webhook-remove' => self::done(Webhooks::remove($value(1)), 'Webhook removed.'),
             'webhooks' => Webhooks::inventory(Plugin::$db),
@@ -63,6 +65,22 @@ final class Cli
             'rotate-keys' => self::done(Keys::rotate(), 'Signing key rotated; prior keys remain valid for ten minutes.'),
             default => throw $usage(),
         };
+    }
+
+    /**
+     * Agent credentials: application passwords with a scope. The runtime owns scopes and an active app
+     * enforces them, so without it no scoped credential is issued.
+     */
+    private static function agent(array $args, array $flags): array
+    {
+        if (!class_exists(\First\Wp\AgentScope::class) || \First\Wp\Runtime::plugin() === null) {
+            throw new Failure('unavailable', 'Agent credentials need an active First app, which enforces their scope.', 503);
+        }
+        try {
+            return \First\Wp\AgentScope::cli($args, $flags);
+        } catch (\InvalidArgumentException $e) {
+            throw new Failure('invalid_command', $e->getMessage());
+        }
     }
 
     private static function done(mixed $_, string $message): array

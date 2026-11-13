@@ -407,33 +407,41 @@ test("a migration that failed after a rename resumes: later checks find the tabl
   }
 });
 
-test("a table() declared with collection() keeps its rows where they are: the deploy refuses the drop", () => {
-  // Storage follows the builder, so this build plans the table's drop and a post type beside it. No
-  // rows are moved, and the deploy doesn't drop them either: it refuses with the live count.
+test("a ledger that drops a table() to make it a collection() keeps its rows: the deploy refuses the drop", () => {
+  // `first build` now refuses a table() declared with collection() before writing anything. A ledger
+  // built before that refusal holds the table's drop, as this file does (what that build wrote). The
+  // deploy still keeps the rows: it refuses with the live count, and nothing is moved into posts.
   const memos = sql("SELECT id, text FROM wp_first_memos ORDER BY id");
   assert.ok(memos.length > 0, "the table holds rows");
   const posts = () => rows("wp_posts", "post_type = 'first_memos'");
   assert.equal(posts(), 0);
-  install("memosAsCollection");
+  const live = process.env.FIRST_SCHEMA_CHECK_LIVE ?? "";
+  const file = `${live}/plugins/first-app-schema-check/first/app/migrations/9003_memos_as_collection.sql`;
+  const statements = [
+    "ALTER TABLE `{prefix}first_tags` DROP FOREIGN KEY `first_tags_memo_fk`;",
+    '-- first-check {"check":"drop","name":"memos","table":"{prefix}first_memos","adopted":false}\nDROP TABLE `{prefix}first_memos`;',
+  ];
+  execFileSync("sh", ["-c", `printf '%s' "$0" > "$1"`, statements.join("\n--> statement-breakpoint\n"), file]);
   // (`state()` reads the first adopted table, which an earlier step dropped.)
   const stored = () => ({
     tables: sql("SELECT TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND (TABLE_NAME LIKE 'wp\\_first\\_%' OR TABLE_NAME LIKE 'sf\\_%') ORDER BY 1"),
     columns: sql("SELECT TABLE_NAME AS t, COLUMN_NAME AS c, IS_NULLABLE AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND (TABLE_NAME LIKE 'wp\\_first\\_%' OR TABLE_NAME LIKE 'sf\\_%') ORDER BY 1, 2"),
     ledger: sql("SELECT id FROM wp_first__migrations WHERE app = 'schema-check' ORDER BY id"),
   });
-  const before = stored();
-  const error = refused();
-  assert.deepEqual(error.refusals.map((r) => [r.code, r.name, r.rows]), [["drop_has_rows", "memos", memos.length]]);
-  assert.match(error.refusals[0].fix, new RegExp(`--drop=memos=${memos.length}`));
-  assert.deepEqual(stored(), before, "a refusal changes no table, column or ledger entry");
-  assert.deepEqual(sql("SELECT id, text FROM wp_first_memos ORDER BY id"), memos, "every row is where it was");
-  assert.equal(posts(), 0, "no row was copied into posts");
-  // The reference tags.memo held is still there: its constraint is dropped by the same refused file.
-  assert.equal(rows("information_schema.TABLE_CONSTRAINTS", "TABLE_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'first_tags_memo_fk'"), 1);
-  // Undoing the redeclaration: the last deployed build (table()) installs again. The refused file
-  // isn't in it, so nothing is pending and every row is still there. (A table() built on top of the
-  // drop would carry the drop too; docs/config-api.md says to restore the ledger instead.)
-  install("readoptRetype");
-  assert.ok(!applied().some((id) => id > "0019_update" && !id.startsWith("9")), "nothing ran");
+  try {
+    const before = stored();
+    const error = refused();
+    assert.deepEqual(error.refusals.map((r) => [r.code, r.name, r.rows]), [["drop_has_rows", "memos", memos.length]]);
+    assert.match(error.refusals[0].fix, new RegExp(`--drop=memos=${memos.length}`));
+    assert.deepEqual(stored(), before, "a refusal changes no table, column or ledger entry");
+    assert.deepEqual(sql("SELECT id, text FROM wp_first_memos ORDER BY id"), memos, "every row is where it was");
+    assert.equal(posts(), 0, "no row was copied into posts");
+    // The reference tags.memo held is still there: its constraint is dropped by the same refused file.
+    assert.equal(rows("information_schema.TABLE_CONSTRAINTS", "TABLE_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'first_tags_memo_fk'"), 1);
+  } finally {
+    execFileSync("rm", ["-f", file]);
+  }
+  // Without the file (the docs' back-out: the last deployed ledger), nothing is pending.
+  assert.ok(!applied().includes("9003_memos_as_collection"), "nothing ran");
   assert.deepEqual(sql("SELECT id, text FROM wp_first_memos ORDER BY id"), memos);
 });

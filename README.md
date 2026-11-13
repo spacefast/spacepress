@@ -334,6 +334,7 @@ sure WP-Cron or a real cron reaches the site.
 - [`docs/config-migration.md`](docs/config-migration.md): importing EmDash, Payload and Sanity schemas
 - [`docs/migrating-from-zero.md`](docs/migrating-from-zero.md): moving a site from the original Zero
 - [`docs/runtime-contract.md`](docs/runtime-contract.md): the seam between compiler output and the PHP runtime
+- [`docs/api-cutover-0.3.md`](docs/api-cutover-0.3.md): what a host and its clients see change moving from the 0.3.0 API to `/__first/api/v1`
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): how the compiler works, the test suites, the layout
 
 ## Status

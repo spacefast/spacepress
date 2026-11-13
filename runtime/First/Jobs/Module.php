@@ -12,7 +12,7 @@ use First\Js;
 final class Module
 {
     public const STATES = ['pending', 'running', 'done', 'failed', 'dead'];
-    private const USAGE = 'Usage: jobs list [--state s] | jobs run <id> | jobs retry <id> | jobs cancel <id> | jobs maintain';
+    private const USAGE = 'Usage: jobs list [--state s] | jobs run <id> | jobs retry <id> | jobs cancel <id> | jobs maintain | jobs tick [--limit n] [--budget-ms ms]';
 
     public static function register(): void
     {
@@ -39,6 +39,11 @@ final class Module
             'retry' => self::retry($id()),
             'cancel' => self::cancel($id()),
             'maintain' => self::afterCommit(Runner::maintain(...)),
+            // The host worker's one bounded pass (Tick); its runs commit on their own, after this command's.
+            'tick' => self::afterCommit(static fn (): array => Tick::run(
+                isset($flags['limit']) ? (int) $flags['limit'] : Tick::DEFAULT_LIMIT,
+                isset($flags['budget-ms']) ? (int) $flags['budget-ms'] : Tick::DEFAULT_BUDGET_MS,
+            )),
             default => throw $usage(),
         };
     }

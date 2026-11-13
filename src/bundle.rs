@@ -693,8 +693,25 @@ pub(crate) fn compile_tree(
         .collect();
     page_paths.sort();
     page_paths.dedup();
-    let manifest = serde_json::json!({"format":"first.hosted.v1", "compiler":VERSION, "app":built.schema.name,
-        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "pages":pages.as_ref().map(|p| format!("first-pages-{}", p.app)), "routes":routes, "pagePaths":page_paths, "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
+    // What a host shows and routes without reading First's generated files (docs/host-contract.md).
+    let schema = &built.schema;
+    // Names as the REST API spells them (`/wp-json/first/v1/<name>`).
+    let mut tables: Vec<&str> = schema
+        .collections
+        .values()
+        .filter(|c| !c.editor && !c.auth)
+        .map(|c| c.table.as_str())
+        .collect();
+    tables.sort();
+    let mut collections: Vec<&str> = schema.collections.keys().map(String::as_str).collect();
+    collections.sort();
+    let mut actions: Vec<&str> = schema.actions.keys().map(String::as_str).collect();
+    actions.sort();
+    let summary = serde_json::json!({"name": schema.name, "collections": collections, "tables": tables, "actions": actions,
+        "identity": schema.collections.values().any(|c| c.auth), "admin": schema.admin});
+    let manifest = serde_json::json!({"format":"first.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
+        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "pages":pages.as_ref().map(|p| format!("first-pages-{}", p.app)), "routes":routes, "pagePaths":page_paths,
+        "summary":summary, "host":crate::host_contract::manifest_host(), "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
     std::fs::write(
         output.join("manifest.json"),
         serde_json::to_vec_pretty(&manifest).unwrap(),

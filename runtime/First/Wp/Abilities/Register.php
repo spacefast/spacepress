@@ -30,8 +30,12 @@ final class Register
     private static ?string $untyped = null;
     /** The REST run endpoint's JSON `input`, decoded with `{}` kept: [ability name, input]. */
     private static ?array $raw = null;
-    /** @var array<string, string> the run request's headers an operation reads (Idempotency-Key, First-Signature) */
-    private static array $headers = [];
+    /**
+     * @var array{string, array<string, string>}|null the run request's ability and its headers an
+     * operation reads (Idempotency-Key, First-Signature): they belong to that one run, not to abilities
+     * its code calls in turn.
+     */
+    private static ?array $headers = null;
     /** @var array<string, string> headers the operation answered with, for the run response */
     private static array $responded = [];
 
@@ -122,11 +126,13 @@ final class Register
                 self::$method = self::$sanitizing;
                 self::$untyped = null;
                 self::$responded = [];
-                self::$headers = [];
-                if ($request instanceof \WP_REST_Request) {
+                self::$headers = null;
+                if ($request instanceof \WP_REST_Request && preg_match('#^/wp-abilities/v1/abilities/(.+)/run$#', (string) $request->get_route(), $m)) {
+                    $headers = [];
                     foreach ($request->get_headers() as $name => $values) {
-                        self::$headers[str_replace('_', '-', strtolower((string) $name))] = implode(', ', (array) $values);
+                        $headers[str_replace('_', '-', strtolower((string) $name))] = implode(', ', (array) $values);
                     }
+                    self::$headers = [urldecode($m[1]), $headers];
                 }
                 // The run body's own input, or (for the facade's GET/DELETE runs) what withSentInput set.
                 self::$raw = ($request instanceof \WP_REST_Request ? self::rawInput($request) : null) ?? self::$raw;
@@ -187,7 +193,7 @@ final class Register
         self::$method = null;
         self::$untyped = null;
         self::$raw = null;
-        self::$headers = [];
+        self::$headers = null;
         if ($response instanceof \WP_REST_Response) {
             foreach (self::$responded as $name => $value) {
                 $response->header($name, $value);
@@ -211,10 +217,22 @@ final class Register
         return $response;
     }
 
-    /** @return array<string, string> the run request's headers, lower-cased */
-    public static function headers(): array
+    /**
+     * The run request's headers, lower-cased, for ability $name's own run, once: an ability that code
+     * inside it executes (`wp_get_ability()->execute()`) sees none, so an Idempotency-Key sent for the
+     * outer run never keys an inner one.
+     *
+     * @return array<string, string>
+     */
+    public static function headers(string $name): array
     {
-        return self::$headers;
+        if (self::$headers === null || self::$headers[0] !== $name) {
+            return [];
+        }
+        $headers = self::$headers[1];
+        self::$headers = null;
+
+        return $headers;
     }
 
     /** The operation's own response headers (`Idempotent-Replayed`), for the run response. */

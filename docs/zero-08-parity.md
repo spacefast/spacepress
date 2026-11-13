@@ -491,7 +491,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `type PaginationOptions`, `Id<T>` | Structural types in the candidate | Auto | — |
 | `collections`, native `posts`, `content/posts/` | Collections and a post-backed `posts` collection; data copied with IDs | Auto for declared collections, **WP**; undeclared `content/posts/` is refused (`Z08_OMITTED_POSTS`) | Native `pages` and `media` collections; rich blocks; multiple references; declaring `posts` for undeclared content |
 | `sync` declarations | `first sync` (local) | Refused (`Z08_OMITTED_SYNC`) | Declare the collection with `sync` in `first.config.ts`; hosted edits do not rebuild a frontend |
-| `connectors` | **missing** | Refused (`Z08_OMITTED_CONNECTORS`) | **Gap**: connectors and connector calls (`ctx.connectors`) |
+| `connectors` | The Space config's `connectors` (Spacefast Connectors v2), served to pages on the engine's `/__spacefast/connectors/<role>/<tool>` and called with `@spacefast/client` | Auto: each role carried into the candidate's `sf.jsonc` under the same name, as Spacefast froze it for 0.8 (`owner` is `personal`, every tool, the default cache); a role declared without a `connector` slug is refused (`Z08_OMITTED_CONNECTORS`) | Narrow `tools` if the page doesn't need every one |
 | `favicon` | Nothing to map: no 0.8 compiler, engine or runner read it, so the icon was always the published `/favicon.ico` | Dropped with a review entry | Keep the icon file in `public/` |
 | Pure helpers, classes, local `shared/` modules | Copied | Auto | Helpers outside the v2 subset (for example `in`, `URL`) |
 | `declare const NAME` build globals | `process.env.NAME` in handlers, `env("NAME")` in webhook and upload settings | Refused, names the fix | Replace the global |
@@ -523,7 +523,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `ctx.crypto.sha256/hmacSha256/timingSafeEqual` | `createHash`/`createHmac`/`timingSafeEqual` from `"node:crypto"`, byte for byte 0.8's output on the 452 recorded vectors; a named key reads `process.env` trimmed | Auto | — |
 | `ctx.jwt.sign` | **missing** | Refused | **Gap** |
 | `ctx.storage.list/get/delete` | [files](config-api.md#files) buckets | Refused | Port to file buckets |
-| `ctx.connectors.<role>.<tool>()` | **missing** | Refused | **Gap** (needs the connector broker in PHP) |
+| `ctx.connectors.<role>.<tool>()` | **missing** in server code: First has no PHP connector broker. Pages call the same role with `@spacefast/client` | Refused (`Z08_CTX_CONNECTORS`), with the fix to call the role from the page | Move the call to the page |
 | `fetch()` in actions | The same global `fetch`, unchanged: HTTPS only, private and special-purpose addresses refused after every redirect, 10 s, 1 MiB | Auto | — |
 
 ### HTTP
@@ -574,7 +574,7 @@ those four. No refused corpus app is blocked by endpoints any more.
 | `/__zero/config` | `/__spacefast/client.js` | Clients change; the converted client app's bridge needs no config |
 | `/__zero/auth/start`, `/sign-out` | `/wp-json/first-identity/v1/*` | Identity plugin |
 | `/__zero/realtime/*` | #128 transport | |
-| `/__spacefast/zero/connectors/<role>/*` | **missing** | With `ctx.connectors` |
+| `/__spacefast/zero/connectors/<role>/*` | `/__spacefast/connectors/<role>/<tool>` | The engine answers it before WordPress on every Space, First included |
 
 ## v2 runtime gaps
 
@@ -592,7 +592,9 @@ PR stacked on #118, implemented in PHP:
    `arrayBuffer()` still need the raw body on the route request.
 6. **Gravatar, spam and JWT services**. Each is small to medium. Spam needs a
    provider decision first.
-7. **Connector calls**. Large: the broker, tokens and approval states.
+7. **Connector calls from server code**. Pages already call roles through
+   `@spacefast/client` and the engine's route; `ctx.connectors` in handlers
+   needs a broker in PHP and stays unsupported for now.
 8. **Kit, charts and the context editor** for pages. Large and product-shaped,
    so they are not converter work.
 

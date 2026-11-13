@@ -514,19 +514,38 @@ fn convert(
     }
     // The platform keys travel in the candidate's own sf.jsonc, unchanged and in their order;
     // every other key was refused above, or changes nothing the candidate serves.
+    let mut kept = std::mem::take(&mut static_files.kept);
     if let Some((name, _, _)) = &config {
-        let kept = std::mem::take(&mut static_files.kept);
-        if !kept.is_empty() {
-            for key in kept.keys() {
-                report.entries.push(super::entry(
-                    &format!("/{name}/{key}"),
-                    "mapped",
-                    format!("Spacefast applies `{key}` to the Space; it travels unchanged in the candidate's sf.jsonc"),
-                ));
-            }
-            let text = serde_json::to_string_pretty(&serde_json::Value::Object(kept)).expect("config json");
-            static_files.config = Some(format!("{text}\n"));
+        for key in kept.keys() {
+            report.entries.push(super::entry(
+                &format!("/{name}/{key}"),
+                "mapped",
+                format!("Spacefast applies `{key}` to the Space; it travels unchanged in the candidate's sf.jsonc"),
+            ));
         }
+    }
+    // The capsule's connector roles join them, unless the config already declares its own roles,
+    // which 0.8 served instead of the capsule's.
+    let roles = report.connector_roles.as_object().cloned().unwrap_or_default();
+    if kept.contains_key("connectors") {
+        for role in roles.keys() {
+            report.entries.push(super::entry(
+                &super::pointer("/connectors", role),
+                "mapped",
+                "the Space config declares connector roles, which Spacefast served instead of the capsule's; they travel in the candidate's sf.jsonc",
+            ));
+        }
+    } else if let Some(connectors) = connector_config(
+        &roles,
+        &transformed.connector_spans,
+        &mut report.entries,
+        &mut report.errors,
+    ) {
+        kept.insert("connectors".into(), connectors);
+    }
+    if !kept.is_empty() {
+        let text = serde_json::to_string_pretty(&serde_json::Value::Object(kept)).expect("config json");
+        static_files.config = Some(format!("{text}\n"));
     }
     for name in &static_files.carried {
         report.entries.push(super::entry(
@@ -596,6 +615,92 @@ fn convert(
         serde_json::to_string_pretty(&report.connector_roles).unwrap(),
     );
     Ok(())
+}
+
+/// The Space config's `connectors` for a capsule's roles: each exactly as Spacefast froze it for the
+/// 0.8 version (the monorepo's `capsuleConnectorRoles`): its connector, `as` with `owner` named
+/// `personal`, every tool, no pinned arguments, the default cache. Role names don't change, so the
+/// Space's bindings and visitor connections, keyed by role, keep serving them. A role the config
+/// can't hold is refused at its declaration. None without roles.
+fn connector_config(
+    roles: &serde_json::Map<String, serde_json::Value>,
+    spans: &BTreeMap<String, diag::Span>,
+    entries: &mut Vec<Entry>,
+    errors: &mut Vec<Failure>,
+) -> Option<serde_json::Value> {
+    /// `CONNECTOR_ROLES_MAX` and `CONNECTOR_ROLE_CACHE_DEFAULT` in the monorepo's connector-roles.ts.
+    const ROLES_MAX: usize = 32;
+    const CACHE_DEFAULT: &str = "30s";
+    let refuse = |role: &str, why: String| {
+        let failure = fail(
+            &super::pointer("/connectors", role),
+            format!("{}: {why}", omitted::CONNECTORS),
+        );
+        match spans.get(role) {
+            Some(span) => failure.spanned(*span, Path::new("")),
+            None => failure,
+        }
+    };
+    if roles.is_empty() {
+        return None;
+    }
+    if roles.len() > ROLES_MAX {
+        let first = roles.keys().next().expect("a role");
+        errors.push(refuse(
+            first,
+            format!(
+                "a Space config declares at most {ROLES_MAX} connector roles, and the capsule declares {}",
+                roles.len()
+            ),
+        ));
+        return None;
+    }
+    let mut out = serde_json::Map::new();
+    for (role, declared) in roles {
+        // `connectorRoleNameSchema` and the slug rule of `connectorRoleEntrySchema`.
+        let named = role.len() <= 64
+            && role.starts_with(|c: char| c.is_ascii_lowercase())
+            && role.chars().all(|c| c.is_ascii_alphanumeric());
+        if !named {
+            errors.push(refuse(
+                role,
+                format!(
+                    "`{role}` isn't a config role name (camelCase, starting with a lowercase letter); rename the role"
+                ),
+            ));
+            continue;
+        }
+        let Some(connector) = declared.get("connector").and_then(serde_json::Value::as_str) else {
+            errors.push(refuse(
+                role,
+                "a config role names its connector; add `connector: \"<slug>\"` (the connector this Space's binding for the role uses, such as \"github\")".into(),
+            ));
+            continue;
+        };
+        let slug = connector.len() <= 128
+            && connector.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
+            && connector
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+        if !slug {
+            errors.push(refuse(
+                role,
+                format!("`{connector}` isn't a connector slug (lowercase letters, digits and dashes)"),
+            ));
+            continue;
+        }
+        let kind = declared.get("as").and_then(serde_json::Value::as_str).unwrap_or("team");
+        out.insert(
+            role.clone(),
+            serde_json::json!({ "connector": connector, "as": kind, "tools": "*", "cache": CACHE_DEFAULT }),
+        );
+        entries.push(super::entry(
+            &super::pointer("/connectors", role),
+            "mapped",
+            format!("carried into sf.jsonc `connectors` as a `{kind}` role with every tool and the default cache, as Spacefast served it; the Space's binding for `{role}` keeps serving it. Pages call it with @spacefast/client; server code can't call connectors on First yet"),
+        ));
+    }
+    (out.len() == roles.len()).then_some(serde_json::Value::Object(out))
 }
 
 #[cfg(feature = "cli")]

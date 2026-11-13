@@ -31,6 +31,7 @@ PARITY_HEADERS=1 pnpm test:parity                   # also the _headers rules, o
 | Path | Source |
 | --- | --- |
 | `docs/index.mdx`, `docs/getting-started.mdx`, `docs/publishing/` | Written by hand |
+| `docs/agents.mdx` | `docs/agents.md` |
 | `docs/examples/` | `examples/*`: each README and config, compiled when the pages are generated |
 | `docs/reference/config.mdx` | `types/first/index.d.ts` |
 | `docs/reference/client.mdx` | `runtime/client/index.ts` |

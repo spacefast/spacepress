@@ -160,6 +160,16 @@ fn field(fields: &mut IndexMap<String, (Ty, bool)>, name: &str, ty: Ty) {
     fields.insert(name.to_string(), (ty, false));
 }
 
+/// A type `"first/content"` exports, by name: `NavItem` is the tree's top level.
+pub(super) fn content_type(name: &str) -> Option<Ty> {
+    match name {
+        "NavItem" => Some(nav_item(NAV_DEPTH)),
+        "PagerLink" => Some(pager_link()),
+        "Heading" => Some(heading()),
+        _ => None,
+    }
+}
+
 /// `{ id, title, href, current, open, children }`, `depth` levels deep.
 fn nav_item(depth: usize) -> Ty {
     let mut fields = IndexMap::new();
@@ -168,9 +178,9 @@ fn nav_item(depth: usize) -> Ty {
     field(&mut fields, "href", Ty::Str);
     field(&mut fields, "current", Ty::Bool);
     field(&mut fields, "open", Ty::Bool);
-    if depth > 1 {
-        field(&mut fields, "children", Ty::Array(Box::new(nav_item(depth - 1))));
-    }
+    // Every level has `children`, as `NavItem` declares; below the last level it is always empty.
+    let below = if depth > 1 { nav_item(depth - 1) } else { Ty::Never };
+    field(&mut fields, "children", Ty::Array(Box::new(below)));
     Ty::Obj(fields)
 }
 

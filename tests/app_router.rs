@@ -355,7 +355,8 @@ fn page_md_is_a_wordpress_page() {
     );
     assert!(body.contains(r#"<a href="https://example.com/map">map</a>"#), "{body}");
     assert!(
-        body.contains(r#"<pre class="wp-block-code language-sh"><code>first build"#),
+        // Rendered as First renders every code block (First\Content\Code).
+        body.contains(r#"<pre class="first-code language-sh"><code><span class="first-code-line">first build</span>"#),
         "{body}"
     );
     let stored = &seen["guide stored"];
@@ -1614,6 +1615,10 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     assert_eq!(seen["roadmap as editor"]["cache"], "private, no-store, max-age=0");
     // Only an item's own path serves it.
     assert_eq!(seen["wrong parent"], 404);
+    assert_eq!(
+        seen["landing"], 404,
+        "`[[...path]]` with nothing after /docs finds no item"
+    );
     assert_eq!(seen["missing"], 404);
     assert_eq!(seen["slug alone"][0], 404);
     assert_eq!(seen["permalink"], "/docs/guides/deploy/space/");
@@ -1626,6 +1631,27 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         serde_json::json!({ "Reference [current]": "/docs/guides/reference" })
     );
     assert_eq!(seen["moved old"], serde_json::json!([404]));
+    // A published page under a draft is as hidden as the draft: its path names an unpublished page.
+    assert_eq!(seen["under a draft"], serde_json::json!([404, 404]));
+    // A WordPress Page with a doc's slug doesn't take over the doc's URL.
+    assert_eq!(seen["page with a doc slug"], serde_json::json!([200, ["Introduction"]]));
+    // Slugs are unique among siblings: two pages named `install` under different parents each serve.
+    assert_eq!(
+        seen["same slug elsewhere"],
+        serde_json::json!([["Install again"], ["Install"]])
+    );
+    // A block that renders differently each time doesn't cost the headings their anchors.
+    assert_eq!(
+        seen["headings beside a gallery"],
+        serde_json::json!([
+            [
+                "#why Why depth-2",
+                "#small-print Small print depth-3",
+                "#why-2 Why depth-2"
+            ],
+            ["h2#why", "h3#small-print", "h2#why-2"]
+        ])
+    );
     // Components in Markdown (docs/decisions/2026-11-13-components-in-markdown.md): the file's
     // tags are stored as the app's blocks, their Markdown as inner blocks.
     assert_eq!(
@@ -1676,6 +1702,35 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         })
     );
     assert!(seen["blocks fenced"].as_str().unwrap().starts_with("<!-- wp:code"));
+    // Code blocks: highlighted on the route, titled, line 2 marked, the `install` pair as tabs,
+    // plain text escaped and unhighlighted, one stylesheet with a dark theme, and no script.
+    let code = &seen["code"];
+    assert_eq!(code["status"], 200);
+    assert_eq!(code["titles"], serde_json::json!(["first.config.ts", "pnpm"]));
+    assert_eq!(
+        code["keywords"],
+        serde_json::json!(["import", "from", "export", "default"])
+    );
+    assert_eq!(
+        code["marked"],
+        serde_json::json!(["export default defineConfig({ name: \"docs\" });"])
+    );
+    assert_eq!(code["tabs"], serde_json::json!(["sh", "pnpm"]));
+    assert_eq!(code["tab inputs"], 2);
+    assert_eq!(
+        code["panels"],
+        serde_json::json!(["npm install first", "pnpmpnpm add first"])
+    );
+    assert_eq!(code["plain"], "plain <b>text</b>");
+    assert_eq!(code["plain spans"], 0);
+    assert_eq!(code["stylesheet"], 1);
+    assert_eq!(code["scripts"], serde_json::json!([]));
+    assert_eq!(seen["code css"], serde_json::json!([200, true, true]));
+    // Written back, each fence keeps its title, marked lines and group.
+    assert_eq!(
+        seen["code back"],
+        "Edit the config.\n\n```ts title=\"first.config.ts\" {2}\nimport { defineConfig } from \"first\";\nexport default defineConfig({ name: \"docs\" });\n```\n\n```sh group=\"install\"\nnpm install first\n```\n\n```sh title=\"pnpm\" group=\"install\"\npnpm add first\n```\n\n```text\nplain <b>text</b>\n```\n"
+    );
     // The query API reads parent and order like any field.
     assert_eq!(
         seen["api"],

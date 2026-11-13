@@ -75,6 +75,7 @@ final class Jobs
             ?? match ($name) {
                 Webhooks::JOB => Webhooks::spec(),
                 \First\Mail::JOB => \First\Mail::spec(),
+                \First\Sync\GitDispatch::JOB => \First\Sync\GitDispatch::spec(),
                 \First\Search\Index::JOB => \First\Search\Index::jobSpec(),
                 default => throw new \LogicException("Unknown job '$name'"),
             };

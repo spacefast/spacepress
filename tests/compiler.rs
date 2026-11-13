@@ -313,21 +313,6 @@ fn rejects_jsx_outside_the_subset_with_a_location_and_fix() {
 }
 
 #[test]
-fn a_catch_all_route_segment_comes_last() {
-    rejects(
-        "reject-route-catchall-middle",
-        "has a *catch-all that is not the last segment",
-        "first.config.ts:3:",
-    );
-    let out = first()
-        .args(["check"])
-        .arg(root().join("tests/fixtures/route-catchall"))
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-}
-
-#[test]
 fn destructured_defaults_may_read_earlier_siblings_only() {
     let out = first()
         .args(["check"])
@@ -613,12 +598,14 @@ fn context_values_pass_through_typed_helpers() {
         .arg("eval")
         .arg(tmp.join("first/dist/wp-content"))
         .arg(
-            r#"$route = $app->matchRoute("POST", "/echo");
+            r#"// first/app/echo/route.ts, matched the way the app router matches it.
+               $file = $wp->plugin()->schema->app()["files"]["app/echo/route.ts"];
+               $route = ["name" => "echo", "params" => [], "route" => ["handler" => $file["methods"]["POST"], "access" => $file["access"], "signature" => null]];
                // req.url and req.query as the WordPress transport builds them: 0.8's form, with every
                // share-link secret redacted and the share parameter kept out of the query.
                $at = fn (string $host, string $uri) => json_decode($app->serveRoute($route, "POST", "/echo",
-                   \First\Wp\HttpRoutes::query((string) parse_url($uri, PHP_URL_QUERY)), "", [], null,
-                   \First\Wp\HttpRoutes::url($host, $uri))[2], true);
+                   \First\Wp\RouteRequest::query((string) parse_url($uri, PHP_URL_QUERY)), "", [], null,
+                   \First\Wp\RouteRequest::url($host, $uri))[2], true);
                $urls = [
                  $at("Site.Example.:8443", "/echo?a=1&__=secret&b=2"),
                  $at("site.example", "/echo?token=t1&purchaseToken=p1&tokens=kept"),

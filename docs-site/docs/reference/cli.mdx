@@ -37,6 +37,7 @@ These commands run inside WordPress. On a local site, run them as `first <comman
 | `wp first seed --records=<dir> [--dry-run]` | First-sync content from compiled records. |
 | `wp first jobs list [--state=s] \| run <id> \| retry <id> \| cancel <id> \| maintain \| tick [--limit=n] [--budget-ms=ms]` | Inspect and drive background jobs. |
 | `wp first abilities` | List the app's abilities. |
+| `wp first schema list \| diff <version> \| apply <file\|-> [--parent=<n>] \| rollback <version> [--parent=<n>]` | The site's runtime schema versions (runtimeSchema: true) |
 | `wp first run <ability> [--input=<json>]` | Run an ability. |
 | `wp first action <name> [json]` | Call an action as the trusted CLI. |
 | `wp first find <collection> [json options]` | Read records. |

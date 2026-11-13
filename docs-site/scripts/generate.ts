@@ -197,6 +197,18 @@ ${Object.entries(platform.plugins).map(([slug, p]) => `| \`${slug}\` | \`${p.ver
 );
 
 // ---------------------------------------------------------------------------------------------
+// Agents: docs/agents.md, the one description of `first init`, `first mcp` and the site's MCP
+// endpoint. The page here is that file, so the two never say different things.
+// ---------------------------------------------------------------------------------------------
+
+page(
+	"docs/agents.mdx",
+	{ title: "Agents", description: "Set a project up for coding agents with first init and first mcp, and connect an agent to a running app's MCP endpoint.", sidebar: { order: 5 } },
+	"docs/agents.md",
+	mdx(prose(read("docs/agents.md").replace(/^#\s+.+\n+/, ""), "docs/agents.md")),
+);
+
+// ---------------------------------------------------------------------------------------------
 // CLI: runtime/First/Cli/commands.json, the table the binary prints for `--help` and the one WP-CLI
 // registers. One row per command.
 // ---------------------------------------------------------------------------------------------
@@ -644,7 +656,7 @@ page(
 
 // Directories the generator owns outright, and generated files that share docs/reference with
 // hand-written ones. A file in an owned directory that the generator didn't write fails --check.
-const generatedRoots = ["docs/examples", "docs/changelog", "openapi", "docs/reference/wordpress-plugins.mdx", "docs/reference/cli.mdx", "docs/reference/diagnostics.mdx", "docs/reference/config.mdx", "docs/reference/client.mdx", "docs/reference/language-support.mdx"];
+const generatedRoots = ["docs/agents.mdx", "docs/examples", "docs/changelog", "openapi", "docs/reference/wordpress-plugins.mdx", "docs/reference/cli.mdx", "docs/reference/diagnostics.mdx", "docs/reference/config.mdx", "docs/reference/client.mdx", "docs/reference/language-support.mdx"];
 const onDisk = new Set<string>();
 for (const root of generatedRoots) {
 	const full = path.join(site, root);

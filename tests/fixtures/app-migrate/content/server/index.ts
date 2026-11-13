@@ -4,8 +4,8 @@ export default capsule({
   auth: { requireSignIn: true },
   connectors: {
     calendar: connector({ as: "owner", connector: "calendar" }),
-    shared: connector({ as: "team" }),
-    visitor: connector({ as: "visitor" }),
+    shared: connector({ as: "team", connector: "github" }),
+    visitor: connector({ as: "visitor", connector: "linear" }),
   },
   collections: {
     notes: { publicRead: true, fields: { title: { kind: "text", required: true } } },

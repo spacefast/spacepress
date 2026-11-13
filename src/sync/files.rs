@@ -33,6 +33,8 @@ pub fn json_record(text: &str, content: bool) -> Parsed {
 /// - `guides/index.md` is the item for the folder: slug `guides`, parent the folder above's index;
 /// - `guides/install.md` is a child of `guides/index.md`.
 ///
+/// - `guides/zr_….md`, a file named by its uid, is a draft with no slug yet (slug `""`).
+///
 /// The top folder has no index file: it is the kind itself, whose landing page is an app page.
 pub fn tree_place(rel: &str, format: &str) -> Result<(String, Option<String>), String> {
     let parts: Vec<&str> = rel.split('/').collect();
@@ -45,6 +47,11 @@ pub fn tree_place(rel: &str, format: &str) -> Result<(String, Option<String>), S
         ));
     }
     let slug = if index { folders[folders.len() - 1] } else { stem };
+    // A draft started on the site has no slug yet, so its file is named by its uid: no slug.
+    if !index && crate::sync::uid::valid(stem) {
+        let above = (!folders.is_empty()).then(|| format!("{}/index.{format}", folders.join("/")));
+        return Ok((String::new(), above));
+    }
     let valid = |s: &str| {
         !s.is_empty()
             && s.len() <= 200
@@ -104,6 +111,10 @@ mod tree_tests {
         assert!(tree_place("index.md", "md").is_err());
         assert!(tree_place("Guides/install.md", "md").unwrap_err().contains("`Guides`"));
         assert!(tree_place("guides/My Page.md", "md").is_err());
+        assert_eq!(
+            tree_place("guides/zr_0123456789abcdef0123.md", "md").unwrap(),
+            (String::new(), Some("guides/index.md".into()))
+        );
     }
 
     #[test]

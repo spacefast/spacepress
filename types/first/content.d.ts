@@ -3,7 +3,7 @@ import type { Href } from "./app";
 // "first/content": navigation for a hierarchical kind's pages. Runs as the visitor; drafts and
 // items the visitor may not read are in no tree, pager or link.
 
-/** One item of `nav()`'s tree. `children` goes four levels deep. */
+/** One item of `nav()`'s tree. The tree is four levels deep: the fourth level's `children` is empty. */
 export interface NavItem {
   id: number;
   title: string;

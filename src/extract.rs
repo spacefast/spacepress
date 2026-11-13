@@ -129,6 +129,7 @@ const CONFIG_KEYS: &[&str] = &[
     "services",
     "use",
     "frontend",
+    "runtimeSchema",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
     "storageName",
@@ -137,6 +138,7 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "label",
     "drafts",
     "revisions",
+    "staged",
     "comments",
     "title",
     "content",
@@ -146,10 +148,11 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "uid",
     "agents",
     "url",
+    "hierarchical",
 ];
 /// Collection names that would shadow a built-in route (§4.8).
 const RESERVED_COLLECTIONS: &[&str] = &[
-    "media", "files", "globals", "actions", "me", "_schema", "auth", "services",
+    "media", "files", "globals", "actions", "me", "_schema", "auth", "services", "search",
 ];
 /// WordPress limits post types to 20 characters; First prefixes `first_`.
 const MAX_POST_TYPE_TABLE: usize = 20 - "first_".len();
@@ -242,6 +245,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         }
     };
     out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
+    let runtime_schema = span_of(ev, config, "runtimeSchema", config_span);
+    out.schema.runtime_schema = bool_option(&cfg_map, "runtimeSchema", false, runtime_schema)?.then(Default::default);
     out.schema.frontend = match cfg_map.get("frontend") {
         None | Some(Value::Undef) => None,
         Some(Value::Bool(false)) => Some(crate::kind_url::Frontend::Off),
@@ -374,6 +379,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     editor: true,
                     drafts: true,
                     revisions: true,
+                    staged: true,
                     comments: false,
                     title: None,
                     content: None,
@@ -389,6 +395,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     agents: true,
                     localized: false,
                     url: None,
+                    hierarchical: false,
                     api: Api {
                         list: true,
                         get: true,
@@ -424,6 +431,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.editor = opts.editor;
         coll.drafts = opts.drafts;
         coll.revisions = opts.revisions;
+        coll.staged = opts.staged;
         coll.comments = opts.comments;
         coll.title = opts.title;
         coll.content = opts.content;
@@ -432,6 +440,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.api = opts.api;
         coll.uid = opts.uid;
         coll.sync = opts.sync;
+        coll.hierarchical = opts.hierarchical;
         coll.auth = opts.auth;
         coll.agents = opts.agents;
         let key = coll.key.clone();
@@ -446,6 +455,45 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             coll.url = Some(pattern);
         }
         coll.localized = coll.columns.values().any(has_localized);
+        if coll.hierarchical {
+            // A row's parent is another row of the same kind (or none); its order sorts siblings.
+            let mut parent = Column::new("parent", ColType::Integer);
+            parent.references = Some(crate::schema::Reference {
+                collection: coll.table.clone(),
+                column: "id".into(),
+                on_delete: Some(crate::schema::RefAction::SetNull),
+                on_update: None,
+            });
+            parent.system = true;
+            let mut order = Column::new("order", ColType::Integer);
+            order.not_null = true;
+            order.default = Some(DefaultKind::Value(Json::from(0)));
+            order.system = true;
+            coll.columns.insert("parent".into(), parent);
+            coll.columns.insert("order".into(), order);
+            coll.relations.insert(
+                "parent".into(),
+                crate::schema::Relation {
+                    name: "parent".into(),
+                    kind: crate::schema::RelKind::One,
+                    collection: coll.table.clone(),
+                    from: "parent".into(),
+                    to: "id".into(),
+                    optional: true,
+                },
+            );
+            coll.relations.insert(
+                "children".into(),
+                crate::schema::Relation {
+                    name: "children".into(),
+                    kind: crate::schema::RelKind::Many,
+                    collection: coll.table.clone(),
+                    from: "id".into(),
+                    to: "parent".into(),
+                    optional: false,
+                },
+            );
+        }
         if coll.drafts {
             let mut status = Column::new("status", ColType::Text);
             status.not_null = true;
@@ -818,6 +866,22 @@ pub fn input_column(name: &str, b: &ColBuilder, ev: &mut Evaluator<'_>, out: &mu
     column(name, b, &Owner::Action(String::new()), &[], Place::Input, ev, out)
 }
 
+/// A collection's or a global's own field read from the runtime schema lock
+/// (`crate::runtime_schema`), checked as an authored one is.
+pub fn lock_column(
+    name: &str,
+    b: &ColBuilder,
+    global: bool,
+    kind: &str,
+    ev: &mut Evaluator<'_>,
+    out: &mut Extracted,
+) -> Result<Column> {
+    if global {
+        return column(name, b, &Owner::Global(kind.to_string()), &[], Place::Global, ev, out);
+    }
+    column(name, b, &Owner::Collection(kind.to_string()), &[], Place::Top, ev, out)
+}
+
 pub fn slugify_name(s: &str) -> String {
     let mut out = String::new();
     for c in s.chars() {
@@ -838,6 +902,7 @@ struct CollOpts {
     editor: bool,
     drafts: bool,
     revisions: bool,
+    staged: bool,
     comments: bool,
     title: Option<String>,
     content: Option<String>,
@@ -850,6 +915,7 @@ struct CollOpts {
     agents: bool,
     /// The pattern, its segments (`kind_url::check`) and where it was written.
     url: Option<(String, Vec<crate::kind_url::Segment>, Span)>,
+    hierarchical: bool,
 }
 
 fn collection_options(
@@ -892,8 +958,18 @@ fn collection_options(
     };
     for k in o.keys() {
         if !COLLECTION_OPTIONS.contains(&k.as_str()) {
-            let mut d = Diag::new(span(k), format!("collection() has no option `{k}`"));
-            if let Some(s) = suggest(k, COLLECTION_OPTIONS.iter().copied()) {
+            let mut d = Diag::new(span(k), format!("{}() has no option `{k}`", c.kind.builder()));
+            if k == "editor" {
+                d = d.help(match c.kind {
+                    StorageKind::Collection => {
+                        "storage follows the builder: collection() is always WordPress posts; use table() for a SQL table"
+                    }
+                    StorageKind::Table => "storage follows the builder: table() is always a SQL table; remove the option",
+                    StorageKind::UserProjection => {
+                        "storage follows the builder: userProjection() is always WordPress users; remove the option"
+                    }
+                });
+            } else if let Some(s) = suggest(k, COLLECTION_OPTIONS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
             }
             return Err(d);
@@ -967,6 +1043,18 @@ fn collection_options(
                 .help("remove this option; use table() for application data"));
         }
         Some(r) => r,
+        None => editor,
+    };
+    // Staged versions are WordPress revisions of a post: on for collections unless turned off.
+    let staged = match flag("staged")? {
+        Some(true) if !editor => {
+            return Err(
+                Diag::new(span("staged"), "only collection() kinds have staged versions").help(
+                    "a staged version is a WordPress revision of a post; a table() row has no editorial lifecycle",
+                ),
+            );
+        }
+        Some(on) => on,
         None => editor,
     };
     // spec.md §6: comments are off on every kind that doesn't turn them on.
@@ -1113,6 +1201,39 @@ fn collection_options(
         }
     }
 
+    // hierarchical (spec §2.6): a collection whose items nest, like WordPress Pages. The compiler
+    // adds `parent` and `order`; they are the post's own `post_parent` and `menu_order`.
+    let hierarchical = flag("hierarchical")?.unwrap_or(false);
+    if hierarchical {
+        if !editor {
+            return Err(
+                Diag::new(span("hierarchical"), "only collection() kinds can be hierarchical")
+                    .help("a table() nests through an ordinary `parent: ref(() => kind).optional()` field"),
+            );
+        }
+        for reserved in ["parent", "order"] {
+            if let Some(b) = c.columns.get(reserved) {
+                return Err(Diag::new(
+                    b.span,
+                    format!("`{reserved}` is reserved: hierarchical kinds add `parent` and `order`"),
+                )
+                .help("remove the field; the kind's items already have a parent and an order"));
+            }
+        }
+    }
+    // A folder tree of files: each folder is the item its `index` file holds, the parent of the
+    // files beside it. Only a hierarchical kind has parents, and only a slug names a folder.
+    if sync.as_ref().is_some_and(|s| s["nested"] == true) {
+        if !hierarchical {
+            return Err(Diag::new(span("sync"), "a `**` sync pattern needs a hierarchical kind")
+                .help("add `hierarchical: true`: each folder's index file becomes the parent of the files beside it"));
+        }
+        if !columns.values().any(|c| c.ty == ColType::Slug) {
+            return Err(Diag::new(span("sync"), "a folder tree of files needs a slug field")
+                .help("add `slug: slug({ source: \"title\" })`: a file's name is its slug, and a folder's name its index file's"));
+        }
+    }
+
     // url (spec §2.7): post kinds only; tables have no public pages.
     let url = match o.get("url") {
         None | Some(Value::Undef) => None,
@@ -1139,7 +1260,7 @@ fn collection_options(
             let kind = crate::kind_url::UrlKind {
                 columns,
                 dated: drafts,
-                hierarchical: false,
+                hierarchical,
                 public_slug: &public_slug,
             };
             let shape =
@@ -1228,6 +1349,7 @@ fn collection_options(
         editor,
         drafts,
         revisions,
+        staged,
         comments,
         title,
         content,
@@ -1239,6 +1361,7 @@ fn collection_options(
         auth,
         agents,
         url,
+        hierarchical,
     })
 }
 
@@ -2716,12 +2839,20 @@ fn phase2_config(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, 
 }
 
 fn sync_config(pattern: &str, span: Span) -> Result<Json> {
+    // `content/docs/**/*.md`: every file in the folder and the folders below it; a hierarchical kind
+    // takes each folder as the parent of the files in it.
+    let (pattern, nested) = match pattern.rsplit_once("/**/") {
+        Some((dir, file)) => (format!("{dir}/{file}"), true),
+        None => (pattern.to_string(), false),
+    };
+    let pattern = pattern.as_str();
     let (dir, format) = if let Some(d) = pattern.strip_suffix("/*.md") {
         (d, "md")
     } else if let Some(d) = pattern.strip_suffix("/*.json") {
         (d, "json")
     } else {
-        return Err(Diag::new(span, "sync must end in /*.md or /*.json").help("use content/posts/*.md"));
+        return Err(Diag::new(span, "sync must end in /*.md or /*.json")
+            .help("use content/posts/*.md, or content/docs/**/*.md for a folder tree"));
     };
     if dir.is_empty()
         || dir.starts_with('/')
@@ -2732,7 +2863,11 @@ fn sync_config(pattern: &str, span: Span) -> Result<Json> {
             .help("use a project-relative directory without .. or wildcards"));
     }
     let normalized = dir.split('/').filter(|p| *p != ".").collect::<Vec<_>>().join("/");
-    Ok(serde_json::json!({"dir": if normalized.is_empty() { "." } else { &normalized }, "format": format}))
+    let mut out = serde_json::json!({"dir": if normalized.is_empty() { "." } else { &normalized }, "format": format});
+    if nested {
+        out["nested"] = Json::Bool(true);
+    }
+    Ok(out)
 }
 
 fn has_localized(c: &Column) -> bool {
@@ -3143,6 +3278,18 @@ fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span
     for c in out.schema.collections.values() {
         for op in ["list", "get", "create", "update", "delete", "revisions"] {
             add(format!("{}-{op}", kebab(&c.table)))?;
+        }
+        if c.editor && c.revisions && c.staged && c.api.update {
+            for op in [
+                "stage",
+                "staged-get",
+                "staged-compare",
+                "staged-promote",
+                "staged-discard",
+                "staged-preview",
+            ] {
+                add(format!("{}-{op}", kebab(&c.table)))?;
+            }
         }
         if c.sync.is_some() {
             for op in ["read", "apply", "trash"] {

@@ -38,7 +38,17 @@ final class Markdown
             return '';
         }
 
-        return self::asStored(self::consume($markdown));
+        // A component tag (`<Callout>`) is the app's block; everything else is the toolkit's. A code
+        // fence's words after its language (`title="…" {2,4}`) become its block's attributes.
+        return \First\Content\Blocks::toBlocks($markdown, static function (string $md): string {
+            $stored = self::asStored(self::consume($md));
+            $fences = \First\Content\Code::fences($md);
+            if (array_filter($fences) === []) {
+                return $stored;
+            }
+
+            return Blocks::serialize(\First\Content\Code::attach(Blocks::parse($stored), $fences));
+        });
     }
 
     /** Stored blocks → Markdown, or 422 not_representable naming what Markdown can't carry. */
@@ -47,7 +57,19 @@ final class Markdown
         if (trim($blocks) === '') {
             return '';
         }
-        $unsupported = self::unsupported(Blocks::parse($blocks));
+        $parsed = Blocks::parse($blocks);
+        if (\First\Content\Blocks::has($parsed)) {
+            // Component blocks are tags; the Markdown around and inside them is written as usual,
+            // each run of other blocks through this same gate.
+            $markdown = \First\Content\Blocks::fromBlocks($parsed, static fn (string $run): string => self::fromBlocks($run));
+            $lost = self::firstLoss(self::key(self::toBlocks($markdown)), self::key(self::respellLegacy($blocks)));
+            if ($lost !== null) {
+                throw new HttpError(422, 'not_representable', "$lost can't be written as Markdown; use *.html");
+            }
+
+            return $markdown;
+        }
+        $unsupported = self::unsupported($parsed);
         if ($unsupported !== null) {
             throw new HttpError(422, 'not_representable', "$unsupported can't be written as Markdown; use *.html");
         }
@@ -181,7 +203,7 @@ final class Markdown
     private static function produce(string $blocks): string
     {
         Blocks::boot();
-        if (str_contains($blocks, 'language-')) {
+        if (str_contains($blocks, 'language-') || str_contains($blocks, '<!-- wp:code {')) {
             $blocks = Blocks::serialize(array_map(self::fenceLanguage(...), Blocks::parse($blocks)));
         }
         try {
@@ -296,12 +318,18 @@ final class Markdown
         return $block;
     }
 
-    /** The `language` attribute the producer reads, from the class the editor keeps. */
+    /**
+     * The `language` attribute the producer reads, from the class the editor keeps, followed by the
+     * fence's other words (`title="…" {2,4}`): the producer writes the attribute after the fence.
+     */
     private static function fenceLanguage(array $block): array
     {
-        if (($block['blockName'] ?? null) === 'core/code' && !isset($block['attrs']['language'])
-            && preg_match('/(?:^|\s)language-(\S+)/', (string) ($block['attrs']['className'] ?? ''), $m) === 1) {
-            $block['attrs']['language'] = $m[1];
+        if (($block['blockName'] ?? null) === 'core/code' && !isset($block['attrs']['language'])) {
+            $language = preg_match('/(?:^|\s)language-(\S+)/', (string) ($block['attrs']['className'] ?? ''), $m) === 1 ? $m[1] : '';
+            $info = \First\Content\Code::info($block['attrs'] ?? []);
+            if ($language !== '' || $info !== '') {
+                $block['attrs']['language'] = trim(($language === '' ? 'text' : $language) . ' ' . $info);
+            }
         }
         $block['innerBlocks'] = array_map(self::fenceLanguage(...), $block['innerBlocks'] ?? []);
 

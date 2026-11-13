@@ -195,8 +195,18 @@ fn sync_files(fs: &dyn Fs, root: &Path, sync: &serde_json::Value) -> Result<Vec<
     if !fs.exists(&directory) {
         return Ok(Vec::new());
     }
-    let mut paths = fs.read_dir(&directory).map_err(io)?;
-    paths.retain(|p| p.extension().and_then(|e| e.to_str()) == sync["format"].as_str());
+    let mut paths = Vec::new();
+    // `content/docs/**/*.md` walks the folders below too (`crate::sync::tree`), never a symlink.
+    let mut pending = vec![directory];
+    while let Some(dir) = pending.pop() {
+        for path in fs.read_dir(&dir).map_err(io)? {
+            if sync["nested"] == true && !fs.is_symlink(&path) && fs.is_dir(&path) {
+                pending.push(path);
+            } else if path.extension().and_then(|e| e.to_str()) == sync["format"].as_str() {
+                paths.push(path);
+            }
+        }
+    }
     paths.sort();
     for path in &paths {
         safe_input(&relative(root, path).map_err(io)?)?;
@@ -548,6 +558,11 @@ pub(crate) fn compile_tree(
         let Some(sync) = &collection.sync else { continue };
         let mut records = Vec::new();
         let mut uids = BTreeSet::new();
+        let nested = sync["nested"] == true;
+        let sync_dir = root.join(sync["dir"].as_str().unwrap_or("."));
+        // A folder tree: (record index, the file holding its parent), resolved once every file is read.
+        let mut parents: Vec<(usize, Option<String>)> = Vec::new();
+        let mut by_path: BTreeMap<String, String> = BTreeMap::new();
         for path in sync_files(&*fs, &root, sync)? {
             let text = fs.read_to_string(&path).map_err(io)?;
             let parsed = if sync["format"] == "md" {
@@ -572,7 +587,27 @@ pub(crate) fn compile_tree(
                 )
             };
             let (mut fields, body) = parsed.map_err(|(line, message)| diagnostic(line, message))?;
+            // Below the sync folder: what a folder-tree file is named by, and its stable identity.
+            let below = relative(&sync_dir, &path).map_err(io)?;
+            let place = if nested {
+                let (slug, parent) = crate::sync::files::tree_place(&below, sync["format"].as_str().unwrap_or("md"))
+                    .map_err(|message| diagnostic(1, message))?;
+                let slug_col = collection.slug.clone().expect("a folder-tree sync has a slug");
+                for (key, what) in [(slug_col.as_str(), "slug"), ("parent", "parent")] {
+                    if fields.contains_key(key) {
+                        return Err(diagnostic(
+                            1,
+                            format!("`{key}` comes from where the file is: its {what} is set by its path ({below})"),
+                        ));
+                    }
+                }
+                fields.insert(slug_col, serde_json::Value::String(slug));
+                Some(parent)
+            } else {
+                None
+            };
             let uid = match fields.shift_remove("uid") {
+                None if nested => crate::sync::uid::for_file(name, &below),
                 None => crate::sync::uid::for_file(name, &path.file_name().unwrap_or_default().to_string_lossy()),
                 Some(serde_json::Value::String(uid)) if crate::sync::uid::valid(&uid) => uid,
                 Some(_) => {
@@ -585,9 +620,53 @@ pub(crate) fn compile_tree(
             if !uids.insert(uid.clone()) {
                 return Err(diagnostic(1, format!("duplicate sync uid {uid}")));
             }
+            if let Some(parent) = place {
+                // Slugs are unique in a kind, so a page's URL is found by its last segment.
+                let slug = fields[collection.slug.as_deref().unwrap_or("slug")]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
+                if let Some((other, _)) = by_path.iter().find(|(p, _)| {
+                    crate::sync::files::tree_place(p, sync["format"].as_str().unwrap_or("md"))
+                        .is_ok_and(|(s, _)| s == slug)
+                }) {
+                    return Err(diagnostic(
+                        1,
+                        format!(
+                            "{below} and {other} both have the slug `{slug}`; a kind's slugs are unique, so rename one"
+                        ),
+                    ));
+                }
+                parents.push((records.len(), parent));
+                by_path.insert(below, uid.clone());
+            }
             records.push(
                 serde_json::json!({"uid":uid,"fields":fields,"body":body,"path":relative(&root,&path).map_err(io)?}),
             );
+        }
+        if nested {
+            // Each record's parent is its folder's index file, by uid; parents are seeded before
+            // their children, so every reference names a row that already exists.
+            let mut depth = vec![0usize; records.len()];
+            for (index, parent) in &parents {
+                if let Some(parent) = parent {
+                    let Some(uid) = by_path.get(parent) else {
+                        return Err(failure(format!(
+                            "{}: its folder has no {}, the page the folder stands for",
+                            records[*index]["path"].as_str().unwrap_or_default(),
+                            parent
+                        )));
+                    };
+                    records[*index]["fields"]["parent"] = serde_json::Value::String(uid.clone());
+                    depth[*index] = parent.matches('/').count();
+                }
+            }
+            let mut ordered: Vec<(usize, serde_json::Value)> = depth.into_iter().zip(records).collect();
+            ordered.sort_by(|a, b| {
+                a.0.cmp(&b.0)
+                    .then_with(|| a.1["path"].as_str().cmp(&b.1["path"].as_str()))
+            });
+            records = ordered.into_iter().map(|(_, r)| r).collect();
         }
         seeds.push((
             name,

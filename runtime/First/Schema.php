@@ -46,7 +46,18 @@ final class Schema
             throw new \RuntimeException("schema.php built for runtime $series; this runtime is " . self::SERIES . '; rebuild with this First version');
         }
 
-        return new self($raw);
+        // `runtimeSchema: true` (spec §2.10): the site's active schema version adds its fields.
+        return new self(isset($raw['runtimeSchema']) ? RuntimeSchema\Loader::merge($raw, dirname($file)) : $raw);
+    }
+
+    /**
+     * Null unless the app set `runtimeSchema: true`. Otherwise the version the build contains
+     * (`version`, `hash`) and the site's active version this request runs (`active`: its `version`
+     * and `hash`).
+     */
+    public function runtimeSchema(): ?array
+    {
+        return $this->raw['runtimeSchema'] ?? null;
     }
 
     public function version(): int
@@ -118,6 +129,12 @@ final class Schema
      *
      * @return array<string, string>
      */
+    /** @return array<string, array{tag: string, component: string, attributes: array, required: list<string>, children: bool}> blocks content may use, by block name */
+    public function contentBlocks(): array
+    {
+        return $this->raw['blocks'] ?? [];
+    }
+
     public function components(): array
     {
         return $this->raw['components'] ?? [];
@@ -241,7 +258,12 @@ final class Schema
             ];
         }
 
-        return Extensions::describe([
+        $runtimeSchema = $this->runtimeSchema();
+
+        return Extensions::describe(($runtimeSchema === null ? [] : [
+            // The schema below is the build's plus this version of the site's own changes (spec §2.10).
+            'runtimeSchema' => ['version' => $runtimeSchema['active']['version'] ?? 0, 'hash' => $runtimeSchema['active']['hash'] ?? '', 'build' => ['version' => $runtimeSchema['version'] ?? 0, 'hash' => $runtimeSchema['hash'] ?? '']],
+        ]) + [
             'name' => $this->name(),
             'runtime' => ['series' => $this->runtime()],
             'locales' => $this->locales(), 'media' => $this->media(),

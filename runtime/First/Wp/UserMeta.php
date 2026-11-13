@@ -142,7 +142,7 @@ final class UserMeta
         return $response;
     }
 
-    /** @var array{\WP_REST_Request, list<int>, bool}|null the ids First selected for a users list */
+    /** @var array{\WP_REST_Request, list<int>, bool, bool}|null the ids First selected for a users list: request, ids, ordered, searched */
     private static ?array $selected = null;
 
     /** `where`/`orderBy` on the users list: First selects the ids, core keeps its pagination. */
@@ -151,8 +151,13 @@ final class UserMeta
         if (!is_array($args) || self::$selected === null || self::$selected[0] !== $request) {
             return $args;
         }
-        [, $keys, $ordered] = self::$selected;
+        [, $keys, $ordered, $searched] = self::$selected;
         $include = empty($args['include']) ? $keys : array_values(array_intersect($keys, array_map('intval', (array) $args['include'])));
+        if ($searched) {
+            // First's search picked the users, as this viewer reads them; core's own search over
+            // login, email and name would match fields the viewer can't read.
+            unset($args['search'], $args['search_columns']);
+        }
         // One named elevation: core limits a list to authors of published posts for a viewer without
         // `list_users`, which drops a member's own row. When the ids come from First's read rule
         // (`self`, a filter), each one is a user this viewer may read on core's own item route
@@ -163,16 +168,16 @@ final class UserMeta
         return ['include' => $include === [] ? [0] : $include] + ($ordered ? ['orderby' => 'include'] : []) + $args;
     }
 
-    /** A users list with `where`/`orderBy`: run it through First as the viewer before core's query. */
+    /** A users list with `where`/`orderBy`/`search`: run it through First as the viewer before core's query. */
     private static function select(\WP_REST_Request $request): ?\WP_Error
     {
         $collection = self::collection() ?? throw new \LogicException('No users kind');
         try {
-            $keys = FirstQuery::keys($collection, $request, CoreAccess::viewer() ?? new Viewer(null), search: false);
+            $keys = FirstQuery::keys($collection, $request, CoreAccess::viewer() ?? new Viewer(null), searched: $searched);
         } catch (HttpError $e) {
             return CoreAccess::error($e);
         }
-        self::$selected = $keys === null ? null : [$request, $keys, $request['orderBy'] !== null];
+        self::$selected = $keys === null ? null : [$request, $keys, $request['orderBy'] !== null, $searched];
 
         return null;
     }

@@ -16,6 +16,34 @@ setup. It needs WordPress 7.1+, PHP 8.2+ and a small set of plugins that
 It's a new, experimental way of building backends for content and personal
 software. The API will move. Read [Status](#status) before you build on it.
 
+## Content first, a database when you need one
+
+A First app has two halves, and each builder always stores in the same place.
+
+**Content** is where a new project from `npm create` starts. A `collection()` is a WordPress post
+type, members are WordPress users, uploads are the media library and a
+`global()` is site options. They are WordPress's own rows, so wp-admin, the
+editor and the plugins a site already runs work on them.
+
+**Database** is the half a project adds. A `table()` is a SQL table of its
+own, with typed columns, foreign keys, migrations and a schema check at
+deploy. `first add db` writes a starting point into a project.
+
+| | `collection()` | `table()` |
+|---|---|---|
+| Stored as | WordPress posts and post meta | its own SQL table, `wp_first_<name>` |
+| Edited in | wp-admin and the WordPress editor, with drafts and revisions | your app, through the API and the typed client |
+| Field types | post meta: text, cast when read | typed columns |
+| References | checked by First when it writes | SQL foreign keys between tables |
+| Filter and sort on a field | a join on post meta per field, no index on the value | the column itself, no join |
+| Use it for | what people write and publish | rows your app filters, sorts, counts and joins |
+
+Post meta has no real column types or foreign keys, and filtering and sorting
+on it is slow, so data your app queries belongs in a table. Both halves share the
+field builders, access rules, references, hooks, the API and the typed client,
+and a table row can belong to a post. See
+[Content and database](docs/config-api.md#content-and-database).
+
 ## One file in
 
 ```ts
@@ -84,6 +112,7 @@ built 2 collections, 0 globals, 1 hooks, 1 actions -> first/dist/wp-content in 6
 | MySQL migrations, diffed against the last build | `first/_generated/migrations/0001_init.sql` |
 | A typed client: `first.posts.list({ with: { writer: true } })` and friends | `first/_generated/client/` |
 | Editor types, so `db` in your hooks knows your schema | `first/_generated/db.d.ts` |
+| The API as an OpenAPI 3.1 document, also served by the site | `first/_generated/openapi.json`, `/__first/api/v1/openapi.json` |
 | An HTTP API for every collection, global and action, with relations loaded through `with`, over WordPress's REST routes | `/__first/api/v1/...` |
 | Sign-in, sessions, roles, guests, passkeys and MFA | the `first-identity` plugin |
 | A dashboard: WordPress admin, with a post type and a field group generated for each collection that has an editor | Posts and Authors menus in `wp-admin` |
@@ -133,6 +162,13 @@ the database, uploads and other installed plugins remain in
 `examples/pantry/.first/dev/wordpress` for the next start. The login above is
 for disposable local development only, never production.
 
+`first dev --detach` does the same in the background: it returns once the site
+is up, keeps rebuilding on save, and writes its output to
+`.first/dev/dev.log`. A coding agent's shell gets that without the flag (the
+output is not a terminal and `CLAUDECODE`, `CODEX_SANDBOX`, `AI_AGENT` or
+`AGENT` is set, outside CI); `--foreground` keeps the command attached.
+`first dev status --json` reports the URL, the port and that process.
+
 To leave the site running without watching, use `--no-watch`:
 
 ```sh
@@ -171,16 +207,21 @@ SQL tables to a project that has none: an example `first/tables.ts` with a
 foreign key and access rules, typed client calls for it, and a note on
 migrations. It only creates files that are missing, and leaves the example out
 of a project that already has tables. Commit
-`first/_generated/migrations/`, `first/_generated/client/`, `first/_generated/db.d.ts` and
-`first/_generated/wp-plugins.lock.json`; `.first/` is local build and development state.
+`first/_generated/migrations/`, `first/_generated/client/`, `first/_generated/db.d.ts`,
+`first/_generated/openapi.json` and `first/_generated/wp-plugins.lock.json`; `.first/` is local
+build and development state.
 
 Want a seeded app to click through? [The showcase](examples/showcase/README.md)
 includes structured fields, collection/table relations, image delivery, a
 compiled class/action and a repeatable HTTP smoke check. Its separate
 `node examples/showcase/run.mjs` launcher still uses Docker; `first dev` does not.
 
-Use your collections and actions from Claude Code, Claude Desktop, or Codex with
-the [agent connection guide](docs/agents.md).
+Working on a project with a coding agent? `first init` writes an `AGENTS.md`
+section describing this project, the agent skills and an `.mcp.json` entry for
+`first mcp`, which serves the project's schema, compiler diagnostics, First's
+documentation and the dev site as MCP tools. To use
+your collections and actions from Claude Code, Claude Desktop or Codex, connect
+to the site's own MCP endpoint. Both are in the [agent guide](docs/agents.md).
 
 ## Use it from a frontend
 
@@ -236,6 +277,33 @@ boot on a site that misses any of them and names each one;
 
 ## What's in the box
 
+### Content
+
+- **Authentication** through `first-identity`: sign-in, sessions, roles, guests
+  who keep their rows when they sign up, passkeys and MFA. Members are
+  WordPress users.
+- **Media**: named image sizes, focal-point crops, and private file buckets with
+  signed, PHP-streamed downloads.
+- **WordPress admin for every collection**: a post type with a Secure Custom
+  Fields group, revisions, and the block editor when the collection has a
+  `content` field.
+
+### Database
+
+- **Tables** with typed columns, unique keys and foreign keys, in MySQL,
+  MariaDB or SQLite.
+- **Migrations you don't write**: `first build` diffs the schema against the
+  last build and writes the SQL to `first/_generated/migrations/`.
+- **A schema check at deploy**: every pending change is checked against the
+  live rows first. A change that would lose data is refused with the row
+  count, and a rename with `.was()` keeps its rows.
+- **Transactions**: a request, an action and a job each run in one
+  transaction that spans table rows and WordPress content.
+- **`first add db`** adds this half to a project: example tables with a
+  reference and access rules, typed client calls and a note on migrations.
+
+### Both halves
+
 - **Collections, relations, globals**, Drizzle-style, with Drizzle 1.0's
   relational `findMany`/`findFirst` filters in hooks and actions.
 - **Hooks and actions** written in a checked subset of TypeScript and compiled
@@ -247,17 +315,12 @@ boot on a site that misses any of them and names each one;
 - **Access rules** per collection, per action and per field, as roles or
   functions; a collection's read, update and delete rules can return a filter
   instead of a boolean. `showIf` drives conditional fields in the editor.
-- **Authentication** through `first-identity`: sign-in, sessions, roles, guests
-  who keep their rows when they sign up, passkeys and MFA. Members are
-  WordPress users.
 - **Jobs, webhooks and an outbox**: enqueue from a hook, run after the request
   commits through Action Scheduler, retry with backoff.
 - **WordPress Abilities and MCP**: your collections' reads and writes, actions
   and globals are registered as Abilities and exposed on a named MCP server,
   so agents can use them. Jobs join with `agents: true`; `agents: false` opts
   anything out; uploads stay out.
-- **Media**: named image sizes, focal-point crops, and private file buckets with
-  signed, PHP-streamed downloads.
 - **Markdown sync**: `first sync` keeps `content/posts/*.md` and your records in
   step, with a three-way merge and conflict files.
 - **Localization** with Polylang: one row per locale, shared fields kept equal,
@@ -280,7 +343,9 @@ depend on:
 Each `collection(fields, options?)` is a custom post type (`first_<name>`) with a
 Secure Custom Fields group, so your content shows up in WordPress admin with
 revisions, and in the block editor when the collection has a `content` field,
-next to whatever the site already does.
+next to whatever the site already does. A change to a published item can be
+saved as a [staged version](docs/staged.md) that visitors don't see, then
+compared, previewed, promoted or discarded.
 Use `table(fields, options?)` for app data in its own SQL table. Both kinds
 support references and one/many relations to either kind, with typed client
 queries and target access rules. The registry key supplies the name once:
@@ -319,10 +384,11 @@ sure WP-Cron or a real cron reaches the site.
 
 ## Docs
 
-- [`docs/config-api.md`](docs/config-api.md): the `first.config.ts` API, the enforced subset and the known gaps
+- [`docs/config-api.md`](docs/config-api.md): the `first.config.ts` API, with its [Content](docs/config-api.md#content) and [Database](docs/config-api.md#database) halves, the enforced subset and the known gaps
 - [`docs/examples.md`](docs/examples.md): the examples, how to run each, and the suites that prove them
 - [`docs/wp-plugins.md`](docs/wp-plugins.md): declaring and pinning WordPress plugins
 - [`docs/services.md`](docs/services.md): native forms, queued email, publication search and Stripe checkout
+- [`docs/agents.md`](docs/agents.md): `first init` and `first mcp` for coding agents, and the site's MCP endpoint for agents that use the app
 - [`docs/realtime.md`](docs/realtime.md): live updates with `watch`, the change hook and pluggable transports
 - [`docs/deployment.md`](docs/deployment.md): artifact preflight and offline WordPress backup and recovery
 - [`docs/pages.md`](docs/pages.md): optional TSX routes, layouts and viewer-bound pages, with a complete site example

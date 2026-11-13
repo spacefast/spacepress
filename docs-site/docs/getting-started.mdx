@@ -126,7 +126,19 @@ Your notes stay in the local database for the next `npm run dev`.
 
 ## What to commit
 
-Commit `first.config.ts` and `first/_generated/`, which holds the migrations, the typed client and the editor types. Keep `first/dist/` and `.first/` out of git. They hold the build output and the local site. The starter app's `.gitignore` already does this.
+Commit `first.config.ts` and `first/_generated/`, which holds the migrations, the typed client, the editor types and `openapi.json`, the app's API as an OpenAPI document. Keep `first/dist/` and `.first/` out of git. They hold the build output and the local site. The starter app's `.gitignore` already does this.
+
+## Add a database
+
+The notes are WordPress posts: that is the content half of First, and a new app starts with only that. When the app needs data of its own, such as orders, bookings or votes, add SQL tables:
+
+```sh
+npx first add db
+```
+
+It writes `first/tables.ts`, with two example tables joined by a reference and their access rules, typed client calls in `tables.client.ts`, and `first/DATABASE.md`, which explains migrations and the deploy check. It only creates files that are missing, so you can run it again. The next `npm run build` writes the SQL for the tables to `first/_generated/migrations/`.
+
+Use a collection for what people write and publish in the WordPress editor. Use a table for rows your app filters, sorts, counts and joins: post meta has no real column types or foreign keys, and filtering and sorting on it is slow.
 
 ## Next steps
 

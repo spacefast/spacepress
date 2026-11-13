@@ -459,6 +459,10 @@ mod tests {
 
     /// Compiles the corpus base project with `lock` (None: no lock file).
     fn build(lock: Option<&Json>) -> Result<crate::schema::Schema, Diag> {
+        built(lock).map(|built| built.schema)
+    }
+
+    fn built(lock: Option<&Json>) -> Result<pipeline::Built, Diag> {
         let project = Path::new("/rtschema");
         let mut files = BTreeMap::from([
             (project.join("first.config.ts"), CONFIG.to_string()),
@@ -471,7 +475,7 @@ mod tests {
             let fs = Rc::new(crate::wasm::Memory::new(files));
             let program = crate::loader::load_from(fs, &project.join("first.config.ts"))
                 .map_err(|diagnostics| diagnostics.into_iter().next().expect("a diagnostic"))?;
-            pipeline::build(project, &program, || Ok(Previous::none()), |_| None).map(|built| built.schema)
+            pipeline::build(project, &program, || Ok(Previous::none()), |_| None)
         })
     }
 
@@ -608,6 +612,24 @@ mod tests {
             php.contains("'subtitle' => ['type' => 'text', 'rules' => ['max' => 120]],"),
             "{php}"
         );
+    }
+
+    /// What an editor's types and the typed client are generated from: a lock field is a field.
+    #[test]
+    fn a_lock_field_reaches_the_generated_types_and_plans_no_migration() {
+        let before = built(None).unwrap_or_else(|d| panic!("{}", d.message));
+        let lock = lock_of("articles", "subtitle", &serde_json::json!({ "type": "text" }));
+        let after = built(Some(&lock)).unwrap_or_else(|d| panic!("{}", d.message));
+        assert!(!before.gen_ts.contains("subtitle"), "{}", before.gen_ts);
+        assert!(
+            after
+                .gen_ts
+                .contains("'subtitle': ColumnBuilder<'text', string, false, false, false, false>;"),
+            "{}",
+            after.gen_ts
+        );
+        // A collection's field is post meta: the SQL the two builds plan is the same.
+        assert_eq!(before.migrations, after.migrations);
     }
 
     #[test]

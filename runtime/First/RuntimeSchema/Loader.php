@@ -58,7 +58,8 @@ final class Loader
             if (!isset($raw['collections'][$kind]['wp']['postType'])) {
                 continue;
             }
-            $fields = array_diff_key($entry['columns'] ?? [], $raw['collections'][$kind]['columns']);
+            // A row carries its relations under their names, so a relation the build declares wins too.
+            $fields = array_diff_key($entry['columns'] ?? [], $raw['collections'][$kind]['columns'], $raw['collections'][$kind]['relations'] ?? []);
             if ($fields !== []) {
                 $raw['collections'][$kind]['columns'] += $fields;
                 $active['added'][$kind] = array_keys($fields);

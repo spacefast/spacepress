@@ -182,6 +182,14 @@ eq('and still gets the fields it doesn\'t declare', isset($d['kinds']['articles'
 eq('the build\'s rule is the one enforced', $status, 422);
 eq('the value stored under the runtime field is the build\'s field\'s value', http('GET', "$api/articles/{$new['data']['id']}")[1]['data']['subtitle'], 'Now it fits');
 
+// A build that declares a relation under a runtime field's name: the relation is used, the field's data stays.
+$related = $base;
+$related['collections']['articles']['relations']['stars'] = ['kind' => 'many', 'collection' => 'votes', 'from' => 'id', 'to' => 'article', 'optional' => false];
+$wp->writeSchema($related);
+$columns = $described()['kinds']['articles']['columns'];
+check('a build\'s relation wins over a runtime field of the same name', !isset($columns['stars']) && isset($columns['teaser']), array_keys($columns));
+eq('and the field\'s stored values are untouched', $wp->scalar("SELECT meta_value FROM {prefix}postmeta WHERE post_id = ? AND meta_key = 'first_stars'", [$defaulted['data']['id']]), '3');
+
 // A build without the runtime changes (the project was not pulled): nothing is dropped.
 $wp->writeSchema($base);
 $d = $described();

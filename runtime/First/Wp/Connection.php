@@ -29,6 +29,8 @@ final class Connection
     /** @var array<string, true> */
     private array $touchedOptions = [];
     /** @var list<callable> */
+    private array $beforeCommit = [];
+    /** @var list<callable> */
     private array $afterCommit = [];
     /** @var list<callable> */
     private array $onRollback = [];
@@ -497,6 +499,13 @@ final class Connection
             throw new \RuntimeException('Cannot commit: a joined transaction failed');
         }
         try {
+            // The transaction's own last statements (beforeCommit): they commit or roll back with it.
+            while ($this->beforeCommit !== []) {
+                array_shift($this->beforeCommit)();
+            }
+            if ($this->rollbackOnly) {
+                throw new \RuntimeException('Cannot commit: a joined transaction failed');
+            }
             $this->query('COMMIT');
         } catch (\Throwable $e) {
             $this->rollback();
@@ -529,6 +538,16 @@ final class Connection
     public function inTransaction(): bool
     {
         return $this->depth > 0;
+    }
+
+    /**
+     * Run $cb as the open transaction's last statements, just before COMMIT, so what it writes is
+     * held for the shortest time and commits or rolls back with everything else. A throw rolls the
+     * transaction back. Without a transaction it runs now.
+     */
+    public function beforeCommit(callable $cb): void
+    {
+        $this->depth > 0 ? $this->beforeCommit[] = $cb : $cb();
     }
 
     public function afterCommit(callable $cb): void
@@ -597,6 +616,6 @@ final class Connection
     {
         $this->rollbackOnly = false;
         $this->touchedPosts = $this->touchedOptions = [];
-        $this->afterCommit = $this->onRollback = [];
+        $this->beforeCommit = $this->afterCommit = $this->onRollback = [];
     }
 }

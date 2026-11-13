@@ -107,6 +107,10 @@ final class Module
         if ($spec === null) {
             return;
         }
+        $store = db()->store();
+        if ($pks !== [] && $store instanceof \First\Wp\CompositeStore) {
+            \First\Live\Versions::touch($store->db, $collection); // the rows are published now
+        }
         $pk = $spec['primaryKey'] ?? 'id';
         foreach ($pks as $id) {
             self::written('update', $collection, [$pk => $id], null);

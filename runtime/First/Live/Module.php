@@ -1,0 +1,404 @@
+<?php
+
+declare(strict_types=1);
+
+namespace First\Live;
+
+use First\App;
+use First\Db;
+use First\FieldAccess;
+use First\HttpError;
+use First\Js;
+use First\Seam;
+use First\Viewer;
+use First\Wp\CompositeStore;
+use First\Wp\CoreAccess;
+use First\Wp\Plugin;
+
+/**
+ * Reactive queries without a push transport (docs/decisions/2026-11-13-reactive-queries.md).
+ *
+ * `POST /__first/api/v1/_live` takes the reads a page is subscribed to, each with the token of
+ * the answer the page last got, and answers every one with "not modified" or the fresh result:
+ *
+ *   { "queries": [{ "kind": "todos", "op": "list", "args": { "where": { "done": false } }, "token": "…" }] }
+ *   { "data": { "results": [{ "changed": false, "token": "…" }], "poll": { "minMs": 2000, "maxMs": 30000 } } }
+ *
+ * A read is the kind query API (`list`, `paginate`, `get`, `count`) run as the calling visitor, so
+ * the read rule, draft visibility and field masks decide every answer exactly as they do for
+ * `posts.list()`. "Not modified" is decided two ways:
+ *
+ * - by counter, without running the read, only when the visitor may read every row and field the
+ *   counter covers (see {@see scope()}). A counter the visitor can't account for is never looked at;
+ * - otherwise by running the read and comparing a hash of its result with the one in the token.
+ *
+ * Either way the answer is the same two shapes, with a new token every time, so neither a token
+ * nor an answer says that something changed which the visitor may not read.
+ */
+final class Module
+{
+    /** The facade path segment: `/__first/api/v1/_live`. Kind names start with a letter, so it is free. */
+    public const ROUTE = '_live';
+    /** Reads one request may carry. */
+    public const MAX_QUERIES = 20;
+    /** Longest request body, in bytes. */
+    public const MAX_BODY = 32_768;
+    /** Rows a subscribed `list` returns by default, and at most: the API's own list limits. */
+    public const LIST_LIMIT = 50;
+    public const MAX_LIST_LIMIT = 100;
+    /** Once the reads of one request have run this long, the rest answer `pending` and are asked again. */
+    public const BUDGET_MS = 1000;
+    /**
+     * A counter answers "not modified" only for this long after the read last ran. A write that
+     * never passed First's write path (another plugin's SQL or `update_post_meta`) moves no
+     * counter; this bounds how long such a write can stay unseen.
+     */
+    public const TRUST_SECONDS = 300;
+    /** What clients are told to poll at: the shortest and longest gap between two requests. */
+    public const POLL = ['minMs' => 2000, 'maxMs' => 30000];
+
+    private const OPS = ['list', 'paginate', 'get', 'count'];
+    private const ARGS = [
+        'list' => ['where', 'orderBy', 'limit', 'offset', 'with', 'search', 'locale'],
+        'paginate' => ['where', 'orderBy', 'limit', 'cursor', 'with', 'search', 'locale'],
+        'get' => ['with', 'locale'],
+        'count' => ['where', 'search', 'locale'],
+    ];
+
+    public static function register(): void
+    {
+        Versions::register();
+    }
+
+    /**
+     * The facade's route.
+     *
+     * @return array{int, array<string, string>, string}
+     */
+    public static function serve(Plugin $plugin, string $method, string $body): array
+    {
+        App::allow($method, ['POST']);
+        if (strlen($body) > self::MAX_BODY) {
+            throw new HttpError(413, 'payload_too_large', 'A subscription request is at most ' . self::MAX_BODY . ' bytes');
+        }
+        try {
+            $input = Seam::container(Js::decodeJson(trim($body) === '' ? '{}' : $body));
+        } catch (\JsonException $e) {
+            throw new HttpError(400, 'invalid_json', 'Request body is not valid JSON: ' . $e->getMessage());
+        }
+        $queries = is_array($input) ? Seam::container($input['queries'] ?? null) : null;
+        if (!is_array($queries) || !array_is_list($queries) || $queries === []) {
+            throw HttpError::invalidInput('queries must be a non-empty list', '/queries');
+        }
+        if (count($queries) > self::MAX_QUERIES) {
+            throw HttpError::invalidInput('At most ' . self::MAX_QUERIES . ' queries per request', '/queries');
+        }
+        $viewer = CoreAccess::viewer() ?? throw new HttpError(403, 'suspended', 'This account is suspended');
+        $results = self::evaluate($plugin->app()->db, $viewer, $queries);
+        $poll = array_map('intval', array_intersect_key((array) apply_filters('first_live_poll', self::POLL), self::POLL) + self::POLL);
+
+        // Results are spliced in as the JSON their hash was taken of.
+        $parts = array_map(static function (array $r): string {
+            $json = $r['json'] ?? null;
+            unset($r['json'], $r['data']);
+            $head = (string) json_encode($r, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+            return $json === null ? $head : substr($head, 0, -1) . ',"data":' . $json . '}';
+        }, $results);
+
+        return [200, [
+            'Content-Type' => 'application/json; charset=utf-8',
+            'Cache-Control' => 'private, no-store',
+            'Vary' => 'Origin, Cookie, Authorization',
+        ], '{"data":{"results":[' . implode(',', $parts) . '],"poll":' . json_encode($poll) . '}}'];
+    }
+
+    /**
+     * Answers each subscribed read as $viewer. The seam for server code that renders live data
+     * (a page that embeds a read's first answer and its token, so the browser's first request is
+     * "not modified"): pass descriptors as plain arrays, without `token` for a first answer.
+     *
+     * One result per query, in order:
+     * - `['changed' => true, 'token' => string, 'data' => mixed, 'json' => string]`: the read's
+     *   result (`json` is `data` encoded, the form its hash was taken of);
+     * - `['changed' => false, 'token' => string]`: what the caller holds is current;
+     * - `['error' => array]`: the problem the read answers with (401, 403, 422, ...);
+     * - `['pending' => true]`: the request's time budget ran out first; ask again.
+     *
+     * @param list<mixed> $queries `['kind' => key, 'op' => 'list'|'paginate'|'get'|'count', 'args' => array, 'id' => int|string, 'token' => ?string]`
+     * @return list<array<string, mixed>>
+     */
+    public static function evaluate(Db $db, Viewer $viewer, array $queries, int $budgetMs = self::BUDGET_MS): array
+    {
+        return $db->current(static function () use ($db, $viewer, $queries, $budgetMs): array {
+            $store = $db->store();
+            if (!$store instanceof CompositeStore) {
+                throw new \LogicException('Reactive queries need the WordPress store');
+            }
+            $who = [$viewer->user['id'] ?? 0, $viewer->user['role'] ?? ''];
+            $plans = [];
+            $pairs = [];
+            foreach ($queries as $i => $query) {
+                try {
+                    $plan = self::plan($db, $viewer, $query, "/queries/$i");
+                } catch (HttpError $e) {
+                    $plans[$i] = ['error' => App::problem($e)];
+                    continue;
+                }
+                $plan['q'] = base64_encode(hash('sha256', (string) json_encode([$who, $plan['kind'], $plan['op'], $plan['id'], Js::jsonStringify($plan['args'])]), true));
+                $claims = Token::open($plan['token']);
+                $plan['held'] = is_array($claims) && ($claims['q'] ?? null) === $plan['q'] ? $claims : null;
+                foreach ($plan['scopes'] ?? [] as $kind => $scope) {
+                    $pairs["$kind\0$scope"] = [(string) $kind, $scope];
+                }
+                $plans[$i] = $plan;
+            }
+            // Every counter this request may look at, in one read, before any query runs: a write
+            // that commits meanwhile leaves the token behind, never ahead.
+            $versions = array_combine(array_keys($pairs), Versions::read($store->db, array_values($pairs)));
+            $now = intdiv(Js::now(), 1000);
+            $spent = 0.0;
+            $ran = 0;
+            $results = [];
+            foreach ($plans as $plan) {
+                if (isset($plan['error'])) {
+                    $results[] = ['error' => $plan['error']];
+                    continue;
+                }
+                $counters = null;
+                if ($plan['scopes'] !== null) {
+                    $counters = [];
+                    foreach ($plan['scopes'] as $kind => $scope) {
+                        $counters[] = [(string) $kind, $scope, $versions["$kind\0$scope"]];
+                    }
+                }
+                $held = $plan['held'];
+                if ($held !== null && $counters !== null && ($held['c'] ?? null) === $counters
+                    && is_int($held['t'] ?? null) && $held['t'] <= $now && $now - $held['t'] < self::TRUST_SECONDS) {
+                    $results[] = ['changed' => false, 'token' => Token::seal($held)];
+                    continue;
+                }
+                // The first read always runs, so every request makes progress.
+                if ($ran > 0 && $spent >= $budgetMs) {
+                    $results[] = ['pending' => true];
+                    continue;
+                }
+                $ran++;
+                $started = hrtime(true);
+                try {
+                    $data = self::run($db, $viewer, $plan);
+                } catch (HttpError | \First\JsError $e) {
+                    $results[] = ['error' => App::problem($e)];
+                    continue;
+                } finally {
+                    $spent += (hrtime(true) - $started) / 1e6;
+                }
+                $json = Js::jsonStringify($data) ?? 'null';
+                $hash = base64_encode(hash('sha256', $json, true));
+                $token = Token::seal(['q' => $plan['q'], 'c' => $counters, 'h' => $hash, 't' => $now]);
+                $results[] = $held !== null && ($held['h'] ?? null) === $hash
+                    ? ['changed' => false, 'token' => $token]
+                    : ['changed' => true, 'token' => $token, 'data' => $data, 'json' => $json];
+            }
+
+            return $results;
+        });
+    }
+
+    /**
+     * One descriptor, checked: its collection, operation and arguments, and the counters that may
+     * answer for it (null: none may, the read always runs).
+     *
+     * @return array{kind: string, collection: string, op: string, args: array, id: mixed, token: mixed, scopes: ?array<string, string>}
+     */
+    private static function plan(Db $db, Viewer $viewer, mixed $query, string $ptr): array
+    {
+        $query = Seam::container($query);
+        if (!is_array($query) || ($query !== [] && array_is_list($query))) {
+            throw HttpError::invalidInput('A query is an object: { kind, op, args }', $ptr);
+        }
+        foreach ($query as $key => $_) {
+            if (!in_array($key, ['kind', 'op', 'args', 'id', 'token'], true)) {
+                throw HttpError::invalidInput("Unknown query key '$key'", $ptr . HttpError::seg((string) $key));
+            }
+        }
+        $kind = $query['kind'] ?? null;
+        $collection = is_string($kind) ? self::collection($db, $kind) : null;
+        if ($collection === null) {
+            throw new HttpError(404, 'not_found', 'Unknown kind ' . (is_string($kind) ? "'$kind'" : ''), "$ptr/kind");
+        }
+        $op = $query['op'] ?? null;
+        if (!in_array($op, self::OPS, true)) {
+            throw HttpError::invalidInput('op must be one of ' . implode(', ', self::OPS), "$ptr/op");
+        }
+        $spec = $db->schema()->collection($collection);
+        if (!($spec['api'][$op === 'get' ? 'get' : 'list'] ?? false)) {
+            throw new HttpError(405, 'method_not_allowed', 'The ' . ($op === 'get' ? 'get' : 'list') . " operation is disabled for $kind", "$ptr/op");
+        }
+        $args = Seam::query($collection, $query['args'] ?? [], $db->schema());
+        if (!is_array($args) || ($args !== [] && array_is_list($args))) {
+            throw HttpError::invalidQuery('args must be an object', "$ptr/args");
+        }
+        $allowed = self::ARGS[$op];
+        $id = $query['id'] ?? null;
+        if ($op === 'get') {
+            // One row by id, or by a filter (`{ slug: "hello" }`).
+            if (is_int($id) || is_string($id)) {
+                if (isset($args['where'])) {
+                    throw HttpError::invalidQuery('get takes an id or a where filter, not both', "$ptr/args/where");
+                }
+            } elseif (isset($args['where'])) {
+                $allowed[] = 'where';
+                $id = null;
+            } else {
+                throw HttpError::invalidInput('get needs an id or a where filter', "$ptr/id");
+            }
+        } elseif ($id !== null) {
+            throw HttpError::invalidInput("$op takes no id", "$ptr/id");
+        }
+        foreach ($args as $key => $_) {
+            if (!in_array($key, $allowed, true)) {
+                throw HttpError::invalidQuery("Unknown query option '$key'", "$ptr/args" . HttpError::seg((string) $key));
+            }
+        }
+        if ($op === 'list' || $op === 'paginate') {
+            // The API's own limits (the facade's lists), so a subscribed page is the page `list()` returns.
+            $limit = $args['limit'] ?? self::LIST_LIMIT;
+            if (!is_int($limit) || $limit < 1) {
+                throw HttpError::invalidQuery('limit must be a positive integer', "$ptr/args/limit");
+            }
+            $args['limit'] = min($limit, self::MAX_LIST_LIMIT);
+        }
+        $scopes = [];
+        try {
+            self::dependencies($db, $viewer, $collection, $args, $scopes);
+        } catch (HttpError) {
+            $scopes = null; // the read itself answers (its 401, 403 or 422)
+        }
+
+        return ['kind' => (string) $kind, 'collection' => $collection, 'op' => $op, 'args' => $args, 'id' => $id, 'token' => $query['token'] ?? null, 'scopes' => $scopes];
+    }
+
+    /** The collection of a client schema key (`client.<key>`), or null. */
+    private static function collection(Db $db, string $key): ?string
+    {
+        foreach ($db->schema()->collections() as $name => $spec) {
+            if ((string) ($spec['key'] ?? $name) === $key) {
+                return (string) $name;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Fills $scopes with the counter of every kind the read depends on: its own, each kind `with`
+     * loads, each kind a relation filter in `where` looks into. Null as soon as one of them has no
+     * counter the viewer may be answered by.
+     *
+     * @param ?array<string, string> $scopes
+     */
+    private static function dependencies(Db $db, Viewer $viewer, string $collection, array $opts, ?array &$scopes): void
+    {
+        if ($scopes === null) {
+            return;
+        }
+        $spec = $db->schema()->collection($collection);
+        if (!isset($scopes[$collection])) {
+            $scope = self::scope($db, $viewer, $collection);
+            if ($scope === null) {
+                $scopes = null;
+
+                return;
+            }
+            $scopes[$collection] = $scope;
+        }
+        $relations = $spec['relations'] ?? [];
+        $with = $opts['with'] ?? [];
+        foreach (is_array($with) ? $with : [] as $name => $o) {
+            if ($o === false || $o === null) {
+                continue;
+            }
+            if (!isset($relations[$name])) {
+                $scopes = null; // a media or file column loaded in place: its rows have no counter
+
+                return;
+            }
+            self::dependencies($db, $viewer, $relations[$name]['collection'], is_array($o) ? $o : [], $scopes);
+        }
+        self::filterDependencies($db, $viewer, $collection, $opts['where'] ?? null, $scopes);
+    }
+
+    /** @param ?array<string, string> $scopes */
+    private static function filterDependencies(Db $db, Viewer $viewer, string $collection, mixed $where, ?array &$scopes): void
+    {
+        if (!is_array($where) || $scopes === null) {
+            return;
+        }
+        $spec = $db->schema()->collection($collection);
+        foreach ($where as $key => $value) {
+            $key = (string) $key;
+            if ($key === 'OR' || $key === 'AND') {
+                foreach (is_array($value) ? $value : [] as $part) {
+                    self::filterDependencies($db, $viewer, $collection, $part, $scopes);
+                }
+            } elseif ($key === 'NOT') {
+                self::filterDependencies($db, $viewer, $collection, $value, $scopes);
+            } elseif (!isset($spec['columns'][$key]) && isset($spec['relations'][$key])) {
+                self::dependencies($db, $viewer, $spec['relations'][$key]['collection'], is_array($value) ? ['where' => $value] : [], $scopes);
+            }
+        }
+    }
+
+    /**
+     * The counter that may answer "not modified" to $viewer for $collection, or null when none may.
+     *
+     * A counter moves on writes to any row it covers, in any field. So it may answer only a viewer
+     * who may read all of that: `all` when the viewer reads every row, `published` when the
+     * viewer reads exactly the published rows; and never when a field may be hidden from the
+     * viewer, or for a kind WordPress writes without First's write path (users, the built-ins).
+     * Throws the read's own 401/403 when the rule refuses the viewer.
+     */
+    private static function scope(Db $db, Viewer $viewer, string $collection): ?string
+    {
+        $schema = $db->schema();
+        $spec = $schema->collection($collection);
+        $guards = $db->readScope($collection, $viewer);
+        if ($collection === ($schema->auth()['collection'] ?? null) || ($spec['builtin'] ?? null) !== null) {
+            return null;
+        }
+        foreach ($spec['columns'] as $def) {
+            if (FieldAccess::mayHide($def, $viewer)) {
+                return null;
+            }
+        }
+
+        return match ($guards) {
+            [] => Versions::ALL,
+            [['status' => 'published']] => Versions::PUBLISHED,
+            default => null,
+        };
+    }
+
+    /** The read, through the kind query API as the visitor (Seam::kindList and its siblings). */
+    private static function run(Db $db, Viewer $viewer, array $plan): mixed
+    {
+        $collection = $plan['collection'];
+        $args = $plan['args'];
+
+        return $db->transaction(static function () use ($db, $viewer, $plan, $collection, $args): mixed {
+            $previous = $db->actor();
+            $db->setActor($viewer->user);
+            try {
+                return Seam::asVisitor($viewer, static fn (): mixed => match ($plan['op']) {
+                    'list' => Seam::kindList($collection, $args, false),
+                    'paginate' => Seam::kindPaginate($collection, $args, false),
+                    'count' => Seam::kindCount($collection, $args, false),
+                    'get' => Seam::kindGet($collection, $plan['id'] !== null ? ['id' => $plan['id']] : ['where' => $args['where']], array_diff_key($args, ['where' => true]), false),
+                });
+            } finally {
+                $db->setActor($previous);
+            }
+        });
+    }
+}

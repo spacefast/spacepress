@@ -344,6 +344,14 @@ is never refused.
 
 ### Upgrading authoring
 
+Storage is chosen only by the builder: `collection()` is always WordPress
+posts and `table()` is always a SQL table. A collection that asked for table
+storage with `editor: false` is written as `table()`; `collection()` refuses
+the option at its location. The rows of a site that deployed such a collection
+stay in the table they are in. Bind the name as below and the change is a
+rename of the declaration: `first build` writes no migration, so nothing is
+moved or dropped.
+
 Replace named builders with unnamed `collection()` or `table()` and register
 under `collections` or `tables`. Keep the logical keys, existing physical storage
 and committed migration snapshots. The snapshot format and runtime storage
@@ -699,6 +707,8 @@ the live rows before it runs any of them:
 | A field becomes required with `.default(v)` | rows without a value get `v`, then it applies |
 | A field becomes required, no default, and rows lack it | refused: `required_field_missing` with the count |
 | A kind or field is removed and holds rows | refused: `drop_has_rows` with the count, until the deploy passes `--drop=name=rows` |
+| A `table()` that holds rows is declared with `collection()` | refused: `drop_has_rows` with the count. Storage follows the builder, so the build plans the table's drop and moves no rows. To keep the rows, don't pass `--drop`: delete the new, undeployed migration file, restore `snapshot.json` from the last deployed build (`git checkout`), declare `table()` again and build; no migration is written. Building `table()` on top of the drop instead writes a second migration that recreates the table, and the drop before it is still refused |
+| A `collection()` that holds posts is declared with `table()` | applies: the build creates an empty SQL table and warns. The posts stay in `wp_posts` and the app no longer reads them; nothing moves them |
 | A field's type or length narrows (`.max(100)`, `.unique()`, text to integer, ...) and values wouldn't fit | refused: `value_does_not_fit` with the count; MySQL would truncate or convert them |
 | `--drop=name=rows` doesn't match the live count | refused: `drop_count_mismatch` with the live count |
 | A table the app didn't create (`existingTable`) loses, renames or retypes a field, or loses its kind | refused: `drop_adopted_table`, even when empty, until the deploy passes `--drop` |

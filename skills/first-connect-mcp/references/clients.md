@@ -3,23 +3,20 @@
 The endpoint is `<site>/wp-json/mcp/first-<app>`. Every client below sends the same
 `Authorization` header, read from the environment.
 
-## Create an application password
+## Create a scoped credential
 
-On a hosted WordPress site, use HTTPS. Sign in to WordPress, open **Users →
-Profile → Application Passwords**, and create a password for your agent. Use a
-separate account with the role and data access the agent needs.
-
-For a disposable local Studio site, create one with WP-CLI:
+On the site, as a user with the least role that works:
 
 ```sh
-first wp user application-password create admin my-agent --porcelain
+first identity agent add editor --name=my-agent            # read-only, no personal data
+first identity agent add editor --name=my-agent --write    # may also create, update and delete
+first identity agent list editor
+first identity agent revoke editor <id>
 ```
 
-The local site must be running. `--site <dir>` names another project's dev site.
-Use `username:application-password` for HTTP Basic auth.
-An application password is different from the WordPress login password and the
-first-identity browser access token. Revoke it from the same profile page when
-it is no longer needed.
+The password is printed once. On a hosted site the same choices are on **Users → Profile →
+Application Passwords**, over HTTPS. `--site <dir | @alias>` names another site. Use
+`username:application-password` for HTTP Basic auth.
 
 Build the Authorization header locally, without putting the password in shell
 history:

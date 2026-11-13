@@ -4606,3 +4606,144 @@ fn was_renames_only_what_a_table_stores() {
         "{sql}"
     );
 }
+
+/// The OpenAPI document and the Abilities describe one value one way. `src/json_schema.rs` is the
+/// compiler's copy of `Wp\Abilities\JsonSchema`, and this runs both: for every kind, global and
+/// action of an app, the schema in `first/_generated/openapi.json` is the one the registered
+/// Ability publishes (a row is the `-get` output, a create input the `-create` input, a patch the
+/// `-update` input's `patch`). The apps cover every field type, a users kind, localized kinds and
+/// relations.
+#[test]
+fn openapi_schemas_are_the_registered_ability_schemas() {
+    for source in ["tests/fixtures/openapi", "examples/blog"] {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("app");
+        copy_dir(&root().join(source), &project);
+        let _ = std::fs::remove_dir_all(project.join(".first"));
+        let content = build_wp(&project);
+        let program = first::loader::load(&project.join("first.config.ts")).unwrap();
+        let built =
+            first::pipeline::build(&project, &program, || Ok(first::pipeline::Previous::none()), |_| None).unwrap();
+        let out = Command::new("php")
+            .args(["-d", "memory_limit=512M"])
+            .arg(root().join("tests/php/wp.php"))
+            .arg("eval")
+            .arg(&content)
+            .arg(
+                r#"
+                $out = [];
+                foreach (\First\Wp\Abilities\Register::operations() as $op) {
+                    $out[$op['name']] = ['input' => $op['input'], 'output' => $op['output']];
+                }
+                echo json_encode($out), "\n";
+                "#,
+            )
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let registered: Value =
+            serde_json::from_str(String::from_utf8_lossy(&out.stdout).lines().next_back().unwrap()).unwrap();
+        // An Ability's input also says `default: []`, so that core accepts a call with no input; that
+        // is about the call, not the value.
+        let input = |name: &str| {
+            let mut schema = registered[name]["input"].clone();
+            assert!(schema.is_object(), "{source}: no ability {name}");
+            schema.as_object_mut().unwrap().remove("default");
+            schema
+        };
+        let schema = &built.schema;
+        let components = &built.openapi["components"]["schemas"];
+        let app = first::wordpress::abilities::kebab(&schema.name);
+        let kebab = first::wordpress::abilities::kebab;
+        let mut compared = 0;
+        for c in schema.collections.values() {
+            let k = kebab(&c.table);
+            let name = first::client::type_name(&c.key);
+            if c.api.get {
+                assert_eq!(
+                    first::json_schema::row(c),
+                    registered[format!("{app}/{k}-get")]["output"],
+                    "{source}: the row of {}",
+                    c.table
+                );
+                // The document's row is that schema; it only adds notes and the `with` relations.
+                for (field, published) in first::json_schema::row(c)["properties"].as_object().unwrap() {
+                    let mut documented = components[&name]["properties"][field].clone();
+                    if c.relations.contains_key(field) {
+                        documented = documented["anyOf"][0].clone();
+                    }
+                    let documented = documented.as_object_mut().unwrap();
+                    documented.remove("description");
+                    documented.remove("x-first-access");
+                    assert_eq!(
+                        &Value::Object(documented.clone()),
+                        published,
+                        "{source}: {}.{field}",
+                        c.table
+                    );
+                }
+                compared += 1;
+            }
+            if c.api.create {
+                assert_eq!(
+                    components[format!("{name}Insert")],
+                    input(&format!("{app}/{k}-create")),
+                    "{source}: {name}Insert"
+                );
+                compared += 1;
+            }
+            if c.api.update {
+                assert_eq!(
+                    components[format!("{name}Patch")],
+                    registered[format!("{app}/{k}-update")]["input"]["properties"]["patch"],
+                    "{source}: {name}Patch"
+                );
+                compared += 1;
+            }
+        }
+        for key in schema.globals.keys() {
+            let k = kebab(key);
+            // The document's own operations for the global, as a client reads them.
+            let path = &built.openapi["paths"][format!("/{key}")];
+            let resolve = |schema: &Value| -> Value {
+                match schema["$ref"].as_str() {
+                    Some(reference) => built
+                        .openapi
+                        .pointer(reference.trim_start_matches('#'))
+                        .unwrap()
+                        .clone(),
+                    None => schema.clone(),
+                }
+            };
+            assert_eq!(
+                resolve(
+                    &path["get"]["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["data"]
+                ),
+                registered[format!("{app}/global-{k}-get")]["output"],
+                "{source}: the global {key}"
+            );
+            assert_eq!(
+                resolve(&path["patch"]["requestBody"]["content"]["application/json"]["schema"]),
+                input(&format!("{app}/global-{k}-update")),
+                "{source}: the patch of the global {key}"
+            );
+            compared += 2;
+        }
+        for action in schema.actions.values() {
+            assert_eq!(
+                built.openapi["paths"][format!("/actions/{}", action.name)]["post"]["requestBody"]["content"]["application/json"]
+                    ["schema"],
+                input(&format!("{app}/{}", kebab(&action.name))),
+                "{source}: the input of the action {}",
+                action.name
+            );
+            compared += 1;
+        }
+        assert!(compared >= 10, "{source}: compared {compared} schemas");
+    }
+}

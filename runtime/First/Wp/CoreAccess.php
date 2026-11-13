@@ -479,6 +479,8 @@ final class CoreAccess
         if ($protected || $type !== 'post' || !is_string($key)) {
             return $protected;
         }
+        // Compared as the database matches keys: its collation ignores letter case and accents.
+        $key = strtolower(remove_accents($key));
         foreach (self::postBacked() as $spec) {
             if (str_starts_with($key, $spec['wp']['metaPrefix']) || str_starts_with($key, '_' . $spec['wp']['metaPrefix'])) {
                 return true;

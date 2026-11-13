@@ -710,12 +710,12 @@ eq('CLI runs in a transaction', [$code, $out['error']['code'] ?? null, $db->find
 eq('CLI action', [$code, $out['data']['qty'] ?? null], [0, 7]);
 eq('CLI usage error', $cli('frobnicate')[0], 1);
 
-// ================================================================ REST: the WordPress route
+// ================================================================ HTTP: First's API on WordPress
 
-// Through the web server (php -S on this site), as a client sees it: /wp-json/first/v1 answers with
+// Through the web server (php -S on this site), as a client sees it: /__first/api/v1 answers with
 // First's envelopes, problem documents and headers.
 $port = $wp->startServer();
-$base = "http://127.0.0.1:$port/wp-json/first/v1";
+$base = "http://127.0.0.1:$port/__first/api/v1";
 
 /** @return array{status: int, headers: array<string, string>, body: string, json: mixed} */
 function http(string $method, string $path, mixed $body = null, ?string $raw = null, array $headers = []): array
@@ -756,11 +756,11 @@ $isProblem = function (string $label, array $r, int $status, string $code, ?stri
     );
 };
 
-$r = http('GET', '/_schema');
-check('GET /_schema', $r['status'] === 200 && $r['json']['data']['collections']['items']['columns']['qty']['type'] === 'integer'
+$r = http('GET', '');
+check('GET /__first/api/v1 (the schema)', $r['status'] === 200 && $r['json']['data']['kinds']['items']['columns']['qty']['type'] === 'integer'
     && isset($r['json']['data']['actions']['restock']['input']['amount']), $r);
 check('schema exposes no function names', !str_contains($r['body'], '__') && !str_contains($r['body'], 'hooks') && !str_contains($r['body'], 'handler'), $r['body']);
-eq('the runtime reports the WordPress platform in /_schema', [$r['json']['data']['runtime']['wp']['database']['kind'], $r['json']['data']['runtime']['wp']['incompatibleTables']], ['sqlite', []]);
+eq('the runtime reports the WordPress platform in the schema', [$r['json']['data']['runtime']['wp']['database']['kind'], $r['json']['data']['runtime']['wp']['incompatibleTables']], ['sqlite', []]);
 
 $r = http('POST', '/items', ['name' => 'widget', 'price' => 2.0, 'locationId' => $garage['id']]);
 $widget = $r['json']['data'] ?? [];
@@ -780,9 +780,8 @@ $isProblem('GET missing id', http('GET', '/items/999999'), 404, 'not_found');
 $isProblem('GET non-integer id', http('GET', '/items/abc'), 404, 'not_found');
 $isProblem('unknown collection', http('GET', '/widgets'), 404, 'not_found');
 
-// A malformed JSON body is refused by WordPress's REST server before First runs (rest_invalid_json);
-// in-process, First's own parser answers invalid_json.
-eq('invalid JSON body is refused by the REST server', [http('POST', '/items', raw: '{"name":')['status'], http('POST', '/items', raw: '{"name":')['json']['code'] ?? null], [400, 'rest_invalid_json']);
+// A malformed JSON body is refused before anything runs: the API's own parser answers invalid_json.
+eq('invalid JSON body is refused', [http('POST', '/items', raw: '{"name":')['status'], http('POST', '/items', raw: '{"name":')['json']['code'] ?? null], [400, 'invalid_json']);
 eq('… and by First itself', [$wp->call('POST', '/items', '{"name":')[0], $wp->call('POST', '/items', '{"name":')[1]['code'] ?? null], [400, 'invalid_json']);
 $isProblem('coercion error with pointer', http('POST', '/items', ['name' => 'x', 'qty' => 'lots']), 422, 'invalid_input', '/qty');
 $isProblem('missing required', http('POST', '/items', ['qty' => 1]), 422, 'invalid_input', '/name');

@@ -135,21 +135,17 @@ export default defineConfig({
         const user = ctx.user;
         if (!user) throw new HttpError(401, "unauthenticated", "Sign in first");
         const rows = await db.query.subscriptions.findMany({ where: { ownerId: user.id, status: "active" } });
+        // Totals by currency, then by category: a running sum per key, kept as a list to keep order.
         const currencies: { currency: string; amount: number; categories: { category: string; amount: number }[] }[] = [];
         for (const row of rows) {
-          let total = currencies.find((entry) => entry.currency === row.currency);
-          if (!total) {
-            total = { currency: row.currency, amount: 0, categories: [] };
-            currencies.push(total);
-          }
           const amount = monthlyAmount(row.amount, row.cycle);
+          const found = currencies.findIndex((entry) => entry.currency === row.currency);
+          const at = found >= 0 ? found : currencies.push({ currency: row.currency, amount: 0, categories: [] }) - 1;
+          const total = currencies[at]!;
           total.amount += amount;
-          let category = total.categories.find((entry) => entry.category === row.category);
-          if (!category) {
-            category = { category: row.category, amount: 0 };
-            total.categories.push(category);
-          }
-          category.amount += amount;
+          const index = total.categories.findIndex((entry) => entry.category === row.category);
+          if (index >= 0) total.categories[index]!.amount += amount;
+          else total.categories.push({ category: row.category, amount });
         }
         return { currencies: currencies.map((total) => ({
           currency: total.currency, amount: Math.round(total.amount),

@@ -273,6 +273,8 @@ pub const RESERVED_TYPE_NAMES: &[&str] = &[
     "StatusQuery",
     "LocaleQuery",
     "ListQuery",
+    "Query",
+    "ReadCall",
     "CollectionClient",
     "MediaQuery",
     "MediaClient",

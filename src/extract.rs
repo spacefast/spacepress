@@ -3055,6 +3055,13 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
     }
     for c in out.schema.collections.values().filter(|c| c.sync.is_some()) {
         for col in c.columns.values() {
+            if col.ty == ColType::RefList {
+                return Err(Diag::new(
+                    out.collections.iter().find(|b| b.table() == c.table).unwrap().columns[&col.name].span,
+                    format!("`{}` is a `ref().many()` list, which sync can't carry yet", col.name),
+                )
+                .help("leave the list off synced kinds, or turn sync off for this kind"));
+            }
             if let Some(r) = &col.references
                 && !out.schema.collections[&r.collection].uid
             {

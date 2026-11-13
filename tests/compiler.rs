@@ -209,6 +209,11 @@ fn replaced_field_forms_name_their_replacement() {
             "first/schema.ts:3:61",
         ),
         (
+            "reject-ref-many-sync",
+            "`tags` is a `ref().many()` list, which sync can't carry yet",
+            "first/schema.ts:3:56",
+        ),
+        (
             "reject-ref-many-input",
             "`ref()` isn't allowed on an action input (`ids`)",
             "first.config.ts:3:88",

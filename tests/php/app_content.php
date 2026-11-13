@@ -7,7 +7,7 @@ declare(strict_types=1);
  * app-router fixture as built, then two later builds of it (files changed, removed, added, and
  * taken away from visitors) installed over it in turn. Prints one JSON object: label => observed.
  *
- *   FIRST_WP_THEMES=1 php tests/php/app_content.php <wp-content dir> <second build's> <third build's>
+ *   FIRST_WP_THEMES=1 php tests/php/app_content.php <wp-content dir> <second build's> <third build's> <fourth build's>
  */
 
 require __DIR__ . '/wp.php';
@@ -105,14 +105,14 @@ $public = static fn (): string => implode("\n", array_map(static fn (string $pat
 $out = [];
 // ---- the first build: each page.md is a Page, rendered inside the route's layouts.
 $out['guide'] = page(fetch("$url/guide"));
-$out['guide stored'] = $stored('(site)/guide');
+$out['guide stored'] = $stored('/guide');
 $out['guide twin'] = [fetch("$url/guide.md")['status'], fetch("$url/guide.md")['body'], fetch("$url/guide.md")['headers']['content-type'][0] ?? null];
 $out['guide twin link'] = $out['guide twin'] !== null ? (fetch("$url/guide")['headers']['link'] ?? []) : [];
 $out['colophon'] = page(fetch("$url/colophon"));
-$out['colophon stored'] = $stored('colophon');
+$out['colophon stored'] = $stored('/colophon');
 // A draft: the Page exists for its editors, and no anonymous surface shows it.
 $out['hidden'] = page(fetch("$url/hidden"));
-$out['hidden stored'] = $stored('hidden');
+$out['hidden stored'] = $stored('/hidden');
 $out['hidden as editor'] = page(fetch("$url/hidden", [$cookie('chief')]));
 $out['hidden as subscriber'] = page(fetch("$url/hidden", [$cookie('reader')]))['status'];
 $out['hidden twin'] = fetch("$url/hidden.md")['status'];
@@ -121,7 +121,7 @@ $out['hidden twin as editor'] = fetch("$url/hidden.md", [$cookie('chief')])['sta
 $terms = fetch("$url/account/terms");
 $out['terms anonymous'] = [$terms['status'], str_contains($terms['headers']['location'][0] ?? '', 'wp-login.php')];
 $out['terms subscriber'] = page(fetch("$url/account/terms", [$cookie('reader')]));
-$out['terms stored'] = $stored('account/terms');
+$out['terms stored'] = $stored('/account/terms');
 $out['terms twin'] = fetch("$url/account/terms.md", [$cookie('reader')])['status'];
 $leaks = $public();
 $out['leaks'] = array_values(array_filter(['launch is on the ninth', 'Unannounced', 'Not for visitors yet', 'house rules', 'Member terms'], static fn (string $needle): bool => str_contains($leaks, $needle)));
@@ -181,19 +181,19 @@ $out['holder'] = [trim((string) fgets($pipes[1]))];
 $site->startServer();
 $url = $site->url();
 $during = fetch("$url/news");
-$out['while locked'] = ['news' => $during['status'], 'news stored' => $stored('news'), 'colophon stored' => $stored('colophon')['content'] ?? null];
+$out['while locked'] = ['news' => $during['status'], 'news stored' => $stored('/news'), 'colophon stored' => $stored('/colophon')['content'] ?? null];
 fwrite($pipes[0], "continue\n");
 $out['holder'][] = trim((string) fgets($pipes[1]));
 $out['holder'][] = proc_close($holder);
 $out['second colophon'] = page(fetch("$url/colophon"));
-$out['second colophon stored'] = $stored('colophon');
+$out['second colophon stored'] = $stored('/colophon');
 $out['second news'] = page(fetch("$url/news"));
-$out['second news stored'] = $stored('news');
+$out['second news stored'] = $stored('/news');
 // The editor's version wins over a changed file.
 $out['second guide'] = page(fetch("$url/guide"));
 // A removed page.md leaves its Page on the site, and its URL is no longer the app's.
 $out['second hidden'] = page(fetch("$url/hidden"))['status'];
-$out['second hidden stored'] = $stored('hidden');
+$out['second hidden stored'] = $stored('/hidden');
 // ---- the third build takes two pages away from visitors: the guide becomes a draft, and the
 // colophon moves under the account layout's guard. The site has lost its record of the Pages.
 $edit('chief', ['ID' => (int) $out['second colophon stored']['id'], 'post_content' => "<!-- wp:paragraph -->\n<p>Kept by the site.</p>\n<!-- /wp:paragraph -->"]);
@@ -203,14 +203,30 @@ $site->startServer();
 $url = $site->url();
 $out['third guide'] = [page(fetch("$url/guide"))['status'], fetch("$url/guide.md")['status']];
 // The editor's text is still the Page's; only its status followed the file.
-$out['third guide stored'] = $stored('(site)/guide');
+$out['third guide stored'] = $stored('/guide');
 $out['third colophon anonymous'] = fetch("$url/account/colophon")['status'];
 $out['third colophon subscriber'] = page(fetch("$url/account/colophon", [$cookie('reader')]));
-$out['third colophon stored'] = $stored('account/colophon');
+$out['third colophon stored'] = $stored('/account/colophon');
 // The route moved, so its Page is a new one; the old one stays where WordPress has it.
-$out['third old colophon'] = $stored('colophon');
+$out['third old colophon'] = $stored('/colophon');
 $leaks = $public();
 $out['third leaks'] = array_values(array_filter(['Edited in the block editor', 'Field guide, revised', 'Members only colophon'], static fn (string $needle): bool => str_contains($leaks, $needle)));
+// The third build keeps hidden's draft-to-publish story: an editor published the draft guide
+// page by hand after the file said draft, and the next file change must not unpublish it again.
+$guideId = (int) $out['third guide stored']['id'];
+$edit('chief', ['ID' => $guideId, 'post_status' => 'publish']);
+wp_cache_flush();
+$out['third record'] = get_option('first_approuter_content')['pages']['/guide']['status'] ?? null;
+$install($argv[4]);
+$site->startServer();
+$url = $site->url();
+$out['fourth guide'] = page(fetch("$url/guide"))['status'];
+$out['fourth guide stored'] = $stored('/guide');
+// WordPress's own address for a page.md Page never takes over a route the app serves: the
+// colophon's old Page has the slug `colophon`, and /colophon is now a page.tsx route.
+$out['fourth colophon route'] = page(fetch("$url/colophon"));
+// A query string through WordPress's own address arrives unslashed at the route.
+$out['fourth by id'] = fetch("$url/?page_id=$guideId&q=it%27s")['headers']['location'][0] ?? null;
 wp_cache_flush();
 $out['pages'] = array_map('intval', $GLOBALS['wpdb']->get_col("SELECT COUNT(*) FROM {$GLOBALS['wpdb']->postmeta} WHERE meta_key = '_first_route' GROUP BY meta_value"));
 

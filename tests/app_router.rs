@@ -277,16 +277,44 @@ fn page_md_is_a_wordpress_page() {
     )
     .unwrap();
     build(&third);
+    // A fourth: the guide, still `status: draft`, moves to another route group (same URL) and
+    // gets a typo fixed; /colophon is now a page.tsx route.
+    let fourth = fixture("app-router", "content-fourth");
+    std::fs::remove_dir_all(fourth.join("first/app")).unwrap();
+    copy(&third.join("first/app"), &fourth.join("first/app"));
+    let app = fourth.join("first/app");
+    std::fs::create_dir_all(app.join("(docs)")).unwrap();
+    std::fs::rename(app.join("(site)/guide"), app.join("(docs)/guide")).unwrap();
+    let guide = app.join("(docs)/guide/page.md");
+    std::fs::write(
+        &guide,
+        std::fs::read_to_string(&guide)
+            .unwrap()
+            .replace("one per walk", "one per walk, again"),
+    )
+    .unwrap();
+    std::fs::create_dir_all(app.join("colophon")).unwrap();
+    std::fs::write(
+        app.join("colophon/page.tsx"),
+        "export default function Colophon() { return <h1>Colophon, now code</h1>; }\n",
+    )
+    .unwrap();
+    assert!(
+        std::fs::read_to_string(&guide).unwrap().contains("one per walk, again"),
+        "the fourth build changes the guide"
+    );
+    build(&fourth);
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/app_content.php"))
         .arg(project.join("first/dist/wp-content"))
         .arg(second.join("first/dist/wp-content"))
         .arg(third.join("first/dist/wp-content"))
+        .arg(fourth.join("first/dist/wp-content"))
         .env("FIRST_WP_THEMES", "1")
         .output()
         .unwrap();
-    for dir in [&project, &second, &third] {
+    for dir in [&project, &second, &third, &fourth] {
         let _ = std::fs::remove_dir_all(dir);
     }
     assert!(
@@ -476,7 +504,25 @@ fn page_md_is_a_wordpress_page() {
     assert_eq!(seen["while locked"]["news"], 404, "{}", seen["while locked"]);
     assert_eq!(seen["while locked"]["news stored"], serde_json::json!({ "count": 0 }));
     assert!(text(&seen["while locked"]["colophon stored"]).contains("Set in a system font."));
-    // Six routes over the three builds, one Page each.
+    // The fourth build: the guide page an editor published by hand stays published though its
+    // file still says draft and changed (only a page the file newly takes away is unpublished),
+    // and moving its file to another route group keeps the same Page.
+    // The record keeps what the last applied file said, so the next file is compared with it.
+    assert_eq!(seen["third record"], "draft");
+    assert_eq!(seen["fourth guide"], 200);
+    assert_eq!(seen["fourth guide stored"]["id"], seen["guide stored"]["id"]);
+    assert_eq!(seen["fourth guide stored"]["status"], "publish");
+    // WordPress's own address for the old colophon Page (slug `colophon`) never redirects away
+    // from the page.tsx route that serves /colophon now.
+    assert_eq!(seen["fourth colophon route"]["status"], 200);
+    assert!(text(&seen["fourth colophon route"]["body"]).contains("Colophon, now code"));
+    // A query string through WordPress's address arrives unslashed.
+    assert!(
+        text(&seen["fourth by id"]).ends_with("/guide?q=it%27s"),
+        "{}",
+        seen["fourth by id"]
+    );
+    // Six routes over the four builds, one Page each.
     assert_eq!(seen["pages"], serde_json::json!([1, 1, 1, 1, 1, 1]));
 }
 

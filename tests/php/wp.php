@@ -78,12 +78,8 @@ final class WpSite
         $dir = sys_get_temp_dir() . "/first-wp-$label-" . bin2hex(random_bytes(4));
         $site = new self($dir);
         // Whatever fails below (download, install, activation, boot), the directory and server go.
-        // So do they after a fatal error in the suite itself: WordPress's fatal handler ends in the
-        // wp_die handler load() installs, whose exit() skips every shutdown function registered
-        // after this one (wpSite()'s among them), and the php -S child would outlive the process.
         register_shutdown_function(static function () use ($site): void {
-            $fatal = in_array(error_get_last()['type'] ?? 0, [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true);
-            if ((!$site->loaded || $fatal) && getenv('FIRST_WP_KEEP') !== '1') {
+            if (!$site->loaded && getenv('FIRST_WP_KEEP') !== '1') {
                 $site->destroy();
             }
         });
@@ -292,9 +288,14 @@ final class WpSite
         // and a fatal error as text, not WordPress's "critical error" page.
         ini_set('display_errors', 'stderr');
         add_filter('wp_php_error_message', static fn (string $message, array $error): string => $error['message'] . ' in ' . $error['file'] . ':' . $error['line'], 10, 2);
-        add_filter('wp_die_handler', static fn () => static function (mixed $message): never {
+        // WordPress reports a fatal error through wp_die() with `exit => false`, from inside a
+        // shutdown function. Exiting there would skip every shutdown function registered later:
+        // the suite's own cleanup, so its php -S child and its site directory would stay behind.
+        add_filter('wp_die_handler', static fn () => static function (mixed $message, mixed $title = '', mixed $args = []): void {
             fwrite(STDERR, 'wp_die: ' . (is_string($message) ? $message : json_encode($message)) . "\n");
-            exit(255);
+            if (!is_array($args) || ($args['exit'] ?? true)) {
+                exit(255);
+            }
         });
         $plugin = \First\Wp\Runtime::plugin() ?? throw new RuntimeException('the First app did not boot: ' . $this->debugLog());
         if ($plugin->unavailable() !== null) {
@@ -359,6 +360,12 @@ final class WpSite
         }
 
         return $out;
+    }
+
+    /** The php -S child's process id, or null when no server runs. */
+    public function serverPid(): ?int
+    {
+        return $this->server === null ? null : (proc_get_status($this->server)['pid'] ?? null);
     }
 
     /** Whether the php -S child is still running. */

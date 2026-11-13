@@ -74,8 +74,8 @@ fn current(path: &str) -> Result<String, Diag> {
     // that carries either is refused rather than compiled into a site with no pages.
     if path == "zero/pages.json" || path.starts_with("pages/") {
         return Err(
-            failure("this bundle has TSX pages from the 0.3.0 pages renderer, which First no longer has").help(
-                "move the pages to first/app/ (docs/pages.md), then publish again with a client that captures First sources (`first sources`)",
+            failure("this bundle has TSX pages (pages/) rendered by the 0.3.0 compiler, which First can't serve").help(
+                "move each page to first/app/<path>/page.tsx, then publish again with a client that captures First sources (`first sources`)",
             ),
         );
     }

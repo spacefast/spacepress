@@ -20,6 +20,7 @@ final class Builtins
         'first.defineConfig' => null,
         'first.action' => null,
         'first.job' => null,
+        'first.route' => null,
         'first.env' => null,
         'first.files' => null,
         'first.relation' => null,

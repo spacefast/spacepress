@@ -105,11 +105,10 @@ final class Rev
         if (!is_string($expected) || $expected === '') {
             throw HttpError::invalidInput('_rev must be the token a read returned', '/' . self::FIELD);
         }
-        $current = self::encode($state, $staged);
-        if (hash_equals($current, $expected)) {
+        if (self::current($state, $expected, $staged)) {
             return;
         }
-        throw new StaleRevision($current, self::changed($collection, $id, self::decode($expected), $state, $staged, $viewer));
+        throw new StaleRevision(self::encode($state, $staged), self::changed($collection, $id, self::decode($expected), $state, $staged, $viewer));
     }
 
     /**
@@ -195,7 +194,13 @@ final class Rev
 
     // ================================================================ internals
 
-    /** @return ?array{id: int, modified: string, live: string, staged: ?string} */
+    /**
+     * The item as tokens describe it: `live`, a digest of the post row and its First meta, and the
+     * id of its newest revision (First writes one with every update, so it is the row as it was
+     * then); `staged`, a digest of the staged revision and its record, or null.
+     *
+     * @return ?array{id: int, live: string, revision: int, staged: ?string}
+     */
     private static function state(string $collection, int $id): ?array
     {
         $plugin = Plugin::instance();
@@ -205,7 +210,7 @@ final class Rev
         }
         $db = $plugin->connection();
         $wpdb = $db->wpdb();
-        $post = $db->run("SELECT ID, post_modified_gmt, post_status, post_name, post_title, post_content, post_date_gmt, post_password, post_author FROM `{$wpdb->posts}` WHERE ID = ?", [$id])[0] ?? null;
+        $post = $db->run("SELECT ID, post_modified_gmt, post_status, post_name, post_title, post_content, post_excerpt, post_date_gmt, post_password, post_author FROM `{$wpdb->posts}` WHERE ID = ?", [$id])[0] ?? null;
         if ($post === null) {
             return null;
         }
@@ -214,17 +219,23 @@ final class Rev
             "SELECT meta_key, meta_value FROM `{$wpdb->postmeta}` WHERE post_id = ? AND (meta_key LIKE ? OR meta_key LIKE ?) ORDER BY meta_key, meta_id",
             [$id, $prefix . '%', '\\_' . $prefix . '%'],
         );
+        $revision = $db->run(
+            "SELECT MAX(ID) AS id FROM `{$wpdb->posts}` WHERE post_parent = ? AND post_type = 'revision' AND post_name = ?",
+            [$id, $id . '-revision-v1'],
+        )[0]['id'] ?? null;
         $staged = $db->run(
-            "SELECT r.ID, r.post_modified_gmt, m.meta_value FROM `{$wpdb->posts}` r LEFT JOIN `{$wpdb->postmeta}` m ON m.post_id = r.ID AND m.meta_key = ?"
+            "SELECT r.ID, r.post_modified_gmt, r.post_title, r.post_content, m.meta_value FROM `{$wpdb->posts}` r LEFT JOIN `{$wpdb->postmeta}` m ON m.post_id = r.ID AND m.meta_key = ?"
             . " WHERE r.post_parent = ? AND r.post_type = 'revision' AND r.post_name = ? ORDER BY r.ID",
             [Staged::META, $id, WpPostStore::stagedName($id)],
         );
+        // A staged revision's fields change through its meta; its id, record and copy of the post cover a re-stage.
+        $stagedMeta = $staged === [] ? [] : $db->run("SELECT meta_key, meta_value FROM `{$wpdb->postmeta}` WHERE post_id = ? ORDER BY meta_key, meta_id", [(int) $staged[0]['ID']]);
 
         return [
             'id' => $id,
-            'modified' => (string) $post['post_modified_gmt'],
             'live' => self::digest([$post, $meta]),
-            'staged' => $staged === [] ? null : self::digest($staged),
+            'revision' => (int) ($revision ?? 0),
+            'staged' => $staged === [] ? null : self::digest([$staged, $stagedMeta]),
         ];
     }
 
@@ -233,59 +244,68 @@ final class Rev
         return substr(hash_hmac('sha256', (string) Js::jsonStringify($value), wp_salt('nonce')), 0, 22);
     }
 
-    /** [id, modified, live digest(, staged digest)]: the staged digest only in a staged token, and only when something is staged. */
+    /**
+     * An item token is `i`, the item, its newest revision and the live digest. A staged token is `s`
+     * and adds the staged digest (`-` when nothing is staged): with nothing staged, an item token is
+     * accepted where a staged one is expected, so the item's own `_rev` starts a stage.
+     */
     private static function encode(array $state, bool $staged): string
     {
-        $claim = [$state['id'], $state['modified'], $state['live']];
-        if ($staged && $state['staged'] !== null) {
-            $claim[] = $state['staged'];
+        $claim = [$staged ? 's' : 'i', $state['id'], $state['revision'], $state['live']];
+        if ($staged) {
+            $claim[] = $state['staged'] ?? '-';
         }
 
         return rtrim(strtr(base64_encode((string) json_encode($claim)), '+/', '-_'), '=');
     }
 
-    /** @return ?array{id: int, modified: string, live: string, staged: ?string} */
+    /** @return ?array{id: int, revision: int, live: string, staged: ?string} (`staged` false-y for an item token) */
     private static function decode(string $token): ?array
     {
         $claim = json_decode((string) base64_decode(strtr($token, '-_', '+/'), true), true);
-        if (!is_array($claim) || !in_array(count($claim), [3, 4], true) || !is_int($claim[0]) || !is_string($claim[1]) || !is_string($claim[2])
-            || (isset($claim[3]) && !is_string($claim[3]))) {
+        if (!is_array($claim) || !in_array($claim[0] ?? null, ['i', 's'], true) || count($claim) !== ($claim[0] === 's' ? 5 : 4)
+            || !is_int($claim[1]) || !is_int($claim[2]) || !is_string($claim[3]) || (isset($claim[4]) && !is_string($claim[4]))) {
             return null;
         }
 
-        return ['id' => $claim[0], 'modified' => $claim[1], 'live' => $claim[2], 'staged' => $claim[3] ?? null];
+        return ['id' => $claim[1], 'revision' => $claim[2], 'live' => $claim[3], 'staged' => $claim[0] === 's' ? ($claim[4] === '-' ? null : $claim[4]) : false];
+    }
+
+    /** Is $expected this item's current token: exactly, or an item token where a staged one is expected and nothing is staged? */
+    private static function current(array $state, string $expected, bool $staged): bool
+    {
+        if (hash_equals(self::encode($state, $staged), $expected)) {
+            return true;
+        }
+
+        return $staged && $state['staged'] === null && hash_equals(self::encode($state, false), $expected);
     }
 
     /**
      * What changed since the token was given out: the fields that differ between the item's
-     * revision at that time (First writes one on every update) and the item now, as $viewer may read
-     * both; and, for a staged token, whether the staged version changed. `fields` is null when the
-     * token's time has no revision to compare with (it never came from this item, or its history
-     * was pruned).
+     * revision the token was read at and the item now, as $viewer may read both (a field it may not
+     * read is never named, changed or not); and, for a staged token, whether the staged version
+     * changed. `fields` is null when that revision can't be read (the token isn't this item's, or
+     * its history was pruned).
      *
      * @return array{fields: ?list<string>, staged?: bool}
      */
     private static function changed(string $collection, int $id, ?array $then, array $now, bool $staged, ?Viewer $viewer): array
     {
-        $out = ['fields' => null] + ($staged ? ['staged' => $then === null || $then['staged'] !== $now['staged']] : []);
+        $out = ['fields' => null] + ($staged ? ['staged' => $then === null || ($then['staged'] === false ? $now['staged'] !== null : $then['staged'] !== $now['staged'])] : []);
         if ($then === null || $then['id'] !== $id) {
             return $out;
         }
         if ($then['live'] === $now['live']) {
             return ['fields' => []] + $out;
         }
-        $plugin = Plugin::instance() ?? throw new \LogicException('No First app');
-        $wpdb = $plugin->connection()->wpdb();
-        $rid = $plugin->connection()->run(
-            "SELECT ID FROM `{$wpdb->posts}` WHERE post_parent = ? AND post_type = 'revision' AND post_name LIKE ? AND post_date_gmt <= ? ORDER BY post_date_gmt DESC, ID DESC LIMIT 1",
-            [$id, $id . '-revision-v%', $then['modified']],
-        )[0]['ID'] ?? null;
-        if ($rid === null) {
+        if ($then['revision'] === 0) {
             return $out;
         }
+        $plugin = Plugin::instance() ?? throw new \LogicException('No First app');
         $db = $plugin->db();
         try {
-            $before = $db->revisionRow($collection, $id, (int) $rid);
+            $before = $db->revisionRow($collection, $id, $then['revision']);
         } catch (HttpError) {
             return $out;
         }

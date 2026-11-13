@@ -63,7 +63,7 @@ final class Model
             }
             $spec = $schema->collection($collection);
             if (!($spec['editor'] ?? true) || ($spec['wp'] ?? null) === null) {
-                throw self::refuse("$at/id", "collection $id is a table() in the new app; only post-backed collections keep WordPress revisions and authors");
+                throw self::refuse("$at/id", "collection $id is not post-backed in the new app (a table() or WordPress users); only post-backed collections keep WordPress revisions and authors");
             }
             if (($spec['primaryKey'] ?? null) !== 'id') {
                 // Post ids are kept; the new collection must read them back as its `id`.

@@ -892,11 +892,17 @@ fn collection_options(
     };
     for k in o.keys() {
         if !COLLECTION_OPTIONS.contains(&k.as_str()) {
-            let mut d = Diag::new(span(k), format!("collection() has no option `{k}`"));
+            let mut d = Diag::new(span(k), format!("{}() has no option `{k}`", c.kind.builder()));
             if k == "editor" {
-                d = d.help(
-                    "storage follows the builder: collection() is always WordPress posts; use table() for a SQL table",
-                );
+                d = d.help(match c.kind {
+                    StorageKind::Collection => {
+                        "storage follows the builder: collection() is always WordPress posts; use table() for a SQL table"
+                    }
+                    StorageKind::Table => "storage follows the builder: table() is always a SQL table; remove the option",
+                    StorageKind::UserProjection => {
+                        "storage follows the builder: userProjection() is always WordPress users; remove the option"
+                    }
+                });
             } else if let Some(s) = suggest(k, COLLECTION_OPTIONS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
             }

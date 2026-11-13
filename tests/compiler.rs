@@ -422,6 +422,11 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:15");
     rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:15");
     rejects(
+        "reject-reserved-search",
+        "\"search\" is reserved",
+        "first.config.ts:2:16",
+    );
+    rejects(
         "reject-post-type-length",
         "WordPress post types are limited to 20 characters and First prefixes `first_`",
         "first.config.ts:2:18",
@@ -1688,7 +1693,13 @@ fn blog_example_matches_the_frozen_schema_and_builds_the_plugin() {
             .output()
             .unwrap()
     };
-    assert_eq!(sync(&["--check"]).status.code(), Some(2));
+    let check = sync(&["--check"]);
+    assert_eq!(
+        check.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
     let first = sync(&[]);
     assert_eq!(
         first.status.code(),

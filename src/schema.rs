@@ -634,6 +634,8 @@ pub struct App {
     pub not_found: Option<AppRoute>,
     /// Route file (relative to `first/`) → its compiled exports.
     pub files: IndexMap<String, AppFile>,
+    /// Content-owned pages (`page.md`), by route id: what the site stores as a WordPress Page.
+    pub content: IndexMap<String, crate::content_page::Page>,
 }
 
 #[derive(Debug, Clone)]

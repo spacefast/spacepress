@@ -237,6 +237,7 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         routes: program.app.routes.iter().map(route).collect(),
         not_found: program.app.not_found.as_ref().map(route),
         files,
+        content: indexmap::IndexMap::new(),
     });
     Ok(())
 }

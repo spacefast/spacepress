@@ -406,6 +406,9 @@ pub fn render(schema: &Schema) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+        if !app.content.is_empty() {
+            out.push_str(&crate::content_page::schema_php(app));
+        }
         out.push_str("        'files' => [\n");
         for (path, f) in &app.files {
             let methods = f

@@ -106,6 +106,7 @@ final class Plugin
         Facade::register($this);
         HttpRoutes::register($this);
         AppRouter::register($this);
+        ContentPages::register($this);
         KindUrls::register($this);
         MarkdownTwins::register();
         Purges::register($this);

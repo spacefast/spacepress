@@ -137,10 +137,13 @@ pub enum Value {
     Job(Rc<ActionVal>),
     /// `route({ method, path, handler })`: read only from a 0.3.0 capture (`eval::legacy`).
     Route(Rc<ActionVal>),
-    /// `definePlugin({ name, hooks, actions, jobs, routes })`, registered in `defineConfig({ use })`.
+    /// `definePlugin({ name, hooks, actions, jobs })`, registered in `defineConfig({ use })`.
     Plugin(Rc<ActionVal>),
     FileBucket(Rc<FileBucketVal>),
     Env(Rc<str>),
+    /// An imported file's URL (`import logo from "./compass.svg"`): its name below the app
+    /// plugin's assets folder. The site's URL is known only at request time.
+    Asset(Rc<str>),
     Global(Rc<GlobalVal>),
     Regex(Rc<str>, Rc<str>),
     /// A module-level `new Map(entries)` / `new Set(values)`: build-time contents in insertion
@@ -293,6 +296,8 @@ pub enum Builtin {
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,
     HttpError,
+    /// `ref(kind)` from "first".
+    Ref,
     /// `r.one.<key>` / `r.many.<key>` inside defineRelations.
     RelFn(RelKind, Rc<str>),
     // JavaScript globals
@@ -338,6 +343,8 @@ pub struct ColBuilder {
     pub default: Option<DefaultVal>,
     pub on_update: Option<DefaultVal>,
     pub references: Option<RefBuilder>,
+    /// `.reverse("name")` on a `ref()`: the name of the many relation on the target.
+    pub reverse: Option<String>,
     pub ts_type: Option<(TyAnn, usize, Span)>,
     pub access: Option<Value>,
     pub show_if: Option<Value>,
@@ -371,8 +378,19 @@ pub struct GlobalVal {
     pub span: Span,
 }
 
-/// `references(() => target, { onDelete, onUpdate })`, resolved after evaluation.
-pub type RefBuilder = (Rc<Closure>, Option<RefAction>, Option<RefAction>, Span);
+/// What a reference field points at, resolved after evaluation, with its delete and update actions
+/// and where it was written.
+pub type RefBuilder = (RefTarget, Option<RefAction>, Option<RefAction>, Span);
+
+#[derive(Debug, Clone)]
+pub enum RefTarget {
+    /// `ref(kind)`: the kind's `id`.
+    Kind(Value),
+    /// `ref(() => kind)`, for a kind declared later or the kind itself.
+    Thunk(Rc<Closure>),
+    /// `.references(() => kind.column)`: only the 0.3.0 reading (`eval::legacy`).
+    Column(Rc<Closure>),
+}
 
 #[derive(Debug, Clone)]
 pub enum DefaultVal {
@@ -581,6 +599,7 @@ impl Value {
             Value::Plugin(_) => "a plugin".into(),
             Value::FileBucket(_) => "a file bucket".into(),
             Value::Env(n) => format!("env({n:?})"),
+            Value::Asset(file) => format!("the URL of {file}"),
             Value::Global(g) => format!("global \"{}\"", g.name),
             Value::Regex(p, f) => format!("/{}/{f}", crate::builtins::regex_source(p)),
             Value::Coll(c) => (if c.set { "a Set" } else { "a Map" }).into(),

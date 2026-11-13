@@ -1,5 +1,5 @@
 import { action, db, defineConfig, HttpError, integer, job, timestamp, number } from "first";
-import { collections, tables, relations, feedings, stock, shoppingList } from "./first/lib/schema";
+import { collections, tables, feedings, stock, shoppingList } from "./first/lib/schema";
 import { DAY_MS, WINDOW_DAYS, ownerId, ownFood, ownPet, projection, queueStockCheck, usableStock } from "./first/lib/pantry";
 
 export default defineConfig({
@@ -7,7 +7,6 @@ export default defineConfig({
   admin: true,
   collections,
   tables,
-  relations,
   hooks: {
     pets: {
       beforeCreate(data, ctx) { data.ownerId = ownerId(ctx); data.name = data.name.trim(); },

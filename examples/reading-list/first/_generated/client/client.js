@@ -24,10 +24,10 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": { "book": {
+			"relations": { "bookId": {
 				"kind": "one",
 				"collection": "books",
-				"optional": true
+				"optional": false
 			} },
 			"media": [],
 			"mediaList": [],

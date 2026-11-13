@@ -791,7 +791,7 @@ fn original_zero_references_resolve_with_relations() {
     let read = run_php(
         &app,
         &format!(
-            "{REFERENCE_SEED} $r = $app->db->findFirst('tasks', ['where' => ['id' => $task['id']], 'with' => ['project' => true, 'helper' => true]]); echo json_encode([$r['project']['title'], $r['helper']['title']]);"
+            "{REFERENCE_SEED} $r = $app->db->findFirst('tasks', ['where' => ['id' => $task['id']], 'with' => ['projectId' => true, 'helperId' => true]]); echo json_encode([$r['projectId']['title'], $r['helperId']['title']]);"
         ),
         &Value::Null,
     );

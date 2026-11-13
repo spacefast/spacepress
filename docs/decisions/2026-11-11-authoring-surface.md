@@ -128,6 +128,15 @@ the earlier API becomes `.optional()`.
     can't be expressed as a reading into the current model goes to the owner. Delete the reading with
     `src/zero_bundle.rs`, once no released client uploads `zero.source-bundle.v1` and no host stores one.
 
+22. **`ref()` refers to `id` only.** `ref(kind)` takes a kind and nothing else; a reference to
+    another column (`integer().references(() => payroll.badge)`) is not part of the surface. Rulings 1
+    and 2 make the field the relation, the `with` key and the reverse name, all resolved through the
+    target's `id`, and a second join path would bring the hidden-key rule with it for a form no example,
+    ledger or converter output uses. A kind that links by a natural key stores the value as a plain
+    field and queries by it. The runtime keeps non-id references for 0.3.0 captures (ruling 21), and
+    its tests move to a fixture in that format. Cost: authors lose database-enforced natural-key
+    foreign keys; bringing them back is a new surface decision.
+
 ## Stored-schema changes the cutover accepts
 
 The criterion "the authoring rewrite produces no data migration" holds except for exactly these:

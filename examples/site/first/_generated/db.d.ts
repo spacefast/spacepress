@@ -67,18 +67,19 @@ type Graph = {
     'posts': Many<'posts'>;
   };
   'posts': {
-    'author': One<'authors', true>;
-    'subscribers': Many<'subscribers'>;
+    'authorId': One<'authors', true>;
     'comments': Many<'comments'>;
+    'subscribers': Many<'subscribers'>;
+    'announcements': Many<'announcements'>;
   };
   'comments': {
-    'post': One<'posts', false>;
+    'postId': One<'posts', false>;
   };
   'subscribers': {
-    'post': One<'posts', true>;
+    'postId': One<'posts', true>;
   };
   'announcements': {
-    'post': One<'posts', true>;
+    'postId': One<'posts', false>;
   };
   'members': {
   };

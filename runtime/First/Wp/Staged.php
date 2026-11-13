@@ -57,6 +57,10 @@ final class Staged
             }
         }
         add_action(self::CRON, [self::class, 'due'], 10, 1);
+        // A staged ability is listed only to a caller whose update rule may allow something.
+        add_filter('wp_get_abilities_item_include', [self::class, 'listed'], 10, 2);
+        add_filter('rest_request_after_callbacks', [self::class, 'abilityItem'], 10, 3);
+        add_filter('mcp_adapter_tools_list', [self::class, 'toolList'], 10, 1);
         // After a Markdown twin has answered (on `wp`): a twin never carries a staged version.
         add_action('template_redirect', [self::class, 'previewPage'], -10);
         if (!self::$registered) {
@@ -517,6 +521,78 @@ final class Staged
             header('X-Robots-Tag: noindex, nofollow');
             header('Referrer-Policy: no-referrer'); // the token is in this page's URL
         }
+    }
+
+    /**
+     * `wp_get_abilities_item_include`: core's abilities list shows every agent ability to anyone
+     * signed in. A staged ability (`<kind>-stage`, `-staged-*`) is left out for a caller whose update
+     * rule covers no row of that kind, before core pages the list, so a read-only caller never sees
+     * it offered. Running one is refused for them as it always was.
+     */
+    public static function listed(mixed $include, mixed $ability): mixed
+    {
+        return $include && $ability instanceof \WP_Ability && get_current_user_id() !== 0 ? self::offered($ability->get_name()) : $include;
+    }
+
+    /** One ability's description (`GET /wp-abilities/v1/abilities/<name>`): the same rule, as a 404. */
+    public static function abilityItem(mixed $response, mixed $handler, mixed $request): mixed
+    {
+        if ($response instanceof \WP_REST_Response && !$response->is_error() && $request instanceof \WP_REST_Request && $request->get_method() === 'GET'
+            && preg_match('#^/wp-abilities/v1/abilities/(.+)$#', $request->get_route(), $m) && !str_ends_with($m[1], '/run') && !self::offered(urldecode($m[1]))) {
+            return new \WP_Error('rest_ability_not_found', __('Ability not found.'), ['status' => 404]);
+        }
+
+        return $response;
+    }
+
+    /** `mcp_adapter_tools_list`: the same rule for the app's MCP tools. */
+    public static function toolList(mixed $tools): mixed
+    {
+        if (!is_array($tools)) {
+            return $tools;
+        }
+
+        return array_values(array_filter($tools, static function (mixed $tool): bool {
+            $name = is_object($tool) && method_exists($tool, 'getName') ? (string) $tool->getName() : '';
+            foreach (\First\Wp\Abilities\Register::operations() as $op) {
+                if (str_replace('/', '-', $op['name']) === $name) {
+                    return self::offered($op['name']);
+                }
+            }
+
+            return true;
+        }));
+    }
+
+    /** Is ability $name one this caller is offered: not staged, or on a kind whose update rule may allow them something? */
+    private static function offered(string $name): bool
+    {
+        foreach (\First\Wp\Abilities\Register::operations() as $op) {
+            if ($op['name'] !== $name) {
+                continue;
+            }
+            if (!in_array($op['op'], ['stage', 'staged-get', 'staged-compare', 'staged-promote', 'staged-discard', 'staged-preview'], true)) {
+                return true;
+            }
+            $plugin = Plugin::instance();
+            $collection = (string) ($op['first']['collection'] ?? '');
+            $viewer = CoreAccess::viewer();
+            if ($plugin === null || $viewer === null || $viewer->user === null || !$plugin->schema->hasCollection($collection)) {
+                return false;
+            }
+            $plugin->app(); // rule functions live in the app's functions.php
+            $spec = $plugin->schema->collection($collection);
+            $rule = \First\Access::collectionRules($spec)['update'];
+            try {
+                $r = $plugin->db()->current(static fn () => \First\Access::evaluate($rule, $viewer, 'update', null, $spec['columns'], $collection));
+            } catch (\Throwable) {
+                return true; // a rule that needs the write's data to answer: offered, and each run decides
+            }
+            // Offered when the rule allows outright, or its filter covers at least one row now.
+            return $r === true || (is_array($r) && CoreAccess::keys($collection, 'update', $viewer) !== []);
+        }
+
+        return true;
     }
 
     // ================================================================ internals

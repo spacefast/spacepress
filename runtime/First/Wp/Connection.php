@@ -348,6 +348,16 @@ final class Connection
 
             return (int) (preg_match("~\\A$regex\\z~usi", $str) === 1);
         }, 2);
+        // FIRST_WORD_PREFIX(text, term): 1 when a word of the text starts with the term, ignoring case
+        // as the MySQL collations do. The search index's match where MySQL would use FULLTEXT, which
+        // the translator accepts as a key but has no MATCH ... AGAINST for (Search\Storage::match).
+        $function('FIRST_WORD_PREFIX', static function (?string $text, ?string $term): ?int {
+            if ($text === null || $term === null) {
+                return null;
+            }
+
+            return (int) (preg_match('~(?<![\p{L}\p{N}])' . preg_quote($term, '~') . '~ui', $text) === 1);
+        }, 2);
         // JSON_OBJECTAGG(key, value): a JSON object over the group, NULL for an empty group (as MySQL).
         // Values keep their storage class: an integer column is a number, a text key that looks
         // numeric stays a string, as MySQL types them.

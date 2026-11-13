@@ -142,6 +142,10 @@ Each step is its own Ability, so a credential can be allowed to stage and not to
 `<app>/<kind>-stage`, `-staged-get`, `-staged-compare`, `-staged-promote`, `-staged-discard` and
 `-staged-preview`. First declares them separately and does not scope credentials itself.
 
+They are offered only to a caller whose update rule on the kind covers at least one row (or needs
+the write's data to answer): core's abilities list, one ability's description and the MCP tools
+list leave them out for anyone else, so a read-only caller never sees them.
+
 ## Limits
 
 - Post kinds only. `table()` kinds and globals have no staged versions.

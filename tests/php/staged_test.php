@@ -147,6 +147,7 @@ $public = static function () use ($url, $pid, $basic): array {
         'api item, subscriber' => fetch("$url/__first/api/v1/posts/$pid", [$basic('sub')])['body'],
         'api list' => fetch("$url/__first/api/v1/posts")['body'],
         'api search' => fetch("$url/__first/api/v1/posts?search=stagedmarker")['body'],
+        'site-wide search' => fetch("$url/__first/api/v1/search?q=stagedmarker")['body'],
         'api markdown' => fetch("$url/__first/api/v1/posts/$pid?format=md")['body'],
         'core item' => [$item['title'] ?? null, $item['content'] ?? null, $item['slug'] ?? null, $item['modified_gmt'] ?? null, $item['meta'] ?? null],
         'core item links' => [$item['_links']['version-history'] ?? null, $item['_links']['predecessor-version'] ?? null],
@@ -379,6 +380,44 @@ $names = array_values(array_filter(array_map(static fn ($a) => $a->get_name(), w
 sort($names);
 eq('each staged step is its own ability', $names, ['blog/posts-stage', 'blog/posts-staged-compare', 'blog/posts-staged-discard', 'blog/posts-staged-get', 'blog/posts-staged-preview', 'blog/posts-staged-promote']);
 eq('a table kind has none', wp_has_ability('blog/comments-stage'), false);
+// Who is offered them: core's abilities list, one ability's description and the MCP tools list show
+// a staged ability only to a caller whose update rule on the kind may allow something.
+$listed = static function (?string $as) use ($site): array {
+    $site->actAs($as);
+    try {
+        $response = rest_do_request(new \WP_REST_Request('GET', '/wp-abilities/v1/abilities'));
+        $one = rest_do_request(new \WP_REST_Request('GET', '/wp-abilities/v1/abilities/blog/authors-staged-promote'));
+
+        return [$response->get_status(), array_values(array_filter(array_column((array) $response->get_data(), 'name'), static fn (string $n) => str_contains($n, '-stage'))), $one->get_status()];
+    } finally {
+        wp_set_current_user(0);
+    }
+};
+[$code, $subscriber, $item] = $listed('sub');
+eq('a subscriber, whose update rule covers no row here, is offered no staged ability', [$code, $subscriber, $item], [200, [], 404]);
+[, $author] = $listed('alice');
+check('an author is offered the posts kind\'s, where their update rule covers their own posts', in_array('blog/posts-staged-promote', $author, true)
+    && !in_array('blog/authors-staged-promote', $author, true), $author);
+[, $editor, $item] = $listed('ed');
+check('an editor is offered the posts kind\'s staged abilities, each one by name',
+    count(array_intersect(['blog/posts-stage', 'blog/posts-staged-get', 'blog/posts-staged-compare', 'blog/posts-staged-promote', 'blog/posts-staged-discard', 'blog/posts-staged-preview'], $editor)) === 6, $editor);
+eq('… but not the admin-only authors kind\'s', [array_values(array_filter($editor, static fn (string $n) => str_starts_with($n, 'blog/authors-'))), $item], [[], 404]);
+[, $admin, $item] = $listed('admin');
+eq('an admin is offered the authors kind\'s too', [in_array('blog/authors-staged-promote', $admin, true), $item], [true, 200]);
+// The MCP adapter's own filter, as its tools/list runs it.
+$tools = static function (?string $as) use ($site): array {
+    $site->actAs($as);
+    try {
+        $all = array_map(static fn (string $n): object => new class (str_replace('/', '-', $n)) { public function __construct(private string $n) {} public function getName(): string { return $this->n; } },
+            array_column(\First\Wp\Abilities\Register::operations(), 'name'));
+
+        return array_values(array_filter(array_map(static fn (object $t): string => $t->getName(), apply_filters('mcp_adapter_tools_list', $all, null, null)), static fn (string $n) => str_contains($n, '-stage')));
+    } finally {
+        wp_set_current_user(0);
+    }
+};
+eq('the MCP tools list offers a subscriber no staged tool', $tools('sub'), []);
+check('… and an editor the posts kind\'s', in_array('blog-posts-staged-promote', $tools('ed'), true));
 $run = static function (string $ability, array $input, ?string $as) use ($site): mixed {
     $site->actAs($as);
     try {

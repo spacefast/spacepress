@@ -396,8 +396,6 @@ final class Plugin
         delete_option($this->refusalOption());
         IdentityBridge::provision();
         $this->backfillMembers();
-        // A kind whose searchable fields changed is re-indexed by a queued job, once the app runs.
-        add_action('init', static fn () => \First\Search\Index::reindexChanged(), PHP_INT_MAX);
         update_option($this->schemaOption(), $this->schemaHash(), false);
 
         return $applied;
@@ -408,6 +406,17 @@ final class Plugin
      * runtime update alone (same app build, older ledger) is therefore an upgrade too; the per-request
      * check costs one cached option read, plus one information_schema read the first time per process.
      */
+    /**
+     * Storage matches this build: nothing refused or held back, and every migration file of the build
+     * is in the ledger. A build whose migrations haven't all run (WP-CLI before `first migrate`, a
+     * refused or held-back build, a ledger rewound by hand) may name tables that don't exist yet.
+     * One ledger read: call it where something is about to change, not on every request.
+     */
+    public function migrated(): bool
+    {
+        return $this->unavailable() === null && $this->pendingMigrations() === [];
+    }
+
     private function current(bool $fresh = false): bool
     {
         if ($fresh) {

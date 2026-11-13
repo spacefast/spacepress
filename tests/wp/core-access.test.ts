@@ -364,13 +364,19 @@ test("a hidden reference leaves no link to embed, on the row and on its revision
 });
 
 test("search and slug can't probe a column hidden from the viewer", async () => {
-  first("insert", "dossier", JSON.stringify({ title: `Dossier ${run}`, body: `<p>codeword-${run}</p>` }));
+  const id = first("insert", "dossier", JSON.stringify({ title: `Dossier ${run}`, body: `<p>codeword-${run}</p>` }))[0].id;
+  // A search runs over the fields the reader may read (the search index, on MariaDB's FULLTEXT): a
+  // word only in the hidden content finds nothing, and is answered, not refused.
+  const total = async (query: string) => (await fetch(`${core}/first_dossier?${query}`)).headers.get("x-wp-total");
   const search = await http("GET", `${core}/first_dossier?search=codeword-${run}`);
-  assert.deepEqual([search.status, search.json.code], [403, "forbidden"]);
-  assert.equal((await http("GET", `${core}/first_dossier?search=0&search_columns=post_content`)).status, 403, `"0" is a search too`);
-  assert.equal((await http("GET", `${core}/first_dossier?search=Dossier%20${run}&search_columns=post_title`)).json.length, 1, "a title search is fine");
+  assert.deepEqual([search.status, search.json, await total(`search=codeword-${run}`)], [200, [], "0"], "the hidden content can't be found or counted by a visitor");
+  const byContent = await http("GET", `${core}/first_dossier?search=codeword-${run}&search_columns=post_content`);
+  assert.deepEqual([byContent.status, byContent.json], [200, []], "nor when the search names the content column");
+  const byTitle = await http("GET", `${core}/first_dossier?search=Dossier%20${run}`);
+  assert.deepEqual([byTitle.status, ids(byTitle), await total(`search=Dossier%20${run}`)], [200, [id], "1"], "the title is searchable for a visitor");
   assert.equal((await http("GET", `${core}/first_dossier?slug=dossier-${run}`)).status, 403);
-  assert.equal((await http("GET", `${core}/first_dossier?search=codeword-${run}`, { as: "admin" })).json.length, 1);
+  const admin = await http("GET", `${core}/first_dossier?search=codeword-${run}`, { as: "admin" });
+  assert.deepEqual([admin.status, ids(admin)], [200, [id]], "the admin, who reads the content, finds the row by it");
   const item = (await http("GET", `${core}/first_dossier?search=Dossier%20${run}&search_columns=post_title`)).json[0];
   assert.deepEqual(["content" in item, "slug" in item], [false, false], "content and slug are dropped from the item");
 });

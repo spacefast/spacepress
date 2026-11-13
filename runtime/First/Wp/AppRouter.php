@@ -62,6 +62,8 @@ final class AppRouter
     }
 
     private bool $serving = false;
+    /** @var list<string> the stylesheets of the route being rendered, linked by document() */
+    private array $styles = [];
     /** This response's `Cache-Control`: private unless serve() found it shareable. */
     private string $cacheControl = 'private, no-store, max-age=0';
 
@@ -285,6 +287,7 @@ final class AppRouter
     private function serve(array $route, array $params, Viewer $viewer, int $status): never
     {
         $this->plugin->app(); // the compiled page functions live in the app's functions.php
+        $this->styles = $route['styles'] ?? [];
         $page = $this->file($route['page']);
         $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
         try {
@@ -656,6 +659,7 @@ final class AppRouter
                 return $r;
             });
         }
+        \First\Assets::enqueue($this->styles);
         Navigation::enqueue(plugins_url('first/Render/client/router.js', Runtime::file()));
         \First\Islands::enqueue();
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'HEAD') {

@@ -135,10 +135,13 @@ pub enum Value {
     Relation(Rc<RelVal>),
     Action(Rc<ActionVal>),
     Job(Rc<ActionVal>),
-    /// `definePlugin({ name, hooks, actions, jobs, routes })`, registered in `defineConfig({ use })`.
+    /// `definePlugin({ name, hooks, actions, jobs })`, registered in `defineConfig({ use })`.
     Plugin(Rc<ActionVal>),
     FileBucket(Rc<FileBucketVal>),
     Env(Rc<str>),
+    /// An imported file's URL (`import logo from "./compass.svg"`): its name below the app
+    /// plugin's assets folder. The site's URL is known only at request time.
+    Asset(Rc<str>),
     Global(Rc<GlobalVal>),
     Regex(Rc<str>, Rc<str>),
     /// A module-level `new Map(entries)` / `new Set(values)`: build-time contents in insertion
@@ -576,6 +579,7 @@ impl Value {
             Value::Plugin(_) => "a plugin".into(),
             Value::FileBucket(_) => "a file bucket".into(),
             Value::Env(n) => format!("env({n:?})"),
+            Value::Asset(file) => format!("the URL of {file}"),
             Value::Global(g) => format!("global \"{}\"", g.name),
             Value::Regex(p, f) => format!("/{}/{f}", crate::builtins::regex_source(p)),
             Value::Coll(c) => (if c.set { "a Set" } else { "a Map" }).into(),

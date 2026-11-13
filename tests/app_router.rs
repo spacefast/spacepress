@@ -848,3 +848,69 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])
     );
 }
+
+/// Stylesheets and SVGs that pages, layouts and components import (docs/spec/tsx-to-php.md,
+/// "Accepted"), on WordPress over HTTP: each page links its layouts' and its own stylesheets once,
+/// in import order (the root layout's first), from the app plugin, with content-hashed names; a CSS
+/// module's classes are renamed `<stem>_<class>` on the element and in the served file, and an SVG
+/// import is its URL.
+#[test]
+fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
+    let project = fixture("app-assets", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_assets.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let files = |page: &str| -> Vec<String> {
+        seen[page]["links"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| {
+                assert_eq!(l["status"].as_i64(), Some(200), "{l}");
+                assert!(l["type"].as_str().unwrap().starts_with("text/css"), "{l}");
+                l["file"].as_str().unwrap().split('-').next().unwrap().to_string()
+            })
+            .collect()
+    };
+    // The layout's site.css first, then the page's module, then the client component's module.
+    assert_eq!(files("about"), ["site", "page", "counter"], "{seen}");
+    assert_eq!(files("plain"), ["site"], "{seen}");
+    let css = |page: &str, i: usize| seen[page]["links"][i]["css"].as_str().unwrap().to_string();
+    assert_eq!(
+        css("about", 0),
+        ":root { --ink: #1d2420; }\nbody { margin: 0; color: var(--ink); }\n.site { max-width: 48rem; }\n"
+    );
+    assert_eq!(
+        css("about", 1),
+        ".page_title { font-size: 2rem; }\n.page_card .page_title { color: #1f4d3a; }\n@media (min-width: 40rem) { .page_card { padding: 1rem; } }\n"
+    );
+    assert_eq!(
+        css("about", 2),
+        ".counter_button { border: 0; }\n.counter_on { background: #1f4d3a; }\n"
+    );
+    // The plain stylesheet's link is the same file on both pages.
+    assert_eq!(seen["about"]["links"][0]["file"], seen["plain"]["links"][0]["file"]);
+    assert_eq!(
+        seen["about"]["classes"],
+        serde_json::json!({ "div": ["site"], "section": ["page_card"], "h1": ["page_title"], "button": ["counter_button"] }),
+        "{seen}"
+    );
+    let image = &seen["about"]["images"][0];
+    assert_eq!(image["status"].as_i64(), Some(200), "{image}");
+    assert!(image["type"].as_str().unwrap().starts_with("image/svg+xml"), "{image}");
+    assert!(image["src"].as_str().unwrap().starts_with("compass-"), "{image}");
+    assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
+}

@@ -2899,6 +2899,9 @@ impl<'p> Evaluator<'p> {
                 ),
             },
             Builtin::Env => match arg(0) {
+                Value::Str(n) if crate::compile::reserved_env_name(&n) => {
+                    crate::compile::reserved_env_error(span, &n).map_err(Ctl::Err)
+                }
                 Value::Str(n) if regex::Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap().is_match(&n) => {
                     Ok(Value::Env(n))
                 }

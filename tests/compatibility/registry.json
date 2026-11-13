@@ -719,6 +719,14 @@
       "guidance": "Name the variable: process.env.NAME or process.env[\"NAME\"]. Computed names, iterating process.env and writes are refused, so request input cannot choose a server variable."
     },
     {
+      "id": "process-env-host",
+      "status": "refused",
+      "code": "F4001",
+      "fixture": "tests/fixtures/reject-process-env-host",
+      "message": "is a host setting, not an app variable",
+      "guidance": "Database credentials (DB_*), WordPress salts and keys, and request headers (HTTP_*, PHP_AUTH_*) are host settings. App code can't read them through process.env or env(), and the runtime answers undefined for them on every host. Give the app its own variable."
+    },
+    {
       "id": "process-members",
       "status": "refused",
       "code": "F4001",

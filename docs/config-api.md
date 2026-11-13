@@ -1385,6 +1385,12 @@ Handlers read the process environment with `process.env.NAME` or
 variable is unset; the process environment is read first, then a
 `wp-config.php` constant of that name.
 
+Host settings are never app variables. Names starting with `DB_` or `HTTP_`,
+WordPress's keys and salts (`AUTH_KEY` … `NONCE_SALT`, `WP_CACHE_KEY_SALT`) and
+the request credentials PHP-FPM exposes (`PHP_AUTH_USER`, `PHP_AUTH_PW`,
+`PHP_AUTH_DIGEST`, `AUTH_TYPE`, `REMOTE_USER`) are a build error in
+`process.env` and `env()`, and read as unset at runtime on every host.
+
 The name must be written out. A computed name (`process.env[key]`), iterating
 or spreading `process.env`, writing to it, and every other `process` member are
 compile errors, so request input can never choose a server variable. Reading

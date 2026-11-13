@@ -768,6 +768,14 @@ Name the variable: process.env.NAME or process.env["NAME"]. Computed names, iter
 
 [Evidence](../tests/fixtures/reject-process-env-dynamic)
 
+## process-env-host
+
+Status: **refused**. Diagnostic: `F4001`.
+
+Database credentials (DB_*), WordPress salts and keys, and request headers (HTTP_*, PHP_AUTH_*) are host settings. App code can't read them through process.env or env(), and the runtime answers undefined for them on every host. Give the app its own variable.
+
+[Evidence](../tests/fixtures/reject-process-env-host)
+
 ## process-members
 
 Status: **refused**. Diagnostic: `F4001`.

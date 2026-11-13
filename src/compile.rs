@@ -98,6 +98,38 @@ fn is_env_name(s: &str) -> bool {
         && chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
 }
 
+/// Host settings app code can't read: WordPress's database credentials and salts, and the request
+/// headers and credentials PHP-FPM exposes as environment variables. `First\Env::reserved` answers
+/// null for the same names at runtime.
+pub(crate) fn reserved_env_name(name: &str) -> bool {
+    const RESERVED: &[&str] = &[
+        "AUTH_KEY",
+        "SECURE_AUTH_KEY",
+        "LOGGED_IN_KEY",
+        "NONCE_KEY",
+        "AUTH_SALT",
+        "SECURE_AUTH_SALT",
+        "LOGGED_IN_SALT",
+        "NONCE_SALT",
+        "WP_CACHE_KEY_SALT",
+        "PHP_AUTH_USER",
+        "PHP_AUTH_PW",
+        "PHP_AUTH_DIGEST",
+        "AUTH_TYPE",
+        "REMOTE_USER",
+    ];
+    let upper = name.to_ascii_uppercase();
+    RESERVED.contains(&upper.as_str()) || ["DB_", "HTTP_"].iter().any(|p| upper.starts_with(p))
+}
+
+pub(crate) fn reserved_env_error<T>(span: Span, name: &str) -> Result<T> {
+    err_help(
+        span,
+        format!("`{name}` is a host setting, not an app variable"),
+        "database credentials, WordPress salts and request headers can't be read from app code; give the app its own variable",
+    )
+}
+
 const ATTRIBUTE_HELP: &str = "PHP objects carry only ordinary properties; read the value inside a function instead, or assign the property normally while the module runs";
 
 fn validate_captured_data(v: &Value, span: Span, seen: &mut HashSet<usize>) -> Result<()> {
@@ -4258,6 +4290,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Value::Asset(file) => Ok(Out::atom(format!("\\First\\Assets::url({})", php_str(file)), Ty::Str)),
             Value::Env(name) => {
+                if reserved_env_name(name) {
+                    return reserved_env_error(span, name);
+                }
                 self.uses("env", name.to_string(), span);
                 Ok(Out::atom(
                     format!("\\First\\Env::get({})", php_str(name)),

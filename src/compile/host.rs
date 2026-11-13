@@ -41,7 +41,12 @@ impl Compiler<'_, '_> {
                 }
                 self.uses("http", host.unwrap_or("*"), span);
             }
-            HostUse::EnvRead(name) => self.uses("env", name, span),
+            HostUse::EnvRead(name) => {
+                if reserved_env_name(name) {
+                    return reserved_env_error(span, name);
+                }
+                self.uses("env", name, span)
+            }
             // Hashing and random values reach nothing outside the handler; no capability.
             HostUse::Crypto(_) => {}
         }

@@ -15,6 +15,16 @@ pnpm check     # generated pages current, unit tests, links, browser tests, Play
 
 The examples the site features are listed in `lib/site-examples.ts`. Each one says how the site shows it in its own directory: `playground.json` (title, summary, the page Playground opens) and, if it has sample data, `playground-seed.php`. `pnpm showcase` also runs `first-pages build` for an example with `pages/`, and puts the rows of a synced collection's content files into its blueprint.
 
+## Parity suite
+
+`tests/parity/` holds what the site served when it was built with Blume, before it moved to First, and a browser suite that any build must pass. `inventory.json` lists every URL (each page's title, heading, description, section tab, sidebar, table of contents, previous and next, Markdown twin and social image; every redirect, Markdown file, `.mdx` source and static file; the sitemap and `llms.txt` entries). `inventory.mjs` wrote it from that build; it reads Blume's markup and is not run again. `parity.spec.ts` reads each URL as a reader or an agent would, by role, label and text, and also checks the header, footer, theme toggle, search, the narrow-screen menu, copy buttons, highlighting in both themes, callouts, cards, the six components in `lib/`, the REST reference, the playground, the tour and the example pages.
+
+```sh
+pnpm test:parity                                    # the build in dist/
+PARITY_DIST=/path/to/dist pnpm test:parity          # another build
+PARITY_BASE_URL=https://<site>/ pnpm test:parity    # a deployed site
+```
+
 ## Where each page comes from
 
 | Path | Source |

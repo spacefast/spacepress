@@ -452,14 +452,15 @@ final class Plugin
                 'show_in_rest' => true,
                 'rest_base' => $type,
                 'menu_icon' => 'dashicons-database',
-                'supports' => array_values(array_filter(['title', ($spec['content'] ?? null) !== null ? 'editor' : null, ($spec['revisions'] ?? false) ? 'revisions' : null, ($spec['comments'] ?? false) ? 'comments' : null, 'author', 'custom-fields'])),
+                'supports' => array_values(array_filter(['title', ($spec['content'] ?? null) !== null ? 'editor' : null, ($spec['revisions'] ?? false) ? 'revisions' : null, ($spec['comments'] ?? false) ? 'comments' : null, 'author', 'custom-fields', ($spec['hierarchical'] ?? false) ? 'page-attributes' : null])),
                 // Singular differs from plural so `edit_<type>` stays a primitive cap. Every cap of the type
                 // is answered from the collection's access rules (CoreAccess::mapMetaCap), not from roles.
                 'capability_type' => [$type . '_item', $type],
                 'capabilities' => ['create_posts' => 'create_' . $type],
                 'map_meta_cap' => true,
                 'rest_controller_class' => PostsController::class,
-                'hierarchical' => false,
+                // A hierarchical kind's items nest (`parent`, `order`), so the editor offers a parent and an order.
+                'hierarchical' => (bool) ($spec['hierarchical'] ?? false),
                 'has_archive' => false,
                 'rewrite' => false,
                 'query_var' => false,

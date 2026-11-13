@@ -379,6 +379,9 @@ pub struct Collection {
     pub localized: bool,
     /// `url: "/blog/:slug"`: the pattern as written (spec §2.7). Checked by [`crate::kind_url`].
     pub url: Option<String>,
+    /// `hierarchical: true` (spec §2.6): items nest under a `parent` and sort by `order`, stored as
+    /// the post's own `post_parent` and `menu_order`; `:path` in the url is the parent chain.
+    pub hierarchical: bool,
 }
 
 impl Collection {
@@ -389,6 +392,7 @@ impl Collection {
     /// Is this column a WordPress core post column (not postmeta) on WP?
     pub fn is_core_column(&self, col: &str) -> bool {
         self.columns.get(col).is_some_and(|c| c.primary_key || c.system)
+            || (self.hierarchical && matches!(col, "parent" | "order"))
             || self.title.as_deref() == Some(col)
             || self.content.as_deref() == Some(col)
             || self.slug.as_deref() == Some(col)

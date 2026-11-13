@@ -454,6 +454,7 @@ answers exactly what core answers under First's rules.
 | `GET /__first/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
 | `POST /__first/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
 | `GET /__first/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
+| `GET /__first/api/v1/openapi.json` | | the API as an OpenAPI 3.1 document; public |
 
 Rows are First rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
 `published` or `private`. Errors are RFC 9457 problem documents (`code`,
@@ -461,6 +462,43 @@ Rows are First rows: fields flat, `status` as `draft`, `pending`, `scheduled`,
 with `X-WP-Nonce`, an application password, or a First Identity bearer token.
 The API is served before the theme loads; it never uses 0.8's `/__zero/config`,
 `/__zero/run`, `/__zero/auth/*` or `/__zero/realtime/events`.
+
+### The OpenAPI document
+
+`first build` writes `first/_generated/openapi.json`: the app's API as an
+OpenAPI 3.1 document. Commit it with the client. It comes from the same schema
+as the typed client and the app's Abilities, so the three describe one field
+one way:
+
+- A kind has the components `Post`, `PostInsert`, `PostPatch` and `PostFilter`,
+  named as the client's types are. The row, the create input and the patch are
+  the JSON Schemas the kind's Abilities publish.
+- Every operation the API serves is there: each kind's list, get, create,
+  update and delete (less any its `api` flags switch off), revisions, `/me`,
+  each global, each action (with `GET` when it is `readonly`), file buckets,
+  sync, services, and WordPress's own `posts`, `pages`, `comments`, `media`,
+  `categories`, `tags`, `menus` and `settings` where the app declares none of
+  that name. An action with a `signature` is left out: it is a webhook for the
+  one service that holds its secret, and `GET /__first/api/v1` leaves it out too.
+- An operation's `operationId` names it by kind and operation (`posts.list`,
+  `actions.greet`, `sync.notes.read`); where the typed client has a call for
+  the request, it is that call's name. Its description says who may call it, and
+  `x-first-access` carries the rule's short name (`anyone`, a role, `owner`,
+  `self`, or `rule` for one written as a function). A field with its own
+  access rule carries `x-first-access` too, and a field a caller may not read is
+  absent from rows.
+- Errors are the `Problem` component, served as `application/problem+json`.
+  `securitySchemes` lists the three ways to sign in.
+
+The running site serves the same document at
+`GET /__first/api/v1/openapi.json`, with the site's own address in `servers`.
+It needs no sign-in and is the same for everyone: it describes the app's kinds,
+fields, globals and actions, as `GET /__first/api/v1` does, and never says who
+may see which row.
+
+```sh
+curl https://example.test/__first/api/v1/openapi.json
+```
 
 ## Locales
 

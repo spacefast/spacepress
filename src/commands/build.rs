@@ -12,7 +12,7 @@ pub(super) fn compile(project: &Path) -> Result<crate::schema::Schema, Diag> {
 }
 
 /// Runs the whole pipeline in memory.
-fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
+pub(super) fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
     let entry = project.join("first.config.ts");
     if !entry.is_file() {
         return Err(Diag::new(
@@ -117,7 +117,8 @@ pub(super) fn refresh(project: &Path) -> Result<(), String> {
     emit_project(project, &built).map_err(|e| e.to_string())
 }
 
-/// Writes `first/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks and the typed client.
+/// Writes `first/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks, the typed
+/// client and `openapi.json`.
 fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let migrations = migrations_dir(project);
     for (name, sql) in &built.migrations {
@@ -142,6 +143,7 @@ fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
             serde_json::to_string_pretty(lock)? + "\n",
         )?;
     }
+    write(&project.join(layout::OPENAPI), crate::openapi::render(&built.openapi))?;
     let client_dir = project.join(layout::CLIENT);
     for (name, content) in &built.client_files {
         write(&client_dir.join(name), content)?;
@@ -396,9 +398,13 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     for w in &built.unsupported_plugins {
         eprintln!("warning: {w}");
     }
+    // A project that ran `first init`: its agent files follow the config and the compiler.
+    let agent_files = (!args.quiet)
+        .then(|| super::init::stale_hint(&project, &built.schema))
+        .flatten();
     if args.command == "check" {
         if !args.quiet {
-            for h in &built.hints {
+            for h in built.hints.iter().chain(&agent_files) {
                 eprintln!("hint: {h}");
             }
         }
@@ -450,7 +456,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         eprintln!("warning: this migration {w}");
     }
     if !args.quiet {
-        for h in &built.hints {
+        for h in built.hints.iter().chain(&agent_files) {
             eprintln!("hint: {h}");
         }
     }

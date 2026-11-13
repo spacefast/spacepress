@@ -39,6 +39,11 @@ pub(crate) fn files(
         );
         files.push((at("first/app/references.php"), php.into_bytes()));
     }
+    // The API's description, which the site serves at /__first/api/v1/openapi.json (First\OpenApi).
+    files.push((
+        at("first/app/openapi.json"),
+        crate::openapi::render(&built.openapi).into_bytes(),
+    ));
     // Each `page.md`'s Markdown, which the site stores as a WordPress Page on its first request.
     if let Some(bodies) = crate::content_page::bodies_php(&built.schema) {
         files.push((at("first/app/content.php"), bodies.into_bytes()));

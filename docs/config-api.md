@@ -326,7 +326,7 @@ registered once.
 | `uid` | `false` (`true` with `sync`) | stable immutable `uid` on every row |
 | `sync` | none | project-relative `*.md` or `*.json` pattern for `first sync` |
 | `agents` | `true` | expose operations as WordPress abilities |
-| `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
+| `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. The site's sitemap (`/wp-sitemap.xml`) lists the kind's items a signed-out visitor may read. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
 
 Collections need a title and physical names of at most 14 characters (WordPress
 prefixes `first_`). Built-in route names are reserved. User projections retain
@@ -802,13 +802,53 @@ These are build errors with the same message the runtime returns.
 ## defineConfig
 
 `defineConfig({ name?, collections?, tables?, users?, globals?, hooks?, actions?,
-jobs?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend? })`. `name` (a slug,
+jobs?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend?, runtimeSchema? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `first-app-<name>`.
 `admin: true` ships the optional admin screens as a fourth plugin,
 `first-admin`; by default the build emits none. `frontend` says who renders the
 public site: leave it out for the theme (or `first/app` when it exists), `false`
 for backend only, or an external site's `https://` address (`http://` only on
 localhost) so links, previews and feeds point there.
+
+### Runtime schema changes
+
+`runtimeSchema: true` lets the running site add fields to its `collection()` kinds without a build
+(spec §2.10, [decision record](decisions/2026-11-13-runtime-schema.md)). It is off by default, and
+with it off nothing below exists.
+
+- **What a change is.** `{ "format": 1, "changes": [{ "op": "addField", "kind": "articles", "field":
+  "subtitle", "definition": { "type": "text", "rules": { "max": 120 } } }] }`. A definition is the
+  field as `schema.php` stores it: `type` (`text`, `integer`, `real`, `boolean`, `date`,
+  `timestamp`, `json`, `email`, `url`, `richText`, `media`, `mediaList`, `select`, `group`,
+  `repeater`, `blocks`), and where they apply `notNull`, `enum`, `multiple`, `multiline`, `accept`,
+  `default` (`{ "value": … }` with one string, number or boolean, or `{ "now": true }`), `rules`
+  (`min`, `max`), `fields`, `layouts` and `ui`.
+- **Rules.** The compiler's, with the compiler's diagnostic code in the refusal (`F3001`, `F2001`,
+  `F3101`). The site adds its own: a field is optional or has a default (`schema_required`); a
+  name every kind has or will have is not available (`schema_reserved`); a name that any build
+  which ran on the site stores as another type keeps that type (`schema_retype`), so two builds
+  the host serves at once never read one value two ways; and anything that is not adding a field
+  to a collection is `schema_build_only`, with the source edit to make. Fields of a translated or
+  synced collection are build-only for now.
+- **Hooks.** A `beforeCreate` or `beforeUpdate` hook sees only the fields its build declares. The
+  runtime fields of the write are kept aside while it runs and added back to what it returns.
+- **Versions.** An accepted change is the next row of `<prefix>first__schema_versions`: version,
+  parent, the build it was validated on, who applied it, when, the change in stored form, and a
+  hash chained to the parent's. Rows are never updated or deleted. A change names the version it
+  was made against; when another was applied first it is refused with 409 `schema_conflict`.
+- **Loading.** The active version's fields are in one autoloaded option,
+  `first_<app>_runtime_schema`. A request adds them to the compiled schema and does nothing else.
+  A field the build declares itself is never replaced. The new field is post meta
+  `first_<field>`, registered and added to the kind's field group like a compiled one, from the
+  request after the change. `GET /__first/api/v1` reports `runtimeSchema: { version, hash, build }`.
+- **In the project.** `first/_generated/runtime-schema.json` (`{ "format": 1, "version", "hash",
+  "collections": { "<kind>": { "columns": { … } } } }`) lists a site's fields for the build, which
+  declares them as if they were authored. A build that lacks the site's fields does not drop
+  them: they stay active, with their data.
+
+This release has the store, the loader, the rules and the build's reading of the lock. Applying a
+change is `First\Wp\SchemaVersions::of($plugin)->apply($parent, $changeSet, $actor)` from PHP;
+the Abilities, the `first schema` commands, `first pull` and the admin screen are not built yet.
 
 ## Plugin packages
 

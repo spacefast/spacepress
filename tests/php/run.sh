@@ -10,13 +10,15 @@ cd "$(dirname "$0")"
 PHP="${PHP:-php}"
 status=0
 suites=("$@")
-[ ${#suites[@]} -eq 0 ] && suites=(js bigint env fetch crypto query db schema sql blog auth jobs mail abilities search webhooks realtime services images files media locales sync legacy vendor boundary pages markdown spam harness staged)
+[ ${#suites[@]} -eq 0 ] && suites=(js bigint env fetch crypto query db schema runtimeschema sql blog auth jobs mail abilities search webhooks realtime services images files media locales sync legacy vendor boundary pages markdown spam harness staged)
 for s in "${suites[@]}"; do
   case "$s" in
     js) "$PHP" -d zend.assertions=1 js_parity.php || status=1 ;;
     env) "$PHP" -d zend.assertions=1 bootstrap_test.php || status=1
          "$PHP" -d zend.assertions=1 env_test.php || status=1 ;;
     fetch|crypto|query|schema|sql|images|legacy|boundary|bigint) "$PHP" -d zend.assertions=1 "${s}_test.php" || status=1 ;;
+    runtimeschema) "$PHP" -d zend.assertions=1 runtimeschema_corpus.php || status=1
+                   "$PHP" -d zend.assertions=1 -d memory_limit=512M runtimeschema_test.php || status=1 ;;
     db|blog|auth|jobs|mail|abilities|search|webhooks|realtime|services|files|media|locales|sync|pages|markdown|spam|harness|staged) "$PHP" -d zend.assertions=1 -d memory_limit=512M "${s}_test.php" || status=1 ;;
     vendor)
       "$PHP" -d zend.assertions=1 vendor_drift.php || status=1

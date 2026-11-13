@@ -39,3 +39,7 @@ In each:
 Regenerate from a detached checkout of `61c22fc2`: `cargo build --bin zero`, then, from the app's
 directory (this one, `forms/` or `routes/`), `zero build app` followed by the two commands above, with that
 binary. Do not edit these files by hand.
+
+`pages/sources/` is `examples/full-site` of that checkout (TSX pages with their committed
+`zero/pages.json`, and `routes`), captured with `zero sources app --out sources`: a bundle that
+carries pages, which First refuses.

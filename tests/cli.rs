@@ -342,3 +342,249 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         text(&blogname.stderr)
     );
 }
+
+/// A project from the scaffolder, as `npm create @spacefast/first` writes it, without the npm install.
+fn scaffold(parent: &Path) -> PathBuf {
+    let project = parent.join("app");
+    let created = Command::new("node")
+        .arg(root().join("packages/create-first/bin/create-first.mjs"))
+        .arg(&project)
+        .arg("--no-install")
+        .output()
+        .expect("node");
+    assert!(created.status.success(), "{}", text(&created.stderr));
+    project
+}
+
+fn add(project: &Path, args: &[&str]) -> Output {
+    first().arg("add").args(args).arg(project).output().unwrap()
+}
+
+/// Every file under `dir` with its bytes, sorted, leaving out what a build writes.
+fn tree(dir: &Path) -> Vec<(String, Vec<u8>)> {
+    fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.strip_prefix(root).unwrap().to_string_lossy().into_owned();
+            if path.is_dir() {
+                walk(root, &path, out);
+                out.push((format!("{name}/"), Vec::new()));
+            } else {
+                out.push((name, std::fs::read(&path).unwrap()));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out);
+    out.sort();
+    out
+}
+
+/// `first add db` on a fresh scaffold: the project still checks and builds, the build plans the
+/// tables with their foreign key, and the typed client example type-checks against the generated
+/// client. Needs node and tsc (or TSC), as the other generated-client tests do.
+#[test]
+fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let before = first().arg("check").arg(&project).output().unwrap();
+    assert!(
+        text(&before.stdout).contains("1 collections, 0 tables"),
+        "{}",
+        text(&before.stdout)
+    );
+
+    let added = add(&project, &["db"]);
+    assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
+    let report = text(&added.stdout);
+    for file in ["first/tables.ts", "tables.client.ts", "first/DATABASE.md"] {
+        assert!(project.join(file).is_file(), "{file}");
+        assert!(
+            report.lines().any(|l| l.contains("created") && l.contains(file)),
+            "{report}"
+        );
+    }
+
+    let checked = first().arg("check").arg(&project).output().unwrap();
+    assert_eq!(checked.status.code(), Some(0), "{}", text(&checked.stderr));
+    assert!(
+        text(&checked.stdout).contains("1 collections, 2 tables"),
+        "{}",
+        text(&checked.stdout)
+    );
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
+    let sql = std::fs::read_to_string(project.join("first/_generated/migrations/0001_init.sql")).unwrap();
+    assert!(sql.contains("CREATE TABLE `{prefix}first_projects`"), "{sql}");
+    assert!(
+        sql.contains("FOREIGN KEY (`projectId`) REFERENCES `{prefix}first_projects` (`id`) ON DELETE CASCADE"),
+        "{sql}"
+    );
+    // The scaffold's own kind stays a WordPress post type: it gets no table.
+    assert!(!sql.contains("first_notes"), "{sql}");
+
+    std::fs::write(
+        project.join("tsconfig.test.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "compilerOptions": {
+                "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
+                "allowImportingTsExtensions": true, "types": [],
+                "paths": { "first": [root().join("types/first/index.d.ts")] }
+            },
+            "files": ["first.config.ts", "first/tables.ts", "tables.client.ts", "client.ts", "first/_generated/db.d.ts"]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let typed = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .arg("--project")
+        .arg(project.join("tsconfig.test.json"))
+        .output()
+        .expect("tsc (or TSC) must be installed to check the added files");
+    assert!(typed.status.success(), "{}{}", text(&typed.stdout), text(&typed.stderr));
+}
+
+#[test]
+fn add_only_creates_missing_files_and_never_changes_one_that_is_there() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    // The author already has a file where the module would put its tables.
+    std::fs::create_dir_all(project.join("first")).unwrap();
+    let mine = "import { table, text } from \"first\";\nexport const orders = table({ code: text().max(40) });\n";
+    std::fs::write(project.join("first/tables.ts"), mine).unwrap();
+
+    let added = add(&project, &["db"]);
+    assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
+    let report = text(&added.stdout);
+    assert!(
+        report
+            .lines()
+            .any(|l| l.contains("kept") && l.contains("first/tables.ts")),
+        "{report}"
+    );
+    assert!(
+        report
+            .lines()
+            .any(|l| l.contains("created") && l.contains("first/DATABASE.md")),
+        "{report}"
+    );
+    assert_eq!(std::fs::read_to_string(project.join("first/tables.ts")).unwrap(), mine);
+
+    // Edits survive a second run, which has nothing left to add.
+    std::fs::write(project.join("first/DATABASE.md"), "my notes\n").unwrap();
+    let state = tree(&project);
+    let again = add(&project, &["db"]);
+    assert_eq!(again.status.code(), Some(0), "{}", text(&again.stderr));
+    assert!(
+        text(&again.stdout).contains("nothing to add"),
+        "{}",
+        text(&again.stdout)
+    );
+    assert_eq!(tree(&project), state);
+
+    // A deleted file comes back; the others are still not touched.
+    std::fs::remove_file(project.join("tables.client.ts")).unwrap();
+    let third = add(&project, &["db"]);
+    assert_eq!(third.status.code(), Some(0), "{}", text(&third.stderr));
+    assert!(project.join("tables.client.ts").is_file());
+    assert_eq!(std::fs::read_to_string(project.join("first/tables.ts")).unwrap(), mine);
+    assert_eq!(
+        std::fs::read_to_string(project.join("first/DATABASE.md")).unwrap(),
+        "my notes\n"
+    );
+
+    // A link that points nowhere is something of the author's too: it is neither followed nor replaced.
+    #[cfg(unix)]
+    {
+        std::fs::remove_file(project.join("tables.client.ts")).unwrap();
+        std::os::unix::fs::symlink(tmp.path().join("elsewhere.ts"), project.join("tables.client.ts")).unwrap();
+        let linked = add(&project, &["db"]);
+        assert_eq!(linked.status.code(), Some(0), "{}", text(&linked.stderr));
+        assert!(!tmp.path().join("elsewhere.ts").exists());
+        assert!(
+            project
+                .join("tables.client.ts")
+                .symlink_metadata()
+                .unwrap()
+                .is_symlink()
+        );
+    }
+}
+
+#[test]
+fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    // An export of the author's already uses a name the module's example exports.
+    std::fs::create_dir_all(project.join("first/server")).unwrap();
+    std::fs::write(
+        project.join("first/server/tasks.ts"),
+        "import { action } from \"first\";\nexport const tasks = action({ input: {}, async handler() { return 1; } });\n",
+    )
+    .unwrap();
+    let state = tree(&project);
+    let clash = add(&project, &["db"]);
+    assert_eq!(clash.status.code(), Some(1), "{}", text(&clash.stdout));
+    let error = text(&clash.stderr);
+    assert!(error.contains("`tasks` names two things"), "{error}");
+    assert!(error.contains("nothing was added"), "{error}");
+    assert_eq!(tree(&project), state);
+
+    // A project that doesn't compile today is refused before anything is written, with its own error.
+    std::fs::write(project.join("first/server/tasks.ts"), "export const broken = ;\n").unwrap();
+    let state = tree(&project);
+    let broken = add(&project, &["db"]);
+    assert_eq!(broken.status.code(), Some(1), "{}", text(&broken.stdout));
+    assert!(
+        text(&broken.stderr).contains("first/server/tasks.ts:1"),
+        "{}",
+        text(&broken.stderr)
+    );
+    assert!(
+        text(&broken.stderr).contains("Nothing was added"),
+        "{}",
+        text(&broken.stderr)
+    );
+    assert_eq!(tree(&project), state);
+
+    // With no first/ directory yet, a refused add doesn't leave an empty one behind.
+    let bare = tmp.path().join("bare");
+    std::fs::create_dir_all(&bare).unwrap();
+    std::fs::write(
+        bare.join("first.config.ts"),
+        "import { action, defineConfig } from \"first\";\nexport default defineConfig({ name: \"bare\", actions: { projects: action({ input: {}, async handler() { return 1; } }) } });\n",
+    )
+    .unwrap();
+    let state = tree(&bare);
+    let refused = add(&bare, &["db"]);
+    assert_eq!(refused.status.code(), Some(1), "{}", text(&refused.stdout));
+    assert_eq!(tree(&bare), state);
+}
+
+#[test]
+fn add_names_its_modules_when_the_module_is_missing_or_unknown() {
+    let modules = "usage: first add <module> [dir]\nmodules:\n  db  ";
+    let none = first().arg("add").output().unwrap();
+    assert_eq!(none.status.code(), Some(2));
+    assert!(
+        text(&none.stderr).starts_with(&format!("first add needs a module\n{modules}")),
+        "{}",
+        text(&none.stderr)
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let unknown = add(tmp.path(), &["pages"]);
+    assert_eq!(unknown.status.code(), Some(2));
+    assert!(
+        text(&unknown.stderr).starts_with(&format!("no module pages\n{modules}")),
+        "{}",
+        text(&unknown.stderr)
+    );
+    let option = add(tmp.path(), &["db", "--force"]);
+    assert_eq!(option.status.code(), Some(2));
+    assert!(
+        text(&option.stderr).starts_with("unknown option --force for first add\n"),
+        "{}",
+        text(&option.stderr)
+    );
+    assert!(std::fs::read_dir(tmp.path()).unwrap().next().is_none());
+}

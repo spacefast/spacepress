@@ -178,6 +178,7 @@ pub fn main() -> ExitCode {
             ExitCode::from(2)
         }
         "deploy" => crate::commands::deploy::adapter(&rest),
+        "add" => crate::commands::add::cli(&rest),
         "abilities" if rest.first().is_some_and(|sub| sub == "pull") => crate::commands::abilities::cli(&rest),
         "abilities" if rest.first().is_some_and(|sub| !sub.starts_with('-')) => {
             eprintln!(

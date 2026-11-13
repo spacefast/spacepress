@@ -166,9 +166,15 @@ final class EditorSave
      */
     private static function checkCoreFields(string $collection, \WP_REST_Request $request, array $declared, ?array $before): void
     {
+        self::checkColumns($collection, $declared, $before);
+    }
+
+    /** First's rules (min, max, pattern, validate) on the core columns (title, content, slug) in $values. */
+    private static function checkColumns(string $collection, array $values, ?array $before): void
+    {
         $spec = Plugin::instance()?->schema->collection($collection) ?? [];
         $core = array_filter([$spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null]);
-        $values = array_intersect_key($declared, array_flip($core));
+        $values = array_intersect_key($values, array_flip($core));
         if ($values === []) {
             return;
         }
@@ -378,6 +384,9 @@ final class EditorSave
             }
             $changed = array_keys(array_filter(array_diff_key($after, $generated), static fn ($v, $col) => !\First\Js::sameJson($v, $before[$col] ?? null), ARRAY_FILTER_USE_BOTH));
             $patch = array_intersect_key($after, array_flip([...$changed, ...$open['supplied']]));
+            // Title, content and slug a save changed (an autosave of one's own draft, a quick edit, any
+            // wp_update_post) follow First's rules on those columns, as a REST save's do.
+            self::checkColumns($collection, array_intersect_key($patch, array_flip($changed)), $before);
             $supplied = $open['owner'] === 'restore' ? $patch : self::groupPatch($spec['columns'], $patch, $before, $open['declared'] ?? []);
             $data = $patch;
             FieldAccess::checkWrite('update', $collection, $data, $before, $viewer, $supplied, stored: true);

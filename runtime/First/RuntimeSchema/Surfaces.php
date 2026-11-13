@@ -34,6 +34,9 @@ final class Surfaces
 
     public static function register(): void
     {
+        if (!function_exists('add_action')) {
+            return; // the runtime loaded outside WordPress (the pure PHP suites): nothing to serve
+        }
         add_filter('first_ability_operations', [self::class, 'operations'], 10, 2);
         add_filter('user_has_cap', [self::class, 'grant'], 10, 4);
         add_action('admin_menu', [self::class, 'menu']);

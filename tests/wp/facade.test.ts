@@ -8,7 +8,9 @@ import { auth, core, harness, http, ok, qs, run, sql, wp, first, type Role } fro
 
 const facade = `${harness.url}/__first/api/v1`;
 const f = (method: string, path: string, opts: { as?: Role; body?: unknown } = {}) => http(method, facade + path, opts);
-const strip = (row: any) => { const { createdAt, updatedAt, ...rest } = row; return rest; };
+// The pipeline's row without what differs by design: timestamps, and the API's `_rev` (docs/staged.md).
+const strip = (row: any) => { const { createdAt, updatedAt, _rev, ...rest } = row; return rest; };
+const unrev = (row: any) => { const { _rev, ...rest } = row; return rest; };
 
 let eventIds: number[] = [];
 before(async () => {
@@ -217,7 +219,8 @@ test("globals run through their Abilities on core's run route: the global's own 
 test("rows carry First's system fields and every locale, as First's pipeline gives them", async () => {
   const tour = first("insert", "tours", JSON.stringify({ title: `Facade tour ${run}`, price: 4 }))[0];
   const viaFacade = await f("GET", `/tours/${tour.id}`, { as: "editor" });
-  assert.deepEqual(viaFacade.json.data, first("find", "tours", JSON.stringify({ where: { id: tour.id }, locale: "*" }))[0]);
+  assert.equal(typeof viaFacade.json.data._rev, "string", "a collection's row carries its _rev");
+  assert.deepEqual(unrev(viaFacade.json.data), first("find", "tours", JSON.stringify({ where: { id: tour.id }, locale: "*" }))[0]);
   const both = await f("GET", "/tours" + qs({ locale: "*", where: { id: tour.id } }), { as: "editor" });
   assert.deepEqual(both.json.data.map((t: any) => [t.id, t.locale]), [[tour.id, "en"]]);
 });

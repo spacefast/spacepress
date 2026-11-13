@@ -1,5 +1,62 @@
 {
 	"pages": {
+		"/agents": {
+			"title": "Agents - First",
+			"h1": "Agents",
+			"description": "Set a project up for coding agents with first init and first mcp, and connect an agent to a running app's MCP endpoint.",
+			"canonical": "/agents",
+			"markdown": "/agents.md",
+			"ogImage": "/og/agents.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/agents.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Agents - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/agents.mdx",
+			"toc": [
+				"set-a-project-up-for-coding-agents-first-init",
+				"develop-a-project-with-a-coding-agent-first-mcp",
+				"run-the-dev-site-from-an-agent",
+				"use-the-running-app-the-sites-mcp-endpoint",
+				"find-the-endpoint-and-tools",
+				"who-the-agent-is",
+				"scoped-agent-credentials",
+				"connect-a-client",
+				"check-an-endpoint-by-hand",
+				"read-pages-as-markdown"
+			],
+			"prev": "/pages",
+			"next": "/publishing/spacefast",
+			"sidebar": true
+		},
 		"/changelog/blocks": {
 			"title": "@spacefast/first-blocks - First",
 			"h1": "@spacefast/first-blocks",
@@ -555,7 +612,7 @@
 				"not-in-this-release"
 			],
 			"prev": "/compiler",
-			"next": "/publishing/spacefast",
+			"next": "/agents",
 			"sidebar": true
 		},
 		"/playground": {
@@ -694,7 +751,7 @@
 				"sign-people-in-with-spacefast",
 				"if-publish-fails"
 			],
-			"prev": "/pages",
+			"prev": "/agents",
 			"next": "/publishing/other-platforms",
 			"sidebar": true
 		},
@@ -5294,6 +5351,11 @@
 				"group": null
 			},
 			{
+				"label": "Agents",
+				"href": "/agents",
+				"group": null
+			},
+			{
 				"label": "Publish on Spacefast",
 				"href": "/publishing/spacefast",
 				"group": "Publishing"
@@ -6104,6 +6166,7 @@
 	},
 	"markdown": [
 		"/.well-known/agent-skills/first/SKILL.md",
+		"/agents.md",
 		"/changelog.md",
 		"/changelog/blocks.md",
 		"/compiler.md",
@@ -6213,6 +6276,7 @@
 		"/skill.md"
 	],
 	"mdx": [
+		"/agents.mdx",
 		"/changelog.mdx",
 		"/changelog/blocks.mdx",
 		"/compiler.mdx",
@@ -6328,6 +6392,7 @@
 		"/agent-readability.json",
 		"/api/docs/navigation.json",
 		"/api/docs/pages.json",
+		"/api/docs/pages/agents.json",
 		"/api/docs/pages/changelog.json",
 		"/api/docs/pages/changelog/blocks.json",
 		"/api/docs/pages/compiler.json",
@@ -6447,6 +6512,7 @@
 		"/llms-full.txt",
 		"/llms.txt",
 		"/logo.svg",
+		"/og/agents.png",
 		"/og/changelog.png",
 		"/og/changelog/blocks.png",
 		"/og/compiler.png",
@@ -6561,6 +6627,7 @@
 	],
 	"sitemap": [
 		"/",
+		"/agents",
 		"/changelog",
 		"/changelog/blocks",
 		"/compiler",
@@ -6674,6 +6741,7 @@
 		"/getting-started",
 		"/compiler",
 		"/pages",
+		"/agents",
 		"/publishing/spacefast",
 		"/publishing/other-platforms",
 		"/changelog",

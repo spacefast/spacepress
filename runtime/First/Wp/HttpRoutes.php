@@ -38,7 +38,7 @@ final class HttpRoutes
         if ($path === null) {
             return;
         }
-        // While storage is behind, a path a route claims answers 503 like /wp-json/first/v1, so a
+        // While storage is behind, a path a route claims answers 503 like /__first/api/v1, so a
         // webhook sender retries instead of taking WordPress's 404 as a missing endpoint.
         if ($plugin->unavailable() !== null) {
             if (\First\App::routePathFor($plugin->schema, $path)) {

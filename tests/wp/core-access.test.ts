@@ -1,5 +1,5 @@
 // Core /wp/v2/first_* under First's access rules (lane R): the block editor keeps its REST routes, but
-// they answer exactly what /first/v1 would. Fixtures: tests/wp/app/first/lanes/rest.ts (vault: admin-only;
+// they answer exactly what /__first/api/v1 would. Fixtures: tests/wp/app/first/lanes/rest.ts (vault: admin-only;
 // ledger: owners read and edit their own rows; payroll: anyone reads, salary admin-only).
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
@@ -27,7 +27,7 @@ test("reads answer the read rule: denied, filtered, or whole", async () => {
   const admin = await http("GET", `${core}/first_vault/${vaultId}`, { as: "admin" });
   assert.deepEqual([admin.status, admin.json.acf.first_code], [200, "1234"]);
 
-  // A filtering rule: the author's list holds her row only, and the other row is 404 as on /first/v1.
+  // A filtering rule: the author's list holds her row only, and the other row is 404 as on /__first/api/v1.
   const listed = await http("GET", `${core}/first_ledger?per_page=100&search=${run}`, { as: "author" });
   assert.deepEqual([ids(listed), listed.type.startsWith("application/json")], [[mine], true]);
   assert.equal(Number((await fetch(`${core}/first_ledger?search=${run}`, { headers: { Authorization: "Basic " + btoa(`author:${harness.users.author.appPassword}`) } })).headers.get("x-wp-total")), 1, "the total counts only her rows");
@@ -634,13 +634,13 @@ test("core meta and First's query args keep every denial: masks, hidden filters,
   assert.deepEqual([reset.status, reset.json.meta?.extra, reset.json.meta?.startsAt], [200, {}, "2026-01-01T08:00:00.000Z"], JSON.stringify(reset.json));
   const refused = await http("POST", `${core}/first_events/${event}`, { as: "author", body: { meta: { extra: { k: 2 } } } });
   assert.equal(refused.status, 403);
-  // A partial group through `meta` keeps the sub-field the editor can't read, as /first/v1 and acf do.
+  // A partial group through `meta` keeps the sub-field the editor can't read, as /__first/api/v1 and acf do.
   const partial = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { meta: { notes: { open: "edited" } } } });
   assert.deepEqual([partial.status, "notes" in partial.json.meta], [200, false], "the group stays masked in the editor's answer");
   assert.deepEqual(first("find", "payroll", JSON.stringify({ where: { id } }))[0].notes, { open: "edited", sealed: "s" });
   const sealed = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { meta: { notes: { open: "x", sealed: "forged" } } } });
   assert.deepEqual([sealed.status, sealed.json.data?.pointer], [403, "/notes/sealed"]);
-  // For an admin nothing in the group is hidden: `meta` replaces it whole, as /first/v1 does.
+  // For an admin nothing in the group is hidden: `meta` replaces it whole, as /__first/api/v1 does.
   const viaZero = await http("PATCH", `${api}/payroll/${id}`, { as: "admin", body: { notes: { open: "by admin" } } });
   const admin = await http("POST", `${core}/first_payroll/${id}`, { as: "admin", body: { meta: { notes: { open: "by admin" } } } });
   assert.deepEqual([admin.status, admin.json.meta?.notes], [200, viaZero.json.data.notes], JSON.stringify(viaZero.json));

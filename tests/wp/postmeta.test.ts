@@ -108,7 +108,7 @@ test("relation filters only see target rows the viewer may read", async () => {
 });
 
 // Core /wp/v2 for a post kind (spec §3a): fields under `meta` in First's value form, and First's own
-// `where`/`orderBy`/`with`/`search` on the list route, answering what /first/v1 answers.
+// `where`/`orderBy`/`with`/`search` on the list route, answering what /__first/api/v1 answers.
 const coreTitles = async (params: Record<string, unknown>, as?: "editor") => {
   const r = await http("GET", `${core}/first_events` + qs({ per_page: "100", ...params }), as ? { as } : {});
   assert.equal(r.status, 200, JSON.stringify(r.json));
@@ -151,7 +151,7 @@ test("core list routes take First's where, orderBy and search", async () => {
   assert.ok(next && new URL(next).searchParams.get("search") === run, searched.headers.get("link") ?? "no Link header");
   const second = await fetch(next!);
   assert.deepEqual([second.headers.get("x-wp-total"), (await second.json()).map((e: any) => e.title.rendered[0])], ["3", ["B"]]);
-  // The same refusals as /first/v1, as WP_Error.
+  // The same refusals as /__first/api/v1, as WP_Error.
   const bad = await http("GET", `${core}/first_events` + qs({ where: { kinds: { in: ["talk"] } } }));
   assert.deepEqual([bad.status, bad.json.code, bad.json.data.pointer], [400, "invalid_query", "/where/kinds/in"]);
 });
@@ -195,7 +195,7 @@ test("core meta writes check that media ids exist, as every write path does", as
   assert.equal((await ok("GET", `/talks/${stored.json.id}`)).image, attachment, "a refused update changes nothing");
 });
 
-test("core meta rules see the whole row, as /first/v1's do", async () => {
+test("core meta rules see the whole row, as /__first/api/v1's do", async () => {
   const [basic, pro] = first("insert", "field_staff", JSON.stringify([{ name: `Basic ${run}`, kind: "basic" }, { name: `Pro ${run}`, kind: "pro" }])).map((r: any) => r.id);
   const refused = await http("POST", `${core}/first_field_staff/${basic}`, { as: "editor", body: { meta: { postNote: "pro only" } } });
   const viaZero = await http("PATCH", `${api}/field_staff/${basic}`, { as: "editor", body: { postNote: "pro only" } });

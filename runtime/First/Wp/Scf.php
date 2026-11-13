@@ -105,7 +105,7 @@ final class Scf
         add_filter('acf/update_value', [self::class, 'updateValue'], 20, 3);
         add_filter('acf/load_value', [self::class, 'loadValue'], 20, 3);
         // First's validator is the one authority on core REST: drop the schema's own bounds so a too-long
-        // value reports First's message (the same one /first/v1 returns), not core's.
+        // value reports First's message (the same one the API returns), not core's.
         add_filter('acf/rest/get_field_schema', [self::class, 'restSchema'], 20, 2);
     }
 

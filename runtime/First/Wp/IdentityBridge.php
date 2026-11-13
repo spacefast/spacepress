@@ -43,8 +43,7 @@ final class IdentityBridge implements Issuer
             });
         });
         // On First's API a failed Bearer is answered by WpAuth as a problem document; elsewhere identity's error stands.
-        add_filter('first_identity_bearer_error', static fn ($error) => Facade::path() !== null
-            || str_starts_with((string) ($GLOBALS['wp']->query_vars['rest_route'] ?? ''), '/' . Rest::NAMESPACE . '/') ? null : $error);
+        add_filter('first_identity_bearer_error', static fn ($error) => Facade::path() !== null ? null : $error);
     }
 
     public static function suspended(int $userId): bool

@@ -192,12 +192,6 @@ final class PostsController extends \WP_REST_Posts_Controller
         return CoreAccess::strip($response, $this->collection, $stored, CoreAccess::viewer());
     }
 
-    /** The API's writes are First's pipeline's to decide (firstWrite): its create rule, as the viewer. */
-    public function create_item_permissions_check($request)
-    {
-        return Facade::dispatching() ? true : parent::create_item_permissions_check($request);
-    }
-
     /**
      * An update rule that is a function may refuse without data and allow this request's data: core's
      * `edit_post` (which also guards revisions and wp-admin) stays the strict answer, and only this
@@ -206,9 +200,6 @@ final class PostsController extends \WP_REST_Posts_Controller
      */
     public function update_item_permissions_check($request)
     {
-        if (Facade::dispatching()) {
-            return true; // firstWrite: First's update rule and field rules, as the viewer
-        }
         $allowed = parent::update_item_permissions_check($request);
         if (!is_wp_error($allowed) || $allowed->get_error_code() !== 'rest_cannot_edit') {
             return $allowed;
@@ -283,16 +274,30 @@ final class PostsController extends \WP_REST_Posts_Controller
             $viewer = CoreAccess::viewer() ?? throw new \First\HttpError(403, 'suspended', 'This account is suspended');
             $db = $plugin->db();
             $pk = $spec['primaryKey'];
-            $row = $db->transaction(function () use ($db, $viewer, $data, $id, $pk) {
+            $row = $db->transaction(function () use ($db, $viewer, $data, $id, $pk, $request) {
                 $previous = $db->actor();
                 $db->setActor($viewer->user);
                 try {
-                    return $id === null
+                    $row = $id === null
                         ? $db->insert($this->collection, $data, true, $viewer)[0]
                         : ($db->update($this->collection, $data, [$pk => $id], true, $viewer)[0] ?? throw \First\HttpError::notFound("No {$this->collection} row with $pk $id"));
                 } finally {
                     $db->setActor($previous);
                 }
+                // The rest of core's create_item/update_item after its save, in the same transaction:
+                // `rest_insert_{type}`, the registered REST fields, `rest_after_insert_{type}`. Other
+                // plugins hooked there see the API's writes as they see core's.
+                clean_post_cache((int) $row[$pk]);
+                $post = get_post((int) $row[$pk]) ?: throw new \LogicException("Post {$row[$pk]} vanished");
+                do_action("rest_insert_{$this->post_type}", $post, $request, $id === null);
+                $fields = $this->update_additional_fields_for_object($post, $request);
+                if (is_wp_error($fields)) {
+                    throw new \First\HttpError((int) ($fields->get_error_data()['status'] ?? 400), 'invalid_input', $fields->get_error_message());
+                }
+                $post = get_post((int) $row[$pk]);
+                do_action("rest_after_insert_{$this->post_type}", $post, $request, $id === null);
+
+                return $row;
             });
         } catch (\First\HttpError | \First\JsError $e) {
             $problem = \First\App::problem($e);

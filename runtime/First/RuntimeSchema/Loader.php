@@ -36,6 +36,11 @@ final class Loader
         return 'first_' . $app . '_runtime_schema';
     }
 
+    /** Where `schema.php` was loaded from: `references.php` is beside it. */
+    private static ?string $dir = null;
+    /** @var array|false|null the build's references index; false when the build has none */
+    private static array|false|null $references = null;
+
     /** The stored type of every field a build that initialized on this site declared. */
     public static function declaredOption(string $app): string
     {
@@ -110,10 +115,46 @@ final class Loader
         return is_array($state) ? $state : self::EMPTY;
     }
 
+    /**
+     * Which fields the build's compiled code can name (`first/app/references.php`, written by `first
+     * build`); null for a build without one, which then has nothing that may be hidden.
+     */
+    public static function references(): ?array
+    {
+        if (self::$references === null) {
+            $file = self::$dir === null ? null : self::$dir . '/references.php';
+            $loaded = $file !== null && is_file($file) ? require $file : false;
+            self::$references = is_array($loaded) && ($loaded['format'] ?? null) === self::FORMAT ? $loaded : false;
+        }
+
+        return self::$references === false ? null : self::$references;
+    }
+
+    /**
+     * Whether the running site may hide a field the build declares: only an optional one that no
+     * compiled code names. Such a field reads "no value" either way, so hiding it changes nothing a
+     * hook, action, job or page can observe.
+     */
+    public static function hidableField(array $compiled, ?array $references, string $section, string $kind, string $field): bool
+    {
+        $definition = $compiled[$section][$kind][$section === 'globals' ? 'fields' : 'columns'][$field] ?? null;
+
+        return $definition !== null && $references !== null && !($definition['notNull'] ?? false)
+            && !($definition['system'] ?? false) && !in_array($field, $references[$section][$kind] ?? [$field], true);
+    }
+
+    /** The same for a whole kind the build declares: one no compiled code names. */
+    public static function hidableKind(array $compiled, ?array $references, string $section, string $kind): bool
+    {
+        return isset($compiled[$section][$kind]) && $references !== null && !in_array($kind, $references['kinds'] ?? [$kind], true);
+    }
+
     /** `schema.php` with the site's active version on top; `runtimeSchema.active` says which version. */
-    public static function merge(array $raw): array
+    public static function merge(array $raw, ?string $dir = null): array
     {
         self::$compiled = $raw;
+        self::$dir = $dir;
+        self::$references = null;
         if (!function_exists('get_option')) {
             // A host that reads the build before WordPress has loaded its options gets the compiled
             // schema; the app mounts later (plugins_loaded) and loads it again with the options there.
@@ -122,16 +163,21 @@ final class Loader
             return $raw;
         }
 
-        return self::apply($raw, self::state((string) ($raw['name'] ?? 'app')));
+        $state = self::state((string) ($raw['name'] ?? 'app'));
+
+        // The index is read only when the site removed something: nothing else needs it per request.
+        return self::apply($raw, $state, isset($state['removed']) ? self::references() : null);
     }
 
     /**
      * A compiled schema with a state on top. The build's own declarations are never replaced: a kind,
      * a field or a relation it declares wins over a stored one of the same name. Only a label and a
-     * field's `ui`, which are presentation and nothing else, replace what the build says.
+     * field's `ui`, which are presentation and nothing else, replace what the build says, and a
+     * name the site removed is hidden from the build only where that is safe ({@see hidableField()}).
      */
-    public static function apply(array $raw, array $state): array
+    public static function apply(array $raw, array $state, ?array $references = null): array
     {
+        $compiled = $raw;
         $active = ['version' => (int) ($state['version'] ?? 0), 'hash' => (string) ($state['hash'] ?? '')];
         if (($state['format'] ?? null) !== self::FORMAT) {
             // Written by a newer runtime: this one serves the compiled schema and says so.
@@ -160,6 +206,22 @@ final class Loader
             }
         }
         foreach (['collections' => 'columns', 'globals' => 'fields'] as $section => $inner) {
+            foreach ($state['removed'][$section] ?? [] as $kind => $removed) {
+                if (!isset($compiled[$section][$kind])) {
+                    continue;
+                }
+                if ($removed['kind'] ?? false) {
+                    if (self::hidableKind($compiled, $references, $section, $kind)) {
+                        unset($raw[$section][$kind]);
+                    }
+                    continue;
+                }
+                foreach ($removed['fields'] ?? [] as $field => $_) {
+                    if (self::hidableField($compiled, $references, $section, $kind, (string) $field)) {
+                        unset($raw[$section][$kind][$inner][$field]);
+                    }
+                }
+            }
             foreach ($state['overrides'][$section] ?? [] as $kind => $override) {
                 if (!isset($raw[$section][$kind])) {
                     continue;

@@ -4,7 +4,7 @@
 // working exactly as WordPress ships it.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { auth, core, harness, run, sql, wp, type Role } from "../env.ts";
+import { auth, core, harness, run, sql, wp, wpTry, type Role } from "../env.ts";
 import { loginCookie } from "../login.ts";
 
 const site = harness.url;
@@ -113,12 +113,28 @@ test("abilities: a credential limited to named abilities reaches those and nothi
   scoped(await call(header, "GET", `${core}/first_notes`), "a core route");
   scoped(await call(header, "GET", `${api}/notes`), "the API's kinds");
   assert.equal((await call(header, "GET", api)).status, 200, "the app's schema stays readable");
+  // It doesn't see the other abilities either: core's list, another ability's page, the MCP tool list.
+  scoped(await call(header, "GET", abilities), "the abilities list");
+  scoped(await call(header, "GET", `${abilities}/${app}/memos-list`), "an unlisted ability's description");
+  assert.equal((await call(header, "GET", `${abilities}/${app}/notes-list`)).status, 200, "a listed ability's description");
+  const url = `${site}/wp-json/mcp/first-${app}`;
+  const headers: Record<string, string> = { "content-type": "application/json", accept: "application/json, text/event-stream", ...header };
+  const rpc = (id: number, method: string, params: unknown) => fetch(url, { method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id, method, params }) });
+  const init = await rpc(0, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "scope", version: "1" } });
+  headers["mcp-session-id"] = init.headers.get("mcp-session-id") ?? "";
+  headers["mcp-protocol-version"] = (await init.json()).result.protocolVersion;
+  const tools = (await (await rpc(1, "tools/list", {})).json()).result.tools.map((t: any) => t.name).sort();
+  assert.deepEqual(tools, [`${app}-contacts-list`, `${app}-notes-list`]);
+  const other = await (await rpc(2, "tools/call", { name: `${app}-memos-list`, arguments: {} })).json();
+  assert.ok(other.error || other.result?.isError, JSON.stringify(other).slice(0, 300));
 });
 
 test("personal data: emails and fields with a read rule are withheld and can't be probed", async () => {
   wp("first", "insert", "contacts", JSON.stringify({ name: `Ada ${run}`, email: `ada-${run}@example.test`, salary: 100 }));
+  // This run's row, by name (the table holds rows of earlier tests too).
+  const mine = `${api}/contacts?where=${encodeURIComponent(JSON.stringify({ name: `Ada ${run}` }))}`;
   const plain = agent("editor");
-  const rows = (await call(plain.header, "GET", `${api}/contacts`)).json.data;
+  const rows = (await call(plain.header, "GET", mine)).json.data;
   const row = rows.find((r: any) => r.name === `Ada ${run}`);
   assert.ok(row, JSON.stringify(rows));
   assert.deepEqual([row.email, row.salary], [undefined, undefined], "withheld from the row");
@@ -137,14 +153,14 @@ test("personal data: emails and fields with a read rule are withheld and can't b
   scoped(await call(plain.header, "GET", `${core}/comments?search=example.test`), "comment search reads commenters' emails");
   // The same credential with --personal sees them; an unscoped one too.
   const personal = agent("editor", { personal: true });
-  const full = (await call(personal.header, "GET", `${api}/contacts`)).json.data.find((r: any) => r.name === `Ada ${run}`);
+  const full = (await call(personal.header, "GET", mine)).json.data.find((r: any) => r.name === `Ada ${run}`);
   assert.deepEqual([full.email, full.salary], [`ada-${run}@example.test`, 100]);
   assert.equal((await call(personal.header, "GET", `${core}/users/me?context=edit`)).json.email, "editor@example.test");
-  const unscoped = (await call(auth("editor"), "GET", `${api}/contacts`)).json.data.find((r: any) => r.name === `Ada ${run}`);
+  const unscoped = (await call(auth("editor"), "GET", mine)).json.data.find((r: any) => r.name === `Ada ${run}`);
   assert.equal(unscoped.salary, 100);
   // A field rule still decides first: an author's credential with --personal doesn't see the salary.
   const author = agent("author", { personal: true });
-  const authorRow = (await call(author.header, "GET", `${api}/contacts`)).json.data.find((r: any) => r.name === `Ada ${run}`);
+  const authorRow = (await call(author.header, "GET", mine)).json.data.find((r: any) => r.name === `Ada ${run}`);
   assert.equal(authorRow.salary, undefined);
 });
 
@@ -154,6 +170,75 @@ test("a scoped credential can't read or change application passwords, so it can'
   scoped(await call(header, "POST", `${core}/users/me/application-passwords`, { name: "minted" }), "create");
   scoped(await call(header, "POST", `${core}/users/me/application-passwords/${id}`, { first_scope: { write: true, personal: true, abilities: null } }), "re-scope itself");
   scoped(await call(header, "GET", `${core}/users/me/application-passwords/introspect?_method=DELETE`), "delete through an override");
+});
+
+test("a scoped credential can't remove its own limits: no site administration and no change to its own sign-in", async () => {
+  // Deactivating First would switch enforcement off; settings hold the administrator's email.
+  const admin = agent("admin", { write: true, personal: true });
+  for (const plugin of ["first-runtime/first-runtime", `${harness.plugin}/${harness.plugin}`, "two-factor/two-factor"]) {
+    scoped(await call(admin.header, "POST", `${core}/plugins/${plugin}`, { status: "inactive" }), `deactivate ${plugin}`);
+  }
+  scoped(await call(admin.header, "GET", `${core}/plugins`), "list plugins");
+  scoped(await call(admin.header, "GET", `${core}/settings`), "read settings");
+  scoped(await call(admin.header, "POST", `${core}/settings`, { title: "x" }), "write settings");
+  scoped(await call(admin.header, "GET", `${core}/themes`), "themes");
+  // A plugin's own administration route, which asks a capability (tests/wp/mu-plugins/role-editor.php
+  // asks promote_users): refused by the capability, on a route First has never heard of.
+  const plugin = await call(admin.header, "POST", `${site}/wp-json/first-test/v1/role`, { role: "subscriber", cap: `scoped_${run}` });
+  assert.equal(plugin.status, 403, JSON.stringify(plugin.json));
+  assert.equal(wp("eval", `echo wp_json_encode(get_role('subscriber')->has_cap('scoped_${run}'));`), "false");
+  assert.equal((await call(auth("admin"), "POST", `${site}/wp-json/first-test/v1/role`, { role: "subscriber", cap: `scoped_${run}` })).status, 200, "an unscoped administrator's does");
+  wp("eval", `get_role('subscriber')->remove_cap('scoped_${run}');`);
+  const active = JSON.parse(wp("plugin", "list", "--status=active", "--field=name", "--format=json")) as string[];
+  assert.ok(active.includes("first-runtime") && active.includes(harness.plugin) && active.includes("two-factor"), active.join(","));
+  // Its own sign-in: a new password or email would be a cookie session with no scope.
+  const editor = agent("editor", { write: true, personal: true });
+  const before = wp("eval", "echo get_user_by('login', 'editor')->user_pass;");
+  scoped(await call(editor.header, "POST", `${core}/users/me`, { password: `Pw-${run}-A1!` }), "own password");
+  scoped(await call(editor.header, "POST", `${core}/users/me`, { email: `moved-${run}@example.test` }), "own email");
+  scoped(await call(admin.header, "POST", `${core}/users`, { username: `made${run}`, email: `made${run}@example.test`, password: `Pw-${run}-A1!`, roles: ["administrator"] }), "create an administrator");
+  scoped(await call(admin.header, "POST", `${site}/wp-json/two-factor/1.0/generate-backup-codes`, { user_id: harness.users.admin.id }), "recovery codes");
+  assert.equal(wp("eval", "echo get_user_by('login', 'editor')->user_pass;"), before, "the password is unchanged");
+  assert.equal(wp("eval", `echo get_user_by('login', 'made${run}') ? 'made' : 'none';`), "none");
+  // The rest of its own profile stays writable with --write --personal.
+  assert.equal((await call(editor.header, "POST", `${core}/users/me`, { description: `bio ${run}` })).status, 200);
+  // The same routes for an unscoped administrator, and a scoped one's ordinary writes, still work.
+  assert.equal((await call(auth("admin"), "GET", `${core}/settings`)).status, 200);
+  assert.equal((await call(auth("admin"), "GET", `${core}/plugins`)).status, 200);
+  assert.equal((await call(admin.header, "POST", `${api}/notes`, { title: `admin scoped ${run}` })).status, 201);
+  assert.equal((await call(admin.header, "GET", `${api}/me`)).json.data.role, "admin", "First's access rules still see an administrator");
+});
+
+test("without --personal: no account details through abilities or settings, no role oracle, no personal field on a create", async () => {
+  const admin = agent("admin");
+  scoped(await call(admin.header, "GET", `${abilities}/core/get-user-info/run`), "core/get-user-info");
+  const siteInfo = await call(admin.header, "GET", `${abilities}/core/get-site-info/run`);
+  assert.equal(siteInfo.status, 403, JSON.stringify(siteInfo.json));
+  scoped(await call(admin.header, "GET", `${core}/users?roles=administrator&_fields=id,name`), "users by role");
+  scoped(await call(admin.header, "GET", `${core}/users?capabilities=manage_options`), "users by capability");
+  const writer = agent("editor", { write: true });
+  const contacts = () => Number(sql("SELECT COUNT(*) AS n FROM wp_first_contacts")[0].n);
+  const before = contacts();
+  scoped(await call(writer.header, "POST", `${api}/contacts`, { name: "p", email: `p-${run}@example.test` }), "facade create with an email");
+  scoped(await call(writer.header, "POST", `${api}/contacts`, { name: "p", salary: 5 }), "facade create with a restricted field");
+  scoped(await call(writer.header, "POST", `${core}/first_contacts`, { name: "p", salary: 6 }), "core create with a restricted field");
+  assert.equal(contacts(), before, "nothing was stored");
+  assert.equal((await call(writer.header, "POST", `${api}/contacts`, { name: `plain ${run}` })).status, 201, "a create without personal fields");
+  const granted = agent("editor", { write: true, personal: true });
+  assert.equal((await call(granted.header, "POST", `${api}/contacts`, { name: `full ${run}`, email: `full-${run}@example.test`, salary: 7 })).status, 201);
+});
+
+test("batch: a refused sub-request is a 403 in its own slot, and the batch answers", async () => {
+  const { header } = agent("admin", { write: true });
+  const batch = await call(header, "POST", `${site}/wp-json/batch/v1`, {
+    requests: [
+      { method: "POST", path: "/wp/v2/posts", body: { title: `batched ${run}` } },
+      { method: "POST", path: `/wp/v2/users/${harness.users.editor.id}`, body: { password: `Pw-${run}-A1!` } },
+    ],
+  });
+  assert.equal(batch.status, 207, JSON.stringify(batch.json).slice(0, 300));
+  assert.deepEqual(batch.json.responses.map((r: any) => r.status), [201, 403]);
+  assert.equal(batch.json.responses[1].body.code, "first_scope");
 });
 
 test("wp-admin's Application Passwords form creates a read-only password and offers the grants", async () => {
@@ -187,12 +272,18 @@ test("existing passwords keep working exactly as before; grant and revoke act on
   assert.equal((await call(header, "POST", `${api}/notes`, { title: `granted ${run}` })).status, 201);
   wp("first", "identity", "agent", "revoke", "editor", id);
   assert.equal((await call(header, "GET", `${api}/notes`)).status, 401);
+  // `--abilities` with no list is an error, never "every ability".
+  const before = JSON.parse(wp("first", "identity", "agent", "list", "author")).data.length;
+  const refused = JSON.parse(wpTry("first", "identity", "agent", "add", "author", `--name=noval-${run}`, "--abilities"));
+  assert.equal(refused.error.code, "invalid_command", JSON.stringify(refused));
+  assert.equal(JSON.parse(wp("first", "identity", "agent", "list", "author")).data.length, before, "no password was created");
 });
 
 test("a scoped password signs in only where its scope is enforced", async () => {
   const { header } = agent("editor", { write: true });
   const xmlrpc = await fetch(`${site}/xmlrpc.php`, { method: "POST", headers: { ...header, "content-type": "text/xml" }, body: '<?xml version="1.0"?><methodCall><methodName>wp.getUsersBlogs</methodName></methodCall>' });
   assert.equal(xmlrpc.status, 403, "XML-RPC is off");
+  // (Deactivating the runtime plugin itself is out of a scoped credential's reach: see the test above.)
   wp("plugin", "deactivate", harness.plugin);
   try {
     const refused = await call(header, "GET", `${core}/posts`);

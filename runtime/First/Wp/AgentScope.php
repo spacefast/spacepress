@@ -24,8 +24,9 @@ use First\Viewer;
  * `{write: false, personal: false}`; writes and personal data are each granted explicitly.
  *
  * A scope only ever narrows. The user's role, the kind's access rules and its field rules decide
- * first, and a scoped credential can't create or change any application password, so it can't widen
- * itself or mint another.
+ * first. And whatever its grants, a scoped credential can't do what would remove its own limits:
+ * change application passwords, change the sign-in of the account it uses, or administer the site
+ * (plugins, themes, settings, other users' roles).
  */
 final class AgentScope
 {
@@ -36,26 +37,59 @@ final class AgentScope
     private const USER_PUBLIC = ['id', 'name', 'url', 'description', 'link', 'slug', 'avatar_urls', 'meta', '_links', Kinds::ROW];
     private const USERS = '#^/wp/v2/users(/|$)#i';
     private const PASSWORDS = '#^/wp/v2/users/[^/]+/application-passwords(/|$)#i';
-    /** First Identity's API reads and changes the account itself (emails, sessions, passkeys). */
-    private const IDENTITY = '#^/first-identity/v1(/|$)#i';
+    /**
+     * Routes that read and change an account itself, whatever plugin serves them: First Identity
+     * (emails, sessions, passkeys) and Two Factor (methods, recovery codes).
+     */
+    private const ACCOUNT = '#^/(first-identity/v1|two-factor/[^/]+)(/|$)#i';
+    /**
+     * Site administration no scoped credential reaches, whatever its grants and its user's role: the
+     * code the site runs (plugins, themes: deactivating First would remove the scope itself) and the
+     * site's settings (which hold the administrator's email). An agent that needs these uses an
+     * unscoped credential, which is a decision its owner makes on purpose.
+     */
+    private const ADMINISTRATION = '#^/wp/v2/(plugins|themes|settings|plugin-status|block-directory)(/|$)|^/wp-site-health/#i';
+    /** Core abilities that return the site's or the user's account details. */
+    private const ACCOUNT_ABILITIES = ['core/get-site-info' => true, 'core/get-user-info' => true, 'core/get-environment-info' => true];
+    /**
+     * Capabilities behind that administration, refused to a scoped credential on every route. Not
+     * `manage_options`: First reads it to tell an administrator from an editor, and a scope doesn't
+     * change which of First's access rules the user passes.
+     */
+    private const ADMIN_CAPS = ['activate_plugins', 'activate_plugin', 'deactivate_plugins', 'deactivate_plugin', 'install_plugins', 'delete_plugins', 'update_plugins',
+        'edit_plugins', 'switch_themes', 'edit_themes', 'install_themes', 'delete_themes', 'update_themes', 'update_core',
+        'create_users', 'promote_users', 'delete_users', 'remove_users'];
     /** Where an ability decides for itself whether it writes: core's run route and the MCP transports. */
     private const RUNS = '#^/(wp-abilities/v1/abilities/.+/run/?$|mcp(/|$))#i';
     private const READS = ['GET', 'HEAD', 'OPTIONS'];
 
-    /** @var array<string, ?array{write: bool, personal: bool, abilities: ?list<string>}> by application password uuid */
+    /** @var array<string, ?array{write: bool, personal: bool, abilities: ?list<string>}> by "user id:password uuid" */
     private static array $scopes = [];
+    /** The scope this request signed in with, once known. */
+    private static ?array $request = null;
 
     public static function register(): void
     {
         add_action('do_parse_request', [self::class, 'facade'], -1);
         add_filter('rest_pre_dispatch', [self::class, 'route'], 0, 3);
         add_filter('wp_pre_execute_ability', [self::class, 'ability'], 0, 4);
+        add_filter('map_meta_cap', [self::class, 'capability'], PHP_INT_MAX, 2);
+        add_filter('mcp_adapter_tools_list', [self::class, 'tools'], PHP_INT_MAX);
         add_filter('rest_prepare_user', [self::class, 'user'], PHP_INT_MAX);
         add_filter('rest_prepare_comment', [self::class, 'comment'], PHP_INT_MAX);
         add_filter('rest_user_query', [self::class, 'userQuery'], PHP_INT_MAX);
         // Personal fields are hidden from a credential without `personal` wherever a field rule hides one:
         // rows, filters, sorts, searches, relations, uniqueness checks, core's routes and wp-admin.
         \First\FieldAccess::withhold(static fn (array $def): bool => self::restricted($def) && !self::may('personal'));
+        // A create has no stored row for the field rules to compare with: a credential without
+        // `personal` sets no personal field on a new row either.
+        \First\Extensions::onWrite(static function (string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void {
+            $schema = Plugin::instance()?->schema;
+            if ($op === 'create' && $viewer !== null && !self::may('personal') && $schema !== null && $schema->hasCollection($collection)
+                && array_intersect_key($provided, self::personal($schema->collection($collection))) !== []) {
+                throw self::refusal('personal');
+            }
+        });
         \First\Extensions::schemaDescribe(static function (array $description): array {
             if (($scope = self::current()) !== null) {
                 $description['runtime']['credential'] = ['scope' => $scope];
@@ -78,12 +112,21 @@ final class AgentScope
         if (!is_string($uuid) || !$user->exists()) {
             return null;
         }
-        if (!array_key_exists($uuid, self::$scopes)) {
-            $item = \WP_Application_Passwords::get_user_application_password($user->ID, $uuid);
-            self::$scopes[$uuid] = is_array($item) && array_key_exists(self::KEY, $item) ? self::normalize($item[self::KEY]) : null;
+        // Per user as well: the password core recorded stays set when code switches the current user.
+        $key = $user->ID . ':' . $uuid;
+        if (!array_key_exists($key, self::$scopes)) {
+            self::$scopes[$key] = self::stored(\WP_Application_Passwords::get_user_application_password($user->ID, $uuid));
         }
+        // A request that began as a scoped credential keeps that scope whoever it then acts as.
+        self::$request ??= self::$scopes[$key];
 
-        return self::$scopes[$uuid];
+        return self::$scopes[$key] ?? self::$request;
+    }
+
+    /** The scope on one stored application password entry, or null when it has none. */
+    private static function stored(mixed $item): ?array
+    {
+        return is_array($item) && array_key_exists(self::KEY, $item) ? self::normalize($item[self::KEY]) : null;
     }
 
     /** Whether this request's credential grants `write` or `personal`. An unscoped request has both. */
@@ -118,14 +161,25 @@ final class AgentScope
             'write' => 'This application password is read-only. Grant it writes (first identity agent grant <user> <id> --write) or use another credential.',
             'personal' => "This application password has no access to personal data (emails, restricted fields, account details). Grant it (first identity agent grant <user> <id> --personal) or use another credential.",
             'passwords' => "A scoped application password can't read or change application passwords.",
+            'administration' => "A scoped application password can't administer the site: plugins, themes, settings and other users' accounts need an unscoped credential.",
+            'account' => "A scoped application password can't change the account it signs in as: its password, email and sign-in methods.",
             default => "This application password is limited to a set of abilities, and this isn't one of them.",
         });
     }
 
-    /** Core's shape of the same refusal; the facade maps `first_scope` back to `scope`. */
+    /** Core's shape of the same refusal (`first_scope`; First's API answers `scope`). */
     private static function error(string $grant): \WP_Error
     {
         return new \WP_Error('first_scope', self::refusal($grant)->getMessage(), ['status' => 403]);
+    }
+
+    /**
+     * The same refusal as rest_pre_dispatch's answer. A response, not a WP_Error: core's batch endpoint
+     * hands this filter's result to `rest_post_dispatch` callbacks that take responses only.
+     */
+    private static function refused(string $grant): \WP_REST_Response
+    {
+        return rest_convert_error_to_response(self::error($grant));
     }
 
     /**
@@ -216,17 +270,34 @@ final class AgentScope
         $route = $request->get_route();
         $read = in_array(strtoupper($request->get_method()), self::READS, true);
         if (preg_match(self::PASSWORDS, $route) && !($read && preg_match('#/application-passwords/introspect/?$#i', $route))) {
-            return self::error('passwords');
+            return self::refused('passwords');
+        }
+        if (preg_match(self::ADMINISTRATION, $route)) {
+            return self::refused('administration');
         }
         $runs = preg_match(self::RUNS, $route) === 1;
         if ($scope['abilities'] !== null && !$runs && !self::describes($route)) {
-            return self::error('abilities');
+            return self::refused('abilities');
         }
         if (!$scope['write'] && !$read && !$runs) {
-            return self::error('write');
+            return self::refused('write');
         }
-        if (!$scope['personal'] && (preg_match(self::IDENTITY, $route) || (!$read && preg_match(self::USERS, $route)) || self::probes($request))) {
-            return self::error('personal');
+        if (preg_match(self::USERS, $route) && !$read) {
+            // The credential's own sign-in: a new password or email would be a way out of the scope.
+            foreach (['password', 'email', 'username', 'roles', 'capabilities'] as $field) {
+                if ($request->has_param($field)) {
+                    return self::refused('account');
+                }
+            }
+            if (!$scope['personal']) {
+                return self::refused('personal');
+            }
+        }
+        if (preg_match(self::ACCOUNT, $route)) {
+            return self::refused($scope['personal'] ? 'account' : 'personal');
+        }
+        if (!$scope['personal'] && self::probes($request)) {
+            return self::refused('personal');
         }
 
         return $result;
@@ -235,8 +306,11 @@ final class AgentScope
     /** What an ability-limited credential still reads: the abilities it may run, and the app's schema. */
     private static function describes(string $route): bool
     {
-        return preg_match('#^/wp-abilities/v1(/|$)#i', $route) === 1 || preg_match('#/application-passwords/introspect/?$#i', $route) === 1
-            || (Facade::dispatching() && Facade::path() === '');
+        if (preg_match('#^/wp-abilities/v1/abilities/(.+?)/?$#i', $route, $m)) {
+            return self::listed($m[1], self::current()['abilities'] ?? []);
+        }
+
+        return preg_match('#/application-passwords/introspect/?$#i', $route) === 1 || (Facade::dispatching() && Facade::path() === '');
     }
 
     /** A list query that would answer "which rows hold this personal value" without showing it. */
@@ -246,7 +320,9 @@ final class AgentScope
         $given = static fn (mixed $v): bool => is_array($v) ? $v !== [] : $v !== null && $v !== '' && $v !== false;
 
         return match ($route) {
-            '/wp/v2/users' => in_array($request['orderby'], ['email', 'registered_date'], true),
+            // Sorting by, or filtering on, what a user row no longer shows would still tell it apart.
+            '/wp/v2/users' => in_array($request['orderby'], ['email', 'registered_date'], true)
+                || $given($request['roles']) || $given($request['capabilities']) || $given($request['who']),
             // Core's comment search reads the commenter's email, URL and address.
             '/wp/v2/comments' => $given($request['search']) || $given($request['author_email']),
             default => false,
@@ -263,9 +339,13 @@ final class AgentScope
     public static function ability(mixed $pre, mixed $name, mixed $input, mixed $ability): mixed
     {
         $scope = self::current();
-        // The adapter's own tools carry another ability's name: that ability is judged when it runs.
-        if ($scope === null || !is_string($name) || !$ability instanceof \WP_Ability || str_starts_with($name, 'mcp-adapter/')) {
+        if ($scope === null || !is_string($name) || !$ability instanceof \WP_Ability) {
             return $pre;
+        }
+        if (str_starts_with($name, 'mcp-adapter/')) {
+            // The adapter's execute tool carries another ability's name, judged when that one runs. Its
+            // discovery tools list every ability, which a credential limited to named ones doesn't see.
+            return $scope['abilities'] !== null && $name !== 'mcp-adapter/execute-ability' ? self::error('abilities') : $pre;
         }
         if ($scope['abilities'] !== null && !self::listed($name, $scope['abilities'])) {
             return self::error('abilities');
@@ -273,11 +353,59 @@ final class AgentScope
         if (!$scope['write'] && empty(((array) $ability->get_meta_item('annotations', []))['readonly'])) {
             return self::error('write');
         }
-        if (!$scope['personal'] && str_starts_with($name, 'first-identity/')) {
+        if (!$scope['personal'] && (str_starts_with($name, 'first-identity/') || isset(self::ACCOUNT_ABILITIES[$name]))) {
             return self::error('personal');
         }
 
         return $pre;
+    }
+
+    /** mcp_adapter_tools_list: a credential limited to named abilities is shown those tools only. */
+    public static function tools(mixed $tools): mixed
+    {
+        $allowed = self::current()['abilities'] ?? null;
+        if ($allowed === null || !is_array($tools)) {
+            return $tools;
+        }
+
+        return array_values(array_filter($tools, static function (mixed $tool) use ($allowed): bool {
+            $name = is_object($tool) && method_exists($tool, 'getName') ? (string) $tool->getName() : (is_array($tool) ? (string) ($tool['name'] ?? '') : '');
+            foreach (wp_get_abilities() as $ability) {
+                // The adapter names a tool after its ability, with the slash as a hyphen.
+                if (str_replace('/', '-', $ability->get_name()) === $name) {
+                    return self::listed($ability->get_name(), $allowed);
+                }
+            }
+
+            return false; // the adapter's own discovery and execute tools
+        }));
+    }
+
+    /**
+     * map_meta_cap: the capabilities behind site administration are refused to a scoped credential on
+     * every route that asks them, core's and any plugin's, not only the routes named above.
+     */
+    public static function capability(mixed $caps, mixed $cap): mixed
+    {
+        return is_string($cap) && in_array($cap, self::ADMIN_CAPS, true) && self::signedIn() !== null ? ['do_not_allow'] : $caps;
+    }
+
+    /**
+     * The request's scope, for capability checks. Core asks capabilities while it is still resolving
+     * the user, so this never resolves it: it reads what core has recorded so far.
+     */
+    private static function signedIn(): ?array
+    {
+        if (self::$request !== null) {
+            return self::$request;
+        }
+        $uuid = function_exists('rest_get_authenticated_app_password') ? rest_get_authenticated_app_password() : null;
+        $user = $GLOBALS['current_user'] ?? null;
+        if (!is_string($uuid) || !$user instanceof \WP_User || !$user->exists()) {
+            return null;
+        }
+
+        return self::$request = self::stored(\WP_Application_Passwords::get_user_application_password($user->ID, $uuid));
     }
 
     /** @param list<string> $allowed exact names, or `<namespace>/*` */
@@ -357,7 +485,11 @@ final class AgentScope
         // default. Any other client's create keeps core's behaviour unless it sends a scope.
         add_action('wp_create_application_password', static function (mixed $userId, mixed $item, mixed $password, mixed $args): void {
             $asked = is_array($args) ? ($args[self::KEY] ?? null) : null;
-            if (is_array($asked) || is_admin() || (!empty($GLOBALS['wp_rest_auth_cookie']) && wp_is_serving_rest_request())) {
+            // Core's own Application Passwords screens create through this REST route with the browser's
+            // cookie; a password another plugin creates in PHP keeps core's behaviour.
+            $form = !empty($GLOBALS['wp_rest_auth_cookie']) && wp_is_serving_rest_request()
+                && preg_match(self::PASSWORDS, (string) ($GLOBALS['wp']->query_vars['rest_route'] ?? '')) === 1;
+            if (is_array($asked) || $form) {
                 self::store((int) $userId, (string) ($item['uuid'] ?? ''), self::normalize((is_array($asked) ? $asked : []) + self::DEFAULT));
             }
         }, 10, 4);
@@ -446,6 +578,9 @@ final class AgentScope
         $user = ctype_digit($who) ? get_user_by('id', (int) $who) : get_user_by('login', $who);
         if (!$user instanceof \WP_User) {
             throw $fail('Usage: identity agent add <user> --name=<name> [--write] [--personal] [--abilities=<a,b>] | agent list <user> | agent grant <user> <id> [--write] [--personal] [--abilities=<a,b>] | agent revoke <user> <id>');
+        }
+        if (($flags['abilities'] ?? null) === true || ($flags['abilities'] ?? null) === '') {
+            throw $fail('--abilities needs a list, such as --abilities=blog/posts-list,blog/posts-get; leave the flag out for every ability');
         }
         $scope = self::normalize([
             'write' => ($flags['write'] ?? false) === true,

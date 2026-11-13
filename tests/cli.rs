@@ -438,7 +438,7 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
     let sql = std::fs::read_to_string(project.join("first/_generated/migrations/0001_init.sql")).unwrap();
     assert_eq!(sql.matches("CREATE TABLE `{prefix}first_projects`").count(), 1, "{sql}");
     assert!(
-        sql.contains("FOREIGN KEY (`projectId`) REFERENCES `{prefix}first_projects` (`id`) ON DELETE CASCADE"),
+        sql.contains("FOREIGN KEY (`project`) REFERENCES `{prefix}first_projects` (`id`) ON DELETE CASCADE"),
         "{sql}"
     );
     // The scaffold's own kind stays a WordPress post type: it gets no table.
@@ -473,32 +473,20 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
     let typed = tsc(&[]);
     assert!(typed.status.success(), "{}{}", text(&typed.stdout), text(&typed.stderr));
 
-    // The relation the example describes in a comment, written out as it says, beside another kind.
+    // A mistake in the added client file is a type error: a field the table doesn't have.
+    let client = std::fs::read_to_string(project.join("tables.client.ts")).unwrap();
     std::fs::write(
-        project.join("first.config.ts"),
-        r#"import { collection, defineConfig, defineRelations, text } from "first";
-import { projects, tasks } from "./first/tables";
-export const notes = collection({ title: text() });
-const relations = defineRelations({ projects, tasks, notes }, (r) => ({
-  tasks: { project: r.one.projects({ from: r.tasks.projectId, to: r.projects.id }) },
-  projects: { tasks: r.many.tasks() },
-}));
-export default defineConfig({ name: "my-app", collections: { notes }, relations });
-"#,
+        project.join("tables.client.ts"),
+        format!("{client}\nexport const wrong = () => first.tasks.create({{ project: 1, title: \"x\", owner: 2 }});\n"),
     )
     .unwrap();
-    std::fs::write(
-        project.join("related.client.ts"),
-        r#"import { createClient } from "./first/_generated/client/index.ts";
-const first = createClient({ url: "/__first/api/v1" });
-export const names = async () => (await first.tasks.list({ with: { project: true } })).map((task) => task.project?.name);
-"#,
-    )
-    .unwrap();
-    let rebuilt = first().arg("build").arg(&project).arg("--quiet").output().unwrap();
-    assert_eq!(rebuilt.status.code(), Some(0), "{}", text(&rebuilt.stderr));
     let typed = tsc(&[]);
-    assert!(typed.status.success(), "{}{}", text(&typed.stdout), text(&typed.stderr));
+    assert!(!typed.status.success());
+    assert!(
+        text(&typed.stdout).contains("tables.client.ts") && text(&typed.stdout).contains("owner"),
+        "{}",
+        text(&typed.stdout)
+    );
 }
 
 #[test]
@@ -797,13 +785,13 @@ fn the_added_tables_enforce_their_access_rules_on_a_real_wordpress() {
     assert_eq!(call(Some("sub"), "GET", "/projects", None).0, 200);
 
     // Tasks: the foreign key is real, and creating one needs an account.
-    let task = |title: &str| serde_json::json!({ "projectId": project_id, "title": title });
+    let task = |title: &str| serde_json::json!({ "project": project_id, "title": title });
     assert_eq!(call(None, "POST", "/tasks", Some(task("signed out"))).0, 401);
     let (status, refused) = call(
         Some("sub"),
         "POST",
         "/tasks",
-        Some(serde_json::json!({ "projectId": 999, "title": "no project" })),
+        Some(serde_json::json!({ "project": 999, "title": "no project" })),
     );
     assert_eq!(status, 409, "{refused}");
     let (status, open) = call(Some("sub"), "POST", "/tasks", Some(task("Write the post")));
@@ -834,6 +822,12 @@ fn the_added_tables_enforce_their_access_rules_on_a_real_wordpress() {
     assert_eq!(status, 200, "{edited}");
     let (_, read) = call(Some("sub"), "GET", &path, None);
     assert_eq!(read["data"]["title"], "Write the post (done)");
+
+    // The field is the relation, in both directions.
+    let (_, with_project) = call(Some("sub"), "GET", "/tasks?with=project", None);
+    assert_eq!(with_project["data"][0]["project"]["name"], "Launch", "{with_project}");
+    let (_, with_tasks) = call(Some("sub"), "GET", "/projects?with=tasks", None);
+    assert_eq!(with_tasks["data"][0]["tasks"][0]["id"], id, "{with_tasks}");
 
     // Deleting the project deletes its tasks.
     let project_path = format!("/projects/{}", project_id);

@@ -12,7 +12,7 @@
 // - A deploy checks every change against the live rows before it runs any of them. Removing a table
 //   or field that holds rows is refused until the deploy names the row count (`--drop=tasks=12`).
 //   Rename with `was: "old_name"` on the table or `.was("old")` on a field and the rows stay.
-import { boolean, date, integer, table, text } from "first";
+import { boolean, date, ref, table, text } from "first";
 
 export const projects = table({
   name: text().max(120),
@@ -24,9 +24,12 @@ export const projects = table({
 });
 
 export const tasks = table({
-  // A foreign key to projects.id: the database refuses a task without its project, and deleting
-  // a project deletes its tasks.
-  projectId: integer().references(() => projects.id, { onDelete: "cascade" }),
+  // A reference to a project: a foreign key in the database, so a task can't exist without its
+  // project, and deleting a project deletes its tasks. The field name is also the relation:
+  // `first.tasks.list({ with: { project: true } })` reads each task with its project, and
+  // `first.projects.list({ with: { tasks: true } })` reads each project with its tasks.
+  // ref() can point at a collection() too: a table row can belong to a post.
+  project: ref(projects).onDelete("cascade"),
   title: text().max(200),
   done: boolean().default(false),
   dueOn: date().optional(),
@@ -45,18 +48,3 @@ export const tasks = table({
     delete: "editor",
   },
 });
-
-// Relations: to read a task with its project (`first.tasks.list({ with: { project: true } })`),
-// declare the relation in first.config.ts. The first argument lists every kind the app has, so
-// add yours next to these two:
-//
-//   import { defineRelations } from "first";
-//   import { projects, tasks } from "./first/tables";
-//
-//   const relations = defineRelations({ projects, tasks /* , and your other kinds */ }, (r) => ({
-//     tasks: { project: r.one.projects({ from: r.tasks.projectId, to: r.projects.id }) },
-//     projects: { tasks: r.many.tasks() },
-//   }));
-//   export default defineConfig({ /* what you have */, relations });
-//
-// A relation can point at a collection() too: a table row can belong to a post.

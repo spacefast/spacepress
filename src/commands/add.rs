@@ -47,7 +47,7 @@ const MODULES: &[Module] = &[Module {
         File {
             path: "first/tables.ts",
             content: include_str!("add/db/tables.ts"),
-            what: "two example tables, with a foreign key and access rules",
+            what: "two example tables, with a reference between them and access rules",
             when: When::NoTables,
         },
         File {

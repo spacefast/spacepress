@@ -15,7 +15,8 @@ counter, and a kind with drafts also a `published` counter that moves only when 
 published before or after the write. Every write through First's write path reports to
 `Extensions::onWritten` inside its transaction: API and action writes, hooks, jobs, the CLI, and
 wp-admin and core REST saves of kinds First owns (they already report there, for change notices).
-Scheduled promotion reports too. The counters are written as the transaction's last statements,
+Scheduled promotion reports too, and so does moving a post to the trash or out of it, which
+WordPress does without First's write path (`transition_post_status`). The counters are written as the transaction's last statements,
 through a new `Connection::beforeCommit`, so they commit or roll back with the write and a kind's
 counter row is locked only while the commit runs. Kinds are taken in name order.
 
@@ -30,7 +31,8 @@ they do for `posts.list()`.
 
 - *By counter, without running the read*: only when the visitor may read every row and every
   field the counter covers. That is `all` when the visitor's read scope is empty, and `published`
-  when it is exactly "published rows". A kind with a field that may be hidden from the visitor, a
+  when it is exactly "published rows" (not for a localized kind, whose published rows also list
+  their translation group's drafts). A kind with a field that may be hidden from the visitor, a
   read rule that returns a filter for them, the users kind, or a media or file column loaded
   through `with` has no counter for that visitor. A read uses counters only if every kind it
   depends on has one: its own kind, each kind loaded through `with`, each kind a relation filter
@@ -40,9 +42,12 @@ they do for `posts.list()`.
 
 **Tokens are sealed.** A token holds the counters the answer was computed at, the result hash,
 the time, and a hash of the query and the visitor. It is encrypted with a key derived from the
-site's salt (`sodium_crypto_secretbox`, fresh nonce), so a client can't read a counter out of it,
-and a new one is issued on every answer whether or not anything changed. A token presented with
-another query, or by another visitor, is no token: the answer is the full result.
+site's salt (`sodium_crypto_secretbox`, fresh nonce, the plaintext padded to 256 bytes so the
+length doesn't follow a counter's digits), so a client can't read a counter out of it, and a new
+one is issued on every answer whether or not anything changed. A token presented with another
+query, or by another visitor, is no token: the answer is the full result. A visitor is the user
+and their post-password cookie; anonymous visitors without one are one visitor, as they read the
+same rows.
 
 **Why this leaks nothing the visitor may not read.**
 
@@ -59,8 +64,11 @@ A write that never passed First's write path (another plugin's SQL, `update_post
 First's post types) moves no counter. The window bounds how long such a write can stay unseen by a
 subscription answered by counter.
 
-**Bounds.** 20 reads and 32 KiB per request; lists capped at the API's 100 rows; once a request's
-reads have run for one second the rest answer `pending` and are asked again. The response is
+**Bounds.** 20 reads and 32 KiB per request; a `list` or `paginate` capped at the API's 100 rows,
+an `offset` at the API's nine digits, and `with` at three levels of relations; once a request's
+reads have run for one second the rest answer `pending` and are asked again. The first read of a
+request always runs, so one read's own cost (its relations' rows included) is the API's, not
+bounded further here. The response is
 `private, no-store`.
 
 **The client polls adaptively.** Every subscription of a client travels in one request. The gap

@@ -45,6 +45,25 @@ final class Versions
             "CREATE TABLE IF NOT EXISTS `{prefix}first__versions` (`kind` VARCHAR(191) $text NOT NULL, `scope` VARCHAR(16) $text NOT NULL, `version` BIGINT UNSIGNED NOT NULL, PRIMARY KEY (`kind`, `scope`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin",
         ]);
         Extensions::onWritten(self::written(...));
+        if (function_exists('add_action')) {
+            // Moving a post to the trash or out of it is a status change WordPress makes without
+            // First's write path (the editor's save hooks skip trashed posts): count it here.
+            add_action('transition_post_status', [self::class, 'trashed'], 10, 3);
+        }
+    }
+
+    /** `transition_post_status`: a post of a First kind moved into or out of the trash. */
+    public static function trashed(string $new, string $old, \WP_Post $post): void
+    {
+        if ($new === $old || ($new !== 'trash' && $old !== 'trash')) {
+            return;
+        }
+        $collection = \First\Wp\CoreAccess::collection($post->post_type);
+        $store = $collection === null ? null : db()->store();
+        if ($collection === null || !$store instanceof CompositeStore) {
+            return;
+        }
+        self::touch($store->db, $collection, $new === 'publish' || $old === 'publish');
     }
 
     /** Extensions::onWritten: inside the write's transaction. */

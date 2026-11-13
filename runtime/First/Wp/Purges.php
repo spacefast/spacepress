@@ -13,7 +13,8 @@ namespace First\Wp;
  * - the item's URL before and after the write (a slug, status or parent change moves or hides it);
  * - the home page, the posts page, and the post type's archive, with their first pages;
  * - the archives of every term the post had or has, and its author's archive;
- * - its feeds, `/llms.txt`, and each page URL's `.md` twin.
+ * - its feeds, `/llms.txt`, the sitemap index and the sitemap file that lists it, and each page
+ *   URL's `.md` twin.
  * Older listing pages (`/page/7/`) fall back to the edge's `s-maxage` window. URLs are collected over
  * the request and announced once, after the outermost transaction commits (or at the end of the
  * request when there is none); a rolled-back transaction announces nothing.
@@ -84,7 +85,7 @@ final class Purges
 
     /**
      * Root-relative paths for a set of URLs, each with its `.md` twin, deduplicated: what
-     * `first_purge_urls` receives. Feeds and `/llms.txt` have no twin.
+     * `first_purge_urls` receives. Feeds, `/llms.txt` and sitemap files have no twin.
      *
      * @param list<string> $urls absolute URLs or root-relative paths
      * @return list<string>
@@ -101,7 +102,7 @@ final class Purges
             $path = ($parts['path'] ?? '/') . (isset($parts['query']) && $parts['query'] !== '' ? '?' . $parts['query'] : '');
             $paths[$path] = true;
             $bare = (string) ($parts['path'] ?? '/');
-            if (!preg_match('#/(feed|rss2?|atom|rdf)/?$|/llms\.txt$|\.md$#', $bare)) {
+            if (!preg_match('#/(feed|rss2?|atom|rdf)/?$|/llms\.txt$|\.md$|/wp-sitemap[^/]*\.xml$#', $bare)) {
                 $twin = MarkdownTwins::twin($path);
                 $paths[(string) (wp_parse_url($twin, PHP_URL_PATH) ?? $twin) . (isset($parts['query']) && $parts['query'] !== '' ? '?' . $parts['query'] : '')] = true;
             }
@@ -113,6 +114,15 @@ final class Purges
     private static function listening(): bool
     {
         return has_action('first_purge_urls') !== false;
+    }
+
+    /** URLs a write changed that no post hook names (First's own writes): announced with the rest. */
+    public static function announce(array $urls): void
+    {
+        $plugin = Plugin::instance();
+        if ($plugin !== null && self::listening()) {
+            self::add($plugin, $urls);
+        }
     }
 
     /** @param list<string> $urls */
@@ -192,8 +202,9 @@ final class Purges
         }
         $urls = array_values(array_filter($urls, static fn (mixed $url): bool => is_string($url) && $url !== ''));
 
-        // Other addresses that show this post (a `page.md` route answers with and without a trailing slash).
-        return (array) apply_filters('first_post_purge_urls', [$urls[0], ...self::listings(array_slice($urls, 1))], $post);
+        // Other addresses that show this post (a `page.md` route answers with and without a trailing
+        // slash), and the sitemap files that list it (core's and First's), which have no twins.
+        return [...(array) apply_filters('first_post_purge_urls', [$urls[0], ...self::listings(array_slice($urls, 1))], $post), ...Sitemap::filesFor($post)];
     }
 
     /**

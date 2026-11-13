@@ -40,6 +40,7 @@
     },
     { "name": "Media", "description": "The WordPress media library." },
     { "name": "Account", "description": "The signed-in user and their session." },
+    { "name": "Search", "description": "One search over every kind with a searchable field." },
     { "name": "Schema", "description": "The app described to its clients." }
   ],
   "paths": {
@@ -79,8 +80,8 @@
           {
             "name": "search",
             "in": "query",
-            "description": "Text to find in the title, the content and every text field the caller may read.",
-            "schema": { "type": "string" }
+            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
+            "schema": { "type": "string", "maxLength": 200 }
           },
           {
             "name": "status",
@@ -468,8 +469,8 @@
           {
             "name": "search",
             "in": "query",
-            "description": "Text to find in the title, the content and every text field the caller may read.",
-            "schema": { "type": "string" }
+            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
+            "schema": { "type": "string", "maxLength": 200 }
           },
           {
             "name": "status",
@@ -1269,6 +1270,12 @@
           { "$ref": "#/components/parameters/offset" },
           { "$ref": "#/components/parameters/cursor" },
           {
+            "name": "search",
+            "in": "query",
+            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
+            "schema": { "type": "string", "maxLength": 200 }
+          },
+          {
             "name": "with",
             "in": "query",
             "description": "What to load with each row, comma-separated or as a JSON object: `postId`. A relation holds only rows the caller may read.",
@@ -1515,7 +1522,13 @@
           },
           { "$ref": "#/components/parameters/limit" },
           { "$ref": "#/components/parameters/offset" },
-          { "$ref": "#/components/parameters/cursor" }
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
+            "schema": { "type": "string", "maxLength": 200 }
+          }
         ],
         "responses": {
           "200": {
@@ -1736,7 +1749,13 @@
           },
           { "$ref": "#/components/parameters/limit" },
           { "$ref": "#/components/parameters/offset" },
-          { "$ref": "#/components/parameters/cursor" }
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
+            "schema": { "type": "string", "maxLength": 200 }
+          }
         ],
         "responses": {
           "200": {
@@ -3540,6 +3559,87 @@
           "401": { "$ref": "#/components/responses/Problem" },
           "403": { "$ref": "#/components/responses/Problem" },
           "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/search": {
+      "get": {
+        "tags": ["Search"],
+        "operationId": "search",
+        "summary": "Search the site",
+        "x-first-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Runs the kinds' `search` on every kind with a searchable field, as the caller. A kind the caller may not read is left out, and so is a `kinds` name that is not a searchable kind.\n\nAccess: Anyone may do this, signed in or not.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "The words to find.",
+            "schema": { "type": "string", "maxLength": 200 }
+          },
+          {
+            "name": "kinds",
+            "in": "query",
+            "description": "Only these kinds, comma-separated: `authors`, `posts`, `comments`, `members`.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Rows per kind: 10 unless given, and never more than 50.",
+            "schema": { "type": "integer", "minimum": 1, "default": 10 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The matching rows, by kind; a kind with none is absent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "q": { "type": "string" },
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "kind": { "type": "string", "enum": ["authors", "posts", "comments", "members"] },
+                              "rows": {
+                                "type": "array",
+                                "items": {
+                                  "anyOf": [
+                                    { "$ref": "#/components/schemas/Author" },
+                                    { "$ref": "#/components/schemas/Post" },
+                                    { "$ref": "#/components/schemas/Comment" },
+                                    { "$ref": "#/components/schemas/Member" }
+                                  ]
+                                }
+                              }
+                            },
+                            "required": ["kind", "rows"]
+                          }
+                        }
+                      },
+                      "required": ["q", "results"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
       }

@@ -242,3 +242,19 @@ fn blocks(layouts: Option<&IndexMap<String, IndexMap<String, Column>>>, output: 
         json!({ "type": "object", "oneOf": variants })
     }
 }
+
+/// The fields `search` matches (`Search\Index::fields`): the title, the content, and every `text` or
+/// `richText` field without an `enum`; never a hidden or other system field.
+pub fn searchable(c: &Collection) -> Vec<&str> {
+    c.columns
+        .values()
+        .filter(|col| {
+            let designated =
+                c.title.as_deref() == Some(col.name.as_str()) || c.content.as_deref() == Some(col.name.as_str());
+            !col.hidden
+                && (designated
+                    || !col.system && matches!(col.ty, ColType::Text | ColType::RichText) && col.enum_values.is_none())
+        })
+        .map(|col| col.name.as_str())
+        .collect()
+}

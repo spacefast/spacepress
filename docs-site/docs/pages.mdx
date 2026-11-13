@@ -115,6 +115,8 @@ Without `first/app/`, nothing here loads and WordPress renders the whole site wi
 
 Every page also has a Markdown twin at the same URL plus `.md` (or with `Accept: text/markdown`), rendered as an anonymous visitor, and each HTML page links it. `/llms.txt` lists the app's pages that have no parameters and no guard. A page under a `guard` has no twin.
 
+The site's sitemap is WordPress's own, at `/wp-sitemap.xml`. It lists the same pages, unless a page's metadata says `robots: { index: false }`, and the items of every kind with a `url` that a signed-out visitor may read. Drafts, rows an access rule hides and password-protected items are never in it.
+
 ## The `pages/` pipeline (being replaced)
 
 Until the cutover finishes, a root `pages/` folder still builds through the separate Node `first-pages build` described below, and `examples/full-site` uses it. `first/app/` replaces it; this pipeline and its helpers (`load()`, `<Show>`, `orElse()`, `<Island>`) go away in the same change set.

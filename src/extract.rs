@@ -129,6 +129,7 @@ const CONFIG_KEYS: &[&str] = &[
     "services",
     "use",
     "frontend",
+    "runtimeSchema",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
     "storageName",
@@ -242,6 +243,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         }
     };
     out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
+    let runtime_schema = span_of(ev, config, "runtimeSchema", config_span);
+    out.schema.runtime_schema = bool_option(&cfg_map, "runtimeSchema", false, runtime_schema)?.then(Default::default);
     out.schema.frontend = match cfg_map.get("frontend") {
         None | Some(Value::Undef) => None,
         Some(Value::Bool(false)) => Some(crate::kind_url::Frontend::Off),
@@ -816,6 +819,18 @@ fn is_slug(s: &str) -> bool {
 /// One input field (an action's `input`, a page's typed `search`), checked as action inputs are.
 pub fn input_column(name: &str, b: &ColBuilder, ev: &mut Evaluator<'_>, out: &mut Extracted) -> Result<Column> {
     column(name, b, &Owner::Action(String::new()), &[], Place::Input, ev, out)
+}
+
+/// A collection's own field read from the runtime schema lock (`crate::runtime_schema`), checked as
+/// an authored one is.
+pub fn lock_column(
+    name: &str,
+    b: &ColBuilder,
+    table: &str,
+    ev: &mut Evaluator<'_>,
+    out: &mut Extracted,
+) -> Result<Column> {
+    column(name, b, &Owner::Collection(table.to_string()), &[], Place::Top, ev, out)
 }
 
 pub fn slugify_name(s: &str) -> String {

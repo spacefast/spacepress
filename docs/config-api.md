@@ -591,6 +591,29 @@ Back up the **database**.
 - Props are text, a choice of text literals, numbers and booleans; anything else is a build error.
   A tag the site doesn't know, an unknown prop, a wrong value or an unclosed tag is refused.
 
+### Code blocks
+
+A fenced code block is highlighted when its page renders, in light and dark themes, with no
+script on the page ([decision](decisions/2026-11-13-code-blocks.md)). The fence takes a title,
+lines to mark and a group; blocks with one group show as tabs:
+
+````md
+```ts title="first.config.ts" {2,4-5}
+import { defineConfig } from "first";
+```
+
+```sh group="install"
+npm install first
+```
+
+```sh title="pnpm" group="install"
+pnpm add first
+```
+````
+
+It is WordPress's own code block underneath, so the block editor edits it, and `first sync` writes
+the same fence back. 185 languages; `text` (or any unknown language) shows the code as written.
+
 ### Seeding and `first sync`
 
 Every publish seeds synced files: missing records are created, trashed records stay deleted, and no records are removed.

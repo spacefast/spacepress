@@ -1,6 +1,7 @@
 // Writes every generated page under docs/ from the code in this repository: the examples, the
-// supported WordPress plugins, the CLI, the config API, the REST routes (as OpenAPI), the
-// diagnostic codes and the changelogs. Nothing in those pages is written by hand.
+// supported WordPress plugins, the CLI, the config API, the REST routes (the compiler's OpenAPI
+// document for one example), the diagnostic codes and the changelogs. Nothing in those pages is
+// written by hand.
 //
 //   node scripts/generate.ts           write the pages
 //   node scripts/generate.ts --check   fail if a committed page differs from what this writes
@@ -511,233 +512,34 @@ This page is read from [\`types/first/index.d.ts\`](${github}/types/first/index.
 );
 
 // ---------------------------------------------------------------------------------------------
-// REST API: one OpenAPI document for the routes every First app serves at /__first/api/v1 (spec
-// §3a), read from the dispatchers in runtime/First (the facade and the modules registered with
-// Extensions::route). Blume renders it.
+// REST API: the OpenAPI document `first build` writes for an app (src/openapi.rs), here for the
+// blog example, compiled by the same build of the compiler the examples above were checked with.
+// Nothing about a route is written in this file. Blume renders the document at /rest.
 // ---------------------------------------------------------------------------------------------
 
-const authPhp = read("runtime/First/Auth/Module.php");
-const filesPhp = read("runtime/First/Media/FileRoutes.php");
-const mediaPhp = read("runtime/First/Media/Module.php");
-const syncPhp = read("runtime/First/Sync/Routes.php");
-const servicesPhp = read("runtime/First/Services/Module.php");
-const facadePhp = read("runtime/First/Wp/Facade.php");
-const livePhp = read("runtime/First/Live/Module.php");
-const liveMaxQueries = /MAX_QUERIES = (\d+)/.exec(livePhp)?.[1];
-if (!liveMaxQueries) throw new Error("runtime/First/Live/Module.php: no MAX_QUERIES");
-const prefix = /PREFIX = '([^']+)'/.exec(facadePhp)?.[1] ?? "";
-if (!prefix) throw new Error("runtime/First/Wp/Facade.php: no PREFIX");
-const listLimit = /private const LIMIT = (\d+)/.exec(facadePhp)?.[1];
-const maxListLimit = /MAX_LIMIT = (\d+)/.exec(facadePhp)?.[1];
-
-/** Checks that a dispatcher still allows exactly these methods for a route, so the spec can't drift. */
-function expectAllow(php: string, where: string, near: string, methods: string[]) {
-	const at = php.indexOf(near);
-	if (at < 0) throw new Error(`${where}: "${near}" not found; update scripts/generate.ts`);
-	const allow = /allow\(\$method, \[([^\]]+)\]\)/.exec(php.slice(at, at + 600))?.[1];
-	const found = allow ? [...allow.matchAll(/'([A-Z]+)'/g)].map((m) => m[1]) : [];
-	if (found.join(",") !== methods.join(",")) throw new Error(`${where} near "${near}": methods are ${found.join(",")}, the spec says ${methods.join(",")}`);
-}
-expectAllow(facadePhp, "Facade::route", "if ($name === null) {", ["GET", "HEAD"]);
-expectAllow(facadePhp, "Facade::route", "$name === 'me'", ["GET", "HEAD"]);
-expectAllow(facadePhp, "Facade::global", "private static function global(", ["GET", "HEAD", "PATCH"]);
-expectAllow(facadePhp, "Facade::route", "if (count($segments) === 1) {", ["GET", "HEAD", "POST"]);
-expectAllow(facadePhp, "Facade::route", "$id = self::id($kind, $segments[1]);", ["GET", "HEAD", "PATCH", "DELETE"]);
-expectAllow(facadePhp, "Facade::revisions", "if ($rest[1] !== 'restore'", ["POST"]);
-expectAllow(livePhp, "Live\\Module::serve", "public static function serve(", ["POST"]);
-expectAllow(authPhp, "Auth\\Module::route", "case 'auth/config'", ["GET"]);
-expectAllow(authPhp, "Auth\\Module::route", "case 'auth/guest'", ["POST"]);
-expectAllow(authPhp, "Auth\\Module::route", "case 'auth/session'", ["DELETE"]);
-expectAllow(filesPhp, "FileRoutes::dispatch", "if ($n === 2) {", ["POST"]);
-expectAllow(syncPhp, "Sync\\Routes::dispatch", "if ($action === null) {", ["GET", "POST"]);
-/** Checks that a handler still contains this text, so a route or status the spec names can't drift. */
-function expectText(php: string, where: string, text: string) {
-	if (!php.includes(text)) throw new Error(`${where} no longer has ${text}; update the OpenAPI document in scripts/generate.ts`);
-}
-expectText(servicesPhp, "Services\\Module::route", "return [201, self::submit(");
-expectText(servicesPhp, "Services\\Module::route", "return [202, Payments::checkout(");
-for (const route of ["'search'", "checkout/(", "stripe/webhook", "submissions/("]) expectText(servicesPhp, "Services\\Module::route", route);
-for (const action of ["'trash' =>", "'convert' =>", "'merge' =>"]) expectText(syncPhp, "Sync\\Routes::dispatch", action);
-expectText(mediaPhp, "Media\\Module::dispatch", "$segments[2] === 'file'");
-// PATCH /media/{id} accepts these fields and refuses any other (the facade maps them onto core's media route).
-expectText(read("runtime/First/Wp/Kinds.php"), "Kinds::input", "'media' => self::rename($data, ['alt' => 'alt_text', 'caption' => 'caption', 'focal' => 'first_focal'])");
-expectText(read("runtime/First/Media/Files.php"), "Media\\Files::download", "$query['sig']");
-
-const problem = { $ref: "#/components/responses/Problem" };
-const ok = (description: string, schema: object = { $ref: "#/components/schemas/Data" }) => ({ description, content: { "application/json": { schema } } });
-const op = (tag: string, operationId: string, summary: string, description: string, extra: object = {}) => ({
-	tags: [tag],
-	operationId,
-	summary,
-	description,
-	responses: { "200": ok("The result, under `data`."), default: problem },
-	...extra,
-});
-const body = (description: string, contentType = "application/json") => ({
-	requestBody: { required: true, description, content: { [contentType]: { schema: contentType === "application/json" ? { type: "object", additionalProperties: true } : { type: "object", properties: { file: { type: "string", format: "binary" } }, required: ["file"] } } } },
-});
-const param = (name: string, description: string, schema: object = { type: "string" }) => ({ name, in: "path", required: true, description, schema });
-const query = (name: string, description: string, schema: object = { type: "string" }) => ({ name, in: "query", required: false, description, schema });
-const collection = param("collection", "The collection or table key from your config, for example `posts`.");
-const id = param("id", "The row's primary key.");
-
+const restExample = "blog";
+const restCompiled = compiler.compile({ name: restExample, files: sources(path.join(repo, "examples", restExample)), previous: null });
+if (!restCompiled.output) throw new Error(`examples/${restExample} does not compile, so the site has no REST reference`);
+// The app plugin carries the document the site serves; `first build` writes the same bytes to
+// first/_generated/openapi.json.
+const restFile = Object.entries(restCompiled.output.appPlugin).find(([file]) => file.endsWith("/first/app/openapi.json"))?.[1];
+if (!restFile) throw new Error("the compiler wrote no first/app/openapi.json into the app plugin");
+const rest = JSON.parse(restFile) as { info: { description: string; [key: string]: unknown }; servers: { url: string }[]; [key: string]: unknown };
+const restPrefix = rest.servers[0]?.url;
+if (!restPrefix?.startsWith("/")) throw new Error("the compiler's OpenAPI document names no API path in `servers`");
 const openapi = {
-	openapi: "3.1.0",
+	...rest,
 	info: {
+		...rest.info,
 		title: "First REST API",
-		version: json<{ version: string }>("packages/cli/package.json").version,
 		description: [
-			`Every First app serves these routes under \`${prefix}\` on its WordPress site. Each one is dispatched to the matching WordPress REST route (\`/wp-json/wp/v2/...\`, the Abilities run route), which enforces your config's rules; this API only gives the shapes a clean form. The paths with \`{collection}\`, \`{name}\` and \`{bucket}\` exist once for each kind, table, action, global and file bucket your config defines, and for WordPress's own kinds (\`posts\`, \`pages\`, \`comments\`, \`media\`, \`categories\`, \`tags\`, \`users\`).`,
-			"",
-			"A successful response is JSON with the result under `data`; a list also has `cursor`, the next page's cursor or null. An error is an RFC 9457 problem document with `type`, `title`, `status`, `code` and `detail`, served as `application/problem+json`.",
-			"",
-			"Requests use the signed-in WordPress user: a cookie with a REST nonce, an application password, or a First Identity access token. Each collection's `access` rules decide what that user may do. The generated client in `first/_generated/client/` calls every route on this page for you.",
-		].join("\n"),
+			`This is the API of the [\`${restExample}\` example](${tree}/examples/${restExample}), as \`first build\` describes it. Every First app gets the same routes for its own kinds, globals, actions and file buckets, and for WordPress's own content.`,
+			`\`first build\` writes your app's document to \`first/_generated/openapi.json\`, from the schema that also produces the typed client and the app's WordPress Abilities. Your site serves it at \`${restPrefix}/openapi.json\`.`,
+			rest.info.description,
+		].join("\n\n"),
 	},
-	servers: [{ url: `https://example.space.fast${prefix}`, description: "Your app's WordPress site" }],
-	tags: [
-		{ name: "Collections", description: "One set of routes for each kind and table in your config, and for WordPress's own kinds." },
-		{ name: "Revisions", description: "Saved versions of a row, for collections with revisions." },
-		{ name: "Live", description: "Reads a page is subscribed to, answered with \"not modified\" or the fresh result." },
-		{ name: "Actions", description: "Named server functions from `actions` in your config." },
-		{ name: "Globals", description: "Single records, such as site settings, from `globals` in your config." },
-		{ name: "Media", description: "WordPress media library uploads." },
-		{ name: "Settings", description: "WordPress site settings." },
-		{ name: "Menus", description: "WordPress menus in theme locations." },
-		{ name: "Files", description: "Private files in the buckets from `files` in your config." },
-		{ name: "Auth", description: "The signed-in user and First Identity sessions." },
-		{ name: "Sync", description: "Content files that sync with rows, for collections with `sync`." },
-		{ name: "Services", description: "Forms, search and checkout from `services` in your config." },
-		{ name: "Schema", description: "A description of the app." },
-	],
-	paths: {
-		"/{collection}": {
-			get: op("Collections", "listRows", "List rows", `Rows the user may read. \`limit\` defaults to ${listLimit} and is at most ${maxListLimit}.`, {
-				parameters: [
-					collection,
-					query("where", "A JSON filter, for example `{\"status\":\"published\"}`."),
-					query("status", "Shorthand for a filter on `status`."),
-					query("orderBy", "Comma-separated columns. Put `-` before a column to sort it in descending order, for example `-publishedAt,title`."),
-					query("limit", "How many rows to return.", { type: "integer" }),
-					query("offset", "How many rows to skip.", { type: "integer" }),
-					query("cursor", "The `cursor` of the previous page, to read the next one."),
-					query("search", "Text to find in the searchable fields."),
-					query("locale", "For localized collections: one locale, or `*` for every row."),
-					query("with", "Relations to load: `author,comments`, or a JSON object such as `{\"author\":true}`."),
-				],
-			}),
-			post: op("Collections", "createRow", "Create a row", "Creates a row and returns it with status 201.", {
-				parameters: [collection],
-				...body("The new row's fields."),
-				responses: { "201": ok("The new row."), default: problem },
-			}),
-		},
-		"/{collection}/{id}": {
-			get: op("Collections", "getRow", "Get a row", "One row by its primary key, or `slug:<slug>`. `?format=md` answers with the post as Markdown, as its Markdown twin renders it.", { parameters: [collection, id, query("with", "Relations to load, as on the list route."), query("format", "`md` for Markdown (post kinds).")] }),
-			patch: op("Collections", "updateRow", "Update a row", "Changes the fields you send and returns the row.", { parameters: [collection, id], ...body("The fields to change.") }),
-			delete: op("Collections", "deleteRow", "Delete a row", "Deletes the row for good and returns it.", { parameters: [collection, id] }),
-		},
-		"/{collection}/{id}/revisions": {
-			get: op("Revisions", "listRevisions", "List revisions", "Each saved version of the row, with its time and author. Needs update access.", { parameters: [collection, id] }),
-		},
-		"/{collection}/{id}/revisions/{revision}": {
-			get: op("Revisions", "getRevision", "Get a revision", "The row as it was saved in this revision.", { parameters: [collection, id, param("revision", "The revision ID.", { type: "integer" })] }),
-		},
-		"/{collection}/{id}/revisions/{revision}/restore": {
-			post: op("Revisions", "restoreRevision", "Restore a revision", "Makes the revision the current row.", { parameters: [collection, id, param("revision", "The revision ID.", { type: "integer" })] }),
-		},
-		"/_live": {
-			post: op("Live", "subscribedReads", "Refresh subscribed reads", `Takes up to ${liveMaxQueries} reads, each with the \`token\` of the answer you last got, and answers each one as the signed-in user: \`{ changed: false, token }\` when what you hold is current, \`{ changed: true, token, data }\` with the fresh result, \`{ error }\` with the read's problem, or \`{ pending: true }\` when the request ran out of time. \`data\` also has \`poll\`, the shortest and longest wait between two requests. The generated client's \`subscribe\` calls it.`, {
-				...body("`{ queries: [{ kind, op, args, id, token }] }`: `kind` is a collection or table key, `op` is `list`, `paginate`, `get` or `count`, `args` are that call's arguments, `id` is the row for `get`, and `token` is what the previous answer returned."),
-				responses: { "200": ok("One result per read, in order, under `data.results`."), default: problem },
-			}),
-		},
-		"/actions/{name}": {
-			post: op("Actions", "callAction", "Call an action", "Runs the action's Ability through WordPress's Abilities run route with the input you send and returns its result. The action's `access` rule decides who may call it. A `readonly` action also answers `GET` with `?input=<json>`.", {
-				parameters: [param("name", "The action key from your config.")],
-				...body("The action's input."),
-			}),
-		},
-		"/{global}": {
-			get: op("Globals", "getGlobal", "Read a global", "The global's fields. Fields you never set read as their defaults.", { parameters: [param("global", "The global key from your config.")] }),
-			patch: op("Globals", "updateGlobal", "Update a global", "Changes the fields you send.", { parameters: [param("global", "The global key from your config.")], ...body("The fields to change.") }),
-		},
-		"/media": {
-			get: op("Media", "listMedia", "List media", "Media library items the user may read."),
-			post: op("Media", "uploadMedia", "Upload media", "Uploads one file to the WordPress media library, with optional `alt`.", { ...body("The file, as the multipart field `file`.", "multipart/form-data"), responses: { "201": ok("The new media item."), default: problem } }),
-		},
-		"/media/{id}": {
-			get: op("Media", "getMedia", "Get a media item", "One media item.", { parameters: [id] }),
-			patch: op("Media", "updateMedia", "Update a media item", "Changes `alt` (the alt text), `caption` or `focal` (the focal point). Any other field is refused.", { parameters: [id], ...body("`alt`, `caption`, `focal`.") }),
-			delete: op("Media", "deleteMedia", "Delete a media item", "Deletes the item. Fields that pointed at it become null.", { parameters: [id] }),
-		},
-		"/files/{bucket}": {
-			post: op("Files", "uploadFile", "Upload a private file", "Stores one file in the bucket.", { parameters: [param("bucket", "The bucket key from your config.")], ...body("The file, as the multipart field `file`.", "multipart/form-data"), responses: { "201": ok("The stored file."), default: problem } }),
-		},
-		"/files/{bucket}/{id}": {
-			get: op("Files", "getFile", "Get a private file", "The file's details.", { parameters: [param("bucket", "The bucket key."), id] }),
-			delete: op("Files", "deleteFile", "Delete a private file", "Deletes the file.", { parameters: [param("bucket", "The bucket key."), id] }),
-		},
-		"/files/{bucket}/{id}/download": {
-			get: op("Files", "downloadFile", "Download a private file", "The file's bytes. The link is the permission: get the file to receive a `url` with `exp` and `sig`, and request that URL before it expires. Signing in does not replace the signature.", {
-				parameters: [
-					param("bucket", "The bucket key."),
-					id,
-					{ name: "exp", in: "query", required: true, description: "When the link expires, in Unix seconds.", schema: { type: "string" } },
-					{ name: "sig", in: "query", required: true, description: "The link's signature.", schema: { type: "string" } },
-				],
-				responses: { "200": { description: "The file." }, default: problem },
-			}),
-		},
-		"/me": { get: op("Auth", "me", "The signed-in user", "The user's `id`, `name` and `role`, with their users row merged in. `data` is null when nobody is signed in.") },
-		"/settings": {
-			get: op("Settings", "getSettings", "Site settings", "The site's title, tagline, timezone, locale, icon, logo and front page. A global named `settings` in your config answers here instead."),
-			patch: op("Settings", "updateSettings", "Update site settings", "Changes the fields you send. Administrators only.", body("The fields to change.")),
-		},
-		"/menus": { get: op("Menus", "listMenus", "Menus", "The menu in each theme location, as a tree of `label`, `url`, `item` and `children`. Public.") },
-		"/menus/{location}": { get: op("Menus", "getMenu", "One menu", "The menu in one theme location.", { parameters: [param("location", "The theme location, for example `primary`.")] }) },
-		"/auth/config": { get: op("Auth", "authConfig", "Sign-in settings", "The First Identity issuer, and whether guests are allowed.") },
-		"/auth/guest": { post: op("Auth", "guest", "Start a guest session", "Creates a guest user, when the app allows guests. Returns status 201.", { responses: { "201": ok("The guest user."), default: problem } }) },
-		"/auth/session": { delete: op("Auth", "signOut", "Sign out", "Ends the current First Identity session.") },
-		"/media/{id}/file/{hash}/{path}": {
-			get: op("Media", "mediaFile", "Read an uploaded file", "The bytes of one file of a media item, such as an image size. Media URLs point here when uploads are stored outside WordPress.", {
-				parameters: [id, param("hash", "The SHA-256 of the file's path, from the media item's URL."), param("path", "The file's path within the item.")],
-				responses: { "200": { description: "The file." }, default: problem },
-			}),
-		},
-		"/sync/{collection}/trash": { post: op("Sync", "syncTrash", "Trash synced rows", "Moves the rows of deleted content files to the trash.", { parameters: [collection], ...body("The rows to trash.") }) },
-		"/sync/{collection}/convert": { post: op("Sync", "syncConvert", "Convert synced rows", "Converts rows between content file formats.", { parameters: [collection], ...body("The rows to convert.") }) },
-		"/sync/{collection}/merge": { post: op("Sync", "syncMerge", "Merge synced rows", "Applies a three-way merge of a content file and its row.", { parameters: [collection], ...body("The rows to merge.") }) },
-		"/sync/{collection}": {
-			get: op("Sync", "syncRead", "Read sync state", "The rows and file hashes `first sync` compares.", { parameters: [collection] }),
-			post: op("Sync", "syncWrite", "Write synced rows", "Applies changes from content files.", { parameters: [collection], ...body("The changes to apply.") }),
-		},
-		"/services/forms/{form}": { post: op("Services", "submitForm", "Submit a form", "Stores a form submission and queues its mail. Returns status 201.", { parameters: [param("form", "The form key.")], ...body("The form fields."), responses: { "201": ok("The submission."), default: problem } }) },
-		"/services/search": { get: op("Services", "search", "Search", "Searches published content.", { parameters: [query("q", "The search text.")] }) },
-		"/services/checkout": { post: op("Services", "checkout", "Start a checkout", "Prices the order on the server and starts a hosted checkout. Returns status 202.", { ...body("The items to buy."), responses: { "202": ok("The checkout, with the URL to send the buyer to."), default: problem } }) },
-		"/services/checkout/{id}": { get: op("Services", "checkoutStatus", "Checkout status", "The status of a checkout.", { parameters: [param("id", "The checkout ID.")] }) },
-		"/services/stripe/webhook": { post: op("Services", "stripeWebhook", "Stripe webhook", "Receives signed events from Stripe.", body("The Stripe event.")) },
-		"/services/submissions/{id}": { get: op("Services", "getSubmission", "Get a submission", "One form submission.", { parameters: [param("id", "The submission ID.")] }) },
-		"/": { get: op("Schema", "schema", "Describe the app", "The app's kinds (with the WordPress route behind each), globals and actions, with their fields and access rules. `first pull` and `first sync` read it.") },
-	},
-	components: {
-		schemas: {
-			Data: { type: "object", properties: { data: { description: "The result." } }, required: ["data"] },
-			Problem: {
-				type: "object",
-				properties: {
-					type: { type: "string", example: "about:blank" },
-					title: { type: "string", example: "Unauthenticated" },
-					status: { type: "integer", example: 401 },
-					code: { type: "string", example: "unauthenticated" },
-					detail: { type: "string", example: "Sign in to do create notes rows" },
-					pointer: { type: "string", description: "A JSON pointer to the field at fault, when there is one." },
-				},
-				required: ["type", "title", "status", "code", "detail"],
-			},
-		},
-		responses: { Problem: { description: "An error.", content: { "application/problem+json": { schema: { $ref: "#/components/schemas/Problem" } } } } },
-	},
+	// A site's own document names the site. This page has no site, so it shows a placeholder address.
+	servers: [{ url: `https://example.space.fast${restPrefix}`, description: "Your app's WordPress site" }],
 };
 out.set("openapi/first.json", `${JSON.stringify(openapi, null, "\t")}\n`);
 

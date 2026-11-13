@@ -811,43 +811,66 @@ localhost) so links, previews and feeds point there.
 
 ### Runtime schema changes
 
-`runtimeSchema: true` lets the running site add fields to its `collection()` kinds without a build
-(spec §2.10, [decision record](decisions/2026-11-13-runtime-schema.md)). It is off by default, and
-with it off nothing below exists.
+`runtimeSchema: true` lets the running site change its content schema without a build (spec §2.10,
+[decision record](decisions/2026-11-13-runtime-schema.md)). It is off by default, and with it off
+nothing below exists.
 
-- **What a change is.** `{ "format": 1, "changes": [{ "op": "addField", "kind": "articles", "field":
-  "subtitle", "definition": { "type": "text", "rules": { "max": 120 } } }] }`. A definition is the
-  field as `schema.php` stores it: `type` (`text`, `integer`, `real`, `boolean`, `date`,
-  `timestamp`, `json`, `email`, `url`, `richText`, `media`, `mediaList`, `select`, `group`,
-  `repeater`, `blocks`), and where they apply `notNull`, `enum`, `multiple`, `multiline`, `accept`,
-  `default` (`{ "value": … }` with one string, number or boolean, or `{ "now": true }`), `rules`
-  (`min`, `max`), `fields`, `layouts` and `ui`.
+A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
+
+| `op` | Keys | What it does |
+|---|---|---|
+| `addField` | `kind`, `field`, `definition` | a field on a collection |
+| `addGlobalField` | `global`, `field`, `definition` | a field on a global |
+| `addCollection` | `kind`, `definition` | a new collection: `{ label?, access?, fields }`, with `title` a required text field and `content`, when present, the rich text body |
+| `addGlobal` | `global`, `definition` | a new global: `{ label?, access?, fields }` |
+| `setLabel` | `kind` or `global`, `label` | the label shown for a kind; `null` takes the runtime label off |
+| `setFieldUi` | `kind` or `global`, `field`, `ui` | a field's `label`, `help`, `placeholder` and `width`; `null` takes it off |
+| `removeField` | `kind` or `global`, `field` | hides a field a runtime change added |
+| `removeCollection`, `removeGlobal` | `kind` / `global` | hides a kind a runtime change added |
+
+- **A field definition** is the field as `schema.php` stores it: `type` (`text`, `integer`, `real`,
+  `boolean`, `date`, `timestamp`, `json`, `email`, `url`, `richText`, `media`, `mediaList`,
+  `select`, `group`, `repeater`, `blocks`), and where they apply `notNull`, `enum`, `multiple`,
+  `multiline`, `accept`, `default` (`{ "value": … }` with one string, number or boolean, or
+  `{ "now": true }`), `rules` (`min`, `max`), `fields`, `layouts` and `ui`.
+- **`access`** on a new kind maps `read`, `create`, `update`, `delete` (globals: `read`, `update`)
+  to a role, `"anyone"`, `"authenticated"`, `true` or `false`. A rule that is a function is source.
 - **Rules.** The compiler's, with the compiler's diagnostic code in the refusal (`F3001`, `F2001`,
-  `F3101`). The site adds its own: a field is optional or has a default (`schema_required`); a
-  name every kind has or will have is not available (`schema_reserved`); a name that any build
-  which ran on the site stores as another type keeps that type (`schema_retype`), so two builds
-  the host serves at once never read one value two ways; and anything that is not adding a field
-  to a collection is `schema_build_only`, with the source edit to make. Fields of a translated or
-  synced collection are build-only for now.
+  `F3101`, `F1221`). The site adds its own: a field added to an existing collection is optional or
+  has a default (`schema_required`); a name every kind or site has is not available
+  (`schema_reserved`); a removed name comes back only with the stored type it had, and a name
+  that any build which ran on the site stores as another type keeps that type (`schema_retype`), so
+  two builds the host serves at once never read one value two ways; something a build declares is not removed at runtime (`schema_in_use`, or
+  `schema_build_only` when no runtime change added it). Every other operation (renaming, retyping,
+  tables, hooks, actions, jobs, pages, taxonomies) is `schema_build_only`, with the source edit to
+  make. Fields of a translated or synced collection are build-only for now.
 - **Hooks.** A `beforeCreate` or `beforeUpdate` hook sees only the fields its build declares. The
   runtime fields of the write are kept aside while it runs and added back to what it returns.
-- **Versions.** An accepted change is the next row of `<prefix>first__schema_versions`: version,
-  parent, the build it was validated on, who applied it, when, the change in stored form, and a
-  hash chained to the parent's. Rows are never updated or deleted. A change names the version it
-  was made against; when another was applied first it is refused with 409 `schema_conflict`.
-- **Loading.** The active version's fields are in one autoloaded option,
+- **Removal hides.** A removed field or kind leaves the schema, the API and the editor. Its post
+  meta, posts and options stay, and adding the same name again brings the values back.
+- **Rollback** is a new version: `reversal(version)` gives the change set that undoes a version,
+  newest change first, and applying it is an ordinary change. The reversed version stays stored.
+- **Versions.** An accepted change set is the next row of `<prefix>first__schema_versions`:
+  version, parent, the build it was validated on, who applied it, when, the changes in stored
+  form, and a hash chained to the parent's. Rows are never updated or deleted. A change names the
+  version it was made against; when another was applied first it is refused with 409
+  `schema_conflict`.
+- **Loading.** The active version's additions are in one autoloaded option,
   `first_<app>_runtime_schema`. A request adds them to the compiled schema and does nothing else.
-  A field the build declares itself is never replaced. The new field is post meta
-  `first_<field>`, registered and added to the kind's field group like a compiled one, from the
-  request after the change. `GET /__first/api/v1` reports `runtimeSchema: { version, hash, build }`.
-- **In the project.** `first/_generated/runtime-schema.json` (`{ "format": 1, "version", "hash",
-  "collections": { "<kind>": { "columns": { … } } } }`) lists a site's fields for the build, which
-  declares them as if they were authored. A build that lacks the site's fields does not drop
-  them: they stay active, with their data.
+  A kind, field or relation the build declares itself is never replaced; only a label and a
+  field's `ui` are. A new field is post meta `first_<field>` (an option, on a global); a new
+  collection is post type `first_<name>` with no SQL table. Both are registered like compiled
+  ones, from the request after the change. `GET /__first/api/v1` reports `runtimeSchema: {
+  version, hash, build }`.
+- **In the project.** `first/_generated/runtime-schema.json` lists a site's changes for the build:
+  `collections` and `globals` (fields added to declared kinds), `added` (new kinds) and `overrides`
+  (labels and presentation). The build declares them as if they were authored. A build that lacks
+  the site's changes does not drop them: they stay active, with their data.
 
 This release has the store, the loader, the rules and the build's reading of the lock. Applying a
 change is `First\Wp\SchemaVersions::of($plugin)->apply($parent, $changeSet, $actor)` from PHP;
 the Abilities, the `first schema` commands, `first pull` and the admin screen are not built yet.
+Taxonomies can't be added at runtime: `taxonomy()` is not in this First version.
 
 ## Plugin packages
 

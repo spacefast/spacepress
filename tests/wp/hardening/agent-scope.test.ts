@@ -130,7 +130,10 @@ test("personal data: emails and fields with a read rule are withheld and can't b
   // Users: what anyone sees, even for the user's own row and in edit context.
   const me = (await call(plain.header, "GET", `${core}/users/me?context=edit`)).json;
   assert.deepEqual([me.email, me.username, me.roles], [undefined, undefined, undefined]);
-  assert.deepEqual((await call(plain.header, "GET", `${core}/users?search=editor@example.test`)).json, [], "no user found by email");
+  // An administrator's credential lists users, but finds none by email; by name it still does.
+  const admin = agent("admin");
+  assert.deepEqual((await call(admin.header, "GET", `${core}/users?search=editor@example.test`)).json, [], "no user found by email");
+  assert.equal((await call(admin.header, "GET", `${core}/users?search=Editor`)).json.length, 1, "found by name");
   scoped(await call(plain.header, "GET", `${core}/comments?search=example.test`), "comment search reads commenters' emails");
   // The same credential with --personal sees them; an unscoped one too.
   const personal = agent("editor", { personal: true });

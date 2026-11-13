@@ -53,8 +53,6 @@ final class AgentScope
         add_filter('rest_prepare_user', [self::class, 'user'], PHP_INT_MAX);
         add_filter('rest_prepare_comment', [self::class, 'comment'], PHP_INT_MAX);
         add_filter('rest_user_query', [self::class, 'userQuery'], PHP_INT_MAX);
-        // Every write and read of First's own pipeline as a visitor, whichever route or ability reached it.
-        \First\Extensions::onWrite([self::class, 'write']);
         // Personal fields are hidden from a credential without `personal` wherever a field rule hides one:
         // rows, filters, sorts, searches, relations, uniqueness checks, core's routes and wp-admin.
         \First\FieldAccess::withhold(static fn (array $def): bool => self::restricted($def) && !self::may('personal'));
@@ -332,22 +330,6 @@ final class AgentScope
         }
 
         return $args;
-    }
-
-    /** A write through First's pipeline as a visitor. Jobs and trusted server code have no viewer. */
-    public static function write(string $op, string $collection, array &$data, ?array $existing, ?Viewer $viewer, array $provided): void
-    {
-        if ($viewer === null || self::current() === null) {
-            return;
-        }
-        if (!self::may('write')) {
-            throw self::refusal('write');
-        }
-        $schema = Plugin::instance()?->schema;
-        if ($op !== 'delete' && !self::may('personal') && $schema !== null && $schema->hasCollection($collection)
-            && array_intersect_key($provided, self::personal($schema->collection($collection))) !== []) {
-            throw self::refusal('personal');
-        }
     }
 
     /**

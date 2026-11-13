@@ -283,6 +283,26 @@ test("the API runs core's permission checks: a caller core refuses is refused, a
   assert.deepEqual([create.status, create.json.code], [403, "forbidden"], "core's create_posts check refuses");
 });
 
+test("a list page costs the same number of queries for 5 rows as for 20: First's rows are read once per page", async () => {
+  first("insert", "events", JSON.stringify(Array.from({ length: 20 }, (_, i) => ({ title: `Batch ${run} ${i}`, seats: i }))));
+  const where = JSON.stringify({ title: { like: `Batch ${run}%` } });
+  const queries = (limit: number) => Number(wp("eval", `
+    wp_set_current_user(0);
+    \\First\\Wp\\Runtime::plugin()->app();
+    global $wpdb;
+    wp_cache_flush();
+    $before = $wpdb->num_queries;
+    [$status, , $body] = \\First\\Wp\\Facade::route(\\First\\Wp\\Runtime::plugin(), 'GET', '/events', ['where' => '${where.replace(/'/g, "\\'")}', 'limit' => '${limit}'], '');
+    $count = count(json_decode($body, true)['data'] ?? []);
+    if ($status !== 200 || $count !== ${limit}) { echo "-$status-$count"; return; }
+    echo $wpdb->num_queries - $before;
+  `));
+  const five = queries(5);
+  const twenty = queries(20);
+  assert.ok(Number.isFinite(five) && Number.isFinite(twenty), `${five} ${twenty}`);
+  assert.ok(twenty - five < 15, `15 more rows cost ${twenty - five} more queries (${five} for 5, ${twenty} for 20): not one per row`);
+});
+
 test("a restore puts back the whole revision, fields hidden from the caller included, and never returns them", async () => {
   // payroll: editors update rows; salary is readable and settable by admins only.
   const id = first("insert", "payroll", JSON.stringify({ title: `Restore pay ${run}`, salary: "1k" }))[0].id;

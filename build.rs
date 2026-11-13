@@ -88,6 +88,7 @@ const GUIDES: &[&str] = &[
     "sealed.md",
     "services.md",
     "spacefast-deploy.md",
+    "staged.md",
     "uploads.md",
     "wp-plugins.md",
 ];

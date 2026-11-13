@@ -443,6 +443,68 @@ export interface CollectionClient<K extends CollectionKey> {
 		/** Runs the update pipeline with the revision as the patch; returns the updated row. */
 		restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
 	};
+	/**
+	* Save `patch` as the item's staged version: the live row stays as it is until `promote`. One
+	* staged version per item, shared by everyone who may update it; each call adds to it. Post
+	* kinds only. Every staged call needs `update` access on the row, and answers 404 without it.
+	*/
+	stage(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<StagedVersion<K>>;
+	/** The staged version: the row as it would be once promoted. 404 when nothing is staged. */
+	staged(id: IdOf<K>): Promise<StagedVersion<K>>;
+	/** The staged fields whose value differs from the live row, with both values. */
+	compare(id: IdOf<K>): Promise<StagedComparison<K>>;
+	/**
+	* Make the staged version live, as an update of the row by the caller. With `at` (a future ISO
+	* time) the promote is scheduled instead, and `at: null` cancels a scheduled one; both return
+	* the staged version.
+	*/
+	promote(id: IdOf<K>): Promise<Row<K>>;
+	promote(id: IdOf<K>, options: {
+		at: string | null;
+	}): Promise<StagedVersion<K>>;
+	/** End the staged version. It stays in the row's revisions, as `revision`. */
+	discard(id: IdOf<K>): Promise<{
+		revision: number;
+	}>;
+	/** A signed link to the staged version that works without signing in for `ttl` seconds (an hour by default). */
+	previewLink(id: IdOf<K>, options?: {
+		ttl?: number;
+	}): Promise<StagedPreview>;
+}
+/** A staged version: the row once promoted, the fields that are staged, who staged last. */
+export interface StagedVersion<K extends CollectionKey> {
+	/** The revision holding it. */
+	id: number;
+	row: Row<K>;
+	fields: (keyof Row<K> & string)[];
+	by: {
+		id: number;
+		name: string;
+	} | null;
+	at: string;
+	/** When a scheduled promote runs, or null. */
+	promoteAt: string | null;
+	/** Why the last scheduled promote did not run. */
+	error?: {
+		code: string;
+		detail: string;
+		at: string;
+	};
+}
+export interface StagedComparison<K extends CollectionKey> extends Omit<StagedVersion<K>, "row" | "fields"> {
+	changes: { [F in keyof Row<K> & string]: {
+		field: F;
+		live: Row<K>[F];
+		staged: Row<K>[F];
+	} }[keyof Row<K> & string][];
+}
+export interface StagedPreview {
+	token: string;
+	expiresAt: string;
+	/** Reads the staged version without signing in. */
+	api: string;
+	/** The item's own page showing the staged version, when the kind has a public URL. */
+	url: string | null;
 }
 export interface MediaQuery {
 	where?: Record<string, unknown>;

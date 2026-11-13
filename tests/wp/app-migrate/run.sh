@@ -71,17 +71,10 @@ docker compose -p "$FIRST_WP_PROJECT" cp "$here/endpoints-seed.php" cli:/tmp/fir
 "$wp/harness.sh" up --wp-content "$work/endpoints/first/dist/wp-content" > "$work/endpoints-harness.json"
 "$wp/harness.sh" wp config set LEGACY_BANNER "from wp-config" >/dev/null
 FIRST_WP_HARNESS="$work/endpoints-harness.json" node --test "$here/endpoints.test.ts"
-# Converted static pages, published through the hosted path: first-pages render, capture with
-# `first sources`, delete the project, and install only `first compile-sources` output. The pages
-# renderer is the repo's own package, built here so the lane does not depend on CI step order.
-if [[ ! -f "$repo/packages/blocks/dist/index.js" || ! -f "$repo/packages/pages/dist/cli.js" ]]; then
-  (cd "$repo/packages/blocks" && pnpm install --frozen-lockfile >/dev/null && pnpm build >/dev/null)
-  (cd "$repo/packages/pages" && pnpm install --frozen-lockfile >/dev/null && pnpm build >/dev/null)
-fi
+# Converted static pages, published through the hosted path: capture with `first sources`, delete
+# the project, and install only `first compile-sources` output, whose app plugin renders first/app/.
 "$first" migrate app --from zero-0.8 tests/fixtures/app-migrate/site --out "$work/site" --space spc_migrate_test > "$work/site-report.json"
-sed -e "s|\"\.\./\.\./|\"$repo/|g" -e "s|\"\./islands/interactivity\.d\.ts\"|\"$repo/examples/full-site/islands/interactivity.d.ts\"|" "$repo/examples/full-site/tsconfig.json" > "$work/site/tsconfig.json"
 "$first" build "$work/site" --quiet >/dev/null
-node "$repo/packages/pages/bin/first-pages.mjs" build "$work/site" >/dev/null
 "$first" sources "$work/site" --out "$work/site-source"
 mkdir -p "$work/site-content/plugins"
 cp "$work/site/first/dist/wp-content/first-manifest.json" "$work/site-content/"
@@ -93,7 +86,6 @@ docker compose -p "$FIRST_WP_PROJECT" cp "$here/site-seed.php" cli:/tmp/first-ap
 "$wp/harness.sh" wp eval-file /tmp/first-app-migrate-site-seed.php >/dev/null
 "$wp/harness.sh" up --wp-content "$work/site-content" > "$work/site-harness.json"
 "$wp/harness.sh" wp first migrate >/dev/null
-"$wp/harness.sh" wp plugin activate first-pages-legacy-site >/dev/null
 FIRST_WP_HARNESS="$work/site-harness.json" node --test "$here/site.test.ts"
 # ctx.crypto through the migrated app, with the secret as a padded wp-config constant.
 "$first" migrate app --from zero-0.8 tests/fixtures/app-migrate/crypto --out "$work/crypto" > "$work/crypto-report.json"

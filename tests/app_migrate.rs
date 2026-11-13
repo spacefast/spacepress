@@ -1511,18 +1511,18 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     let (ok, report) = migrate(&fixture("site"), &out, &["--space", "spc_migrate_test"]);
     assert!(ok, "{report:#}");
     for file in [
-        "pages/page.tsx",
-        "pages/pricing/page.tsx",
-        "pages/docs/page.tsx",
-        "pages/layout.tsx",
+        "first/app/page.tsx",
+        "first/app/pricing/page.tsx",
+        "first/app/docs/page.tsx",
+        "first/app/layout.tsx",
         "first/shared/plans.ts",
     ] {
         assert!(out.join(file).is_file(), "{file}");
     }
-    let pricing = std::fs::read_to_string(out.join("pages/pricing/page.tsx")).unwrap();
+    let pricing = std::fs::read_to_string(out.join("first/app/pricing/page.tsx")).unwrap();
     assert!(
-        pricing.contains("import { plans } from '../../first/shared/plans';"),
-        "a single-quoted relative import moves with the page and into the Zero root: {pricing}"
+        pricing.contains("import { plans } from '../../shared/plans';"),
+        "a single-quoted relative import moves with the page, one folder down, into first/: {pricing}"
     );
     // Only parsed import declarations move, side-effect imports included; a string, a comment or
     // JSX text that merely reads like one keeps its exact bytes.
@@ -1550,11 +1550,11 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     let moved = temp.path().join("site-moved");
     let (ok, report) = migrate(&site, &moved, &["--space", "spc_migrate_test"]);
     assert!(ok, "{report:#}");
-    let about = std::fs::read_to_string(moved.join("pages/about/page.tsx")).unwrap();
-    assert!(about.contains("import '../../first/shared/setup';"), "{about}");
+    let about = std::fs::read_to_string(moved.join("first/app/about/page.tsx")).unwrap();
+    assert!(about.contains("import '../../shared/setup';"), "{about}");
     // A re-export moves with its module too.
     assert!(
-        about.contains("export { metadata } from '../../first/shared/meta';"),
+        about.contains("export { metadata } from '../../shared/meta';"),
         "{about}"
     );
     assert!(moved.join("first/shared/setup.ts").is_file());
@@ -1656,16 +1656,16 @@ fn query_names_map_one_to_one_and_nested_pages_keep_imports() {
     // RouteQuery keeps URLSearchParams names byte for byte, so `user.id` passes through unchanged.
     assert!(config.contains("req.query.get(\"user.id\")"), "{config}");
     assert!(
-        std::fs::read_to_string(out.join("pages/docs/page.tsx"))
+        std::fs::read_to_string(out.join("first/app/docs/page.tsx"))
             .unwrap()
             .contains("from \"./data\"")
     );
     assert!(
-        std::fs::read_to_string(out.join("pages/docs/guide/page.tsx"))
+        std::fs::read_to_string(out.join("first/app/docs/guide/page.tsx"))
             .unwrap()
             .contains("from \"../data\"")
     );
-    assert!(out.join("pages/docs/data.ts").is_file());
+    assert!(out.join("first/app/docs/data.ts").is_file());
 }
 
 /// Runs each named action of a built app in PHP with `inputs`, under `env`, and returns the results.
@@ -2042,7 +2042,10 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
         .unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
     assert!(out.join("first/server/index.ts").is_file());
-    assert!(!out.join("pages").exists(), "an unrecorded page reached the candidate");
+    assert!(
+        !out.join("first/app/added/page.tsx").exists(),
+        "an unrecorded page reached the candidate"
+    );
     std::fs::remove_dir_all(source.join("pages")).unwrap();
 
     // A real finalize manifest records the capsule's source, never the static files served beside

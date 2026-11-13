@@ -452,26 +452,21 @@ fn convert(
     if let Some(content) = transformed.content_config {
         sources.insert(PathBuf::from("server/__z08-content.ts"), content);
     }
-    // The candidate's app code lives under the Zero root (docs/spec/spec.md §1); pages keep their
-    // place, and their imports of the app's modules follow them in.
+    // The candidate's app code lives under the First root (docs/spec/spec.md §1), and what 0.8 kept
+    // under `pages/` (the pages and the data modules beside them) under `first/app/`. Both move
+    // down by the same one folder, so every relative import between them still resolves.
     let mut sources: BTreeMap<PathBuf, String> = sources
         .into_iter()
-        .map(|(path, text)| match path.starts_with("pages") {
-            true => (path, text),
-            false => (Path::new(crate::layout::ROOT).join(path), text),
+        .map(|(path, text)| match path.strip_prefix("pages") {
+            Ok(rest) => (Path::new(pages::APP).join(rest), text),
+            Err(_) => (Path::new(crate::layout::ROOT).join(path), text),
         })
         .collect();
     sources.insert(
         PathBuf::from("first.config.ts"),
         "export { default } from \"./first/server/index\";\n".into(),
     );
-    let page_files: BTreeMap<String, String> = converted
-        .into_iter()
-        .map(|(path, text)| {
-            let text = pages::into_zero_root(&path, &text);
-            (path, text)
-        })
-        .collect();
+    let page_files: BTreeMap<String, String> = converted;
     // Fail closed: whatever 0.8 served that the candidate does not reproduce is an error, so a
     // candidate without errors can replace the published version. Static files v2 serves
     // unchanged travel in public/.
@@ -496,7 +491,7 @@ fn convert(
         &handled,
         resolved_client.as_deref(),
         // The client is reproduced as the pages layout, or converted to public/ by `client`.
-        page_files.contains_key("pages/layout.tsx") || client_app.is_some(),
+        page_files.contains_key(&format!("{}/layout.tsx", pages::APP)) || client_app.is_some(),
         client_app.is_some(),
         declares_posts,
         &client_files.keys().cloned().collect::<Vec<_>>(),
@@ -888,7 +883,7 @@ fn convert_pages(
                     &at,
                     "mapped",
                     format!(
-                        "static page becomes {}; run first-pages build and commit first/pages.json before publishing",
+                        "static page becomes {}, rendered by WordPress on each request",
                         page.file
                     ),
                 ));
@@ -910,9 +905,9 @@ fn convert_pages(
                 report.entries.push(super::entry(
                     "/client/index.tsx",
                     "mapped",
-                    "Layout becomes pages/layout.tsx",
+                    "Layout becomes first/app/layout.tsx",
                 ));
-                out.insert("pages/layout.tsx".into(), layout);
+                out.insert(format!("{}/layout.tsx", pages::APP), layout);
             }
             Ok(None) => {}
             Err(e) => report.errors.push(e),

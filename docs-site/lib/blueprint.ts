@@ -133,11 +133,8 @@ export interface ExampleRun {
 	ledger: Ledger;
 	/** The synced collections' content rows (BlueprintInput `syncSeed`), for the committed schema. */
 	syncSeed: Record<string, unknown>;
-	/**
-	 * The TSX pages plugin `first-pages build` wrote for the committed schema, as its published path
-	 * below the site (`files/plugins/<example>/first-pages-<app>.zip`), when the example has pages.
-	 */
-	pages?: { slug: string; path: string };
+	/** The example has `first/app/` pages: they route on the path, so the site needs pretty permalinks. */
+	appPages: boolean;
 }
 
 export type EditedRun = { blueprint: Blueprint; seeded: boolean } | { refused: string };
@@ -151,9 +148,9 @@ export type EditedRun = { blueprint: Blueprint; seeded: boolean } | { refused: s
  *
  * The example's seed writes sample data through the app's REST API for the committed schema, so it
  * runs only while the schema is unchanged; an edited schema starts empty. The same goes for the
- * synced content rows and the TSX pages plugin, which `first-pages build` compiled against the
- * committed schema and the browser can't rebuild. The landing page stays the example's unless the
- * edit took away what it shows (a post type, or the pages); then it is WordPress's plugin screen.
+ * synced content rows. `first/app/` pages are in the app plugin the compiler returned, so an edited
+ * page runs as edited. The landing page stays the example's unless the edit took away the post type
+ * it lists; then it is WordPress's plugin screen.
  */
 export function editedBlueprint({ output, example, site, platform }: { output: Output; example: ExampleRun; site: string; platform: Platform }): EditedRun {
 	const locked = new Map(example.lock.map(({ slug, version }) => [slug, version]));
@@ -167,12 +164,8 @@ export function editedBlueprint({ output, example, site, platform }: { output: O
 	const prefix = `${app}/`;
 	const files = Object.fromEntries(Object.entries(output.appPlugin).filter(([file]) => file.startsWith(prefix)).map(([file, text]) => [file.slice(prefix.length), text]));
 	const unchanged = output.schemaPhp === example.schemaPhp;
-	const pages = unchanged ? example.pages : undefined;
 	const firstPlugins: FirstPlugin[] = output.firstPlugins.map((slug) => (slug === app ? { slug, files } : { slug, url: sharedZip(site, slug) }));
-	// The pages plugin requires the app plugin, so it activates last.
-	if (pages) firstPlugins.push({ slug: pages.slug, url: `${site.replace(/\/$/, "")}/${pages.path}` });
-	// A page the TSX pages serve (full-site's `/notes/`) exists only with the pages plugin.
-	const landingOpens = unchanged || (opens(example.landing, output.schemaPhp) && (example.pages === undefined || example.landing.startsWith("/wp-")));
+	const landingOpens = unchanged || opens(example.landing, output.schemaPhp);
 	return {
 		seeded: unchanged && example.seed !== undefined,
 		blueprint: blueprint({
@@ -182,7 +175,7 @@ export function editedBlueprint({ output, example, site, platform }: { output: O
 			landingPage: landingOpens ? example.landing : "/wp-admin/plugins.php",
 			seed: unchanged ? example.seed : undefined,
 			syncSeed: unchanged ? example.syncSeed : {},
-			prettyPermalinks: pages !== undefined,
+			prettyPermalinks: example.appPages,
 		}),
 	};
 }

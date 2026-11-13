@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Real WordPress/MariaDB proof that a hosted compile serves a complete site: examples/full-site is
 # captured with `first sources`, the project is removed, and only `first compile-sources` output is
-# installed. TSX pages render, the island hydrates and calls its action in Chromium, and the custom
-# HTTP routes answer outside /wp-json (tests/wp/hosted-pages.test.mjs).
+# installed. Its first/app/ pages render with their stylesheets and images, its "use client" components
+# hydrate and call the action in Chromium, and its route.ts handlers answer outside /wp-json
+# (tests/wp/hosted-pages.test.mjs).
 #
 #   FIRST_WP_PROJECT=first-wp-pages FIRST_WP_PORT=8873 tests/wp/hosted-pages-run.sh
 set -euo pipefail
@@ -28,7 +29,6 @@ rm -rf "$app/project"
 rsync -a "$app/compiled/plugins/" "$app/content/plugins/"
 "$here/harness.sh" up --wp-content "$app/content" > "$app/harness.json"
 "$here/harness.sh" wp first migrate > /dev/null
-"$here/harness.sh" wp plugin activate first-pages-fullsite > /dev/null
 # The signed route reads its secret like any `env()` value: a wp-config constant on this site.
 "$here/harness.sh" wp config set FULLSITE_WEBHOOK_SECRET hosted-pages-secret --type=constant > /dev/null
 FIRST_HOSTED_APP="$app" FIRST_HOSTED_HARNESS="$here/harness.sh" node --test "$here/hosted-pages.test.mjs"

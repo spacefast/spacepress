@@ -336,7 +336,7 @@ Endpoints become [routes](config-api.md#http-routes) with 0.8's result rules
 becomes a keyset read with the same order and result shape; old cursors are
 refused, so clients restart from the first page. `ctx.env` reads `env()` and
 `ctx.log` writes to the PHP error log. Static pages and a static client
-`Layout` become TSX pages; run `first-pages build` before publishing.
+`Layout` become `first/app/` pages, compiled with the rest of the app.
 Interactive pages, layouts, islands, other context services, dynamic database
 builders, optional-field ranges, npm imports and executable schema factories
 require an explicit port. Row IDs above JavaScript's safe integer
@@ -584,7 +584,7 @@ before activating an app.
 | Browser client | Generates v2 client contracts; Spacefast serves the selected version at `/__spacefast/client.js` | Replace old hooks, envelopes, and API calls; old subscriptions have no transport |
 | Realtime | Every committed write fires a change notice; Spacefast delivers it over Cast. Source conversion removes `realtime` and `ctx.invalidate` with a `mapped` entry | Replace `useQuery` subscriptions with [`watch`](realtime.md); notices name collections and ids, never rows |
 | Client app without pages | The 0.8 SPA (`client/index.tsx` exporting `App`, no `pages/`) becomes static files in `public/`, served by v2 as they are. Each module is compiled to a browser module; `@spacefast/zero/client` resolves to a generated bridge, `public/first/client.js`, that keeps the 0.8 hooks (`useQuery`, `useMutation`, `useAction`, `usePaginatedQuery`, `createClient`, `useAuth`, `signOut`, `Router`, `Routes`, `Route`, `Link`, `navigate`) and runs each call as the converted v2 action at `/__first/api/v1/actions/<name>`; Preact and the React names resolve to a vendored Preact | Reads refresh after this browser's own writes and on focus, not on other visitors' writes. Kit, charts, client storage, 0.8 sign-in, connector state and npm packages are refused with `Z08_CLIENT_*` codes at the import. The WebAssembly compiler converts it to the same files as the native CLI. 0.8 styled the app with a generated `zero.css` (Tailwind utilities on the platform theme) that the source does not hold: pass it with `--zero-css <file>` (`zeroCss` in wasm), or convert with `--manifest` from a payload that kept its bytes. It lands at `public/zero.css`, linked before the authored stylesheets; without it the app is refused with `Z08_CLIENT_STYLES` |
-| Pages, layouts, and islands | Static pages and a static client `Layout` become [TSX pages](pages.md) at the same URLs | Interactive pages, kit components, islands and parameterized routes are refused with what each uses; run `first-pages build` and commit `first/pages.json`. **Spacefast does not host TSX pages yet** (the host mounts no pages plugin), so a Space that needs its pages cannot cut over |
+| Pages, layouts, and islands | Static pages and a static client `Layout` become [`first/app/` pages](pages.md) at the same URLs, compiled into the app plugin | Interactive pages, kit components, islands and parameterized routes are refused with what each uses; port them to `first/app/` pages and `"use client"` components |
 | Content sync | Local `first sync` supports v2 projects | Legacy sync is not retained; hosted collection edits do not rebuild a static frontend |
 | Services and private storage | v2 has its own [services](services.md) and file contracts | Old service context calls, private file permissions, URLs, and credentials require an explicit port |
 | Publication and rollback | Spacefast migration commits a one-way transition to v2 | 0.8 publication and promotion are refused after commit; immutable 0.8 URLs return `410 first_legacy_retired`; older v2 code still shares the latest schema |
@@ -599,11 +599,10 @@ The original runtime served `pages/`, `layouts/`, `_pages/` system pages and
 `client/` islands (hydrated through a `first/component` block) itself, with
 `ZERO_DYNAMIC_BLOCKS` choosing between it and WordPress. v2 has no second
 renderer: WordPress serves every page. Port each page and layout to a
-[TSX page](pages.md) under `pages/` (`page.tsx`, `layout.tsx`, `not-found.tsx`)
-and each island to `<Island>` with an Interactivity API module. Item routes read
-the migrated collection's posts as the visitor. `_pages/` system pages have no
-counterpart; the host's own error pages replace them. Render with
-`first-pages build` and commit `first/pages.json` before publishing.
+[TSX page](pages.md) under `first/app/` (`page.tsx`, `layout.tsx`, `not-found.tsx`)
+and each island to a `"use client"` component. A page at a kind's `url` reads
+the migrated collection's row as the visitor. `_pages/` system pages have no
+counterpart; the host's own error pages replace them.
 
 ### Standalone WordPress commands
 

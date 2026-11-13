@@ -32,7 +32,7 @@ These commands run inside WordPress. On a local site, run them as `first <comman
 | --- | --- |
 | `wp first migrate [--drop=<kind>=<rows>,...] [--mark-applied=<id>]` | Apply pending database migrations, checked against live rows. |
 | `wp first seed --records=<dir> [--dry-run]` | First-sync content from compiled records. |
-| `wp first jobs list [--state=s] \| run <id> \| retry <id> \| cancel <id> \| maintain` | Inspect and drive background jobs. |
+| `wp first jobs list [--state=s] \| run <id> \| retry <id> \| cancel <id> \| maintain \| tick [--limit=n] [--budget-ms=ms]` | Inspect and drive background jobs. |
 | `wp first abilities` | List the app's abilities. |
 | `wp first run <ability> [--input=<json>]` | Run an ability. |
 | `wp first action <name> [json]` | Call an action as the trusted CLI. |

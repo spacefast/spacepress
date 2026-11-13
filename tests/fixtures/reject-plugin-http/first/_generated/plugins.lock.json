@@ -13,7 +13,6 @@
         "actions": [
           "ping_ping"
         ],
-        "routes": [],
         "http": [
           "api.example.com"
         ],

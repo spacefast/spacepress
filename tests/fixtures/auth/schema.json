@@ -20,6 +20,77 @@
     "jobs": [],
     "webhooks": [],
     "collections": {
+        "notes": {
+            "key": "notes",
+            "label": "Notes",
+            "editor": false,
+            "drafts": false,
+            "revisions": true,
+            "comments": false,
+            "uid": false,
+            "sync": null,
+            "auth": false,
+            "agents": true,
+            "localized": false,
+            "title": null,
+            "content": null,
+            "slug": null,
+            "primaryKey": "id",
+            "columns": {
+                "id": {
+                    "type": "integer",
+                    "primaryKey": true,
+                    "autoIncrement": true,
+                    "notNull": true
+                },
+                "body": {
+                    "type": "text",
+                    "notNull": true
+                },
+                "memberId": {
+                    "type": "integer",
+                    "references": {
+                        "collection": "members",
+                        "column": "id",
+                        "onDelete": "restrict"
+                    }
+                }
+            },
+            "relations": {
+                "memberId": {
+                    "kind": "one",
+                    "collection": "members",
+                    "from": "memberId",
+                    "to": "id",
+                    "optional": true
+                }
+            },
+            "hooks": [],
+            "beforeCreateFills": [],
+            "access": {
+                "read": {
+                    "role": "anyone"
+                },
+                "create": {
+                    "role": "authenticated"
+                },
+                "update": {
+                    "role": "authenticated"
+                },
+                "delete": {
+                    "role": "editor"
+                }
+            },
+            "api": {
+                "list": true,
+                "get": true,
+                "create": true,
+                "update": true,
+                "delete": true
+            },
+            "wp": null,
+            "table": "first_notes"
+        },
         "members": {
             "key": "members",
             "label": "Members",
@@ -179,76 +250,6 @@
             },
             "wp": null,
             "table": "first_members"
-        },
-        "notes": {
-            "key": "notes",
-            "label": "Notes",
-            "editor": false,
-            "drafts": false,
-            "revisions": true,
-            "comments": false,
-            "uid": false,
-            "sync": null,
-            "auth": false,
-            "agents": true,
-            "localized": false,
-            "title": null,
-            "content": null,
-            "slug": null,
-            "primaryKey": "id",
-            "columns": {
-                "id": {
-                    "type": "integer",
-                    "primaryKey": true,
-                    "autoIncrement": true,
-                    "notNull": true
-                },
-                "body": {
-                    "type": "text",
-                    "notNull": true
-                },
-                "memberId": {
-                    "type": "integer",
-                    "references": {
-                        "collection": "members",
-                        "column": "id"
-                    }
-                }
-            },
-            "relations": {
-                "member": {
-                    "kind": "one",
-                    "collection": "members",
-                    "from": "memberId",
-                    "to": "id",
-                    "optional": true
-                }
-            },
-            "hooks": [],
-            "beforeCreateFills": [],
-            "access": {
-                "read": {
-                    "role": "anyone"
-                },
-                "create": {
-                    "role": "authenticated"
-                },
-                "update": {
-                    "role": "authenticated"
-                },
-                "delete": {
-                    "role": "editor"
-                }
-            },
-            "api": {
-                "list": true,
-                "get": true,
-                "create": true,
-                "update": true,
-                "delete": true
-            },
-            "wp": null,
-            "table": "first_notes"
         }
     },
     "globals": [],

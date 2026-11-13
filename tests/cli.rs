@@ -93,7 +93,7 @@ fn help_lists_build_and_site_commands_from_one_table() {
     let jobs = first().args(["help", "jobs"]).output().unwrap();
     assert_eq!(
         text(&jobs.stdout),
-        "usage: first jobs list [--state=s] | run <id> | retry <id> | cancel <id> | maintain\n"
+        "usage: first jobs list [--state=s] | run <id> | retry <id> | cancel <id> | maintain | tick [--limit=n] [--budget-ms=ms]\n"
     );
 }
 

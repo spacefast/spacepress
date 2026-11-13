@@ -200,7 +200,7 @@ Monorepo `legacy/zero-0.8` keeps its Preact island code until live 0.8 Spaces mo
 
 **Exists:**
 - Page routing for `pages/` (hidden Page records, route IDs);
-- `HttpRoutes.php` (`routes`);
+- `route.ts` handlers in `first/app/` (`AppRouter.php`);
 - `template_redirect` handling.
 
 **Build:**

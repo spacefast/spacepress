@@ -15,6 +15,11 @@ export const SCHEMA = {
           "kind": "many",
           "collection": "tasks",
           "optional": false
+        },
+        "doneLogs": {
+          "kind": "many",
+          "collection": "doneLogs",
+          "optional": false
         }
       },
       "media": [],
@@ -30,10 +35,10 @@ export const SCHEMA = {
       "revisions": true,
       "localized": false,
       "relations": {
-        "system": {
+        "systemId": {
           "kind": "one",
           "collection": "systems",
-          "optional": true
+          "optional": false
         },
         "doneLogs": {
           "kind": "many",
@@ -52,10 +57,15 @@ export const SCHEMA = {
       "revisions": true,
       "localized": false,
       "relations": {
-        "task": {
+        "taskId": {
           "kind": "one",
           "collection": "tasks",
-          "optional": true
+          "optional": false
+        },
+        "systemId": {
+          "kind": "one",
+          "collection": "systems",
+          "optional": false
         }
       },
       "media": [

@@ -30,7 +30,7 @@ export const SCHEMA = {
       "revisions": true,
       "localized": true,
       "relations": {
-        "author": {
+        "authorId": {
           "kind": "one",
           "collection": "authors",
           "optional": true
@@ -63,7 +63,7 @@ export const SCHEMA = {
       "revisions": false,
       "localized": false,
       "relations": {
-        "post": {
+        "postId": {
           "kind": "one",
           "collection": "posts",
           "optional": false

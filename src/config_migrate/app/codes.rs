@@ -382,7 +382,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_ENDPOINT_METHOD",
         feature: "endpoint method without a v2 route (OPTIONS and others)",
-        v2: "route() with GET, POST, PUT, PATCH or DELETE",
+        v2: "first/app/<path>/route.ts exporting GET, POST, PUT, PATCH or DELETE",
         fix: "Serve the endpoint with a supported method; GET also answers HEAD.",
         test: |p, r| p.starts_with("/endpoints/") && r.contains("endpoints have no v2 route"),
         example: (
@@ -415,8 +415,8 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_ENDPOINT_PATH",
         feature: "endpoint path without a v2 route form",
-        v2: "route() paths with literal, :param and a final *splat segment",
-        fix: "Use literal and :param segments, with at most one final catch-all.",
+        v2: "first/app/ folders: lowercase literals, [param] and a final [...splat]",
+        fix: "Use lowercase literal and :param segments, with at most one final catch-all.",
         test: |p, r| {
             p.starts_with("/endpoints/")
                 && (r.contains("has no v2 route form")
@@ -450,7 +450,7 @@ pub static RULES: &[Rule] = &[
     Rule {
         code: "Z08_ENDPOINT_SHAPE",
         feature: "endpoint declaration or handler shape",
-        v2: "route({ method, path, handler(req, ctx) })",
+        v2: "first/app/<path>/route.ts exporting (req, ctx) handlers",
         fix: "Declare endpoint({ method, path }, (ctx, request) => ...) with literal options.",
         test: |p, r| {
             p.starts_with("/endpoints")

@@ -15,7 +15,7 @@ The config is not compiled as a whole. It is evaluated, and the functions inside
 | --- | --- |
 | Tables, collections, fields, relations | Data in `first/app/schema.php`, and SQL in `first/_generated/migrations/` |
 | Hooks (`beforeCreate`, `afterCreate`, …) | A PHP function per hook in `first/app/functions.php` |
-| `action()`, `job()` and `route()` handlers | A PHP function per handler, in the same file |
+| `action()` and `job()` handlers, and `first/app/**/route.ts` handlers | A PHP function per handler, in the same file |
 | Access functions (`read: (ctx) => …`) | A PHP function per rule |
 | Helpers they call, local or from npm | PHP functions in the same file |
 

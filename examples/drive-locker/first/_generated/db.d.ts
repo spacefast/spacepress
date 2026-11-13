@@ -53,7 +53,7 @@ type Entities = {
 };
 type Graph = {
   'drives': {
-    'place': One<'places', true>;
+    'placeId': One<'places', true>;
     'healthReadings': Many<'healthReadings'>;
     'contents': Many<'contents'>;
   };
@@ -61,10 +61,10 @@ type Graph = {
     'drives': Many<'drives'>;
   };
   'healthReadings': {
-    'drive': One<'drives', true>;
+    'driveId': One<'drives', false>;
   };
   'contents': {
-    'drive': One<'drives', true>;
+    'driveId': One<'drives', false>;
   };
   'members': {
   };

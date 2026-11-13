@@ -28,10 +28,15 @@ export const SCHEMA = {
       "revisions": false,
       "localized": false,
       "relations": {
-        "location": {
+        "locationId": {
           "kind": "one",
           "collection": "locations",
           "optional": true
+        },
+        "shoppingList": {
+          "kind": "many",
+          "collection": "shoppingList",
+          "optional": false
         }
       },
       "media": [],
@@ -45,7 +50,7 @@ export const SCHEMA = {
       "revisions": false,
       "localized": false,
       "relations": {
-        "item": {
+        "itemId": {
           "kind": "one",
           "collection": "items",
           "optional": true

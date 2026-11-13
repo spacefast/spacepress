@@ -168,9 +168,9 @@ final class Sealed
     }
 
     /**
-     * The active theme's PHP outside a block theme's templates: `functions.php` (WordPress includes it
-     * for every request), and pattern files (PHP WordPress includes to render each pattern). First's
-     * own block theme ships neither.
+     * The active theme's PHP: `functions.php` (WordPress includes it on every request) and, for a
+     * block theme, its PHP pattern files (included to render each pattern), as `<theme>/functions.php`
+     * and `<theme>/patterns/*.php (<count>)`. First's own block theme ships neither and isn't listed.
      *
      * @return list<string>
      */
@@ -184,8 +184,9 @@ final class Sealed
             if (is_file($dir . '/functions.php')) {
                 $found[] = basename($dir) . '/functions.php';
             }
-            foreach (glob($dir . '/patterns/*.php') ?: [] as $pattern) {
-                $found[] = basename($dir) . '/patterns/' . basename($pattern);
+            $patterns = count(glob($dir . '/patterns/*.php') ?: []);
+            if ($patterns > 0) {
+                $found[] = basename($dir) . "/patterns/*.php ($patterns)";
             }
         }
 

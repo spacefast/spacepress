@@ -135,3 +135,46 @@ fn a_failed_compile_leaves_the_store_unchanged() {
         assert_eq!(entries(&root.join(dir)), Vec::<String>::new(), "{dir}");
     }
 }
+
+/// Sealed mode (docs/sealed.md): a sealed app's build manifest lists the plugin directory slugs a
+/// host lets load, so the host can enforce them before any plugin loads; an unsealed one has none.
+#[test]
+fn a_sealed_build_lists_the_plugins_a_host_lets_load() {
+    let work = tempfile::tempdir().unwrap();
+    let root = work.path().join("store");
+    let plain = capture(work.path(), "plain");
+    let built = first::host::compile_to_store(&plain, &root, &plain, None).unwrap();
+    assert_eq!(built.manifest.sealed, None);
+    let manifest = fs::read_to_string(root.join("build").join(format!("{}.json", built.build_id))).unwrap();
+    assert!(
+        !manifest.contains("sealed"),
+        "an unsealed build's manifest has no sealed key"
+    );
+
+    let project = work.path().join("sealed").join("pantry");
+    copy(Path::new("examples/pantry"), &project);
+    let config = project.join("first.config.ts");
+    let text = fs::read_to_string(&config).unwrap();
+    let sealed = text.replacen("defineConfig({", "defineConfig({\n  sealed: true,", 1);
+    assert_ne!(text, sealed, "the fixture edit applies");
+    fs::write(&config, sealed).unwrap();
+    let sources = work.path().join("sources-sealed");
+    first::host::sources(&project, &sources).unwrap();
+    let built = first::host::compile_to_store(&sources, &root, &sources, None).unwrap();
+    let listed = built.manifest.sealed.expect("a sealed build lists its plugins");
+    for slug in [
+        "first-runtime",
+        "first-app-pantry",
+        "secure-custom-fields",
+        "action-scheduler",
+        "mcp-adapter",
+        "two-factor",
+    ] {
+        assert!(listed.iter().any(|s| s == slug), "{slug} in {listed:?}");
+    }
+    assert!(!listed.iter().any(|s| s == "akismet"), "{listed:?}");
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("build").join(format!("{}.json", built.build_id))).unwrap())
+            .unwrap();
+    assert_eq!(manifest["sealed"], serde_json::json!(listed));
+}

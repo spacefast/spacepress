@@ -498,6 +498,11 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
     change the field groups, post types, taxonomies, meta, roles and
     capabilities First generates (`docs/config-api.md`, "Schema lock");
   - the theme front end when `app/` or `frontend` takes over.
+- **Sealed mode** (`sealed: true`, opt-in): only First's plugins, the pinned
+  platform plugins, the `plugins` the config declares and `use` plugin packages
+  run as plugins. Other activations are refused and anything else loaded is
+  reported; a host that mounts the build store can enforce the list before
+  any plugin loads ([sealed.md](../sealed.md)).
 - **Spam checks:** First uses the Akismet a site sets up through Jetpack. While it
   has a key (Jetpack's connection or `WPCOM_API_KEY`), Akismet checks every
   comment create. Without Akismet or a key, spam checks are off, the app

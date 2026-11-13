@@ -228,7 +228,11 @@ final class Runtime
                 $description['runtime']['wp'] = Platform::versions();
                 $description['runtime']['wp']['hardening'] = Hardening::SWITCHES;
                 $description['runtime']['wp']['publicAuthors'] = Authors::public(self::$plugin->schema);
-                $description['runtime']['wp']['sealed'] = Sealed::report();
+                // The names of what is loaded are for the site's administrators (and `first doctor`
+                // signed in as one); anyone else learns only whether the site is sealed.
+                $sealed = Sealed::report();
+                $description['runtime']['wp']['sealed'] = $sealed === null ? null
+                    : (current_user_can('activate_plugins') ? $sealed : ['enforced' => $sealed['enforced']]);
                 $description['runtime']['wp']['incompatibleTables'] = self::$plugin->storageProblems();
                 $description['runtime']['identity'] = self::identity();
                 $description['runtime']['version'] = self::VERSION;

@@ -281,7 +281,8 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
     write(
         &stage.join("first-manifest.json"),
         serde_json::to_string_pretty(
-            &serde_json::json!({"first":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales}),
+            &serde_json::json!({"first":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales,
+                "sealed":crate::bundle::sealed_plugins(&built.schema, crate::app_plugin::first_plugins(&built.schema))}),
         )? + "\n",
     )?;
     super::deploy::write_metadata(&stage, built)?;

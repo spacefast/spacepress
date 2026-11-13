@@ -132,6 +132,12 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
     let mut request = agent.get(url.as_str());
     if let Some(token) = token {
         request = request.header("Authorization", format!("Bearer {token}"));
+    } else if let Some(password) = std::env::var("FIRST_APP_PASSWORD").ok().filter(|p| !p.is_empty()) {
+        // As the other site commands take it: `user:application-password`.
+        request = request.header(
+            "Authorization",
+            format!("Basic {}", crate::sync::client::base64(password.as_bytes())),
+        );
     }
     let mut response = request
         .call()
@@ -202,6 +208,43 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
                 "off: Akismet is not active (set it up through Jetpack); comments are not spam-checked".to_string()
             },
         );
+        // Sealed mode (docs/sealed.md): code the site loads and the config doesn't list fails doctor.
+        // The site reports it; First never stops or removes it.
+        if let Some(sealed) = versions["sealed"]
+            .as_object()
+            .filter(|sealed| sealed.contains_key("plugins"))
+        {
+            let unlisted: Vec<String> = ["plugins", "networkPlugins", "muPlugins", "dropins", "theme"]
+                .iter()
+                .flat_map(|key| sealed.get(*key).and_then(Value::as_array).cloned().unwrap_or_default())
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect();
+            let enforced = sealed.get("enforced").and_then(Value::as_str).unwrap_or("report");
+            check(
+                checks,
+                "sealed",
+                unlisted.is_empty(),
+                if unlisted.is_empty() {
+                    format!("only listed code is loaded (enforced by {enforced})")
+                } else {
+                    format!("loaded but not in first.config.ts: {}", unlisted.join(", "))
+                },
+            );
+        } else if versions["sealed"].is_object() {
+            check(
+                checks,
+                "sealed",
+                false,
+                "sealed: sign in as an administrator (FIRST_TOKEN or FIRST_APP_PASSWORD) to see what the site loads",
+            );
+        } else if manifest["sealed"].is_array() {
+            check(
+                checks,
+                "sealed",
+                false,
+                "this build is sealed, but the site doesn't report it: deploy this build",
+            );
+        }
         let incompatible = versions["incompatibleTables"].as_array();
         check(
             checks,

@@ -163,6 +163,12 @@ isn't changed either. None of these switches can be turned off in
 | `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
 | `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
 
+With `sealed: true` the only code that runs as a plugin is First's own plugins,
+the platform pins, the `plugins` the config declares and `use` plugin packages:
+other activations are refused and anything else loaded is reported. See
+[sealed mode](sealed.md) for what that guarantees on a plain WordPress host and
+on a host that mounts the build store.
+
 `GET /__first/api/v1` lists the switches in `runtime.wp.hardening`. The object cache
 is whatever the host's `object-cache.php` drop-in provides. A plugin can't
 install a drop-in, so the host supplies it (on Spacefast, the box image does).

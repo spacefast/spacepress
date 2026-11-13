@@ -112,10 +112,17 @@ pub const MOUNT: &[(&str, &str)] = &[
         "once per build per site, before the host exposes it: storage upgrades, migrations, identity maintenance, the content seed",
     ),
     (
+        "First\\Loader\\Loader::sealed($root, $build)",
+        "a sealed build's plugin allow-list, or null; with `Loader::allowedPlugins($active, $sealed)` before WordPress reads its active plugins",
+    ),
+    (
         "First\\Loader\\Store::gc($root, $keep)",
         "after the host deletes a version: keeps exactly the builds it still serves",
     ),
 ];
+
+/// Sealed mode (`sealed: true`, docs/sealed.md): what a host does with the allow-list.
+pub const SEALED: &str = "When the app sets `sealed: true`, the hosted manifest's `sealed` and the build manifest's `sealed` list the plugin directory slugs that may load: First's own, the platform pins, and the plugins the config declares. First can only refuse new activations and report what else is loaded, because WordPress loads drop-ins, mu-plugins and active plugins before First's app plugin. A host that wants the list enforced filters `active_plugins` and the network's `active_sitewide_plugins` with `First\\Loader\\Loader::allowedPlugins($active, $sealed)` before WordPress reads them, ships no mu-plugin or drop-in of its own beyond what it needs, and defines `FIRST_SEALED_ENFORCED` so the app reports `enforced: \"host\"`. Absent when the app isn't sealed; nothing changes for sites that don't serve a First app.";
 
 /// The table-prefix rule.
 pub const TABLE_PREFIX: &str = "First puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}first_<table>`, system tables `{prefix}first__<name>`, identity tables `{prefix}first_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads.";
@@ -163,6 +170,7 @@ pub fn render_doc() -> String {
         out.push_str(&format!("| `{name}` | {what} |\n"));
     }
     out.push_str(&format!("\n### Background work\n\n`{JOBS_COMMAND}`\n\n"));
+    out.push_str(&format!("### Sealed mode\n\n{SEALED}\n\n"));
     out.push_str(&format!("### Table prefix\n\n{TABLE_PREFIX} The longest name First adds after it is {MAX_SUFFIX} characters, so a prefix may be at most {} characters.\n\n", 64 - MAX_SUFFIX));
     out.push_str("### Manifest `host` object\n\n```json\n");
     out.push_str(&serde_json::to_string_pretty(&manifest_host()).unwrap());

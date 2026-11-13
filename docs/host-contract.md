@@ -72,6 +72,7 @@ The app API is `/__first/api/v1`; actions are `POST /__first/api/v1/actions/<nam
 |---|---|
 | `First\Loader\Loader::load($root, $build, $options)` | before WordPress initializes, with the build the host selected for this request |
 | `First\Loader\Loader::initialize($root, $build)` | once per build per site, before the host exposes it: storage upgrades, migrations, identity maintenance, the content seed |
+| `First\Loader\Loader::sealed($root, $build)` | a sealed build's plugin allow-list, or null; with `Loader::allowedPlugins($active, $sealed)` before WordPress reads its active plugins |
 | `First\Loader\Store::gc($root, $keep)` | after the host deletes a version: keeps exactly the builds it still serves |
 
 ### Hooks a host implements or listens to
@@ -99,6 +100,10 @@ The app API is `/__first/api/v1`; actions are `POST /__first/api/v1/actions/<nam
 ### Background work
 
 `wp first jobs tick [--limit=<1..100>] [--budget-ms=<ms>]`
+
+### Sealed mode
+
+When the app sets `sealed: true`, the hosted manifest's `sealed` and the build manifest's `sealed` list the plugin directory slugs that may load: First's own, the platform pins, and the plugins the config declares. First can only refuse new activations and report what else is loaded, because WordPress loads drop-ins, mu-plugins and active plugins before First's app plugin. A host that wants the list enforced filters `active_plugins` and the network's `active_sitewide_plugins` with `First\Loader\Loader::allowedPlugins($active, $sealed)` before WordPress reads them, ships no mu-plugin or drop-in of its own beyond what it needs, and defines `FIRST_SEALED_ENFORCED` so the app reports `enforced: "host"`. Absent when the app isn't sealed; nothing changes for sites that don't serve a First app.
 
 ### Table prefix
 

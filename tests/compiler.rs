@@ -2456,6 +2456,15 @@ export default defineConfig({ name: "kindurls", publicAuthors: true });
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
+    // `sealed: true` carries the declared plugins' slugs into schema.php (docs/sealed.md); absent
+    // when it's off, as in the builds above.
+    assert!(built.get("sealed").is_none(), "{built}");
+    let built = schema(
+        r#"import { defineConfig } from "first";
+export default defineConfig({ name: "kindurls", sealed: true });
+"#,
+    );
+    assert_eq!(built["sealed"], serde_json::json!({"plugins": []}));
 }
 
 /// A project whose ledger is still at `first/migrations/` is refused, never read as a first build:

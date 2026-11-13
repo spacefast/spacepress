@@ -44,7 +44,9 @@ final class Store
             || !is_string($manifest['name'] ?? null) || preg_match('/\A[a-z0-9-]+\z/D', $manifest['name']) !== 1
             || !self::validId($manifest['runtime'] ?? null) || !self::validId($manifest['app'] ?? null)
             || !is_bool($manifest['identity'] ?? null) || !is_bool($manifest['admin'] ?? null)
-            || !(($manifest['pages'] ?? null) === null || $manifest['pages'] === 'first-pages-' . $manifest['name'])) {
+            || !(($manifest['pages'] ?? null) === null || $manifest['pages'] === 'first-pages-' . $manifest['name'])
+            || !(!array_key_exists('sealed', $manifest) || (is_array($manifest['sealed']) && array_is_list($manifest['sealed'])
+                && array_filter($manifest['sealed'], static fn ($s): bool => !is_string($s) || preg_match('/\A[a-z0-9._-]+\z/D', $s) !== 1) === []))) {
             throw new \RuntimeException("Invalid First build manifest $build");
         }
         return $manifest;
@@ -245,6 +247,45 @@ final class Loader
         } else {
             add_action('plugins_loaded', $mount, 1);
         }
+    }
+
+    /**
+     * A sealed build's plugin allow-list (`sealed: true` in its config), by directory slug, or null
+     * when the build isn't sealed. A host enforces it before any plugin loads (docs/sealed.md): before
+     * `wp-settings.php` reads `active_plugins` and the network's active plugins, and in the mu-plugin
+     * and drop-in directories it controls. First never enforces it itself.
+     *
+     * @return ?list<string>
+     */
+    public static function sealed(string $root, string $build): ?array
+    {
+        $manifest = Store::manifest(rtrim($root, '/'), $build);
+
+        return isset($manifest['sealed']) ? $manifest['sealed'] : null;
+    }
+
+    /**
+     * The `active_plugins` (or network `active_sitewide_plugins` keys) a sealed build lets load: the
+     * entries whose directory slug, or file name for a single-file plugin, is on the list. For a host's
+     * `option_active_plugins` / `site_option_active_sitewide_plugins` filter, added before WordPress
+     * reads them (a host's own mu-plugin, or before `wp-settings.php`).
+     *
+     * @param list<string> $active
+     * @param list<string> $allowed
+     * @return list<string>
+     */
+    public static function allowedPlugins(array $active, array $allowed): array
+    {
+        $allowed = array_fill_keys($allowed, true);
+
+        return array_values(array_filter($active, static function ($plugin) use ($allowed): bool {
+            if (!is_string($plugin)) {
+                return false;
+            }
+            $slug = str_contains($plugin, '/') ? strstr($plugin, '/', true) : basename($plugin, '.php');
+
+            return isset($allowed[$slug]);
+        }));
     }
 
     /** The loaded build's schema; available as soon as load() returns. */

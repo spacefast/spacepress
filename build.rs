@@ -84,6 +84,7 @@ const GUIDES: &[&str] = &[
     "npm-compatibility.md",
     "pages.md",
     "realtime.md",
+    "sealed.md",
     "services.md",
     "spacefast-deploy.md",
     "uploads.md",

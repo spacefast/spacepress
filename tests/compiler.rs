@@ -3455,7 +3455,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
     assert_eq!(status, 405);
 
     // Subscribed reads: one request answers each as the caller, and the token makes the next
-    // answer "not modified". A kind the caller may not read is that read's problem, not a failure.
+    // answer "not modified". `members` reads only the caller's own row: none for a visitor.
     let queries = json!({ "queries": [
         { "kind": "notes", "op": "list", "args": { "orderBy": { "id": "asc" }, "limit": 2 } },
         { "kind": "notes", "op": "count" },
@@ -3465,12 +3465,8 @@ fn the_openapi_document_describes_what_the_api_answers() {
     ] });
     let first = check("POST", "/_live", None, &[], &json(queries.clone()), 200);
     let results = first["data"]["results"].as_array().unwrap();
-    assert_eq!(
-        results.iter().map(|r| r["changed"].clone()).collect::<Vec<_>>(),
-        [json!(true), json!(true), json!(true), json!(true), Value::Null],
-        "{first}"
-    );
-    assert_eq!(results[4]["error"]["status"], 401, "{first}");
+    assert!(results.iter().all(|r| r["changed"] == true), "{first}");
+    assert_eq!(results[4]["data"], json!([]), "a visitor reads no member");
     let mut again = queries.clone();
     for (query, result) in again["queries"].as_array_mut().unwrap().iter_mut().zip(results) {
         if let Some(token) = result.get("token") {
@@ -3478,17 +3474,35 @@ fn the_openapi_document_describes_what_the_api_answers() {
         }
     }
     let second = check("POST", "/_live", None, &[], &json(again), 200);
-    assert_eq!(second["data"]["results"][0], json!({ "changed": false, "token": second["data"]["results"][0]["token"] }));
+    assert_eq!(
+        second["data"]["results"][0],
+        json!({ "changed": false, "token": second["data"]["results"][0]["token"] })
+    );
     check("POST", "/_live", None, &[], &json(json!({ "queries": [] })), 422);
     check("POST", "/_live", None, &[], b"{", 400);
     // The document's `maxItems` is the runtime's limit: that many are answered, one more is refused.
-    let max = document["paths"]["/_live"]["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]["queries"]["maxItems"]
+    let max = document["paths"]["/_live"]["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+        ["queries"]["maxItems"]
         .as_u64()
         .unwrap() as usize;
     let count = json!({ "kind": "notes", "op": "count" });
-    let at_max = check("POST", "/_live", None, &[], &json(json!({ "queries": vec![count.clone(); max] })), 200);
+    let at_max = check(
+        "POST",
+        "/_live",
+        None,
+        &[],
+        &json(json!({ "queries": vec![count.clone(); max] })),
+        200,
+    );
     assert_eq!(at_max["data"]["results"].as_array().unwrap().len(), max);
-    check("POST", "/_live", None, &[], &json(json!({ "queries": vec![count; max + 1] })), 422);
+    check(
+        "POST",
+        "/_live",
+        None,
+        &[],
+        &json(json!({ "queries": vec![count; max + 1] })),
+        422,
+    );
 
     // Users: a member reads and changes their own row only.
     let me = check("GET", "/me", Some("subscriber"), &[], b"", 200);

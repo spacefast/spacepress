@@ -1514,7 +1514,10 @@ impl Builder<'_> {
     /// `POST /_live` (`runtime/First/Live/Module.php`): the reads a page is subscribed to, each
     /// answered "not modified" or with its fresh result, as the caller.
     fn live(&mut self) {
-        self.tag("Live", "Reads a page is subscribed to, kept current without a push transport.");
+        self.tag(
+            "Live",
+            "Reads a page is subscribed to, kept current without a push transport.",
+        );
         let kinds: Vec<Value> = self.schema.collections.values().map(|c| json!(c.key)).collect();
         let query = json!({ "type": "object", "properties": {
             "kind": { "type": "string", "enum": kinds, "description": "The kind, by the name the typed client uses." },

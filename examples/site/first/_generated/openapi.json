@@ -42,6 +42,10 @@
     },
     { "name": "Media", "description": "The WordPress media library." },
     { "name": "Account", "description": "The signed-in user and their session." },
+    {
+      "name": "Live",
+      "description": "Reads a page is subscribed to, kept current without a push transport."
+    },
     { "name": "Schema", "description": "The app described to its clients." }
   ],
   "paths": {
@@ -4127,6 +4131,106 @@
           "401": { "$ref": "#/components/responses/Problem" },
           "403": { "$ref": "#/components/responses/Problem" },
           "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/_live": {
+      "post": {
+        "tags": ["Live"],
+        "operationId": "live.refresh",
+        "summary": "Refresh subscribed reads",
+        "x-first-access": "anyone",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Takes up to 20 reads, each with the `token` of the answer the caller last got, and answers each one as the caller, with every access rule and field rule applied. The typed client's `subscribe` calls it. An answer never says that something changed which the caller may not read.\n\nAccess: Anyone may do this, signed in or not.",
+        "requestBody": {
+          "required": true,
+          "description": "The subscribed reads.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "queries": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": ["authors", "posts", "comments", "subscribers", "announcements", "members"],
+                          "description": "The kind, by the name the typed client uses."
+                        },
+                        "op": { "type": "string", "enum": ["list", "paginate", "get", "count"] },
+                        "args": {
+                          "type": "object",
+                          "description": "The arguments of that call on the kind: `where`, `orderBy`, `limit`, `offset` or `cursor`, `with`, `search`, `locale`."
+                        },
+                        "id": { "type": ["integer", "string"], "description": "The row of a `get`; or give `args.where`." },
+                        "token": { "type": "string", "description": "What the previous answer to the same read returned. Opaque." }
+                      },
+                      "required": ["kind", "op"]
+                    },
+                    "minItems": 1,
+                    "maxItems": 20
+                  }
+                },
+                "required": ["queries"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One result per read, in order, and the wait the client keeps between two requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "description": "`{ changed: true, token, data }` with the read's result as the caller reads it; `{ changed: false, token }` when what the caller holds is current; `{ error }` with the read's problem; `{ pending: true }` when the request ran out of time (ask again).",
+                            "properties": {
+                              "changed": { "type": "boolean" },
+                              "token": { "type": "string" },
+                              "data": {},
+                              "error": { "$ref": "#/components/schemas/Problem" },
+                              "pending": { "type": "boolean" }
+                            }
+                          }
+                        },
+                        "poll": {
+                          "type": "object",
+                          "properties": {
+                            "minMs": { "type": "integer" },
+                            "maxMs": { "type": "integer" }
+                          },
+                          "required": ["minMs", "maxMs"]
+                        }
+                      },
+                      "required": ["results", "poll"]
+                    }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "405": { "$ref": "#/components/responses/Problem" },
+          "413": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
           "default": { "$ref": "#/components/responses/Problem" }
         }
       }

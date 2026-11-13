@@ -57,3 +57,38 @@ any more. A browser tab still running the 0.3 client gets a `ZeroError` with sta
 `rest_no_route` on every call: an error the page can show, never a wrong answer or an empty list.
 Reloading the page loads the new client. `tests/wp/zero-upgrade/upgrade.test.ts` runs both clients
 against the upgraded site.
+
+## Old bundles: removing or changing an authoring form
+
+The host recompiles every stored `zero.source-bundle.v1` with the current compiler when the pin
+moves, and again on each First release. Those sources were written for the 0.3.0 compiler, so a PR
+that removes or changes an authoring form (a builder, a modifier, a config key, a `"first"` export, an
+option, a default) can stop a deployed Space from publishing, or change its stored schema, with
+nothing else failing.
+
+Any such PR runs `cargo test --test zero_bundle`. It recompiles three 0.3.0 captures made by the
+0.3.0 compiler (`tests/fixtures/zero-0.3/`; its README says how they were made), including `forms/`,
+which uses every authoring form 0.3.0 accepted. It checks each one compiles, plans no migration,
+keeps its snapshot, and serves the schema 0.3.0 served; that the stored routes answer as the 0.3.0
+runtime answered; and that each removed form is still refused in a First project, with its fix.
+
+When it fails:
+
+1. **A 0.3.0 capture no longer compiles, or plans a migration.** Teach the old reading the form:
+   `mod legacy` in `src/eval.rs` (field builders and modifiers) or `src/extract.rs` (config keys and
+   options), reading it onto the model the current form builds. That reading is on only for a
+   `zero.source-bundle.v1` capture (`Fs::legacy_fields`, set only in `src/zero_bundle.rs`). Never add a
+   flag, config key or alias a First project can reach
+   (docs/decisions/2026-11-11-authoring-surface.md, rulings 21 to 23).
+2. **The served schema differs.** If the new value serves the same (a rename, a key the runtime
+   reads the same way), add it to the listed differences in
+   `every_0_3_authoring_form_recompiles_to_the_schema_0_3_served` with the reason. Otherwise it changes
+   a deployed Space: fix the reading.
+3. **A form can't be read onto the current model.** Take it to the owner with the Spaces it affects
+   before merging. Never edit the fixtures to make the test pass: they are the 0.3.0 compiler's output.
+4. **A form you removed is missing from the refusal table.** Add a case to
+   `the_0_3_forms_other_lanes_removed_are_refused_in_a_first_project`, and, if 0.3.0 accepted it, make
+   sure `forms/` uses it (recapture with the 0.3.0 compiler as the fixture README says).
+
+Bundles with TSX pages (`pages/` and `zero/pages.json`) are refused with a message that tells the
+owner to move each page to `first/app/<path>/page.tsx` and publish again; nothing reads them.

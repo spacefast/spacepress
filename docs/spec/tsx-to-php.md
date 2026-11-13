@@ -64,7 +64,7 @@ one: PHP already processes its directives, it is Preact plus signals (about
 | `&&`, `?:`, `??`, `.map`, `.length`, template strings, string/array methods the compiler already lowers | Context (until a scoped-stack design) |
 | Props, children, fragments, keys | Suspense, streaming |
 | `"use client"` with `useState`, derived values, handlers, server action calls | Third-party React components with SSR (allowed only with `ssr = false`) |
-| CSS imports and CSS modules | CSS-in-JS, `style` objects with request data |
+| CSS imports and CSS modules; SVG imports (the value is the file's URL) | CSS-in-JS, `style` objects with request data; `@import`, relative `url()`, `:global` and `composes` in imported CSS; binary images (they go in `public/`) |
 
 Hard parts to report on:
 

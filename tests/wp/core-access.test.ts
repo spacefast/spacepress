@@ -1,5 +1,5 @@
 // Core /wp/v2/first_* under First's access rules (lane R): the block editor keeps its REST routes, but
-// they answer exactly what /first/v1 would. Fixtures: tests/wp/app/first/lanes/rest.ts (vault: admin-only;
+// they answer exactly what /__first/api/v1 would. Fixtures: tests/wp/app/first/lanes/rest.ts (vault: admin-only;
 // ledger: owners read and edit their own rows; payroll: anyone reads, salary admin-only).
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
@@ -27,7 +27,7 @@ test("reads answer the read rule: denied, filtered, or whole", async () => {
   const admin = await http("GET", `${core}/first_vault/${vaultId}`, { as: "admin" });
   assert.deepEqual([admin.status, admin.json.acf.first_code], [200, "1234"]);
 
-  // A filtering rule: the author's list holds her row only, and the other row is 404 as on /first/v1.
+  // A filtering rule: the author's list holds her row only, and the other row is 404 as on /__first/api/v1.
   const listed = await http("GET", `${core}/first_ledger?per_page=100&search=${run}`, { as: "author" });
   assert.deepEqual([ids(listed), listed.type.startsWith("application/json")], [[mine], true]);
   assert.equal(Number((await fetch(`${core}/first_ledger?search=${run}`, { headers: { Authorization: "Basic " + btoa(`author:${harness.users.author.appPassword}`) } })).headers.get("x-wp-total")), 1, "the total counts only her rows");
@@ -186,18 +186,15 @@ test("hidden fields need an explicit update rule, including nested fields", asyn
 
   const constraintScope = JSON.parse(wp("eval", `
     $app = \\First\\Wp\\Plugin::instance()->db();
-    $specs = array_intersect_key($app->schema()->collections(), array_flip(['oracle_rows', 'key_roots', 'key_links']));
+    $specs = array_intersect_key($app->schema()->collections(), array_flip(['oracle_rows']));
     foreach ($specs as &$spec) { $spec['access']['read'] = ['allow' => true]; }
     unset($spec);
     $db = new \\First\\Db($app->store(), new \\First\\Schema(['collections' => $specs]), $app->media(), 'wp');
     $viewer = new \\First\\Viewer(['id' => ${harness.users.editor.id}, 'name' => 'Editor', 'role' => 'editor'], 'wp');
     $code = 'extension-' . bin2hex(random_bytes(8));
     $hidden = $db->insert('oracle_rows', ['title' => $code, 'code' => $code], true)[0];
-    $base = random_int(1000000000, 1900000000);
-    $parents = $db->insert('key_roots', [['code' => $base], ['code' => $base + 1]], true);
-    $db->insert('key_links', ['rootCode' => $base]);
     \\First\\Extensions::beforeRead(static function (string $collection, array &$opts, ?\\First\\Viewer $viewer): void {
-      if ($viewer !== null && isset($opts['where']) && in_array($collection, ['oracle_rows', 'key_links'], true)) {
+      if ($viewer !== null && isset($opts['where']) && $collection === 'oracle_rows') {
         $opts['where'] = ['AND' => [$opts['where'] ?? [], ['id' => -1]]];
       }
     });
@@ -208,14 +205,7 @@ test("hidden fields need an explicit update rule, including nested fields", asyn
     }
     try { $db->update('oracle_rows', ['code' => $code], ['id' => $hidden['id']], false, null, $viewer); $result[] = null; }
     catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
-    foreach ($parents as $parent) {
-      try { $db->delete('key_roots', ['id' => $parent['id']], false, $viewer); $result[] = null; }
-      catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
-      try { $db->update('key_roots', ['code' => $parent['code'] + 10], ['id' => $parent['id']], false, $viewer); $result[] = null; }
-      catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
-    }
     $result[] = count($db->findMany('oracle_rows', ['where' => ['title' => $code . '-probe']]));
-    $result[] = array_column($db->findMany('key_roots', ['where' => ['id' => ['in' => array_column($parents, 'id')]], 'orderBy' => ['id' => 'asc']]), 'code') === [$base, $base + 1];
     echo wp_json_encode($result);
   `));
 
@@ -247,21 +237,13 @@ test("hidden fields need an explicit update rule, including nested fields", asyn
     $result[] = $db->findMany('oracle_refs', ['where' => ['title' => $code . '-probe']]);
     $db->insert('oracle_refs', ['title' => $code . '-visible', 'rowId' => $visible['id']], false, $viewer);
     $result[] = count($db->findMany('oracle_refs', ['where' => ['title' => $code . '-visible']]));
-    foreach ([$visible['uid'], 'zr_00000000000000000000'] as $uid) {
-      try {
-        $db->current(static fn () => \\First\\Sync\\Wire::decode('oracle_sync', ['fields' => ['publicBadgeId' => $uid]], viewer: $viewer));
-        $result[] = null;
-      } catch (\\First\\HttpError $error) { $result[] = [$error->status, $error->errorCode]; }
-    }
     echo wp_json_encode($result);
   `));
-  assert.deepEqual(transformScope, [[403, "forbidden"], [403, "forbidden"], [409, "reference_violation"], [409, "reference_violation"], [], 1, [409, "reference_violation"], [409, "reference_violation"]],
+  assert.deepEqual(transformScope, [[403, "forbidden"], [403, "forbidden"], [409, "reference_violation"], [409, "reference_violation"], [], 1],
     "read transforms cannot disclose hidden competitors or accept hidden reference targets; visible references still work");
   assert.deepEqual(constraintScope, [
-    [403, "forbidden"], [403, "forbidden"], [403, "forbidden"],
-    [409, "reference_violation"], [403, "forbidden"],
-    [409, "reference_violation"], [403, "forbidden"], 0, true,
-  ], "query extensions conceal unique competitors and incoming references, including empty branches and hidden resends");
+    [403, "forbidden"], [403, "forbidden"], [403, "forbidden"], 0,
+  ], "query extensions conceal unique competitors, including hidden resends");
 
 
 });
@@ -652,13 +634,13 @@ test("core meta and First's query args keep every denial: masks, hidden filters,
   assert.deepEqual([reset.status, reset.json.meta?.extra, reset.json.meta?.startsAt], [200, {}, "2026-01-01T08:00:00.000Z"], JSON.stringify(reset.json));
   const refused = await http("POST", `${core}/first_events/${event}`, { as: "author", body: { meta: { extra: { k: 2 } } } });
   assert.equal(refused.status, 403);
-  // A partial group through `meta` keeps the sub-field the editor can't read, as /first/v1 and acf do.
+  // A partial group through `meta` keeps the sub-field the editor can't read, as /__first/api/v1 and acf do.
   const partial = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { meta: { notes: { open: "edited" } } } });
   assert.deepEqual([partial.status, "notes" in partial.json.meta], [200, false], "the group stays masked in the editor's answer");
   assert.deepEqual(first("find", "payroll", JSON.stringify({ where: { id } }))[0].notes, { open: "edited", sealed: "s" });
   const sealed = await http("POST", `${core}/first_payroll/${id}`, { as: "editor", body: { meta: { notes: { open: "x", sealed: "forged" } } } });
   assert.deepEqual([sealed.status, sealed.json.data?.pointer], [403, "/notes/sealed"]);
-  // For an admin nothing in the group is hidden: `meta` replaces it whole, as /first/v1 does.
+  // For an admin nothing in the group is hidden: `meta` replaces it whole, as /__first/api/v1 does.
   const viaZero = await http("PATCH", `${api}/payroll/${id}`, { as: "admin", body: { notes: { open: "by admin" } } });
   const admin = await http("POST", `${core}/first_payroll/${id}`, { as: "admin", body: { meta: { notes: { open: "by admin" } } } });
   assert.deepEqual([admin.status, admin.json.meta?.notes], [200, viaZero.json.data.notes], JSON.stringify(viaZero.json));

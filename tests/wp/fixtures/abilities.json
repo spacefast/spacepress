@@ -4016,9 +4016,6 @@
                 }
               }
             },
-            "author": {
-              "type": "object"
-            },
             "signups": {
               "type": "object"
             },
@@ -4906,9 +4903,6 @@
                       }
                     }
                   },
-                  "author": {
-                    "type": "object"
-                  },
                   "signups": {
                     "type": "object"
                   },
@@ -4928,6 +4922,12 @@
                     }
                   },
                   "NOT": {
+                    "type": "object"
+                  },
+                  "events": {
+                    "type": "object"
+                  },
+                  "fieldStaff": {
                     "type": "object"
                   }
                 }
@@ -5814,9 +5814,6 @@
                       }
                     }
                   },
-                  "author": {
-                    "type": "object"
-                  },
                   "signups": {
                     "type": "object"
                   },
@@ -5836,6 +5833,12 @@
                     }
                   },
                   "NOT": {
+                    "type": "object"
+                  },
+                  "events": {
+                    "type": "object"
+                  },
+                  "fieldStaff": {
                     "type": "object"
                   }
                 }
@@ -6720,9 +6723,6 @@
                     }
                   }
                 },
-                "author": {
-                  "type": "object"
-                },
                 "signups": {
                   "type": "object"
                 },
@@ -6743,8 +6743,20 @@
                 },
                 "NOT": {
                   "type": "object"
+                },
+                "events": {
+                  "type": "object"
+                },
+                "fieldStaff": {
+                  "type": "object"
                 }
               }
+            },
+            "events": {
+              "type": "object"
+            },
+            "fieldStaff": {
+              "type": "object"
             }
           }
         },
@@ -6875,12 +6887,6 @@
             "string"
           ],
           "properties": {
-            "author": {
-              "type": [
-                "boolean",
-                "object"
-              ]
-            },
             "signups": {
               "type": [
                 "boolean",
@@ -6897,6 +6903,24 @@
               "type": "boolean",
               "enum": [
                 true
+              ]
+            },
+            "authorId": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "events": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "fieldStaff": {
+              "type": [
+                "boolean",
+                "object"
               ]
             }
           }
@@ -7140,12 +7164,6 @@
             "string"
           ],
           "properties": {
-            "author": {
-              "type": [
-                "boolean",
-                "object"
-              ]
-            },
             "signups": {
               "type": [
                 "boolean",
@@ -7162,6 +7180,24 @@
               "type": "boolean",
               "enum": [
                 true
+              ]
+            },
+            "authorId": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "events": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "fieldStaff": {
+              "type": [
+                "boolean",
+                "object"
               ]
             }
           }
@@ -9261,9 +9297,6 @@
                 }
               }
             },
-            "post": {
-              "type": "object"
-            },
             "AND": {
               "type": "array",
               "items": {
@@ -10018,9 +10051,6 @@
                         "type": "string"
                       }
                     }
-                  },
-                  "post": {
-                    "type": "object"
                   },
                   "AND": {
                     "type": "array",
@@ -10795,9 +10825,6 @@
                       }
                     }
                   },
-                  "post": {
-                    "type": "object"
-                  },
                   "AND": {
                     "type": "array",
                     "items": {
@@ -11569,9 +11596,6 @@
                     }
                   }
                 },
-                "post": {
-                  "type": "object"
-                },
                 "AND": {
                   "type": "array",
                   "items": {
@@ -11697,7 +11721,7 @@
             "string"
           ],
           "properties": {
-            "post": {
+            "postId": {
               "type": [
                 "boolean",
                 "object"
@@ -11836,7 +11860,7 @@
             "string"
           ],
           "properties": {
-            "post": {
+            "postId": {
               "type": [
                 "boolean",
                 "object"
@@ -12939,9 +12963,6 @@
                 }
               }
             },
-            "post": {
-              "type": "object"
-            },
             "AND": {
               "type": "array",
               "items": {
@@ -13354,9 +13375,6 @@
                         "type": "string"
                       }
                     }
-                  },
-                  "post": {
-                    "type": "object"
                   },
                   "AND": {
                     "type": "array",
@@ -13789,9 +13807,6 @@
                       }
                     }
                   },
-                  "post": {
-                    "type": "object"
-                  },
                   "AND": {
                     "type": "array",
                     "items": {
@@ -14221,9 +14236,6 @@
                     }
                   }
                 },
-                "post": {
-                  "type": "object"
-                },
                 "AND": {
                   "type": "array",
                   "items": {
@@ -14307,7 +14319,7 @@
             "string"
           ],
           "properties": {
-            "post": {
+            "postId": {
               "type": [
                 "boolean",
                 "object"
@@ -14389,7 +14401,7 @@
             "string"
           ],
           "properties": {
-            "post": {
+            "postId": {
               "type": [
                 "boolean",
                 "object"
@@ -14956,9 +14968,6 @@
                 }
               }
             },
-            "team": {
-              "type": "object"
-            },
             "AND": {
               "type": "array",
               "items": {
@@ -15239,9 +15248,6 @@
                         }
                       }
                     }
-                  },
-                  "team": {
-                    "type": "object"
                   },
                   "AND": {
                     "type": "array",
@@ -15542,9 +15548,6 @@
                       }
                     }
                   },
-                  "team": {
-                    "type": "object"
-                  },
                   "AND": {
                     "type": "array",
                     "items": {
@@ -15842,9 +15845,6 @@
                     }
                   }
                 },
-                "team": {
-                  "type": "object"
-                },
                 "AND": {
                   "type": "array",
                   "items": {
@@ -15914,7 +15914,13 @@
             "string"
           ],
           "properties": {
-            "team": {
+            "postId": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "teamId": {
               "type": [
                 "boolean",
                 "object"
@@ -15993,7 +15999,13 @@
             "string"
           ],
           "properties": {
-            "team": {
+            "postId": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "teamId": {
               "type": [
                 "boolean",
                 "object"

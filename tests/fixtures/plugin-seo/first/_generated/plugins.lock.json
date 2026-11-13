@@ -19,7 +19,6 @@
         "actions": [
           "seo_lookup"
         ],
-        "routes": [],
         "http": [
           "api.example.com"
         ],

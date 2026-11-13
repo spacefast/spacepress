@@ -41,7 +41,7 @@ Publishing a First app needs a `spacefast` CLI newer than 0.8.0. Run `sf --versi
 4. Check the app:
 
    ```sh
-   sf first check
+   npm run check
    ```
 
    Fix every problem it reports before you continue.
@@ -67,7 +67,7 @@ To publish a new version, run `sf publish` again from the same directory. The CL
 Each version runs the code it was compiled from. These work with no extra setup:
 
 - The API under `/__first/api/v1`, over WordPress's own REST routes. See the [API reference](/rest).
-- The `routes` in your config, on their own paths.
+- Pages and HTTP handlers under `first/app/` (`page.tsx`, `route.ts`), on their own paths. See [Pages](/pages).
 - `public/`, served as static files.
 - The typed client at `/__first/client.js`, with its types at `/__first/client.d.ts`.
 - Live updates. `watch()` in the client gets every committed change over Spacefast's realtime connection.

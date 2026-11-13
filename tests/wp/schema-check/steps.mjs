@@ -17,7 +17,7 @@ const notes = (fields = "", options = "") => `const notes = table({
   body: text().optional(),${fields}
 }${options});`;
 
-const app = (parts, tables) => `import { boolean, defineConfig, integer, number, table, text } from "first";
+const app = (parts, tables) => `import { boolean, defineConfig, integer, number, ref, table, text } from "first";
 ${parts.join("\n")}
 export default defineConfig({ name: "schema-check", tables: { ${tables} } });
 `;
@@ -82,14 +82,14 @@ export const steps = {
   memoText: app(["const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
     "const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: text().optional() });"], "memos, tags"),
   memoRef: app(["const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: integer().references(() => memos.id, { onDelete: \"set null\" }).optional() });"], "memos, tags"),
+    "const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: ref(memos).optional() });"], "memos, tags"),
   // 15. A table the app didn't create comes back with an optional field, then (16) that field
   //     changes type: a retype of an adopted table is refused even when empty, until --drop names it.
   readoptField: app(["const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: integer().references(() => memos.id, { onDelete: \"set null\" }).optional() });",
+    "const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: ref(memos).optional() });",
     `const tasks = table({ name: text().optional(), rank: integer().optional() }, { existingTable: "sf_spc_schema_check_retype" });`], "memos, tags, tasks"),
   readoptRetype: app(["const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
-    "const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: integer().references(() => memos.id, { onDelete: \"set null\" }).optional() });",
+    "const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: ref(memos).optional() });",
     `const tasks = table({ name: text().optional(), rank: text().optional() }, { existingTable: "sf_spc_schema_check_retype" });`], "memos, tags, tasks"),
 };
 

@@ -62,6 +62,8 @@ final class AppRouter
     }
 
     private bool $serving = false;
+    /** @var list<string> the stylesheets of the route being rendered, linked by document() */
+    private array $styles = [];
     /** This response's `Cache-Control`: private unless serve() found it shareable. */
     private string $cacheControl = 'private, no-store, max-age=0';
 
@@ -208,7 +210,7 @@ final class AppRouter
             }
         }
         try {
-            $user = HttpRoutes::caller($method, $headers);
+            $user = RouteRequest::caller($method, $headers);
         } catch (\First\HttpError $error) {
             $problem = \First\App::problem($error);
             $this->emit($problem['status'], ['Content-Type' => 'application/problem+json'], (string) Js::jsonStringify($problem));
@@ -217,8 +219,8 @@ final class AppRouter
         // The file's own `access` rule, or its `signature` (verified over the raw body; the
         // handler then runs as the system, spec §3).
         $spec = ['handler' => $methods[$lookup], 'access' => $file['access'] ?? ['allow' => false], 'signature' => $file['signature'] ?? null];
-        $query = HttpRoutes::query((string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '')));
-        $url = HttpRoutes::url((string) ($_SERVER['HTTP_HOST'] ?? (wp_parse_url(home_url('/'), PHP_URL_HOST) ?? '')), (string) ($_SERVER['REQUEST_URI'] ?? '/'));
+        $query = RouteRequest::query((string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '')));
+        $url = RouteRequest::url((string) ($_SERVER['HTTP_HOST'] ?? (wp_parse_url(home_url('/'), PHP_URL_HOST) ?? '')), (string) ($_SERVER['REQUEST_URI'] ?? '/'));
         // An unsigned handler reads as its caller, like a page; a signed webhook runs as the
         // system (spec §3), so its reads are trusted.
         $viewer = $spec['signature'] !== null ? null : new Viewer($user);
@@ -285,6 +287,7 @@ final class AppRouter
     private function serve(array $route, array $params, Viewer $viewer, int $status): never
     {
         $this->plugin->app(); // the compiled page functions live in the app's functions.php
+        $this->styles = $route['styles'] ?? [];
         $page = $this->file($route['page']);
         $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
         try {
@@ -656,6 +659,7 @@ final class AppRouter
                 return $r;
             });
         }
+        \First\Assets::enqueue($this->styles);
         Navigation::enqueue(plugins_url('first/Render/client/router.js', Runtime::file()));
         \First\Islands::enqueue();
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'HEAD') {

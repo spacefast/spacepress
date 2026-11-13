@@ -1,5 +1,5 @@
 // Feature 4 on real WordPress (§6.2): a browser-less PKCE sign-in against first-identity, its Bearer
-// on /wp-json/first/v1, refresh rotation and reuse, guests created on first write and upgraded in
+// on /__first/api/v1, refresh rotation and reuse, guests created on first write and upgraded in
 // place, suspension on every channel, and the `members` auth collection living in wp_users with
 // its hidden columns never leaving the runtime. Application passwords keep working.
 import { test } from "node:test";
@@ -63,7 +63,7 @@ async function token(body: Record<string, string>) {
   return { status: res.status, json: await res.json() };
 }
 
-test("PKCE sign-in yields a Bearer that works on /first/v1; refresh rotates and reuse fails", async () => {
+test("PKCE sign-in yields a Bearer that works on /__first/api/v1; refresh rotates and reuse fails", async () => {
   const ana = await member("ana");
   const tokens = await signIn(ana.email, ana.password);
   assert.equal(tokens.status, 200, JSON.stringify(tokens.json));
@@ -81,17 +81,17 @@ test("PKCE sign-in yields a Bearer that works on /first/v1; refresh rotates and 
   const reuse = await token({ grant_type: "refresh_token", client_id: app.id, refresh_token: tokens.json.refresh_token });
   assert.deepEqual([reuse.status, reuse.json.error], [400, "invalid_grant"]);
   const after = await call("GET", "/me", { token: rotated.json.access_token });
-  assert.deepEqual([after.status, after.json.code], [401, "unauthenticated"], "reuse revoked the family on /first/v1 too");
+  assert.deepEqual([after.status, after.json.code], [401, "unauthenticated"], "reuse revoked the family on /__first/api/v1 too");
 });
 
-test("an opted-in host's identity cookie works on /first/v1 from its own pages only", async () => {
+test("an opted-in host's identity cookie works on /__first/api/v1 from its own pages only", async () => {
   const host = await member("host-cookie");
   const signin = await fetch(`${site}/wp-json/first-identity/v1/sign-in/password`, {
     method: "POST", headers: { "content-type": "application/json", origin: site }, body: JSON.stringify({ login: host.email, password: host.password }),
   });
   const cookie = signin.headers.getSetCookie().find((c) => c.startsWith("zi_session="))!.split(";")[0];
   const me = (headers: Record<string, string> = {}) => fetch(`${api}/me`, { headers: { cookie, ...headers } });
-  assert.equal((await (await me()).json()).data, null, "cookies are off on /first/v1 unless the host opts in");
+  assert.equal((await (await me()).json()).data, null, "cookies are off on /__first/api/v1 unless the host opts in");
   wp("option", "update", "first_test_rest_cookie_auth", "1");
   try {
     const own = await me({ origin: site });
@@ -712,8 +712,8 @@ test("hidden columns never leave the runtime: list, get, with, write results, ab
   const get = await call("GET", `/members/${ed.id}`, asSelf);
   const update = await call("PATCH", `/members/${ed.id}`, { ...asSelf, body: { points: 1 } });
   await call("POST", "/guestbook", { ...asSelf, body: { message: "mine", memberId: ed.id } });
-  const withMember = await call("GET", "/guestbook", { ...asSelf, query: { with: "member" } });
-  assert.ok(withMember.json.data.some((e: any) => e.member?.id === ed.id));
+  const withMember = await call("GET", "/guestbook", { ...asSelf, query: { with: "memberId" } });
+  assert.ok(withMember.json.data.some((e: any) => e.memberId?.id === ed.id));
   const ability = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/members-get/run?input[id]=${ed.id}`, { headers: { authorization: `Bearer ${self.json.access_token}` } });
   const abilityText = await ability.text();
   assert.equal(ability.status, 200, abilityText);
@@ -727,8 +727,8 @@ test("hidden columns can't be filtered or ordered on, also through relations; ro
   const asSelf = { token: (await signIn(fy.email, fy.password)).json.access_token };
   const hiddenFilter = await call("GET", "/members", { ...asSelf, query: { where: JSON.stringify({ passwordHash: { isNotNull: true } }) } });
   assert.deepEqual([hiddenFilter.status, hiddenFilter.json.code, hiddenFilter.json.pointer], [403, "forbidden", "/where/passwordHash"]);
-  const throughRelation = await call("GET", "/guestbook", { query: { where: JSON.stringify({ member: { suspendedAt: null } }) } });
-  assert.deepEqual([throughRelation.status, throughRelation.json.pointer], [403, "/where/member/suspendedAt"]);
+  const throughRelation = await call("GET", "/guestbook", { query: { where: JSON.stringify({ memberId: { suspendedAt: null } }) } });
+  assert.deepEqual([throughRelation.status, throughRelation.json.pointer], [403, "/where/memberId/suspendedAt"]);
   const promote = await call("PATCH", `/members/${fy.id}`, { ...asSelf, body: { role: "admin" } });
   assert.equal(promote.status, 403, "role is admin-only");
   const cleared = await http("PATCH", `${api}/members/1`, { as: "admin", body: { role: null } });
@@ -815,7 +815,7 @@ test("deleting a member keeps the posts they authored", async () => {
   assert.deepEqual(sql(`SELECT post_status, post_author FROM wp_posts WHERE ID = ${post}`), [{ post_status: "publish", post_author: "0" }]);
 });
 
-test("application passwords still authenticate /first/v1 as before", async () => {
+test("application passwords still authenticate /__first/api/v1 as before", async () => {
   const me = await fetch(`${api}/me`, { headers: auth("editor") });
   assert.equal((await me.json()).data.role, "editor");
 });

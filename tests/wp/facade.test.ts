@@ -252,3 +252,24 @@ test("a kind's api flags switch its operations off on the API: 405 method_not_al
   }
   assert.equal(first("find", "notices", JSON.stringify({ where: { id: row.id } }))[0].title, `Notice ${run}`, "nothing was written");
 });
+
+test("a revisions list pages like every list: { data, cursor }, nothing dropped past a page", async () => {
+  const post = first("insert", "posts", JSON.stringify({ title: `Many revs ${run}`, excerpt: "0" }))[0];
+  for (let i = 1; i <= 4; i++) first("update", "posts", JSON.stringify({ id: post.id }), JSON.stringify({ excerpt: String(i) }));
+  const all: number[] = [];
+  let cursor: string | null = null;
+  let pages = 0;
+  do {
+    const page = await f("GET", `/posts/${post.id}/revisions` + qs({ limit: "2", ...(cursor ? { cursor } : {}) }), { as: "editor" });
+    assert.equal(page.status, 200, JSON.stringify(page.json));
+    assert.ok(page.json.data.length <= 2);
+    all.push(...page.json.data.map((r: any) => r.id));
+    cursor = page.json.cursor;
+    pages++;
+  } while (cursor !== null && pages < 10);
+  assert.equal(all.length, 5, "one revision per write, every one reached through the cursor");
+  assert.deepEqual([...all].sort((a, b) => b - a), all, "newest first");
+  const whole = await f("GET", `/posts/${post.id}/revisions`, { as: "editor" });
+  assert.deepEqual([whole.json.data.length, whole.json.cursor], [5, null], "one page holds them all under the default limit");
+  assert.equal((await f("GET", `/posts/${post.id}/revisions` + qs({ cursor: "nonsense" }), { as: "editor" })).status, 400);
+});

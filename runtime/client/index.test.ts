@@ -157,6 +157,21 @@ test("list encodes where/orderBy/limit/offset/status/locale; with is a comma lis
   assert.deepEqual([last().query.get("cursor"), last().query.get("limit")], ["c2", "1"]);
 });
 
+test("revisions.list follows the cursor and returns every revision, newest first", async () => {
+  seen = [];
+  const pages: Record<string, { data: unknown[]; cursor: string | null }> = {
+    "": { data: [{ id: 9 }, { id: 8 }], cursor: "c1" },
+    c1: { data: [{ id: 7 }], cursor: null },
+  };
+  reply = (s) => ({ status: 200, body: JSON.stringify(pages[s.query.get("cursor") ?? ""]) });
+  const first = mod.createClient({ url });
+  assert.deepEqual(await first.posts.revisions.list(1), [{ id: 9 }, { id: 8 }, { id: 7 }]);
+  assert.deepEqual(seen.map((s) => [s.path, s.query.get("cursor"), s.query.get("limit")]), [
+    ["/__first/api/v1/posts/1/revisions", null, "100"],
+    ["/__first/api/v1/posts/1/revisions", "c1", "100"],
+  ]);
+});
+
 test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSON bodies", async () => {
   seen = [];
   reply = ok({ id: 1 });
@@ -164,7 +179,9 @@ test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSO
   await first.posts.create({ title: "Hi" });
   await first.posts.update(1, { title: "Yo" });
   await first.posts.delete(1);
+  reply = () => ({ status: 200, body: JSON.stringify({ data: [], cursor: null }) });
   await first.posts.revisions.list(1);
+  reply = ok({ id: 1 });
   await first.posts.revisions.get(1, 4);
   await first.posts.revisions.restore(1, 4);
   await first.globals.settings.get();

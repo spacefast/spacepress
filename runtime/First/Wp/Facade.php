@@ -369,23 +369,29 @@ final class Facade
         return self::$depth > 0;
     }
 
-    /** @var list<string> the methods of the core dispatches in progress, innermost last */
-    private static array $methods = [];
+    /** @var list<array{string, string}> the method and route of each core dispatch in progress, innermost last */
+    private static array $dispatches = [];
 
-    /** The method of the core dispatch the facade is running now, or null outside one. */
-    public static function dispatchingMethod(): ?string
+    /**
+     * True while the facade's innermost core dispatch reads or deletes a media item on core's media
+     * route: rendering one needs its path, never its bytes. Any other dispatch (an action's run, a
+     * post read that embeds media) may use the file.
+     */
+    public static function mediaWithoutBytes(): bool
     {
-        return self::$methods === [] ? null : self::$methods[count(self::$methods) - 1];
+        [$method, $route] = self::$dispatches === [] ? [null, ''] : self::$dispatches[count(self::$dispatches) - 1];
+
+        return in_array($method, ['GET', 'HEAD', 'DELETE'], true) && preg_match('#^/wp/v2/media(?:/\d+)?/?$#', $route) === 1;
     }
 
     private static function run(\WP_REST_Request $request): \WP_REST_Response
     {
         self::$depth++;
-        self::$methods[] = $request->get_method();
+        self::$dispatches[] = [$request->get_method(), (string) $request->get_route()];
         try {
             return rest_do_request($request);
         } finally {
-            array_pop(self::$methods);
+            array_pop(self::$dispatches);
             self::$depth--;
         }
     }

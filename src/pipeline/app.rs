@@ -171,7 +171,7 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
                 return Err(Diag::new(span, format!("{path} exports both `access` and `signature`"))
                     .help("keep `signature` for a signed webhook (it authenticates the caller), or `access` for everyone else"));
             }
-            (None, Some(s)) => file.signature = Some(extract::signature_config(s, span)?),
+            (None, Some(s)) => file.signature = Some(extract::signature_config(s, span, ev.legacy())?),
             (Some(a), None) => {
                 file.access = Some(match a {
                     Value::Str(s)
@@ -218,7 +218,17 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         .iter()
         .filter_map(|(name, c)| c.url.clone().map(|u| (name.clone(), u)))
         .collect();
+    // A page's stylesheets: what its layouts (root first) and the page itself import.
+    let module_of = |file: &str| program.app_files.iter().find(|(p, _)| p == file).map(|(_, m)| *m);
     let route = |r: &app::Route| AppRoute {
+        styles: crate::assets::stylesheets(
+            program,
+            &r.layouts
+                .iter()
+                .chain((r.kind == RouteKind::Page).then_some(&r.file))
+                .filter_map(|f| module_of(f))
+                .collect::<Vec<_>>(),
+        ),
         id: r.id(),
         pattern: r.pattern(),
         page: (r.kind == RouteKind::Page).then(|| r.file.clone()),
@@ -233,10 +243,14 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
             })
             .flatten(),
     };
+    for asset in program.assets.values() {
+        ext.schema.assets.insert(asset.file.clone(), asset.bytes.clone());
+    }
     ext.schema.app = Some(crate::schema::App {
         routes: program.app.routes.iter().map(route).collect(),
         not_found: program.app.not_found.as_ref().map(route),
         files,
+        legacy_routes: false,
     });
     Ok(())
 }

@@ -1,4 +1,4 @@
-//! 0.8 `endpoints` become v2 `routes` at the same method and path.
+//! 0.8 `endpoints` become `first/app/**/route.ts` handlers at the same method and path.
 //!
 //! The request is rewritten call by call (`await req.text()` → `req.body`) in the handler pass, and
 //! every return passes through `__z08EndpointValue`, which applies 0.8's result rules: a
@@ -7,39 +7,6 @@
 use super::super::{Failure, fail, pointer};
 use crate::diag::Span;
 use crate::ir::{FnBody, Func, Pat, Stmt};
-
-/// First path segments WordPress or First owns; v2 refuses routes under them (#129).
-pub(super) const RESERVED: &[&str] = &[
-    "wp-admin",
-    "wp-json",
-    "wp-content",
-    "wp-includes",
-    "wp-login.php",
-    "wp-signup.php",
-    "wp-cron.php",
-    "xmlrpc.php",
-    "wp-sitemap.xml",
-    "feed",
-    "comments",
-    "search",
-    "author",
-    "category",
-    "tag",
-    "page",
-    "embed",
-    "trackback",
-    "robots.txt",
-    "favicon.ico",
-    "first-admin",
-    "auth",
-    ".well-known",
-    "__spacefast",
-    "__zero",
-    "__first",
-    "identity",
-    "index.php",
-    "wp-config.php",
-];
 
 pub(super) struct Route {
     pub method: String,
@@ -89,10 +56,14 @@ pub(super) fn route(method: &str, path: &str, read_only: Option<bool>, at: &str)
             v2.push("*splat".to_string());
             continue;
         }
+        // A literal is a `first/app/` folder name: lowercase, and not a private (`_`, `.`) folder.
         let ok = if let Some(name) = s.strip_prefix(':') {
             ident(name)
         } else {
-            s.chars().all(|c| c.is_ascii_alphanumeric() || "._~-".contains(c))
+            s.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "._~-".contains(c))
+                && !s.starts_with(['_', '.'])
+                && !s.ends_with('.')
         };
         if !ok {
             return Err(fail(
@@ -102,7 +73,7 @@ pub(super) fn route(method: &str, path: &str, read_only: Option<bool>, at: &str)
         }
         v2.push((*s).to_string());
     }
-    if RESERVED.contains(&segments[0].to_ascii_lowercase().as_str()) {
+    if crate::app::RESERVED_FIRST.contains(&segments[0].to_ascii_lowercase().as_str()) {
         return Err(fail(
             &pointer(at, "path"),
             format!(

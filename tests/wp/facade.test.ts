@@ -1,18 +1,12 @@
 // /__first/api/v1 (spec §3a): a thin facade over core routes. Every request is dispatched to the core
 // route and only mapped, so it answers what First's rules answer: the same rows, the same denials,
-// problem documents for errors. Each check compares with /wp-json/first/v1 or core directly.
+// problem documents for errors. Each check compares with First's own pipeline (`wp first find`), core
+// directly, or the values themselves.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { auth, core, harness, http, ok, qs, run, sql, wp, first, type Role } from "./env.ts";
 
 const facade = `${harness.url}/__first/api/v1`;
-// The old namespace, until its implementation is deleted: the facade must answer what it answered.
-const legacy = `${harness.url}/wp-json/first/v1`;
-const old = async (method: string, path: string, opts: { as?: Role; body?: unknown } = {}) => {
-  const r = await http(method, legacy + path, opts);
-  assert.ok(r.status < 300, `${method} ${path} → ${r.status} ${JSON.stringify(r.json)}`);
-  return r.json.data;
-};
 const f = (method: string, path: string, opts: { as?: Role; body?: unknown } = {}) => http(method, facade + path, opts);
 const strip = (row: any) => { const { createdAt, updatedAt, ...rest } = row; return rest; };
 
@@ -25,14 +19,14 @@ before(async () => {
   ])).map((r: any) => r.id);
 });
 
-test("lists are First rows with { data, cursor }, the same rows /first/v1 returns", async () => {
+test("lists are First rows with { data, cursor }, the same rows First's pipeline returns", async () => {
   const where = { id: { in: eventIds } };
-  const first = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "2" }));
-  assert.equal(first.status, 200, JSON.stringify(first.json));
-  const firstRows = await old("GET", "/events" + qs({ where, orderBy: "-seats" }));
-  assert.deepEqual(first.json.data.map(strip), firstRows.slice(0, 2).map(strip));
-  assert.equal(typeof first.json.cursor, "string");
-  const second = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "2", cursor: first.json.cursor }));
+  const page1 = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "2" }));
+  assert.equal(page1.status, 200, JSON.stringify(page1.json));
+  const firstRows = first("find", "events", JSON.stringify({ where, orderBy: { seats: "desc" } }));
+  assert.deepEqual(page1.json.data.map(strip), firstRows.slice(0, 2).map(strip));
+  assert.equal(typeof page1.json.cursor, "string");
+  const second = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "2", cursor: page1.json.cursor }));
   assert.deepEqual([second.json.data.map((e: any) => e.title), second.json.cursor], [[`Fa ${run}`], null]);
   assert.deepEqual(second.json.data[0].extra, { a: {} }, "a json() value keeps {}");
   const skipped = await f("GET", "/events" + qs({ where, orderBy: "-seats", limit: "1", offset: "2" }));
@@ -44,7 +38,7 @@ test("lists are First rows with { data, cursor }, the same rows /first/v1 return
 
 test("items, slugs, writes and deletes map onto core and back", async () => {
   const item = await f("GET", `/events/${eventIds[1]}`);
-  assert.deepEqual(strip(item.json.data), strip(await old("GET", `/events/${eventIds[1]}`)));
+  assert.deepEqual(strip(item.json.data), strip(first("find", "events", JSON.stringify({ where: { id: eventIds[1] } }))[0]));
   const created = await f("POST", "/events", { as: "editor", body: { title: `Fd ${run}`, seats: 7, day: "2026-05-01", kinds: ["social"] } });
   assert.equal(created.status, 201, JSON.stringify(created.json));
   assert.deepEqual([created.json.data.title, created.json.data.seats, created.json.data.day, created.json.data.status], [`Fd ${run}`, 7, "2026-05-01", "published"]);
@@ -59,7 +53,7 @@ test("items, slugs, writes and deletes map onto core and back", async () => {
   assert.deepEqual([overridden.status, (await overridden.json()).data.seats], [200, 9]);
   const removed = await f("DELETE", `/events/${id}`, { as: "editor" });
   assert.deepEqual([removed.status, removed.json.data.id], [200, id]);
-  assert.equal((await http("GET", `${legacy}/events/${id}`, { as: "editor" })).status, 404);
+  assert.equal((await f("GET", `/events/${id}`, { as: "editor" })).status, 404);
   const post = first("insert", "posts", JSON.stringify({ title: `Facade slug ${run}`, body: "<!-- wp:paragraph --><p>Hello <strong>md</strong></p><!-- /wp:paragraph -->" }))[0];
   const bySlug = await f("GET", `/posts/slug:${post.slug}`);
   assert.equal(bySlug.json.data.id, post.id);
@@ -85,9 +79,8 @@ test("actions run through their Ability: { data }, GET for readonly, the action'
   const body = `Facade action ${run}`;
   const counted = await f("GET", "/actions/refsCount?" + new URLSearchParams({ input: JSON.stringify({ body }) }));
   assert.deepEqual([counted.status, counted.json.data.count], [200, 0]);
-  const same = await http("POST", `${legacy}/actions/refsEcho`, { as: "editor", body: { meta: { a: {} } } });
   const viaFacade = await f("POST", "/actions/refsEcho", { as: "editor", body: { meta: { a: {} } } });
-  assert.deepEqual(viaFacade.json, same.json, "the same { data } as /first/v1, {} kept");
+  assert.deepEqual(viaFacade.json, { data: { meta: { a: {} } } }, "{ data }, {} kept");
   const denied = await f("POST", "/actions/refsEcho", { body: {} });
   assert.deepEqual([denied.status, denied.json.code], [401, "unauthenticated"]);
   const hidden = await f("POST", "/actions/agentNote", { as: "editor", body: { note: `n ${run}` } });
@@ -98,7 +91,7 @@ test("actions run through their Ability: { data }, GET for readonly, the action'
   assert.equal((await f("POST", "/actions/jobsInbound", { body: {} })).status, 401, "a signed webhook without its signature is refused (jobs.test.ts covers the signature)");
 });
 
-test("the facade denies what core and /first/v1 deny", async () => {
+test("the facade denies what core denies", async () => {
   // A read rule that denies, a filtering read rule, a field mask, a filter on a hidden field.
   const vault = await f("GET", "/vault");
   assert.deepEqual([vault.status, vault.json.code], [401, "unauthenticated"]);
@@ -123,12 +116,10 @@ test("the users kind: rows as First reads them, writes through First's rules, cr
   const sub = harness.users.subscriber.id;
   // A member reads their own row whole (email, role) without list_users; another's is not theirs.
   const own = await f("GET", `/members/${sub}`, { as: "subscriber" });
-  const viaZero = await http("GET", `${legacy}/members/${sub}`, { as: "subscriber" });
-  // The one encoder of core routes keeps a group whose sub-fields are all hidden an object ({}), where
-  // /first/v1's encoder gives [] for it; every other value is the same.
-  assert.deepEqual([own.status, own.json.data], [200, { ...viaZero.json.data, notes: {} }], JSON.stringify(own.json));
-  assert.deepEqual(viaZero.json.data.notes, []);
-  assert.deepEqual([own.json.data.email, own.json.data.role], [viaZero.json.data.email, "subscriber"]);
+  const trusted = first("find", "members", JSON.stringify({ where: { id: sub } }))[0];
+  // The member's own row: every field `self` may read, a group whose sub-fields are all hidden kept an object.
+  assert.equal(own.status, 200, JSON.stringify(own.json));
+  assert.deepEqual([own.json.data.email, own.json.data.role, own.json.data.name, own.json.data.notes], [trusted.email, "subscriber", trusted.name, {}]);
   assert.equal((await f("GET", `/members/${harness.users.admin.id}`, { as: "subscriber" })).status, 404);
   assert.deepEqual((await f("GET", "/members", { as: "subscriber" })).json.data.map((m: any) => m.id), [sub], "the list holds what `self` allows");
   // A PATCH of only core user fields still runs First's update: validation, field rules, hooks.
@@ -144,18 +135,18 @@ test("the users kind: rows as First reads them, writes through First's rules, cr
   first("update", "members", JSON.stringify({ id: sub }), JSON.stringify({ name }));
   const role = await f("PATCH", `/members/${sub}`, { as: "subscriber", body: { role: "admin" } });
   assert.equal(role.status, 403, JSON.stringify(role.json));
-  // Create reaches First's insert (not core's "missing username/password"): the same answers as /first/v1
-  // for the create rule, First's password rule, and `self` reads keeping even an admin from setting a
-  // unique email it can't see (this app's members can only be created by trusted code).
+  // Create reaches First's insert (not core's "missing username/password"): the create rule, First's
+  // password rule, and `self` reads keeping even an admin from setting a unique email it can't see
+  // (this app's members can only be created by trusted code).
   const address = `facade-${run}@example.test`;
   const body = { email: address, name: `Created ${run}`, password: "a long password 1" };
-  for (const [as, input] of [["editor", body], ["admin", { ...body, password: "short" }], ["admin", body]] as const) {
+  for (const [as, input, expected] of [
+    ["editor", body, [403, "forbidden"]], // core's create_users refuses an editor first
+    ["admin", { ...body, password: "short" }, [422, "invalid_input"]],
+    ["admin", body, [403, "forbidden"]],
+  ] as const) {
     const viaFacade = await f("POST", "/members", { as, body: input });
-    const direct = await http("POST", `${legacy}/members`, { as, body: input });
-    // An editor lacks core's create_users, so core refuses first: the same status and code, no pointer.
-    const answer = (r: any) => [r.status, r.json.code, as === "editor" ? undefined : r.json.pointer];
-    assert.deepEqual(answer(viaFacade), answer(direct), `${as} ${JSON.stringify(input)}`);
-    assert.ok(viaFacade.status >= 400, "the test app's create rules refuse these");
+    assert.deepEqual([viaFacade.status, viaFacade.json.code], expected, `${as} ${JSON.stringify(input)}`);
   }
   assert.equal(wp("eval", `echo email_exists('${address}') ? 'created' : 'none';`), "none", "a refused create leaves no user");
   // A permanent delete (core refuses one without force), with First's delete rule.
@@ -213,7 +204,8 @@ test("menus: a menu in a theme location is public; its items are a tree", async 
 
 test("globals run through their Abilities on core's run route: the global's own rules, { data }", async () => {
   const before = await f("GET", "/settings");
-  assert.deepEqual(before.json.data, await old("GET", "/globals/settings"), "the app's `settings` global answers, not the built-in");
+  const ran = JSON.parse(wp("first", "run", "blog/global-settings-get", "--user=admin")).data;
+  assert.deepEqual(before.json.data, ran, "the app's `settings` global answers, as its Ability does, not the built-in");
   const tagline = `Facade global ${run}`;
   assert.equal((await f("PATCH", "/settings", { as: "subscriber", body: { tagline } })).status, 403);
   const set = await f("PATCH", "/settings", { as: "admin", body: { tagline } });
@@ -222,23 +214,23 @@ test("globals run through their Abilities on core's run route: the global's own 
   assert.equal((await f("DELETE", "/settings", { as: "admin" })).status, 405);
 });
 
-test("rows carry First's system fields and every locale, as the old namespace did", async () => {
+test("rows carry First's system fields and every locale, as First's pipeline gives them", async () => {
   const tour = first("insert", "tours", JSON.stringify({ title: `Facade tour ${run}`, price: 4 }))[0];
   const viaFacade = await f("GET", `/tours/${tour.id}`, { as: "editor" });
-  assert.deepEqual(viaFacade.json.data, await old("GET", `/tours/${tour.id}`, { as: "editor" }));
+  assert.deepEqual(viaFacade.json.data, first("find", "tours", JSON.stringify({ where: { id: tour.id }, locale: "*" }))[0]);
   const both = await f("GET", "/tours" + qs({ locale: "*", where: { id: tour.id } }), { as: "editor" });
   assert.deepEqual(both.json.data.map((t: any) => [t.id, t.locale]), [[tour.id, "en"]]);
 });
 
 test("revisions: core's revisions of the post, First's snapshots, and a restore that is an update", async () => {
   const post = first("insert", "posts", JSON.stringify({ title: `Rev ${run}`, excerpt: "one" }))[0];
-  await http("PATCH", `${legacy}/posts/${post.id}`, { as: "editor", body: { excerpt: "two" } });
+  await f("PATCH", `/posts/${post.id}`, { as: "editor", body: { excerpt: "two" } });
   const list = await f("GET", `/posts/${post.id}/revisions`, { as: "editor" });
   assert.equal(list.status, 200, JSON.stringify(list.json));
-  assert.deepEqual(list.json.data, await old("GET", `/posts/${post.id}/revisions`, { as: "editor" }), "the same list as the old namespace");
+  assert.ok(list.json.data.length >= 2 && list.json.data.every((r: any) => typeof r.id === "number" && typeof r.at === "string"), JSON.stringify(list.json));
   const oldest = list.json.data.at(-1).id;
   const at = await f("GET", `/posts/${post.id}/revisions/${oldest}`, { as: "editor" });
-  assert.deepEqual(at.json.data, await old("GET", `/posts/${post.id}/revisions/${oldest}`, { as: "editor" }));
+  assert.deepEqual([at.json.data.title, at.json.data.excerpt], [`Rev ${run}`, "one"], "the row as that revision saved it");
   const restored = await f("POST", `/posts/${post.id}/revisions/${oldest}/restore`, { as: "editor" });
   assert.deepEqual([restored.status, restored.json.data.excerpt], [200, at.json.data.excerpt], JSON.stringify(restored.json));
   // Denials: anonymous, a subscriber without the update rule, another post's revision, a missing row.
@@ -259,4 +251,34 @@ test("a kind's api flags switch its operations off on the API: 405 method_not_al
     assert.deepEqual([r.status, r.json.code], [405, "method_not_allowed"], `${method} ${path}`);
   }
   assert.equal(first("find", "notices", JSON.stringify({ where: { id: row.id } }))[0].title, `Notice ${run}`, "nothing was written");
+});
+
+test("the API's writes run core's insert hooks and other plugins' registered REST fields", async () => {
+  // tests/wp/mu-plugins/rest-insert-probe.php: a `probe_note` REST field and rest_(after_)insert hooks.
+  const hooks = (id: number) => JSON.parse(wp("eval", `echo wp_json_encode(get_post_meta(${id}, 'probe_hooks'));`));
+  const created = await f("POST", "/events", { as: "editor", body: { title: `Probe ${run}`, probe_note: "made" } });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  const id = created.json.data.id;
+  assert.equal(wp("post", "meta", "get", String(id), "probe_note"), "made", "the field's update callback ran");
+  assert.deepEqual(hooks(id), ["rest_insert_first_events:create", "rest_after_insert_first_events:create"]);
+  const patched = await f("PATCH", `/events/${id}`, { as: "editor", body: { seats: 3, probe_note: "changed" } });
+  assert.equal(patched.status, 200, JSON.stringify(patched.json));
+  assert.equal(wp("post", "meta", "get", String(id), "probe_note"), "changed");
+  assert.deepEqual(hooks(id).slice(2), ["rest_insert_first_events:update", "rest_after_insert_first_events:update"]);
+  // A field's refusal is the write's: nothing of it is kept.
+  const refused = await f("PATCH", `/events/${id}`, { as: "editor", body: { seats: 9, probe_note: "refuse" } });
+  assert.equal(refused.status, 400, JSON.stringify(refused.json));
+  assert.equal(first("find", "events", JSON.stringify({ where: { id } }))[0].seats, 3, "the refused write rolled back");
+});
+
+test("the API runs core's permission checks: a caller core refuses is refused, a row outside the rule is a 404", async () => {
+  const id = first("insert", "events", JSON.stringify({ title: `Perm ${run}` }))[0].id;
+  const anon = await f("PATCH", `/events/${id}`, { body: { seats: 1 } });
+  assert.deepEqual([anon.status, anon.json.code], [401, "unauthenticated"]);
+  const sub = await f("PATCH", `/events/${id}`, { as: "subscriber", body: { seats: 1 } });
+  assert.deepEqual([sub.status, sub.json.code], [403, "forbidden"], "the update rule refuses a subscriber's seats");
+  const reset = await f("PATCH", `/events/${id}`, { as: "subscriber", body: { extra: {} } });
+  assert.equal(reset.status, 200, "the data-dependent rule allows resetting extra to {}, through core's check");
+  const create = await f("POST", "/events", { as: "subscriber", body: { title: "x" } });
+  assert.deepEqual([create.status, create.json.code], [403, "forbidden"], "core's create_posts check refuses");
 });

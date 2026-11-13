@@ -1,6 +1,6 @@
 // The auth-collection fixture (§6.2): members are users. tests/php/auth_test.php runs the runtime on
 // it; tests/compiler.rs keeps auth.schema.json in step with the compiler.
-import { collection, defineConfig, defineRelations, email, group, integer, select, text, userProjection, table } from "first";
+import { collection, defineConfig, email, group, integer, select, text, userProjection, table, ref } from "first";
 
 export const members = userProjection({
   email: email().unique().max(191),
@@ -14,7 +14,7 @@ export const members = userProjection({
 
 export const notes = table({
   body: text(),
-  memberId: integer().references(() => members.id).optional(),
+  memberId: ref(members).optional().onDelete("restrict"),
 }, { revisions: true, access: { read: "anyone", create: "authenticated", update: "authenticated" } });
 
 export const collections = {  };
@@ -24,8 +24,5 @@ export const entities = { ...collections, ...tables, ...users };
 export default defineConfig({
   name: "club",
   collections, tables, users,
-  relations: defineRelations(entities, (r) => ({
-    notes: { member: r.one.members({ from: r.notes.memberId, to: r.members.id }) },
-    members: { notes: r.many.notes() },
-  })),
+  
 });

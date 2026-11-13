@@ -43,7 +43,6 @@ function first_admin_boot() {
 	require_once __DIR__ . '/lib/load-libs.php';
 
 	add_action( 'init', 'first_admin_add_rewrite_rule' );
-	add_filter( 'rest_request_before_callbacks', 'first_admin_rest_transport_query', 10, 3 );
 	add_action( 'admin_init', 'first_admin_persist_rewrite_rule' );
 	add_filter( 'query_vars', 'first_admin_query_vars' );
 	add_action( 'template_redirect', 'first_admin_render_page', 0 );
@@ -187,15 +186,3 @@ function first_admin_plugin_meta_links( $links, $file ) {
 	return $links;
 }
 
-/**
- * apiFetch adds WordPress's locale hint to every request. WordPress has consumed
- * it before callbacks run; it is transport metadata, not a First list option.
- */
-function first_admin_rest_transport_query( $response, $handler, $request ) {
-    if ( str_starts_with( $request->get_route(), '/first/v1/' ) ) {
-        $query = $request->get_query_params();
-        unset( $query['_locale'] );
-        $request->set_query_params( $query );
-    }
-    return $response;
-}

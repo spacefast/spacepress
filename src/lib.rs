@@ -7,10 +7,12 @@
 
 pub mod app;
 mod app_plugin;
+pub mod assets;
 pub mod builtins;
 pub mod client;
 pub mod client_component;
 pub mod compile;
+pub mod css;
 pub mod diag;
 pub mod eval;
 pub mod extract;
@@ -46,6 +48,7 @@ pub mod config_migrate;
 mod emit;
 #[cfg(feature = "host")]
 pub mod host;
+pub mod host_contract;
 #[cfg(feature = "host")]
 pub mod store;
 #[cfg(any(feature = "cli", feature = "host"))]

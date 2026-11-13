@@ -10,7 +10,7 @@ export const SCHEMA = {
 			"revisions": false,
 			"localized": false,
 			"relations": {
-				"place": {
+				"placeId": {
 					"kind": "one",
 					"collection": "places",
 					"optional": true
@@ -51,10 +51,10 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": { "drive": {
+			"relations": { "driveId": {
 				"kind": "one",
 				"collection": "drives",
-				"optional": true
+				"optional": false
 			} },
 			"media": [],
 			"mediaList": [],
@@ -66,10 +66,10 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": { "drive": {
+			"relations": { "driveId": {
 				"kind": "one",
 				"collection": "drives",
-				"optional": true
+				"optional": false
 			} },
 			"media": [],
 			"mediaList": [],

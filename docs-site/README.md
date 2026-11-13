@@ -27,7 +27,7 @@ The examples the site features are listed in `lib/site-examples.ts`. Each one sa
 | `docs/reference/cli.mdx` | `runtime/First/Cli/commands.json` |
 | `docs/reference/diagnostics.mdx` | `src/diag.rs` and `tests/compatibility/registry.json` |
 | `docs/reference/wordpress-plugins.mdx` | `src/wp_plugins/supported.json`, `src/platform.rs` and `tests/fixtures/platform.json` |
-| `openapi/first.json`, rendered at `/rest` | The route dispatchers in `runtime/First` |
+| `openapi/first.json`, rendered at `/rest` | `examples/blog`: the OpenAPI document `first build` writes for it (`src/openapi.rs`) |
 | `docs/changelog/` | `packages/*/CHANGELOG.md` |
 | `pages/playground.astro`, `pages/tour/` | The examples, compiled by `public/compiler.wasm` |
 

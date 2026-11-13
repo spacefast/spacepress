@@ -675,6 +675,16 @@ impl<'p> Evaluator<'p> {
         }
     }
 
+    /// A `collection()` or `global()` call made from data (the runtime schema lock).
+    pub fn kind_from_data(&mut self, global: bool, args: Vec<Value>) -> Result<Value, Diag> {
+        let builtin = if global {
+            Builtin::DefineGlobal
+        } else {
+            Builtin::Collection(StorageKind::Collection)
+        };
+        self.call_builtin(&builtin, args, Span::NONE).map_err(uncaught)
+    }
+
     pub fn key_span(&self, obj: &Value, key: &str) -> Option<Span> {
         self.key_spans.get(&(ptr_of(obj)?, key.to_string())).copied()
     }
@@ -1009,6 +1019,26 @@ impl<'p> Evaluator<'p> {
                 .ok_or_else(|| {
                     let mut d = Diag::new(span, format!("\"first/client\" has no export named `{name}`"));
                     if let Some(s) = suggest(name, crate::client_component::HOOKS.iter().copied()) {
+                        d = d.help(format!("did you mean `{s}`?"));
+                    }
+                    Ctl::Err(d)
+                });
+        }
+        if source == crate::loader::CONTENT_MODULE {
+            return crate::compile::CONTENT_EXPORTS
+                .iter()
+                .find(|e| **e == name)
+                .map(|e| Value::Builtin(Builtin::Content(e)))
+                .or_else(|| crate::compile::CONTENT_TYPES.contains(&name).then_some(Value::Undef))
+                .ok_or_else(|| {
+                    let mut d = Diag::new(span, format!("\"first/content\" has no export named `{name}`"));
+                    if let Some(s) = suggest(
+                        name,
+                        crate::compile::CONTENT_EXPORTS
+                            .iter()
+                            .chain(crate::compile::CONTENT_TYPES)
+                            .copied(),
+                    ) {
                         d = d.help(format!("did you mean `{s}`?"));
                     }
                     Ctl::Err(d)
@@ -2955,6 +2985,11 @@ impl<'p> Evaluator<'p> {
                 span,
                 format!("`{name}` runs only inside a \"use client\" component"),
                 "call it in the component's body",
+            ),
+            Builtin::Content(name) => err_help(
+                span,
+                format!("`{name}` from \"first/content\" can't run while the config is built"),
+                "call it in a page, layout or component",
             ),
             Builtin::App(name) => err_help(
                 span,

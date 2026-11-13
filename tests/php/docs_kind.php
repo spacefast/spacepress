@@ -152,5 +152,30 @@ foreach ([
 // A tag inside a code fence is code, not a block.
 $out['blocks fenced'] = \First\Sync\Markdown::toBlocks("```md\n<Callout type=\"note\">\n```\n");
 
+// Code blocks (docs/decisions/2026-11-13-code-blocks.md): highlighted on the route, with titles,
+// marked lines and a tab group, no script; written back as the same fences.
+$setup = fetch("$url/docs/guides/setup");
+$html = new DOMDocument();
+@$html->loadHTML('<?xml encoding="utf-8"?>' . $setup['body']);
+$x = new DOMXPath($html);
+$text = static fn (?DOMNode $n): ?string => $n === null ? null : trim($n->textContent);
+$out['code'] = [
+    'status' => $setup['status'],
+    'titles' => array_map($text, iterator_to_array($x->query('//figcaption[@class="first-code-title"]'))),
+    'keywords' => array_map($text, iterator_to_array($x->query('//pre[contains(@class, "language-ts")]//span[@class="hljs-keyword"]'))),
+    'marked' => array_map($text, iterator_to_array($x->query('//span[contains(@class, "first-code-marked")]'))),
+    'tabs' => array_map($text, iterator_to_array($x->query('//div[@class="first-code-group"]/label'))),
+    'tab inputs' => $x->query('//div[@class="first-code-group"]/input[@type="radio"]')->length,
+    'panels' => array_map(static fn (DOMNode $n): string => trim($n->textContent), iterator_to_array($x->query('//div[@class="first-code-group"]/figure'))),
+    'plain' => $text($x->query('//pre[contains(@class, "language-text")]')->item(0)),
+    'plain spans' => $x->query('//pre[contains(@class, "language-text")]//span[starts-with(@class, "hljs")]')->length,
+    'stylesheet' => $x->query('//link[@id="first-code-css"]')->length,
+    'scripts' => array_values(array_filter(array_map(static fn (DOMNode $n): string => (string) $n->getAttribute('src'), iterator_to_array($x->query('//script[@src]'))), static fn (string $s): bool => str_contains($s, 'code'))),
+];
+$css = fetch($x->query('//link[@id="first-code-css"]')->item(0)?->getAttribute('href') ?? "$url/none");
+$out['code css'] = [$css['status'], str_contains($css['body'], '@media (prefers-color-scheme: dark)'), str_contains($css['body'], '.first-code .hljs-keyword')];
+$setupPost = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'setup'", $type));
+$out['code back'] = \First\Sync\Markdown::fromBlocks((string) get_post_field('post_content', $setupPost));
+
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

@@ -610,6 +610,11 @@ impl<'p> Evaluator<'p> {
         self.program
     }
 
+    /// Whether these sources are read as a 0.3.0 capture (`Fs::legacy_fields`, ruling 21).
+    pub fn legacy(&self) -> bool {
+        self.legacy
+    }
+
     /// Fills every `"first:db"` binding from `kinds` (registered name → kind), once registration has
     /// run. An unknown name is refused at its import, with the closest registered name.
     pub fn bind_db(&mut self, kinds: &IndexMap<String, Value>) -> Result<(), Diag> {
@@ -966,7 +971,7 @@ impl<'p> Evaluator<'p> {
 
     fn import_value(&mut self, from: usize, source: &str, name: &str, span: Span) -> R<Value> {
         if source == FIRST_MODULE {
-            return first_export(name, span);
+            return first_export(name, self.legacy, span);
         }
         if let Some(module) = crate::builtins::module(source) {
             return node_crypto_export(module, source, name, span);
@@ -1086,8 +1091,9 @@ impl<'p> Evaluator<'p> {
                     }
                     if source == FIRST_MODULE {
                         let mut map = IndexMap::new();
-                        for n in FIRST_EXPORTS {
-                            map.insert(n.to_string(), first_export(n, span)?);
+                        let extra: &[&str] = if self.legacy { legacy::EXPORTS } else { &[] };
+                        for n in FIRST_EXPORTS.iter().chain(extra) {
+                            map.insert(n.to_string(), first_export(n, self.legacy, span)?);
                         }
                         Value::object(map)
                     } else {
@@ -2671,6 +2677,7 @@ impl<'p> Evaluator<'p> {
             Builtin::Files => Some("files"),
             Builtin::Action => Some("action"),
             Builtin::Job => Some("job"),
+            Builtin::Route => Some("route"),
             Builtin::RelFn(..) => Some("relation"),
             _ => None,
         };
@@ -2710,7 +2717,10 @@ impl<'p> Evaluator<'p> {
                         "delete this field; for a text key, declare `code: text().unique().max(191)`",
                     );
                 }
-                if !columns.contains_key("id") {
+                // 0.3.0 gave a table that declared its own primary key (`code: text().primaryKey()`)
+                // no `id`; its stored table has none.
+                let own_key = self.legacy && columns.values().any(|c| c.primary_key);
+                if !columns.contains_key("id") && !own_key {
                     columns.shift_insert(0, "id".into(), Rc::new(legacy::id(span)));
                 }
                 let options = match arg(1) {
@@ -2870,14 +2880,22 @@ impl<'p> Evaluator<'p> {
                 "once(), jobs, mail, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
                 "move the call into a handler",
             ),
-            Builtin::Action | Builtin::Job => {
+            Builtin::Action | Builtin::Job | Builtin::Route => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
-                    return err(span, "action() needs `{ input, handler }`");
+                    return err(
+                        span,
+                        if *b == Builtin::Route {
+                            "route() needs `{ method, path, handler }`"
+                        } else {
+                            "action() needs `{ input, handler }`"
+                        },
+                    );
                 }
                 let value = Rc::new(ActionVal { config: cfg, span });
                 Ok(match b {
                     Builtin::Job => Value::Job(value),
+                    Builtin::Route => Value::Route(value),
                     _ => Value::Action(value),
                 })
             }
@@ -3867,8 +3885,9 @@ pub fn uncaught(c: Ctl) -> Diag {
     }
 }
 
-fn first_export(name: &str, span: Span) -> R<Value> {
+fn first_export(name: &str, legacy: bool, span: Span) -> R<Value> {
     Ok(Value::Builtin(match name {
+        "route" if legacy => Builtin::Route,
         "collection" => Builtin::Collection(StorageKind::Collection),
         "table" => Builtin::Collection(StorageKind::Table),
         "userProjection" => Builtin::Collection(StorageKind::UserProjection),
@@ -5593,6 +5612,9 @@ mod legacy {
 
     /// Modifiers this reading accepts besides the current ones.
     pub const MODIFIERS: &[&str] = &["notNull", "primaryKey", "$type", "references"];
+
+    /// `"zero"` exports this reading accepts besides the current ones (for `import * as z`).
+    pub const EXPORTS: &[&str] = &["id", "real", "route", "defineRelations"];
 
     /// The integer primary key: the implicit `id`, or `id()`.
     pub fn id(span: Span) -> ColBuilder {

@@ -171,11 +171,12 @@ final class Module
                 }
                 $plans[$i] = $plan;
             }
-            // At most MAX_PAGES page reads: the rest answer with the same refusal as an oversize batch.
+            // At most MAX_PAGES page reads render per request: the rest answer `pending` and the client
+            // asks again at once, so a page with more regions still fills every one.
             $pages = 0;
             foreach ($plans as $i => $plan) {
                 if (($plan['op'] ?? null) === 'page' && ++$pages > self::MAX_PAGES) {
-                    $plans[$i] = ['error' => App::problem(HttpError::invalidInput('At most ' . self::MAX_PAGES . ' page reads per request', "/queries/$i"))];
+                    $plans[$i] = ['pending' => true];
                 }
             }
             // Every counter this request may look at, in one read, before any query runs: a write
@@ -188,6 +189,10 @@ final class Module
             foreach ($plans as $plan) {
                 if (isset($plan['error'])) {
                     $results[] = ['error' => $plan['error']];
+                    continue;
+                }
+                if (isset($plan['pending'])) {
+                    $results[] = ['pending' => true];
                     continue;
                 }
                 $counters = null;
@@ -232,7 +237,11 @@ final class Module
                             $counters[] = [(string) $kind, $scope, $versions["$kind\0$scope"]];
                         }
                     }
-                    $data = ['html' => $data['html']];
+                    // The kinds the render read go back with the region (sorted, by the client's schema
+                    // key, the names change notices use), so the browser subscribes with them as its
+                    // dependencies: a notice or a write through the same client for one of them asks
+                    // again at once. Kind names are in every notice already; this reveals nothing more.
+                    $data = ['html' => $data['html'], 'kinds' => self::keys($db, array_keys($data['reads']))];
                 }
                 $json = Js::jsonStringify($data) ?? 'null';
                 // A private file's signed link carries its expiry: two reads a second apart differ
@@ -415,6 +424,21 @@ final class Module
             '#(&quot;token&quot;:&quot;)[A-Za-z0-9_-]+#',          // a seeded live read's sealed token
             '#([?&]_flash=)[0-9a-f]+#',                           // a form's flash marker
         ], '$1', $json) ?? $json;
+    }
+
+    /**
+     * The client's schema keys (`client.<key>`, the names notices use) of the collections $names, sorted.
+     *
+     * @param list<string> $names
+     * @return list<string>
+     */
+    private static function keys(Db $db, array $names): array
+    {
+        $collections = $db->schema()->collections();
+        $out = array_values(array_unique(array_map(static fn (string $n): string => (string) ($collections[$n]['key'] ?? $n), $names)));
+        sort($out);
+
+        return $out;
     }
 
     /**

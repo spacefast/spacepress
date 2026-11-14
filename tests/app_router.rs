@@ -1887,7 +1887,8 @@ fn live_regions_answer_page_reads() {
         seen,
         serde_json::json!({
             // The region's own HTML, not the page's.
-            "first": ["changed", ["One"], false],
+            // The kinds the render read come back, by the client's schema key, for its deps.
+            "first": ["changed", ["One"], false, ["notes"]],
             // Asked again, unchanged: answered by counter, with no render.
             "again": { "0": "unchanged", "rendered": 0 },
             // Two renders of the same data hash the same.
@@ -1903,7 +1904,7 @@ fn live_regions_answer_page_reads() {
             "host": "error 422 invalid_input",
             "scheme": "error 422 invalid_input",
             "bad region": "error 422 invalid_input",
-            "cap": ["changed", "changed", "changed", "changed", "error 422 invalid_input"],
+            "cap": [["changed", "changed", "changed", "changed", "pending"], "changed"],
             // An editor reads the guarded page and the drafts; their renders record nothing for the
             // shared page cache, while an anonymous GET does.
             "editor": ["changed", 3, ["One", "Two", "Draft"]],

@@ -64,11 +64,20 @@ every other subscribed read.
   regions, so the swap covers the page's `first/main` region. Client components
   and form inputs inside it keep their state: the router diffs, it doesn't
   rebuild.
+- **What an answer carries.** `{ html, kinds }`: the region's HTML and the kinds
+  the render read, by the client's schema key (the names change notices
+  already use, so this reveals nothing new). The browser subscribes with those
+  kinds as the read's dependencies. A notice for one of them, or a write
+  through the same client, then asks again at once instead of waiting for the
+  poll. A region whose render read nothing has no dependencies and updates on
+  the poll only.
 - **Cost.** A `page` op that runs is a page render. The module's budget rule
   stays (the first read always runs, later ones answer `pending` once a request
-  has spent a second), and a request carries at most **4** `page` ops. Four
-  covers a page with a few live regions, and keeps a batch from asking for
-  more renders than a visitor's own page loads would cost.
+  has spent a second). At most **4** `page` ops render per request; the rest
+  answer `pending` too, and the client asks for them again at once, so a page
+  with more regions still fills them all. Four covers a page with a few live
+  regions, and keeps one request from costing more renders than a visitor's
+  own page loads would.
 
 ## Costs
 

@@ -55,7 +55,7 @@ $renders = static function (): int {
 };
 // The first answer: the region's HTML, and only the region's.
 [$first] = post($url, [$page('/', 'notes')]);
-$out['first'] = [$shape($first), $items($first), str_contains($first['data']['html'], '<h1>')];
+$out['first'] = [$shape($first), $items($first), str_contains($first['data']['html'], '<h1>'), $first['data']['kinds']];
 // Asked again with its token and nothing changed: "not modified" (by counter: notes has one for anonymous visitors).
 $was = $renders();
 [$again] = post($url, [$page('/', 'notes', $first['token'])]);
@@ -89,8 +89,11 @@ $out['not a page'] = $shape(post($url, [$page('/wp-admin/', 'notes')])[0]);
 $out['host'] = $shape(post($url, [$page('//evil.example/', 'notes')])[0]);
 $out['scheme'] = $shape(post($url, [$page('https://evil.example/', 'notes')])[0]);
 $out['bad region'] = $shape(post($url, [$page('/', 'Bad Id')])[0]);
-// At most four page reads in one request.
-$out['cap'] = array_map($shape, post($url, array_fill(0, 5, $page('/about', 'static'))));
+// At most four page reads render per request; the fifth answers `pending` (the client asks again
+// at once), so a page with more regions than the cap still fills them all on the next request.
+$five = post($url, array_fill(0, 5, $page('/about', 'static')));
+$again5 = post($url, [$page('/about', 'static')]);
+$out['cap'] = [array_map($shape, $five), $shape($again5[0])];
 
 // Signed in: an editor reads the guarded page's count, and a `_live` render records nothing in
 // the page cache's read index, while an anonymous GET of the page does.

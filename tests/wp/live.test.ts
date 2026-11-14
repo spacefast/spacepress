@@ -151,7 +151,7 @@ test("a page read names a path on this site and a live region; this app has neit
   ]);
   assert.deepEqual(results.slice(0, 4).map((r) => [r.error?.status, r.error?.code]), [[422, "invalid_input"], [422, "invalid_input"], [422, "invalid_input"], [404, "not_found"]]);
   assert.equal(typeof results[4]!.data, "number");
-  // At most four page reads per request; the fifth is refused, the others answer.
+  // At most four page reads render per request; the fifth answers `pending` and is asked again.
   const five = await live(undefined, Array.from({ length: 5 }, () => page("/")));
-  assert.deepEqual(five.map((r) => r.error?.code), ["not_found", "not_found", "not_found", "not_found", "invalid_input"]);
+  assert.deepEqual(five.map((r) => r.error?.code ?? (r.pending ? "pending" : null)), ["not_found", "not_found", "not_found", "not_found", "pending"]);
 });

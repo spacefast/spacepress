@@ -7,6 +7,7 @@ namespace First\Wp;
 use First\Dialect;
 use First\HttpError;
 use First\Js;
+use First\Links;
 use First\Schema;
 use First\Source;
 use First\Store;
@@ -16,7 +17,7 @@ use First\Store;
  * plus the custom-table halves of the Store surface: `{prefix}first__revisions`, globals as SCF
  * options (§4.5), and lazy scheduled promotion.
  */
-final class WpTableStore implements Store
+final class WpTableStore implements Store, Links
 {
     /** @var array<string, Source> */
     private array $sources = [];
@@ -107,6 +108,49 @@ final class WpTableStore implements Store
     {
         $q = $this->dialect->quote(...);
         $this->db->run('DELETE FROM ' . $q($this->table($collection)) . ' WHERE ' . $q($this->schema->collection($collection)['primaryKey']) . ' = ?', [$pk]);
+    }
+
+    // ================================================================ many-ref links
+
+    public function linkTable(string $join): string
+    {
+        return $this->dialect->quote($this->db->prefix() . 'first_' . $join);
+    }
+
+    public function links(string $join, string $by, array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $by = $by === 'target_id' ? 'target_id' : 'owner_id';
+        $rows = $this->db->run(
+            'SELECT `owner_id`, `target_id`, `position` FROM ' . $this->linkTable($join) . " WHERE `$by` IN (" . implode(', ', array_fill(0, count($ids), '?')) . ') ORDER BY `owner_id`, `position`',
+            array_values(array_map('intval', $ids)),
+        );
+
+        return array_map(static fn (array $r) => ['owner_id' => (int) $r['owner_id'], 'target_id' => (int) $r['target_id'], 'position' => (int) $r['position']], $rows);
+    }
+
+    public function setLinks(string $join, int|string $owner, array $targets): void
+    {
+        $this->unlink($join, 'owner_id', $owner);
+        if ($targets === []) {
+            return;
+        }
+        $params = [];
+        foreach (array_values($targets) as $i => $target) {
+            array_push($params, (int) $owner, (int) $target, $i);
+        }
+        $this->db->run(
+            'INSERT INTO ' . $this->linkTable($join) . ' (`owner_id`, `target_id`, `position`) VALUES ' . implode(', ', array_fill(0, count($targets), '(?, ?, ?)')),
+            $params,
+        );
+    }
+
+    public function unlink(string $join, string $by, int|string $id): void
+    {
+        $by = $by === 'target_id' ? 'target_id' : 'owner_id';
+        $this->db->run('DELETE FROM ' . $this->linkTable($join) . " WHERE `$by` = ?", [(int) $id]);
     }
 
     // ================================================================ globals (§4.5): SCF options

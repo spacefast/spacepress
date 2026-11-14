@@ -653,3 +653,30 @@ test("core meta and First's query args keep every denial: masks, hidden filters,
   const twice = await http("POST", `${core}/first_payroll/${id}`, { as: "admin", body: { meta: { salary: "1" }, acf: { first_salary: "2" } } });
   assert.deepEqual([twice.status, twice.json.data?.pointer], [403, "/salary"], "one field, one selector");
 });
+
+test("a many-ref writes and reads its join table over /first/v1 and through a core editor save", async () => {
+  const [a, b, c] = ["A", "B", "C"].map((t) => first("insert", "oracle_parents", JSON.stringify({ title: `Mentor ${t} ${run}` }))[0].id);
+  const created = await http("POST", `${api}/oracle_kids`, { as: "editor", body: { title: `Kid ${run}`, mentors: [b, a] } });
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  const id = created.json.data.id;
+  assert.deepEqual(created.json.data.mentors, [b, a], "ids in write order");
+  const loaded = await http("GET", `${api}/oracle_kids?where=${encodeURIComponent(JSON.stringify({ mentors: { has: a } }))}&with=mentors`, { as: "editor" });
+  assert.deepEqual(loaded.json.data.map((k: any) => [k.id, k.mentors.map((m: any) => m.title)]), [[id, [`Mentor B ${run}`, `Mentor A ${run}`]]]);
+  const missing = await http("PATCH", `${api}/oracle_kids/${id}`, { as: "editor", body: { mentors: [a, 999999999] } });
+  assert.deepEqual([missing.status, missing.json.code, missing.json.pointer], [409, "reference_violation", "/mentors/1"]);
+
+  // The editor field is a post_object (multiple); saving it replaces the links, and writes no postmeta.
+  const saved = await http("POST", `${core}/first_oracle_kids/${id}`, { as: "editor", body: { acf: { first_mentors: [c, b] } } });
+  assert.equal(saved.status, 200, JSON.stringify(saved.json));
+  assert.deepEqual(saved.json.acf.first_mentors.map(Number), [c, b], "the editor reads the links back");
+  assert.deepEqual(first("find", "oracle_kids", JSON.stringify({ where: { id } }))[0].mentors, [c, b]);
+  assert.equal(wp("eval", `echo json_encode(metadata_exists('post', ${id}, 'first_mentors'));`), "false");
+  const reverse = first("find", "oracle_parents", JSON.stringify({ where: { id: c }, with: { mentees: true } }))[0];
+  assert.deepEqual(reverse.mentees.map((k: any) => k.id), [id]);
+
+  // Deleting a linked post removes its links; deleting the kid removes the rest.
+  first("delete", "oracle_parents", JSON.stringify({ id: c }));
+  assert.deepEqual(first("find", "oracle_kids", JSON.stringify({ where: { id } }))[0].mentors, [b]);
+  first("delete", "oracle_kids", JSON.stringify({ id }));
+  assert.equal(wp("eval", `global $wpdb; echo $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}first_oracle_kids_mentors WHERE owner_id = %d", ${id}));`), "0");
+});

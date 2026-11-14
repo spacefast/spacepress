@@ -100,7 +100,7 @@ fn value_ts_with(c: &Column, mode: impl Into<Mode>, json_type: &dyn Fn(&Column) 
             "string".into()
         }
         ColType::Json => ty_ts(&crate::types::json_wire_type(&json_type(c)), &[]),
-        ColType::MediaList => "number[]".into(),
+        ColType::MediaList | ColType::RefList => "number[]".into(),
         ColType::Select => format!(
             "({})[]",
             c.enum_values.as_ref().map(enum_union).unwrap_or("string".into())
@@ -195,6 +195,11 @@ fn filter_ts(c: &Column) -> String {
     let v = value_ts(c, false);
     if c.ty.is_json_kind() {
         return format!("{v} | null | {{ eq?: {v} | null; ne?: {v} | null; isNull?: true; isNotNull?: true }}");
+    }
+    if c.ty == ColType::RefList {
+        // Never null: a row with no links holds `[]`. `true`/`false` (some link or none) and a filter
+        // on the linked rows come from the relation (`collection_types`).
+        return "[] | { has?: number; eq?: []; NOT?: { has?: number } }".into();
     }
     if c.ty.is_list_kind() {
         let el = v
@@ -613,6 +618,12 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     let mut filter: Vec<String> = columns()
         .filter(|col| !col.derived)
         .map(|col| match c.relations.get(&col.name) {
+            Some(r) if col.ty == ColType::RefList => format!(
+                "{}?: {} | true | false | {}Filter",
+                key(&col.name),
+                filter_ts(col),
+                names[&r.collection]
+            ),
             Some(r) => format!(
                 "{}?: {} | {}Filter",
                 key(&col.name),

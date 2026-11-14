@@ -23,6 +23,9 @@ pub enum ColType {
     MediaList,
     /// `select([...]).many()`. A single select is `Text` with `enum`.
     Select,
+    /// `ref(kind).many()`: the target ids in write order. No column of its own: the rows live in a
+    /// First-owned join table (see [`Column::join_table`]).
+    RefList,
     Group,
     Repeater,
     Blocks,
@@ -46,6 +49,7 @@ impl ColType {
             ColType::File => "file",
             ColType::MediaList => "mediaList",
             ColType::Select => "select",
+            ColType::RefList => "refList",
             ColType::Group => "group",
             ColType::Repeater => "repeater",
             ColType::Blocks => "blocks",
@@ -76,7 +80,7 @@ impl ColType {
 
     /// Lists filtered with `has` (§3.5 `serialized-list` kind).
     pub fn is_list_kind(self) -> bool {
-        matches!(self, ColType::MediaList | ColType::Select)
+        matches!(self, ColType::MediaList | ColType::Select | ColType::RefList)
     }
 
     /// Group/repeater/blocks: their meta is spread over many rows on WordPress.
@@ -122,6 +126,9 @@ pub struct Reference {
     pub column: String,
     pub on_delete: Option<RefAction>,
     pub on_update: Option<RefAction>,
+    /// A many-ref's join table: its snapshot key, `<owner storage name>_<field snake_case>`, stored as
+    /// `{prefix}first_<key>` with `owner_id`, `target_id` and `position`.
+    pub join: Option<String>,
 }
 
 /// Value rules checked by the runtime after coercion (§1.2).
@@ -271,6 +278,9 @@ pub struct Relation {
     pub from: String,
     pub to: String,
     pub optional: bool,
+    /// A many-ref's relation goes through its join table: (snapshot key, column naming this side's
+    /// row, column naming the related row). `from`/`to` are then both primary keys.
+    pub through: Option<(String, String, String)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -505,6 +515,9 @@ pub struct Schema {
     /// `defineConfig({ publicAuthors: true })`: core's author archives, author routes and user
     /// listings stay public, as WordPress ships them (the users kind's read rule can also allow it).
     pub public_authors: bool,
+    /// `defineConfig({ sealed: true })`: the slugs of the config's `plugins`, which run as plugins with
+    /// First's own and the platform's (spec §6; docs/sealed.md). `None` when the site isn't sealed.
+    pub sealed: Option<Vec<String>>,
     /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
     /// while it runs. Holds what the build read from the lock `first pull` writes.
     pub runtime_schema: Option<RuntimeSchema>,
@@ -540,6 +553,7 @@ impl Default for Schema {
             admin: false,
             frontend: None,
             public_authors: false,
+            sealed: None,
             runtime_schema: None,
         }
     }
@@ -657,8 +671,10 @@ pub struct App {
 
 #[derive(Debug, Clone)]
 pub struct AppRoute {
-    /// The folder below `app/`, `/` for the root: stable across builds.
+    /// The folder below `app/`, `/` for the root, or the page's own `route.id`: stable across builds.
     pub id: String,
+    /// Where the page set its id itself (`export const route = { id }`, or `id:` in a `page.md`).
+    pub explicit_id: Option<crate::diag::Span>,
     /// `/blog/:slug`, `/docs/*rest` (one or more), `/docs/**rest` (zero or more).
     pub pattern: String,
     pub page: Option<String>,

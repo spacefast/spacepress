@@ -44,6 +44,9 @@ using PHP `version_compare` ordering, including WordPress beta/RC/pl suffixes.
 The exact header version is checked against the declaration; numeric trailing
 zero differences are accepted (the Polylang 3.9 archive declares 3.9.0).
 
+With `sealed: true`, the plugins declared here (and the platform pins) are the
+only ones a site runs as plugins besides First's own; see [sealed mode](sealed.md).
+
 ## Supported plugins
 
 First doesn't support every WordPress plugin. The plugins and version ranges the

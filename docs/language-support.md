@@ -1088,6 +1088,14 @@ A .tsx file under first/components/ that starts with "use client" (after comment
 
 [Evidence](../tests/app_router.rs) (`client_components_compile_to_interactivity_stores`)
 
+## jsx-pagination
+
+Status: **supported**.
+
+`<Pagination page={search.page} pages={n} />` from "first/app" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page.
+
+[Evidence](../tests/app_router.rs) (`app_router_serves_pages_on_wordpress`)
+
 ## jsx-form-action
 
 Status: **supported**.

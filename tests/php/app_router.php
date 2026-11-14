@@ -83,6 +83,26 @@ $out = [
     'unrouted' => page(fetch("$url/no/such/page")),
     'search' => page(fetch("$url/notes?page=3&q=tea")),
     'search defaults' => page(fetch("$url/notes?page=abc")),
+    // `<Pagination>` on page 6 of 12, reached from a URL with another argument and a flash marker.
+    'pagination' => (static function () use ($url): array {
+        $doc = new DOMDocument();
+        @$doc->loadHTML((string) fetch("$url/notes?q=tea&page=6&_flash=abcdefabcdef")['body']);
+        $x = new DOMXPath($doc);
+        $nav = $x->query('//nav[@class="first-pagination"]')->item(0);
+        $out = ['label' => $nav?->getAttribute('aria-label'), 'items' => []];
+        foreach ($nav === null ? [] : $x->query('.//li', $nav) as $li) {
+            $a = $x->query('.//a', $li)->item(0);
+            $current = $x->query('.//*[@aria-current="page"]', $li)->item(0);
+            $out['items'][] = trim($li->textContent) . ($a ? ' ' . parse_url($a->getAttribute('href'), PHP_URL_PATH) . '?' . parse_url($a->getAttribute('href'), PHP_URL_QUERY) . ($a->getAttribute('rel') ? ' rel=' . $a->getAttribute('rel') : '') : '') . ($current ? ' current' : '');
+        }
+        return $out;
+    })(),
+    'pagination first' => (static function () use ($url): array {
+        $doc = new DOMDocument();
+        @$doc->loadHTML((string) fetch("$url/notes")['body']);
+        $x = new DOMXPath($doc);
+        return array_map(static fn ($li) => trim($li->textContent), iterator_to_array($x->query('//nav[@class="first-pagination"]//li')));
+    })(),
     'search noindex' => str_contains(fetch("$url/notes")['body'], 'noindex'),
     'group' => page(fetch("$url/about")),
     'docs index' => page(fetch("$url/docs")),

@@ -212,6 +212,11 @@ impl Compiler<'_, '_> {
         match name {
             "Pagination" => {
                 let mut arg = |k: &str, want: Ty, default: Option<&str>| -> Result<String> {
+                    let wanted = match &want {
+                        Ty::Num => "a number".to_string(),
+                        Ty::Str => "a string".to_string(),
+                        other => other.describe(),
+                    };
                     match get(k) {
                         None => default.map(str::to_string).ok_or_else(|| {
                             crate::diag::Diag::new(span, format!("`<Pagination>` needs `{k}`"))
@@ -223,11 +228,7 @@ impl Compiler<'_, '_> {
                             if !assignable(&out.ty, &want) {
                                 return err(
                                     v.span,
-                                    format!(
-                                        "`<Pagination {k}>` takes {}, not {}",
-                                        want.describe(),
-                                        out.ty.describe()
-                                    ),
+                                    format!("`<Pagination {k}>` takes {wanted}, not {}", out.ty.describe()),
                                 );
                             }
                             Ok(out.php)

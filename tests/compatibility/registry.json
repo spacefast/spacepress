@@ -1033,6 +1033,13 @@
       "guidance": "A .tsx file under first/components/ that starts with \"use client\" (after comments and other directives such as \"use strict\") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState, server action calls, keyed lists (`items.map((item) => <li key={item.id}>…</li>)`) and reactive `&&` and `?:` over elements compile; the browser re-renders lists and conditionals from `<template>`s."
     },
     {
+      "id": "jsx-pagination",
+      "status": "supported",
+      "evidence": "tests/app_router.rs",
+      "test": "app_router_serves_pages_on_wordpress",
+      "guidance": "`<Pagination page={search.page} pages={n} />` from \"first/app\" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page."
+    },
+    {
       "id": "jsx-form-action",
       "status": "supported",
       "evidence": "tests/app_router.rs",

@@ -264,7 +264,12 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
     let mut versions = serde_json::Map::new();
     for slug in generated {
         let directory = plugins.join(&slug);
-        php_lint_tree(&directory)?;
+        // The app plugin is generated from the project: lint it every build. First's own plugins are
+        // the same bytes for every app (embedded from runtime/); tests/php/runtime_lint.php lints
+        // those once, so a build doesn't run `php -l` on hundreds of unchanged files.
+        if slug.starts_with("first-app-") {
+            php_lint_tree(&directory)?;
+        }
         zip_plugin(&directory)?;
         let version = if slug.starts_with("first-app-") {
             format!(

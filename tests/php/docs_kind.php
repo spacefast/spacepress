@@ -211,7 +211,9 @@ $out['code'] = [
     'scripts' => array_values(array_filter(array_map(static fn (DOMNode $n): string => (string) $n->getAttribute('src'), iterator_to_array($x->query('//script[@src]'))), static fn (string $s): bool => str_contains($s, 'code'))),
 ];
 $css = fetch($x->query('//link[@id="first-code-css"]')->item(0)?->getAttribute('href') ?? "$url/none");
-$out['code css'] = [$css['status'], str_contains($css['body'], '@media (prefers-color-scheme: dark)'), str_contains($css['body'], '.first-code .hljs-keyword')];
+$out['code css'] = [$css['status'], str_contains($css['body'], '@media (prefers-color-scheme: dark)'), str_contains($css['body'], '.first-code .hljs-keyword'),
+    // A page's own theme switch wins over the scheme: data-theme="dark" or "light" on <html>.
+    str_contains($css['body'], ':root[data-theme="dark"] .first-code .hljs-keyword') && str_contains($css['body'], ':root:not([data-theme="light"]) .first-code .hljs-keyword')];
 $setupPost = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s AND post_name = 'setup'", $type));
 $out['code back'] = \First\Sync\Markdown::fromBlocks((string) get_post_field('post_content', $setupPost));
 

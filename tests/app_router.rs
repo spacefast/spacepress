@@ -2854,7 +2854,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     assert_eq!(code["plain spans"], 0);
     assert_eq!(code["stylesheet"], 1);
     assert_eq!(code["scripts"], serde_json::json!([]));
-    assert_eq!(seen["code css"], serde_json::json!([200, true, true]));
+    assert_eq!(seen["code css"], serde_json::json!([200, true, true, true]));
     // Written back, each fence keeps its title, marked lines and group.
     assert_eq!(
         seen["code back"],

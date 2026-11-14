@@ -67,6 +67,10 @@ pub enum Slot {
     AppGuard {
         file: String,
     },
+    /// `export async function staticParams()` in a dynamic `first/app/` page: the params to prebuild.
+    AppStaticParams {
+        file: String,
+    },
     /// `export async function POST(req, ctx)` in a `first/app/` page or `route.ts`.
     AppHandler {
         file: String,
@@ -129,6 +133,7 @@ const CONFIG_KEYS: &[&str] = &[
     "services",
     "use",
     "frontend",
+    "output",
     "runtimeSchema",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
@@ -265,6 +270,25 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .help("leave it out for the default: the theme, or first/app when it exists"));
         }
     };
+    out.schema.output = match cfg_map.get("output") {
+        None | Some(Value::Undef) => crate::schema::Output::Server,
+        Some(Value::Str(s)) if s.as_ref() == "server" => crate::schema::Output::Server,
+        Some(Value::Str(s)) if s.as_ref() == "static" => crate::schema::Output::Static,
+        Some(other) => {
+            return Err(Diag::new(
+                span_of(ev, config, "output", config_span),
+                format!("`output` is \"server\" or \"static\", not {}", other.describe()),
+            )
+            .help("leave it out for \"server\": pages render on WordPress, and `export const prerender = true` prebuilds one; \"static\" prebuilds every page for `first export`"));
+        }
+    };
+    if out.schema.output == crate::schema::Output::Static && out.schema.frontend.is_some() {
+        return Err(Diag::new(
+            span_of(ev, config, "output", config_span),
+            "`output: \"static\"` renders the site from first/app/, and `frontend` hands it to another site",
+        )
+        .help("keep one: remove `frontend` to export first/app/, or remove `output` to keep the other frontend"));
+    }
     phase2_config(&cfg_map, ev, config_span, &mut out)?;
     if let Some((_, span)) = ev.duplicate_key(config, Some("plugins")) {
         return Err(Diag::new(span, "duplicate plugins declaration"));
@@ -3473,6 +3497,7 @@ mod legacy {
                 error: None,
                 kind: None,
                 styles: Vec::new(),
+                prerender: false,
             });
         }
         // The runtime takes the first match: most specific first, as the 0.3.0 runtime ranked them

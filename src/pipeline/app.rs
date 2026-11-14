@@ -15,7 +15,7 @@
 use crate::app::{self, RouteKind};
 use crate::diag::{Diag, Span};
 use crate::extract::{self, Root, Slot};
-use crate::schema::{AppFile, AppRoute, AppSearch, Schema};
+use crate::schema::{AppFile, AppRoute, AppSearch, Output, Schema};
 use crate::value::Value;
 use crate::{eval, loader};
 
@@ -136,6 +136,30 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         if let Some(search) = exports.get("search") {
             file.search = Some(search_fields(search, span, ev, ext)?);
         }
+        match exports.get("prerender") {
+            None | Some(Value::Undef) => {}
+            Some(Value::Bool(b)) => file.prerender = Some(*b),
+            Some(other) => {
+                return Err(Diag::new(span, format!("`prerender` is {}, not true or false", other.describe()))
+                    .help("write `export const prerender = true` to prebuild the page, or `false` to render it per request"));
+            }
+        }
+        match exports.get("staticParams") {
+            None | Some(Value::Undef) => {}
+            Some(Value::Closure(c)) => {
+                file.static_params = Some(String::new());
+                ext.roots.push(Root {
+                    closure: c.clone(),
+                    slot: Slot::AppStaticParams { file: path.clone() },
+                    name: format!("{stem}__static_params"),
+                    plugin: None,
+                });
+            }
+            Some(other) => {
+                return Err(Diag::new(span, format!("`staticParams` is {}, not a function", other.describe()))
+                    .help("write `export async function staticParams() { return [{ slug: \"hello\" }]; }`"));
+            }
+        }
         for method in app::METHODS {
             match exports.get(*method) {
                 Some(Value::Closure(c)) => {
@@ -220,7 +244,13 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         .collect();
     // A page's stylesheets: what its layouts (root first) and the page itself import.
     let module_of = |file: &str| program.app_files.iter().find(|(p, _)| p == file).map(|(_, m)| *m);
+    prebuilt(program, &files, &kinds, ext.schema.output)?;
+    let output = ext.schema.output;
     let route = |r: &app::Route| AppRoute {
+        prerender: r.kind == RouteKind::Page
+            && files
+                .get(&r.file)
+                .map_or(output == Output::Static, |f| f.prerender.unwrap_or(output == Output::Static)),
         styles: crate::assets::stylesheets(
             program,
             &r.layouts
@@ -253,6 +283,84 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         content: indexmap::IndexMap::new(),
         legacy_routes: false,
     });
+    Ok(())
+}
+
+/// Which pages are prebuilt, checked against what a prebuilt page can be
+/// (docs/decisions/2026-11-13-static-output.md): an anonymous visitor's render with nothing from the
+/// request, at a URL the build can list. Each refusal names the page and the fix.
+fn prebuilt(
+    program: &loader::Program,
+    files: &indexmap::IndexMap<String, AppFile>,
+    kinds: &[(String, String)],
+    output: Output,
+) -> Result<(), Diag> {
+    let span = |file: &str| {
+        program
+            .app_files
+            .iter()
+            .find(|(p, _)| p == file)
+            .map_or(Span::NONE, |(_, m)| at(program, *m))
+    };
+    for route in &program.app.routes {
+        if route.kind != RouteKind::Page {
+            continue;
+        }
+        let path = &route.file;
+        // `page.md`: a WordPress Page the site owns, prebuilt with the rest in a static site.
+        let Some(file) = files.get(path) else { continue };
+        let at = span(path);
+        if output == Output::Static && file.prerender == Some(false) {
+            return Err(Diag::new(at, format!("{path} says `prerender = false`, and `output: \"static\"` prebuilds every page"))
+                .help("remove `export const prerender = false`, or set `output: \"server\"` in first.config.ts to render pages per request"));
+        }
+        let dynamic = route.segments.iter().any(|s| !matches!(s, app::Segment::Literal(_)));
+        let serves_kind = kinds.iter().any(|(_, url)| app::serves_kind_url(route, url).is_some());
+        let prerender = file.prerender.unwrap_or(output == Output::Static);
+        if file.static_params.is_some() {
+            if !dynamic {
+                return Err(Diag::new(at, format!("{path} exports `staticParams`, and its URL has no parameter"))
+                    .help("staticParams lists the values of a `[name]` folder; remove it from a page at one URL"));
+            }
+            if serves_kind {
+                return Err(Diag::new(at, format!("{path} exports `staticParams`, and it serves a kind's `url`"))
+                    .help("a page that serves a kind's url is prebuilt for every published item of that kind; remove staticParams"));
+            }
+            if !prerender {
+                return Err(Diag::new(at, format!("{path} exports `staticParams`, but it isn't prebuilt"))
+                    .help("add `export const prerender = true`, or remove staticParams to render the page per request"));
+            }
+        }
+        if !prerender {
+            continue;
+        }
+        let why = if output == Output::Static && file.prerender.is_none() {
+            "`output: \"static\"` prebuilds every page"
+        } else {
+            "it says `prerender = true`"
+        };
+        let fix = if output == Output::Static {
+            "set `output: \"server\"` in first.config.ts and `export const prerender = false` here to render it per request"
+        } else {
+            "remove `export const prerender = true` to render it per request"
+        };
+        if dynamic && !serves_kind && file.static_params.is_none() {
+            return Err(Diag::new(at, format!("{path} is prebuilt ({why}), and nothing lists its URLs"))
+                .help(format!("export `async function staticParams() {{ return [{{ {}: \"…\" }}]; }}` with one entry per page to build, or {fix}", app::params_of(path).first().map(|(n, _)| n.as_str()).unwrap_or("slug"))));
+        }
+        if file.search.is_some() {
+            return Err(Diag::new(at, format!("{path} is prebuilt ({why}), and it reads `search`"))
+                .help(format!("a prebuilt page is one file with no query string: remove `export const search`, or {fix}")));
+        }
+        if !file.methods.is_empty() && output == Output::Static {
+            return Err(Diag::new(at, format!("{path} has HTTP handlers, and a static site has no server to answer them"))
+                .help("move the handler into an action the page's client component calls, or set `output: \"server\"`"));
+        }
+        if let Some(layout) = route.layouts.iter().find(|l| files.get(*l).is_some_and(|f| f.guard.is_some())) {
+            return Err(Diag::new(at, format!("{path} is prebuilt ({why}), and {layout} guards it"))
+                .help(format!("a prebuilt page is the same file for every visitor: move the page out of the guarded section, or {fix}")));
+        }
+    }
     Ok(())
 }
 
@@ -368,6 +476,10 @@ pub fn fill(schema: &mut Schema, slot: &Slot, name: &str) -> bool {
         }
         Slot::AppGuard { file } => {
             app.files.get_mut(file).expect("app file").guard = Some(crate::schema::Access::Fn(name.to_string()));
+            true
+        }
+        Slot::AppStaticParams { file } => {
+            app.files.get_mut(file).expect("app file").static_params = Some(name.to_string());
             true
         }
         Slot::AppHandler { file, method } => {

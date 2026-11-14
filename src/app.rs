@@ -530,6 +530,8 @@ pub fn allowed_exports(file: &str) -> &'static [&'static str] {
             "default",
             "metadata",
             "search",
+            "prerender",
+            "staticParams",
             "access",
             "signature",
             "GET",
@@ -558,6 +560,7 @@ pub const TYPES: &[&str] = &[
     "RouteResponse",
     "Guard",
     "SearchParams",
+    "StaticParams",
 ];
 
 pub fn export(name: &str) -> Option<&'static str> {

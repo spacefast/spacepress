@@ -268,6 +268,7 @@ pub fn build(
             | Slot::AppMetadata { .. }
             | Slot::AppGuard { .. }
             | Slot::AppAccess { .. }
+            | Slot::AppStaticParams { .. }
             | Slot::AppHandler { .. } => {
                 app::fill(&mut schema, &slot, &name);
             }

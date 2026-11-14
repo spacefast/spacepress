@@ -78,6 +78,27 @@ try {
   await stale.waitForFunction(() => [...document.querySelectorAll(".signature")].some((li) => li.textContent === "Ada"), null, { timeout: 15000 });
   out.stale = { ...out.stale, requests: staleRequests.length, ms: Date.now() - staleAt };
 
+  // A tab opened in the background: nothing until it is shown, then one request for every region,
+  // and a region a write made stale since the render updates then.
+  const background = await browser.newPage();
+  await background.addInitScript(() => {
+    let state = "hidden";
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => state === "hidden" });
+    window.__show = () => {
+      state = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+  });
+  const hiddenRequests = [];
+  background.on("request", (r) => { if (r.url().endsWith("/__first/api/v1/_live")) hiddenRequests.push(JSON.parse(r.postData() ?? "{}").queries?.length ?? 0); });
+  await background.goto(`${url}/board`, { waitUntil: "networkidle" });
+  const whileHidden = hiddenRequests.length;
+  await fetch(`${url}/__first/api/v1/signatures`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Back" }) });
+  await background.evaluate(() => window.__show());
+  await background.waitForFunction(() => [...document.querySelectorAll(".signature")].some((li) => li.textContent === "Back"), null, { timeout: 15000 });
+  out.background = { whileHidden, afterShown: hiddenRequests.length - whileHidden, regions: hiddenRequests[whileHidden] ?? null };
+
   // `<Live>` around `<Comments>`, with a realtime transport live (a fake one the page registers
   // before any module runs, as a host's would be): a comment approved on the server shows at once
   // on a notice naming `wp:comments`, well before the 60-second safety poll a live transport leaves.

@@ -2025,6 +2025,13 @@ fn live_regions_update_in_the_browser() {
         serde_json::json!([["unchanged"], ["changed"]]),
         "an unchanged answer swaps nothing: {seen}"
     );
+    // A background tab costs nothing until it is shown; then one request carries its region and a
+    // stale region updates. (Needs the client's hidden-tab rule from the reactive lane's #427.)
+    assert_eq!(
+        seen["background"],
+        serde_json::json!({ "whileHidden": 0, "afterShown": 1, "regions": 1 }),
+        "{seen}"
+    );
     let transport = &seen["transport"];
     assert_eq!(
         (&transport["before"], &transport["after"], &transport["asked"]),

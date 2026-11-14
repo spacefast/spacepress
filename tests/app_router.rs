@@ -90,6 +90,38 @@ fn app_router_serves_pages_on_wordpress() {
     );
     assert_eq!(page("note").1, "Note hello · Field Notes");
     assert_eq!(seen["note canonical"], true);
+    // Open Graph and the Twitter card from the layout, the page's image over them; the
+    // layout's link and the page's (`metadata.links`).
+    let social = &seen["note social"];
+    let base = seen["base"].as_str().unwrap_or_default();
+    assert_eq!(
+        social["meta"],
+        serde_json::json!([
+            ["og:title", "Note hello · Field Notes"],
+            ["og:description", "Notes."],
+            ["og:type", "article"],
+            ["og:url", format!("{base}/notes/hello")],
+            ["og:image", format!("{base}/og/hello.png")],
+            ["twitter:card", "summary_large_image"]
+        ]),
+        "{social}"
+    );
+    assert!(
+        social["links"].as_array().unwrap().contains(&serde_json::json!([
+            "describedby",
+            format!("{base}/llms.txt"),
+            "text/plain"
+        ])),
+        "{social}"
+    );
+    assert!(
+        social["links"].as_array().unwrap().contains(&serde_json::json!([
+            "alternate",
+            format!("{base}/notes/hello.md"),
+            "text/markdown"
+        ])),
+        "{social}"
+    );
     assert!(
         page("note as editor")
             .2
@@ -882,6 +914,32 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         "`metadata.title` must be",
         "first/app/page.tsx",
     );
+    for (metadata, message) in [
+        (
+            "{ links: [{ rel: \"alternate\" }] }",
+            "`metadata.links` must be a list of { rel: string, href: string, type?: string }",
+        ),
+        (
+            "{ links: { rel: \"a\", href: \"/b\" } }",
+            "`metadata.links` must be a list of",
+        ),
+        (
+            "{ openGraph: { image: 1 } }",
+            "`metadata.openGraph` must be { title?, description?, image?, type? }",
+        ),
+        ("{ openGraph: { locale: \"en\" } }", "`metadata.openGraph` must be"),
+        ("{ twitter: {} }", "`metadata.twitter` must be { card: string }"),
+    ] {
+        rejects(
+            &dir,
+            &[(
+                "first/app/page.tsx",
+                &format!("export const metadata = {metadata};\nexport default function P() {{ return <p/>; }}\n"),
+            )],
+            message,
+            "first/app/page.tsx",
+        );
+    }
     rejects(
         &dir,
         &[(

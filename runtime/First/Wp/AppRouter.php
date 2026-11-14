@@ -675,8 +675,9 @@ final class AppRouter
     }
 
     /**
-     * Metadata from the root layout down: later files override earlier ones, and the nearest
-     * layout's `title.template` wraps the page's own title.
+     * Metadata from the root layout down: later files override earlier ones field by field
+     * (`openGraph` and `twitter` too), `links` add up, and the nearest layout's `title.template`
+     * wraps the page's own title.
      *
      * @param list<array<string, mixed>> $metadata
      * @return array<string, mixed>
@@ -699,6 +700,16 @@ final class AppRouter
                     }
                     continue;
                 }
+                if ($key === 'links' && is_array($value)) {
+                    // Each layout's links and the page's are all in the head, in that order.
+                    $out['links'] = [...($out['links'] ?? []), ...array_values($value)];
+                    continue;
+                }
+                if (($key === 'openGraph' || $key === 'twitter') && is_array($value)) {
+                    // A page sets only what it changes: its image, say, under the layout's type.
+                    $out[$key] = array_filter($value, static fn ($v) => $v !== null) + ($out[$key] ?? []);
+                    continue;
+                }
                 if ($value !== null) {
                     $out[$key] = $value;
                 }
@@ -709,6 +720,52 @@ final class AppRouter
         }
         unset($out['titleIsDefault']);
         $out['title'] = $title ?? get_bloginfo('name');
+        return $out;
+    }
+
+    /** A path on this site (`/og/a.png`) as an absolute URL; anything else as it is. */
+    private static function absolute(string $url): string
+    {
+        return str_starts_with($url, '/') && !str_starts_with($url, '//') ? home_url($url) : $url;
+    }
+
+    /**
+     * The head's Open Graph and Twitter card tags and its extra `<link>`s, from `metadata.openGraph`,
+     * `metadata.twitter` and `metadata.links`. Open Graph's title and description default to the
+     * page's own, and its URL is the canonical one; a path is made absolute, as the protocol wants.
+     *
+     * @param array<string, mixed> $head
+     */
+    public static function social(array $head): string
+    {
+        $out = '';
+        $graph = is_array($head['openGraph'] ?? null) ? $head['openGraph'] : null;
+        if ($graph !== null) {
+            $tags = [
+                'og:title' => $graph['title'] ?? $head['title'] ?? null,
+                'og:description' => $graph['description'] ?? $head['description'] ?? null,
+                'og:type' => $graph['type'] ?? 'website',
+                'og:url' => is_string($head['canonical'] ?? null) && $head['canonical'] !== '' ? self::absolute($head['canonical']) : null,
+                'og:image' => is_string($graph['image'] ?? null) && $graph['image'] !== '' ? self::absolute($graph['image']) : null,
+            ];
+            foreach ($tags as $property => $content) {
+                if (is_string($content) && $content !== '') {
+                    $url = $property === 'og:url' || $property === 'og:image';
+                    $out .= '<meta property="' . $property . '" content="' . ($url ? esc_url($content) : esc_attr($content)) . "\">\n";
+                }
+            }
+        }
+        $card = is_array($head['twitter'] ?? null) ? ($head['twitter']['card'] ?? null) : null;
+        if (is_string($card) && $card !== '') {
+            $out .= '<meta name="twitter:card" content="' . esc_attr($card) . "\">\n";
+        }
+        foreach (is_array($head['links'] ?? null) ? $head['links'] : [] as $link) {
+            if (!is_array($link) || !is_string($link['rel'] ?? null) || !is_string($link['href'] ?? null) || $link['rel'] === '' || $link['href'] === '') {
+                continue;
+            }
+            $type = is_string($link['type'] ?? null) && $link['type'] !== '' ? ' type="' . esc_attr($link['type']) . '"' : '';
+            $out .= '<link rel="' . esc_attr($link['rel']) . '" href="' . esc_url(self::absolute($link['href'])) . '"' . $type . ">\n";
+        }
         return $out;
     }
 
@@ -766,9 +823,9 @@ final class AppRouter
             echo '<meta name="description" content="' . esc_attr($head['description']) . "\">\n";
         }
         if (is_string($head['canonical'] ?? null) && $head['canonical'] !== '') {
-            $canonical = str_starts_with($head['canonical'], '/') && !str_starts_with($head['canonical'], '//') ? home_url($head['canonical']) : $head['canonical'];
-            echo '<link rel="canonical" href="' . esc_url($canonical) . "\">\n";
+            echo '<link rel="canonical" href="' . esc_url(self::absolute($head['canonical'])) . "\">\n";
         }
+        echo self::social($head);
         wp_head();
         echo "</head>\n<body class=\"" . esc_attr(implode(' ', get_body_class('first-app'))) . "\">\n";
         wp_body_open();

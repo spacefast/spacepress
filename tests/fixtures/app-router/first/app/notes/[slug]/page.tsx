@@ -1,7 +1,12 @@
 import { db } from "first";
 import { notFound, type PageProps, type RouteRequest } from "first/app";
 
-export const metadata = ({ params }: PageProps<"notes/[slug]">) => ({ title: `Note ${params.slug}`, canonical: `/notes/${params.slug}` });
+export const metadata = ({ params }: PageProps<"notes/[slug]">) => ({
+  title: `Note ${params.slug}`,
+  canonical: `/notes/${params.slug}`,
+  openGraph: { image: `/og/${params.slug}.png` },
+  links: [{ rel: "alternate", href: `/notes/${params.slug}.md`, type: "text/markdown" }],
+});
 
 export default async function Note({ params }: PageProps<"notes/[slug]">) {
   const note = await db.query.notes.findFirst({ where: { slug: params.slug } });

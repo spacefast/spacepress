@@ -481,14 +481,35 @@ fn prebuilt(
 }
 
 /// A literal `metadata` object, checked: strings for `title`, `description`, `canonical`, and a
-/// layout's `title: { default, template }`; `robots: { index, follow }` booleans.
+/// layout's `title: { default, template }`; `robots: { index, follow }` booleans;
+/// `openGraph: { title, description, image, type }` and `twitter: { card }` strings; and `links`,
+/// a list of `{ rel, href, type? }` for the head.
+const HELP: &str =
+    "metadata takes title, description, canonical, robots: { index, follow }, openGraph, twitter: { card } and links";
+const OPEN_GRAPH: &[&str] = &["title", "description", "image", "type"];
+const OPEN_GRAPH_SHAPE: &str = "{ title?, description?, image?, type? }, each a string";
+const LINK_SHAPE: &str = "a list of { rel: string, href: string, type?: string }";
+
 fn metadata_literal(v: &Value, span: Span) -> Result<serde_json::Value, Diag> {
     let Value::Object(o) = v else { unreachable!() };
     let mut out = serde_json::Map::new();
     for (k, v) in o.borrow().iter() {
-        let bad = |what: &str| {
-            Diag::new(span, format!("`metadata.{k}` must be {what}"))
-                .help("metadata takes title, description, canonical and robots: { index, follow }")
+        let bad = |what: &str| Diag::new(span, format!("`metadata.{k}` must be {what}")).help(HELP);
+        let strings = |o: &crate::value::Obj, keys: &[&str], required: &[&str], what: &str| {
+            let mut out = serde_json::Map::new();
+            for (ok, ov) in o.borrow().iter() {
+                match ov {
+                    Value::Undef => {}
+                    Value::Str(s) if keys.contains(&ok.as_str()) => {
+                        out.insert(ok.clone(), serde_json::Value::String(s.to_string()));
+                    }
+                    _ => return Err(bad(what)),
+                }
+            }
+            if required.iter().any(|r| !out.contains_key(*r)) {
+                return Err(bad(what));
+            }
+            Ok(serde_json::Value::Object(out))
         };
         let value = match (k.as_str(), v) {
             (_, Value::Undef) => continue,
@@ -518,11 +539,25 @@ fn metadata_literal(v: &Value, span: Span) -> Result<serde_json::Value, Diag> {
                 }
                 serde_json::Value::Object(robots)
             }
+            ("openGraph", Value::Object(g)) => strings(g, OPEN_GRAPH, &[], OPEN_GRAPH_SHAPE)?,
+            ("twitter", Value::Object(t)) => strings(t, &["card"], &["card"], "{ card: string }")?,
+            ("links", Value::Array(items)) => serde_json::Value::Array(
+                items
+                    .borrow()
+                    .iter()
+                    .map(|item| match item {
+                        Value::Object(l) => strings(l, &["rel", "href", "type"], &["rel", "href"], LINK_SHAPE),
+                        _ => Err(bad(LINK_SHAPE)),
+                    })
+                    .collect::<Result<_, _>>()?,
+            ),
+            ("openGraph", _) => return Err(bad(OPEN_GRAPH_SHAPE)),
+            ("twitter", _) => return Err(bad("{ card: string }")),
+            ("links", _) => return Err(bad(LINK_SHAPE)),
             ("title" | "description" | "canonical", _) => return Err(bad("a string")),
             ("robots", _) => return Err(bad("{ index?: boolean, follow?: boolean }")),
             _ => {
-                return Err(Diag::new(span, format!("`metadata` has no field `{k}`"))
-                    .help("metadata takes title, description, canonical and robots"));
+                return Err(Diag::new(span, format!("`metadata` has no field `{k}`")).help(HELP));
             }
         };
         out.insert(k.clone(), value);

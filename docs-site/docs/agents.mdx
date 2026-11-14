@@ -243,7 +243,8 @@ flag grants more:
 | `--personal` | reading and setting email fields and fields with a read rule, and reading a user's own account details |
 | `--abilities=blog/posts-list,blog/*` | only these abilities; no other route but the app's schema |
 
-`first identity agent list|grant|revoke` manage them, and **Users → Profile →
+`first identity agent list <user>`, `first identity agent grant <user> <id>`
+(with the same flags) and `first identity agent revoke <user> <id>` manage them, and **Users → Profile →
 Application Passwords** offers the same choices (*Allow writes*, *Allow personal
 data*) and shows each password's scope.
 

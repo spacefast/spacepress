@@ -52,7 +52,7 @@ The pages use First names. Until the code on `main` is renamed too, `lib/names.t
 
 ## Publish
 
-The site is a Spacefast Space at <https://first-docs.space.fast/>. Every push to `main` also deploys it to the repository's GitHub Pages site (`.github/workflows/docs-site.yml`). That deploy is the same Blume build, with `SITE_URL` set to the Pages address, and it skips `scripts/prepare-spacefast.mjs`.
+The site is a Spacefast Space at <https://first-docs.space.fast/>. CI builds and tests it on every pull request and push (`.github/workflows/docs-site.yml`) but deploys it nowhere.
 
 To publish the Space by hand:
 

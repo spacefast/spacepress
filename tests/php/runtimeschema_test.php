@@ -562,6 +562,12 @@ $goodState = get_option(Loader::option('rtschema'));
 $rowsBefore = $versions->list();
 $second = $rowsBefore[1];
 $wp->exec("UPDATE `$table` SET `changes` = ? WHERE `app` = 'rtschema' AND `version` = 2", [json_encode([['op' => 'addField', 'kind' => 'articles', 'field' => 'forged', 'definition' => ['type' => 'text']]])]);
+// A deployment's preflight reads the versions through verify(): the same refusal, and nothing written.
+$optionBefore = get_option(Loader::option('rtschema'));
+eq('verify refuses a broken chain as list does', $refusal(fn () => $versions->verify()), '409 schema_chain_broken /changes');
+wp_cache_delete('alloptions', 'options');
+wp_cache_delete(Loader::option('rtschema'), 'options');
+eq('and records nothing on the option', get_option(Loader::option('rtschema')), $optionBefore);
 eq('a broken chain refuses the next change, naming the first version that doesn\'t check out', $refusal(fn () => $versions->apply(count($rowsBefore), $add('afterForgery', ['type' => 'text']), $admin)), '409 schema_chain_broken /changes');
 eq('it exports no lock from a broken chain', $refusal(fn () => $versions->lock()) !== 'accepted', true);
 $d = $described();
@@ -573,6 +579,12 @@ eq('restoring the row restores the chain the next time the versions are read', [
 // An option rewritten by something other than apply: its own hash no longer matches its content.
 $forged = $goodState;
 $forged['collections']['articles']['columns']['planted'] = ['type' => 'text'];
+update_option(Loader::option('rtschema'), $forged, true);
+$verified = $versions->verify();
+wp_cache_delete('alloptions', 'options');
+wp_cache_delete(Loader::option('rtschema'), 'options');
+eq('verify compares against the stored versions and leaves the edited option as it is', [$verified['site']['version'], get_option(Loader::option('rtschema'))], [$goodState['version'], $forged]);
+eq('verify answers what deployCheck answers', $versions->verify(), $versions->deployCheck());
 update_option(Loader::option('rtschema'), $forged, true);
 $d = $described();
 eq('an option edited outside apply is not served: the build\'s schema is, and the API says why', [isset($d['kinds']['articles']['columns']['planted']), isset($d['kinds']['articles']['columns']['subtitle']), $d['runtimeSchema']['problem'] ?? null],

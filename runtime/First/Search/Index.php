@@ -59,14 +59,14 @@ final class Index
             // `A`), and comparing them involves no collation to clash with the connection's.
             // A table from before ids were bytes is dropped and created again: it holds nothing that
             // isn't rebuilt from the rows (the shape is cleared when tables are installed).
-            static function (\First\Store $store): void {
+            \First\SystemTables::step(1, static function (\First\Store $store): void {
                 global $wpdb;
                 $connection = new \First\Wp\Connection($wpdb);
                 if ($connection->run('SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? AND DATA_TYPE = ?',
                     [$connection->prefix() . self::TABLE, 'item', 'varchar']) !== []) {
                     $store->applySystemStatements(['DROP TABLE IF EXISTS `{prefix}' . self::TABLE . '`']);
                 }
-            },
+            }),
             'CREATE TABLE IF NOT EXISTS `{prefix}' . self::TABLE . '` (`kind` VARBINARY(64) NOT NULL, `item` VARBINARY(764) NOT NULL, `field` VARBINARY(64) NOT NULL, '
             . '`body` LONGTEXT NOT NULL, PRIMARY KEY (`kind`, `item`, `field`), FULLTEXT KEY `body` (`body`)) '
             . 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',

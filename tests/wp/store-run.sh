@@ -69,12 +69,55 @@ status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: applic
 [[ $status == 404 ]] || fail "an uninitialized build is not served, got $status"
 ok "a build is not served before it initializes"
 
+# Everything inspection could touch: tables and their columns, options (roles and rewrite rules
+# among them; not the test host's own call log, which every boot writes, nor Action Scheduler's
+# queue-runner lock, which serving takes), the ledger, posts and meta,
+# and scheduled events.
+site() {
+  local q
+  for q in "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ORDER BY 1, 2" \
+    "SELECT option_name, MD5(option_value) FROM wp_options WHERE option_name NOT LIKE '\\_transient%' AND option_name NOT LIKE '\\_site\\_transient%' AND option_name <> 'first_test_contract' AND option_name NOT LIKE 'action\\_scheduler\\_lock\\_%' ORDER BY 1" \
+    "SELECT * FROM wp_first__migrations ORDER BY app, id" "SELECT (SELECT COUNT(*) FROM wp_posts), (SELECT MAX(post_modified_gmt) FROM wp_posts), (SELECT COUNT(*) FROM wp_postmeta), (SELECT COUNT(*) FROM wp_usermeta)" "SELECT * FROM wp_first_notes ORDER BY id"; do
+    "$here/harness.sh" sql "$q" 2>/dev/null || echo "missing: $q"
+  done
+  wp cron event list --fields=hook,next_run_gmt --format=csv 2>/dev/null | sort
+}
+# A managed boot installs nothing: WordPress with build one mounted from WP-CLI, before it
+# initialized, leaves the site as it was. (The test host serves HTTP only for initialized builds.)
+fresh=$(site)
+host "$first" "echo 'booted';" >/dev/null
+booted=$(site)
+[[ $fresh == "$booted" ]] || { diff <(echo "$fresh") <(echo "$booted") >&2; fail "a managed boot before initialize changed the site"; }
+ok "a managed boot before initialize writes nothing"
+
+# Before the first initialize: inspection plans every system table, the init migration and the
+# seed, and writes none of them.
+fresh=$(site)
+plan=$(host "$first" "echo json_encode(First\\Loader\\Loader::inspect('$root', '$first'));")
+python3 - "$plan" <<'PY' || fail "a fresh site's plan: $plan"
+import json,sys
+out=json.loads(sys.argv[1])
+assert out['refusals']==[], out['refusals']
+assert [(m['id'], m['statements']) for m in out['migrations']]==[('0001_init', [1, 2])], out['migrations']
+# A site no runtime ran on yet still has the stored-name check from before the rename to run.
+assert out['legacyNames'] is True, out
+assert len(out['migrations'][0]['sql'])==64
+steps=out['systemTables']['steps']
+assert '__first_jobs' in steps and steps['__first_staged_status']==['step@1'], steps
+assert out['seed'] is True and out['manifest']['baseline'] is None, out
+PY
+[[ $fresh == "$(site)" ]] || { diff <(echo "$fresh") <(site) >&2; fail "inspecting a fresh site changed it"; }
+ok "inspecting a build on a fresh site plans its tables, migration and seed, and writes nothing"
+
 receipt=$(initialize "$first")
 [[ $(json migrations.0 <<< "$receipt") == 0001_init ]] || fail "the first build applies the init migration: $receipt"
 [[ $(json seed.notes.created <<< "$receipt") == 1 ]] || fail "the first build seeds one note: $receipt"
 [[ $(action "$first" | json data.build) == one ]] || fail "build one answers"
 [[ $(action "$first" | json data.notes) == 1 ]] || fail "build one reads the seeded note"
-ok "initialize migrates, seeds and marks build one ready"
+[[ $(wp option get first_identity_schema_version) == 3 && -n $(wp option get first_identity_dummy_password_hash) ]] || fail "initialize installs identity's schema and password-check material"
+[[ -n $(wp cron event list --hook=first_identity_password_inventory --field=hook) ]] || fail "initialize schedules identity's password inventory"
+ok "initialize migrates, installs identity, seeds and marks build one ready"
+
 
 again=$(initialize "$first")
 [[ $again == "$receipt" ]] || fail "a ready build returns its stored receipt: $again"
@@ -109,6 +152,35 @@ PY
 status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "X-First-Build: $second" --data '{}' "$url/__first/api/v1/actions/which")
 [[ $status == 404 ]] || fail "a collected build is gone, got $status"
 ok "gc removes only what the kept builds do not reference"
+
+# Inspecting a candidate changes nothing (docs/decisions/2026-11-07-build-store.md). Build three adds
+# a required field with no default to notes, which holds rows: its schema check refuses. Loading it
+# and inspecting it reports the refusal and the plan, and leaves every table, option and ledger row
+# as it was.
+mkdir -p "$work/three/storelane"
+rsync -a --exclude host.php --exclude contract-host.php "$here/store/" "$work/three/storelane/"
+sed -i.bak -e "s/BUILD_LABEL/three/" -e 's/table({ title: text() }/table({ title: text(), rating: text() }/' -e 's/values({ title })/values({ title, rating: "5" })/' "$work/three/storelane/first.config.ts" && rm "$work/three/storelane/first.config.ts.bak"
+"$bin" sources "$work/three/storelane" --out "$work/three/sources"
+third=$("$bin" compile-to-store "$work/three/sources" "$store" "$work/three/sources" "$first" | json build)
+[[ -f "$store/baseline/$third/migrations/0002_update.sql" ]] || fail "build three's baseline holds its new migration"
+before=$(site)
+inspected=$(host "$third" "echo json_encode(First\\Loader\\Loader::inspect('$root', '$third'));")
+python3 - "$inspected" <<'PY' || fail "inspection reports the refusal and the plan: $inspected"
+import json,sys
+out=json.loads(sys.argv[1])
+codes=[r['code'] for r in out['refusals']]
+assert codes==['required_field_missing'], codes
+assert [m['id'] for m in out['migrations']]==[], out['migrations']
+assert out['systemTables'] is None and out['identitySchema'] is None and out['legacyNames'] is False, out
+assert out['seed'] is True and out['manifest']['baseline'], out
+PY
+after=$(site)
+[[ $before == "$after" ]] || { diff <(echo "$before") <(echo "$after") >&2; fail "inspecting a refused candidate changed the site"; }
+ok "inspecting a refused candidate reports why and changes nothing"
+planned=$(host "$first" "echo json_encode(First\\Loader\\Loader::inspect('$root', '$first'));")
+[[ $(json refusals <<< "$planned") == '[]' && $(json migrations <<< "$planned") == '[]' ]] || fail "an initialized build plans nothing: $planned"
+[[ $before == "$(site)" ]] || fail "inspecting an initialized build changed the site"
+ok "inspecting a build that already initialized plans nothing"
 
 # The host contract (docs/host-contract.md): every hook it lists is called by the runtime, and one
 # `wp first jobs tick` runs the queued job, whose mail goes through the host's transport.

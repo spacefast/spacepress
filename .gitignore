@@ -30,3 +30,4 @@ runtime/identity/apps/node_modules/
 /tests/host-types/node_modules/
 /tests/differential/client/node_modules/
 **/first/dist/
+/tests/wp/hooks/node_modules/

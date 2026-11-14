@@ -58,9 +58,50 @@ impl Compiler<'_, '_> {
         })
     }
 
+    /// The registered name of the action `e` names (`subscribe` imported from `first/server.ts`), if
+    /// it names one.
+    pub(super) fn action_named(&mut self, e: &Expr) -> Result<Option<String>> {
+        let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
+        Ok(match self.resolve(n, e.span)? {
+            Resolved::Value(Value::Action(a), _) => self.action_values.get(&(Rc::as_ptr(&a) as usize)).cloned(),
+            _ => None,
+        })
+    }
+
+    /// `useFormState(subscribe)`: what the last no-JavaScript submit of that action's form left for
+    /// this page (docs/spec/rendering.md §4.2), read once.
+    fn use_form_state(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
+        let help = "pass the action the form posts to: `useFormState(subscribe)`";
+        let [ArrEl::Item(arg)] = args else {
+            return err_help(span, "`useFormState()` takes the form's action", help);
+        };
+        let Some(action) = self.action_named(arg)? else {
+            return err_help(
+                arg.span,
+                "`useFormState()` takes an action imported from your server code",
+                help,
+            );
+        };
+        let result = self.action_results.get(&action).cloned().unwrap_or(Ty::Unknown);
+        let mut error = IndexMap::new();
+        error.insert("code".to_string(), (Ty::Str, false));
+        error.insert("message".to_string(), (Ty::Str, false));
+        error.insert("fields".to_string(), (Ty::Map(Box::new(Ty::Str)), false));
+        let mut state = IndexMap::new();
+        state.insert("pending".to_string(), (Ty::Bool, false));
+        state.insert("error".to_string(), (Ty::union([Ty::Obj(error), Ty::Null]), false));
+        state.insert("result".to_string(), (Ty::union([result, Ty::Null]), false));
+        state.insert("values".to_string(), (Ty::Map(Box::new(Ty::Str)), false));
+        Ok(Out::atom(
+            format!("\\First\\Render\\Forms::state({})", php_str(&action)),
+            Ty::Obj(state),
+        ))
+    }
+
     /// `notFound()` and `redirect(url, status?)`: they never return.
     pub(super) fn app_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         match name {
+            "useFormState" => self.use_form_state(args, span),
             "notFound" => {
                 if !args.is_empty() {
                     return err_help(span, "`notFound()` takes no arguments", "call `notFound()`");

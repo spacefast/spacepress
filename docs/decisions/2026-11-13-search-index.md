@@ -89,6 +89,20 @@ a searchable field and an API list, as the caller, and returns the matching rows
 caller may not read is left out without a word, and `kinds=` naming a kind that doesn't exist or isn't
 searchable gives the same empty answer as one with no match.
 
+**ElasticPress coexists.** ElasticPress (4.2, as VIP Enterprise Search runs it) replaces core queries,
+not tables: it returns its own results from `posts_pre_query` (WP_Query), `users_pre_query`,
+`terms_pre_query` and `comments_pre_query`, for a query it chose to integrate (a front-end or REST
+search, or one that sets `ep_integrate`). First's search never reaches those filters: the API, the
+site-wide endpoint and `{ search }` read `first__search` through First's own SQL, and First's handlers
+for core's list routes strip `s` before core's `WP_Query` runs (`FirstQuery::coreArgs`) and select the
+rows themselves. So on a site with ElasticPress, First's kinds are searched by First, with the reader's
+access, and WordPress's own searches (the theme's `?s=`, core's `/wp/v2/search`, other plugins'
+`WP_Query`) are ElasticPress's, as before. Neither needs the other turned off. ElasticPress indexes
+only `public` post types by default (`Post::get_indexable_post_types`), and First registers its kinds
+with `public => false`, so it doesn't index them. A site that adds them through
+`ep_indexable_post_types` would have core searches over them answered from Elasticsearch, outside
+First's field access; it shouldn't.
+
 ## Not done
 
 The static JSON index of prerendered pages: static prerender into `first/dist/` is not on main yet

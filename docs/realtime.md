@@ -80,6 +80,61 @@ This is not a socket. On hosting without a push transport, another visitor's wri
 under about two seconds, and a quiet page can be 30 seconds behind. If you need updates faster
 than that, your host has to supply a transport.
 
+## React hooks, for a React frontend outside First
+
+First's own pages (`first/app/`) never run React: they compile to PHP and the Interactivity API,
+and keep data live with `<Live>` and `useLive`. The hooks here are for a React app that runs
+somewhere else and uses First as its backend: Next.js, TanStack Start, an Astro island, Vite.
+
+`first build` writes them to `first/_generated/client/react.ts`. The file imports nothing from
+`"react"`. You hand it your React, so a project that never imports it needs no React, and the
+hooks use the React your app already bundles:
+
+```tsx
+// first.ts
+import * as React from "react";
+import { createClient } from "./first/_generated/client/index.ts";
+import { createHooks } from "./first/_generated/client/react.ts";
+
+export const first = createClient({ url: "https://example.com/__first/api/v1" });
+export const { useQuery, useMutation } = createHooks(React);
+```
+
+```tsx
+function Todos() {
+  const open = first.todos.list({ where: { done: false }, orderBy: { createdAt: "asc" } });
+  const todos = useQuery(open);
+  const add = useMutation((title: string) => first.todos.create({ title }), {
+    optimistic: (apply, title) => apply(open, (rows) => [...rows, { id: -1, title, done: false }]),
+  });
+
+  if (todos.loading) return <p>Loading…</p>;
+  if (todos.error) return <p>{todos.error.detail}</p>;
+  return (
+    <>
+      <ul>{todos.data?.map((todo) => <li key={todo.id}>{todo.title}</li>)}</ul>
+      <button disabled={add.pending} onClick={() => add.mutate("Buy milk")}>Add</button>
+    </>
+  );
+}
+```
+
+- **`useQuery(read, options?)`** subscribes to a read and returns `{ data, error, loading }`. Build
+  the read inline: it is re-subscribed only when the call or its arguments change. `data` is kept
+  while a later refresh fails. Pass `null`, or `{ enabled: false }`, to subscribe to nothing.
+  `{ seed: { token, data } }` shows a server-rendered answer at once.
+- **`useMutation(write, options?)`** returns `{ mutate, pending, error, reset }`. `optimistic` runs
+  before the write is sent; each `apply(read, update)` changes what subscribers of that read are
+  shown. When the write succeeds the change stays until the server's answer replaces it. When it
+  fails the change is taken back and `mutate` rejects with the error.
+- Every `useQuery` on a page shares one request to the server, and a render happens only when a
+  result changed.
+- React 18 and later. The hooks use `useSyncExternalStore`, so they are safe under concurrent
+  rendering and render the seed, or the loading state, on the server.
+
+Freshness is the client's: 2 to 30 seconds for another visitor's write without a push transport,
+one request for your own.
+
 ## Transports
 
 First ships no realtime transport. A host delivers change notices with one. While it is live, a

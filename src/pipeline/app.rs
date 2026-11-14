@@ -482,13 +482,19 @@ fn prebuilt(
 
 /// A literal `metadata` object, checked: strings for `title`, `description`, `canonical`, and a
 /// layout's `title: { default, template }`; `robots: { index, follow }` booleans;
-/// `openGraph: { title, description, image, type }` and `twitter: { card }` strings; and `links`,
-/// a list of `{ rel, href, type? }` for the head.
-const HELP: &str =
-    "metadata takes title, description, canonical, robots: { index, follow }, openGraph, twitter: { card } and links";
+/// `openGraph: { title, description, image, type }` and `twitter: { card }` strings; `links`, a
+/// list of `{ rel, href, type? }` for the head; and `scripts`, script modules the page loads.
+const HELP: &str = "metadata takes title, description, canonical, robots: { index, follow }, openGraph, twitter: { card }, links and scripts";
 const OPEN_GRAPH: &[&str] = &["title", "description", "image", "type"];
 const OPEN_GRAPH_SHAPE: &str = "{ title?, description?, image?, type? }, each a string";
 const LINK_SHAPE: &str = "a list of { rel: string, href: string, type?: string }";
+const SCRIPTS_SHAPE: &str =
+    "a list of script module URLs: paths on this site (`/playground.js`, a file in public/) or https:// URLs";
+
+/** A script a page loads: a path on this site, or an https:// URL. */
+fn script_src(src: &str) -> bool {
+    (src.starts_with('/') && !src.starts_with("//")) || src.starts_with("https://")
+}
 
 fn metadata_literal(v: &Value, span: Span) -> Result<serde_json::Value, Diag> {
     let Value::Object(o) = v else { unreachable!() };
@@ -551,6 +557,17 @@ fn metadata_literal(v: &Value, span: Span) -> Result<serde_json::Value, Diag> {
                     })
                     .collect::<Result<_, _>>()?,
             ),
+            ("scripts", Value::Array(items)) => serde_json::Value::Array(
+                items
+                    .borrow()
+                    .iter()
+                    .map(|item| match item {
+                        Value::Str(src) if script_src(src) => Ok(serde_json::Value::String(src.to_string())),
+                        _ => Err(bad(SCRIPTS_SHAPE)),
+                    })
+                    .collect::<Result<_, _>>()?,
+            ),
+            ("scripts", _) => return Err(bad(SCRIPTS_SHAPE)),
             ("openGraph", _) => return Err(bad(OPEN_GRAPH_SHAPE)),
             ("twitter", _) => return Err(bad("{ card: string }")),
             ("links", _) => return Err(bad(LINK_SHAPE)),

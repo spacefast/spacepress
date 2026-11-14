@@ -6,6 +6,7 @@ export const metadata = ({ params }: PageProps<"notes/[slug]">) => ({
   canonical: `/notes/${params.slug}`,
   openGraph: { image: `/og/${params.slug}.png` },
   links: [{ rel: "alternate", href: `/notes/${params.slug}.md`, type: "text/markdown" }],
+  scripts: ["/note.js", "https://cdn.example/a.js"],
 });
 
 export default async function Note({ params }: PageProps<"notes/[slug]">) {

@@ -53,6 +53,8 @@ export interface Metadata {
   twitter?: { card: string };
   /** More `<link>`s for the head (`rel="alternate"`, `rel="describedby"`, …). Each layout's and the page's all appear. */
   links?: { rel: string; href: string; type?: string }[];
+  /** Script modules the page loads: paths on this site (a file in `public/`) or https:// URLs. Each layout's and the page's all load, once each. */
+  scripts?: string[];
 }
 
 /** `export const guard` in a layout: who may see everything below it. */

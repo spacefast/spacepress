@@ -122,6 +122,12 @@ fn app_router_serves_pages_on_wordpress() {
         ])),
         "{social}"
     );
+    // `metadata.scripts`: script modules, a path made absolute.
+    assert_eq!(
+        social["scripts"],
+        serde_json::json!([format!("{base}/note.js"), "https://cdn.example/a.js"]),
+        "{social}"
+    );
     assert!(
         page("note as editor")
             .2
@@ -929,6 +935,11 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         ),
         ("{ openGraph: { locale: \"en\" } }", "`metadata.openGraph` must be"),
         ("{ twitter: {} }", "`metadata.twitter` must be { card: string }"),
+        (
+            "{ scripts: [\"//evil.example/a.js\"] }",
+            "`metadata.scripts` must be a list of script module URLs",
+        ),
+        ("{ scripts: \"/a.js\" }", "`metadata.scripts` must be a list of"),
     ] {
         rejects(
             &dir,

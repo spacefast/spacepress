@@ -82,7 +82,8 @@ $out = [
     'note social' => (static function (string $body): array {
         preg_match_all('#<meta (?:property|name)="((?:og|twitter):[a-z]+)" content="([^"]*)">#', $body, $meta, PREG_SET_ORDER);
         preg_match_all('#<link rel="(describedby|alternate)" href="([^"]*)" type="([^"]*)">#', $body, $links, PREG_SET_ORDER);
-        return ['meta' => array_map(static fn ($m) => [$m[1], html_entity_decode($m[2], ENT_QUOTES)], $meta), 'links' => array_map(static fn ($m) => array_slice($m, 1), $links)];
+        preg_match_all('#<script id="first-app-script-[0-9a-f]+-js-module" src="([^"]*)" type="module">#', $body, $scripts);
+        return ['meta' => array_map(static fn ($m) => [$m[1], html_entity_decode($m[2], ENT_QUOTES)], $meta), 'links' => array_map(static fn ($m) => array_slice($m, 1), $links), 'scripts' => $scripts[1]];
     })(fetch("$url/notes/hello")['body']),
     'note as editor' => page(fetch("$url/notes/hello", headers: [$cookie('chief')])),
     'draft' => page(fetch("$url/notes/draft")),

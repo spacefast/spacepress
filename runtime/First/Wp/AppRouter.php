@@ -700,6 +700,11 @@ final class AppRouter
                     }
                     continue;
                 }
+                if ($key === 'scripts' && is_array($value)) {
+                    // Each layout's scripts and the page's all load, each once, layouts' first.
+                    $out['scripts'] = array_values(array_unique([...($out['scripts'] ?? []), ...array_values($value)]));
+                    continue;
+                }
                 if ($key === 'links' && is_array($value)) {
                     // Each layout's links and the page's are all in the head, in that order.
                     $out['links'] = [...($out['links'] ?? []), ...array_values($value)];
@@ -721,6 +726,25 @@ final class AppRouter
         unset($out['titleIsDefault']);
         $out['title'] = $title ?? get_bloginfo('name');
         return $out;
+    }
+
+    /**
+     * `metadata.scripts`: script modules the page loads, through WordPress's script-module API so
+     * plugins that manage scripts see them. A path is on this site (a file in `public/`); the
+     * compiler accepts only such paths and https:// URLs, and a function's result is checked here.
+     *
+     * @param array<string, mixed> $head
+     */
+    private static function scripts(array $head): void
+    {
+        foreach (is_array($head['scripts'] ?? null) ? $head['scripts'] : [] as $src) {
+            if (!is_string($src) || !((str_starts_with($src, '/') && !str_starts_with($src, '//')) || str_starts_with($src, 'https://'))) {
+                continue;
+            }
+            $handle = 'first-app-script-' . substr(md5($src), 0, 12);
+            wp_register_script_module($handle, self::absolute($src), [], null);
+            wp_enqueue_script_module($handle);
+        }
     }
 
     /** A path on this site (`/og/a.png`) as an absolute URL; anything else as it is. */
@@ -813,6 +837,7 @@ final class AppRouter
         \First\Assets::enqueue($this->styles);
         Navigation::enqueue(plugins_url('first/Render/client/router.js', Runtime::file()));
         \First\Islands::enqueue();
+        self::scripts($head);
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'HEAD') {
             exit;
         }

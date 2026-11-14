@@ -1663,14 +1663,23 @@ variable is unset; the process environment is read first, then a
 `wp-config.php` constant of that name.
 
 WordPress's own secrets are never app variables: its database login
-(`DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`) and its keys and salts
+(`DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`), its keys and salts
 (`AUTH_KEY` … `NONCE_SALT`, `SECRET_KEY`, `SECRET_SALT`, `WP_CACHE_KEY_SALT`),
-and the Secrets API site key (`WP_SECRETS_KEY`, `WP_SECRETS_KEY_PREVIOUS`)
-are a build error in `process.env` and `env()`, and read as unset at runtime
-on every host. Values the web server sets for each request (names starting with
-`HTTP_`, `REDIRECT_` or `PHP_AUTH_`, and `AUTH_TYPE`, `REMOTE_USER`) are
-visitor input, so the process-environment and constant fallback never returns
-them; a managed host's own variables may still use those names.
+the Secrets API site key (`WP_SECRETS_KEY`, `WP_SECRETS_KEY_PREVIOUS`), and the
+credentials core reads for its filesystem and outgoing proxy (`FTP_USER`,
+`FTP_PASS`, `FTP_PUBKEY`, `FTP_PRIVKEY`, `WP_PROXY_USERNAME`,
+`WP_PROXY_PASSWORD`) are a build error in `process.env` and `env()`, and read
+as unset at runtime on every host.
+
+Values the web server sets for each request are visitor input, so on a plain
+WordPress install the process environment never supplies them: request headers
+(`HTTP_*`), basic-auth credentials (`PHP_AUTH_*`), the CGI meta-variables by
+exact name (`QUERY_STRING`, `REQUEST_URI`, `PATH_INFO`, `CONTENT_TYPE`,
+`REMOTE_ADDR`, `SCRIPT_URL` and the rest), and Apache's `REDIRECT_` copies of
+any of them. A `wp-config.php` constant of the same name still reads, since a
+request can't set one, and a managed host's own variables may use these names.
+Names that only look alike, such as an app's `REDIRECT_URI` or `SERVER_URL`,
+are ordinary variables.
 
 The name must be written out. A computed name (`process.env[key]`), iterating
 or spreading `process.env`, writing to it, and every other `process` member are

@@ -44,8 +44,27 @@ eq('standalone lookup never falls back to WordPress secrets or per-request serve
     [null, null, null, null, null, null, null, null, null, 'standalone-constant']);
 eq('host secrets are exact names; request values are prefixes',
     [array_map([Env::class, 'hostSecret'], ['db_host', 'DB_URL', 'NONCE_KEY', 'SECRET_SALT', 'wp_secrets_key_previous', 'WEBHOOK_SECRET']),
-     array_map([Env::class, 'requestValue'], ['HTTP_X_ANYTHING', 'redirect_url', 'PHP_AUTH_USER', 'REMOTE_USER', 'HTTPS_ONLY', 'FIRST_NOW'])],
+     array_map([Env::class, 'requestValue'], ['HTTP_X_ANYTHING', 'redirect_query_string', 'PHP_AUTH_USER', 'REMOTE_USER', 'HTTPS_ONLY', 'FIRST_NOW'])],
     [[true, false, true, true, true, false], [true, true, true, true, false, false]]);
+eq('core\'s filesystem and proxy credentials are WordPress secrets too',
+    array_map([Env::class, 'hostSecret'], ['FTP_PASS', 'ftp_privkey', 'FTP_USER', 'FTP_PUBKEY', 'WP_PROXY_USERNAME', 'WP_PROXY_PASSWORD', 'WP_PROXY_HOST']),
+    [true, true, true, true, true, true, false]);
+eq('CGI meta-variables are request values by exact name; an app\'s look-alike names are not',
+    array_map([Env::class, 'requestValue'], ['QUERY_STRING', 'REQUEST_URI', 'PATH_INFO', 'CONTENT_TYPE', 'REMOTE_ADDR', 'SCRIPT_URL', 'REDIRECT_QUERY_STRING', 'REDIRECT_REDIRECT_HTTP_COOKIE', 'REDIRECT_STATUS',
+        'REDIRECT_URI', 'SERVER_URL', 'URL', 'STATUS', 'PATH', 'CONTENT_API_KEY', 'REQUEST_TIMEOUT']),
+    [true, true, true, true, true, true, true, true, true, false, false, false, false, false, false, false]);
+(static function (): void {
+    putenv('QUERY_STRING=visitor=1');
+    putenv('REDIRECT_URI=https://app.example/process');
+    define('FTP_PASS', 'ftp-secret');
+    define('WP_PROXY_PASSWORD', 'proxy-secret');
+    define('QUERY_STRING', 'from-wp-config');
+})();
+eq('standalone: a request value never comes from the process environment, but a wp-config constant of that name still reads; core credentials never read',
+    [Env::get('QUERY_STRING'), Env::get('REDIRECT_URI'), Env::get('FTP_PASS'), Env::get('WP_PROXY_PASSWORD')],
+    ['from-wp-config', 'https://app.example/process', null, null]);
+putenv('QUERY_STRING');
+putenv('REDIRECT_URI');
 
 putenv('HTTP_COOKIE');
 putenv('HTTP_PROXY');

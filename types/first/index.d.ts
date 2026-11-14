@@ -474,6 +474,11 @@ export interface CollectionMeta<TName extends string, TCols extends ColumnsConfi
   readonly $inferSelect: SelectShape<TCols>;
   /** Shape accepted by `db.insert(...).values(...)`. */
   readonly $inferInsert: ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
+  /**
+   * A compound index (spec §2.9), on SQL tables; `unique: true` also refuses a second row with the same
+   * values. Fields a compiled `where` or `orderBy` names get one each without this.
+   */
+  index(fields: readonly [keyof TCols & string, ...(keyof TCols & string)[]], options?: { unique?: boolean }): this;
 }
 
 type ColumnRefs<TName extends string, TCols extends ColumnsConfig> = {

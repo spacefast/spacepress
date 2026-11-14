@@ -424,6 +424,8 @@ pub struct Collection {
     /// `hierarchical: true` (spec §2.6): items nest under a `parent` and sort by `order`, stored as
     /// the post's own `post_parent` and `menu_order`; `:path` in the url is the parent chain.
     pub hierarchical: bool,
+    /// `.index(fields, { unique? })`: compound indexes the author declared, as (fields, unique).
+    pub indexes: Vec<(Vec<String>, bool)>,
 }
 
 impl Collection {

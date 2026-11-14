@@ -99,7 +99,7 @@ test("the previous snapshot and migration files drive the next migration like th
   const changed = compiler.compile({ name: "pantry", files, previous, migrationFiles });
   assert.deepEqual(
     changed.output?.migrations.map(([name, sql]) => [name, /ALTER TABLE/.test(sql)]),
-    [["0003_update.sql", true]],
+    [["0004_update.sql", true]],
   );
 });
 
@@ -107,7 +107,7 @@ test("without a snapshot the migration files still number the next one, like on 
   const dir = path.join(repo, "examples/pantry");
   const migrationFiles = readdirSync(path.join(dir, "first/_generated/migrations"));
   const { output } = compiler.compile({ name: "pantry", files: sources(dir), previous: null, migrationFiles });
-  assert.deepEqual(output?.migrations.map(([name]) => name), ["0003_update.sql"]);
+  assert.deepEqual(output?.migrations.map(([name]) => name), ["0004_update.sql"]);
 });
 
 test("a snapshot from another version is refused like on the command line", () => {

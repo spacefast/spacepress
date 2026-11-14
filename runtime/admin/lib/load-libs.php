@@ -17,6 +17,7 @@ require_once __DIR__ . '/api/dashboard-widgets.php';
 require_once __DIR__ . '/api/dashboard-layout.php';
 require_once __DIR__ . '/api/field-collections.php';
 require_once __DIR__ . '/api/view-config.php';
+require_once __DIR__ . '/view-configs.php';
 require_once __DIR__ . '/api/menu-items.php';
 require_once __DIR__ . '/api/init-modules.php';
 require_once __DIR__ . '/api/routes.php';
@@ -48,6 +49,9 @@ require_once __DIR__ . '/legacy-route.php';
 // Default First Admin menu registration.
 require_once __DIR__ . '/first-admin-menu.php';
 require_once __DIR__ . '/menu.php';
+
+// Screens declared once for both admins.
+require_once __DIR__ . '/screens.php';
 
 // Build output: registers the modules, routes and fields. Absent until the build is committed.
 if ( is_file( __DIR__ . '/../build/index.php' ) ) {

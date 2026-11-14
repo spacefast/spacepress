@@ -97,7 +97,10 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "userId"
+      ]
     },
     "posts": {
       "editor": true,
@@ -337,7 +340,12 @@
           "references": null
         }
       },
-      "localized": true
+      "localized": true,
+      "queried": [
+        "featured",
+        "id",
+        "status"
+      ]
     },
     "comments": {
       "editor": false,
@@ -415,7 +423,11 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "approved",
+        "id"
+      ]
     },
     "subscribers": {
       "editor": false,
@@ -471,7 +483,10 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "email"
+      ]
     },
     "announcements": {
       "editor": false,
@@ -631,7 +646,10 @@
           "references": null
         }
       },
-      "auth": true
+      "auth": true,
+      "queried": [
+        "id"
+      ]
     }
   }
 }

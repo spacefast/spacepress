@@ -15,21 +15,38 @@ const seeded: { note: number; post: number; file: number; cookie: string } = JSO
 ).seeded;
 const site = harness.url;
 
-/** Every row of every table the site has, keyed by table name with `zero` read as `first`. */
-function contents(): Record<string, string[]> {
+/**
+ * Every row of every table the site has, keyed by table name with `zero` read as `first`. With
+ * `columns` (a table's columns as an earlier call saw them), only those columns are read: a column
+ * First added since (the migration ledger's `sql`) is not a change to the rows that were there.
+ */
+function contents(columns?: Record<string, string[]>): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   const tables = sql("SELECT TABLE_NAME AS t FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME").map((r) => r.t);
   for (const t of tables) {
-    const rows = sql(`SELECT * FROM \`${t}\``).map((r) => JSON.stringify(Object.values(r)));
-    out[t.replace(/^wp_zero_/, "wp_first_")] = rows.sort();
+    const name = t.replace(/^wp_zero_/, "wp_first_");
+    const only = columns?.[name];
+    const rows = sql(`SELECT ${only ? only.map((c) => `\`${c}\``).join(", ") : "*"} FROM \`${t}\``).map((r) => JSON.stringify(Object.values(r)));
+    out[name] = rows.sort();
+  }
+  return out;
+}
+
+/** Each table's columns, in order, keyed as contents() keys them. */
+function columns(): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const r of sql("SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME, ORDINAL_POSITION")) {
+    (out[r.t.replace(/^wp_zero_/, "wp_first_")] ??= []).push(r.c);
   }
   return out;
 }
 const count = (q: string) => Number(sql(q)[0]?.n ?? 0);
 
 let before_: Record<string, string[]>;
+let columns_: Record<string, string[]>;
 before(() => {
   before_ = contents();
+  columns_ = columns();
   // The site really is a 0.3 site: its data is under the old names and First's names are free.
   assert.ok("wp_first_notes" in before_ && sql("SHOW TABLES LIKE 'wp\\_first\\_notes'").length === 0, "the 0.3 tables are under zero_ names");
   assert.equal(count("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'zero_posts'"), 1);
@@ -40,7 +57,7 @@ before(() => {
 });
 
 test("every 0.3 table is kept under its First name with all its rows; nothing else lost a row", () => {
-  const after = contents();
+  const after = contents(columns_);
   for (const [table, rows] of Object.entries(before_)) {
     assert.ok(table in after, `${table} is still there`);
     if (["wp_options", "wp_postmeta", "wp_usermeta", "wp_actionscheduler_actions", "wp_actionscheduler_groups", "wp_actionscheduler_logs", "wp_first_identity_sessions", "wp_first__jobs", "wp_first__outbox"].includes(table)) {

@@ -495,6 +495,16 @@ test("an old unkeyed ledger goes to its one recorded app without replaying anyth
   assert.deepEqual(sql("SELECT app, id FROM wp_first__migrations").map((r) => [r.app, r.id]), [["blog", "0001_init"]], "the blog's ledger is restored");
 });
 
+test("the ledger records the hash of each file it applies; rows from before the column count by id", () => {
+  const out = evalFixture("ledger-hash.php");
+  assert.deepEqual(out.plan, [{ id: "0001_init", sql: out.hash, statements: [1] }], "the plan names the file and its hash");
+  assert.deepEqual(out.afterPlan, ["app", "id", "applied_at"], "planning changes nothing, the ledger's shape included");
+  assert.deepEqual(out.applied, ["0001_init"]);
+  assert.deepEqual(out.afterMigrate, ["app", "id", "applied_at", "sql"]);
+  assert.deepEqual(out.ledger, [{ app: "blog", id: "0001_init", sql: null }, { app: "hashed", id: "0001_init", sql: out.hash }]);
+  assert.deepEqual(out.history, [{ id: "0001_init", sql: out.hash }]);
+});
+
 test("a runtime-only update converts the blog's old ledger on its next request, without replaying", async () => {
   // The blog's build is unchanged (its schema hash stands); only the ledger is the old, unkeyed shape.
   const saved = sql("SELECT app, id, applied_at FROM wp_first__migrations");

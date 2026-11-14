@@ -706,15 +706,14 @@ final class WpPostStore implements Store
             return;
         }
         $posts = $db->wpdb()->posts;
-        $ids = [];
         foreach ($db->run("SELECT ID, post_parent, post_name FROM `$posts` WHERE post_type = 'revision' AND post_status = 'inherit' AND post_name LIKE ?", ['%-autosave-staged-v1']) as $row) {
-            if ($row['post_name'] === self::stagedName((int) $row['post_parent'])) {
-                $ids[] = (int) $row['ID'];
+            $name = self::stagedName((int) $row['post_parent']);
+            if ($row['post_name'] === $name) {
+                // The name again: a promote or discard that committed since the read renamed it, and
+                // that retired revision must stay `inherit`, in the item's history.
+                $db->run("UPDATE `$posts` SET post_status = ? WHERE ID = ? AND post_status = 'inherit' AND post_name = ?", [self::STAGED_STATUS, (int) $row['ID'], $name]);
+                clean_post_cache((int) $row['ID']);
             }
-        }
-        foreach ($ids as $id) {
-            $db->run("UPDATE `$posts` SET post_status = ? WHERE ID = ? AND post_status = 'inherit'", [self::STAGED_STATUS, $id]);
-            clean_post_cache($id);
         }
     }
 

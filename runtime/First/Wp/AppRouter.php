@@ -395,7 +395,8 @@ final class AppRouter
         // Cache policy and purges (rendering.md §6.1, §6.2): an anonymous visitor's render of a
         // page no layout guards is shared; what it read decides which writes purge its URL.
         $guarded = array_filter($layouts, static fn (array $l): bool => ($l['guard'] ?? null) !== null) !== [];
-        [$this->cacheControl, $shared] = \First\Render\Cache::policy($status, $viewer->user === null, $guarded);
+        // A page a form came back to (`?_flash=`) shows that visitor's result or error: never shared.
+        [$this->cacheControl, $shared] = \First\Render\Cache::policy($status, $viewer->user === null && !\First\Render\Forms::marked(), $guarded);
         if ($shared) {
             \First\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         }

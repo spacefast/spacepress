@@ -81,11 +81,48 @@ pub(super) fn run(args: &Args) -> ExitCode {
             Err(error) => check(&mut checks, "locked abilities", false, error),
         }
     }
+    let mut broken = Vec::new();
+    if args.links {
+        match args.site.as_deref().map(url::Url::parse) {
+            Some(Ok(mut site))
+                if matches!(site.scheme(), "http" | "https")
+                    && site.username().is_empty()
+                    && site.password().is_none() =>
+            {
+                if !site.path().ends_with('/') {
+                    site.set_path(&format!("{}/", site.path()));
+                }
+                let report = super::links::check(&site, &super::links::Http::new());
+                let detail = match &report.failed {
+                    Some(why) => format!("nothing checked: {why}"),
+                    None => format!(
+                        "{} pages read, {} broken{}",
+                        report.pages,
+                        report.broken.len(),
+                        if report.truncated {
+                            "; stopped at the page limit"
+                        } else {
+                            ""
+                        }
+                    ),
+                };
+                let ok = report.failed.is_none() && report.broken.is_empty() && !report.truncated;
+                check(&mut checks, "links", ok, detail);
+                broken = report.broken;
+            }
+            _ => check(
+                &mut checks,
+                "links",
+                false,
+                "--links needs --site <http(s) URL> without credentials",
+            ),
+        }
+    }
     let ok = checks.iter().all(|check| check["ok"] == true);
     if args.json {
         println!(
             "{}",
-            json!({"data":{"ok":ok,"checks":checks,"requirements":platform::requirements()}})
+            json!({"data":{"ok":ok,"checks":checks,"requirements":platform::requirements(),"links":broken.iter().map(|b| json!({"on":b.on,"href":b.href,"problem":b.problem})).collect::<Vec<_>>()}})
         );
     } else {
         for item in checks {
@@ -95,6 +132,9 @@ pub(super) fn run(args: &Args) -> ExitCode {
                 item["name"].as_str().unwrap(),
                 item["detail"].as_str().unwrap()
             );
+        }
+        for b in &broken {
+            println!("  {}: {} {}", b.on, b.href, b.problem);
         }
     }
     if ok { ExitCode::SUCCESS } else { ExitCode::from(1) }

@@ -124,6 +124,12 @@ mostly where its output is wrong rather than formatted differently:
 Its other differences (`_em_` for `*em*`, ` * ` bullets, `javascript` for a
 `language-js` fence) are equally correct.
 
+## Copied WordPress plugin code
+
+| file | source | licence |
+|---|---|---|
+| `runtime/First/Wp/Hardening.php` (`loginErrors`) | Automattic/vip-go-mu-plugins `security/login-error.php` at `4e65ee711017637ac54a9c74657117c985ccd115` | GPL-2.0-or-later |
+
 ## URI helper provenance
 
 `First\Js::encodeURI` adapts ts2php's MIT reserved-character restoration table

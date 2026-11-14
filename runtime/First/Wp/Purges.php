@@ -104,7 +104,7 @@ final class Purges
             $path = ($parts['path'] ?? '/') . (isset($parts['query']) && $parts['query'] !== '' ? '?' . $parts['query'] : '');
             $paths[$path] = true;
             $bare = (string) ($parts['path'] ?? '/');
-            if (!preg_match('#/(feed|rss2?|atom|rdf)/?$|/llms\.txt$|\.md$|/wp-sitemap[^/]*\.xml$#', $bare)) {
+            if (!self::feed($url) && !preg_match('#/llms\.txt$|\.md$|/wp-sitemap[^/]*\.xml$#', $bare)) {
                 $twin = MarkdownTwins::twin($path);
                 $paths[(string) (wp_parse_url($twin, PHP_URL_PATH) ?? $twin) . (isset($parts['query']) && $parts['query'] !== '' ? '?' . $parts['query'] : '')] = true;
             }
@@ -186,13 +186,13 @@ final class Purges
         }
         $permalink = self::permalink($post);
         // The site's posts and comments feeds, and the post's own comments feed (VIP Cache Manager's set).
-        $urls = [$permalink, home_url('/'), get_feed_link(), get_feed_link('comments_' . get_default_feed()), self::commentsFeed($permalink)];
+        $urls = [$permalink, home_url('/'), get_feed_link(), get_feed_link('comments_' . get_default_feed()), self::commentsFeed($post, $permalink)];
         if ($post->post_type === 'post') {
             $page = (int) get_option('page_for_posts');
             if ($page > 0) {
                 $urls[] = (string) get_permalink($page);
             }
-            $urls[] = get_author_posts_url((int) $post->post_author);
+            $urls[] = Authors::archiveUrl((int) $post->post_author);
         }
         $archive = get_post_type_archive_link($post->post_type);
         if (is_string($archive)) {
@@ -222,7 +222,7 @@ final class Purges
         $out = $urls;
         for ($page = 2; $page <= 1 + self::LISTING_PAGES; $page++) {
             foreach ($urls as $url) {
-                if (!str_contains($url, '/feed')) {
+                if (!self::feed($url)) {
                     $out[] = self::paged($url, $page);
                 }
             }
@@ -249,9 +249,10 @@ final class Purges
             $link = $term instanceof \WP_Term ? get_term_link($term) : null;
             if (is_string($link)) {
                 $urls[] = $link;
+                // Plain permalinks would spell it `?feed=rss2&amp;cat=3`, escaped for HTML.
                 $feed = get_term_feed_link($term->term_id, $taxonomy);
                 if (is_string($feed) && $feed !== '') {
-                    $urls[] = $feed;
+                    $urls[] = str_replace('&amp;', '&', $feed);
                 }
             }
         }
@@ -277,18 +278,30 @@ final class Purges
         return (string) get_permalink($published);
     }
 
-    /** A post's comments feed, as get_post_comments_feed_link() spells it, from the URL it is published at. */
-    private static function commentsFeed(string $permalink): string
+    /**
+     * A post's comments feed, as get_post_comments_feed_link() spells it, from the URL the post is or
+     * was published at (a moved or trashed post's old one). First sites always use pretty permalinks
+     * (Hardening::permalinks); a front page's feed hangs off its page URL, not the home page.
+     */
+    private static function commentsFeed(\WP_Post $post, string $permalink): string
     {
-        global $wp_rewrite;
-        if ($wp_rewrite instanceof \WP_Rewrite && $wp_rewrite->using_permalinks() && !str_contains($permalink, '?')) {
-            return trailingslashit($permalink) . user_trailingslashit('feed', 'single_feed');
+        if (get_option('show_on_front') === 'page' && (int) get_option('page_on_front') === $post->ID) {
+            $permalink = _get_page_link($post->ID);
         }
 
-        return add_query_arg('feed', get_default_feed(), $permalink);
+        return trailingslashit($permalink) . user_trailingslashit('feed', 'single_feed');
     }
 
-        /** Page $page of a listing URL, as WordPress links it. */
+    /** Whether a URL is a feed (`/feed/`, `/category/x/feed/`, `?feed=rss2`): no page 2, no `.md` twin. */
+    private static function feed(string $url): bool
+    {
+        $path = (string) (wp_parse_url($url, PHP_URL_PATH) ?? '');
+        parse_str((string) (wp_parse_url($url, PHP_URL_QUERY) ?? ''), $query);
+
+        return isset($query['feed']) || preg_match('#/(feed|rss2?|atom|rdf)(/[a-z0-9]+)?/?$#', $path) === 1;
+    }
+
+    /** Page $page of a listing URL, as WordPress links it. */
     private static function paged(string $url, int $page): string
     {
         global $wp_rewrite;

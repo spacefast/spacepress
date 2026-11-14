@@ -482,6 +482,19 @@ $role->add_cap(\First\RuntimeSchema\Surfaces::APPLY);
 
 // The abilities are on the app's MCP server with the rest of its tools.
 $tools = array_column(\First\Wp\Abilities\Register::operations(), 'agents', 'name');
+// A credential without personal data (First's default scope for agent passwords) reads the versions
+// without who made them: the actor's login and application password name are personal data.
+[$status, $private] = http('POST', $wp->url() . '/wp-json/wp/v2/users/me/application-passwords', ['name' => 'no personal data'], 'admin');
+wp_cache_delete($wp->userId('admin'), 'user_meta');
+\First\Wp\AgentScope::store($wp->userId('admin'), $private['uuid'], ['write' => false, 'personal' => false, 'abilities' => null]);
+$ch = curl_init($wp->url() . '/wp-json/wp-abilities/v1/abilities/rtschema/schema-read/run');
+curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_HTTPHEADER => ['Authorization: Basic ' . base64_encode('admin:' . $private['password'])]]);
+$privateRead = json_decode((string) curl_exec($ch), true);
+$withActor = array_values(array_filter($privateRead['versions'] ?? [], static fn (array $v): bool => isset($v['actor']['credential']) || isset($v['actor']['login'])));
+eq('a credential without personal data reads every version, but no login or password name', [count($privateRead['versions'] ?? []) > 0, $withActor, $privateRead['versions'][0]['actor'] ?? null],
+    [true, [], ['user' => $wp->userId('admin'), 'via' => $privateRead['versions'][0]['actor']['via'] ?? null]]);
+eq('a credential with personal data still sees them', isset($run('schema-read', [], 'admin')[1]['versions'][0]['actor']['login']), true);
+
 eq('the three are agent tools', [$tools['rtschema/schema-read'] ?? null, $tools['rtschema/schema-propose'] ?? null, $tools['rtschema/schema-apply'] ?? null], [true, true, true]);
 
 // `wp first schema`: list, diff, apply, rollback.
@@ -506,6 +519,32 @@ eq('a bad argument says how to call it', [$code, $bad['error']['code'] ?? null],
 $withByline = array_values(array_filter($read['versions'], static fn (array $v): bool => in_array('Added articles.byline (text)', $v['summary'] ?? [], true)));
 check('each version says what it changed, in words', $withByline !== [] && in_array('Hid articles.teaserImage (its values are kept)', array_merge(...array_map(static fn (array $v): array => $v['summary'], $read['versions'])), true), $read['versions']);
 check('and who made it', str_contains(implode(' ', array_column($read['versions'], 'by')), '(WP-CLI)'), array_column($read['versions'], 'by'));
+
+// ================================================================ the chain and the option are checked
+// The version rows are chained by hash; a row edited in the database breaks the chain. The site then
+// keeps serving the last state that checked out and says why, and refuses to apply on top of it.
+$table = $wp->connection()->prefix() . 'first__schema_versions';
+$goodState = get_option(Loader::option('rtschema'));
+$rowsBefore = $versions->list();
+$second = $rowsBefore[1];
+$wp->exec("UPDATE `$table` SET `changes` = ? WHERE `app` = 'rtschema' AND `version` = 2", [json_encode([['op' => 'addField', 'kind' => 'articles', 'field' => 'forged', 'definition' => ['type' => 'text']]])]);
+eq('a broken chain refuses the next change, naming the first version that doesn\'t check out', $refusal(fn () => $versions->apply(count($rowsBefore), $add('afterForgery', ['type' => 'text']), $admin)), '409 schema_chain_broken /changes');
+eq('it exports no lock from a broken chain', $refusal(fn () => $versions->lock()) !== 'accepted', true);
+$d = $described();
+eq('requests keep serving the last state that checked out, and the API says the chain is broken', [$d['runtimeSchema']['version'], $d['runtimeSchema']['problem'] ?? null, isset($d['kinds']['articles']['columns']['forged'])],
+    [$goodState['version'], 'schema version 2 does not match its hash', false]);
+$wp->exec("UPDATE `$table` SET `changes` = ? WHERE `app` = 'rtschema' AND `version` = 2", [json_encode($second['changes'])]);
+eq('restoring the row restores the chain the next time the versions are read', [count($versions->list()), $described()['runtimeSchema']['problem'] ?? null], [count($rowsBefore), null]);
+
+// An option rewritten by something other than apply: its own hash no longer matches its content.
+$forged = $goodState;
+$forged['collections']['articles']['columns']['planted'] = ['type' => 'text'];
+update_option(Loader::option('rtschema'), $forged, true);
+$d = $described();
+eq('an option edited outside apply is not served: the build\'s schema is, and the API says why', [isset($d['kinds']['articles']['columns']['planted']), isset($d['kinds']['articles']['columns']['subtitle']), $d['runtimeSchema']['problem'] ?? null],
+    [false, false, 'the runtime schema option does not match its own hash; apply a change, or run `wp first schema list`, to rebuild it from the stored versions']);
+[$code, $listed] = $schemaCli(['list']);
+eq('reading the versions rebuilds it from the table', [$code, isset($described()['kinds']['articles']['columns']['subtitle']), $described()['runtimeSchema']['problem'] ?? null], [0, true, null]);
 
 // ================================================================ a format this runtime doesn't know
 $state = get_option(Loader::option('rtschema'));

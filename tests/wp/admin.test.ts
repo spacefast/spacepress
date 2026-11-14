@@ -211,3 +211,36 @@ test("a declared screen: its declaration is served to users who may open it, wit
   assert.ok(pages.comments.includes("first-screen-test-comments"), JSON.stringify(pages));
   assert.ok(pages.app.includes("first-screen-table-comments"), JSON.stringify(pages));
 });
+
+// The schema lock (config-api.md, "Schema lock") refuses edits to what First generates. First's admin
+// is First's own: what it reads from its REST controllers and what its screens save are content and
+// settings, never the schema, so none of it is refused.
+test("with the schema lock on, the admin's controllers answer and its saves go through", async () => {
+  const lock = (await (await fetch(`${site}/__first/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.hardening;
+  assert.ok(lock.includes("schemaLock"));
+  const json = (method: string, path: string, body?: unknown) =>
+    fetch(`${site}${path}`, { method, headers: { ...auth("admin"), ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  // The admin's own controllers.
+  for (const path of ["/wp-json/wp/v2/view-config?kind=postType&name=first_posts", "/wp-json/wp/v2/field-collections?kind=postType&name=first_posts", "/wp-json/wp/v2/editor/settings", "/wp-json/wp/v2/plugins"]) {
+    const res = await json("GET", path);
+    assert.equal(res.status, 200, `${path}: ${(await res.text()).slice(0, 200)}`);
+  }
+  // A collection row saved as the admin's editor saves it: core's route for the kind, fields in `meta`.
+  const created = await json("POST", "/wp-json/wp/v2/first_posts", { title: "From the admin", status: "draft", meta: { tags: ["news"] } });
+  assert.equal(created.status, 201, await created.clone().text());
+  const id = (await created.json()).id;
+  const edited = await json("POST", `/wp-json/wp/v2/first_posts/${id}`, { title: "Edited in the admin", meta: { tags: ["guide"] } });
+  assert.equal(edited.status, 200, await edited.clone().text());
+  assert.deepEqual((await edited.json()).meta.tags, ["guide"]);
+  // A global, and core's settings, as the admin's settings screens save them.
+  const global = await json("PATCH", "/__first/api/v1/settings", { siteTitle: "Admin saved" });
+  assert.equal(global.status, 200, await global.clone().text());
+  const tagline = `Admin ${Date.now().toString(36)}`;
+  const settings = await json("POST", "/wp-json/wp/v2/settings", { description: tagline });
+  assert.equal((await settings.json()).description, tagline);
+  // Deactivating and reactivating a plugin from the admin's plugins screen.
+  const off = await json("POST", "/wp-json/wp/v2/plugins/two-factor/two-factor", { status: "inactive" });
+  const on = await json("POST", "/wp-json/wp/v2/plugins/two-factor/two-factor", { status: "active" });
+  assert.deepEqual([off.status, on.status], [200, 200]);
+  await json("DELETE", `/wp-json/wp/v2/first_posts/${id}?force=true`);
+});

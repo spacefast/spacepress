@@ -240,8 +240,14 @@ final class Surfaces
                 $guard(current_user_can(self::READ), 'read the schema versions');
                 $versions = self::versions();
 
+                // Who made each version (a login, an application password's name) is personal data: a
+                // credential scoped without it reads the versions without them.
+                $personal = \First\Wp\AgentScope::may('personal');
+                $shown = static fn (array $row): array => $personal ? self::version($row)
+                    : ['actor' => array_intersect_key($row['actor'], ['user' => 1, 'via' => 1])] + self::version($row);
+
                 return ['version' => $versions->active()['version'], 'hash' => $versions->active()['hash'],
-                    'versions' => array_map(self::version(...), $versions->list()), 'deploy' => $versions->deployCheck()];
+                    'versions' => array_map($shown, $versions->list()), 'deploy' => $versions->deployCheck()];
             },
         ];
         $ops[] = [

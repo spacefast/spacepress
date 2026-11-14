@@ -561,6 +561,7 @@ fn the_admin_plugin_ships_by_default_and_admin_false_removes_it() {
         assert!(admin.join(rel).is_file(), "first-admin is missing {rel}");
     }
     assert!(!admin.join("apps").exists(), "the JS workspace never ships");
+    assert!(!admin.join("upstream-metadata").exists(), "the retained upstream inputs stay in the repository");
     let archive = std::fs::File::open(p.out.join("plugins/first-admin.zip")).unwrap();
     let mut archive = zip::ZipArchive::new(archive).unwrap();
     assert!(archive.by_name("first-admin/first-admin.php").is_ok());

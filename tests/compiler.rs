@@ -38,6 +38,25 @@ fn rejects(fixture: &str, message: &str, at: &str) {
 }
 
 #[test]
+fn wordpress_secrets_are_refused_on_every_env_path() {
+    rejects(
+        "reject-process-env-host",
+        "`DB_PASSWORD` is a host setting",
+        "first.config.ts:3:",
+    );
+    rejects(
+        "reject-env-host-secret",
+        "`nonce_salt` is a host setting",
+        "first.config.ts:3:",
+    );
+    rejects(
+        "reject-hmac-host-secret",
+        "`AUTH_KEY` is a host setting",
+        "first.config.ts:4:",
+    );
+}
+
+#[test]
 fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-class",

@@ -98,36 +98,36 @@ fn is_env_name(s: &str) -> bool {
         && chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
 }
 
-/// Host settings app code can't read: WordPress's database credentials and salts, and the request
-/// headers and credentials PHP-FPM exposes as environment variables (and Apache again under
-/// `REDIRECT_` names after a rewrite). `First\Env::reserved` answers
-/// null for the same names at runtime.
+/// WordPress's own secrets: its database login and its keys and salts. App code never reads them,
+/// on any host; `First\\Env::HOST_SECRETS` answers null for the same names at runtime, and
+/// `host_secrets_match_the_runtime` keeps the lists equal.
+const HOST_SECRETS: &[&str] = &[
+    "DB_NAME",
+    "DB_USER",
+    "DB_PASSWORD",
+    "DB_HOST",
+    "AUTH_KEY",
+    "SECURE_AUTH_KEY",
+    "LOGGED_IN_KEY",
+    "NONCE_KEY",
+    "AUTH_SALT",
+    "SECURE_AUTH_SALT",
+    "LOGGED_IN_SALT",
+    "NONCE_SALT",
+    "SECRET_KEY",
+    "SECRET_SALT",
+    "WP_CACHE_KEY_SALT",
+];
+
 pub(crate) fn reserved_env_name(name: &str) -> bool {
-    const RESERVED: &[&str] = &[
-        "AUTH_KEY",
-        "SECURE_AUTH_KEY",
-        "LOGGED_IN_KEY",
-        "NONCE_KEY",
-        "AUTH_SALT",
-        "SECURE_AUTH_SALT",
-        "LOGGED_IN_SALT",
-        "NONCE_SALT",
-        "WP_CACHE_KEY_SALT",
-        "PHP_AUTH_USER",
-        "PHP_AUTH_PW",
-        "PHP_AUTH_DIGEST",
-        "AUTH_TYPE",
-        "REMOTE_USER",
-    ];
-    let upper = name.to_ascii_uppercase();
-    RESERVED.contains(&upper.as_str()) || ["DB_", "HTTP_", "REDIRECT_"].iter().any(|p| upper.starts_with(p))
+    HOST_SECRETS.contains(&name.to_ascii_uppercase().as_str())
 }
 
 pub(crate) fn reserved_env_error<T>(span: Span, name: &str) -> Result<T> {
     err_help(
         span,
         format!("`{name}` is a host setting, not an app variable"),
-        "database credentials, WordPress salts and request headers can't be read from app code; give the app its own variable",
+        "WordPress's database login, keys and salts can't be read from app code; give the app its own variable",
     )
 }
 
@@ -11728,3 +11728,20 @@ const SVG_CAMEL_TAGS: &[&str] = &[
     "radialGradient",
     "textPath",
 ];
+
+#[cfg(test)]
+mod host_secret_tests {
+    use super::HOST_SECRETS;
+
+    #[test]
+    fn host_secrets_match_the_runtime() {
+        let php = include_str!("../runtime/First/Env.php");
+        let start = php.find("HOST_SECRETS = [").expect("Env::HOST_SECRETS");
+        let list = &php[start..start + php[start..].find("];").unwrap()];
+        let runtime: Vec<&str> = list.split('\'').skip(1).step_by(2).collect();
+        assert_eq!(
+            runtime, HOST_SECRETS,
+            "runtime/First/Env.php and src/compile.rs disagree"
+        );
+    }
+}

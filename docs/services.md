@@ -51,7 +51,7 @@ For PHP authoring, a trusted WordPress plugin supplies private configuration thr
 - Product `workshop`, priced at 1900 USD minor units on the server.
 - An application-owned checkout return URL.
 
-Recipients, senders and provider secrets are environment-variable names in this plugin. Values are resolved at runtime through `First\Env`, which also supports wp-config constants. They never enter generated schema, client JavaScript, catalog descriptions or responses.
+Recipients, senders and provider secrets are environment-variable names in this plugin. Values are resolved at runtime through `First\Env`, which also supports wp-config constants, except WordPress's own database login, keys and salts (see [Runtime variables](config-api.md#runtime-variables)). They never enter generated schema, client JavaScript, catalog descriptions or responses.
 
 | Variable | Purpose |
 | --- | --- |

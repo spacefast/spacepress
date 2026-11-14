@@ -25,25 +25,29 @@ eq('an empty managed scope denies all ambient values',
 
 define('DB_PASSWORD', 'box-database-password');
 define('LOGGED_IN_SALT', 'box-salt');
+define('SECRET_KEY', 'legacy-salt');
 putenv('HTTP_COOKIE=wordpress_logged_in_x=platform-session');
+putenv('HTTP_PROXY=http://attacker.example');
 putenv('PHP_AUTH_PW=basic-password');
 putenv('REDIRECT_HTTP_AUTHORIZATION=Basic redirected');
-Env::isolate(['DB_PASSWORD' => 'from-a-variable', 'HTTP_COOKIE' => 'from-a-variable', 'APP_VALUE' => 'kept']);
-eq('host settings never resolve, even when a managed host passes them as variables',
-    [Env::get('DB_PASSWORD'), Env::get('db_password'), Env::get('HTTP_COOKIE'), Env::get('APP_VALUE')],
-    [null, null, null, 'kept']);
+Env::isolate(['DB_PASSWORD' => 'from-a-variable', 'HTTP_PROXY' => 'http://proxy.internal:3128', 'DB_URL' => 'mysql://app', 'APP_VALUE' => 'kept']);
+eq('an isolated host never passes WordPress secrets, but its own variables keep request-like names',
+    [Env::get('DB_PASSWORD'), Env::get('db_password'), Env::get('HTTP_PROXY'), Env::get('DB_URL'), Env::get('HTTP_COOKIE'), Env::get('APP_VALUE')],
+    [null, null, 'http://proxy.internal:3128', 'mysql://app', null, 'kept']);
 (static function (): void {
     $scope = new ReflectionProperty(Env::class, 'variables');
     $scope->setValue(null, null);
 })();
-eq('standalone lookup never falls back to WordPress credentials, salts or FastCGI request values',
-    [Env::get('DB_PASSWORD'), Env::get('LOGGED_IN_SALT'), Env::get('HTTP_COOKIE'), Env::get('PHP_AUTH_PW'), Env::get('REDIRECT_HTTP_AUTHORIZATION'), Env::resolve(['env' => 'DB_PASSWORD']), Env::get('FIRST_ENV_CONSTANT')],
-    [null, null, null, null, null, null, 'standalone-constant']);
-eq('reserved names are the same set the compiler refuses',
-    array_map([Env::class, 'reserved'], ['DB_HOST', 'HTTP_X_ANYTHING', 'NONCE_KEY', 'WP_CACHE_KEY_SALT', 'DBX', 'WEBHOOK_SECRET', 'FIRST_NOW']),
-    [true, true, true, true, false, false, false]);
+eq('standalone lookup never falls back to WordPress secrets or per-request server values',
+    [Env::get('DB_PASSWORD'), Env::get('LOGGED_IN_SALT'), Env::get('SECRET_KEY'), Env::get('HTTP_COOKIE'), Env::get('HTTP_PROXY'), Env::get('PHP_AUTH_PW'), Env::get('REDIRECT_HTTP_AUTHORIZATION'), Env::resolve(['env' => 'DB_PASSWORD']), Env::get('FIRST_ENV_CONSTANT')],
+    [null, null, null, null, null, null, null, null, 'standalone-constant']);
+eq('host secrets are exact names; request values are prefixes',
+    [array_map([Env::class, 'hostSecret'], ['db_host', 'DB_URL', 'NONCE_KEY', 'SECRET_SALT', 'WEBHOOK_SECRET']),
+     array_map([Env::class, 'requestValue'], ['HTTP_X_ANYTHING', 'redirect_url', 'PHP_AUTH_USER', 'REMOTE_USER', 'HTTPS_ONLY', 'FIRST_NOW'])],
+    [[true, false, true, true, false], [true, true, true, true, false, false]]);
 
 putenv('HTTP_COOKIE');
+putenv('HTTP_PROXY');
 putenv('PHP_AUTH_PW');
 putenv('REDIRECT_HTTP_AUTHORIZATION');
 putenv('FIRST_ENV_PROCESS');

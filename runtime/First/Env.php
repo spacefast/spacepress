@@ -11,26 +11,40 @@ final class Env
     private static ?array $variables = null;
 
     /**
-     * Host settings app code never reads, isolated or not: WordPress's database credentials and
-     * salts (wp-config.php constants), and the request headers and credentials PHP-FPM exposes as
-     * environment variables (`HTTP_COOKIE`, `HTTP_AUTHORIZATION`, `PHP_AUTH_PW`), also under the
-     * `REDIRECT_` names Apache gives them after an internal rewrite. The compiler
-     * refuses the same names (`src/compile.rs`, `reserved_env_name`).
+     * WordPress's own secrets: its database login and its keys and salts (wp-config.php
+     * constants, including the pre-2.7 `SECRET_KEY`/`SECRET_SALT` that `wp_salt()` still reads).
+     * They are never an app variable on any host. The compiler refuses the same names
+     * (`src/compile.rs`, `HOST_SECRETS`); a unit test there keeps the two lists equal.
      */
-    private const RESERVED = [
+    public const HOST_SECRETS = [
+        'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'DB_HOST',
         'AUTH_KEY', 'SECURE_AUTH_KEY', 'LOGGED_IN_KEY', 'NONCE_KEY',
-        'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT', 'WP_CACHE_KEY_SALT',
-        'PHP_AUTH_USER', 'PHP_AUTH_PW', 'PHP_AUTH_DIGEST', 'AUTH_TYPE', 'REMOTE_USER',
+        'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT',
+        'SECRET_KEY', 'SECRET_SALT', 'WP_CACHE_KEY_SALT',
     ];
-    private const RESERVED_PREFIXES = ['DB_', 'HTTP_', 'REDIRECT_'];
 
-    public static function reserved(string $name): bool
+    /**
+     * What the web server API puts in the process environment for each request: headers under
+     * FastCGI (`HTTP_COOKIE`, `HTTP_AUTHORIZATION`, `HTTP_PROXY`), Apache's copies of them after a
+     * rewrite (`REDIRECT_HTTP_AUTHORIZATION`), and the visitor's basic-auth credentials. They are
+     * visitor input, not settings, so the ambient fallback never reads them. An isolated host's
+     * own variables may use these names.
+     */
+    private const REQUEST_PREFIXES = ['HTTP_', 'REDIRECT_', 'PHP_AUTH_'];
+    private const REQUEST_NAMES = ['AUTH_TYPE', 'REMOTE_USER'];
+
+    public static function hostSecret(string $name): bool
+    {
+        return in_array(strtoupper($name), self::HOST_SECRETS, true);
+    }
+
+    public static function requestValue(string $name): bool
     {
         $upper = strtoupper($name);
-        if (in_array($upper, self::RESERVED, true)) {
+        if (in_array($upper, self::REQUEST_NAMES, true)) {
             return true;
         }
-        foreach (self::RESERVED_PREFIXES as $prefix) {
+        foreach (self::REQUEST_PREFIXES as $prefix) {
             if (str_starts_with($upper, $prefix)) {
                 return true;
             }
@@ -53,11 +67,14 @@ final class Env
 
     public static function get(string $name): ?string
     {
-        if (self::reserved($name)) {
+        if (self::hostSecret($name)) {
             return null;
         }
         if (self::$variables !== null) {
             return self::$variables[$name] ?? null;
+        }
+        if (self::requestValue($name)) {
+            return null;
         }
         $value = getenv($name);
         if ($value !== false) {

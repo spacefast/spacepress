@@ -1421,12 +1421,14 @@ Handlers read the process environment with `process.env.NAME` or
 variable is unset; the process environment is read first, then a
 `wp-config.php` constant of that name.
 
-Host settings are never app variables. Names starting with `DB_`, `HTTP_` or
-`REDIRECT_` (Apache's names for request values after a rewrite),
-WordPress's keys and salts (`AUTH_KEY` … `NONCE_SALT`, `WP_CACHE_KEY_SALT`) and
-the request credentials PHP-FPM exposes (`PHP_AUTH_USER`, `PHP_AUTH_PW`,
-`PHP_AUTH_DIGEST`, `AUTH_TYPE`, `REMOTE_USER`) are a build error in
-`process.env` and `env()`, and read as unset at runtime on every host.
+WordPress's own secrets are never app variables: its database login
+(`DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`) and its keys and salts
+(`AUTH_KEY` … `NONCE_SALT`, `SECRET_KEY`, `SECRET_SALT`, `WP_CACHE_KEY_SALT`)
+are a build error in `process.env` and `env()`, and read as unset at runtime
+on every host. Values the web server sets for each request (names starting with
+`HTTP_`, `REDIRECT_` or `PHP_AUTH_`, and `AUTH_TYPE`, `REMOTE_USER`) are
+visitor input, so the process-environment and constant fallback never returns
+them; a managed host's own variables may still use those names.
 
 The name must be written out. A computed name (`process.env[key]`), iterating
 or spreading `process.env`, writing to it, and every other `process` member are

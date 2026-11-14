@@ -144,6 +144,15 @@ jobs:
           npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
           npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
           node --test examples/astro-garden/twins.test.mjs
+      # The Astro site migrated with the first-migrate-astro skill, read in Chromium on WordPress.
+      - name: Migrated Astro example
+        if: matrix.shard == 'rest'
+        env:
+          FIRST_BIN: ${{ github.workspace }}/target/debug/first
+        run: |
+          npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
+          npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
+          node --test examples/migrate-astro/migrated.test.mjs
       - name: Docker-free local development acceptance
         if: matrix.shard == 'rest'
         run: node --test scripts/dev/acceptance.test.mjs

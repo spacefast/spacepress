@@ -1692,15 +1692,24 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         .map(|v| v.as_str().unwrap().to_string())
         .collect();
     cleared.sort();
-    let mut want = Vec::new();
+    // Boost clears a URL recursively, so the home page goes to its home action instead.
+    let mut want = vec!["boost home".to_string()];
     for cache in ["batcache", "boost", "vip"] {
         for path in ["/", "/index.md", "/notes/hello", "/notes/hello.md"] {
-            want.push(format!("{cache} {path}"));
+            if !(cache == "boost" && path == "/") {
+                want.push(format!("{cache} {path}"));
+            }
         }
     }
     want.sort();
     assert_eq!(cleared, want);
-    assert_eq!(seen["cleared all"], serde_json::json!(["boost *"]));
+    assert_eq!(seen["cleared all"], serde_json::json!(["vip *", "boost *"]));
+    // Over VIP's 100 URLs a request: one site ban, and every path still for Batcache.
+    assert_eq!(seen["cleared many"], serde_json::json!([1, true, 101]));
+    assert_eq!(
+        seen["without batcache drop-in"],
+        serde_json::json!(["vip /about", "boost /about"])
+    );
 }
 
 /// Stylesheets and SVGs that pages, layouts and components import (docs/spec/tsx-to-php.md,

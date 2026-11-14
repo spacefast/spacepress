@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "types": [],
+    "jsx": "react-jsx",
+    "jsxImportSource": "first",
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "first": ["../../../types/first/index.d.ts"],
+      "first/*": ["../../../types/first/*.d.ts"],
+      "first:db": ["../../../types/first/db.d.cts"]
+    }
+  },
+  "include": ["first.config.ts", "first"]
+}

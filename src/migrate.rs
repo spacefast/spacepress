@@ -59,9 +59,31 @@ fn string(s: &str) -> String {
 
 /// The persisted shape of the schema: only what affects SQL.
 pub fn snapshot(schema: &Schema) -> Json {
+    snapshot_with(schema, &std::collections::BTreeSet::new())
+}
+
+/// The snapshot with `queried`, the `(table, column)` pairs compiled `where`/`orderBy` name, as each
+/// SQL table's `queried` list: the columns that get an inferred index (spec §2.9).
+pub fn snapshot_with(schema: &Schema, queried: &std::collections::BTreeSet<(String, String)>) -> Json {
     let mut tables = serde_json::Map::new();
     for c in schema.collections.values() {
-        tables.insert(c.table.clone(), table_snapshot(c, schema));
+        let mut t = table_snapshot(c, schema);
+        let cols: Vec<String> = queried
+            .iter()
+            .filter(|(table, col)| table == &c.table && c.columns.contains_key(col))
+            .map(|(_, col)| col.clone())
+            .collect();
+        if !cols.is_empty() {
+            t["queried"] = json!(cols);
+        }
+        if !c.indexes.is_empty() {
+            t["indexes"] = c
+                .indexes
+                .iter()
+                .map(|(fields, unique)| json!({ "columns": fields, "unique": unique }))
+                .collect();
+        }
+        tables.insert(c.table.clone(), t);
     }
     for c in schema.collections.values() {
         for col in c.columns.values() {
@@ -73,6 +95,19 @@ pub fn snapshot(schema: &Schema) -> Json {
         }
     }
     json!({ "version": 2, "tables": tables })
+}
+
+/// A column a plain MySQL index can cover: not LONGTEXT (that needs a prefix, which isn't a lookup
+/// index) and not a list or JSON value.
+fn indexable(c: &Json) -> bool {
+    let max = c["max"].as_f64();
+    match c["type"].as_str().unwrap_or("text") {
+        "integer" | "media" | "file" | "real" | "boolean" | "timestamp" | "date" | "slug" => true,
+        "text" | "email" | "url" => {
+            c["unique"].as_bool() == Some(true) || max.is_some_and(|m| m <= 191.0) || c["enum"].is_array()
+        }
+        _ => false,
+    }
 }
 
 /// A `ref().many()` field's join table (docs/decisions/2026-11-11-authoring-surface.md, ruling 3):
@@ -312,12 +347,30 @@ pub fn index_report(snapshot: &Json) -> Json {
             );
         }
         for (name, unique, ix_cols) in indexes(t, def) {
-            let reason = if name.ends_with("_unique") {
+            let declared = def["indexes"].as_array().into_iter().flatten().any(|ix| {
+                ix["columns"]
+                    .as_array()
+                    .is_some_and(|c| c.iter().filter_map(Json::as_str).eq(ix_cols.iter().map(String::as_str)))
+                    && (ix["unique"].as_bool() == Some(true)) == unique
+            });
+            let reason = if declared {
+                format!(
+                    "declared with .index([{}]{})",
+                    ix_cols
+                        .iter()
+                        .map(|c| format!("\"{c}\""))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    if unique { ", { unique: true }" } else { "" }
+                )
+            } else if name.ends_with("_unique") {
                 format!("`{}` is .unique()", ix_cols[0])
             } else if name == "status_publishedAt" {
                 "drafts: published rows are filtered by status and ordered by publishedAt".to_string()
             } else if name == "translationGroup_locale" {
                 "localized: one row per locale in a translation group".to_string()
+            } else if name.ends_with("_queried") {
+                format!("`{}` is in a compiled `where` or `orderBy`", ix_cols[0])
             } else {
                 "a system table's lookup".to_string()
             };
@@ -367,6 +420,40 @@ fn indexes(t: &str, def: &Json) -> Vec<(String, bool, Vec<String>)> {
     }
     if def["system"].as_bool() == Some(true) && t == REVISIONS {
         out.push(("row".into(), false, vec!["collection".into(), "pk".into()]));
+    }
+    // `.index(fields, { unique? })`: compound indexes the author declared, named by their columns.
+    for ix in def["indexes"].as_array().into_iter().flatten() {
+        let fields: Vec<String> = ix["columns"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|c| c.as_str().map(str::to_owned))
+            .collect();
+        if !fields.is_empty() && fields.iter().all(|f| cols.get(f).is_some_and(indexable)) {
+            let unique = ix["unique"].as_bool() == Some(true);
+            let name = format!("idx_{}", fields.join("_"));
+            if !out.iter().any(|(n, _, _)| n == &name) {
+                out.push((name, unique, fields));
+            }
+        }
+    }
+    // A column a compiled `where` or `orderBy` names (spec §2.9), unless an index already starts with
+    // it: the primary key, `.unique()`, a reference (MySQL indexes a foreign key), or one above.
+    let pk = cols
+        .iter()
+        .find(|(_, c)| c["primaryKey"].as_bool() == Some(true))
+        .map(|(n, _)| n.clone());
+    let referenced = |n: &str| cols.get(n).is_some_and(|c| c["references"].is_object());
+    // A table First didn't create (`existingTable`) keeps the indexes it had: adoption checks them.
+    let queried = if adopted(def) { None } else { def["queried"].as_array() };
+    for col in queried.into_iter().flatten().filter_map(Json::as_str) {
+        let Some(c) = cols.get(col) else { continue };
+        let covered = pk.as_deref() == Some(col)
+            || referenced(col)
+            || out.iter().any(|(_, _, ix)| ix.first().map(String::as_str) == Some(col));
+        if !covered && indexable(c) {
+            out.push((format!("{col}_queried"), false, vec![col.to_string()]));
+        }
     }
     out
 }

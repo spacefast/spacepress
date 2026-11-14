@@ -166,6 +166,56 @@ test("the earlier /first-admin/ address redirects to the same route at /wp-admin
   }
 });
 
+test("a declared screen: its declaration is served to users who may open it, with each action's method", async () => {
+  const anon = await fetch(`${site}/wp-json/first-admin/v1/screens/test-comments`);
+  assert.equal(anon.status, 401);
+  assert.equal((await fetch(`${site}/wp-json/first-admin/v1/screens/nope`, { headers: auth("admin") })).status, 404);
+  const response = await fetch(`${site}/wp-json/first-admin/v1/screens/test-comments`, { headers: auth("subscriber") });
+  assert.equal(response.status, 200);
+  const screen = await response.json();
+  assert.equal(screen.title, "Comment review");
+  assert.deepEqual(screen.view.fields.map((f: { id: string }) => f.id), ["name", "body", "approved"]);
+  // The method comes from the ability's annotations: an update runs over POST.
+  assert.deepEqual(screen.actions.map((a: { id: string; method: string }) => [a.id, a.method]), [["approve", "POST"]]);
+  assert.deepEqual(screen.data, ["Approving a comment publishes it."]);
+  // WordPress 7.2 keeps fields and actions per entity in its own registries: when the running
+  // WordPress has them, the screen's are registered there (entity firstAdminScreen/<id>) and read
+  // back from there; on 7.1 the declaration is the registry. Either way the screen is the same.
+  const core = JSON.parse(wp("eval", "echo wp_json_encode(['fields' => function_exists('wp_register_entity_fields'), 'actions' => function_exists('wp_register_entity_actions')]);"));
+  assert.deepEqual(screen.registry, { fields: core.fields ? "core" : "first-admin", actions: core.actions ? "core" : "first-admin" });
+  if (core.fields) {
+    const registered = await (await fetch(`${site}/wp-json/wp/v2/entity-fields?kind=firstAdminScreen&name=test-comments`, { headers: auth("editor") })).json();
+    assert.deepEqual(registered.fields.map((f: { id: string; origin: { registeredBy: string } }) => [f.id, f.origin.registeredBy]), [["name", "first-admin"], ["body", "first-admin"], ["approved", "first-admin"]]);
+  }
+  if (core.actions) {
+    const registered = await (await fetch(`${site}/wp-json/wp/v2/entity-actions?kind=firstAdminScreen&name=test-comments`, { headers: auth("editor") })).json();
+    assert.deepEqual(registered.actions.map((a: { id: string; ability: string }) => [a.id, a.ability]), [["approve", "blog/comments-update"]]);
+  }
+  // Each table kind is a screen too, with delete bound to the kind's delete ability; the method is
+  // whatever that ability's annotations make core's run route require.
+  const table = await (await fetch(`${site}/wp-json/first-admin/v1/screens/table-comments`, { headers: auth("admin") })).json();
+  assert.equal(table.view.ability, "blog/comments-list");
+  assert.deepEqual(table.actions.map((a: { ability: string }) => a.ability), ["blog/comments-delete"]);
+  // Core's run route takes the declared method: with any other one it answers 405 before running.
+  const [del] = table.actions as { method: string }[];
+  const probe = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/comments-delete/run${del.method === "POST" ? "" : "?input[id]=0"}`, {
+    method: del.method, headers: { ...auth("admin"), "content-type": "application/json" }, body: del.method === "POST" ? JSON.stringify({ input: { id: 0 } }) : undefined,
+  });
+  assert.notEqual(probe.status, 405, `${del.method}: ${await probe.text()}`);
+  // Classic wp-admin registered a page for each, under the declared parent.
+  const pages = JSON.parse(wp("eval", `
+    wp_set_current_user(${harness.users.admin.id});
+    require_once ABSPATH . 'wp-admin/includes/admin.php';
+    set_current_screen('dashboard');
+    global $menu, $submenu, $_wp_submenu_nopriv;
+    $menu = []; $submenu = [];
+    do_action('admin_menu', '');
+    echo wp_json_encode(['comments' => array_column($submenu['edit-comments.php'] ?? [], 2), 'app' => array_column($submenu['first-blog'] ?? [], 2)]);
+  `));
+  assert.ok(pages.comments.includes("first-screen-test-comments"), JSON.stringify(pages));
+  assert.ok(pages.app.includes("first-screen-table-comments"), JSON.stringify(pages));
+});
+
 // The schema lock (config-api.md, "Schema lock") refuses edits to what First generates. First's admin
 // is First's own: what it reads from its REST controllers and what its screens save are content and
 // settings, never the schema, so none of it is refused.
@@ -175,7 +225,7 @@ test("with the schema lock on, the admin's controllers answer and its saves go t
   const json = (method: string, path: string, body?: unknown) =>
     fetch(`${site}${path}`, { method, headers: { ...auth("admin"), ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
   // The admin's own controllers.
-  for (const path of ["/wp-json/wp/v2/view-config?kind=postType&name=first_posts", "/wp-json/wp/v2/field-collections?kind=postType&name=first_posts", "/wp-json/wp/v2/editor/settings", "/wp-json/wp/v2/plugins"]) {
+  for (const path of ["/wp-json/first-admin/v1/view-config?kind=postType&name=first_posts", "/wp-json/wp/v2/field-collections?kind=postType&name=first_posts", "/wp-json/wp/v2/editor/settings", "/wp-json/wp/v2/plugins"]) {
     const res = await json("GET", path);
     assert.equal(res.status, 200, `${path}: ${(await res.text()).slice(0, 200)}`);
   }
@@ -197,4 +247,49 @@ test("with the schema lock on, the admin's controllers answer and its saves go t
   const on = await json("POST", "/wp-json/wp/v2/plugins/two-factor/two-factor", { status: "active" });
   assert.deepEqual([off.status, on.status], [200, 200]);
   await json("DELETE", `/wp-json/wp/v2/first_posts/${id}?force=true`);
+});
+
+test("WordPress's /wp/v2/view-config is core's, and core's filter reaches First Admin's view config", async () => {
+  // Core's route answers in core's shape (it was shadowed by First Admin's controller before).
+  const core = await (await fetch(`${site}/wp-json/wp/v2/view-config?kind=root&name=user`, { headers: auth("admin") })).json();
+  assert.deepEqual(Object.keys(core).sort(), ["default_layouts", "default_view", "form", "kind", "name", "version", "view_list"]);
+  assert.equal(core.default_view.perPage, 37, "the harness plugin's patch through core's filter");
+  // First Admin reads its own route, which runs the same filter over its configuration.
+  const first = await (await fetch(`${site}/wp-json/first-admin/v1/view-config?kind=root&name=user`, { headers: auth("admin") })).json();
+  assert.equal(first.default_view.perPage, 37);
+  assert.ok(first.tabs.some((t: { slug: string; label: string }) => t.slug === "harness" && t.label === "Harness tab"), JSON.stringify(first.tabs));
+  // First Admin's own entries are still there.
+  assert.ok(first.tabs.some((t: { slug: string }) => t.slug === "administrator"));
+  assert.ok(Array.isArray(first.edit_form?.fields), "the user edit form survives the round trip");
+});
+
+test("a screen's capability gates its declaration, its classic page and its sidebar entry, for every role below it", async () => {
+  wp("option", "delete", "first_harness_admin_only_data");
+  for (const role of ["editor", "subscriber"] as const) {
+    const declaration = await fetch(`${site}/wp-json/first-admin/v1/screens/test-admin-only`, { headers: auth(role) });
+    assert.equal(declaration.status, 403, `${role}: the declaration`);
+    const cookie = await loginCookie(site, role, `${site}/wp-admin/`);
+    wp("transient", "delete", "pll_activation_redirect");
+    const classic = await fetch(`${site}/wp-admin/tools.php?page=first-screen-test-admin-only`, { headers: { cookie }, redirect: "manual" });
+    assert.notEqual(classic.status, 200, `${role}: the classic page`);
+    assert.doesNotMatch(await classic.text(), /Administrators only/);
+    const page = await (await fetch(`${site}/wp-admin/new/`, { headers: { cookie } })).text();
+    assert.doesNotMatch(page, /screen-test-admin-only/, `${role}: no sidebar entry`);
+  }
+  // Its `data` ran for nobody so far: it is evaluated only for users the capability lets in.
+  assert.equal(wp("eval", "echo (int) get_option('first_harness_admin_only_data', 0);"), "0");
+  const admin = await (await fetch(`${site}/wp-json/first-admin/v1/screens/test-admin-only`, { headers: auth("admin") })).json();
+  assert.deepEqual(admin.data, ["Administrators only."]);
+  const cookie = await loginCookie(site, "admin", `${site}/wp-admin/new/`);
+  assert.match(await (await fetch(`${site}/wp-admin/new/`, { headers: { cookie } })).text(), /screen-test-admin-only/, "the administrator's sidebar has it");
+});
+
+test("table screens are named after the kind in kebab case, as its abilities are", async () => {
+  const kinds = JSON.parse(wp("eval", "echo wp_json_encode(array_keys(array_filter(\\First\\Wp\\Runtime::plugin()->schema->collections(), fn ($c) => !isset($c['wp']['postType']) && empty($c['auth']) && ($c['api']['list'] ?? true) !== false && ($c['agents'] ?? true) !== false)));"));
+  const camel = kinds.find((k: string) => /[A-Z_]/.test(k));
+  assert.ok(camel, `the test app has a table kind that isn't one lowercase word: ${kinds}`);
+  const kebab = camel.replace(/_/g, "-").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  const screen = await fetch(`${site}/wp-json/first-admin/v1/screens/table-${kebab}`, { headers: auth("admin") });
+  assert.equal(screen.status, 200, `table-${kebab}`);
+  assert.equal((await screen.json()).view.ability, `blog/${kebab}-list`);
 });

@@ -1,0 +1,19 @@
+{
+	"name": "@first-admin/screens",
+	"version": "1.0.0",
+	"description": "Screens declared once and rendered in First Admin and in classic wp-admin",
+	"private": true,
+	"type": "module",
+	"wpModule": true,
+	"exports": {
+		".": "./src/index.tsx"
+	},
+	"license": "GPL-2.0-or-later",
+	"dependencies": {
+		"@wordpress/api-fetch": "catalog:",
+		"@wordpress/components": "catalog:",
+		"@first-admin/dataviews": "workspace:*",
+		"react": "catalog:",
+		"react-dom": "catalog:"
+	}
+}

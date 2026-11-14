@@ -183,7 +183,111 @@ final class Runtime
         global $wpdb;
         ZeroNames::upgrade(new Connection($wpdb));
         Migrator::locked(new Connection($wpdb), 'first_runtime_tables', [self::class, 'applySystemTables']);
-        return self::$plugin->initialize($drops);
+        $applied = self::$plugin->initialize($drops);
+        self::install();
+
+        return $applied;
+    }
+
+    /**
+     * What a plugin-installed site installs on requests and a managed build installs only here, once
+     * storage matches the build: each step is idempotent and checks whether it is already done.
+     */
+    private static function install(): void
+    {
+        \First\RuntimeSchema\Surfaces::grant();
+        Uploads::install();
+        if (function_exists('as_schedule_recurring_action')) {
+            Jobs\ActionSchedulerQueue::install();
+            Guests::install();
+        }
+        ContentPages::install();
+        RoutePages::install();
+        self::installRewrites();
+        // The Pages log and swallow a failure on a request (the next one retries); initialize's
+        // receipt must mean everything is installed, so what is still to do is a failure here.
+        $left = self::installPlan();
+        if ($left !== []) {
+            throw new \RuntimeException('First could not install ' . implode(', ', array_map(static fn (array $s): string => $s['step'] . (isset($s['route']) ? ' ' . $s['route'] : ''), $left)) . '; see the PHP error log');
+        }
+    }
+
+    /**
+     * Whether the stored rewrite rules need rebuilding for this build: kind URL patterns other than the
+     * ones recorded, rules First didn't build (or none), or First Admin's rule not recorded for its version.
+     */
+    private static function rewritesBehind(): bool
+    {
+        return !KindUrls::recorded() || !Hardening::rulesCurrent()
+            || (function_exists('first_admin_rewrite_recorded') && !first_admin_rewrite_recorded());
+    }
+
+    /**
+     * One rebuild of the stored rewrite rules, with every rule this build registers (kind URLs, First
+     * Admin's): first the `rewrite_rules` option (and First's fingerprint of it), then, where WordPress
+     * writes one, the server's `.htaccess`. Two steps because WP-CLI, where a host initializes, has no
+     * Apache module to ask: WordPress there never writes `.htaccess`, so the file is written only when
+     * the site's own web server is Apache with mod_rewrite (`$is_apache`, set from the server software).
+     * A server that never reads the file sends `/wp-admin/new/` to index.php, where First Admin answers.
+     *
+     * @return array{rules: bool, htaccess: ?bool} what was written; `htaccess` null when not attempted
+     */
+    public static function installRewrites(): array
+    {
+        if (!self::rewritesBehind()) {
+            return ['rules' => false, 'htaccess' => null];
+        }
+        // The rules this build registers on `init`, which has run: KindUrls, First Admin's.
+        if (function_exists('first_admin_add_rewrite_rule')) {
+            first_admin_add_rewrite_rule();
+        }
+        flush_rewrite_rules(false);
+        KindUrls::record();
+        $htaccess = null;
+        if (function_exists('first_admin_add_rewrite_rule')) {
+            $htaccess = self::writeHtaccess();
+            first_admin_record_rewrite();
+        }
+
+        return ['rules' => true, 'htaccess' => $htaccess];
+    }
+
+    /**
+     * `.htaccess` with the rules just stored, as WordPress writes it from a web request under Apache
+     * with mod_rewrite. From WP-CLI, `got_mod_rewrite()` is false (no Apache module to ask), so it says
+     * yes when the site's `.htaccess` already holds WordPress's own block: core put it there from a web
+     * request under Apache. Anywhere else it writes nothing.
+     */
+    private static function writeHtaccess(): bool
+    {
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/misc.php';
+        $file = get_home_path() . '.htaccess';
+        $apache = is_file($file) && str_contains((string) @file_get_contents($file), '# BEGIN WordPress');
+        $force = static fn (bool $got): bool => $got || $apache;
+        add_filter('got_rewrite', $force);
+        try {
+            return save_mod_rewrite_rules() === true;
+        } finally {
+            remove_filter('got_rewrite', $force);
+        }
+    }
+
+    /**
+     * The install steps {@see install()} would run for this build, computed without writing: Pages
+     * (each created, changed, adopted, hidden, restored or trashed), the front-page options, and one
+     * rebuild of the rewrite rules. An empty list means installing changes nothing.
+     *
+     * @return list<array>
+     */
+    public static function installPlan(): array
+    {
+        $steps = [...ContentPages::plan(), ...RoutePages::plan()];
+        if (self::rewritesBehind()) {
+            $steps[] = ['step' => 'rewrite-rules'];
+        }
+
+        return $steps;
     }
 
     /**
@@ -194,7 +298,7 @@ final class Runtime
      * once; nothing is thrown for them.
      *
      * @param array<string, int> $drops
-     * @return array{platform: list<string>, legacyNames: bool, systemTables: ?array{from: mixed, to: string, steps: array<string, list<string>>}, identitySchema: ?array{from: int, to: int}, migrations: list<array>, runtimeSchema: ?array, refusals: list<array>}
+     * @return array{platform: list<string>, legacyNames: bool, systemTables: ?array{from: mixed, to: string, steps: array<string, list<string>>}, identitySchema: ?array{from: int, to: int}, migrations: list<array>, install: list<array>, runtimeSchema: ?array, refusals: list<array>}
      */
     public static function inspect(array $drops = []): array
     {
@@ -223,6 +327,7 @@ final class Runtime
             'systemTables' => $recorded === self::tablesVersion() ? null : ['from' => $recorded, 'to' => self::tablesVersion(), 'steps' => \First\SystemTables::plan()],
             'identitySchema' => $identity,
             'migrations' => $app['migrations'],
+            'install' => self::installPlan(),
             'runtimeSchema' => $app['runtimeSchema'],
             'refusals' => array_merge(array_map(static fn (string $p): array => ['code' => 'platform', 'message' => $p], $platform), $app['refusals']),
         ];

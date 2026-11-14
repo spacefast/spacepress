@@ -181,9 +181,9 @@ final class Uploads
                 throw new HttpError(503, 'uploads_migration_required', 'This attachment must be migrated before enabling S3 uploads');
             }
             $dest = self::scratch() . '/' . $rel;
-            // An API read or delete needs the path, never the bytes (core's attachment rendering asks
-            // whether the file is an image from its extension): no provider round trip for it.
-            if (in_array(Facade::dispatchingMethod(), ['GET', 'HEAD', 'DELETE'], true)) {
+            // An API read or delete of a media item needs the path, never the bytes (core's attachment
+            // rendering asks whether the file is an image from its extension): no provider round trip.
+            if (Facade::mediaWithoutBytes()) {
                 return $dest;
             }
             // Core image editing/restoration may need backups and sizes alongside the original.

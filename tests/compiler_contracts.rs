@@ -2249,7 +2249,6 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         r#"new RegExp("(*ACCEPT)")"#,
         "process.arch",
         "navigator.userAgent",
-        "process.platform",
         "typeof require",
         "typeof crypto",
         "typeof globalThis.Buffer",

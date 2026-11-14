@@ -66,7 +66,7 @@ final class Scf
                 'active' => true,
             ]);
         }
-        // A taxonomy's term fields (ruling 24): `group_first_<name>` on its term screens.
+        // A taxonomy's term fields (ruling 25): `group_first_<name>` on its term screens.
         foreach ($schema->taxonomies() as $name => $spec) {
             $fields = [];
             foreach (TermMeta::fields($spec) as $col => $def) {

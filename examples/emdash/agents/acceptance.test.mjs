@@ -59,7 +59,7 @@ test('native WordPress agent workflow: authenticated MCP, core Abilities, REST a
         await first('dev', 'stop', project);
         const status = JSON.parse(await first('dev', 'status', project));
         assert.equal(status.isOnline, false);
-        await exec('npx', ['--yes', '--package', 'wp-studio@2.1.1', '--', 'studio', 'delete', '--path', site, '--no-files'], { timeout: 60000 });
+        await exec('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', 'delete', '--path', site, '--no-files'], { timeout: 60000 });
         evidence.cleanup = { stopped: true, exactStudioSiteDeleted: site, online: status.isOnline };
       }
       await rm(project, { recursive: true, force: true });

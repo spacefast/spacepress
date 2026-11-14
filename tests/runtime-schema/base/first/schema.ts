@@ -1,4 +1,4 @@
-import { collection, table, global, text, integer, richText, group, repeater } from "first";
+import { collection, table, global, text, integer, richText, group, repeater, blocks } from "first";
 
 export const articles = collection({
   title: text(),
@@ -8,9 +8,11 @@ export const articles = collection({
   // `first_links`, `first_links_<n>_href`: names a runtime field must not take.
   seo: group({ title: text().optional() }).optional(),
   links: repeater({ href: text() }).optional(),
+  // Flexible content also keeps a record of its layouts under `_first_page_layout_meta`.
+  page: blocks({ hero: { heading: text().optional() } }).optional(),
 });
 
 export const votes = table({ article: integer(), weight: integer().default(1) });
 
 // Stored as the options `first_global_site_<field>`: a runtime global must not overlap them.
-export const site = global("site", { meta_title: text().optional() });
+export const site = global({ meta_title: text().optional() });

@@ -169,6 +169,21 @@ fn replaced_field_forms_name_their_replacement() {
             "first.config.ts:3:26",
         ),
         (
+            "reject-named-global",
+            "`global(\"settings\", ...)` no longer takes a name: the export names it",
+            "first.config.ts:2:25",
+        ),
+        (
+            "reject-named-files",
+            "`files(\"decks\", ...)` no longer takes a name: the export names the bucket",
+            "first.config.ts:2:22",
+        ),
+        (
+            "reject-file-bucket-name",
+            "`file({ bucket: \"decks\" })` is now `file(decks)`",
+            "first.config.ts:3:36",
+        ),
+        (
             "reject-relations-key",
             "`relations` is gone: a reference is a field",
             "first.config.ts:3:66",
@@ -228,7 +243,7 @@ fn replaced_field_forms_name_their_replacement() {
     }
 }
 
-/// `taxonomy()` and `terms()` refusals (docs/decisions/2026-11-11-authoring-surface.md, rulings 24-33
+/// `taxonomy()` and `terms()` refusals (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34
 /// and the deferred list): each a build error at its source.
 #[test]
 fn rejects_what_taxonomies_and_terms_do_not_build_yet() {
@@ -529,6 +544,17 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "there's no hook called `beforeCreat`",
         "first.config.ts:3:",
     );
+    // Ruling 18: `.on()` belongs to the declaration; `afterPublish` to collections.
+    rejects(
+        "reject-on-imported",
+        ".on() belongs to the kind's declaration, in the file that declares it",
+        "first/hooks.ts:2:1",
+    );
+    rejects(
+        "reject-after-publish-table",
+        "`afterPublish` is for collections: a table() row is never published",
+        "first/schema.ts:2:64",
+    );
     // §1.2: modifiers per column kind, pointing at the modifier call.
     rejects(
         "reject-modifier-kind",
@@ -571,6 +597,12 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     );
     rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:15");
     rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:15");
+    // The client declares `Query<T>`: a global of that name would declare a second `Query` type.
+    rejects(
+        "reject-global-client-query",
+        "\"query\" is reserved by generated client types",
+        "first.config.ts:2:15",
+    );
     rejects(
         "reject-reserved-search",
         "\"search\" is reserved",
@@ -595,7 +627,7 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-global-required",
         "a global field is required unless it has a default (`title`)",
-        "first.config.ts:3:38",
+        "first.config.ts:3:30",
     );
     // Literal defaults follow the strict ISO timestamp codec, inside structured columns too.
     rejects(
@@ -647,23 +679,23 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "duplicate logical registration `notes`",
         ),
         (
-            "globals: { status: global('status', { label: text().default('Ready').optional() }) }",
+            "globals: { status: global({ label: text().default('Ready').optional() }) }",
             "\"status\" is reserved by generated client types",
         ),
         (
-            "globals: { user: global('user', { label: text().default('Ready').optional() }) }",
+            "globals: { user: global({ label: text().default('Ready').optional() }) }",
             "\"user\" is reserved by generated client types",
         ),
         (
-            "globals: { record: global('record', { label: text().default('Ready').optional() }) }",
+            "globals: { record: global({ label: text().default('Ready').optional() }) }",
             "\"record\" is reserved by generated client types",
         ),
         (
-            "globals: { client: global('client', { label: text().default('Ready').optional() }) }",
+            "globals: { client: global({ label: text().default('Ready').optional() }) }",
             "\"client\" is reserved by generated client types",
         ),
         (
-            "globals: { extract: global('extract', { label: text().default('Ready').optional() }) }",
+            "globals: { extract: global({ label: text().default('Ready').optional() }) }",
             "\"extract\" is reserved by generated client types",
         ),
         ("tables: []", "`tables` must be an object"),
@@ -703,7 +735,31 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         ),
         (
             "collections: { notes: collection({ title: text() }, { comments: 'yes' }) }",
-            "`comments` must be true or false",
+            "`comments` is true, false or an options object",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }, { comments: { guest: true } }) }",
+            "`comments` has no option `guest`",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }, { comments: { moderation: 'sometimes' } }) }",
+            "`comments.moderation` can't be \"sometimes\"",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }, { comments: { threaded: 11 } }) }",
+            "`comments.threaded` can't be",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }, { comments: { closeAfterDays: 0 } }) }",
+            "`comments.closeAfterDays` can't be",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }, { comments: { types: ['review'] } }) }",
+            "comment types aren't built yet",
+        ),
+        (
+            "tables: { notes: table({ title: text().optional() }, { comments: { guests: true } }) }",
+            "only collection() kinds take comments",
         ),
     ] {
         std::fs::write(tmp.path().join("first.config.ts"), format!(
@@ -886,6 +942,56 @@ fn context_values_pass_through_typed_helpers() {
         "{stderr}"
     );
     assert!(stderr.contains("help: use `keyof` on a finite object"), "{stderr}");
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
+/// A value typed as a function only by a type assertion or parsed JSON can be a string at run
+/// time. Passed to a callback-taking method or called, it is refused as a JavaScript TypeError;
+/// PHP never calls the PHP function the request named. `sprintf`, `max` and `First\Js::typeOf`
+/// accept any argument count, so before the check they ran and returned a result. (A JSON array
+/// parses to a JsArray, never a PHP `[class, method]` array; tests/php/js_parity.php covers those.)
+#[test]
+fn a_string_from_input_is_never_called_as_a_php_function() {
+    let tmp = std::env::temp_dir().join(format!("first-callback-closures-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/callback-closures"), &tmp);
+    let built = first().arg("build").arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let got = wp_eval_json(
+        &tmp.join("first/dist/wp-content"),
+        r#"$out = [];
+           foreach ($arg as [$action, $input]) {
+               [$status, $body] = $wp->call("POST", "/actions/$action", $input);
+               $out[] = [$action, $status, $body["detail"] ?? $body];
+           }
+           echo json_encode($out);"#,
+        &serde_json::json!([
+            ["map", { "fn": "sprintf" }],
+            ["map", { "fn": "First\\Js::typeOf" }],
+            ["filter", { "fn": "strrev" }],
+            ["reduce", { "fn": "max" }],
+            ["replace", { "fn": "max" }],
+            ["range", { "fn": "max" }],
+            ["passed", { "fn": "strrev" }],
+            ["call", { "fn": "strrev", "arg": "abc" }],
+            ["json", { "body": "{\"fn\":\"sprintf\"}" }],
+        ]),
+    );
+    let refused = "Callback is not a function";
+    assert_eq!(
+        got,
+        serde_json::json!([
+            ["map", 422, refused],
+            ["map", 422, refused],
+            ["filter", 422, refused],
+            ["reduce", 422, refused],
+            ["replace", 422, refused],
+            ["range", 422, refused],
+            ["passed", 422, refused],
+            ["call", 422, refused],
+            ["json", 422, refused],
+        ])
+    );
     let _ = std::fs::remove_dir_all(tmp);
 }
 
@@ -1692,12 +1798,40 @@ fn html_runtime_drops_unsafe_attribute_names_from_any_source() {
     );
 }
 
-/// Server HTML with generator B's additions removed: every `data-wp-*` attribute, and the
-/// `<span data-wp-text="…">` wrappers it puts around dynamic text that shares its parent.
+/// Server HTML with generator B's additions removed: every `data-wp-*` attribute, the
+/// `<span data-wp-text="…">` wrappers it puts around dynamic text that shares its parent, and the
+/// `<template data-wp-each--…>` a reactive list or conditional re-renders from (templates nest
+/// when a list item holds a list).
 fn without_directives(html: &str) -> String {
+    let mut kept = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(at) = rest.find("<template data-wp-each") {
+        kept.push_str(&rest[..at]);
+        let mut depth = 0usize;
+        let mut i = at;
+        loop {
+            let open = rest[i..].find("<template").map(|o| o + i);
+            let close = rest[i..].find("</template>").map(|c| c + i).expect("closed template");
+            match open {
+                Some(o) if o < close => {
+                    depth += 1;
+                    i = o + 1;
+                }
+                _ => {
+                    depth -= 1;
+                    i = close + "</template>".len();
+                    if depth == 0 {
+                        break;
+                    }
+                }
+            }
+        }
+        rest = &rest[i..];
+    }
+    kept.push_str(rest);
     let attr = regex::Regex::new(r#" data-wp-[a-z0-9-]+="[^"]*""#).unwrap();
     let span = regex::Regex::new(r#"<span data-wp-text="[^"]*" data-first-text="">([^<]*)</span>"#).unwrap();
-    let html = span.replace_all(html, "$1");
+    let html = span.replace_all(&kept, "$1");
     attr.replace_all(&html, "").into_owned()
 }
 
@@ -2048,7 +2182,10 @@ fn rejects_phase2_static_contracts() {
         ("reject-files-cover", "fit: cover requires height"),
         ("reject-files-size-name", "invalid media size name"),
         ("reject-files-size-count", "media supports at most 12 sizes"),
-        ("reject-files-bucket", "unknown file bucket"),
+        (
+            "reject-files-bucket",
+            "file() refers to a files() bucket that isn't exported",
+        ),
         (
             "reject-files-global",
             "file() columns belong to collections, not globals",
@@ -2563,8 +2700,8 @@ fn builds_wordpress_and_knows_no_target_option() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
-/// A kind's `url` and `staged` and the config's `frontend` (docs/spec/spec.md §2.7, §5): checked at
-/// build time and emitted into schema.php, where the runtime reads them.
+/// A kind's `url`, `staged` and `comments` and the config's `frontend` (docs/spec/spec.md §2.3,
+/// §2.7, §5): checked at build time and emitted into schema.php, where the runtime reads them.
 #[test]
 fn kind_urls_and_the_frontend_mode_reach_the_schema() {
     rejects(
@@ -2624,6 +2761,25 @@ export default defineConfig({ name: "kindurls", collections: { notes, plain }, f
     assert_eq!(built["collections"]["notes"]["url"], "/notes/:year/:slug");
     assert!(built["collections"]["plain"].get("url").is_none(), "{built}");
     assert_eq!(built["frontend"], "https://www.example.com");
+    // `comments` (spec §2.3): `true` is the defaults; an object overrides some; off writes no policy.
+    let built = schema(
+        r#"import { collection, defineConfig, text } from "first";
+export const posts = collection({ title: text() }, { comments: true });
+export const reviews = collection({ title: text() }, { comments: { guests: true, moderation: "all", threaded: false, closeAfterDays: 30 } });
+export const pages = collection({ title: text() });
+export default defineConfig({ name: "kindurls", collections: { posts, reviews, pages } });
+"#,
+    );
+    let defaults = serde_json::json!({ "guests": false, "moderation": "first-time", "threaded": 3, "closeAfterDays": null, "types": [] });
+    assert_eq!(built["collections"]["posts"]["comments"], true);
+    assert_eq!(built["collections"]["posts"]["commentPolicy"], defaults);
+    assert_eq!(built["collections"]["reviews"]["comments"], true);
+    assert_eq!(
+        built["collections"]["reviews"]["commentPolicy"],
+        serde_json::json!({ "guests": true, "moderation": "all", "threaded": 1, "closeAfterDays": 30, "types": [] })
+    );
+    assert_eq!(built["collections"]["pages"]["comments"], false);
+    assert!(built["collections"]["pages"].get("commentPolicy").is_none(), "{built}");
     let built = schema(
         r#"import { defineConfig } from "first";
 export default defineConfig({ name: "kindurls", frontend: false });
@@ -2682,6 +2838,23 @@ export default defineConfig({ name: "kindurls", sealed: true, admin: true, local
         built["sealed"],
         serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor"]})
     );
+    // A sealed site can't declare a plugin that hands content out around First's read rules.
+    for slug in ["vip-block-data-api", "vip-decoupled-bundle"] {
+        let denied = tmp.path().join(format!("app-sealed-denied-{slug}"));
+        std::fs::create_dir_all(&denied).unwrap();
+        std::fs::write(
+            denied.join("first.config.ts"),
+            format!("import {{ defineConfig }} from \"first\";\nexport default defineConfig({{ name: \"kindurls\", sealed: true, plugins: {{ \"{slug}\": {{ version: \"1.0.0\", pluginData: {{ resource: \"url\", url: \"https://example.test/{slug}.zip\" }}, sha256: \"{}\" }} }} }});\n", "0".repeat(64)),
+        )
+        .unwrap();
+        let out = first().args(["build", "--quiet"]).arg(&denied).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success(), "{slug}: {stderr}");
+        assert!(
+            stderr.contains(&format!("a sealed site can't run {slug}")) && stderr.contains("around First's read rules"),
+            "{slug}: {stderr}"
+        );
+    }
     let refused = tmp.path().join("app-sealed-refused");
     std::fs::create_dir_all(&refused).unwrap();
     std::fs::write(
@@ -3277,7 +3450,7 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
-/// `taxonomy()` and `terms()` (docs/decisions/2026-11-11-authoring-surface.md, rulings 24-33): schema.php
+/// `taxonomy()` and `terms()` (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34): schema.php
 /// carries the taxonomy under `taxonomies` with its WordPress names, the item field and a relation each
 /// way through core's term relationships; db.d.ts types them; nothing enters the migration snapshot.
 #[test]

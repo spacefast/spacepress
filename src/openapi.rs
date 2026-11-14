@@ -864,19 +864,13 @@ impl Builder<'_> {
                     &tag,
                     format!("{key}.revisions.list"),
                     format!("Revisions of {table}"),
-                    "Each saved version of the row, with its time and who saved it.",
+                    format!("Each saved version of the row, newest first, with its time and who saved it, one page at a time. `limit` is {LIMIT} unless given, and at most {MAX_LIMIT}; `cursor` is null on the last page."),
                 )
                 .rule(&update)
                 .note(needs)
-                .params([id.clone()])
-                .ok(
-                    200,
-                    envelope(
-                        "The revisions.",
-                        json!({ "type": "array", "items": self.own_ref("RevisionSummary") }),
-                    ),
-                )
-                .errors(&[404]),
+                .params([id.clone(), paging("limit"), paging("offset"), paging("cursor")])
+                .ok(200, page(self.own_ref("RevisionSummary")))
+                .errors(&[400, 404]),
             );
             self.paths.add(
                 &format!("{item}/revisions/{{revision}}"),
@@ -1704,7 +1698,7 @@ impl Builder<'_> {
         if let Some(search) = services["search"].as_object() {
             self.tag(tag, description);
             let collections: Vec<&String> = search.keys().collect();
-            self.paths.add("/services/search", "get", Op::new(tag, "services.search", "Search published content", "Finds published rows of one kind whose search fields contain the text. At most 20 rows.")
+            self.paths.add("/services/search", "get", Op::new(tag, "services.search", "Search published content", "Finds published rows of one kind whose configured fields hold every word of the text, each at the start of a word, through the search index. At most 20 rows.")
                 .rule(&Access::anyone())
                 .params([
                     json!({ "name": "collection", "in": "query", "required": true, "description": "The kind to search.", "schema": { "type": "string", "enum": collections } }),
@@ -2029,7 +2023,7 @@ mod tests {
         let doc = document(
             "import { collection, global, text } from \"first\";\n\
              export const categories = collection({ title: text() }, { title: \"title\" });\n\
-             export const posts = global(\"posts\", { motto: text().default(\"x\") });\n",
+             export const posts = global({ motto: text().default(\"x\") });\n",
         );
         assert_eq!(dangling(&doc), Vec::<String>::new());
         assert_eq!(doc["paths"]["/tags"]["get"]["operationId"], "tags.list");

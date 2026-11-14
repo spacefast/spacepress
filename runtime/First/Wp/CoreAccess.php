@@ -42,7 +42,7 @@ final class CoreAccess
     public static function register(): void
     {
         add_filter('map_meta_cap', [self::class, 'mapMetaCap'], 10, 4);
-        // Core lets `assign_terms` create a term in a flat taxonomy; First's create rule decides (ruling 28).
+        // Core lets `assign_terms` create a term in a flat taxonomy; First's create rule decides (ruling 29).
         add_filter('pre_insert_term', [self::class, 'termCreate'], PHP_INT_MAX, 2);
         // Last: SCF adds its field links on the same filters at 10, registered later in the request.
         add_filter('rest_prepare_revision', [self::class, 'prepareChild'], PHP_INT_MAX, 3);
@@ -189,7 +189,7 @@ final class CoreAccess
         // `edit_`, `create_`, `delete_`: the rule may allow some row. The `others`/`published`/`private`
         // variants speak for any row, so they need a rule that covers every row as stored.
         return match ($kind) {
-            // A taxonomy's terms are assigned by writing an item of an attached kind (ruling 28).
+            // A taxonomy's terms are assigned by writing an item of an attached kind (ruling 29).
             'assign' => array_filter(self::schema()->collection($collection)['wp']['on'] ?? [],
                 static fn (string $kind): bool => self::ruleMayAllow($kind, 'create', $viewer) || self::ruleMayAllow($kind, 'update', $viewer)) !== [],
             'manage' => self::ruleMayAllow($collection, 'create', $viewer) || self::ruleMayAllow($collection, 'update', $viewer) || self::ruleMayAllow($collection, 'delete', $viewer),

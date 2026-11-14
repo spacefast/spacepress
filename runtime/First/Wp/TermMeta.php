@@ -8,7 +8,7 @@ use First\Js;
 use First\Wp\Abilities\JsonSchema;
 
 /**
- * Core `meta` for a First taxonomy (ruling 24): every authored field is registered term meta
+ * Core `meta` for a First taxonomy (ruling 25): every authored field is registered term meta
  * (`first_<field>`, `show_in_rest` under its own name), so `/wp/v2/first_<name>` reads `meta.<field>`
  * in First's value form, with the fields this viewer may not read left out. Writes never go through
  * core's generic meta path (`auth_callback` false): {@see TermsController} reads `meta` and saves it

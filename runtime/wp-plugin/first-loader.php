@@ -174,6 +174,9 @@ final class Store
 /** Mounts exactly one build per request, then initializes it once per site. */
 final class Loader
 {
+    /** Plugins a sealed site never runs ({@see \First\Wp\Sealed::DENIED}, the compiler's `SEALED_DENIED`). */
+    public const SEALED_DENIED = ['vip-block-data-api', 'vip-decoupled-bundle'];
+
     private static ?array $loaded = null;
     private static ?\First\Schema $schema = null;
 
@@ -277,7 +280,8 @@ final class Loader
      */
     public static function allowedPlugins(array $active, array $allowed): array
     {
-        $allowed = array_fill_keys($allowed, true);
+        // Never a plugin that serves stored content around First's read rules, even if a list names it.
+        $allowed = array_diff_key(array_fill_keys($allowed, true), array_fill_keys(self::SEALED_DENIED, true));
 
         return array_values(array_filter($active, static function ($plugin) use ($allowed): bool {
             return is_string($plugin) && preg_match('#\A([^/]+)/[^/]+\.php\z#D', $plugin, $m) === 1

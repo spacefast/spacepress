@@ -33,7 +33,9 @@ Back up the **database**.
   its attributes. The site renders it by calling the component: its attributes are the props and
   its inner blocks, rendered, are `children`. The block editor inserts it, edits its props in the
   sidebar and its content as inner blocks, and previews a block without children by rendering it
-  on the server.
+  on the server. A block without children uses core's `autoRegister` block support (WordPress
+  7.0+), which registers it in the editor with the server preview and a sidebar field per prop;
+  only blocks with children need the runtime's editor script, for their inner blocks.
 - **In a Markdown file** it is the tag, alone on its lines. Attribute values are `"text"`,
   `{true}`, `{false}` or `{number}`; what is between the tags is Markdown. Writing the block back
   gives the same tag, so `first sync` round-trips it, and an editor's change to a prop changes the

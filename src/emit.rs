@@ -60,7 +60,24 @@ pub(crate) fn runtime_file(rel: &str) -> Option<&'static [u8]> {
 /// build store writes the tree once per revision.
 pub(crate) fn runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
     use std::borrow::Cow;
+    let runtime_hash = {
+        use sha2::Digest;
+        let mut hash = sha2::Sha256::new();
+        for (rel, bytes) in runtime_files::FILES {
+            if rel.starts_with("First/") {
+                hash.update(rel.as_bytes());
+                hash.update([0]);
+                hash.update(bytes);
+            }
+        }
+        hash.finalize()
+            .iter()
+            .take(8)
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    };
     let vars = [
+        ("runtimeHash", runtime_hash),
         ("wpVersion", platform::WORDPRESS.to_string()),
         ("phpVersion", platform::PHP.to_string()),
         ("firstVersion", env!("CARGO_PKG_VERSION").to_string()),
@@ -124,7 +141,7 @@ pub(crate) fn emit_generated(
     let schema_php = schema_php::render(&built.schema);
     if runtime {
         for (rel, bytes) in runtime_tree() {
-            // The optional admin screens: only when the config opted in.
+            // First Admin: unless the config sets `admin: false`.
             if rel != "first-loader.php" && (built.schema.admin || !rel.starts_with("first-admin/")) {
                 write(&plugins.join(rel), bytes)?;
             }

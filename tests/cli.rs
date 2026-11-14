@@ -891,6 +891,11 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
         serde_json::json!(["guest", "subscriber", "author", "editor", "admin"])
     );
     assert_eq!(schema["endpoints"]["mcp"], "/wp-json/mcp/first-agentkit");
+    // Both admins, with First Admin the default (the kit does not set `admin: false`).
+    assert_eq!(
+        schema["admin"],
+        serde_json::json!({ "default": "/wp-admin/new/", "classic": "/wp-admin/" })
+    );
     let abilities: Vec<&str> = schema["abilities"]
         .as_array()
         .unwrap()
@@ -1420,6 +1425,68 @@ fn mcp_reads_a_site_commands_answer_after_other_output() {
         serde_json::json!({ "data": [{ "id": 1 }] })
     );
     mcp.finish();
+}
+
+/// `first add api-reference` on a fresh scaffold: the pages check, build and type-check, and the
+/// app's routes now include /api and /api/<tag>/<operation>.
+#[test]
+fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = scaffold(tmp.path());
+    let added = add(&project, &["api-reference"]);
+    assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
+    let report = text(&added.stdout);
+    for file in [
+        "first/app/api/page.tsx",
+        "first/app/api/[tag]/[operation]/page.tsx",
+        "first/components/ApiFields.tsx",
+        "first/API.md",
+    ] {
+        assert!(project.join(file).is_file(), "{file}");
+        assert_eq!(reported(&report, file).0, "created", "{report}");
+    }
+    let built = first().arg("build").arg(&project).output().unwrap();
+    assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
+    let routes = std::fs::read_to_string(project.join("first/_generated/routes.d.ts")).unwrap();
+    assert!(routes.contains("\"api\": { path: `/api`"), "{routes}");
+    assert!(
+        routes.contains("\"api/[tag]/[operation]\": { path: `/api/${string}/${string}`"),
+        "{routes}"
+    );
+    // The pages type-check against First's types, with the generated routes.
+    std::fs::write(
+        project.join("tsconfig.test.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "extends": "./tsconfig.json",
+            "compilerOptions": {
+                "types": [], "jsx": "react-jsx", "jsxImportSource": "first", "skipLibCheck": true,
+                "paths": {
+                    "first": [root().join("types/first/index.d.ts")],
+                    "first/app": [root().join("types/first/app.d.ts")],
+                    "first/content": [root().join("types/first/content.d.ts")],
+                    "first/jsx-runtime": [root().join("types/first/jsx-runtime.d.ts")],
+                    "first/jsx-dev-runtime": [root().join("types/first/jsx-dev-runtime.d.ts")]
+                }
+            },
+            "include": ["first/**/*.ts", "first/**/*.tsx"],
+            "exclude": ["first/dist"]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let typed = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .arg("--project")
+        .arg(project.join("tsconfig.test.json"))
+        .output()
+        .expect("tsc (or TSC) must be installed to check the added files");
+    assert!(typed.status.success(), "{}{}", text(&typed.stdout), text(&typed.stderr));
+    // A second run keeps every file as it is.
+    let again = add(&project, &["api-reference"]);
+    assert!(
+        text(&again.stdout).starts_with("first add api-reference: nothing to add\n"),
+        "{}",
+        text(&again.stdout)
+    );
 }
 
 /// A project from the scaffolder, as `npm create @spacefast/first` writes it, without the npm
@@ -2403,6 +2470,7 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
             "first-dev-site",
             "first-fix-diagnostic",
             "first-migrate",
+            "first-migrate-astro",
             "first-write-action"
         ]
     );

@@ -8,7 +8,7 @@ use First\HttpError;
 
 /**
  * Core `/wp/v2/first_<name>` for a `taxonomy()` kind (docs/decisions/2026-11-11-authoring-surface.md,
- * rulings 24 and 28): core's terms controller, with First's rules on top of the per-taxonomy
+ * rulings 25 and 29): core's terms controller, with First's rules on top of the per-taxonomy
  * capabilities it already checks ({@see CoreAccess::mapMetaCap()} answers those from the same rules).
  *
  * - Reads: a read rule that denies is 401/403; First's `where`, `orderBy` and `with` (as on a post

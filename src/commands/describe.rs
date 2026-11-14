@@ -321,8 +321,11 @@ pub(super) fn project(schema: &Schema) -> Value {
     if let Some(locales) = &schema.locales {
         out["locales"] = locales.clone();
     }
-    if schema.admin {
-        out["admin"] = json!(true);
-    }
+    // Both admins: First Admin (unless `admin: false`) and classic wp-admin, below the site URL.
+    out["admin"] = if schema.admin {
+        json!({ "default": "/wp-admin/new/", "classic": "/wp-admin/" })
+    } else {
+        json!({ "default": "/wp-admin/", "classic": "/wp-admin/" })
+    };
     out
 }

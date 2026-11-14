@@ -32,7 +32,7 @@ system table (`SystemTables`), created on the plugin's upgrade check like the jo
   doesn't go through the pipeline. The members kind's entries follow core's `user_register`,
   `profile_update` and `deleted_user` hooks, re-read from the stored user the same way.
 - A kind whose searchable fields change in a build is rebuilt by a runtime job, `first.search.reindex`,
-  through the existing outbox and Action Scheduler, a batch of rows per run. Nothing is polled; no
+  through the existing jobs runner and Action Scheduler, a batch of rows per run. Nothing is polled; no
   cron, tick or worker is added. The rebuild clears nothing first: each run re-indexes its batch, row
   by row under a lock, and the last run deletes the entries of rows that no longer exist and of fields
   that are no longer searchable. A run carries the build's field list as its generation, and a run of
@@ -88,6 +88,32 @@ filtered list has, and it is not closed here.
 a searchable field and an API list, as the caller, and returns the matching rows per kind. A kind the
 caller may not read is left out without a word, and `kinds=` naming a kind that doesn't exist or isn't
 searchable gives the same empty answer as one with no match.
+
+**ElasticPress coexists.** ElasticPress (4.2, as VIP Enterprise Search runs it) replaces core queries,
+not tables: it returns its own results from `posts_pre_query` (WP_Query), `users_pre_query`,
+`terms_pre_query` and `comments_pre_query`, for a query it chose to integrate (a front-end or REST
+search, or one that sets `ep_integrate`). First's search never reaches those filters: the API, the
+site-wide endpoint and `{ search }` read `first__search` through First's own SQL, and First's handlers
+for core's list routes strip `s` before core's `WP_Query` runs (`FirstQuery::coreArgs`) and select the
+rows themselves. So on a site with ElasticPress, First's kinds are searched by First, with the reader's
+access, and WordPress's own searches (the theme's `?s=`, core's `/wp/v2/search`, other plugins'
+`WP_Query`) are ElasticPress's, as before (core's `/wp/v2/search` lists First's kinds after the `post` handler's own results, see below). Neither needs the other turned off. ElasticPress indexes
+only `public` post types by default (`Post::get_indexable_post_types`), and First registers its kinds
+with `public => false`, so it doesn't index them. A site that adds them through
+`ep_indexable_post_types` would have core searches over them answered from Elasticsearch, outside
+First's field access; it shouldn't.
+
+**The same search everywhere (2026-11-14).** The services module's `GET /services/search` ran its
+own `LIKE '%term%'` over its configured fields, outside the index. It now runs the index search on
+the kind's read, narrowed to the configured fields (`searchFields`), keeping its response. Core's
+`GET /wp/v2/search`, which the block editor's link picker calls with `type=post`, listed only public
+post types, and First's are not public. `Wp\SearchHandler` takes the place of the `post` handler
+on `wp_rest_search_handlers` (core keeps one handler per type, `WP_REST_Search_Controller`, so a
+type of First's own would never be asked by the editor). It keeps the previous handler's results
+and adds the published items of each kind with a `url` through the same read as the caller. An
+update that changes no searchable field leaves the row's entries as they are, as WooCommerce
+updates its product lookup table only when a looked-up property changed
+(`class-wc-product-data-store-cpt.php`, `update_lookup_table`).
 
 ## Not done
 

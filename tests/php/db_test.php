@@ -855,6 +855,35 @@ $r = http('DELETE', "/items/{$widget['id']}");
 eq('DELETE returns the deleted row', [$r['status'], $r['json']['data']['name'] ?? null, $r['json']['data']['qty'] ?? null], [200, 'Widget', 12]);
 $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'not_found');
 
+// ================================================================ afterPublish (spec §2.8)
+
+// A collection's item became published: created published, updated from a draft, or its scheduled
+// time came. Updating an already-published item, or a draft, doesn't run it.
+(static function (): void {
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $status = ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true];
+    $seen = [];
+    $raw = ['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => [
+        'bulletins' => ['primaryKey' => 'id', 'drafts' => true, 'editor' => false, 'table' => 'first_ap_bulletins',
+            'hooks' => ['afterPublish' => static function (array $row) use (&$seen): void { $seen[] = $row['title']; }],
+            'columns' => ['id' => $id, 'title' => ['type' => 'text', 'notNull' => true], 'status' => $status, 'publishedAt' => ['type' => 'timestamp', 'system' => true]]],
+    ]];
+    $schema = new \First\Schema($raw);
+    $wp = $GLOBALS['wp'];
+    $wp->exec('CREATE TABLE {prefix}first_ap_bulletins (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `title` LONGTEXT NOT NULL, `status` VARCHAR(191) NOT NULL, `publishedAt` CHAR(24), PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $db = new \First\Db(\First\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \First\db()->media());
+    $db->insert('bulletins', ['title' => 'live']);
+    $draft = $db->insert('bulletins', ['title' => 'draft', 'status' => 'draft'], true)[0];
+    $db->update('bulletins', ['title' => 'draft, edited'], ['id' => $draft['id']]);
+    $db->update('bulletins', ['status' => 'published'], ['id' => $draft['id']]);
+    $db->update('bulletins', ['title' => 'published, edited'], ['id' => $draft['id']]);
+    $later = $db->insert('bulletins', ['title' => 'later', 'status' => 'scheduled', 'publishedAt' => gmdate('Y-m-d\\TH:i:s.000\\Z', time() + 3600)], true)[0];
+    $db->promoteDue();
+    $wp->exec("UPDATE {prefix}first_ap_bulletins SET `publishedAt` = '" . gmdate('Y-m-d\\TH:i:s.000\\Z', time() - 60) . "' WHERE `id` = " . (int) $later['id']);
+    $db->promoteDue();
+    eq('afterPublish runs once per item that became published, scheduled ones when they come due', $seen, ['live', 'draft, edited', 'later']);
+})();
+
 // ================================================================ relation filters respect the target's read access
 
 // A relation filter is an oracle over the target's columns, so it may only see target rows a direct
@@ -1155,10 +1184,11 @@ $faProblem('a malformed layout is the validator\'s to report', $as('fa_alice', '
 $rev = $db->revisions('profiles', $mine['id'])[0]['id'];
 $revRow = $as('fa_alice', 'GET', "/profiles/{$mine['id']}/revisions/$rev")[1];
 eq('a revision hides what the live row hides', [array_key_exists('email', $revRow), $revRow['salary'], $revRow['notes']], [false, 10, ['public' => 'x', 'pinned' => true, 'tag' => null]]);
-// Restore replays every user column as a patch: readable values she can't set pass unchanged, but a
-// value she can neither read nor set is refused whatever it is (an update must not probe hidden values).
-// (email, hidden from her too, is the first column the replay would overwrite)
-$faProblem('an owner can\'t restore over a value hidden from her', $as('fa_alice', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore"), 403, 'forbidden', '/email');
+// Restore puts back the whole revision as stored: what she can read through her rules, and what is
+// hidden from her (email) as trusted values she never sent, so nothing about them is probed or returned.
+$db->update('profiles', ['email' => 'later@example.test'], ['id' => $mine['id']]);
+[$restoredStatus, $restoredRow] = $as('fa_alice', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore");
+eq('an owner restores a revision, hidden fields included, and the answer hides them', [$restoredStatus, array_key_exists('email', $restoredRow ?? []), $db->findFirst('profiles', ['where' => ['id' => $mine['id']]])['email']], [200, false, 'alice@example.test']);
 eq('an admin restores the same revision', $as('fa_admin', 'POST', "/profiles/{$mine['id']}/revisions/$rev/restore")[0], 200);
 
 // /_schema reports per-column summaries (no function names).

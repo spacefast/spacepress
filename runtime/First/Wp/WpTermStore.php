@@ -13,7 +13,7 @@ use First\Source;
 use First\Store;
 
 /**
- * `taxonomy()` kinds (docs/decisions/2026-11-11-authoring-surface.md, rulings 24-33): a term row is
+ * `taxonomy()` kinds (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34): a term row is
  * core's term (`wp_terms` + `wp_term_taxonomy`) plus its term meta, read with the same compiled SQL as
  * every other kind and written through core's term API (`wp_insert_term`, `wp_update_term`,
  * `wp_delete_term`) with the editor hooks muted, inside the request transaction.

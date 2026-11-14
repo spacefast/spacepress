@@ -35,7 +35,7 @@ final class Polylang
 
             return $types;
         }, 10, 2);
-        // A First taxonomy is one vocabulary for every locale (`translations: false`, ruling 31): never
+        // A First taxonomy is one vocabulary for every locale (`translations: false`, ruling 32): never
         // one of Polylang's translated taxonomies, nor offered on its settings screen.
         add_filter('pll_get_taxonomies', static function (mixed $taxonomies): array {
             $taxonomies = (array) $taxonomies;

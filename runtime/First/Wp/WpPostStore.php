@@ -675,14 +675,46 @@ final class WpPostStore implements Store
     // ================================================================ staged versions ({@see Staged})
 
     /**
-     * The post name of an item's one staged revision. It is in core's autosave family, so every
-     * place that passes over autosaves passes over it: ordinary revision lists, revision pruning and
-     * core's "has the post changed" check. It is not core's own slot (`<id>-autosave-v1`), which the
-     * editors overwrite per user and delete when they find it older than the post.
+     * The status of an item's staged revision. Every revision core reads, it reads with status
+     * `inherit`: revision lists, the autosaves route the block editor picks the user's autosave from,
+     * wp-admin's revision screen and its restore, pruning, the "has the post changed" check, the
+     * revision count in REST links and wp-admin's revision upgrade. So none of them sees a staged
+     * version. Deleting the item still deletes it: core deletes a post's revisions by type alone.
+     */
+    public const STAGED_STATUS = 'first-staged';
+
+    /**
+     * The post name of an item's one staged revision. It is in core's autosave family, so code that
+     * reads revisions by name alone (`wp_is_post_autosave()`) passes over it too. It is not core's
+     * own slot (`<id>-autosave-v1`), which the editors overwrite per user and delete when they find
+     * it older than the post.
      */
     public static function stagedName(int $pk): string
     {
         return $pk . '-autosave-staged-v1';
+    }
+
+    /**
+     * Staged revisions written before they had their own status are `inherit`, so core listed them as
+     * autosaves. Give them the staged status; nothing else about them changes. A guarded runtime
+     * upgrade step ({@see Runtime::boot()}): it runs once per site, and again finds nothing to do.
+     */
+    public static function upgradeStagedStatus(\First\Store $store): void
+    {
+        $db = $store instanceof CompositeStore ? $store->db : null;
+        if ($db === null) {
+            return;
+        }
+        $posts = $db->wpdb()->posts;
+        foreach ($db->run("SELECT ID, post_parent, post_name FROM `$posts` WHERE post_type = 'revision' AND post_status = 'inherit' AND post_name LIKE ?", ['%-autosave-staged-v1']) as $row) {
+            $name = self::stagedName((int) $row['post_parent']);
+            if ($row['post_name'] === $name) {
+                // The name again: a promote or discard that committed since the read renamed it, and
+                // that retired revision must stay `inherit`, in the item's history.
+                $db->run("UPDATE `$posts` SET post_status = ? WHERE ID = ? AND post_status = 'inherit' AND post_name = ?", [self::STAGED_STATUS, (int) $row['ID'], $name]);
+                clean_post_cache((int) $row['ID']);
+            }
+        }
     }
 
     /** The id of the item's staged revision, or null when nothing is staged. */
@@ -775,7 +807,7 @@ final class WpPostStore implements Store
         $field = static fn (string $designation, string $native): string => is_string($spec[$designation] ?? null) && $spec[$designation] !== ''
             ? (string) ($row[$spec[$designation]] ?? '') : (string) $parent->$native;
         $post = [
-            'post_type' => 'revision', 'post_status' => 'inherit', 'post_parent' => $pk, 'post_name' => self::stagedName($pk),
+            'post_type' => 'revision', 'post_status' => self::STAGED_STATUS, 'post_parent' => $pk, 'post_name' => self::stagedName($pk),
             'post_title' => $field('title', 'post_title'), 'post_content' => $field('content', 'post_content'), 'post_excerpt' => $parent->post_excerpt,
             'post_author' => $userId ?? 0, 'post_date' => current_time('mysql'), 'post_date_gmt' => current_time('mysql', true),
         ] + ($rid === null ? [] : ['ID' => $rid]);
@@ -797,13 +829,13 @@ final class WpPostStore implements Store
     }
 
     /**
-     * A staged revision that was promoted or discarded becomes an ordinary revision of the item: it
-     * stays in the item's history and no longer answers as its staged version.
+     * A staged revision that was promoted or discarded becomes an ordinary revision of the item, with
+     * core's name and status: it stays in the item's history and no longer answers as its staged version.
      */
     public function stagedRetire(int $pk, int $rid): void
     {
         $this->db->touchPost($rid);
-        $this->db->run('UPDATE `' . $this->db->wpdb()->posts . '` SET post_name = ? WHERE ID = ? AND post_parent = ?', [$pk . '-revision-v1', $rid, $pk]);
+        $this->db->run('UPDATE `' . $this->db->wpdb()->posts . "` SET post_name = ?, post_status = 'inherit' WHERE ID = ? AND post_parent = ?", [$pk . '-revision-v1', $rid, $pk]);
         clean_post_cache($rid);
     }
 

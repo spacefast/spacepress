@@ -57,6 +57,24 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 - `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
 - `<Content value>` renders a post body through `the_content`. `<Html value>` places a literal as written and runs anything else through `wp_kses_post`.
 
+### Forms that post to an action
+
+<RepoFile path="tests/fixtures/forms/first/app/page.tsx" />
+
+- `<form action={subscribe}>` posts to the action you import from your server code. It works with JavaScript off: the browser sends the form, the action runs as the visitor, and they come back to the same page.
+- `useFormState(subscribe)` reads what came back, once: `result` (the action's return value), `error` (`code`, `message`, and `fields.<name>` for the field it is about) and `values` (what was typed, to fill the form again; never a `type="password"` field).
+- Fields read as the action's input says: a number field from its digits, a `boolean()` from a checkbox (unchecked is `false`), and an empty field as absent.
+- The page a form comes back to is never cached for anyone else. A page with a form stays cacheable for signed-out visitors. A signed-in page's form carries the REST nonce. Only your own pages may post.
+- To go somewhere else after success, call `redirect()` when `state.result` is set.
+
+### Comments
+
+<RepoFile path="tests/fixtures/comments/first/app/notes/[slug]/page.tsx" />
+
+- `<Comments for={item} />` shows the thread as the visitor may read it (approved comments, plus their own held ones) and a form that works without JavaScript.
+- The item's kind turns `comments` on; on a kind without it the build stops at the prop.
+- Who may comment, moderation and reply depth are the kind's, enforced wherever a comment is created: this form, `POST /__first/api/v1/comments` and WordPress's own comment form all get the same answer. With `comments: true`: signed-in users only, a first comment waits for approval, replies go three levels deep; the kind's `comments` options change any of them.
+
 ### Markdown pages
 
 <RepoFile path="tests/fixtures/app-router/first/app/(site)/guide/page.md" />
@@ -64,7 +82,7 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 A `page.md` is a real WordPress Page. The file is its first version: the first request after a build stores the Markdown as blocks in a Page, with the front matter as its title, excerpt and status. From then on an editor changes it in wp-admin, in the block editor, and the route shows what they saved.
 
 - It renders inside the `layout.tsx` files above it, and a layout's `guard` protects it, like a `page.tsx`. Its `<title>` and description come from the stored Page, so an editor's change to either shows.
-- Front matter: `title`, `description`, `status` (`published` or `draft`), `canonical` and `robots: { index, follow }`. Without `title`, the first `# Heading` is the title. Any other key is a build error at its line: fields of your own belong to a kind with `sync`, where they have a type.
+- Front matter: `title`, `description`, `status` (`published` or `draft`), `canonical`, `robots: { index, follow }` and `id` (keeps the Page when the file moves to another URL). Without `title`, the first `# Heading` is the title. Any other key is a build error at its line: fields of your own belong to a kind with `sync`, where they have a type.
 - A later version of the file replaces the Page only while nobody edited the Page on the site. An edited Page keeps the site's version, and the log names the file. Removing the file leaves the Page in WordPress; nothing is deleted. The exception is taking a page away from visitors: a file that newly says `status: draft`, or moves under a `guard`, unpublishes an edited Page too, and leaves its text alone.
 - The route's path is the Page's address. WordPress's own address for it redirects there, and the editor's Preview button shows unsaved changes on the route.
 - A draft is a 404 for visitors and shows to people who can edit it. A Page under a `guard` is stored private, so WordPress's REST API, search, sitemap and feeds never list it. A password set in wp-admin locks the body for every visitor.
@@ -117,10 +135,13 @@ A component file under `first/components/` that starts with `"use client"` runs 
 
 <RepoFile path="tests/fixtures/client-components/first/server.ts" />
 
+<RepoFile path="tests/fixtures/client-components/first/components/Shelf.tsx" />
+
 - `useState(initial)` becomes a field of the element's `data-wp-context`. A setter takes a value or an updater.
 - `onClick` and other event props become `data-wp-on--*` actions. An `await` in a handler is fine.
 - Calling an `action()` the file imports posts to that action's endpoint with the REST nonce, so the caller is the visitor.
 - `useEffect`, `useMount`, `useEvent` and `useRef` come from `"first/client"`, and `sharedState()` gives state every instance shares.
+- A list over state or props, `items.map((item) => <li key={item.id}>…</li>)`, and a conditional, `{open && <p>…</p>}` or `{empty ? <em>…</em> : <b>…</b>}`, re-render in the browser. Each item and each branch is one element, and each item has a `key`. A list or conditional over values that never change renders once, on the server.
 - npm imports, module-level helpers the browser doesn't have, and assigning state directly are build errors at the line, with the alternative.
 
 The server HTML matches what React renders for the same component, which the parity tests check. These files come from [`tests/fixtures/client-components`](https://github.com/spacefast/zero/tree/main/tests/fixtures/client-components), which the test suite serves on WordPress and clicks in a browser. [`examples/full-site`](/examples/full-site) uses one for its cheer button.
@@ -145,7 +166,7 @@ Every page also has a Markdown twin at the same URL plus `.md` (or with `Accept:
 
 The site's sitemap is WordPress's own, at `/wp-sitemap.xml`. It lists the same pages, unless a page's metadata says `robots: { index: false }`, and the items of every kind with a `url` that a signed-out visitor may read. Drafts, rows an access rule hides and password-protected items are never in it.
 
-Each `page.tsx` route without parameters is also a hidden, code-owned WordPress Page. Menus, SEO plugins and `get_permalink()` see a normal published Page whose link is the route URL, `/` is the front page, and the Page keeps its ID across builds. Code Pages are absent from the wp-admin Pages list, its counts and REST `context=edit` lists; nobody may edit or delete them; WordPress's own addresses for them redirect to the route. A route under a `guard` stores its Page private.
+Each `page.tsx` route without parameters is also a hidden, code-owned WordPress Page. Its route ID is the folder path, or the page's own: `export const route = { id: "notes.featured" }` keeps the Page when the file moves, and the old URL redirects to the new one. Menus, SEO plugins and `get_permalink()` see a normal published Page whose link is the route URL, `/` is the front page, and the Page keeps its ID across builds. Code Pages are absent from the wp-admin Pages list, its counts and REST `context=edit` lists; nobody may edit or delete them; WordPress's own addresses for them redirect to the route. A route under a `guard` stores its Page private.
 
 ## From the old `pages/` renderer
 

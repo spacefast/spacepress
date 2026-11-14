@@ -26,6 +26,9 @@ fn collect(dir: &Path, root: &Path, out: &mut Vec<String>) {
                 "vendor"
                     | "node_modules"
                     | "apps"
+                    // The admin's retained upstream inputs: provenance in the repository
+                    // (runtime/admin/NOTICE, upstream-inventory.json), never loaded by the plugin.
+                    | "upstream-metadata"
                     | "composer.json"
                     | "composer.lock"
                     | "vendor.sh"
@@ -69,7 +72,9 @@ fn docs(dir: &Path, repo: &Path, recurse: bool, extensions: &[&str], out: &mut V
 /// The `docs/*.md` pages `first mcp` answers from: what someone building an app with First reads.
 const GUIDES: &[&str] = &[
     "admin.md",
+    "admin-screens.md",
     "agents.md",
+    "astro.md",
     "class-compilation.md",
     "compiler-diagnostics.md",
     "config-api.md",

@@ -218,6 +218,18 @@ fn collection(out: &mut String, c: &Collection) {
         let _ = writeln!(out, "            'staged' => false,");
     }
     let _ = writeln!(out, "            'comments' => {},", c.comments);
+    if let Some(p) = &c.comment_policy {
+        // spec §2.3, defaults filled; the comment enforcement reads it through Schema::commentPolicy().
+        let _ = writeln!(
+            out,
+            "            'commentPolicy' => ['guests' => {}, 'moderation' => '{}', 'threaded' => {}, 'closeAfterDays' => {}, 'types' => [{}]],",
+            p.guests,
+            p.moderation,
+            p.threaded,
+            p.close_after_days.map_or_else(|| "null".to_string(), |d| d.to_string()),
+            p.types.iter().map(|t| format!("'{t}'")).collect::<Vec<_>>().join(", ")
+        );
+    }
     let _ = writeln!(out, "            'uid' => {},", c.uid);
     let _ = writeln!(
         out,
@@ -295,7 +307,7 @@ fn collection(out: &mut String, c: &Collection) {
         let _ = writeln!(out, "            'url' => {},", php_str(url));
     }
     if let Some(tax) = &c.taxonomy {
-        // A taxonomy's terms are core's (ruling 24): `wp_terms`, `wp_term_taxonomy`, term meta.
+        // A taxonomy's terms are core's (ruling 25): `wp_terms`, `wp_term_taxonomy`, term meta.
         let t = &c.table;
         let on: Vec<String> = tax.on.iter().map(|k| php_str(k)).collect();
         let _ = writeln!(
@@ -332,6 +344,17 @@ pub fn render(schema: &Schema) -> String {
     let _ = writeln!(out, "    'runtime' => '{}',", crate::platform::SERIES);
     let _ = writeln!(out, "    'name' => {},", php_str(&schema.name));
     let _ = writeln!(out, "    'admin' => {},", schema.admin);
+    // WordPress's and First's own first path segments: the `public/` folder at the site root
+    // (First\Wp\PublicFiles) never answers for them, whatever it holds.
+    let _ = writeln!(
+        out,
+        "    'reserved' => [{}],",
+        crate::kind_url::RESERVED_FIRST_SEGMENTS
+            .iter()
+            .map(|r| php_str(r))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     // The complete allow-list (docs/sealed.md), the same one the build's manifests carry: the runtime
     // reads it here and decides nothing itself.
     if let Some(slugs) = crate::bundle::sealed_plugins(schema, crate::app_plugin::first_plugins(schema)) {
@@ -421,18 +444,22 @@ pub fn render(schema: &Schema) -> String {
                 None => "null".into(),
             };
             format!(
-                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}], 'kind' => {kind}]",
+                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}], 'kind' => {kind}{}]",
                 php_str(&r.id),
                 php_str(&r.pattern),
                 opt(&r.page),
                 opt(&r.handler),
                 r.layouts.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", "),
                 opt(&r.error),
-                r.styles.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", ")
+                r.styles.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", "),
+                if r.prerender { ", 'prerender' => true" } else { "" }
             )
         };
         if app.legacy_routes {
             out.push_str("        'legacyRoutes' => true,\n");
+        }
+        if schema.output == crate::schema::Output::Static {
+            out.push_str("        'output' => 'static',\n");
         }
         out.push_str("        'routes' => [\n");
         for r in &app.routes {
@@ -466,7 +493,7 @@ pub fn render(schema: &Schema) -> String {
                 .join(", ");
             let _ = writeln!(
                 out,
-                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'access' => {}, 'signature' => {}, 'search' => {}, 'methods' => [{methods}]],",
+                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'access' => {}, 'signature' => {}, 'search' => {}, 'methods' => [{methods}]{}],",
                 php_str(path),
                 opt(&f.component),
                 f.metadata.as_ref().map(php_json).unwrap_or_else(|| "null".into()),
@@ -477,6 +504,10 @@ pub fn render(schema: &Schema) -> String {
                     .as_ref()
                     .map(|s| fields_block(&s.fields, 3))
                     .unwrap_or_else(|| "null".into()),
+                f.static_params
+                    .as_ref()
+                    .map(|n| format!(", 'staticParams' => {}", php_str(n)))
+                    .unwrap_or_default(),
             );
         }
         out.push_str("        ],\n");
@@ -530,7 +561,7 @@ pub fn render(schema: &Schema) -> String {
     for c in schema.collections.values().filter(|c| c.taxonomy.is_none()) {
         collection(&mut out, c);
     }
-    // Taxonomies (docs/decisions/2026-11-11-authoring-surface.md, ruling 24): the same kind shape,
+    // Taxonomies (docs/decisions/2026-11-11-authoring-surface.md, ruling 25): the same kind shape,
     // read and written by the term store; the runtime finds them by name like any kind.
     if schema.collections.values().any(|c| c.taxonomy.is_some()) {
         out.push_str("    ],\n    'taxonomies' => [\n");

@@ -292,6 +292,30 @@ Transactions run concurrently, so a read whose result the transaction then
 depends on takes an explicit lock (`FOR UPDATE`, `LOCK IN SHARE MODE`; see
 `Sync\Lock`, `Locale\Lock`, `Jobs\Storage`).
 
+A job queued inside a transaction (`Jobs::enqueue`, a retry, a re-queue) writes
+its `first__jobs` row and its Action Scheduler action in that transaction.
+Action Scheduler writes through the global `$wpdb`, the connection the
+transaction runs on (`Wp\Connection`), so the action commits or rolls back with
+the row, and a crash after the commit loses no job. Action Scheduler caches the
+id of each group it creates in the object cache, which a rollback doesn't undo,
+so First creates its groups (`first`, `first-<app>`) at `action_scheduler_init`,
+outside any transaction (`Wp\Jobs\ActionSchedulerQueue::prepare`). The same
+step requires Action Scheduler's actions and groups tables to be InnoDB, like
+First's own; until they are, First refuses writes. If wpdb reconnects during a
+transaction (it retries a query after a lost connection, and the server has
+rolled the transaction back), every later statement of it and its commit fail.
+A job queued before Action Scheduler is ready (a `wp-hooks` handler on `init`
+at priority 0) commits without an action and gets one once Action Scheduler is
+ready. `Jobs\Runner::recover`, run when the runtime prepares a site and by the
+daily maintenance action, gives each waiting job that has no `first_job` action
+of any status one, at most 1000 per run. That covers a request that died before
+Action Scheduler was ready, deleted actions, and the jobs that runtimes before
+this one left in `first__outbox`. A job whose action an administrator cancelled
+in Tools > Scheduled Actions stays as it is; `wp first jobs cancel` cancels a
+job. The `first__outbox` table, where each job's ticket waited until after
+commit, is no longer written; its rows stay
+(`tests/php/jobs_transaction_cases.php`, run on SQLite and MariaDB).
+
 ## Validation and coercion (input → stored)
 
 | type | accepts | stored as (custom table column) |
@@ -556,6 +580,10 @@ The v2 app plugin registers these. A WordPress without a First app is unchanged.
 - **HTML pages** with a twin send
   `Link: <twin>; rel="alternate"; type="text/markdown"` and the matching
   `<link>` in `wp_head`.
+- **WordPress/ai's Markdown Feeds.** The app plugin adds itself (its plugin
+  file and `Name` header) to the `wpai_markdown_feeds_conflicting_plugins`
+  list, so a site that also turns on that experiment is told in its settings
+  that two plugins answer Markdown requests and print Markdown `<link>` tags.
 - **`/llms.txt`** and **`Content-Signal`** (on HTML pages, twins,
   `/llms.txt`, and a `robots.txt` line). The `first_content_signal` filter
   changes the value; `''` sends none.
@@ -681,7 +709,7 @@ and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
   `wp_update_user`, the profile screen, sign-up) are re-indexed on core's
   `user_register`, `profile_update` and `deleted_user`. When a build changes a
   kind's searchable fields, the first request after it queues the runtime job
-  `first.search.reindex` (outbox and Action Scheduler) for each kind that has
+  `first.search.reindex` (Action Scheduler) for each kind that has
   rows. It re-indexes 200 rows per run, each locked against a concurrent write,
   and queues the next; nothing is cleared first, so rows stay searchable during
   it, and the last run removes entries of deleted rows and dropped fields. A run
@@ -710,6 +738,22 @@ and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
 - `GET /search` runs the search on every kind with a searchable field and an
   API `list`, as the caller. A kind the caller may not read, and a `kinds=`
   name that isn't a searchable kind, are left out without a word.
+- **Core's search.** `GET /wp/v2/search` (the block editor's link picker, the
+  navigation block) also finds items of every kind with a `url`, a searchable
+  field and an API `list` (`Wp\SearchHandler`, on `wp_rest_search_handlers`).
+  The kinds are subtypes of `post`, because the editor asks for `type=post`
+  only and core keeps one handler per type. The handler wraps whichever
+  handler of `post` the site had: core's results come first, unchanged, then
+  each kind's published items as the caller reads them through First's read
+  pipeline with `search`. A kind the caller may not read is left out without a
+  word; a row the rule hides is neither found nor counted (`X-WP-Total`); a
+  title hidden from the caller comes back empty, and a kind whose `url` shows a
+  field the caller may not read (or, for `:ref.slug`, the referenced item's
+  slug) is not searched; the sitemap applies the same check. `subtype`, `include`,
+  `exclude`, `page` and `per_page` work as on core's posts. A site with
+  `frontend: false` adds nothing.
+- **Updates that change no searchable field** leave the row's entries alone
+  (the before and after rows of the write are compared field by field).
 
 ## URL purges (`Wp\Purges`)
 
@@ -728,7 +772,8 @@ listens and purges those URLs from Batcache and the edge. With no listener
 - **Paths, root-relative with their query:** the item's URL before and after
   the write (a slug change purges both), the home page, the posts page, the
   post type archive, every term archive the post had or has, the author
-  archive, page 2 of each listing, the feed, `/llms.txt`, the sitemap index
+  archive, page 2 of each listing, the site's posts and comments feeds, the
+  post's comments feed and each of its terms' feeds, `/llms.txt`, the sitemap index
   and every file of the sub-sitemap that would list the item (as many as the
   index last showed, plus one), and every page URL's `.md` twin. A term edit or delete purges its archive and page 2, and a
   slug change purges both the old and the new archive. Adding or removing a
@@ -742,14 +787,25 @@ listens and purges those URLs from Batcache and the edge. With no listener
   paths, `.md` twins included.
 - **`first/app/` pages** (`Render\Cache`): an anonymous visitor's 200 render of
   a page outside any guarded layout sends `Cache-Control: public,
-  s-maxage=300, max-age=0, must-revalidate` (the `first_app_cache_window`
-  filter sets the window); anything else sends `private, no-store` and calls
+  max-age=0, s-maxage=300, must-revalidate` (the `first_app_cache_window`
+  filter sets the window; `s-maxage` comes after `max-age` because Batcache
+  takes the last `max-age=` in the header as its own window); anything else sends `private, no-store` and calls
   `batcache_cancel()`. Each cacheable render records the rows it read in
   `first__app_reads` (kind, row id or `*` for a listing, path with query). A
   committed write to a kind announces, once after commit, every recorded path
   that read that row or listed the kind, with its `.md` twin. More than 200
   paths becomes `/*`, a whole-host purge. Nothing is recorded or announced
   without a listener.
+- **Page caches the runtime purges itself** (`Wp\PageCaches`): where Batcache
+  (`batcache_clear_url()`), the VIP edge cache (`wpvip_purge_edge_cache_for_url()`,
+  or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins) or Jetpack
+  Boost (`jetpack_boost_clear_page_cache_url`) is loaded, the runtime listens on
+  `first_purge_urls` and clears each path in each of them. Batcache counts only
+  while its drop-in runs (`$batcache` is set). `/*` bans the VIP site and clears
+  Boost's whole cache; a list longer than VIP queues in one request (100) bans
+  the VIP site once instead of each URL. Boost clears a URL recursively, so `/`
+  goes to its home action. Batcache has no whole-site clear, so its entries run
+  out with the window. A host's own listener runs beside these.
 
 ## Reactive queries (`Live\Module`)
 

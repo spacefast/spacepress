@@ -15,8 +15,9 @@ use function First\db;
  *
  * Policy, per response, from what the render was:
  * - an anonymous visitor's 200 render of a page no layout guards is **cacheable**:
- *   `Cache-Control: public, s-maxage=<window>, max-age=0, must-revalidate`, so Batcache and the
- *   edge keep it for everyone (a twin is always rendered as an anonymous visitor too);
+ *   `Cache-Control: public, max-age=0, s-maxage=<window>, must-revalidate`, so Batcache and the
+ *   edge keep it for everyone (a twin is always rendered as an anonymous visitor too). `s-maxage`
+ *   comes after `max-age`: Batcache reads the last `max-age` in the header as its own window;
  * - anything else (a signed-in viewer, a guarded section, an error, a 404) is
  *   `private, no-store`, and calls `batcache_cancel()` where Batcache runs.
  *
@@ -25,7 +26,8 @@ use function First\db;
  * row, and every URL that listed the kind, are announced on the host's `first_purge_urls` action
  * with their `.md` twins (`Wp\Purges::paths`), the same channel WordPress content writes use.
  * A write that touches more than PURGE_LIMIT URLs announces `/*` instead: a whole-host purge.
- * Nothing is recorded or announced when no host listens (`has_action('first_purge_urls')`).
+ * Nothing is recorded or announced when no host listens (`has_action('first_purge_urls')`); the
+ * runtime listens itself where Batcache, the VIP edge cache or Jetpack Boost runs (`Wp\PageCaches`).
  */
 final class Cache
 {
@@ -51,9 +53,10 @@ final class Cache
         Extensions::onWritten(self::written(...));
     }
 
+    /** A host's page cache listens for purges, or prebuilt pages need to know what changed. */
     private static function listening(): bool
     {
-        return function_exists('has_action') && has_action('first_purge_urls') !== false;
+        return function_exists('has_action') && (has_action('first_purge_urls') !== false || Prebuilt::active());
     }
 
     /**
@@ -63,9 +66,14 @@ final class Cache
      */
     public static function policy(int $status, bool $anonymous, bool $guarded): array
     {
+        // A prerender (Prebuilt) is recorded like a cacheable render, and kept by no shared cache:
+        // the file it becomes is the copy that is served.
+        if ($status === 200 && $anonymous && !$guarded && Prebuilt::prerendering()) {
+            return ['private, no-store, max-age=0', true];
+        }
         if ($status === 200 && $anonymous && !$guarded) {
             $window = max(0, (int) apply_filters('first_app_cache_window', self::WINDOW));
-            return ["public, s-maxage=$window, max-age=0, must-revalidate", true];
+            return ["public, max-age=0, s-maxage=$window, must-revalidate", true];
         }
         return ['private, no-store, max-age=0', false];
     }
@@ -77,7 +85,9 @@ final class Cache
      */
     public static function record(string $uri, array $reads): void
     {
-        if (!self::listening()) {
+        // A prerender records what it read, so a write knows which prebuilt URLs it changed; other
+        // renders only where a host's page cache listens for purges.
+        if (!(function_exists('has_action') && has_action('first_purge_urls') !== false) && !Prebuilt::prerendering()) {
             return;
         }
         $url = self::path($uri);
@@ -141,7 +151,10 @@ final class Cache
             return;
         }
         $paths = count($urls) > self::PURGE_LIMIT ? ['/*'] : \First\Wp\Purges::paths(array_map('home_url', $urls));
-        do_action('first_purge_urls', $paths);
+        Prebuilt::stale($paths);
+        if (has_action('first_purge_urls') !== false) {
+            do_action('first_purge_urls', $paths);
+        }
     }
 
     /** A request URI as stored: the path below the home path, with its query string. */

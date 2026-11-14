@@ -350,27 +350,58 @@ export type ListQuery<
 	offset?: number;
 	with?: W;
 } & StatusQuery<K> & LocaleQuery<K>;
+/**
+* A read. Await it for one answer, or `subscribe` to keep it current: the callback gets the result
+* now and again whenever it changes, always as this client's visitor reads it.
+*/
+export interface Query<T> extends Promise<T> {
+	/** The same for the same call with the same arguments: what a cache or a hook keys on. */
+	readonly key: string;
+	/**
+	* Calls `onData` with the result, and again each time it changes. `onError` gets the problem of a
+	* read the server refuses (a `get` whose row is missing or unreadable is a 404) and network
+	* failures; the subscription continues. `seed` is an answer rendered on the server
+	* (`First\Live\Module::evaluate`): its data is delivered at once and its token sent with the
+	* first request. Returns a function that ends the subscription.
+	*/
+	subscribe(onData: (data: T) => void, onError?: (error: FirstError) => void, seed?: {
+		token: string;
+		data: T;
+	}): () => void;
+	/**
+	* Shows subscribers `update(current)` at once, before the server has answered a write. Call
+	* `settle()` when the write succeeded (the change stays until the server's next answer replaces
+	* it) or `rollback()` when it failed (subscribers get the server's data back).
+	*/
+	optimistic(update: (current: T) => T): {
+		settle(): void;
+		rollback(): void;
+	};
+}
 export interface CollectionClient<K extends CollectionKey> {
-	list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
-	/** One page and the `cursor` of the next (null on the last page): pass it back as `cursor`. */
+	list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Query<RowWith<K, W>[]>;
+	/**
+	* One page and the `cursor` of the next (null on the last page): pass it back as `cursor`. A page
+	* with `offset` can be awaited but not subscribed to (`subscribe` throws): subscribe by `cursor`.
+	*/
 	paginate<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>> & {
 		cursor?: string | null;
-	}): Promise<{
+	}): Query<{
 		rows: RowWith<K, W>[];
 		cursor: string | null;
 	}>;
 	/** With `locale`, the row of `id`'s translation group in that locale (or its fallback). */
 	get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: {
 		with?: ExactWith<K, W>;
-	} & LocaleQuery<K>): Promise<RowWith<K, W>>;
+	} & LocaleQuery<K>): Query<RowWith<K, W>>;
+	/** How many rows `list` with this filter would return without a limit. */
+	count(q?: {
+		where?: Collections[K]["filter"];
+	} & StatusQuery<K> & LocaleQuery<K>): Query<number>;
 	create(data: Collections[K]["insert"]): Promise<Row<K>>;
 	update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
 	delete(id: IdOf<K>): Promise<Row<K>>;
-	/**
-	* Runs `list(q)` now and again whenever this collection (or a collection loaded through `with`)
-	* changes. Every refresh is the normal access-checked read; change notices carry no rows.
-	* Returns a function that stops watching.
-	*/
+	/** `list(q).subscribe(onRows, onError)`. Returns a function that stops watching. */
 	watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q: ListQuery<K, ExactWith<K, W>> | undefined, onRows: (rows: RowWith<K, W>[]) => void, onError?: (error: FirstError) => void): () => void;
 	revisions: {
 		/** Newest first. Needs `update` access on the row. */
@@ -379,6 +410,68 @@ export interface CollectionClient<K extends CollectionKey> {
 		/** Runs the update pipeline with the revision as the patch; returns the updated row. */
 		restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
 	};
+	/**
+	* Save `patch` as the item's staged version: the live row stays as it is until `promote`. One
+	* staged version per item, shared by everyone who may update it; each call adds to it. Post
+	* kinds only. Every staged call needs `update` access on the row, and answers 404 without it.
+	*/
+	stage(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<StagedVersion<K>>;
+	/** The staged version: the row as it would be once promoted. 404 when nothing is staged. */
+	staged(id: IdOf<K>): Promise<StagedVersion<K>>;
+	/** The staged fields whose value differs from the live row, with both values. */
+	compare(id: IdOf<K>): Promise<StagedComparison<K>>;
+	/**
+	* Make the staged version live, as an update of the row by the caller. With `at` (a future ISO
+	* time) the promote is scheduled instead, and `at: null` cancels a scheduled one; both return
+	* the staged version.
+	*/
+	promote(id: IdOf<K>): Promise<Row<K>>;
+	promote(id: IdOf<K>, options: {
+		at: string | null;
+	}): Promise<StagedVersion<K>>;
+	/** End the staged version. It stays in the row's revisions, as `revision`. */
+	discard(id: IdOf<K>): Promise<{
+		revision: number;
+	}>;
+	/** A signed link to the staged version that works without signing in for `ttl` seconds (an hour by default). */
+	previewLink(id: IdOf<K>, options?: {
+		ttl?: number;
+	}): Promise<StagedPreview>;
+}
+/** A staged version: the row once promoted, the fields that are staged, who staged last. */
+export interface StagedVersion<K extends CollectionKey> {
+	/** The revision holding it. */
+	id: number;
+	row: Row<K>;
+	fields: (keyof Row<K> & string)[];
+	by: {
+		id: number;
+		name: string;
+	} | null;
+	at: string;
+	/** When a scheduled promote runs, or null. */
+	promoteAt: string | null;
+	/** Why the last scheduled promote did not run. */
+	error?: {
+		code: string;
+		detail: string;
+		at: string;
+	};
+}
+export interface StagedComparison<K extends CollectionKey> extends Omit<StagedVersion<K>, "row" | "fields"> {
+	changes: { [F in keyof Row<K> & string]: {
+		field: F;
+		live: Row<K>[F];
+		staged: Row<K>[F];
+	} }[keyof Row<K> & string][];
+}
+export interface StagedPreview {
+	token: string;
+	expiresAt: string;
+	/** Reads the staged version without signing in. */
+	api: string;
+	/** The item's own page showing the staged version, when the kind has a public URL. */
+	url: string | null;
 }
 export interface MediaQuery {
 	where?: Record<string, unknown>;
@@ -477,8 +570,16 @@ export interface RealtimeTransport {
 export interface RealtimeOptions {
 	/** The transport. Default: the one a host registered with `registerRealtimeTransport`; `false` = polling only. */
 	transport?: RealtimeTransport | false;
-	/** Refresh watched reads this often while no transport is live. Default 30000; `false` turns polling off. */
-	pollMs?: number | false;
+	/**
+	* How often subscriptions ask the server while no transport is live. Default: adaptive, between
+	* the bounds the server gives (2 s after a change, growing by half up to 30 s while nothing
+	* changes, each wait jittered by 20%). `{ min, max }` sets the bounds, a number a fixed interval,
+	* and `false` turns polling off. A hidden tab doesn't poll; it asks once when it is shown again.
+	*/
+	pollMs?: number | false | {
+		min?: number;
+		max?: number;
+	};
 	/**
 	* A slow safety refresh while the transport is live, covering a notice the transport lost.
 	* Default 60000 with up to ±20% jitter per refresh; `false` turns it off.
@@ -497,7 +598,7 @@ export interface ClientOptions {
 	headers?: Record<string, string>;
 	/** Frontend sign-in (design §6.2). */
 	auth?: AuthOptions;
-	/** Live updates for `watch`. */
+	/** Live updates for `subscribe` and `watch`. */
 	realtime?: RealtimeOptions;
 }
 export interface AuthOptions {
@@ -534,8 +635,8 @@ export declare class FirstError extends Error {
 export declare function createClient(options?: ClientOptions): Client;
 /**
 * Runs `read` now and again whenever one of `collections` (schema keys) changes, while `client`'s
-* transport is live, or on its polling interval otherwise. For reads `watch` on a collection can't
-* express: an action's result, a `get`, a global. Returns a function that stops watching.
+* transport is live, or on its polling interval otherwise. For reads a `subscribe` can't express:
+* an action's result, a global. Returns a function that stops watching.
 */
 export declare function watch<T>(client: Client, collections: readonly CollectionKey[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: FirstError) => void): () => void;
 export {};

@@ -2,7 +2,7 @@
 
 A personal pet pantry whose interface is WordPress. Pets and foods have native
 wp-admin edit screens with generated Secure Custom Fields groups. Vet notes use
-Gutenberg. `admin: true` includes First Admin for the SQL tables. There are no
+Gutenberg. First Admin, which every build includes, edits the SQL tables. There are no
 custom frontend components, public assets, pages, or frontend dependencies.
 
 **The app is not running yet.** Main rejects the exported `AccessCtx` type.
@@ -45,11 +45,11 @@ cargo build --locked
 
 These commands currently stop at the diagnostic below. Once main accepts the
 source, Studio supplies WordPress, SCF, Action Scheduler, and MCP Adapter. First
-Admin is included by `admin: true`. When installing elsewhere, follow the
+Admin is included in every build. When installing elsewhere, follow the
 generated manifest's activation order and enable pretty permalinks.
 
 Sign in at `http://localhost:8897/wp-admin/` with the disposable local account
-`admin` / `first-test-admin`. Use `/first-admin/` for Pantry stock, Feeding history,
+`admin` / `first-test-admin`. Use `/wp-admin/new/` for Pantry stock, Feeding history,
 and Shopping list. Pets, Foods, and Vet notes have native wp-admin menus.
 WordPress sign-in needs no custom frontend or OAuth client registration.
 
@@ -172,7 +172,7 @@ verified:
 | --- | --- |
 | Native Pets list | `/wp-admin/edit.php?post_type=first_pets` |
 | Pet edit screen with SCF fields | `/wp-admin/post.php?post=ID&action=edit`, using a real pet's WordPress post ID |
-| First Admin stock table | `/first-admin/`, then Pantry stock |
+| First Admin stock table | `/wp-admin/new/`, then Pantry stock |
 
 ## Known gaps on main (b66e98b3866037061198c51ebef9534609a5e301)
 

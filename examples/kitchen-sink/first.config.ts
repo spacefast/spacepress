@@ -26,6 +26,8 @@ export const pages = collection({
   },
 });
 
+export const handouts = files({ accept: ["application/pdf"], maxBytes: 5_000_000, access: { read: "authenticated", create: "editor", delete: "admin" } });
+
 export const events = collection({
   title: text().max(120),
   slug: slug({ source: "title" }).optional(),
@@ -33,7 +35,7 @@ export const events = collection({
   startsOn: date(),
   venue: text(),
   poster: media({ accept: "image" }).optional(),
-  handout: file({ bucket: "handouts" }).optional(),
+  handout: file(handouts).optional(),
   speakers: repeater({ name: text(), bio: text({ multiline: true }).optional() }).optional(),
 }, { label: "Events", title: "title", content: "description" });
 
@@ -62,7 +64,7 @@ export const activity = table({
 const entities = { pages, events, members, registrations, activity };
 
 // Shared settings use WordPress options through Secure Custom Fields.
-export const settings = global("settings", {
+export const settings = global({
   siteTitle: text().default("The kitchen sink"),
   contactEmail: email().optional(),
   announcement: text({ multiline: true }).optional(),
@@ -71,14 +73,13 @@ export const settings = global("settings", {
 
 export default defineConfig({
   name: "kitchen-sink",
-  admin: true,
   collections: { pages, events },
   tables: { registrations, activity },
   users: { members },
   globals: { settings },
   locales: { default: "en", all: ["en", "de"] },
   media: { sizes: { card: { width: 600, height: 400, fit: "cover" }, avatar: { width: 96, height: 96, fit: "cover" } } },
-  files: { handouts: files("handouts", { accept: ["application/pdf"], maxBytes: 5_000_000, access: { read: "authenticated", create: "editor", delete: "admin" } }) },
+  files: { handouts },
   plugins: { "classic-editor": "1.6.7" },
   webhooks: [{ url: env("KITCHEN_WEBHOOK_URL"), secret: env("KITCHEN_WEBHOOK_SECRET"), events: ["pages.created", "pages.updated"] }],
   hooks: {

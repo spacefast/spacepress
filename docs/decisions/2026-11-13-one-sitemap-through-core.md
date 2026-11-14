@@ -55,5 +55,5 @@ static prerender, which would provide it, is not on main yet.
 
 Term archives of First taxonomies need nothing here: a `taxonomy()` with a `url` registers as a
 public taxonomy, so core's own taxonomies provider lists its terms, at the links its `term_link`
-filter builds (docs/decisions/2026-11-11-authoring-surface.md, ruling 29). One without a `url` is
+filter builds (docs/decisions/2026-11-11-authoring-surface.md, ruling 30). One without a `url` is
 not public and is not listed.

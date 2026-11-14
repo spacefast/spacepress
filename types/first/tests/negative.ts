@@ -233,9 +233,9 @@ defineConfig({
 
 // Globals (§1.5)
 // @ts-expect-error global field defaults are typed: postsPerPage is an integer
-global("site", { postsPerPage: integer().default("ten") });
+global({ postsPerPage: integer().default("ten") });
 // @ts-expect-error repeater sub-fields keep their kinds: href is a url (string)
-global("links", { items: repeater({ href: url() }).default([{ href: 1 }]).optional() });
+global({ items: repeater({ href: url() }).default([{ href: 1 }]).optional() });
 
 // Structured fields (§1.1)
 // @ts-expect-error blocks layout items are typed: `heading` is text

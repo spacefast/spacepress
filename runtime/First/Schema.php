@@ -75,6 +75,21 @@ final class Schema
         return (string) ($this->raw['name'] ?? 'app');
     }
 
+    /** The compiler's list (src/kind_url.rs), for an app built before it was in every schema. */
+    private const RESERVED = ['wp-admin', 'wp-json', 'wp-content', 'wp-includes', 'wp-login.php', 'wp-signup.php', 'wp-cron.php', 'wp-sitemap.xml', 'xmlrpc.php', 'feed', '__first', '__spacefast', 'llms.txt', 'robots.txt', 'favicon.ico', 'sitemap.xml', 'author', 'category', 'tag', 'search', 'page', 'comments', 'embed', 'type', 'attachment', 'trackback', 'wp-activate.php', 'wp-trackback.php', 'wp-comments-post.php', 'wp-mail.php', '.well-known', '__zero', 'identity', 'index.php', 'wp-config.php', 'first-admin', 'auth'];
+
+    /**
+     * WordPress's and First's own first path segments (`wp-admin`, `wp-json`, `__first`, `feed`, …),
+     * lowercased: what the app's files never answer for.
+     *
+     * @return list<string>
+     */
+    public function reserved(): array
+    {
+        // An app built before the list was in every schema: the app router's copy, else the runtime's.
+        return array_map('strtolower', (array) ($this->raw['reserved'] ?? $this->raw['app']['reserved'] ?? self::RESERVED));
+    }
+
     /** @return array<string, array> */
     public function collections(): array
     {
@@ -82,7 +97,7 @@ final class Schema
     }
 
     /**
-     * `taxonomy()` kinds (docs/decisions/2026-11-11-authoring-surface.md, rulings 24-33): the same kind
+     * `taxonomy()` kinds (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34): the same kind
      * shape as a collection, with `taxonomy => true` and `wp.taxonomy`. They live in core's term tables,
      * so they stay out of {@see collections()}; {@see collection()} resolves them by name like any kind.
      *
@@ -231,6 +246,24 @@ final class Schema
     {
         return $this->raw['collections'][$name] ?? $this->raw['taxonomies'][$name]
             ?? throw HttpError::notFound("Unknown collection '$name'");
+    }
+
+    /**
+     * How comments behave on a collection (spec §2.3): `guests` (bool), `moderation` ("none",
+     * "first-time" or "all"), `threaded` (reply depth, 1 is flat), `closeAfterDays` (int, or null for
+     * never, counted from the item's publish date) and `types` (comment types allowed besides normal
+     * comments). Null when the collection takes no comments.
+     *
+     * @return ?array{guests: bool, moderation: string, threaded: int, closeAfterDays: ?int, types: list<string>}
+     */
+    public function commentPolicy(string $collection): ?array
+    {
+        $spec = $this->collection($collection);
+        if (($spec['comments'] ?? false) !== true) {
+            return null;
+        }
+
+        return ($spec['commentPolicy'] ?? []) + ['guests' => false, 'moderation' => 'first-time', 'threaded' => 3, 'closeAfterDays' => null, 'types' => []];
     }
 
     public function global(string $name): array

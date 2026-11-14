@@ -1,10 +1,11 @@
 # First Admin
 
-Set `admin: true` in `defineConfig`, then run `first build`. The generated
-WordPress artifact includes `plugins/first-admin` with compiled assets. Activate
-the artifact's declared dependencies, the First runtime and app, then First Admin.
-Enable pretty permalinks and visit `/first-admin/`. A subdirectory installation
-uses its own prefix, for example `/blog/first-admin/`.
+First Admin is the default admin of every First app. `first build` puts the
+`first-admin` plugin (compiled assets included) into the artifact next to
+`first-runtime` and `first-app-<name>`; activate it after the app. It runs at
+`/wp-admin/new/`, the address the upstream admin used, and classic
+`/wp-admin/` stays complete and unchanged beside it. A subdirectory installation
+uses its own prefix, for example `/blog/wp-admin/new/`.
 
 ```ts
 import { collection, defineConfig, richText, text } from "first";
@@ -19,18 +20,47 @@ const posts = collection({
   access: { read: "anyone", create: "editor", update: "editor", delete: "admin" },
 });
 
-export default defineConfig({
-  name: "my-app",
-  admin: true,
-  collections: { posts },
-});
+// No setting needed: First Admin ships. `admin: false` leaves only classic wp-admin.
+export default defineConfig({ name: "my-app", collections: { posts } });
 ```
 
-Editor asset URLs use WordPress's registered installation URL, including the
-subdirectory prefix. Use your normal WordPress account. WordPress owns authentication, capabilities,
+Use your normal WordPress account. WordPress owns authentication, capabilities,
 REST nonces, users, settings, plugins, themes, media and the block editor.
-`Classic admin` opens the complete `/wp-admin/`; its `First` menu item returns.
-Existing plugin settings and classic plugin screens remain accessible.
+
+### Addresses
+
+| URL | What it serves |
+|---|---|
+| `/wp-admin/new/<route>` | First Admin. Apache rewrites it to `wp-admin/admin.php?page=first-admin`; the route stays in the path. |
+| `/wp-admin/admin.php?page=first-admin&p=<route>` | The same page on any server. A server that does not read `.htaccess` (nginx) redirects `/wp-admin/new/<route>` here. |
+| `/wp-admin/` | Classic wp-admin, unchanged. Its `First` menu entry opens First Admin. |
+| `/first-admin/<route>` | The earlier address: a permanent redirect to `/wp-admin/new/<route>`. |
+
+The page is a wp-admin page: `admin.php` signs the visitor in (`auth_redirect`)
+and builds wp-admin's menus, so plugin menu entries appear in First Admin's
+sidebar. The plugin writes its rule into `.htaccess` on the first web request
+after it is activated or updated (WP-CLI never writes that file).
+
+After signing in, WordPress's default destination (`/wp-admin/`) becomes
+`/wp-admin/new/`. A page the visitor asked for (`redirect_to`) is kept.
+`Classic admin` in First Admin's sidebar and command palette opens
+`/wp-admin/`; `First` in wp-admin's menu returns. Existing plugin settings and
+classic plugin screens remain accessible in both.
+
+`admin: false` in `defineConfig` leaves the plugin out of the build, and a build
+that adds it removes the plugin from the output. Classic wp-admin is then the
+only admin and login lands there, as in WordPress.
+
+Editor asset URLs use WordPress's registered installation URL, including the
+subdirectory prefix.
+
+## Screens in both admins
+
+A screen declared once with `first_admin_register_screen()` appears in First
+Admin (`/wp-admin/new/screens/<id>`) and as a classic wp-admin page, rendered by
+the same component, with actions that run Abilities. First declares Schema
+versions and one list per `table()` kind this way. See
+[admin-screens.md](admin-screens.md).
 
 ## Source scope
 
@@ -41,8 +71,9 @@ Styles, Navigation, taxonomy and comment fields, importers and the AI-agent
 integration package. These surfaces are retained alongside First's schema-driven
 collections, tables, relations, media and globals.
 
-The default `/` route is First's collection overview. `/dashboard` opens the
-upstream dashboard. The sidebar includes native WordPress content types as well
+The home route `/` is the upstream dashboard, as upstream has it;
+`/collections` is First's collection overview (Collections → All collections in
+the sidebar). The sidebar includes native WordPress content types as well
 as First collections; mapped types appear through the access-aware First adapter.
 Native content uses WordPress's editor routes. The complete upstream attachment
 editor is at `/types/attachment/edit/:id`; `Edit image` opens it from First
@@ -50,6 +81,25 @@ media details, with crop/rotate/flip tools and WordPress-native image saving. Fi
 editor with Secure Custom Fields and First's existing REST authorization.
 Database tables use First's table forms and relation pickers. Hiding navigation
 never grants or revokes access: the server remains the authority.
+
+## Styles
+
+First Admin keeps the upstream look. Where a pinned WordPress package changed
+underneath it, the change is the smallest one that keeps that look:
+
+| Change | Why |
+|---|---|
+| `font-weight: var(--wpds-typography-font-weight-emphasis, 499)` (and `-default, 400`) for `$font-weight-medium`/`-regular` | the pinned `@wordpress/base-styles` removed those variables; the tokens carry the same values |
+| `@first-admin/theme` passes the `bg` seed also as `background` | the pinned `@wordpress/theme` renamed it |
+| The site hub wraps its title in a `<span>` | the upstream stylesheet sizes the link's first span, which the pinned `@wordpress/ui` Link no longer adds |
+| `style` on design-system popups and primitives | the pinned Base UI types moved it |
+| The page opts in to view transitions (`@view-transition`) | the router starts one on each navigation; without the opt-in the browser aborts it with an error |
+
+Everything else that differs from the retained originals is behaviour: the
+mount and subdirectory URLs, First's schema screens, and the AI chat button,
+which needs a provider (see External services). First's own screens
+(`packages/schema`) use `@wordpress/components` and DataViews with upstream's
+spacing.
 
 ## Provenance and updates
 
@@ -65,7 +115,8 @@ SHA-256, its destination, and the adapter disposition. The input digest is:
 This digest covers the 1,094 distributable plugin source files; repository agent
 instruction files are excluded. It identifies the archive, not a Git commit.
 Upstream root configuration/bootstrap and PHP tests are retained under
-`upstream-metadata/` as reference material, outside the active plugin loader.
+`upstream-metadata/` as reference material, outside the active plugin loader; `first build` leaves
+that folder out of the plugin, as it leaves out the JS workspace `apps/`.
 For each adapted file, `upstream-metadata/adapter-originals/` retains its complete
 input after namespace and privacy normalization. `retainedSourcePath` and
 `normalizedSha256` identify that copy; unchanged inputs point to their active
@@ -133,6 +184,14 @@ may enable `ai_agent_enabled` through `first_admin_boot_context` and implement
 `window.wpOrchestratorAgent.ask`. Missing providers reject requests explicitly.
 See the package README for its events and slot contract. Hosted AI execution
 and hosted account invitations are not proven by local WordPress tests.
+
+The slot stays unwired on purpose. It needs a model that turns a prompt into
+answers and tool calls; First's agent surface (the site's MCP endpoint,
+`/wp-json/mcp/first-<app>`, and the app's Abilities) is the tools side of that,
+not a model. Wiring the two together would still need a hosted model and its
+credentials, which First does not ship. An agent outside the site (Claude Code,
+an MCP client) already uses that endpoint and the same Abilities the admin's
+screens run, under the same permissions; see `first mcp` and docs/agents.md.
 
 Telemetry calls use an inert compatibility adapter: First sends no upstream
 usage events. The three upstream dashboard demonstration widgets retain their

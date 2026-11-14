@@ -126,7 +126,7 @@ export const oracleKids = collection({
   // A many-ref between two post-backed kinds: links in First's join table, a post_object (multiple) in the editor.
   mentors: ref(oracleParents).many().optional().reverse("mentees"),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
-// A taxonomy (docs/decisions/2026-11-11-authoring-surface.md, rulings 24-33): terms in core's term
+// A taxonomy (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34): terms in core's term
 // tables, a `oracleTopics` field on oracleKids, a term URL and its terms in core's sitemap; the app
 // has `locales`, so it is one vocabulary for every locale and stays out of Polylang.
 export const oracleTopics = taxonomy({ color: text().optional() },

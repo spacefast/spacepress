@@ -1,27 +1,48 @@
 # Live updates
 
-A page can keep a list current while other people write. First tells the page
-that something changed, and the page re-reads it through the normal API. The
-change notice carries no row data, so a viewer only ever sees rows its own read
-returns.
+A page can keep a read current while other people write. Subscribe to it, and the callback gets
+the result now and again each time it changes, always as the signed-in visitor reads it:
 
 ```ts
 import { createClient } from "./first/_generated/client/index.ts";
 
 const first = createClient();
-const stop = first.todos.watch({ where: { done: false }, orderBy: { createdAt: "asc" } }, (todos) => render(todos));
+const stop = first.todos.list({ where: { done: false }, orderBy: { createdAt: "asc" } }).subscribe(
+  (todos) => render(todos),
+  (error) => report(error),
+);
 // later: stop();
 ```
 
-`watch(query, onRows, onError?)` runs `list(query)` at once. It runs it again
-after every committed write to that collection, or to a collection the query
-loads through `with`. Reads coalesce: a burst of notices during a read causes
-one more read, not one per notice. `onError` receives the `FirstError` of a
-failed read; watching continues.
+Every read is a `Query`: `await` it for one answer, or `subscribe(onData, onError?)` to keep it
+current. `list`, `paginate`, `get` and `count` all work the same way. A read is sent when it is
+first awaited or subscribed to, not when it is made, so to run two at once, await them together
+(`await Promise.all([first.posts.list(), first.authors.list()])`).
 
-For reads a collection `watch` can't express, such as an action's result, a
-`get` or a global, use the exported `watch` helper with the collections the
-read depends on:
+```ts
+first.todos.count({ where: { done: false } }).subscribe((open) => badge(open));
+first.todos.get(42).subscribe((todo) => show(todo), (error) => error.status === 404 && gone());
+```
+
+- A subscription refreshes after a write to its kind, to a kind it loads through `with`, or to a
+  kind a relation filter in `where` looks into.
+- Every subscription of a client travels in one request, however many there are. Two
+  subscriptions to the same read share one.
+- `onError` gets the problem of a read the server refuses, and network failures. The subscription
+  continues. A `get` whose row is missing, or which the visitor may not read, is a 404.
+- A write made through the same client (`create`, `update`, `delete`, an action) refreshes the
+  subscriptions that read that kind as soon as it returns.
+- A sign-in or sign-out refreshes every subscription, as the new visitor, also when another client
+  on the same session storage made it. An answer to a request sent as the previous visitor is
+  dropped.
+- A subscriber whose callback (`onData` or `onError`) throws doesn't stop the others: the error is
+  reported as uncaught (`reportError`), and the subscription continues.
+- `paginate({ offset })` can be awaited but not subscribed to (`subscribe` throws): subscribe to a
+  page by `cursor`.
+- `first.todos.watch(query, onRows, onError?)` is `first.todos.list(query).subscribe(onRows, onError)`.
+
+For a read that isn't a kind query, such as an action's result or a global, use the exported
+`watch` helper with the kinds the read depends on. It re-runs the read itself:
 
 ```ts
 import { createClient, watch } from "./first/_generated/client/index.ts";
@@ -30,11 +51,105 @@ const first = createClient();
 watch(first, ["todos"], () => first.actions.openCount(), (count) => badge(count));
 ```
 
+## Optimistic updates
+
+Show a write before the server has answered, and take it back if it fails:
+
+```ts
+const open = first.todos.list({ where: { done: false } });
+const pending = open.optimistic((todos) => [...todos, { id: -1, title, done: false }]);
+try {
+  await first.todos.create({ title });
+  pending.settle();   // kept until the server's next answer replaces it
+} catch (error) {
+  pending.rollback(); // subscribers get the server's data back
+}
+```
+
+The update applies to what subscribers of that read are shown, and to the read's first answer
+when it hasn't arrived yet. It changes nothing on the server, and it does nothing when no one is
+subscribed to the read.
+
+## How fresh
+
+| | Another visitor's write shows after | Your own write shows after |
+|---|---|---|
+| No transport (plain WordPress hosting) | 2 to 30 seconds | one request |
+| A transport, live | the notice's delivery plus one request | one request |
+| A hidden tab | when it is shown again | |
+
+Without a transport the client asks on an interval that adapts: 2 seconds after a change, half as
+long again after each answer that changed nothing, up to 30 seconds, each wait jittered by 20%.
+Errors double the wait. A hidden tab does not ask at all, and asks once when it is shown again.
+That includes a page opened in a background tab or prerendered: a subscription made there sends
+nothing until the page is shown (a seed is shown at once). A page restored from the back/forward
+cache asks again, since it may have been frozen for a long time.
+
+This is not a socket. On hosting without a push transport, another visitor's write never shows in
+under about two seconds, and a quiet page can be 30 seconds behind. If you need updates faster
+than that, your host has to supply a transport.
+
+## React hooks, for a React frontend outside First
+
+First's own pages (`first/app/`) never run React: they compile to PHP and the Interactivity API,
+and keep data live with `<Live>` and `useLive`. The hooks here are for a React app that runs
+somewhere else and uses First as its backend: Next.js, TanStack Start, an Astro island, Vite.
+
+`first build` writes them to `first/_generated/client/react.ts`. The file imports nothing from
+`"react"`. You hand it your React, so a project that never imports it needs no React, and the
+hooks use the React your app already bundles:
+
+```tsx
+// first.ts
+import * as React from "react";
+import { createClient } from "./first/_generated/client/index.ts";
+import { createHooks } from "./first/_generated/client/react.ts";
+
+export const first = createClient({ url: "https://example.com/__first/api/v1" });
+export const { useQuery, useMutation } = createHooks(React);
+```
+
+```tsx
+function Todos() {
+  const open = first.todos.list({ where: { done: false }, orderBy: { createdAt: "asc" } });
+  const todos = useQuery(open);
+  const add = useMutation((title: string) => first.todos.create({ title }), {
+    optimistic: (apply, title) => apply(open, (rows) => [...rows, { id: -1, title, done: false }]),
+  });
+
+  if (todos.loading) return <p>Loading…</p>;
+  if (todos.error) return <p>{todos.error.detail}</p>;
+  return (
+    <>
+      <ul>{todos.data?.map((todo) => <li key={todo.id}>{todo.title}</li>)}</ul>
+      <button disabled={add.pending} onClick={() => add.mutate("Buy milk")}>Add</button>
+    </>
+  );
+}
+```
+
+- **`useQuery(read, options?)`** subscribes to a read and returns `{ data, error, loading }`. Build
+  the read inline: it is re-subscribed only when the call or its arguments change. `data` is kept
+  while a later refresh fails on the network, and cleared when the server refuses the read (401,
+  403, 404), as after a sign-out. Pass `null`, or `{ enabled: false }`, to subscribe to nothing.
+  `{ seed: { token, data } }` shows a server-rendered answer at once.
+- **`useMutation(write, options?)`** returns `{ mutate, pending, error, reset }`. `optimistic` runs
+  before the write is sent; each `apply(read, update)` changes what subscribers of that read are
+  shown. When the write succeeds the change stays until the server's answer replaces it. When it
+  fails the change is taken back and `mutate` rejects with the error.
+- Every `useQuery` on a page shares one request to the server, and a render happens only when a
+  result changed.
+- React 18 and later. The hooks use `useSyncExternalStore`, so they are safe under concurrent
+  rendering and render the seed, or the loading state, on the server.
+
+Freshness is the client's: 2 to 30 seconds for another visitor's write without a push transport,
+one request for your own.
+
 ## Transports
 
-First ships no realtime transport. Without one, watched reads poll every 30
-seconds. A host delivers notices with a transport. While it is live, reads
-refresh on notices plus a slow safety poll.
+First ships no realtime transport. A host delivers change notices with one. While it is live, a
+notice refreshes the subscriptions that read the kinds it names at once, and the interval becomes
+a slow safety poll.
 
 ```ts
 import { createClient, registerRealtimeTransport, type RealtimeTransport } from "./first/_generated/client/index.ts";
@@ -53,12 +168,15 @@ createClient({ realtime: { transport } });  // this client only
 registerRealtimeTransport(transport);        // every client on the page, including ones created earlier
 ```
 
-`realtime.pollMs` sets the polling interval while no transport is live; `false`
-turns polling off. While the transport is live, watched reads still refresh about
-once a minute (`realtime.livePollMs`, default 60000, jittered ±20%), so a notice
-lost in transit costs at most that delay. `realtime.transport: false` turns the
-transport off. A client connects its transport only while something is watched.
-When the transport goes from down to live, watched reads refresh once to catch up.
+| Option | Default | Meaning |
+|---|---|---|
+| `realtime.pollMs` | adaptive, 2 to 30 s | `{ min, max }` sets the bounds in milliseconds, a number a fixed interval, `false` turns polling off |
+| `realtime.livePollMs` | 60000 | the safety poll while the transport is live, jittered ±20%; a notice lost in transit costs at most that delay; `false` turns it off |
+| `realtime.transport` | the registered one | `false` turns the transport off |
+
+A client connects its transport only while something is subscribed. When the transport goes from
+down to live, subscriptions refresh once to catch up. A notice only says which kinds to ask
+about: the data always comes from the visitor's own read.
 
 [Spacefast](spacefast-deploy.md#live-updates) registers its Cast transport
 automatically, so apps on Spacefast write no setup.

@@ -142,6 +142,9 @@ final class Db
                 if ($pks !== []) {
                     $out[$name] = $pks;
                     Realtime\Module::promoted((string) $name, $pks);
+                    foreach ($pks as $pk) {
+                        $this->afterPromotion((string) $name, $pk);
+                    }
                 }
             }
         }
@@ -788,6 +791,7 @@ final class Db
             $this->store->revisionWrite($collection, $pk, $raw, $this->actor['id'] ?? null);
         }
         $this->hook($collection, $spec, 'afterCreate', $row);
+        $this->published($collection, $spec, $row, null);
         Extensions::written('create', $collection, $row, null);
 
         return $row;
@@ -887,6 +891,7 @@ final class Db
             $this->store->revisionWrite($collection, $pkValue, $raw, $this->actor['id'] ?? null);
         }
         $this->hook($collection, $spec, 'afterUpdate', $row, $previous);
+        $this->published($collection, $spec, $row, $previous);
         Extensions::written('update', $collection, $row, $previous);
 
         return $row;
@@ -1365,6 +1370,33 @@ final class Db
         }
     }
 
+    /** `afterPublish` (spec §2.8): the row is published now and wasn't before (or is new). */
+    private function published(string $collection, array $spec, array $row, ?array $previous): void
+    {
+        if (isset($spec['hooks']['afterPublish']) && ($row['status'] ?? null) === 'published'
+            && ($previous === null || ($previous['status'] ?? null) !== 'published')) {
+            $this->hook($collection, $spec, 'afterPublish', $row);
+        }
+    }
+
+    /**
+     * A scheduled item reached its time (WP cron's `publish_future_post`, or the lazy promotion):
+     * its `afterPublish`, run as the system in one transaction.
+     */
+    public function afterPromotion(string $collection, int|string $pk): void
+    {
+        $spec = $this->schema->collection($collection);
+        if (!isset($spec['hooks']['afterPublish'])) {
+            return;
+        }
+        $this->asEditor(null, function () use ($collection, $spec, $pk) {
+            [$row] = $this->readByPk($collection, $spec, $pk);
+            if (($row['status'] ?? null) === 'published') {
+                $this->hook($collection, $spec, 'afterPublish', $row);
+            }
+        });
+    }
+
     /** Call a hook that receives rows (afterCreate/afterUpdate/before|afterDelete); result ignored. */
     private function hook(string $collection, array $spec, string $name, array $row, ?array $previous = null): void
     {
@@ -1438,6 +1470,7 @@ final class Db
             $spec = $this->schema->collection($collection);
             [$row] = $this->readByPk($collection, $spec, $pk);
             $previousRow === null ? $this->hook($collection, $spec, 'afterCreate', $row) : $this->hook($collection, $spec, 'afterUpdate', $row, $previousRow);
+            $this->published($collection, $spec, $row, $previousRow);
             Extensions::written($previousRow === null ? 'create' : 'update', $collection, $row, $previousRow);
         });
     }
@@ -1511,25 +1544,50 @@ final class Db
     }
 
     /**
-     * Restore: the revision's user columns become an update patch (pk, system columns and onUpdate
-     * columns excluded), run through the full update pipeline.
+     * Restore: the whole revision as stored, as $viewer, in one update. Fields the viewer can read are
+     * its patch where the revision differs from the row, under every update and field rule. Fields
+     * that may be hidden from it are written from the stored revision as trusted values, after its
+     * rules pass: it sends nothing for them, so nothing about them can be probed, and a restore never
+     * leaves part of the row at a later state. The answer is masked like every read.
      */
     public function restoreRevision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
     {
-        $spec = $this->schema->collection($collection);
-        $this->requireRevisable($collection, $pk, $viewer);
-        $row = $this->revisionRow($collection, $pk, $revisionId);
-        $patch = [];
-        foreach ($spec['columns'] as $name => $col) {
-            // A revision taken where links aren't kept with the row (WordPress revisions) leaves them as they are.
-            if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !isset($col['onUpdate'])
-                && !($col['type'] === 'refList' && $row[$name] === null)) {
-                $patch[$name] = $row[$name];
+        return $this->current(function () use ($collection, $pk, $revisionId, $viewer): array {
+            $spec = $this->schema->collection($collection);
+            $this->requireRevisable($collection, $pk, $viewer);
+            $row = $this->revisionRow($collection, $pk, $revisionId);
+            $opts = ['where' => [$spec['primaryKey'] => $pk]];
+            $current = $this->selectDecoded($collection, $opts, '', null)[0] ?? throw HttpError::notFound("No $collection row $pk");
+            $patch = $hidden = [];
+            foreach ($spec['columns'] as $name => $col) {
+                // A revision taken where links aren't kept with the row (WordPress revisions) leaves a
+                // `refList` it holds as null as it is.
+                if ($name === $spec['primaryKey'] || ($col['system'] ?? false) || isset($col['onUpdate'])
+                    || ($col['type'] === 'refList' && $row[$name] === null)
+                    || Js::jsonStringify($row[$name] ?? null) === Js::jsonStringify($current[$name] ?? null)) {
+                    continue;
+                }
+                if ($viewer !== null && FieldAccess::mayHide($col, $viewer)) {
+                    $hidden[$name] = $row[$name];
+                } else {
+                    $patch[$name] = $row[$name];
+                }
             }
-        }
+            if ($hidden === []) {
+                return $this->update($collection, $patch, [$spec['primaryKey'] => $pk], true, $viewer)[0]
+                    ?? throw HttpError::notFound("No $collection row $pk");
+            }
 
-        return $this->update($collection, $patch, [$spec['primaryKey'] => $pk], true, $viewer)[0]
-            ?? throw HttpError::notFound("No $collection row $pk");
+            return $this->nested(function () use ($collection, $spec, $pk, $patch, $hidden, $viewer): array {
+                $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $patch);
+                $opts = ['where' => [$spec['primaryKey'] => $pk]];
+                $existing = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer)[0]
+                    ?? throw HttpError::notFound("No $collection row $pk");
+                $written = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $patch, $viewer, $hidden));
+
+                return $this->present([$written], $collection, $viewer)[0];
+            });
+        });
     }
 
     private function requireRevisable(string $collection, int|string $pk, ?Viewer $viewer): void

@@ -7,7 +7,7 @@ declare(strict_types=1);
  * tests/fixtures/taxonomy (schema.php is what `first build` emits for it, checked by tests/compiler.rs):
  * term rows and their implicit fields, term meta fields, assigning through `on` and `terms()`, write
  * order, list filters, `with` both ways, access (assigning vs creating), the hierarchy and term URLs
- * (docs/decisions/2026-11-11-authoring-surface.md, rulings 24-33).
+ * (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34).
  */
 
 require __DIR__ . '/wp.php';
@@ -38,7 +38,7 @@ function isProblem(string $label, array $r, int $status, string $code, ?string $
 
 $names = static fn (array $rows): array => array_column($rows, 'name');
 
-// ================================================================ registration (ruling 24)
+// ================================================================ registration (ruling 25)
 
 $taxonomy = get_taxonomy('first_topics');
 check('the taxonomy registers as first_<name> for its kinds', $taxonomy instanceof \WP_Taxonomy && $taxonomy->object_type === ['first_posts', 'first_pages'], $taxonomy?->object_type);
@@ -52,7 +52,7 @@ $group = acf_get_local_field_group('group_first_topics');
 check('the SCF field group sits on the taxonomy', is_array($group) && $group['location'][0][0] === ['param' => 'taxonomy', 'operator' => '==', 'value' => 'first_topics'], $group);
 eq('no table is created for a taxonomy', $wp->connection()->run("SELECT name FROM sqlite_master WHERE name LIKE '%first_topics%'"), []);
 
-// ================================================================ term rows (ruling 26)
+// ================================================================ term rows (ruling 27)
 
 $news = $db->insert('topics', ['name' => 'News', 'color' => 'red', 'shades' => ['dark']], true)[0];
 eq('a term row: implicit fields, then the authored ones', array_keys($news), ['id', 'name', 'slug', 'description', 'parent', 'count', 'url', 'color', 'icon', 'owner', 'shades', 'note']);
@@ -76,7 +76,7 @@ eq('an update writes core\'s fields and term meta', [$updated['name'], $updated[
 eq('a cleared field is gone from term meta', get_term_meta($news['id'], 'first_color', true), '');
 eq('a term with no fields of its own is a row too', array_keys($db->insert('tags', ['name' => 'Short'], true)[0]), ['id', 'name', 'slug', 'description', 'count', 'url']);
 
-// ================================================================ hierarchy (ruling 29)
+// ================================================================ hierarchy (ruling 30)
 
 $local = $db->insert('topics', ['name' => 'Local', 'parent' => $news['id']], true)[0];
 $city = $db->insert('topics', ['name' => 'City', 'parent' => $local['id']], true)[0];
@@ -87,7 +87,7 @@ problem('a parent from another taxonomy is refused', fn () => $db->insert('topic
 problem('a term can\'t be its own parent', fn () => $db->update('topics', ['parent' => $local['id']], ['id' => $local['id']]), 409, 'reference_violation', '/parent');
 problem('a flat taxonomy has no parent', fn () => $db->insert('tags', ['name' => 'Y', 'parent' => $tag['id']]), 422, 'invalid_input', '/parent');
 
-// ================================================================ assigning terms (ruling 25)
+// ================================================================ assigning terms (ruling 26)
 
 $p1 = $db->insert('posts', ['title' => 'First', 'topics' => [$sports['id'], $news['id']], 'labels' => [$tag['id']]], true)[0];
 eq('`on` gives the item a field named after the taxonomy, in write order', $p1['topics'], [$sports['id'], $news['id']]);
@@ -104,7 +104,7 @@ problem('a duplicate id is refused', fn () => $db->update('posts', ['topics' => 
 problem('a name never creates a term', fn () => $db->update('posts', ['topics' => ['Brand new']], ['id' => $p3['id']]), 422, 'invalid_input', '/topics/0');
 check('… and none was created', get_term_by('name', 'Brand new', 'first_topics') === false);
 
-// ================================================================ queries (ruling 27)
+// ================================================================ queries (ruling 28)
 
 $titles = static fn (array $rows): array => array_column($rows, 'title');
 $order = ['orderBy' => ['id' => 'asc']];
@@ -126,7 +126,7 @@ problem('terms is not an orderBy key', fn () => $db->findMany('posts', ['orderBy
 eq('the item URL uses the first term\'s slug', get_permalink($p1['id']), home_url('/notes/news/first/'));
 eq('an item with no term has no URL yet', str_contains((string) get_permalink($p3['id']), '/notes/'), false);
 
-// ================================================================ access (ruling 28)
+// ================================================================ access (ruling 29)
 
 eq('anyone reads terms', req('GET', '/topics')[0], 200);
 [$s, $read] = req('GET', '/topics', query: ['where' => '{"slug":"sport"}']);
@@ -150,7 +150,7 @@ wp_set_current_user($wp->userId('sub'));
 check('a subscriber who may write no attached kind has no assign capability', !current_user_can('assign_first_tags'));
 wp_set_current_user(0);
 
-// ================================================================ deletes (ruling 29)
+// ================================================================ deletes (ruling 30)
 
 $db->delete('topics', ['id' => $local['id']]);
 $city = $db->findFirst('topics', ['where' => ['id' => $city['id']]]);

@@ -81,7 +81,7 @@ async function queries() {
   expectType<Equal<NonNullable<typeof withRelated>["relatedFrom"][number]["related"], number[] | null>>();
   await db.update(posts).set({ related: [1, 2] }).where({ id: 1 });
 
-  // A term row (ruling 26): its own fields and the authored ones; `with` both ways (ruling 27).
+  // A term row (ruling 27): its own fields and the authored ones; `with` both ways (ruling 28).
   const topic = await db.query.topics.findFirst({ where: { posts: { title: "x" } }, with: { posts: { columns: { title: true } } } });
   expectType<Equal<NonNullable<typeof topic>["name"], string>>();
   expectType<Equal<NonNullable<typeof topic>["slug"], string>>();

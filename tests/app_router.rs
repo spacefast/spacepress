@@ -76,7 +76,7 @@ fn app_router_serves_pages_on_wordpress() {
     // An anonymous visitor's page is cacheable (rendering.md §6.1; app_pages_cache_and_purge_by_what_they_read).
     assert_eq!(
         seen["home cache"][0],
-        "public, s-maxage=300, max-age=0, must-revalidate"
+        "public, max-age=0, s-maxage=300, must-revalidate"
     );
     // `<Link>` to a path on the site is the router region's navigation, loaded on the page.
     assert!(body.contains(r#"/notes" data-wp-interactive="first/router" data-wp-on--click="actions.navigate" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
@@ -180,6 +180,44 @@ fn app_router_serves_pages_on_wordpress() {
     assert_eq!(seen["rest"], 200);
     assert_eq!(seen["feed"], 200);
     assert_eq!(seen["reserved"], false);
+    let _ = std::fs::remove_dir_all(project);
+}
+
+/// WordPress in a subdirectory (tests/php/app_router_subdirectory.php): examples/full-site served under
+/// `/blog`, as WordPress Playground serves every site under `/scope:<id>/`. A note's page (`url:
+/// "/notes/:slug"`) answers at its own URL; the request path starts with the home path and the
+/// item's path does not, so the two are compared without it.
+#[test]
+fn app_router_serves_item_pages_under_a_subdirectory() {
+    let project = std::env::temp_dir().join(format!("first-full-site-subdir-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&project);
+    copy(&root().join("examples/full-site"), &project);
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_router_subdirectory.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    let url = seen["url"].as_str().unwrap();
+    assert!(url.ends_with("/blog"), "{url}");
+    assert_eq!(seen["link"], format!("{url}/notes/dawn-on-the-ridge/"));
+    assert_eq!(seen["notes"], serde_json::json!([200, "Notes"]));
+    assert_eq!(seen["note"], serde_json::json!([200, "Dawn on the ridge"]));
+    assert_eq!(seen["note slash"], serde_json::json!([200, "Dawn on the ridge"]));
+    // Still a 404: a draft for a signed-out visitor, and a slug no note has.
+    assert_eq!(seen["draft"], serde_json::json!([404, "Not found"]));
+    assert_eq!(seen["missing"], serde_json::json!([404, "Not found"]));
+    assert_eq!(seen["about"], serde_json::json!([200, "About"]));
     let _ = std::fs::remove_dir_all(project);
 }
 
@@ -326,7 +364,7 @@ fn page_md_is_a_wordpress_page() {
     let seen: serde_json::Value =
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
     let text = |v: &serde_json::Value| v.as_str().unwrap_or_default().to_string();
-    let shared = "public, s-maxage=300, max-age=0, must-revalidate";
+    let shared = "public, max-age=0, s-maxage=300, must-revalidate";
     let private = "private, no-store, max-age=0";
 
     // The file's Markdown is stored as blocks in a Page, and the route renders that Page inside
@@ -656,6 +694,25 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         "parallel route slot",
         "first/app/@modal",
     );
+    // `apiReference()` reads a JSON file of the app's `public/`, named as a literal.
+    rejects(
+        &dir,
+        &[(
+            "first/app/api/page.tsx",
+            "import { apiReference } from \"first/content\";\nconst file = \"x.json\";\nexport default function P() { return <p>{apiReference(file).title}</p>; }\n",
+        )],
+        "`apiReference()` takes the path of a JSON file in `public/`, as a string literal",
+        "first/app/api/page.tsx:3",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/api/page.tsx",
+            "import { apiReference } from \"first/content\";\nexport default function P() { return <p>{apiReference(\"../secrets.json\").title}</p>; }\n",
+        )],
+        "`apiReference()` takes the path of a JSON file in `public/`",
+        "first/app/api/page.tsx:2",
+    );
     rejects(
         &dir,
         &[("first/app/docs/[...rest]/more/page.tsx", page)],
@@ -846,6 +903,327 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// A prebuilt page is an anonymous visitor's render with nothing from the request, at URLs the build
+/// can list (docs/decisions/2026-11-13-static-output.md). Everything else is a build error at the
+/// page, with the fix.
+#[test]
+fn refuses_prebuilt_pages_that_depend_on_the_request() {
+    let dir = std::env::temp_dir().join(format!("first-app-prerender-{}", std::process::id()));
+    let page = "export default function P() { return <p/>; }\n";
+    let static_config = (
+        "first.config.ts",
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ output: \"static\" });\n",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first.config.ts",
+            "import { defineConfig } from \"first\";\nexport default defineConfig({ output: \"hybrid\" });\n",
+        )],
+        "`output` is \"server\" or \"static\", not \"hybrid\"",
+        "first.config.ts:2:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first.config.ts",
+            "import { defineConfig } from \"first\";\nexport default defineConfig({ output: \"static\", frontend: \"https://example.com\" });\n",
+        )],
+        "`frontend` hands it to another site",
+        "first.config.ts:2:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/page.tsx",
+            "export const prerender = \"yes\";\nexport default function P() { return <p/>; }\n",
+        )],
+        "`prerender` is \"yes\", not true or false",
+        "first/app/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[
+            static_config,
+            (
+                "first/app/about/page.tsx",
+                "export const prerender = false;\nexport default function P() { return <p/>; }\n",
+            ),
+        ],
+        "app/about/page.tsx says `prerender = false`, and `output: \"static\"` prebuilds every page",
+        "first/app/about/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[static_config, ("first/app/blog/[slug]/page.tsx", page)],
+        "app/blog/[slug]/page.tsx is prebuilt (`output: \"static\"` prebuilds every page), and nothing lists its URLs",
+        "first/app/blog/[slug]/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/blog/[slug]/page.tsx",
+            "export const prerender = true;\nexport default function P() { return <p/>; }\n",
+        )],
+        "export `async function staticParams() { return [{ slug: \"…\" }]; }`",
+        "first/app/blog/[slug]/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/blog/[slug]/page.tsx",
+            "export async function staticParams() { return [{ slug: \"a\" }]; }\nexport default function P() { return <p/>; }\n",
+        )],
+        "exports `staticParams`, but it isn't prebuilt",
+        "first/app/blog/[slug]/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/about/page.tsx",
+            "export const prerender = true;\nexport async function staticParams() { return []; }\nexport default function P() { return <p/>; }\n",
+        )],
+        "exports `staticParams`, and its URL has no parameter",
+        "first/app/about/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/blog/[slug]/page.tsx",
+            "export const prerender = true;\nexport async function staticParams() { return [{ id: \"a\" }]; }\nexport default function P() { return <p/>; }\n",
+        )],
+        "staticParams in app/blog/[slug]/page.tsx returns",
+        "first/app/blog/[slug]/page.tsx:2:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/find/page.tsx",
+            "import { text } from \"first\";\nexport const prerender = true;\nexport const search = { q: text().optional() };\nexport default function P() { return <p/>; }\n",
+        )],
+        "app/find/page.tsx is prebuilt (it says `prerender = true`), and it reads `search`",
+        "first/app/find/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[
+            (
+                "first/app/account/layout.tsx",
+                "export const guard = \"subscriber\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
+            ),
+            (
+                "first/app/account/page.tsx",
+                "export const prerender = true;\nexport default function P() { return <p/>; }\n",
+            ),
+        ],
+        "app/account/page.tsx is prebuilt (it says `prerender = true`), and app/account/layout.tsx guards it",
+        "first/app/account/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[
+            static_config,
+            (
+                "first/app/form/page.tsx",
+                "export const access = \"anyone\";\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
+            ),
+        ],
+        "app/form/page.tsx has HTTP handlers, and a static site has no server to answer them",
+        "first/app/form/page.tsx",
+    );
+    // Through an imported helper too: the check follows the page's imports.
+    rejects(
+        &dir,
+        &[
+            (
+                "first/app/_lib/who.ts",
+                "import { is_user_logged_in } from \"php/wordpress\";\nexport function who(): string { return is_user_logged_in() ? \"you\" : \"guest\"; }\n",
+            ),
+            (
+                "first/app/hello/page.tsx",
+                "import { who } from \"../_lib/who\";\nexport const prerender = true;\nexport default function P() { return <p>{who()}</p>; }\n",
+            ),
+        ],
+        "app/hello/page.tsx is prebuilt, and `is_user_logged_in` asks who the visitor is",
+        "first/app/_lib/who.ts:2:",
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A hybrid app: `prerender` and `staticParams` reach the route table the runtime reads, and a page
+/// that serves a kind's `url` is prebuilt with no staticParams (one file per published item).
+#[test]
+fn prerender_and_static_params_reach_the_route_table() {
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path();
+    let write = |path: &str, source: &str| {
+        let path = project.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    };
+    write(
+        "first.config.ts",
+        "import { defineConfig, collection, text, slug } from \"first\";\nexport const notes = collection({ title: text(), slug: slug({ source: \"title\" }) }, { url: \"/notes/:slug\", access: { read: \"anyone\" } });\nexport default defineConfig({ name: \"hybrid\", collections: { notes } });\n",
+    );
+    write("first/app/page.tsx", "export default function P() { return <p/>; }\n");
+    write(
+        "first/app/about/page.tsx",
+        "export const prerender = true;\nexport default function P() { return <p/>; }\n",
+    );
+    write(
+        "first/app/notes/[slug]/page.tsx",
+        "export const prerender = true;\nexport default function P() { return <p/>; }\n",
+    );
+    write(
+        "first/app/tags/[tag]/page.tsx",
+        "import type { PageProps, StaticParams } from \"first/app\";\nexport const prerender = true;\nexport async function staticParams(): Promise<StaticParams<\"tags/[tag]\">> { return [\"news\", \"notes\"].map((tag) => ({ tag })); }\nexport default function P({ params }: PageProps<\"tags/[tag]\">) { return <p>{params.tag}</p>; }\n",
+    );
+    build(project);
+    let schema =
+        std::fs::read_to_string(project.join("first/dist/wp-content/plugins/first-app-hybrid/first/app/schema.php"))
+            .unwrap();
+    let route = |id: &str| {
+        schema
+            .lines()
+            .find(|l| l.contains(&format!("['id' => '{id}'")))
+            .unwrap_or_else(|| panic!("no route {id}:\n{schema}"))
+            .to_string()
+    };
+    assert!(!route("/").contains("'prerender'"), "{}", route("/"));
+    assert!(route("about").contains("'prerender' => true"));
+    assert!(route("notes/[slug]").contains("'prerender' => true"));
+    assert!(route("tags/[tag]").contains("'prerender' => true"));
+    assert!(!schema.contains("'output' =>"), "server is the default");
+    // staticParams compiles to a function the export calls; its list is the one the page wrote.
+    let out = Command::new("php")
+        .arg("-r")
+        .arg(format!(
+            "require '{}/runtime/First/bootstrap.php'; require '{}'; $s = require '{}'; $fn = '\\\\FirstApp\\\\' . $s['app']['files']['app/tags/[tag]/page.tsx']['staticParams']; echo \\First\\Js::jsonStringify($fn());",
+            root().display(),
+            project.join("first/dist/wp-content/plugins/first-app-hybrid/first/app/functions.php").display(),
+            project.join("first/dist/wp-content/plugins/first-app-hybrid/first/app/schema.php").display(),
+        ))
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        r#"[{"tag":"news"},{"tag":"notes"}]"#,
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// Prebuilt pages next to server-rendered ones (docs/decisions/2026-11-13-static-output.md): an
+/// Action Scheduler action renders each prebuilt URL as a signed-out visitor and writes its HTML and
+/// Markdown; the app serves them before WordPress parses the request; a write deletes the files of
+/// the URLs it changed and schedules their rebuild, so a visitor never gets stale content. The
+/// listing `first export` reads is an editor's.
+#[test]
+fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
+    let project = fixture("app-prebuilt", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_prebuilt.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    use serde_json::json;
+    // The URLs: the literal route, each published note (the draft is not one), each staticParams entry.
+    assert_eq!(
+        seen["list"],
+        json!([200, ["/notes/hello", "/tags/field", "/tags/lab%20notes", "/about"]])
+    );
+    assert_eq!(
+        (&seen["list anonymous"], &seen["list subscriber"]),
+        (&json!(401), &json!(403))
+    );
+    // Nothing is served from a file before the build action has run; init schedules it once.
+    assert_eq!(seen["before"], false);
+    assert_eq!((&seen["scheduled"], &seen["ran"]), (&json!(true), &json!(true)));
+    assert_eq!(
+        seen["files"],
+        json!([
+            "about.html",
+            "about.md",
+            "notes/hello.html",
+            "notes/hello.md",
+            "tags/field.html",
+            "tags/field.md",
+            "tags/lab%20notes.html",
+            "tags/lab%20notes.md"
+        ])
+    );
+    // Served from the file, with the cacheable policy, its title and its Markdown twin.
+    assert_eq!(
+        seen["about"],
+        json!([
+            200,
+            true,
+            "public, max-age=0, s-maxage=300, must-revalidate",
+            true,
+            true
+        ])
+    );
+    assert_eq!(
+        seen["about.md"],
+        json!([200, true, "text/markdown; charset=UTF-8", "# About\n\nWritten once.\n"])
+    );
+    assert_eq!(seen["note"], json!([true, "<h1>Hello"]));
+    assert_eq!(seen["tag"], json!([true, "lab notes"]));
+    // Pages that don't say prerender render per request; a draft stays a 404.
+    assert_eq!((&seen["home"], &seen["live"]), (&json!(false), &json!(false)));
+    assert_eq!(seen["draft"], json!([404, false]));
+    // A signed-in visitor, a query string or a forged prerender header fall through to WordPress.
+    for key in ["signed in", "query", "forged"] {
+        assert_eq!(seen[key], false, "{key}");
+    }
+    // An edit: the note renders per request with the new title at once, other prebuilt pages keep
+    // their files, and the action writes the new file.
+    assert_eq!(seen["after write"], json!([false, "<h1>Hello again"]));
+    assert_eq!(seen["about kept"], true);
+    assert_eq!(seen["rebuilt"], json!([true, "<h1>Hello again"]));
+    // A note published later is built; unpublished, its files go and it is a 404.
+    assert_eq!(seen["published later"], true);
+    assert_eq!(seen["unpublished"], json!([404, false]));
+    assert_eq!(seen["unpublished after rebuild"], json!([404, false]));
+    // A field stored as post meta, which reaches no core post hook: the page read its item, so the
+    // write still names the URL.
+    assert_eq!(seen["meta field"], json!([false, "Fresh summary"]));
+    assert_eq!(seen["meta field rebuilt"], json!([true, "Fresh summary"]));
+    // A site-wide setting drops every file; the next build has the new value.
+    assert_eq!(seen["renamed"], json!([false, false]));
+    assert_eq!(seen["renamed rebuilt"], true);
+    // A file is never served past its maximum age; `/index` is not the home page; a gate vetoes.
+    for key in ["too old", "index", "gated"] {
+        assert_eq!(seen[key], false, "{key}");
+    }
+    // A prerender token expires: an old one is an ordinary (cacheable) render, a fresh one a prerender
+    // no shared cache keeps.
+    assert_eq!(
+        seen["expired token"],
+        "public, max-age=0, s-maxage=300, must-revalidate"
+    );
+    assert_eq!(seen["fresh token"], "private, no-store, max-age=0");
+    // A value staticParams stops listing loses its file.
+    assert_eq!(seen["dropped value"], json!([false, true]));
+    // Another spelling of a path, and a coming-soon site, are never answered from a file.
+    assert_eq!(seen["encoded spelling"], false);
+    assert_eq!(seen["coming soon"], false);
+    assert_eq!(seen["purge all, no files"], true);
+    // A render that began before a write named its path is not written.
+    assert_eq!(seen["race"], json!([true, false, false]));
+}
+
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.
 fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value {
     let project = fixture("frontend-modes", variant);
@@ -991,7 +1369,14 @@ fn frontend_modes_on_wordpress() {
             "both ids": 404,
             "listed embed": [false, "/author/editor/"],
             "unlisted embed": [true, ""],
-            "core route": [401, 401]
+            "core route": [401, 401],
+            "api list": true,
+            "api listed": 200,
+            "api unlisted": 401,
+            "api missing": 401,
+            "purged": true,
+            "unlisted after": 404,
+            "public sitemap": ["/author/admin/", "/author/editor/"]
         }),
         "{theme}"
     );
@@ -1281,14 +1666,368 @@ fn refuses_client_code_outside_the_subset() {
         "returns its element",
         "first/components/A.tsx:3:",
     );
+    // Reactive lists and conditionals: the item is one keyed element, and each branch is one element.
+    let shelf = |markup: &str| {
+        component(&format!(
+            "export function A() {{ const [xs, setXs] = useState([{{ id: 1, t: \"a\" }}]); return <ul onClick={{() => setXs([])}}>{markup}</ul>; }}"
+        ))
+    };
+    for (markup, refusal) in [
+        (
+            "{xs.map((x) => <li>{x.t}</li>)}",
+            "each item of a reactive list needs a `key`",
+        ),
+        (
+            "{xs.map((x) => <><li key={x.id}/><li/></>)}",
+            "each item of a reactive list is one element",
+        ),
+        (
+            "{xs.map((x, i) => <li key={i}/>)}",
+            "a reactive list's callback takes one item",
+        ),
+        (
+            "{xs.length > 0 && <><li/><li/></>}",
+            "a reactive `&&` renders one element",
+        ),
+    ] {
+        rejects(
+            &dir,
+            &[("first/components/A.tsx", &shelf(markup))],
+            refusal,
+            "first/components/A.tsx:3:",
+        );
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Forms without JavaScript (rendering.md §4.2), as a browser with scripts off submits them: the
+/// form posts form-encoded to its action, the facade answers 303 back to the page with a sealed,
+/// read-once flash, and `useFormState` shows the result or the error. The page a form comes back
+/// to is never shared, a cross-site post is refused, and a signed-in form carries the REST nonce.
+#[test]
+fn forms_work_without_javascript() {
+    let project = fixture("forms", "serve");
+    build(&project);
+    // `useFormState(action)` is typed with the action's result.
+    let types = root().join("types/first");
+    std::fs::write(
+        project.join("tsconfig.json"),
+        serde_json::json!({
+            "compilerOptions": {
+                "target": "ES2022", "lib": ["ES2022", "DOM"], "module": "ESNext", "moduleResolution": "bundler",
+                "strict": true, "noEmit": true, "types": [], "jsx": "react-jsx", "jsxImportSource": "first",
+                "allowImportingTsExtensions": true,
+                "paths": { "first": [types.join("index.d.ts")], "first/*": [types.join("*.d.ts")] },
+            },
+            "include": ["first.config.ts", "first", "typed.ts"],
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("typed.ts"),
+        r#"import { useFormState } from "first/app";
+import { subscribe } from "./first/server";
+const state = useFormState(subscribe);
+export const seats: number | undefined = state.result?.seats;
+// @ts-expect-error: the result has no `nope`
+export const nope = state.result?.nope;
+"#,
+    )
+    .unwrap();
+    let tsc = Command::new("tsc")
+        .arg("-p")
+        .arg(&project)
+        .output()
+        .expect("tsc is required");
+    assert!(tsc.status.success(), "{}", String::from_utf8_lossy(&tsc.stdout));
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/forms.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        seen["form"],
+        serde_json::json!({
+            "method": "post",
+            "action": "/__first/api/v1/actions/subscribe",
+            "hidden": [["_first_return", "hidden", "/?ref=nav"]],
+            "page cache": "public, max-age=0, s-maxage=300, must-revalidate",
+        }),
+        "an anonymous page with a form stays shared and carries no nonce: {seen}"
+    );
+    assert_eq!(
+        seen["success"],
+        serde_json::json!({
+            "status": 303,
+            "location": "/?ref=nav&_flash=ID",
+            "cookie flags": ["Max-Age=120", "Path=/", "HttpOnly", "SameSite=Lax"],
+            "done": "Subscribed ada@example.test for 3 (weekly: true)",
+            "back cache": "private, no-store, max-age=0",
+            "cookie cleared": true,
+            "again": null,
+            "forged": null,
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["unchecked"],
+        serde_json::json!("Subscribed bo@example.test for 1 (weekly: false)")
+    );
+    assert_eq!(
+        seen["invalid"],
+        serde_json::json!({
+            "status": 303,
+            "error": "email must be an email address",
+            "field": "email must be an email address",
+            "refilled": "not an email",
+            "seats refilled": "2",
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["password"],
+        serde_json::json!(["Unknown field 'password'", "", "p@example.test"]),
+        "{seen}"
+    );
+    assert_eq!(seen["handler error"], serde_json::json!("Five seats at most"));
+    assert_eq!(seen["not a number"], serde_json::json!("seats must be an integer"));
+    assert_eq!(seen["open redirect"], serde_json::json!(true));
+    assert_eq!(
+        seen["cross site"],
+        serde_json::json!([303, "A form posts here only from this site's own pages", null])
+    );
+    assert_eq!(
+        seen["json"],
+        serde_json::json!([200, 1]),
+        "a JSON call to the same URL is unchanged"
+    );
+    assert_eq!(
+        seen["signed out"],
+        serde_json::json!(["Sign in to do run members", null])
+    );
+    let user = seen["signed in"]["user"].as_i64().unwrap();
+    assert_eq!(
+        seen["signed in"],
+        serde_json::json!({
+            "nonce": true,
+            "page cache": "private, no-store, max-age=0",
+            "member": format!("Ann by {user}"),
+            "user": user,
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["no nonce"],
+        serde_json::json!([303, "Sign in to do run members", null]),
+        "{seen}"
+    );
+}
+
+/// `<Comments for={item} />` and the policy behind it (docs/decisions/2026-11-14-comments.md), with
+/// comments arriving all three ways: the component's form with JavaScript off, the facade's
+/// `POST /comments`, and core's `wp-comments-post.php`. Each gets the same answer from the one
+/// enforcement point on core's hooks, whatever the Discussion settings say.
+#[test]
+fn comments_follow_the_kind_policy_on_every_path() {
+    let project = fixture("comments", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/comments.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    // Signed out: the approved thread and a sign-in link, no form; the page stays shared.
+    assert_eq!(
+        seen["signed out"],
+        serde_json::json!({
+            "status": 200, "thread": ["First!"], "forms": 0, "sign in": "Sign in to comment",
+            "cache": "public, max-age=0, s-maxage=300, must-revalidate",
+        }),
+        "{seen}"
+    );
+    // ...and every path refuses a signed-out comment, saving nothing.
+    assert_eq!(
+        seen["signed out posts"],
+        serde_json::json!({ "facade": 401, "form": [303, "Sorry, you must be logged in to comment."], "core": 401, "saved": 0 }),
+        "{seen}"
+    );
+    // A first-time commenter's comment is held and shown only to them, with the form's notice.
+    assert_eq!(
+        seen["first comment"],
+        serde_json::json!({
+            "status": 303, "stored": "unapproved", "notice": "Your comment is awaiting moderation.",
+            "ann sees": ["First!", "Hello from Ann (held)"], "others see": ["First!"], "bo sees": ["First!"],
+            "page cache": "private, no-store, max-age=0", "nonce": true,
+        }),
+        "{seen}"
+    );
+    // After one of theirs is approved, the next is approved at once, even with the site's
+    // "hold every comment" setting on; a first-timer through core's handler is held.
+    assert_eq!(seen["second comment"], serde_json::json!([201, "approved"]), "{seen}");
+    assert_eq!(seen["core path"], serde_json::json!([302, "unapproved"]), "{seen}");
+    // Threaded to depth 3: a fourth level is refused on every path (never flattened), and the page
+    // offers no reply form under a depth-3 comment.
+    let depth = &seen["depth"];
+    assert_eq!(
+        (&depth["form"], &depth["facade"], &depth["core"], &depth["saved"]),
+        (
+            &serde_json::json!("Replies go 3 levels deep here."),
+            &serde_json::json!(400),
+            &serde_json::json!(400),
+            &serde_json::json!(0)
+        ),
+        "{seen}"
+    );
+    assert_eq!(
+        depth["thread"],
+        serde_json::json!(["First!", ">depth two", ">>depth three", "Hello from Ann", "Ann again"])
+    );
+    assert!(
+        !depth["reply forms on"]
+            .as_array()
+            .unwrap()
+            .contains(&depth["depth three id"]),
+        "{seen}"
+    );
+    // A draft's thread isn't readable by a visitor who can't read the draft, nor commentable.
+    assert_eq!(
+        seen["draft"],
+        serde_json::json!({ "page": 404, "page shows": false, "list": 403, "post": 403 }),
+        "{seen}"
+    );
+    // An authored policy (`comments: { guests: true, moderation: "none", threaded: false,
+    // closeAfterDays: 30 }`): a signed-out visitor comments through the facade and core's handler,
+    // approved at once; a reply on a flat thread is refused; an item published 40 days ago is closed.
+    assert_eq!(
+        seen["authored policy"],
+        serde_json::json!({ "guest facade": [201, "approved"], "guest core": [302, "approved"], "reply": 400, "closed": 403 }),
+        "{seen}"
+    );
+    // A guest without a name or a valid email is refused on every path, with the Discussion
+    // setting `require_name_email` off: the policy decides.
+    assert_eq!(
+        seen["guest identity"],
+        serde_json::json!({ "facade": 400, "core": 400, "form": [303, "Please fill the required fields (name, email)."], "saved": 0 }),
+        "{seen}"
+    );
+    assert_eq!(seen["memo"], 403, "a kind without comments takes none: {seen}");
+}
+
+/// `<Comments for>` on a kind without `comments`, or on something that isn't an item, is a build
+/// error at the prop.
+#[test]
+fn refuses_comments_without_the_kind_option() {
+    let dir = std::env::temp_dir().join(format!("first-comments-reject-{}", std::process::id()));
+    let schema = (
+        "first/schema.ts",
+        "import { collection, text, slug } from \"first\";\nexport const memos = collection({ title: text(), slug: slug({ source: \"title\" }).optional() }, { title: \"title\", url: \"/memos/:slug\" });\n",
+    );
+    rejects(
+        &dir,
+        &[
+            schema,
+            (
+                "first/app/memos/[slug]/page.tsx",
+                "import { Comments, type PageProps } from \"first/app\";\nexport default function Memo({ item }: PageProps<\"memos/[slug]\">) {\n  return <Comments for={item} />;\n}\n",
+            ),
+        ],
+        "`memos` has comments off",
+        "first/app/memos/[slug]/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[
+            schema,
+            (
+                "first/app/page.tsx",
+                "import { Comments } from \"first/app\";\nexport default function Home() {\n  return <Comments for={{ id: 1 }} />;\n}\n",
+            ),
+        ],
+        "`<Comments for>` takes a row of a collection",
+        "first/app/page.tsx:3:",
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// What a form with an action can't be is a build error at the line, with the fix.
+#[test]
+fn refuses_forms_it_cannot_post() {
+    let dir = std::env::temp_dir().join(format!("first-forms-reject-{}", std::process::id()));
+    let server = (
+        "first/server.ts",
+        "import { action, text } from \"first\";\nexport const send = action({ input: { name: text() }, access: \"anyone\", async handler({ name }) { return name; } });\n",
+    );
+    let page = |body: &str| {
+        format!("import {{ useFormState }} from \"first/app\";\nimport {{ send }} from \"../server\";\n{body}\n")
+    };
+    rejects(
+        &dir,
+        &[
+            server,
+            (
+                "first/app/page.tsx",
+                &page("export default function Page() { return <form action={send} method=\"get\"><button/></form>; }"),
+            ),
+        ],
+        "a form with an action posts it form-encoded",
+        "first/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[
+            server,
+            (
+                "first/app/page.tsx",
+                &page(
+                    "const other = 1;\nexport default function Page() { const s = useFormState(other); return <b>{String(s.pending)}</b>; }",
+                ),
+            ),
+        ],
+        "`useFormState()` takes an action imported from your server code",
+        "first/app/page.tsx:4:",
+    );
+    rejects(
+        &dir,
+        &[
+            server,
+            (
+                "first/components/Box.tsx",
+                "\"use client\";\nimport { send } from \"../server\";\nexport function Box() { return <form action={send}><button/></form>; }\n",
+            ),
+        ],
+        "a \"use client\" component's form calls its action from a handler",
+        "first/components/Box.tsx:3:",
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
 /// The record's browser check: compiled client components on a real WordPress page, in Chromium
 /// with `SCRIPT_DEBUG` (the Interactivity runtime's development build, the one that warns).
 /// Hydration changes nothing in the server HTML, the runtime logs no warnings, a click calls the
-/// server action and updates the label, effects and shared state follow state changes, and a CSS
-/// module's class switches with state and styles the element.
+/// server action and updates the label, effects and shared state follow state changes, a CSS
+/// module's class switches with state and styles the element, and a reactive list and
+/// conditionals re-render from their templates, keeping the server's elements.
 #[test]
 fn client_components_hydrate_in_the_browser() {
     assert!(
@@ -1352,6 +2091,23 @@ fn client_components_hydrate_in_the_browser() {
         ),
         "{seen}"
     );
+    // A reactive list adds and drops items by key, and `&&` and `?:` switch their elements.
+    let step = |books: &[&str], open: u64, count: Option<&str>, empty: u64| serde_json::json!({ "books": books, "open": open, "count": count, "empty": empty });
+    assert_eq!(
+        seen["shelfSteps"],
+        serde_json::json!([
+            step(&["1:Dune", "2:Emma"], 1, Some("2"), 0),
+            step(&["1:Dune", "2:Emma", "3:Book 3"], 1, Some("3"), 0),
+            step(&["1:Dune", "2:Emma", "3:Book 3"], 0, Some("3"), 0),
+            step(&[], 0, None, 1),
+            step(&["1:Book 1"], 1, Some("1"), 0),
+        ]),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["kept"], true,
+        "the server-rendered item is kept, not re-created: {seen}"
+    );
 }
 
 /// rendering.md §6.1 and §6.2 for `first/app/` pages, on WordPress with a stand-in host listening
@@ -1377,7 +2133,24 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         String::from_utf8_lossy(&out.stderr)
     );
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let shared = "public, s-maxage=300, max-age=0, must-revalidate";
+    // Batcache's own regex over every policy: a shareable page is kept for its window, the
+    // filtered one too, and a private answer for none (max-age=0 means Batcache skips it).
+    assert_eq!(
+        seen["batcache"],
+        serde_json::json!([
+            [200, true, false, true, 300],
+            [200, false, false, false, 0],
+            [200, true, true, false, 0],
+            [404, true, false, false, 0],
+            [500, true, false, false, 0],
+            ["window 60", 60]
+        ])
+    );
+    assert_eq!(
+        seen["batcache served"],
+        serde_json::json!({ "home": 300, "as editor": 0, "missing": 0 })
+    );
+    let shared = "public, max-age=0, s-maxage=300, must-revalidate";
     let private = "private, no-store, max-age=0";
     for key in ["home", "note", "other note", "about"] {
         assert_eq!(
@@ -1406,6 +2179,41 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     assert_eq!(
         seen["purged"],
         serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])
+    );
+    // The runtime's own listener cleared those paths in Batcache (keyed as `http://`, no query),
+    // the VIP edge and Jetpack Boost; `/*` reaches Boost's clear-all.
+    let mut cleared: Vec<String> = seen["cleared"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    cleared.sort();
+    // Boost clears a URL recursively, so the home page goes to its home action instead.
+    let mut want = vec!["boost home".to_string()];
+    for cache in ["batcache", "boost", "vip"] {
+        for path in ["/", "/index.md", "/notes/hello", "/notes/hello.md"] {
+            if !(cache == "boost" && path == "/") {
+                want.push(format!("{cache} {path}"));
+            }
+        }
+    }
+    want.sort();
+    assert_eq!(cleared, want);
+    // A twin fetched before its page was ever rendered records what it read under its own URL, so
+    // a write to the row it shows purges it (and `/`, which lists notes, with its twin).
+    assert_eq!(seen["twin only"]["status"], 200, "{}", seen["twin only"]);
+    assert_eq!(seen["twin index"], serde_json::json!(["notes third /notes/third.md"]));
+    assert_eq!(
+        seen["twin purged"],
+        serde_json::json!([["/", "/index.md", "/notes/third.md"]])
+    );
+    assert_eq!(seen["cleared all"], serde_json::json!(["vip *", "boost *"]));
+    // Over VIP's 100 URLs a request: one site ban, and every path still for Batcache.
+    assert_eq!(seen["cleared many"], serde_json::json!([1, true, 101]));
+    assert_eq!(
+        seen["without batcache drop-in"],
+        serde_json::json!(["vip /about", "boost /about"])
     );
 }
 
@@ -1477,6 +2285,270 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     assert!(image["type"].as_str().unwrap().starts_with("image/svg+xml"), "{image}");
     assert!(image["src"].as_str().unwrap().starts_with("compass-"), "{image}");
     assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
+}
+
+/// `first doctor --site <url> --links` on a served First site: every link and `#anchor` the docs
+/// pages make, from Markdown content, TSX and WordPress, is followed; the broken ones are reported
+/// with the page they are on.
+#[test]
+fn doctor_finds_broken_links_and_anchors_on_a_site() {
+    let project = fixture("docs-kind", "links");
+    // A doc whose links are good, broken, or point at a heading that isn't there.
+    std::fs::write(
+        project.join("content/docs/links.md"),
+        "---\ntitle: Links\norder: 9\n---\n\n\
+         - [Install](/docs/guides/install), [its heading](/docs/introduction#small-print) and [this page's](#links-here).\n\
+         - [A page that isn't there](/docs/nowhere).\n\
+         - [A heading that isn't there](/docs/introduction#no-such-heading).\n\
+         - [Another site](https://example.invalid/gone) is not fetched.\n\n\
+         ## Links here\n\nText.\n",
+    )
+    .unwrap();
+    build(&project);
+    let work = tempfile::tempdir().unwrap();
+    let (sources, compiled) = (work.path().join("sources"), work.path().join("compiled"));
+    for args in [
+        vec![
+            "sources".as_ref(),
+            project.as_os_str(),
+            "--out".as_ref(),
+            sources.as_os_str(),
+        ],
+        vec![
+            "compile-sources".as_ref(),
+            sources.as_os_str(),
+            compiled.as_os_str(),
+            project.as_os_str(),
+        ],
+    ] {
+        let out = first().args(&args).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .arg(compiled.join("seed"))
+        .env("FIRST_WP_THEMES", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = first()
+        .args(["doctor", "--json", "--links", "--site"])
+        .arg(&url)
+        .arg(&project)
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(&project);
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| {
+        panic!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    let links = report["data"]["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "links")
+        .unwrap()
+        .clone();
+    assert_eq!(links["ok"], false, "{report}");
+    assert!(!out.status.success());
+    // Exactly the two broken links, each on the page that makes it, from the doc's Markdown.
+    assert_eq!(
+        report["data"]["links"],
+        serde_json::json!([
+            { "on": "/docs/links", "href": "/docs/introduction#no-such-heading", "problem": "/docs/introduction has no element with id \"no-such-heading\"" },
+            { "on": "/docs/links", "href": "/docs/nowhere", "problem": "answers 404" },
+        ]),
+        "{report}"
+    );
+}
+
+/// `apiReference()` from "first/content": the app's own OpenAPI document, and one in `public/`,
+/// rendered by pages as an API reference, on WordPress over HTTP (tests/php/api_reference.php).
+#[test]
+fn api_reference_renders_openapi_as_pages() {
+    let project = fixture("api-reference", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/api_reference.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    // The index: the document's title, this site as its server, a section per tag in the
+    // document's order, and a link per operation named by its operationId.
+    let index = &seen["index"];
+    assert_eq!(index["status"], 200);
+    assert_eq!(index["h1"], serde_json::json!(["Apiref API"]));
+    assert!(
+        index["server"][0].as_str().unwrap().ends_with("/__first/api/v1"),
+        "{index}"
+    );
+    assert_eq!(index["tags"][0], "notes");
+    assert_eq!(index["tags"][1], "actions");
+    assert_eq!(index["tags"][2], "word-press");
+    assert_eq!(index["notes"][0], "/api/notes/notes-list");
+    assert_eq!(index["notes"][4], "/api/notes/notes-delete");
+    // The document's Markdown description, as HTML.
+    assert_eq!(index["description"], "apiref");
+    // One operation: the endpoint, who may call it, each parameter with where it goes and its
+    // constraints, the response's fields nested by depth, and a request sample.
+    let list = &seen["list"];
+    assert_eq!(list["endpoint"], serde_json::json!(["GET /notes"]));
+    assert_eq!(list["access"], serde_json::json!(["anyone"]));
+    assert_eq!(
+        list["limit"],
+        serde_json::json!(["integer", "in query", "min 1 · default: 50"])
+    );
+    assert_eq!(list["response"][0], "depth-0 data Note[]");
+    assert_eq!(list["response"][2], "depth-1 title string");
+    assert_eq!(list["response"][3], "depth-1 body string | null");
+    assert_eq!(
+        list["response"].as_array().unwrap().last().unwrap(),
+        "depth-0 cursor string | null"
+    );
+    assert!(
+        list["curl"][0].as_str().unwrap().starts_with("curl -g -X GET 'http://"),
+        "{list}"
+    );
+    // A write: its JSON body's fields, and samples that send the required ones.
+    let create = &seen["create"];
+    assert_eq!(create["body type"], serde_json::json!(["application/json"]));
+    assert_eq!(create["body"][0], "title string");
+    assert!(
+        create["curl"][0]
+            .as_str()
+            .unwrap()
+            .contains(r#"-d '{"title":"string"}'"#),
+        "{create}"
+    );
+    assert!(
+        create["fetch"][0]
+            .as_str()
+            .unwrap()
+            .contains(r#"body: JSON.stringify({"title":"string"})"#),
+        "{create}"
+    );
+    assert_eq!(seen["missing"], 404);
+    // A document in public/: path-level parameters, $refs followed, a schema that refers to
+    // itself shown once (the cycle stops), and nested fields one level deeper.
+    assert_eq!(
+        seen["partner"],
+        serde_json::json!({
+            "status": 200,
+            "h1": ["Partner API"],
+            "server": ["https://partner.example/v2"],
+            "params": ["id path string required"],
+            "fields": [
+                "200 d0 id: string required",
+                "200 d0 lines: Line[]",
+                "200 d1 sku: string (matches ^[A-Z]+$)",
+                "200 d1 qty: integer (min 1)",
+                "200 d0 parent: Order"
+            ],
+            "id": ["get-order"]
+        })
+    );
+    // What goes wrong in practice: a description's blocks are text, never the site's dynamic
+    // blocks; the operation's parameter replaces the path's; allOf and const; JSON over a form
+    // body; slugs that collide get -2; and a quote in the server is quoted in the curl sample.
+    assert_eq!(
+        seen["edge"],
+        serde_json::json!({
+            "status": 200,
+            "description": "Plain text.",
+            "renders blocks": false,
+            "sections": ["unicode--items-list", "unicode--items-list-2"],
+            "params": ["id: integer"],
+            "fields": ["count: Count min 1 required", "kind: \"fixed\" always \"fixed\""],
+            "body": ["application/json note!"],
+            "curl": "curl -g -X GET 'https://h.example/a'\\''b/x/{id}' \\\n  -H 'Accept: application/json'"
+        })
+    );
+}
+
+/// The project's `public/` folder at the site root (spec §1: "static files, served as-is"), on
+/// WordPress over HTTP (tests/php/public_root.php): each file at its path with its type; the app's
+/// own page over a file of the same name; never a dotfile, PHP, a path out of the folder or one
+/// WordPress owns.
+#[test]
+fn public_files_serve_at_the_site_root() {
+    let project = fixture("public-root", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/public_root.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        seen["served"],
+        serde_json::json!({
+            "/compiler.wasm": [200, "application/wasm", 8],
+            "/logo.svg": [200, "image/svg+xml", 41],
+            "/files/blog.json": [200, "application/json", 11],
+            "/files/blobs/0a1b.txt": [200, "text/plain; charset=utf-8", 9],
+            "/files/": [200, "text/html; charset=utf-8", 35],
+            "/og/index.png": [200, "image/png", 8],
+            "/.well-known/ai.json": [200, "application/json", 13],
+            "/notes.md": [200, "text/markdown; charset=utf-8", 15],
+            "/robots-extra.txt": [200, "text/plain; charset=utf-8", 14],
+            "/index.html": [200, "text/html; charset=utf-8", 21],
+            "/it's.txt": [200, "text/plain; charset=utf-8", 1]
+        })
+    );
+    // robots.txt, llms.txt, feeds and First Identity's discovery document stay WordPress's.
+    for (path, kept) in seen["wordpress"].as_object().unwrap() {
+        assert_eq!(kept, true, "{path}");
+    }
+    // A `[slug]` route at the root doesn't take a file's path.
+    assert_eq!(seen["beside a dynamic route"], 200);
+    assert_eq!(seen["home"], false);
+    // `first/app/about/page.tsx` wins over `public/about`.
+    assert_eq!(seen["about"], serde_json::json!([200, true, false]));
+    // Never a file's bytes for a dotfile, PHP (as Windows would read `run.php.`, `run.php `,
+    // `run.php::$DATA`, or in capitals), a path out of the folder, or a link that leaves it.
+    for (path, answer) in seen["refused"].as_object().unwrap() {
+        assert_eq!(answer, &serde_json::json!([true, false]), "{path}");
+    }
+    assert_eq!(seen["refused"].as_object().unwrap().len(), 15);
+    assert_eq!(seen["head"], serde_json::json!([200, "", "11"]));
+    // A matching ETag, its weak form, or one of a list: 304; another: 200.
+    assert_eq!(seen["not modified"], serde_json::json!([304, 304, 304, 200]));
+    assert_eq!(seen["svg policy"], true);
+    assert_eq!(seen["cache"], "public, max-age=300");
+    // A POST isn't served a file; the `[slug]` page answers it as pages do (405).
+    assert_eq!(seen["post"], 405);
 }
 
 /// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
@@ -1614,17 +2686,32 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         serde_json::json!([
             "#why Why depth-2",
             "#small-print Small print depth-3",
-            "#why-2 Why depth-2"
+            "#whats-firstapp What's first/app/? depth-3",
+            "#why-1 Why depth-2",
+            "#step-1---install Step 1 - Install depth-3",
+            "#the---force-flag The --force flag depth-3",
+            "#why-1-1 Why 1 depth-2",
+            "#two--spaces Two spaces depth-2"
         ])
     );
+    // Ids follow GitHub's rule (github-slugger): punctuation goes, a repeat gets `-1`.
     assert_eq!(
         seen["introduction"]["anchors"],
-        serde_json::json!(["h2#why", "h3#small-print", "h2#why-2"])
+        serde_json::json!([
+            "h2#why",
+            "h3#small-print",
+            "h3#whats-firstapp",
+            "h2#why-1",
+            "h3#step-1---install",
+            "h3#the---force-flag",
+            "h2#why-1-1",
+            "h2#two--spaces"
+        ])
     );
     assert_eq!(seen["introduction"]["title"], "Introduction · Docs");
     assert_eq!(
         seen["introduction"]["cache"],
-        "public, s-maxage=300, max-age=0, must-revalidate"
+        "public, max-age=0, s-maxage=300, must-revalidate"
     );
     // The draft: a 404 and no twin for visitors; in nobody's tree or pager, an editor's included.
     assert_eq!(seen["roadmap"], 404);
@@ -1659,6 +2746,11 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         seen["same slug elsewhere"],
         serde_json::json!([["Install again"], ["Install"]])
     );
+    // Every id github-slugger gives the fixture's headings (tests/fixtures/docs-kind/heading-ids.json).
+    assert_eq!(seen["heading ids"], serde_json::json!([]));
+    assert_eq!(seen["heading id cases"], 17);
+    // `## Why`, `<h2 id="why">`, `## Why`: the own id stays, and the generated ones step around it.
+    assert_eq!(seen["own ids"], serde_json::json!(["why-1", "why", "why-2"]));
     // A block that renders differently each time doesn't cost the headings their anchors.
     assert_eq!(
         seen["headings beside a gallery"],
@@ -1666,16 +2758,30 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             [
                 "#why Why depth-2",
                 "#small-print Small print depth-3",
-                "#why-2 Why depth-2"
+                "#whats-firstapp What's first/app/? depth-3",
+                "#why-1 Why depth-2",
+                "#step-1---install Step 1 - Install depth-3",
+                "#the---force-flag The --force flag depth-3",
+                "#why-1-1 Why 1 depth-2",
+                "#two--spaces Two spaces depth-2"
             ],
-            ["h2#why", "h3#small-print", "h2#why-2"]
+            [
+                "h2#why",
+                "h3#small-print",
+                "h3#whats-firstapp",
+                "h2#why-1",
+                "h3#step-1---install",
+                "h3#the---force-flag",
+                "h2#why-1-1",
+                "h2#two--spaces"
+            ]
         ])
     );
     // Components in Markdown (docs/decisions/2026-11-13-components-in-markdown.md): the file's
     // tags are stored as the app's blocks, their Markdown as inner blocks.
     assert_eq!(
         seen["blocks registered"],
-        serde_json::json!(["docskind/callout", "docskind/badge"])
+        serde_json::json!(["docskind/callout", "docskind/badge", "docskind/status"])
     );
     assert_eq!(
         seen["blocks stored"],
@@ -1698,6 +2804,10 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // Written back, the blocks are the file's tags again, and an editor's change to a prop is too.
     let file = "Run the installer.\n\n<Callout type=\"warning\" title=\"Before you start\">\nBack up the **database**.\n\n- Export it\n- Keep a copy\n</Callout>\n\n<Badge label=\"New\" count={3} />\n\nThen continue.\n";
     assert_eq!(seen["blocks back"], file);
+    assert_eq!(
+        seen["blocks cleared back"],
+        "<Status />\n\n<Badge label=\"x\" count={3} />\n"
+    );
     assert_eq!(
         seen["blocks edited back"],
         file.replace("type=\"warning\"", "type=\"note\"")
@@ -1925,6 +3035,84 @@ fn content_blocks_refuse_props_a_tag_cannot_write() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Components in Markdown in the block editor, in Chromium: a component without `children` is
+/// registered by core's `autoRegister` support (a server-rendered preview, a sidebar field per
+/// prop), one with `children` by the runtime's script (inner blocks edited in place, props in the
+/// sidebar); both save as the app's blocks and render through their components
+/// (tests/differential/client/editor-blocks.mjs).
+#[test]
+fn component_blocks_edit_in_the_block_editor() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let project = fixture("docs-kind", "editor");
+    build(&project);
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/editor-blocks.mjs"))
+        .arg(&url)
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    // Core marks the Badge's props for its own fields; the Callout's are the runtime's.
+    assert_eq!(
+        seen["types"],
+        serde_json::json!({ "docskind/badge": ["count", "label"], "docskind/callout": [] }),
+        "{seen}"
+    );
+    assert_eq!(seen["badgePreview"], "<span class=\"badge\">New<b> 3</b></span>");
+    assert_eq!(seen["badgeFields"], serde_json::json!([1, 1]), "{seen}");
+    assert_eq!(seen["badgeEdited"], "<span class=\"badge\">Fresh<b> 3</b></span>");
+    assert_eq!(seen["calloutInner"], "Mind the gap.");
+    assert_eq!(seen["calloutFields"], serde_json::json!([1, 1]), "{seen}");
+    // A block that renders nothing still has a box to select; an optional choice starts unset, and
+    // can be set and unset again; a cleared text field is empty.
+    assert_eq!(seen["statusEmpty"], "<Status />");
+    assert_eq!(seen["statusKind"], serde_json::json!(["", "live", ""]));
+    assert_eq!(seen["statusCleared"], "");
+    let saved = seen["saved"].as_str().unwrap();
+    assert!(
+        saved.contains("<!-- wp:docskind/badge {\"label\":\"Fresh\",\"count\":3} /-->")
+            && saved.contains("<!-- wp:docskind/callout {\"type\":\"warning\"} -->")
+            && saved.contains("<p>Mind the gap.</p>"),
+        "{saved}"
+    );
+    assert_eq!(
+        seen["rendered"],
+        serde_json::json!([
+            "<span class=\"badge\">Fresh<b> 3</b></span>",
+            "<aside class=\"callout callout-warning\" role=\"note\"><div class=\"callout-body\"> <p class=\"wp-block-paragraph\">Mind the gap.</p> </div></aside>"
+        ]),
+        "{seen}"
+    );
+}
+
 /// The docs example (examples/docs), every content feature at once, read in Chromium as an
 /// anonymous visitor: the site is the example as built, seeded from the records a hosted compile
 /// writes for its content/docs/ folder tree (tests/differential/client/docs.mjs).
@@ -1990,6 +3178,18 @@ fn docs_example_reads_in_the_browser() {
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
     // Home → the docs, by the reader's click; the doc has its title and the published tree.
     assert_eq!(seen["home"], "First docs");
+    // The router region is processed as core processes a block theme's: core/router's state.url
+    // comes from the server, follows a <Link> click that swapped the region in the same document,
+    // and core's loading bar is in the footer with its styles.
+    assert_eq!(seen["serverUrl"], format!("{url}/"), "{seen}");
+    assert_eq!(
+        seen["navigation"],
+        serde_json::json!({
+            "sameDocument": true,
+            "url": format!("{url}/docs/introduction"),
+            "loadingBar": [["core/router/private", "fixed"]]
+        })
+    );
     assert_eq!(
         seen["intro"],
         serde_json::json!({ "path": "/docs/introduction", "title": "Introduction · First docs", "h1": "Introduction" })
@@ -2114,7 +3314,7 @@ fn page_reads_run_as_the_visitor() {
     // Only the anonymous render is shared; an editor's is private, and doesn't replace it.
     assert_eq!(
         seen["anonymous"]["page cache"],
-        "public, s-maxage=300, max-age=0, must-revalidate"
+        "public, max-age=0, s-maxage=300, must-revalidate"
     );
     assert_eq!(seen["editor"]["page cache"], "private, no-store, max-age=0");
     assert_eq!(seen["anonymous after editor"], public);
@@ -2214,4 +3414,92 @@ fn static_routes_have_code_owned_pages() {
         (&seen["sitemap pages"], &seen["sitemap app"]),
         (&serde_json::json!(4), &serde_json::json!(3))
     );
+}
+
+/// An explicit route id (`export const route = { id }` on a page.tsx, `id:` in a page.md's front
+/// matter) keeps the page's WordPress Page when its file moves to another URL: the second build
+/// moves both files under `company/`, and both Pages keep their IDs with the new URL as their link,
+/// while the old URLs redirect there. Without an id the route id is the folder path.
+#[test]
+fn route_ids_keep_pages_when_files_move() {
+    let first = fixture("route-ids", "first");
+    build(&first);
+    let second = fixture("route-ids", "second");
+    let app = second.join("first/app");
+    std::fs::create_dir_all(app.join("company")).unwrap();
+    for page in ["about", "colophon"] {
+        std::fs::rename(app.join(page), app.join("company").join(page)).unwrap();
+    }
+    build(&second);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/route_ids.php"))
+        .arg(first.join("first/dist/wp-content"))
+        .arg(second.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&first);
+    let _ = std::fs::remove_dir_all(&second);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{stdout}{}", String::from_utf8_lossy(&out.stderr));
+    let json: String = stdout
+        .lines()
+        .skip_while(|l| !l.starts_with('{'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let seen: serde_json::Value = serde_json::from_str(&json).unwrap_or_else(|_| panic!("{stdout}"));
+    assert_eq!(seen["first served"], serde_json::json!([200, 200]));
+    assert_eq!(
+        seen["second served"],
+        serde_json::json!([200, 200, 301, 301]),
+        "the old URLs redirect"
+    );
+    for (title, before, after) in [
+        ("About", "/about", "/company/about"),
+        ("Colophon", "/colophon", "/company/colophon"),
+    ] {
+        assert_eq!(seen["first"][title]["link"], before, "{title}: {seen}");
+        assert_eq!(
+            seen["second"][title]["id"], seen["first"][title]["id"],
+            "{title} keeps its Page"
+        );
+        assert_eq!(seen["second"][title]["link"], after, "{title}: {seen}");
+        assert_eq!(seen["second"][title]["status"], "publish");
+    }
+    let titles: Vec<&String> = seen["second"].as_object().unwrap().keys().collect();
+    assert_eq!(titles, ["About", "Colophon", "Home"], "one Page each, none duplicated");
+}
+
+/// A route id is a literal, and two pages can't share one; the error is at the export.
+#[test]
+fn refuses_route_ids_it_cannot_keep() {
+    let dir = std::env::temp_dir().join(format!("first-route-ids-{}", std::process::id()));
+    let page =
+        |id: &str| format!("export const route = {{ id: {id} }};\nexport default function P() {{ return <p/>; }}\n");
+    rejects(
+        &dir,
+        &[
+            ("first/app/a/page.tsx", &page("\"site.page\"")),
+            ("first/app/b/page.tsx", &page("\"site.page\"")),
+        ],
+        "route id `site.page` is already app/a/page.tsx's",
+        "first/app/b/page.tsx:1:14",
+    );
+    rejects(
+        &dir,
+        &[("first/app/a/page.tsx", &page("\"site page\""))],
+        "`route` must be `{ id: \"…\" }` with a literal id",
+        "first/app/a/page.tsx:1:14",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/a/page.tsx", &page("\"site.page\"")),
+            ("first/app/b/page.md", "---\nid: site.page\ntitle: B\n---\n\nText.\n"),
+        ],
+        "id `site.page` is already app/a/page.tsx's",
+        "first/app/b/page.md:2:",
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

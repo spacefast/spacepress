@@ -309,16 +309,20 @@ pub enum HookKind {
     AfterUpdate,
     BeforeDelete,
     AfterDelete,
+    /// A post kind's item became published (created published, updated into it, or a scheduled
+    /// item reached its time). Spec §2.8.
+    AfterPublish,
 }
 
 impl HookKind {
-    pub const ALL: [HookKind; 6] = [
+    pub const ALL: [HookKind; 7] = [
         HookKind::BeforeCreate,
         HookKind::AfterCreate,
         HookKind::BeforeUpdate,
         HookKind::AfterUpdate,
         HookKind::BeforeDelete,
         HookKind::AfterDelete,
+        HookKind::AfterPublish,
     ];
 
     pub fn name(self) -> &'static str {
@@ -329,6 +333,7 @@ impl HookKind {
             HookKind::AfterUpdate => "afterUpdate",
             HookKind::BeforeDelete => "beforeDelete",
             HookKind::AfterDelete => "afterDelete",
+            HookKind::AfterPublish => "afterPublish",
         }
     }
 
@@ -372,6 +377,33 @@ impl Access {
 /// Operations a collection's access config covers, in schema.php order.
 pub const ACCESS_OPS: [&str; 4] = ["read", "create", "update", "delete"];
 
+/// How comments behave on a kind (spec §2.3). `comments: true` is these defaults.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommentPolicy {
+    /// Anonymous visitors may comment (name and email required).
+    pub guests: bool,
+    /// `"none"`, `"first-time"` or `"all"`.
+    pub moderation: &'static str,
+    /// Reply depth, 1 (flat) to 10.
+    pub threaded: u8,
+    /// Comments close this many days after the item was published; `None` never closes.
+    pub close_after_days: Option<u32>,
+    /// Comment types allowed on this kind besides normal comments.
+    pub types: Vec<String>,
+}
+
+impl Default for CommentPolicy {
+    fn default() -> Self {
+        CommentPolicy {
+            guests: false,
+            moderation: "first-time",
+            threaded: 3,
+            close_after_days: None,
+            types: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Collection {
     /// Logical registry key in the config (`shoppingList`).
@@ -390,6 +422,9 @@ pub struct Collection {
     pub staged: bool,
     /// `comments: true`: the post type supports WordPress comments; every other kind has them off.
     pub comments: bool,
+    /// What `comments: true | { ... }` asks of comments on this kind (spec §2.3), defaults filled.
+    /// `Some` exactly when `comments` is on.
+    pub comment_policy: Option<CommentPolicy>,
     pub title: Option<String>,
     pub content: Option<String>,
     pub slug: Option<String>,
@@ -414,8 +449,10 @@ pub struct Collection {
     /// taxonomy it adds the term's `parent`.
     pub hierarchical: bool,
     /// `taxonomy()`: terms in core's term tables, attached to these kinds
-    /// (docs/decisions/2026-11-11-authoring-surface.md, rulings 24-33).
+    /// (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34).
     pub taxonomy: Option<Taxonomy>,
+    /// `.index(fields, { unique? })`: compound indexes the author declared, as (fields, unique).
+    pub indexes: Vec<(Vec<String>, bool)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -541,10 +578,13 @@ pub struct Schema {
     pub media: Json,
     pub uploads: Option<Json>,
     pub locales: Option<Json>,
-    /// `defineConfig({ admin: true })`: the build ships the optional admin screens plugin.
+    /// The build ships the `first-admin` plugin (the default); `defineConfig({ admin: false })` leaves it out.
     pub admin: bool,
     /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `first/app`.
     pub frontend: Option<crate::kind_url::Frontend>,
+    /// `defineConfig({ output })` (docs/decisions/2026-11-13-static-output.md): `Server` renders
+    /// pages per request and prebuilds the ones that say `prerender = true`; `Static` prebuilds them all.
+    pub output: Output,
     /// `defineConfig({ publicAuthors: true })`: core's author archives, author routes and user
     /// listings stay public, as WordPress ships them (the users kind's read rule can also allow it).
     pub public_authors: bool,
@@ -554,6 +594,16 @@ pub struct Schema {
     /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
     /// while it runs. Holds what the build read from the lock `first pull` writes.
     pub runtime_schema: Option<RuntimeSchema>,
+}
+
+/// `output` in `defineConfig`, Astro's word for it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Output {
+    /// Pages render on WordPress per request; a page that exports `prerender = true` is prebuilt.
+    #[default]
+    Server,
+    /// Every page is prebuilt; `first export` writes a site with no WordPress at runtime.
+    Static,
 }
 
 /// The site schema version a build contains: zero and no hash before any `first pull`.
@@ -583,8 +633,9 @@ impl Default for Schema {
             media: serde_json::json!({"sizes": {}}),
             uploads: None,
             locales: None,
-            admin: false,
+            admin: true,
             frontend: None,
+            output: Output::Server,
             public_authors: false,
             sealed: None,
             runtime_schema: None,
@@ -704,8 +755,10 @@ pub struct App {
 
 #[derive(Debug, Clone)]
 pub struct AppRoute {
-    /// The folder below `app/`, `/` for the root: stable across builds.
+    /// The folder below `app/`, `/` for the root, or the page's own `route.id`: stable across builds.
     pub id: String,
+    /// Where the page set its id itself (`export const route = { id }`, or `id:` in a `page.md`).
+    pub explicit_id: Option<crate::diag::Span>,
     /// `/blog/:slug`, `/docs/*rest` (one or more), `/docs/**rest` (zero or more).
     pub pattern: String,
     pub page: Option<String>,
@@ -714,6 +767,8 @@ pub struct AppRoute {
     pub error: Option<String>,
     /// The stylesheets the page and its layouts import, in link order (`assets::stylesheets`).
     pub styles: Vec<String>,
+    /// The page is prebuilt: its file says `prerender = true`, or the config says `output: "static"`.
+    pub prerender: bool,
     /// The kind whose `url` this page serves (spec §2.7), with each pattern placeholder's folder
     /// parameter: the page receives that kind's `item`, and a missing one is a 404.
     pub kind: Option<(String, Vec<(String, String)>)>,
@@ -733,6 +788,11 @@ pub struct AppFile {
     /// them (`export const signature`, a raw signed webhook). Exactly one when there are handlers.
     pub access: Option<Access>,
     pub signature: Option<Json>,
+    /// `export const prerender = true | false` (pages): `None` when the page says nothing, so it
+    /// follows the config's `output`.
+    pub prerender: Option<bool>,
+    /// `export async function staticParams()`: the compiled function listing a dynamic page's params.
+    pub static_params: Option<String>,
 }
 
 #[derive(Debug, Clone)]

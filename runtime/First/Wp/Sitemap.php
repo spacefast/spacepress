@@ -305,7 +305,8 @@ final class Sitemap
     private static function readableUsers(Plugin $plugin, array $args): array
     {
         $collection = $plugin->schema->auth()['collection'] ?? null;
-        if (!is_string($collection)) {
+        // `publicAuthors`, or a kind anyone may read: every author, as WordPress ships it.
+        if (!is_string($collection) || Authors::public($plugin->schema)) {
             return $args;
         }
         if ($plugin->unavailable() !== null) {
@@ -352,7 +353,7 @@ final class Sitemap
         $spec = $plugin->schema->collection($kind);
         $pk = $spec['primaryKey'];
         $visitor = new Viewer(null);
-        if (!self::patternReadable($spec, $visitor)) {
+        if (!KindUrls::patternReadable($spec, $visitor)) {
             return self::$listed[$kind] = [];
         }
         try {
@@ -376,31 +377,6 @@ final class Sitemap
         }
 
         return self::$listed[$kind] = $out;
-    }
-
-    /**
-     * Whether a visitor may read every field the kind's `url` pattern puts in an address. A pattern
-     * that shows a field the visitor may not read (`:slug` with a read rule on the slug) lists nothing:
-     * its addresses would carry the hidden value.
-     */
-    private static function patternReadable(array $spec, Viewer $visitor): bool
-    {
-        foreach (explode('/', trim((string) $spec['url'], '/')) as $segment) {
-            if (!str_starts_with($segment, ':')) {
-                continue;
-            }
-            $field = explode('.', substr($segment, 1), 2)[0];
-            $column = match ($field) {
-                'slug', 'path' => $spec['slug'] ?? null,
-                'id', 'year', 'month', 'day' => null,
-                default => $field,
-            };
-            if ($column !== null && isset($spec['columns'][$column]) && \First\FieldAccess::mayHide($spec['columns'][$column], $visitor)) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /** @return list<array{loc: string, lastmod: string}> the listed items' entries, in id order */

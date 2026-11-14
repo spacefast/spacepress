@@ -10,6 +10,7 @@ use crate::schema::*;
 use crate::value::*;
 use indexmap::IndexMap;
 use serde_json::Value as Json;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Where a compiled function's PHP name goes once it's known.
@@ -67,6 +68,10 @@ pub enum Slot {
     AppGuard {
         file: String,
     },
+    /// `export async function staticParams()` in a dynamic `first/app/` page: the params to prebuild.
+    AppStaticParams {
+        file: String,
+    },
     /// `export async function POST(req, ctx)` in a `first/app/` page or `route.ts`.
     AppHandler {
         file: String,
@@ -91,6 +96,9 @@ pub struct Extracted {
     pub collections: Vec<Rc<CollectionVal>>,
     /// Non-fatal advice printed by `first build` (§3.5.1 postmeta hint).
     pub hints: Vec<String>,
+    /// Each registered action's value (its allocation) → its registered name, so a page's
+    /// `<form action={subscribe}>` and `useFormState(subscribe)` name the action they were given.
+    pub action_values: HashMap<usize, String>,
     pub plugins: Option<crate::wp_plugins::Config>,
     /// `defineConfig({ use })`: plugin packages, in registration order.
     pub uses: Vec<crate::plugins::Plugin>,
@@ -136,6 +144,7 @@ const CONFIG_KEYS: &[&str] = &[
     "services",
     "use",
     "frontend",
+    "output",
     "runtimeSchema",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
@@ -165,7 +174,7 @@ const RESERVED_COLLECTIONS: &[&str] = &[
 const MAX_POST_TYPE_TABLE: usize = 20 - "first_".len();
 /// WordPress limits taxonomy names to 32 characters; First prefixes `first_`.
 const MAX_TAXONOMY_TABLE: usize = 32 - "first_".len();
-/// `taxonomy()` options (docs/decisions/2026-11-11-authoring-surface.md, rulings 24-33).
+/// `taxonomy()` options (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34).
 const TAXONOMY_OPTIONS: &[&str] = &[
     "storageName",
     "label",
@@ -175,7 +184,7 @@ const TAXONOMY_OPTIONS: &[&str] = &[
     "on",
     "translations",
 ];
-/// A term row's own fields (ruling 26), and the names no authored term field may take.
+/// A term row's own fields (ruling 27), and the names no authored term field may take.
 const TERM_FIELDS: &[&str] = &[
     "id",
     "name",
@@ -257,6 +266,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         roots: Vec::new(),
         collections: Vec::new(),
         hints: Vec::new(),
+        action_values: HashMap::new(),
         refs: Vec::new(),
         plugins: None,
         uses: Vec::new(),
@@ -276,7 +286,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .help("it becomes the WordPress plugin slug `first-<name>`"));
         }
     };
-    out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
+    out.schema.admin = bool_option(&cfg_map, "admin", true, span_of(ev, config, "admin", config_span))?;
     out.schema.public_authors = bool_option(
         &cfg_map,
         "publicAuthors",
@@ -303,6 +313,25 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .help("leave it out for the default: the theme, or first/app when it exists"));
         }
     };
+    out.schema.output = match cfg_map.get("output") {
+        None | Some(Value::Undef) => crate::schema::Output::Server,
+        Some(Value::Str(s)) if s.as_ref() == "server" => crate::schema::Output::Server,
+        Some(Value::Str(s)) if s.as_ref() == "static" => crate::schema::Output::Static,
+        Some(other) => {
+            return Err(Diag::new(
+                span_of(ev, config, "output", config_span),
+                format!("`output` is \"server\" or \"static\", not {}", other.describe()),
+            )
+            .help("leave it out for \"server\": pages render on WordPress, and `export const prerender = true` prebuilds one; \"static\" prebuilds every page for `first export`"));
+        }
+    };
+    if out.schema.output == crate::schema::Output::Static && out.schema.frontend.is_some() {
+        return Err(Diag::new(
+            span_of(ev, config, "output", config_span),
+            "`output: \"static\"` renders the site from first/app/, and `frontend` hands it to another site",
+        )
+        .help("keep one: remove `frontend` to export first/app/, or remove `output` to keep the other frontend"));
+    }
     phase2_config(&cfg_map, ev, config_span, &mut out)?;
     if let Some((_, span)) = ev.duplicate_key(config, Some("plugins")) {
         return Err(Diag::new(span, "duplicate plugins declaration"));
@@ -325,6 +354,17 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .flat_map(|config| config.plugins.iter().map(|plugin| plugin.slug.clone()))
             .collect();
         declared.sort();
+        if let Some(denied) = declared
+            .iter()
+            .find(|slug| crate::bundle::SEALED_DENIED.contains(&slug.as_str()))
+        {
+            return Err(Diag::new(
+                span_of(ev, config, "plugins", config_span),
+                format!(
+                    "a sealed site can't run {denied}: it serves stored content around First's read rules. Remove it from plugins, or turn sealed mode off."
+                ),
+            ));
+        }
         out.schema.sealed = Some(declared);
     }
 
@@ -445,6 +485,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     revisions: true,
                     staged: true,
                     comments: false,
+                    comment_policy: None,
                     title: None,
                     content: None,
                     slug: None,
@@ -461,6 +502,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     url: None,
                     hierarchical: false,
                     taxonomy: (kind == StorageKind::Taxonomy).then(|| Taxonomy { on: Vec::new() }),
+                    indexes: Vec::new(),
                     api: Api {
                         list: true,
                         get: true,
@@ -559,7 +601,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.drafts = opts.drafts;
         coll.revisions = opts.revisions;
         coll.staged = opts.staged;
-        coll.comments = opts.comments;
+        coll.comments = opts.comment_policy.is_some();
+        coll.comment_policy = opts.comment_policy;
         coll.title = opts.title;
         coll.content = opts.content;
         coll.slug = opts.slug;
@@ -568,6 +611,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.uid = opts.uid;
         coll.sync = opts.sync;
         coll.hierarchical = opts.hierarchical;
+        coll.indexes = c.indexes.borrow().iter().map(|(f, u, _)| (f.clone(), *u)).collect();
         coll.auth = opts.auth;
         coll.agents = opts.agents;
         let key = coll.key.clone();
@@ -698,6 +742,13 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     if let Some(hooks_val) = cfg_map.get("hooks") {
         hooks(hooks_val, span_of(ev, config, "hooks", config_span), ev, &mut out, None)?;
     }
+    // `.on({ ... })` on each registered kind, in call order (spec §2.8, ruling 18).
+    for c in out.collections.clone() {
+        let calls = c.hooks.borrow().clone();
+        for (handlers, span) in calls {
+            kind_hooks(c.table(), &handlers, span, ev, &mut out, None)?;
+        }
+    }
     if let Some(actions_val) = cfg_map.get("actions") {
         actions(
             actions_val,
@@ -749,12 +800,30 @@ fn hooks(
             );
         }
         let table = coll.table.clone();
-        let Value::Object(per_map) = per else {
+        let Value::Object(_) = per else {
             return Err(Diag::new(
                 kspan,
                 format!("`hooks.{key}` must be an object of hook functions"),
             ));
         };
+        kind_hooks(&table, per, kspan, ev, out, plugin)?;
+    }
+    Ok(())
+}
+
+/// One kind's hooks, from `hooks.<kind>` or a `.on({ ... })` call: each handler becomes a hook root,
+/// and several for one event run in registration order (plugins first, then the app).
+fn kind_hooks(
+    table: &str,
+    per: &Value,
+    kspan: Span,
+    ev: &mut Evaluator<'_>,
+    out: &mut Extracted,
+    plugin: Option<(usize, &str)>,
+) -> Result<()> {
+    let table = table.to_string();
+    let Value::Object(per_map) = per else { unreachable!() };
+    {
         for (hname, f) in per_map.borrow().iter() {
             let fspan = ev.key_span(per, hname).unwrap_or(kspan);
             let Some(kind) = HookKind::parse(hname) else {
@@ -770,6 +839,13 @@ fn hooks(
                     format!("`{hname}` must be a function, not {}", f.describe()),
                 ));
             };
+            if kind == HookKind::AfterPublish && !out.schema.collections[&table].drafts {
+                return Err(Diag::new(
+                    fspan,
+                    "`afterPublish` is for collections: a table() row is never published",
+                )
+                .help("use afterCreate or afterUpdate on a table()"));
+            }
             if kind == HookKind::BeforeCreate {
                 let coll = out.schema.collections.get_mut(&table).expect("collection");
                 // Plugin hooks run before the app's; any of them may fill a required column.
@@ -888,6 +964,7 @@ fn actions(
                 access_rule(v, sp, &owner, "access", format!("action__{name}__access"), out)?
             }
         };
+        out.action_values.insert(Rc::as_ptr(a) as usize, name.clone());
         out.roots.push(Root {
             closure: handler.clone(),
             slot: Slot::ActionHandler { action: name.clone() },
@@ -1065,7 +1142,7 @@ struct CollOpts {
     drafts: bool,
     revisions: bool,
     staged: bool,
-    comments: bool,
+    comment_policy: Option<crate::schema::CommentPolicy>,
     title: Option<String>,
     content: Option<String>,
     slug: Option<String>,
@@ -1084,7 +1161,7 @@ struct CollOpts {
 /// where `on` lists it).
 type Attached = IndexMap<String, Vec<(String, String, Span)>>;
 
-/// Each taxonomy's `on` (ruling 25). The field is named after the taxonomy's export.
+/// Each taxonomy's `on` (ruling 26). The field is named after the taxonomy's export.
 fn taxonomy_on(ev: &Evaluator<'_>, out: &Extracted) -> Result<Attached> {
     let mut attached: Attached = IndexMap::new();
     for t in out.collections.iter().filter(|c| c.kind == StorageKind::Taxonomy) {
@@ -1143,7 +1220,7 @@ fn taxonomy_on(ev: &Evaluator<'_>, out: &Extracted) -> Result<Attached> {
     Ok(attached)
 }
 
-/// The terms field `on` adds to a kind (ruling 25): the item's term ids, `[]` when none.
+/// The terms field `on` adds to a kind (ruling 26): the item's term ids, `[]` when none.
 fn terms_column(field: &str, taxonomy: &str) -> Column {
     let mut col = Column::new(field, ColType::RefList);
     col.not_null = true;
@@ -1158,7 +1235,7 @@ fn terms_column(field: &str, taxonomy: &str) -> Column {
     col
 }
 
-/// A `taxonomy()` kind (rulings 24-33): its options, the term row's own fields and the authored
+/// A `taxonomy()` kind (rulings 25-34): its options, the term row's own fields and the authored
 /// term meta fields.
 fn taxonomy_kind(
     c: &Rc<CollectionVal>,
@@ -1252,7 +1329,7 @@ fn taxonomy_kind(
         }
     };
 
-    // The term row's own fields (ruling 26).
+    // The term row's own fields (ruling 27).
     let owner = Owner::Collection(table.clone());
     let mut columns: IndexMap<String, Column> = IndexMap::new();
     let id = column("id", &c.columns["id"], &owner, &[], Place::Top, ev, out)?;
@@ -1329,7 +1406,7 @@ fn taxonomy_kind(
         columns.insert(field.clone(), col);
     }
 
-    // url (ruling 29): `:slug`, `:id` and, hierarchical, `:path`; one rewrite rule per pattern.
+    // url (ruling 30): `:slug`, `:id` and, hierarchical, `:path`; one rewrite rule per pattern.
     let url = match o.get("url") {
         None | Some(Value::Undef) => None,
         Some(Value::Str(pattern)) => {
@@ -1374,7 +1451,7 @@ fn taxonomy_kind(
         }
     };
 
-    // access (ruling 28): the spec's defaults, the same keys as every kind.
+    // access (ruling 29): the spec's defaults, the same keys as every kind.
     let mut access: IndexMap<String, Access> = ACCESS_OPS
         .iter()
         .map(|op| {
@@ -1564,15 +1641,9 @@ fn collection_options(
         Some(on) => on,
         None => editor,
     };
-    // spec.md §6: comments are off on every kind that doesn't turn them on.
-    let comments = match flag("comments")? {
-        Some(true) if !editor => {
-            return Err(Diag::new(span("comments"), "only collection() kinds take comments")
-                .help("comments are WordPress comments on a post; use a table() with a ref for other threads"));
-        }
-        Some(on) => on,
-        None => false,
-    };
+    // spec.md §2.3: `comments: true | { guests?, moderation?, threaded?, closeAfterDays?, types? }`;
+    // comments are off on every kind that doesn't turn them on.
+    let comment_policy = comment_policy(o.get("comments"), ev, span("comments"), editor)?;
 
     if editor && c.table().len() > MAX_POST_TYPE_TABLE {
         return Err(Diag::new(
@@ -1857,7 +1928,7 @@ fn collection_options(
         drafts,
         revisions,
         staged,
-        comments,
+        comment_policy,
         title,
         content,
         slug,
@@ -1949,15 +2020,18 @@ fn access_rule(v: &Value, span: Span, owner: &Owner, op: &str, fn_name: String, 
 }
 
 fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> Result<()> {
-    if g.name != key {
+    // The registry key (the export name) names the global; a 0.3.0 capture's own name must match it.
+    if let Some(named) = g.name.get()
+        && named != key
+    {
         return Err(Diag::new(
             span,
-            format!(
-                "`globals.{key}` holds global(\"{}\"); the key and the name must match",
-                g.name
-            ),
+            format!("`globals.{key}` holds global(\"{named}\"); the key and the name must match"),
         )
         .help(format!("write `{0}: global(\"{0}\", ...)`", key)));
+    }
+    if g.name.set(key.to_string()).is_err() && g.name.get().map(String::as_str) != Some(key) {
+        return Err(Diag::new(span, "a global can only be registered once"));
     }
     if !valid_ident(key) {
         return Err(Diag::new(g.span, format!("\"{key}\" isn't a valid global name")));
@@ -2166,7 +2240,14 @@ fn column(
         .as_ref()
         .map(|v| plain_json(v, b.span_of("showIf"), "showIf"))
         .transpose()?;
-    if let Some(bucket) = &b.bucket
+    let bucket_name = match &b.bucket {
+        None => None,
+        Some(bucket) => Some(bucket.name().map(str::to_string).ok_or_else(|| {
+            Diag::new(b.span, "file() refers to a files() bucket that isn't exported")
+                .help("export it by name: `export const decks = files({ ... })`")
+        })?),
+    };
+    if let Some(bucket) = &bucket_name
         && !out.schema.files.contains_key(bucket)
     {
         return Err(Diag::new(b.span, format!("unknown file bucket {bucket:?}"))
@@ -2506,7 +2587,7 @@ fn column(
         access,
         show_if,
         ui,
-        bucket: b.bucket.clone(),
+        bucket: b.bucket.as_ref().and_then(|r| r.name().map(str::to_string)),
         derived: false,
         hidden: false,
         ts_type: b.ts_type.clone(),
@@ -3166,6 +3247,103 @@ fn reads_key(e: &crate::ir::Expr, param: &str, key: &str) -> bool {
 
 // Phase-2 config is normalized once here. Feature modules consume this metadata;
 // they do not reinterpret builders or apply policy during schema loading.
+/// A kind's `comments` option (spec §2.3): `true` is the defaults, an object overrides them.
+fn comment_policy(
+    v: Option<&Value>,
+    ev: &Evaluator<'_>,
+    span: Span,
+    editor: bool,
+) -> Result<Option<crate::schema::CommentPolicy>> {
+    let mut policy = crate::schema::CommentPolicy::default();
+    let fields = match v {
+        None | Some(Value::Undef) | Some(Value::Bool(false)) => return Ok(None),
+        Some(Value::Bool(true)) => None,
+        Some(o @ Value::Object(_)) => Some(o),
+        Some(other) => {
+            return Err(Diag::new(
+                span,
+                format!(
+                    "`comments` is true, false or an options object, not {}",
+                    other.describe()
+                ),
+            )
+            .help("write `comments: true`, or `comments: { guests: true, moderation: \"all\" }`"));
+        }
+    };
+    if !editor {
+        return Err(Diag::new(span, "only collection() kinds take comments")
+            .help("comments are WordPress comments on a post; use a table() with a ref for other threads"));
+    }
+    let Some(fields) = fields else {
+        return Ok(Some(policy));
+    };
+    let Value::Object(o) = fields else { unreachable!() };
+    for (k, val) in o.borrow().iter() {
+        let at = ev.key_span(fields, k).unwrap_or(span);
+        match (k.as_str(), val) {
+            (_, Value::Undef) => {}
+            ("guests", Value::Bool(b)) => policy.guests = *b,
+            ("guests", other) => {
+                return Err(Diag::new(
+                    at,
+                    format!("`comments.guests` is true or false, not {}", other.describe()),
+                ));
+            }
+            ("moderation", Value::Str(m)) => {
+                policy.moderation = match &**m {
+                    "none" => "none",
+                    "first-time" => "first-time",
+                    "all" => "all",
+                    other => {
+                        return Err(Diag::new(at, format!("`comments.moderation` can't be {other:?}"))
+                            .help("use \"none\" (approve at once), \"first-time\" (hold a commenter's first comment) or \"all\""));
+                    }
+                };
+            }
+            ("moderation", other) => {
+                return Err(Diag::new(
+                    at,
+                    format!("`comments.moderation` is a string, not {}", other.describe()),
+                )
+                .help("use \"none\", \"first-time\" or \"all\""));
+            }
+            ("threaded", Value::Bool(b)) => policy.threaded = if *b { 3 } else { 1 },
+            ("threaded", Value::Num(n)) if n.fract() == 0.0 && (1.0..=10.0).contains(n) => policy.threaded = *n as u8,
+            ("threaded", other) => {
+                return Err(
+                    Diag::new(at, format!("`comments.threaded` can't be {}", other.describe()))
+                        .help("use true (3 levels), false (flat) or a depth from 1 to 10"),
+                );
+            }
+            ("closeAfterDays", Value::Null) => policy.close_after_days = None,
+            ("closeAfterDays", Value::Num(n)) if n.fract() == 0.0 && *n >= 1.0 && *n <= 36_500.0 => {
+                policy.close_after_days = Some(*n as u32);
+            }
+            ("closeAfterDays", other) => {
+                return Err(
+                    Diag::new(at, format!("`comments.closeAfterDays` can't be {}", other.describe()))
+                        .help("use a whole number of days from 1, or leave it out to never close"),
+                );
+            }
+            ("types", Value::Array(items)) if items.borrow().is_empty() => {}
+            ("types", _) => {
+                return Err(Diag::new(at, "comment types aren't built yet")
+                    .help("leave `types` out; `wp.comments.type()` adds them"));
+            }
+            (other, _) => {
+                let mut d = Diag::new(at, format!("`comments` has no option `{other}`"));
+                if let Some(s) = suggest(other, ["guests", "moderation", "threaded", "closeAfterDays", "types"]) {
+                    d = d.help(format!("did you mean `{s}`?"));
+                } else {
+                    d = d.help("the options are guests, moderation, threaded, closeAfterDays and types");
+                }
+                return Err(d);
+            }
+        }
+    }
+    Ok(Some(policy))
+}
+
 fn object(v: &Value, span: Span, what: &str) -> Result<IndexMap<String, Value>> {
     match v {
         Value::Object(o) => Ok(o.borrow().clone()),
@@ -3392,13 +3570,16 @@ fn phase2_config(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, 
         for (name, value) in object(v, span, "files")? {
             let Value::FileBucket(bucket) = value else {
                 return Err(Diag::new(span, "files entries must use files()")
-                    .help("write files(\"decks\", { accept: [\"application/pdf\"], maxBytes: 20000000 })"));
+                    .help("write `export const decks = files({ accept: [\"application/pdf\"], maxBytes: 20000000 })` and list it as `files: { decks }`"));
             };
             let sp = bucket.span;
-            if name != bucket.name || !valid_ident(&name) || name == "media" {
+            // The export name (the registry key) names the bucket; a 0.3.0 capture's own name must match.
+            let named_differently = bucket.name.get().is_some_and(|n| *n != name);
+            if named_differently || !valid_ident(&name) || name == "media" {
                 return Err(Diag::new(sp, "file bucket name must match its key and cannot be media")
                     .help("use a distinct bucket name, such as decks"));
             }
+            let _ = bucket.name.set(name.clone());
             let o = object(&bucket.options, sp, "files options")?;
             keys(&o, &["accept", "maxBytes", "access"], sp, "files")?;
             let Some(Value::Array(accept)) = o.get("accept") else {
@@ -4100,6 +4281,7 @@ mod legacy {
             entry.methods.insert(method, String::new());
             table.files.insert(file.clone(), entry);
             table.routes.push(AppRoute {
+                explicit_id: None,
                 id: name,
                 pattern: path,
                 page: None,
@@ -4108,6 +4290,7 @@ mod legacy {
                 error: None,
                 kind: None,
                 styles: Vec::new(),
+                prerender: false,
             });
         }
         // The runtime takes the first match: most specific first, as the 0.3.0 runtime ranked them

@@ -226,10 +226,19 @@ final class Loader
         // definition (the access rules, post type and hooks are the ones expandCollection gives every
         // runtime kind), and a field is served only in a stored form the validator accepts. Anything
         // else in the option is ignored; the version table is the record, and apply rewrites the option.
-        foreach (['collections', 'globals'] as $section) {
+        foreach (['collections' => 'columns', 'globals' => 'fields'] as $section => $inner) {
             foreach ($state['added'][$section] ?? [] as $name => $stored) {
                 $name = (string) $name;
-                // A name is one thing across the app, so anything the build declares under it wins.
+                // The build declares the kind (after `first pull`): its declaration wins, and the
+                // fields the site stored that it leaves out are added to it, as fields added to a
+                // kind of the build are.
+                if (($section === 'globals' || isset($raw[$section][$name]['wp']['postType'])) && isset($raw[$section][$name])) {
+                    $fields = is_array($stored['fields'] ?? null) ? $stored['fields'] : [];
+                    $fields = $section === 'collections' ? array_diff_key($fields, ['title' => 1, 'content' => 1]) : $fields;
+                    $raw[$section][$name][$inner] += self::fields($name, $fields, $section === 'globals' ? Validator::GLOBAL : Validator::COLLECTION);
+                    continue;
+                }
+                // A name is one thing across the app, so anything else the build declares under it wins.
                 if (isset($raw['collections'][$name]) || isset($raw['globals'][$name]) || isset($raw['actions'][$name]) || isset($raw['jobs'][$name])) {
                     continue;
                 }

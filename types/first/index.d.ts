@@ -287,7 +287,7 @@ export declare function slug(config?: { source?: undefined }): ColumnBuilder<"sl
 /** With `source`, an omitted slug is derived, so it may be left out on create. */
 export declare function slug(config: { source: string }): ColumnBuilder<"slug", string, true, true>;
 /** A private-file id in the named bucket. */
-export declare function file(config: { bucket: string }): ColumnBuilder<"file", number, true, false>;
+export declare function file(bucket: FileBucket): ColumnBuilder<"file", number, true, false>;
 
 /** HTML. On WordPress the `content`-designated richText is the block editor's post_content. */
 export declare function richText(): ColumnBuilder<"richText", string, true, false>;
@@ -393,6 +393,20 @@ type ColumnsOfKind<TCols, TKind extends ColumnKind, TNotNull extends boolean = b
 }[keyof TCols] &
   string;
 
+/** How comments behave on a collection (`comments: true` is every default). */
+export interface CommentOptions {
+  /** Anonymous visitors may comment, with a name and email. Default `false`: signed-in users only. */
+  guests?: boolean;
+  /** `"none"` approves at once; `"first-time"` (default) holds a commenter's first comment; `"all"` holds every one. */
+  moderation?: "none" | "first-time" | "all";
+  /** Reply depth: `true` (default) is 3 levels, `false` is flat, or a depth from 1 to 10. */
+  threaded?: boolean | number;
+  /** Close comments this many days after the item was published. Default: never. */
+  closeAfterDays?: number | null;
+  /** Comment types allowed besides normal comments. Not built yet: leave it out. */
+  types?: readonly [];
+}
+
 /** Options shared by the `collection()` signatures; `T` is the collection being defined. */
 export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Physical resource name, without prefixes. Defaults to the registry key in snake_case.
@@ -430,8 +444,11 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
    * discarded. Default true for collections; `false` turns them off. collection() only.
    */
   staged?: boolean;
-  /** WordPress comments on this collection's post type. Default false: comments are closed on every kind that doesn't turn them on. */
-  comments?: boolean;
+  /**
+   * WordPress comments on this collection's post type: `true` for the defaults, or `CommentOptions`.
+   * Default false: comments are closed on every kind that doesn't turn them on.
+   */
+  comments?: boolean | CommentOptions;
   /** The WordPress post title: a NOT NULL `text()` column. Default: a text column named `title`. Required for collections. */
   title?: ColumnsOfKind<ColumnsOf<T>, "text", true>;
   /** The WordPress post_content (block editor): a `richText()` column. Default: a richText column named `content`. */
@@ -457,6 +474,16 @@ export interface CollectionMeta<TName extends string, TCols extends ColumnsConfi
   readonly $inferSelect: SelectShape<TCols>;
   /** Shape accepted by `db.insert(...).values(...)`. */
   readonly $inferInsert: ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
+  /**
+   * Hooks on this kind (spec §2.8), in the file that declares it. Returns the kind, so calls chain;
+   * several handlers for one event run in order.
+   */
+  on<TSelf extends AnyCollection>(this: TSelf, hooks: CollectionHooks<TSelf>): TSelf;
+  /**
+   * A compound index (spec §2.9), on SQL tables; `unique: true` also refuses a second row with the same
+   * values. Fields a compiled `where` or `orderBy` names get one each without this.
+   */
+  index(fields: readonly [keyof TCols & string, ...(keyof TCols & string)[]], options?: { unique?: boolean }): this;
 }
 
 type ColumnRefs<TName extends string, TCols extends ColumnsConfig> = {
@@ -556,7 +583,7 @@ export declare function userProjection<TCols extends ColumnsConfig, TUid extends
   options?: NoInfer<CollectionOptions<Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">>> & { drafts?: false; revisions?: false; uid?: TUid },
 ): Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">;
 
-/** A term's own fields (docs/decisions/2026-11-11-authoring-surface.md, ruling 26). */
+/** A term's own fields (docs/decisions/2026-11-11-authoring-surface.md, ruling 27). */
 type TermColumns<THierarchical extends boolean> = {
   name: ColumnBuilder<"text", string, true, false>;
   slug: ColumnBuilder<"slug", string, true, true>;
@@ -569,7 +596,7 @@ type TermColumns<THierarchical extends boolean> = {
 type TermFieldKind = Exclude<ColumnKind, "richText" | "file" | "group" | "repeater" | "blocks" | "slug" | "mediaList" | "refList">;
 type TermFields = Record<string, ColumnBuilder<TermFieldKind, any, boolean, boolean, false, boolean>>;
 
-/** `taxonomy()` options (rulings 24-31). */
+/** `taxonomy()` options (rulings 25-32). */
 export interface TaxonomyOptions<T extends AnyCollection = AnyCollection, THierarchical extends boolean = boolean> {
   /** Stored as `first_<storageName>`: at most 26 characters. Defaults to the export name in snake_case. */
   storageName?: string;
@@ -1079,6 +1106,8 @@ export interface CollectionHooks<T extends AnyCollection> {
   afterUpdate?: (row: Row<T>, previous: Row<T>, ctx: HookCtx) => Awaitable<void>;
   beforeDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
   afterDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** A collection's item became published: created published, updated into it, or its scheduled time came. */
+  afterPublish?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
 }
 
 export type Hooks<TSchema extends Schema> = {
@@ -1141,19 +1170,18 @@ export interface Global<TName extends string = string, TFields extends FieldsCon
 export type AnyGlobal = Global<string, FieldsConfig>;
 
 /**
- * Defines a global. Fields use the column builders with the sub-field restrictions, and no
- * `.unique()`/`slug()`/`blocks()`; a required field needs a default. Default access:
- * `read: "anyone"`, `update: "editor"`.
+ * Defines a global, named by its export: `export const settings = global({ ... })`. Fields use the
+ * column builders with the sub-field restrictions, and no `.unique()`/`slug()`/`blocks()`; a
+ * required field needs a default. Default access: `read: "anyone"`, `update: "editor"`.
  */
-export declare function global<const TName extends string, TFields extends FieldsConfig>(
-  name: TName,
+export declare function global<TFields extends FieldsConfig>(
   fields: TFields,
   options?: {
     label?: string;
     agents?: boolean;
     access?: { read?: GateRule<never>; update?: GateRule<Partial<SelectShape<TFields>>> };
   },
-): Global<TName, TFields>;
+): Global<string, TFields>;
 
 export interface ConfigInput<
   TSchema extends Schema,
@@ -1187,7 +1215,10 @@ export interface ConfigInput<
   locales?: TLocales;
   /** Build-only WordPress plugin dependencies. */
   plugins?: Readonly<Record<string, WordPressPlugin>>;
-  /** Ship the optional admin screens (`first-admin`) with the build. Default `false`. */
+  /**
+   * Ship First Admin (`first-admin`), the default admin at `/wp-admin/new/`, with the build. Default `true`;
+   * `false` leaves only classic wp-admin.
+   */
   admin?: boolean;
   /**
    * Keep the site's authors public as WordPress ships them: author archives, `?author=N`, the users
@@ -1213,6 +1244,12 @@ export interface ConfigInput<
    * for backend only; an external site's `https://` address to point links, previews and feeds there.
    */
   frontend?: false | `https://${string}` | `http://localhost${string}` | `http://127.0.0.1${string}`;
+  /**
+   * `"server"` (the default): `first/app/` pages render on WordPress per request, and a page that
+   * exports `prerender = true` is prebuilt. `"static"`: every page is prebuilt, and `first export`
+   * writes a site that needs no WordPress to serve it.
+   */
+  output?: "server" | "static";
   /**
    * Plugin packages, registered in order: `use: [seo({ ... })]`. Each one's capabilities are
    * inferred from its compiled code and granted by the committed `first/_generated/plugins.lock.json`.
@@ -1347,7 +1384,8 @@ export type WebhookEvent = `${string}.created` | `${string}.updated` | `${string
 export type FileRule = AccessShorthand | "owner" | ((ctx: AccessCtx) => boolean);
 export interface FileBucket { readonly [fileBucketBrand]: true }
 export type AnyFileBucket = FileBucket;
-export declare function files(name: string, options: {
+/** A private file bucket, named by its export: `export const decks = files({ accept, maxBytes })`. */
+export declare function files(options: {
   accept: string[];
   maxBytes: number;
   access?: { read?: FileRule; create?: FileRule; delete?: FileRule };

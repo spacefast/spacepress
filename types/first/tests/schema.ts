@@ -88,14 +88,14 @@ export const comments = table({
   approved: boolean().default(false),
 }, { access: { read: (ctx) => ctx.user ? true : { approved: true }, create: "anyone" } });
 
-export const settings = global("settings", {
+export const settings = global({
   siteTitle: text().default("My blog").max(80),
   postsPerPage: integer().default(10).min(1).max(50),
   website: url().optional(),
   social: repeater({ label: text().max(40), href: url() }).optional(),
 }, { label: "Site settings", access: { update: "admin" } });
 
-// A taxonomy (docs/decisions/2026-11-11-authoring-surface.md, rulings 24-33): `on` gives posts a
+// A taxonomy (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34): `on` gives posts a
 // `topics` field; `terms()` writes the same kind of field out under another name.
 export const topics = taxonomy({ color: text().optional() }, { hierarchical: true, url: "/topics/:path", on: [posts] });
 export const labels = taxonomy();

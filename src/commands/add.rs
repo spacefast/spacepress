@@ -1,6 +1,6 @@
 //! `first add <module> [dir]`: adds an optional part of First to a project as ordinary files the
 //! author then owns. A module is a row in [`MODULES`]: its name, what it is, and the files it
-//! writes. A new module (`pages`, `agents`) is one more row and its files under `add/<name>/`.
+//! writes. A new module is one more row and its files under `add/<name>/`.
 //!
 //! The command only ever creates files. One that is already there is kept as it is, so running it
 //! again adds whatever is missing and changes nothing else. The project is compiled in memory
@@ -40,35 +40,71 @@ struct Module {
     next: &'static [&'static str],
 }
 
-const MODULES: &[Module] = &[Module {
-    name: "db",
-    summary: "SQL tables beside your WordPress content: table(), foreign keys, a schema check at deploy",
-    files: &[
-        File {
-            path: "first/tables.ts",
-            content: include_str!("add/db/tables.ts"),
-            what: "two example tables, with a reference between them and access rules",
-            when: When::NoTables,
-        },
-        File {
-            path: "tables.client.ts",
-            content: include_str!("add/db/tables.client.ts"),
-            what: "typed client calls for the example tables",
-            when: When::Tables(&["projects", "tasks"]),
-        },
-        File {
-            path: "first/DATABASE.md",
-            content: include_str!("add/db/DATABASE.md"),
-            what: "how tables, migrations and the deploy check work",
-            when: When::Always,
-        },
-    ],
-    next: &[
-        "first build   writes the SQL for new tables to first/_generated/migrations/ (commit it)",
-        "first dev     applies it to the local site",
-        "tsc           checks the new files once tsconfig.json includes them (first/DATABASE.md)",
-    ],
-}];
+const MODULES: &[Module] = &[
+    Module {
+        name: "db",
+        summary: "SQL tables beside your WordPress content: table(), foreign keys, a schema check at deploy",
+        files: &[
+            File {
+                path: "first/tables.ts",
+                content: include_str!("add/db/tables.ts"),
+                what: "two example tables, with a reference between them and access rules",
+                when: When::NoTables,
+            },
+            File {
+                path: "tables.client.ts",
+                content: include_str!("add/db/tables.client.ts"),
+                what: "typed client calls for the example tables",
+                when: When::Tables(&["projects", "tasks"]),
+            },
+            File {
+                path: "first/DATABASE.md",
+                content: include_str!("add/db/DATABASE.md"),
+                what: "how tables, migrations and the deploy check work",
+                when: When::Always,
+            },
+        ],
+        next: &[
+            "first build   writes the SQL for new tables to first/_generated/migrations/ (commit it)",
+            "first dev     applies it to the local site",
+            "tsc           checks the new files once tsconfig.json includes them (first/DATABASE.md)",
+        ],
+    },
+    Module {
+        name: "api-reference",
+        summary: "pages at /api that document the app's HTTP API from its OpenAPI document",
+        files: &[
+            File {
+                path: "first/app/api/page.tsx",
+                content: include_str!("add/api-reference/page.tsx"),
+                what: "/api: every operation, by tag",
+                when: When::Always,
+            },
+            File {
+                path: "first/app/api/[tag]/[operation]/page.tsx",
+                content: include_str!("add/api-reference/operation.tsx"),
+                what: "/api/<tag>/<operation>: parameters, body, responses and a request to copy",
+                when: When::Always,
+            },
+            File {
+                path: "first/components/ApiFields.tsx",
+                content: include_str!("add/api-reference/ApiFields.tsx"),
+                what: "the fields of a parameter list, body or response",
+                when: When::Always,
+            },
+            File {
+                path: "first/API.md",
+                content: include_str!("add/api-reference/API.md"),
+                what: "what the pages read and how to change them",
+                when: When::Always,
+            },
+        ],
+        next: &[
+            "first dev     serves the reference at /api",
+            "first build   keeps it in step with the schema: it reads first/_generated/openapi.json",
+        ],
+    },
+];
 
 /// The modules, one line each, for usage errors and `first help add`.
 pub(crate) fn modules() -> String {

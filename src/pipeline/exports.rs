@@ -3,8 +3,8 @@
 //! and whether or not anything imports it. Other exports are ignored, so helper modules need no
 //! special place.
 //!
-//! Registration fills the config's own registries (`collections`, `tables`, `users`, `taxonomies`, `globals`,
-//! `actions`, `jobs`), so everything after it reads one shape. An export and a config entry for the
+//! Registration fills the config's own registries (`collections`, `tables`, `users`, `taxonomies`,
+//! `globals`, `files`, `actions`, `jobs`), so everything after it reads one shape. An export and a config entry for the
 //! same value are the same registration; anything else that shares a name is `F1221`.
 
 use crate::diag::{Code, Diag, Result, Span};
@@ -31,6 +31,7 @@ fn registry(value: &Value) -> Option<&'static str> {
             StorageKind::Taxonomy => "taxonomies",
         },
         Value::Global(_) => "globals",
+        Value::FileBucket(_) => "files",
         Value::Action(_) => "actions",
         Value::Job(_) => "jobs",
         _ => return None,
@@ -42,6 +43,7 @@ fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Collection(a), Value::Collection(b)) => Rc::ptr_eq(a, b),
         (Value::Global(a), Value::Global(b)) => Rc::ptr_eq(a, b),
+        (Value::FileBucket(a), Value::FileBucket(b)) => Rc::ptr_eq(a, b),
         (Value::Action(a), Value::Action(b)) | (Value::Job(a), Value::Job(b)) => Rc::ptr_eq(a, b),
         _ => false,
     }
@@ -51,6 +53,7 @@ fn span_of(value: &Value) -> Span {
     match value {
         Value::Collection(c) => c.span,
         Value::Global(g) => g.span,
+        Value::FileBucket(b) => b.span,
         Value::Action(a) | Value::Job(a) => a.span,
         _ => Span::NONE,
     }
@@ -134,15 +137,7 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
     // an exported table's name. Names only listed in `defineConfig` keep that API's per-registry
     // namespaces (0.8 apps converted onto it name a query like its table) until it is removed.
     for (name, taken) in &taken {
-        for registry in [
-            "collections",
-            "tables",
-            "users",
-            "taxonomies",
-            "globals",
-            "actions",
-            "jobs",
-        ] {
+        for registry in ["collections", "tables", "users", "taxonomies", "globals", "files", "actions", "jobs"] {
             let Some(Value::Object(entries)) = cfg.borrow().get(registry).cloned() else {
                 continue;
             };

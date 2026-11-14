@@ -17,6 +17,12 @@ export const authors = collection({
   userId: integer().optional(),                       // the User.id that writes as this author
 }, { label: "Authors", title: "name", uid: true, access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
+export const manuscripts = files({
+      accept: ["text/plain", "application/pdf"],
+      maxBytes: 1_000_000,
+      access: { create: "author", read: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor", delete: "editor" },
+    });
+
 export const posts = collection({
   // Translated per locale. The other fields are shared by a post's translations, except each
   // row's own slug, status and dates.
@@ -26,7 +32,7 @@ export const posts = collection({
   dek: text({ multiline: true }).max(240).localized().optional(),
   cover: media({ accept: "image" }).optional(),
   // The author's draft manuscript: a private file, readable by its uploader and the desk.
-  manuscript: file({ bucket: "manuscripts" }).optional(),
+  manuscript: file(manuscripts).optional(),
   topics: select(["culture", "science", "tech"]).many().default([]),
   featured: boolean().default(false),
   // The desk's private notes: staff read and write them; readers' rows never carry the column.
@@ -91,7 +97,7 @@ export const tables = { comments, subscribers, announcements };
 export const users = { members };
 export const entities = { ...collections, ...tables, ...users };
 
-export const settings = global("settings", {
+export const settings = global({
   siteTitle: text().default("The First Review").max(80),
   tagline: text().max(160).optional(),
   commentsOpen: boolean().default(true),
@@ -106,13 +112,7 @@ export default defineConfig({
   // A square `card` crop of every image for listings, centred on the image's focal point.
   media: { sizes: { card: { width: 120, height: 120, fit: "cover" } } },
   // Private: never a public URL; signed 5-minute download links for whoever may read them.
-  files: {
-    manuscripts: files("manuscripts", {
-      accept: ["text/plain", "application/pdf"],
-      maxBytes: 1_000_000,
-      access: { create: "author", read: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor", delete: "editor" },
-    }),
-  },
+  files: { manuscripts },
   // Every new comment is POSTed, signed, to the moderation tool at SITE_HOOK_URL (retried on failure).
   webhooks: [{ url: env("SITE_HOOK_URL"), secret: env("SITE_HOOK_SECRET"), events: ["comments.created"] }],
   jobs: {

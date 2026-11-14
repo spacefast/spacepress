@@ -209,7 +209,6 @@ const link = {
   href: text().pattern(/^(?:\/(?![\/\\])[^\s]*|(?:https?:\/\/|mailto:|tel:|#)[^\s]+)$/),
 };
 export const site = global(
-  "site",
   {
     identity: group({
         title: text().default("My Site").max(80),

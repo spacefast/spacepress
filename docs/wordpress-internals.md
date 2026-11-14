@@ -57,7 +57,7 @@ repeats after its own save (`rest_insert_*`, meta, additional fields, `rest_afte
 | Plugin internal | Where | Why | To check |
 |---|---|---|---|
 | The SQLite driver's `create_parser()` and its parser's private `$tokens` (read by reflection) | `runtime/First/Wp/Connection.php` | The one tokenizer that reads SQL exactly as the driver will execute it. | The driver's release notes when its pin in `tests/fixtures/platform.json` moves. |
-| Polylang: `PLL()->model` (`get_language`, `add_language`, `update_default_lang`, `clean_languages_cache`), the `pll_context` filter and `PLL_REST_Request` | `runtime/First/Wp/Polylang.php`, `runtime/First/Wp/Runtime.php` | Adding a language and choosing Polylang's REST context for `/__first/api/v1`. `pll_languages_list()` reads languages but nothing public adds one. | Polylang's changelog when its pin moves. |
+| Polylang: `PLL()->model` (`get_language`, `add_language`, `update_default_lang`, `clean_languages_cache`), the `pll_context` filter and `PLL_REST_Request` | `runtime/First/Wp/Polylang.php`, `runtime/First/Wp/Runtime.php` | Adding a language and choosing Polylang's REST context for `/__first/api/v1`. `pll_languages_list()` reads languages but nothing public adds one. | Since Polylang 3.7 the three language methods are its backward-compatibility `PLL_Model::__call`, which forwards to `PLL()->model->languages` (`get`, `add`, `update_default`). A Polylang that drops that shim breaks them, so read its changelog for it when the pin moves, and consider calling `->languages` directly. |
 
 ## Not on this list
 

@@ -217,9 +217,9 @@ function first_admin_render_page() {
 }
 
 /**
- * After login, WordPress's default destination (wp-admin's index, used when the request names no
- * `redirect_to`) becomes this admin. A destination the visitor asked for is kept, classic
- * `/wp-admin/` included, and classic wp-admin stays one click away.
+ * After login, WordPress's default destination (wp-admin's index) becomes this admin. A destination
+ * the visitor asked for is kept, except the classic dashboard itself, which is the default's own
+ * URL; classic wp-admin stays one click away.
  *
  * @param string           $redirect_to The destination.
  * @param string           $requested   The requested destination.
@@ -230,9 +230,10 @@ function first_admin_login_redirect( $redirect_to, $requested, $user ) {
 	if ( ! $user instanceof WP_User || ! $user->has_cap( 'read' ) ) {
 		return $redirect_to;
 	}
-	// Only WordPress's own default: no `redirect_to` in the request. A visitor sent to the login from
-	// a classic page (auth_redirect sets `redirect_to`) returns to that page, `/wp-admin/` included.
-	if ( '' === $requested && in_array( $redirect_to, array( admin_url(), 'wp-admin/' ), true ) ) {
+	// WordPress's own default is `/wp-admin/`, and its login form posts it as `redirect_to` even when
+	// nobody asked for a page, so `/wp-admin/` itself can't be told apart from the default: it lands
+	// here. Every other page a visitor asked for is kept.
+	if ( in_array( $redirect_to, array( admin_url(), 'wp-admin/' ), true ) ) {
 		return first_admin_url( '/' );
 	}
 	return $redirect_to;

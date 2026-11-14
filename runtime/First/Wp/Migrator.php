@@ -377,7 +377,7 @@ final class Migrator
     }
 
     /**
-     * Tables that must be InnoDB but aren't: core posts/postmeta, every `{prefix}first_*` table and Action Scheduler's actions and groups.
+     * Tables that must be InnoDB but aren't: core posts/postmeta and every `{prefix}first_*` table.
      *
      * @return list<string>
      */
@@ -399,14 +399,6 @@ final class Migrator
         $bad = [];
         foreach ($rows as $r) {
             if (strcasecmp((string) $r['e'], 'InnoDB') !== 0 || !str_starts_with(strtolower((string) $r['c']), 'utf8mb4_')) {
-                $bad[] = (string) $r['t'];
-            }
-        }
-        // A job's Action Scheduler action is written in the job's transaction, so its tables must roll back
-        // too. Only the engine: their collation is Action Scheduler's.
-        $scheduler = [$wpdb->prefix . 'actionscheduler_actions', $wpdb->prefix . 'actionscheduler_groups'];
-        foreach ($this->db->run('SELECT TABLE_NAME AS t, ENGINE AS e FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?, ?)', $scheduler) as $r) {
-            if (strcasecmp((string) $r['e'], 'InnoDB') !== 0) {
                 $bad[] = (string) $r['t'];
             }
         }

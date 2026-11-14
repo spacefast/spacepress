@@ -299,18 +299,22 @@ transaction runs on (`Wp\Connection`), so the action commits or rolls back with
 the row, and a crash after the commit loses no job. Action Scheduler caches the
 id of each group it creates in the object cache, which a rollback doesn't undo,
 so First creates its groups (`first`, `first-<app>`) at `action_scheduler_init`,
-outside any transaction (`Wp\Jobs\ActionSchedulerQueue::prepare`). Action
-Scheduler's actions and groups tables must be InnoDB, like First's own (the
-storage check refuses another engine). If wpdb reconnects during a transaction
-(it retries a query after a lost connection), the transaction refuses to commit.
+outside any transaction (`Wp\Jobs\ActionSchedulerQueue::prepare`). The same
+step requires Action Scheduler's actions and groups tables to be InnoDB, like
+First's own; until they are, First refuses writes. If wpdb reconnects during a
+transaction (it retries a query after a lost connection, and the server has
+rolled the transaction back), every later statement of it and its commit fail.
 A job queued before Action Scheduler is ready (a `wp-hooks` handler on `init`
 at priority 0) commits without an action and gets one once Action Scheduler is
 ready. `Jobs\Runner::recover`, run when the runtime prepares a site and by the
-daily maintenance action, gives every waiting job that has no pending action
-one. That covers a request that died before Action Scheduler was ready, and the
-jobs that runtimes before this one left in `first__outbox`. That table, where
-each job's ticket waited until after commit, is no longer written; its rows
-stay (`tests/php/jobs_transaction_cases.php`, run on SQLite and MariaDB).
+daily maintenance action, gives each waiting job that has no `first_job` action
+of any status one, at most 1000 per run. That covers a request that died before
+Action Scheduler was ready, deleted actions, and the jobs that runtimes before
+this one left in `first__outbox`. A job whose action an administrator cancelled
+in Tools > Scheduled Actions stays as it is; `wp first jobs cancel` cancels a
+job. The `first__outbox` table, where each job's ticket waited until after
+commit, is no longer written; its rows stay
+(`tests/php/jobs_transaction_cases.php`, run on SQLite and MariaDB).
 
 ## Validation and coercion (input → stored)
 

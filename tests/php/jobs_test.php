@@ -217,9 +217,11 @@ eq('the stuck job is pending again, with a delivery', [$job($failing['id'])['sta
 // Only a job from before this runtime, one queued before Action Scheduler was ready in a request that died,
 // or one whose action someone deleted can be left without one; daily maintenance gives it its action.
 $orphan = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => $pid], ['delay' => 120]));
-as_unschedule_all_actions('first_job', ['id' => $orphan['id']]);
+$wp->exec('DELETE FROM {prefix}actionscheduler_actions WHERE `hook` = ? AND `args` = ?', ['first_job', json_encode(['id' => $orphan['id']])]); // a lost action
 eq('maintain gives a waiting job without an action one, at its runAt', [Runner::maintain()['recovered'], $delivery($orphan['id'])], [1, gmdate('Y-m-d H:i:s', max(time(), intdiv((int) \First\Js::date($job($orphan['id'])['runAt']), 1000)))]);
 eq('and leaves it alone once it has one', [Runner::recover(), $actionsFor($orphan['id'])], [0, 1]);
+as_unschedule_all_actions('first_job', ['id' => $orphan['id']]); // what Tools > Scheduled Actions > Cancel does
+eq('an action an administrator cancelled is not brought back', [Runner::recover(), $actionsFor($orphan['id'])], [0, 0]);
 $wp->exec("UPDATE {prefix}first__jobs SET `state` = 'dead', `dedupe` = NULL WHERE `id` = ?", [$orphan['id']]);
 as_unschedule_all_actions('first_job', ['id' => $orphan['id']]);
 
@@ -232,8 +234,10 @@ try {
 } finally {
     $ready->setValue(null, true);
 }
+// The first request after an update prepares the site (recovering the job) before the deferred delivery runs.
+delete_option(\First\Wp\Jobs\ActionSchedulerQueue::PREPARED);
 do_action('action_scheduler_init');
-eq('then gets its action once Action Scheduler is ready', $actionsFor($early['id']), 1);
+eq('then gets one action once Action Scheduler is ready, even when preparing recovered it first', $actionsFor($early['id']), 1);
 $wp->exec("UPDATE {prefix}first__jobs SET `state` = 'dead', `dedupe` = NULL WHERE `id` = ?", [$early['id']]);
 as_unschedule_all_actions('first_job', ['id' => $early['id']]);
 
@@ -250,6 +254,20 @@ try {
     $refused = $e->getMessage();
 }
 check('a transaction whose connection was replaced refuses to commit', str_contains((string) $refused, 'connection was lost'), $refused);
+$written = null;
+try {
+    $db->transaction(static function () use ($handle, $wp, &$written): void {
+        $handle->setValue(\First\Wp\Plugin::instance()->connection(), new \stdClass());
+        try {
+            $wp->exec('SELECT 1');
+        } catch (\First\Wp\DbError $e) {
+            $written = $e->getMessage();
+            throw $e;
+        }
+    });
+} catch (\First\Wp\DbError) {
+}
+check('and refuses every statement after the reconnect, which would commit on its own', str_contains((string) $written, 'connection was lost'), $written);
 
 // Both registered handler contracts consume the same validated, persisted JSON payload.
 (static function () use ($schema, $db): void {

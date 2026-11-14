@@ -120,6 +120,11 @@ final class ActionSchedulerQueue
                 if (get_option(self::PREPARED) === $done) {
                     return;
                 }
+                $myisam = self::nonTransactional($connection);
+                if ($myisam !== []) {
+                    // A job's action is written in its transaction; on these tables a rollback would leave it.
+                    throw new \RuntimeException('First needs InnoDB tables for Action Scheduler; these are not: ' . implode(', ', $myisam));
+                }
                 self::createGroups($connection, $groups);
                 // Jobs a runtime before this one left in `first__outbox` (committed, never handed to
                 // Action Scheduler) get their action now; the daily maintenance repeats the sweep.
@@ -128,8 +133,20 @@ final class ActionSchedulerQueue
                 update_option(self::PREPARED, $done, true); // read on every request
             });
         } catch (\Throwable $e) {
+            // First refuses writes for this request; the next one retries.
+            $plugin->refuse('preparing Action Scheduler for jobs failed: ' . $e->getMessage());
             error_log('[first] preparing Action Scheduler for jobs failed (next request retries): ' . $e->getMessage());
         }
+    }
+
+    /** @return list<string> Action Scheduler's actions and groups tables when they aren't InnoDB (none on SQLite). */
+    private static function nonTransactional(\First\Wp\Connection $connection): array
+    {
+        global $wpdb;
+        $rows = $connection->run('SELECT TABLE_NAME AS t, ENGINE AS e FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?, ?)',
+            [$wpdb->prefix . 'actionscheduler_actions', $wpdb->prefix . 'actionscheduler_groups']);
+
+        return array_values(array_map(static fn (array $r): string => (string) $r['t'], array_filter($rows, static fn (array $r): bool => strcasecmp((string) $r['e'], 'InnoDB') !== 0)));
     }
 
     /** @param list<string> $groups */
@@ -154,9 +171,10 @@ final class ActionSchedulerQueue
             // Before `init` (a wp-hooks handler at priority 0): Action Scheduler can't write yet. The job
             // row commits; its action follows once Action Scheduler is ready, and if this request dies
             // first, Runner::recover gives it one.
-            \First\Extensions::afterCommit(static function () use ($id, $runAtIso): void {
-                \ActionScheduler::is_initialized() ? self::schedule($id, $runAtIso)
-                    : add_action('action_scheduler_init', static fn () => self::schedule($id, $runAtIso));
+            // Through ensureDelivery: Runner::recover may have given it its action first.
+            \First\Extensions::afterCommit(static function () use ($id): void {
+                \ActionScheduler::is_initialized() ? Runner::ensureDelivery($id)
+                    : add_action('action_scheduler_init', static fn () => Runner::ensureDelivery($id));
             });
 
             return;

@@ -87,6 +87,12 @@ final class Connection
      */
     public function run(string $sql, array $params = []): array
     {
+        if ($this->depth > 0 && $this->handle !== null && $this->wpdb->dbh !== $this->handle) {
+            // A reconnect (wpdb retries after a lost connection) ended this transaction on the server:
+            // what follows would commit on its own. Refuse it, and the commit.
+            $this->rollbackOnly = true;
+            throw new DbError('the database connection was lost and replaced during the transaction', 2006);
+        }
         $values = array_map(static fn ($v) => is_float($v) ? \First\Js::numStr($v) : $v, array_values($params));
         $dbh = $this->wpdb->dbh;
         if ($dbh instanceof \PDO) {
@@ -525,6 +531,11 @@ final class Connection
                 throw new \RuntimeException('Cannot commit: the database connection was lost and replaced during the transaction');
             }
             $this->query('COMMIT');
+            // wpdb may have reconnected for the COMMIT itself: the server rolled the transaction back and
+            // the new connection committed nothing. Report it as the failure it is.
+            if ($this->wpdb->dbh !== $this->handle) {
+                throw new \RuntimeException('Commit failed: the database connection was lost and replaced while committing');
+            }
         } catch (\Throwable $e) {
             $this->rollback();
             throw $e;

@@ -117,42 +117,58 @@ final class Runner
     }
 
     /**
-     * Every pending or failed job with no pending or running `first_job` action gets one, at its runAt.
+     * Waiting (pending or failed) jobs that have no `first_job` action at all get one, at their runAt.
      * A job and its action are written in one transaction, so this finds only jobs a runtime before
      * this one left in `first__outbox`, ones queued before Action Scheduler was ready in a request that
-     * died, and actions someone deleted. Pages of 100, each in its own transaction; each candidate is
-     * re-read under its row lock, which every writer of its delivery holds too.
+     * died, and ones whose actions someone deleted. A job with any action, even one an administrator
+     * cancelled in Tools > Scheduled Actions, is left alone (`wp first jobs cancel` cancels a job).
+     * At most $max jobs per call, in pages of 100 in runAt order (the jobs table's `due` index).
      *
      * @return int jobs given an action
      */
-    public static function recover(): int
+    public static function recover(int $max = 1000): int
     {
-        global $wpdb;
-        $actions = $wpdb->prefix . 'actionscheduler_actions';
-        // Action Scheduler stores args as {"id":"<uuid>"}; a job id is a uuid, so containing it is matching it.
-        $orphan = '"state" IN (\'pending\', \'failed\') AND NOT EXISTS (SELECT 1 FROM "' . $actions . '" a WHERE a."hook" = \''
-            . ActionSchedulerQueue::HOOK . '\' AND a."status" IN (\'pending\', \'in-progress\') AND a."args" LIKE CONCAT(\'%\', {jobs}."id", \'%\'))';
         $recovered = 0;
         $cursor = null;
         do {
-            $page = Storage::run('SELECT "id", "createdAt" FROM {jobs} WHERE ' . $orphan
-                . ($cursor === null ? '' : ' AND ("createdAt" > ? OR ("createdAt" = ? AND "id" > ?))') . ' ORDER BY "createdAt", "id" LIMIT 100',
-                $cursor === null ? [] : [$cursor['createdAt'], $cursor['createdAt'], $cursor['id']]);
+            $page = Storage::run('SELECT "id", "runAt" FROM {jobs} WHERE ' . self::orphan()
+                . ($cursor === null ? '' : ' AND ("runAt" > ? OR ("runAt" = ? AND "id" > ?))') . ' ORDER BY "runAt", "id" LIMIT 100',
+                [...self::ORPHAN_ARGS, ...($cursor === null ? [] : [$cursor['runAt'], $cursor['runAt'], $cursor['id']])]);
             foreach ($page as $row) {
-                $recovered += db()->transaction(static function () use ($row, $orphan): int {
-                    $job = Storage::run('SELECT "runAt" FROM {jobs} WHERE "id" = ? AND ' . $orphan . Storage::forUpdate(), [$row['id']])[0] ?? null;
-                    if ($job === null) {
-                        return 0;
-                    }
-                    ActionSchedulerQueue::schedule((string) $row['id'], (string) $job['runAt']);
-
-                    return 1;
-                });
+                $recovered += self::ensureDelivery((string) $row['id']);
             }
             $cursor = $page === [] ? null : $page[count($page) - 1];
-        } while (count($page) === 100);
+            $max -= count($page);
+        } while (count($page) === 100 && $max > 0);
 
         return $recovered;
+    }
+
+    /** Gives waiting job $id its action at its runAt unless it has one, under its row lock: 1 if it did. */
+    public static function ensureDelivery(string $id): int
+    {
+        return db()->transaction(static function () use ($id): int {
+            $job = Storage::run('SELECT "runAt" FROM {jobs} WHERE "id" = ? AND ' . self::orphan() . Storage::forUpdate(), [$id, ...self::ORPHAN_ARGS])[0] ?? null;
+            if ($job === null) {
+                return 0;
+            }
+            ActionSchedulerQueue::schedule($id, (string) $job['runAt']);
+
+            return 1;
+        });
+    }
+
+    /** orphan()'s parameters: the `{"id":"<uuid>"}` Action Scheduler stores as a delivery's args, around the id. */
+    private const ORPHAN_ARGS = ['{"id":"', '"}'];
+
+    /** A waiting job with no `first_job` action of any status (args as Action Scheduler stores them, on its index). */
+    private static function orphan(): string
+    {
+        global $wpdb;
+
+        // The JSON's quotes are parameters (ORPHAN_ARGS): Storage::sql makes every `"` an identifier quote.
+        return '"state" IN (\'pending\', \'failed\') AND NOT EXISTS (SELECT 1 FROM "' . $wpdb->prefix . 'actionscheduler_actions" a WHERE a."hook" = \''
+            . ActionSchedulerQueue::HOOK . '\' AND a."args" = CONCAT(?, {jobs}."id", ?))';
     }
 
     private static function retries(string $job): int

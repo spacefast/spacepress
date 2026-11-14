@@ -95,6 +95,20 @@ eq('the converter escapes each marker itself, with no texturize in front', \Firs
 eq('strikethrough tildes never open a fence', \First\Sync\HtmlMarkdown::convert('<p><del></del> x</p><p><del>~</del> y</p><p>~~<span>~</span> z</p><p>a<br><del></del>b</p>'),
     "\\~~~~ x\n\n\\~~~~~ y\n\n\\~~~ z\n\na  \n\\~~~~b");
 eq('code keeps its angle brackets', md(Markdown::toBlocks("Use `<div>` here.\n\n```html\n<p>x</p>\n```\n")), "Use `<div>` here.\n\n```html\n<p>x</p>\n```\n");
+// What the docs site's pages hold takes the round trip sync and the seed require, and keeps its
+// text: code with blank lines, a pipe in a table cell, a code block in a list item with text after
+// it, a code span holding backticks, and an escaped `\<` in prose.
+$kept = [
+    "```ts\nconst a = 1;\n\n\nconst b = 2;\n```\n",
+    "| Command | What |\n|---------|------|\n| `a \\| b` | one |\n",
+    "1. Sign in:\n\n   ```sh\n   sf login\n\n   sf whoami\n   ```\n\n   It prints a link.\n\n2. Run it.\n",
+    "Write ```` ```ts title=\"a.ts\" ```` to title a block.\n",
+    "Handlers live in first/wp-hooks/\\<hook\\>.ts.\n",
+];
+eq('code, a table pipe, a fence in a list item, backticks in code and an escaped < survive the round trip',
+    array_map(static fn (string $md): string => Markdown::toBlocks(Markdown::fromBlocks(Markdown::toBlocks($md))), $kept),
+    array_map(static fn (string $md): string => Markdown::toBlocks($md), $kept));
+eq('an escaped < is text, never an element', str_contains(Markdown::toBlocks("a \\<hook\\> b\n"), '<hook>'), false);
 eq('a comparison is not a tag', md('<!-- wp:html --><p>1 &lt; 2</p><!-- /wp:html -->'), "1 < 2\n");
 register_block_type('first-test/broken', ['render_callback' => static fn (): never => throw new RuntimeException('broken block')]);
 eq('a post whose rendering throws shows nothing, never a partial or unfiltered body', md('<!-- wp:paragraph --><p>Before.</p><!-- /wp:paragraph --><!-- wp:first-test/broken /--><!-- wp:html --><p>After.</p><!-- /wp:html -->'), '');

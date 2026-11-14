@@ -394,7 +394,8 @@ final class Register
                 'label' => "Create in $name", 'description' => "Create one $name row in the $appLabel app; the input is the row.",
                 'input' => JsonSchema::insert($spec, $virtual), 'output' => $row, 'annotations' => [], 'rule' => [$rules['create'], 'create', "create $name rows"], 'defer' => true,
                 'call' => static fn (array $in): array => ['POST', "/$name", [], $in],
-            ];
+                // The new row carries its `_rev`, as the API's create answers.
+            ] + ($guard === [] ? [] : ['guard' => true]);
         }
         if ($api['update'] ?? true) {
             $ops[] = $base + [

@@ -532,7 +532,7 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
 |---|---|
 | Compiled PHP for kinds, hooks, actions, jobs and pages | OPcache'd files in the build store; no parsing or reflection |
 | Route table, URL patterns, post types, taxonomies, field groups and roles as PHP arrays | Registered from arrays; no JSON or database reads. With `runtimeSchema`, the active version's additions come from one autoloaded option (§2.10) |
-| Pages with no request data, prerendered to HTML plus `.md` | Files served by the engine before WordPress boots |
+| Pages that export `prerender = true` (every page with `output: "static"`), as HTML plus `.md` | Written on the site after a deploy and after each write that changes them; served before WordPress parses the request. `first export` writes them as a static site (rendering.md §6.1) |
 | Interactive component stores, CSS and assets, content-hashed | Immutable files, cached for a year |
 | `llms.txt` and the sitemap skeleton | Files |
 | `_generated/db.d.ts`, `routes.d.ts`, `openapi.json`, `spec.json` | Used by clients; the site also serves `openapi.json` (§3a) |

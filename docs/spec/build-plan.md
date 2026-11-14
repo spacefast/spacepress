@@ -213,7 +213,7 @@ Monorepo `legacy/zero-0.8` keeps its Preact island code until live 0.8 Spaces mo
   - an `app/` page that matches a pattern takes over its URL;
   - otherwise the theme renders it.
 - **Front-end modes:** none, `app/`, `false` and a URL, behind one `template_redirect` gate.
-- **Static pages:** prerendered into `dist/`.
+- **Static pages:** built. `prerender = true` pages are prebuilt on the site, and `first export` writes a static site ([decision](../decisions/2026-11-13-static-output.md)).
 
 **Done when:** the browser suite covers every mode's URLs, admin, login and REST staying up, and a slug change redirecting.
 

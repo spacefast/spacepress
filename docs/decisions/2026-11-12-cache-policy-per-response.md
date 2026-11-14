@@ -49,6 +49,10 @@ purges exactly the URLs that read the changed row or listed its kind (`First\Ren
 - A page whose anonymous render is the same as everyone's but that a signed-in visitor opens is
   rendered for them rather than served from cache; that is how WordPress pages behave today.
 
+Prebuilt pages came later without the analysis: a page opts in with `prerender = true`, and its
+file is this same anonymous render, made ahead of time
+([static output](2026-11-13-static-output.md)).
+
 ## Alternative kept for later
 
 The spec's compile-time policy. It becomes possible once the compiler can show, for each route,

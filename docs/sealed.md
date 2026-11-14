@@ -212,7 +212,12 @@ reason it is there:
 - options that move sign-in or mail: `siteurl`, `home`, `admin_email`,
   `new_admin_email`, `upload_path`, `upload_url_path`;
 - options that decide roles: `users_can_register`, `default_role`,
-  `{prefix}user_roles`, `site_admins`;
+  `{prefix}user_roles`, `site_admins`, `comment_registration`, and the pending
+  confirmations a link applies: multisite invitations (`new_user_*`, which add
+  the stored user with the stored role) and `adminhash`;
+- options that route the site: `rewrite_rules`, `permalink_structure`,
+  `show_on_front`, `page_on_front`, `page_for_posts`, `blog_public`,
+  `fresh_site`;
 - First's own `first_*` options;
 - options that hold secrets, which can't be read either: the salts and keys
   (`auth_key`, `secret_key`, ... `*_salt`), `recovery_keys`, `mailserver_pass`,

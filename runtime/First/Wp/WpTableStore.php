@@ -53,7 +53,7 @@ final class WpTableStore implements Store, Links
     {
         $spec = $this->schema->collection($collection);
         if (isset($spec['existingTable'])) {
-            Guard::table($spec['existingTable'], $this->db->prefix());
+            Guard::table($spec['existingTable'], $this->db->prefix(), $collection);
 
             return $spec['existingTable'];
         }

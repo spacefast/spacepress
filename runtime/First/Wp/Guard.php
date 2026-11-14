@@ -104,20 +104,20 @@ final class Guard
      * Refuses an `existingTable` binding that isn't this site's to bind. `$prefix` is `$wpdb->prefix`,
      * which the host sets before WordPress loads (docs/host-contract.md "Table prefix").
      */
-    public static function table(string $name, string $prefix): void
+    public static function table(string $name, string $prefix, ?string $collection = null): void
     {
-        $key = $prefix . "\0" . $name;
+        $key = $prefix . "\0" . $name . "\0" . $collection;
         if (isset(self::$tables[$key])) {
             return;
         }
-        $reason = self::tableRefusal($name, $prefix);
+        $reason = self::tableRefusal($name, $prefix, $collection);
         if ($reason !== null) {
             throw new HttpError(409, 'existing_table_refused', "existingTable `" . self::shown($name) . "` is refused: $reason");
         }
         self::$tables[$key] = true;
     }
 
-    private static function tableRefusal(string $name, string $prefix): ?string
+    private static function tableRefusal(string $name, string $prefix, ?string $collection): ?string
     {
         if (preg_match('/\A[A-Za-z][A-Za-z0-9_]{0,63}\z/', $name) !== 1) {
             return 'it is not an exact SQL identifier';
@@ -139,11 +139,18 @@ final class Guard
             if (preg_match('/\A[0-9]+_/', $rest) === 1) {
                 return 'it belongs to another site of this network';
             }
+            if (str_starts_with($rest, 'identity_') || str_starts_with($rest, 'wc_') || str_starts_with($rest, 'woocommerce_')) {
+                return "it is one of the identity or WooCommerce tables, which hold sign-in and payment records";
+            }
+            // Another site can have a longer prefix that starts with this one (`wp_` and `wp_shop_`):
+            // a table whose own leading name has a WordPress options table beside it is that site's.
+            foreach (self::longerPrefixes($name, $prefix) as $other) {
+                return "it is under `$other`, another site's table prefix in this database";
+            }
 
             return null;
         }
-        $space = self::space($lower, $own);
-        if ($space !== null) {
+        if (self::ownLegacyTable($lower, $own, $collection)) {
             return null;
         }
 
@@ -153,36 +160,87 @@ final class Guard
     }
 
     /**
-     * The Space a Zero 0.8 table name `sf_<space>_<table>_<hash>` belongs to, when that is this site's
-     * Space: the host's FIRST_SPACE_ID, or on Spacefast the Space whose prefix this site has
-     * (`sfz_` + the first 24 hex digits of SHA-256(space id) + `_`). The converter lowercases the id
-     * into the name (src/config_migrate/app/transform.rs `physical`), so each split of the name is a
-     * candidate, and only the one the prefix hashes to counts.
+     * Prefixes longer than `$prefix` that `$name` starts with and that have a WordPress options
+     * table: each is another site in this database.
+     *
+     * @return list<string>
      */
-    private static function space(string $lower, string $prefix): ?string
+    private static function longerPrefixes(string $name, string $prefix): array
     {
-        // `sf_<space>_<table>`, cut to 53 characters, then `_` and 10 hex digits of a digest.
-        if (preg_match('/\Asf_[a-z0-9_]+_[0-9a-f]{10}\z/', $lower) !== 1) {
-            return null;
-        }
-        $declared = defined('FIRST_SPACE_ID') && is_string(constant('FIRST_SPACE_ID')) ? (string) constant('FIRST_SPACE_ID') : '';
-        if ($declared !== '') {
-            $part = trim((string) preg_replace('/[^a-z0-9]+/', '_', strtolower($declared)), '_');
-
-            return $part !== '' && str_starts_with($lower, "sf_{$part}_") ? $declared : null;
-        }
-        if (preg_match('/\Asfz_([0-9a-f]{24})_\z/', $prefix, $m) !== 1) {
-            return null;
-        }
-        $body = substr($lower, 3);
-        for ($at = strpos($body, '_'); $at !== false; $at = strpos($body, '_', $at + 1)) {
-            $candidate = substr($body, 0, $at);
-            if (hash_equals($m[1], substr(hash('sha256', $candidate), 0, 24))) {
-                return $candidate;
+        $found = [];
+        for ($at = strpos($name, '_', strlen($prefix)); $at !== false; $at = strpos($name, '_', $at + 1)) {
+            $candidate = substr($name, 0, $at + 1);
+            if (self::tableExists($candidate . 'options')) {
+                $found[] = $candidate;
             }
         }
 
-        return null;
+        return $found;
+    }
+
+    private static function tableExists(string $table): bool
+    {
+        global $wpdb;
+        if (!isset($wpdb) || !($wpdb instanceof \wpdb)) {
+            return false;
+        }
+
+        return $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table))) !== null;
+    }
+
+    /**
+     * Whether `$lower` is this site's own Zero 0.8 table, `sf_<space>_<table>_<10 hex>` as the converter
+     * writes it (src/config_migrate/app/transform.rs `physical`): `<space>` and `<table>` lowercased,
+     * other characters `_`, the base cut to 53 characters, and the digest SHA-256(space NUL table). The
+     * Space is the host's: Spacefast's `spacefast_content_space_id()`, else FIRST_SPACE_ID, and on a
+     * `sfz_<24 hex>_` prefix it must also be the Space that prefix was made from. The digest needs the
+     * real id and table name, so a table of another Space whose id starts with this one never matches.
+     * `$collection` is the collection that binds it, which the converter names after the 0.8 table.
+     */
+    private static function ownLegacyTable(string $lower, string $prefix, ?string $collection): bool
+    {
+        if (preg_match('/\A(sf_[a-z0-9_]+)_([0-9a-f]{10})\z/', $lower, $m) !== 1) {
+            return false;
+        }
+        $space = '';
+        if (function_exists('spacefast_content_space_id')) {
+            try {
+                $space = \spacefast_content_space_id();
+            } catch (\Throwable) {
+                return false;
+            }
+            $space = is_string($space) ? $space : '';
+        }
+        if ($space === '' && defined('FIRST_SPACE_ID') && is_string(constant('FIRST_SPACE_ID'))) {
+            $space = (string) constant('FIRST_SPACE_ID');
+        }
+        if ($space === '') {
+            return false;
+        }
+        if (preg_match('/\Asfz_[0-9a-f]{24}_\z/', $prefix) === 1 && $prefix !== 'sfz_' . substr(hash('sha256', $space), 0, 24) . '_') {
+            return false;
+        }
+        $part = static function (string $s): string {
+            $s = substr(trim((string) preg_replace('/[^a-z0-9]+/', '_', strtolower($s)), '_'), 0, 48);
+
+            return $s === '' ? 'zero' : $s;
+        };
+        $head = 'sf_' . $part($space) . '_';
+        if (!str_starts_with($m[1], $head)) {
+            return false;
+        }
+        // The digest is over the 0.8 table's own name. The converter names the collection after it, so
+        // that is the candidate; a name not cut to 53 characters also holds it whole.
+        $rest = substr($lower, strlen($head), -11);
+        $candidates = array_values(array_unique(array_filter([$collection, $rest], static fn ($t) => is_string($t) && $t !== '')));
+        foreach ($candidates as $table) {
+            $base = substr($head . $part($table), 0, 53);
+            if ($base === $m[1] && hash_equals($m[2], substr(hash('sha256', $space . "\0" . $table), 0, 10))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** A name as an error message shows it: printable, bounded. */

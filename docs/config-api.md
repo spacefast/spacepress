@@ -1011,14 +1011,18 @@ before the first migration reads the table and on every request that uses it
 (`409 existing_table_refused` otherwise). It must be either:
 
 - a table under this site's `$wpdb->prefix` that is not WordPress's own (`posts`,
-  `users`, `options`, ...), First's (`{prefix}first_*`), Action Scheduler's
-  (`{prefix}actionscheduler_*`) or another network site's (`{prefix}2_*`); or
+  `users`, `options`, ...), First's (`{prefix}first_*`), identity's, WooCommerce's,
+  Action Scheduler's (`{prefix}actionscheduler_*`) or another site's: a network
+  site (`{prefix}2_*`) or a site whose longer prefix starts with this one
+  (`wp_shop_` beside `wp_`, found by its options table); or
 - this Space's own Zero 0.8 table, `sf_<space>_<table>_<10 hex>` as
   [`first migrate app --space`](migrating-from-zero.md#application-source-migration)
-  writes it. The Space is the one the table prefix was made from on Spacefast
-  (`sfz_` + 24 hex digits of SHA-256 of the Space id), or the host's
-  `FIRST_SPACE_ID` constant elsewhere. A host that defines neither binds no 0.8
-  table, and no Space binds another's.
+  writes it, with the converter's digest of the Space id and the table name (the
+  collection that binds it is named after that table). The Space id comes from the
+  host: Spacefast's `spacefast_content_space_id()`, or the `FIRST_SPACE_ID`
+  constant elsewhere; on a Spacefast `sfz_` prefix it must also be the Space the
+  prefix was made from. A host that names no Space binds no 0.8 table, and a
+  Space never binds another's, even one whose id starts with its own.
 
 It is distinct from `storageName`, which still identifies the logical resource's
 migration history. The binding is committed in the snapshot and cannot change

@@ -33,7 +33,8 @@ eq('a site setting that holds nothing dangerous is readable', $call('get_option'
 $plugins = get_option('active_plugins');
 $protected = ['active_plugins', 'active_sitewide_plugins', 'template', 'stylesheet', 'siteurl', 'home', 'admin_email',
     'users_can_register', 'default_role', 'wp_user_roles', 'cron', 'recently_activated', 'upload_path', 'upload_url_path',
-    'uninstall_plugins', 'first_blog_schema', 'first__anything', 'jetpack_active_modules', '_site_transient_update_plugins'];
+    'uninstall_plugins', 'first_blog_schema', 'first__anything', 'jetpack_active_modules', '_site_transient_update_plugins',
+    'new_user_0123abcd', 'adminhash', 'rewrite_rules', 'permalink_structure', 'show_on_front', 'blog_public'];
 foreach ($protected as $name) {
     problem("update_option refuses $name", static fn () => $call('update_option', [$name, 'x']), 403, 'protected_option');
     problem("delete_option refuses $name", static fn () => $call('delete_option', [$name]), 403, 'protected_option');
@@ -88,23 +89,53 @@ foreach (['wp_users', 'wp_usermeta', 'WP_Options', 'wp_posts', 'wp_first_posts',
     $refused("$t is refused", $t, 'wp_');
 }
 $refused('another prefix is refused', 'other_orders', 'wp_');
-$other = 'sfz_' . substr(hash('sha256', 'spc_other'), 0, 24) . '_';
-$mine = 'sfz_' . substr(hash('sha256', 'spc_mine'), 0, 24) . '_';
-$refused("another Space's v2 table is refused", $other . 'first_tasks', $mine);
-$refused("another Space's WordPress users are refused", $other . 'users', $mine);
-$legacy = 'sf_spc_mine_tasks_' . substr(hash('sha256', "spc_mine\0tasks"), 0, 10);
-$allowed("this Space's own 0.8 table is bound under its sfz_ prefix", $legacy, $mine);
-$refused("another Space's 0.8 table is refused", 'sf_spc_other_tasks_' . substr(hash('sha256', "spc_other\0tasks"), 0, 10), $mine);
-$refused('a 0.8 table on a host that names no Space is refused', $legacy, 'wp_');
-$refused('a name without the converter digest is not a 0.8 table', 'sf_spc_mine_tasks', $mine);
-// Only the Space the prefix hashes to: spc_ab's tables are not spc_a's, nor spc_a's spc_ab's.
-$a = 'sfz_' . substr(hash('sha256', 'spc_a'), 0, 24) . '_';
-$ab = 'sfz_' . substr(hash('sha256', 'spc_ab'), 0, 24) . '_';
-$allowed("spc_a's table under spc_a", 'sf_spc_a_tasks_0123456789', $a);
-$refused("spc_ab's table is not spc_a's", 'sf_spc_ab_tasks_0123456789', $a);
-$refused("spc_a's table is not spc_ab's", 'sf_spc_a_tasks_0123456789', $ab);
-// A host that isn't Spacefast names its Space with FIRST_SPACE_ID (the in-process site defines none).
-eq('no FIRST_SPACE_ID here', defined('FIRST_SPACE_ID'), false);
+// A longer prefix that starts with this one is another site in the same database.
+$wp->connection()->run('CREATE TABLE wp_other_options (option_id INTEGER PRIMARY KEY)');
+$wp->connection()->run('CREATE TABLE wp_other_users (ID INTEGER PRIMARY KEY)');
+$refused('a table under a longer prefix that has its own options table is refused', 'wp_other_users', 'wp_');
+$allowed('a table without such a site beside it is not', 'wp_otherthing_rows', 'wp_');
+foreach (['wp_first_identity_accounts', 'wp_identity_sessions', 'wp_wc_orders', 'wp_woocommerce_sessions'] as $t) {
+    $refused("$t is refused", $t, 'wp_');
+}
+
+// The 0.8 table name `sf_<space>_<table>_<digest>` as src/config_migrate/app/transform.rs `physical` writes it.
+$legacyOf = static fn (string $space, string $t) => substr('sf_' . substr(trim((string) preg_replace('/[^a-z0-9]+/', '_', strtolower($space)), '_'), 0, 48) . '_' . $t, 0, 53) . '_' . substr(hash('sha256', "$space\0$t"), 0, 10);
+$sfz = static fn (string $space) => 'sfz_' . substr(hash('sha256', $space), 0, 24) . '_';
+eq('the helper matches the converter fixture name', $legacyOf('spc_migrate_test', 'tasks'), 'sf_spc_migrate_test_tasks_3c47092ff0');
+// No Space from the host: no 0.8 table binds, whatever the prefix.
+$refused('a 0.8 table on a host that names no Space is refused', $legacyOf('spc_mine', 'tasks'), $sfz('spc_mine'));
+eq('no FIRST_SPACE_ID in the in-process site', defined('FIRST_SPACE_ID'), false);
+
+// Spacefast names the Space (spacefast_content_space_id); the digest needs the real id and table.
+$GLOBALS['GUARD_SPACE'] = 'spc_mine';
+eval('function spacefast_content_space_id(): string { return (string) ($GLOBALS["GUARD_SPACE"] ?? ""); }');
+$mine = $sfz('spc_mine');
+$allowed("this Space's own 0.8 table", $legacyOf('spc_mine', 'tasks'), $mine);
+$refused("another Space's 0.8 table", $legacyOf('spc_other', 'tasks'), $mine);
+$refused("another Space's v2 table", $sfz('spc_other') . 'first_tasks', $mine);
+$refused("another Space's WordPress users", $sfz('spc_other') . 'users', $mine);
+$refused('a name without the converter digest', 'sf_spc_mine_tasks', $mine);
+$refused('a made-up digest', 'sf_spc_mine_tasks_0123456789', $mine);
+$refused('the host Space must be the one its sfz_ prefix was made from', $legacyOf('spc_mine', 'tasks'), $sfz('spc_other'));
+// spc_a's name starts spc_a_b's: the digest keeps them apart in both directions.
+$GLOBALS['GUARD_SPACE'] = 'spc_a';
+$allowed("spc_a's table under spc_a", $legacyOf('spc_a', 'tasks'), $sfz('spc_a'));
+$refused("spc_a_b's table is not spc_a's", $legacyOf('spc_a_b', 'tasks'), $sfz('spc_a'));
+$GLOBALS['GUARD_SPACE'] = 'spc_a_b';
+$refused("spc_a's table is not spc_a_b's", $legacyOf('spc_a', 'b_tasks'), $sfz('spc_a_b'));
+$allowed("spc_a_b's own b_tasks-free name", $legacyOf('spc_a_b', 'tasks'), $sfz('spc_a_b'));
+// The converter lowercases and normalizes the id, and cuts long names.
+$GLOBALS['GUARD_SPACE'] = 'Space-Mixed.1';
+$allowed('a mixed-case Space id adopts its own tables', $legacyOf('Space-Mixed.1', 'tasks'), $sfz('Space-Mixed.1'));
+$GLOBALS['GUARD_SPACE'] = 'spc_long';
+$refused('a cut name alone is not enough: the digest needs the table name', $legacyOf('spc_long', str_repeat('t', 60)), $sfz('spc_long'));
+try {
+    Guard::table($legacyOf('spc_long', str_repeat('t', 60)), $sfz('spc_long'), str_repeat('t', 60));
+    check('a long table name the converter cut adopts through the collection named after it', true);
+} catch (\First\HttpError $e) {
+    check('a long table name the converter cut adopts through the collection named after it', false, $e->getMessage());
+}
+$GLOBALS['GUARD_SPACE'] = '';
 
 // The migrator refuses an unchecked binding before it reads the table or writes the ledger.
 $bad = $schema;

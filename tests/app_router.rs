@@ -2057,3 +2057,65 @@ fn docs_example_reads_in_the_browser() {
     let llms = seen["llms"].as_str().unwrap();
     assert!(llms.contains("/about.md") && !llms.contains("Roadmap"), "{llms}");
 }
+
+/// Issue #311: every read a `first/app/` page can make runs as the visitor, on WordPress over
+/// HTTP. A collection whose read rule shows drafts to staff only, read through each path a page
+/// has (tests/php/page_reads.php): a page's and a layout's `db.query`, the `"first:db"` kind API,
+/// the Markdown twin, a `route.ts` handler, and the two kinds of read in an action a `"use client"`
+/// component calls. A signed-out visitor never sees the draft; an editor does. An editor's render
+/// is never shared, so the anonymous page after it is still the anonymous one.
+#[test]
+fn page_reads_run_as_the_visitor() {
+    let project = fixture("page-reads", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/page_reads.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let public = serde_json::json!(["Public one"]);
+    let both = serde_json::json!(["Public one", "Secret draft"]);
+    for surface in ["page", "kind api", "route"] {
+        assert_eq!(seen["anonymous"][surface], public, "{surface}: {seen}");
+        assert_eq!(seen["editor"][surface], both, "{surface}: {seen}");
+    }
+    assert_eq!(
+        (&seen["anonymous"]["layout"], &seen["editor"]["layout"]),
+        (&serde_json::json!(1), &serde_json::json!(2))
+    );
+    // The twin renders as an anonymous visitor for everyone (rendering.md §5).
+    assert_eq!(
+        (&seen["anonymous"]["twin"], &seen["editor"]["twin"]),
+        (&public, &public)
+    );
+    // An action reached from a client component: the kind API reads as its caller, `db` is trusted.
+    assert_eq!(
+        seen["anonymous"]["action kind api"],
+        serde_json::json!([200, ["Public one"]])
+    );
+    assert_eq!(
+        seen["editor"]["action kind api"],
+        serde_json::json!([200, ["Public one", "Secret draft"]])
+    );
+    assert_eq!(
+        seen["anonymous"]["action db"],
+        serde_json::json!([200, ["Public one", "Secret draft"]])
+    );
+    // Only the anonymous render is shared; an editor's is private, and doesn't replace it.
+    assert_eq!(
+        seen["anonymous"]["page cache"],
+        "public, s-maxage=300, max-age=0, must-revalidate"
+    );
+    assert_eq!(seen["editor"]["page cache"], "private, no-store, max-age=0");
+    assert_eq!(seen["anonymous after editor"], public);
+}

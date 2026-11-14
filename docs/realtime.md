@@ -15,7 +15,9 @@ const stop = first.todos.list({ where: { done: false }, orderBy: { createdAt: "a
 ```
 
 Every read is a `Query`: `await` it for one answer, or `subscribe(onData, onError?)` to keep it
-current. `list`, `paginate`, `get` and `count` all work the same way.
+current. `list`, `paginate`, `get` and `count` all work the same way. A read is sent when it is
+first awaited or subscribed to, not when it is made, so to run two at once, await them together
+(`await Promise.all([first.posts.list(), first.authors.list()])`).
 
 ```ts
 first.todos.count({ where: { done: false } }).subscribe((open) => badge(open));

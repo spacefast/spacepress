@@ -84,17 +84,18 @@ pub(super) fn run(args: &Args) -> ExitCode {
     let mut broken = Vec::new();
     if args.links {
         match args.site.as_deref().map(url::Url::parse) {
-            Some(Ok(site)) if matches!(site.scheme(), "http" | "https") => {
-                let mut site = site;
+            Some(Ok(mut site))
+                if matches!(site.scheme(), "http" | "https")
+                    && site.username().is_empty()
+                    && site.password().is_none() =>
+            {
                 if !site.path().ends_with('/') {
                     site.set_path(&format!("{}/", site.path()));
                 }
                 let report = super::links::check(&site, &super::links::Http::new());
-                check(
-                    &mut checks,
-                    "links",
-                    report.broken.is_empty() && !report.truncated,
-                    format!(
+                let detail = match &report.failed {
+                    Some(why) => format!("nothing checked: {why}"),
+                    None => format!(
                         "{} pages read, {} broken{}",
                         report.pages,
                         report.broken.len(),
@@ -104,10 +105,17 @@ pub(super) fn run(args: &Args) -> ExitCode {
                             ""
                         }
                     ),
-                );
+                };
+                let ok = report.failed.is_none() && report.broken.is_empty() && !report.truncated;
+                check(&mut checks, "links", ok, detail);
                 broken = report.broken;
             }
-            _ => check(&mut checks, "links", false, "--links needs --site <http(s) URL>"),
+            _ => check(
+                &mut checks,
+                "links",
+                false,
+                "--links needs --site <http(s) URL> without credentials",
+            ),
         }
     }
     let ok = checks.iter().all(|check| check["ok"] == true);

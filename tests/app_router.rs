@@ -1479,8 +1479,6 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
 }
 
-/// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
-/// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
 /// `first doctor --site <url> --links` on a served First site: every link and `#anchor` the docs
 /// pages make, from Markdown content, TSX and WordPress, is followed; the broken ones are reported
 /// with the page they are on.
@@ -1569,6 +1567,8 @@ fn doctor_finds_broken_links_and_anchors_on_a_site() {
     );
 }
 
+/// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
+/// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
 /// `nav`, `pager` and `headings` from "first/content", on WordPress over HTTP (tests/php/docs_kind.php).
 #[test]
 fn docs_kind_serves_a_folder_tree_with_navigation() {

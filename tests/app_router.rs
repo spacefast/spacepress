@@ -1498,8 +1498,6 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
 }
 
-/// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
-/// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
 /// `apiReference()` from "first/content": the app's own OpenAPI document, and one in `public/`,
 /// rendered by pages as an API reference, on WordPress over HTTP (tests/php/api_reference.php).
 #[test]
@@ -1554,7 +1552,7 @@ fn api_reference_renders_openapi_as_pages() {
         "depth-0 cursor string | null"
     );
     assert!(
-        list["curl"][0].as_str().unwrap().starts_with("curl -X GET 'http://"),
+        list["curl"][0].as_str().unwrap().starts_with("curl -g -X GET 'http://"),
         "{list}"
     );
     // A write: its JSON body's fields, and samples that send the required ones.
@@ -1595,8 +1593,26 @@ fn api_reference_renders_openapi_as_pages() {
             "id": ["get-order"]
         })
     );
+    // What goes wrong in practice: a description's blocks are text, never the site's dynamic
+    // blocks; the operation's parameter replaces the path's; allOf and const; JSON over a form
+    // body; slugs that collide get -2; and a quote in the server is quoted in the curl sample.
+    assert_eq!(
+        seen["edge"],
+        serde_json::json!({
+            "status": 200,
+            "description": "Plain text.",
+            "renders blocks": false,
+            "sections": ["unicode--items-list", "unicode--items-list-2"],
+            "params": ["id: integer"],
+            "fields": ["count: Count min 1 required", "kind: \"fixed\" always \"fixed\""],
+            "body": ["application/json note!"],
+            "curl": "curl -g -X GET 'https://h.example/a'\\''b/x/{id}' \\\n  -H 'Accept: application/json'"
+        })
+    );
 }
 
+/// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
+/// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
 /// `nav`, `pager` and `headings` from "first/content", on WordPress over HTTP (tests/php/docs_kind.php).
 #[test]
 fn docs_kind_serves_a_folder_tree_with_navigation() {

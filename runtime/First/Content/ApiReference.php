@@ -27,7 +27,9 @@ final class ApiReference
 {
     /** How deep fields are listed below a parameter, body or response. */
     private const DEPTH = 4;
-    private const METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'];
+    /** The blocks Markdown makes, rendered from their saved HTML alone. */
+    private const STATIC_BLOCKS = ['core/paragraph', 'core/heading', 'core/list', 'core/list-item', 'core/quote', 'core/code', 'core/table', 'core/separator', 'core/preformatted'];
+    private const METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'];
 
     /** @var array<string, JsObject> per source, per request */
     private static array $read = [];
@@ -38,9 +40,19 @@ final class ApiReference
         if (isset(self::$read[$key])) {
             return self::$read[$key];
         }
-        $document = $source === null ? self::own() : self::file($source);
+        $document = ($source === null ? self::own() : self::file($source)) ?? [];
+        // Converting every description's Markdown is the costly part. The result depends on the
+        // document and on this code only, so it is kept until either changes.
+        static $code = null;
+        $code ??= (string) md5_file(__FILE__);
+        $cache = 'first_api_reference_' . md5((string) json_encode($document) . "\0" . $code);
+        $reference = get_transient($cache);
+        if (!is_array($reference)) {
+            $reference = self::reference($document);
+            set_transient($cache, $reference, DAY_IN_SECONDS);
+        }
 
-        return self::$read[$key] = self::js(self::reference($document ?? []));
+        return self::$read[$key] = self::js($reference);
     }
 
     /** The app's own document, with this site as its server. */
@@ -95,6 +107,17 @@ final class ApiReference
             }
         }
 
+        // Slugs are URL segments: two tags, or two operations of one tag, never share one. A later
+        // one gets `-2`, `-3`, … in the document's order, so a page per slug reaches each.
+        $taken = [];
+        foreach ($tags as $name => $tag) {
+            $tags[$name]['slug'] = self::unique($tag['slug'], $taken);
+            $ops = [];
+            foreach ($tag['operations'] as $i => $op) {
+                $tags[$name]['operations'][$i]['slug'] = self::unique($op['slug'], $ops);
+            }
+        }
+
         return [
             'title' => is_string($info['title'] ?? null) ? $info['title'] : 'API reference',
             'version' => is_string($info['version'] ?? null) ? $info['version'] : '',
@@ -112,12 +135,16 @@ final class ApiReference
     private static function operation(array $doc, string $path, string $method, array $op, array $shared, string $server): array
     {
         $id = is_string($op['operationId'] ?? null) ? $op['operationId'] : $method . ' ' . $path;
-        $params = [];
+        // An operation's parameter replaces the path's with the same name and place (OpenAPI 3.1 §4.8.9).
+        $byKey = [];
         foreach (array_merge($shared, is_array($op['parameters'] ?? null) ? $op['parameters'] : []) as $param) {
             $param = self::deref($doc, $param);
-            if (!is_string($param['name'] ?? null)) {
-                continue;
+            if (is_string($param['name'] ?? null)) {
+                $byKey[($param['in'] ?? '') . "\0" . $param['name']] = $param;
             }
+        }
+        $params = [];
+        foreach ($byKey as $param) {
             $schema = $param['schema'] ?? (is_array($param['content'] ?? null) ? (reset($param['content'])['schema'] ?? null) : null);
             $field = self::field($doc, $param['name'], is_array($schema) ? $schema : [], (bool) ($param['required'] ?? false), 0, $param['description'] ?? null);
             $field['in'] = is_string($param['in'] ?? null) ? $param['in'] : '';
@@ -128,7 +155,7 @@ final class ApiReference
         $example = null;
         $request = self::deref($doc, $op['requestBody'] ?? null);
         if (is_array($request['content'] ?? null) && $request['content'] !== []) {
-            $bodyType = (string) array_key_first($request['content']);
+            $bodyType = isset($request['content']['application/json']) ? 'application/json' : (string) array_key_first($request['content']);
             $schema = is_array($request['content'][$bodyType]['schema'] ?? null) ? $request['content'][$bodyType]['schema'] : [];
             $body = self::fields($doc, $schema, 0, []);
             $example = $bodyType === 'application/json' ? self::example($doc, $schema, 0) : null;
@@ -137,7 +164,7 @@ final class ApiReference
         foreach (is_array($op['responses'] ?? null) ? $op['responses'] : [] as $status => $response) {
             $response = self::deref($doc, $response);
             $content = is_array($response['content'] ?? null) ? $response['content'] : [];
-            $type = $content === [] ? '' : (string) array_key_first($content);
+            $type = $content === [] ? '' : (isset($content['application/json']) ? 'application/json' : (string) array_key_first($content));
             $schema = $type === '' || !is_array($content[$type]['schema'] ?? null) ? [] : $content[$type]['schema'];
             $responses[] = [
                 'status' => (string) $status,
@@ -146,7 +173,7 @@ final class ApiReference
                 'fields' => $type === '' ? [] : self::fields($doc, $schema, 0, []),
             ];
         }
-        $url = $server . preg_replace('/\{([^}]+)\}/', '{$1}', $path);
+        $url = $server . $path;
 
         return [
             'id' => $id,
@@ -183,12 +210,13 @@ final class ApiReference
         if ($object === null) {
             return [];
         }
-        $required = is_array($object['required'] ?? null) ? $object['required'] : [];
+        $required = array_map('strval', is_array($object['required'] ?? null) ? $object['required'] : []);
         $out = [];
         foreach ($object['properties'] as $name => $property) {
             $property = is_array($property) ? $property : [];
-            $out[] = self::field($doc, (string) $name, $property, in_array($name, $required, true), $depth, $property['description'] ?? null);
-            array_push($out, ...self::fields($doc, $property, $depth + 1, $seen));
+            // A name like "1" is an integer key in PHP: compare names as strings.
+            $out[] = self::field($doc, (string) $name, $property, in_array((string) $name, $required, true), $depth, $property['description'] ?? null);
+            array_push($out, ...self::below($doc, $property, $depth + 1, $seen));
         }
 
         return $out;
@@ -212,6 +240,9 @@ final class ApiReference
                 $schema = self::deref($doc, $schema);
                 continue;
             }
+            if (is_array($schema['allOf'] ?? null)) {
+                $schema = self::merged($doc, $schema, $seen);
+            }
             if (is_array($schema['properties'] ?? null) && $schema['properties'] !== []) {
                 return [$schema, $seen];
             }
@@ -223,8 +254,24 @@ final class ApiReference
                 array_merge(is_array($schema['anyOf'] ?? null) ? $schema['anyOf'] : [], is_array($schema['oneOf'] ?? null) ? $schema['oneOf'] : []),
                 static fn (mixed $v): bool => is_array($v) && ($v['type'] ?? null) !== 'null',
             ));
-            if (count($variants) !== 1) {
+            if ($variants === []) {
                 return [null, $seen];
+            }
+            if (count($variants) > 1) {
+                // Several shapes: every property any of them has, required only where all require it.
+                $merged = ['type' => 'object', 'properties' => [], 'required' => null];
+                foreach ($variants as $variant) {
+                    [$object] = self::objectOf($doc, $variant, $seen);
+                    if ($object === null) {
+                        continue;
+                    }
+                    $merged['properties'] += $object['properties'];
+                    $req = is_array($object['required'] ?? null) ? $object['required'] : [];
+                    $merged['required'] = $merged['required'] === null ? $req : array_values(array_intersect($merged['required'], $req));
+                }
+                $merged['required'] ??= [];
+
+                return [$merged['properties'] === [] ? null : $merged, $seen];
             }
             $schema = $variants[0];
         }
@@ -232,9 +279,100 @@ final class ApiReference
         return [null, $seen];
     }
 
+    /**
+     * The fields below a property: its object's properties; or, when it is a choice between
+     * shapes (`integer | Author`, `Post | object`, or an array of one), a `one of` row per object
+     * shape with that shape's fields under it. A scalar choice (the id beside a related row) is in
+     * the type already.
+     *
+     * @param array<string, true> $seen
+     * @return list<array>
+     */
+    private static function below(array $doc, array $schema, int $depth, array $seen): array
+    {
+        $variants = self::variants($doc, $schema);
+        if (count($variants) < 2) {
+            return self::fields($doc, $schema, $depth, $seen);
+        }
+        $out = [];
+        foreach ($variants as $variant) {
+            $fields = self::fields($doc, $variant, $depth + 1, $seen);
+            if ($fields === []) {
+                continue;
+            }
+            $out[] = ['name' => 'one of', 'depth' => $depth, 'type' => self::type($doc, $variant), 'required' => false, 'description' => '', 'constraints' => [], 'in' => ''];
+            array_push($out, ...$fields);
+        }
+
+        return $out;
+    }
+
+    /** @return list<array> the shapes other than null a schema chooses between (through an array's items), or [] */
+    private static function variants(array $doc, array $schema): array
+    {
+        for ($i = 0; $i < 4; $i++) {
+            if (is_string($schema['$ref'] ?? null) || (is_array($schema['properties'] ?? null) && $schema['properties'] !== [])) {
+                return [];
+            }
+            foreach (['anyOf', 'oneOf'] as $key) {
+                if (is_array($schema[$key] ?? null)) {
+                    return array_values(array_filter($schema[$key], static fn (mixed $v): bool => is_array($v) && ($v['type'] ?? null) !== 'null'));
+                }
+            }
+            if (!is_array($schema['items'] ?? null)) {
+                return [];
+            }
+            $schema = $schema['items'];
+        }
+
+        return [];
+    }
+
+    /**
+     * An `allOf` schema as one object: the properties and `required` of every member, `$ref`s
+     * followed (a member already open above is skipped).
+     *
+     * @param array<string, true> $seen
+     */
+    private static function merged(array $doc, array $schema, array $seen): array
+    {
+        $out = $schema;
+        unset($out['allOf']);
+        $out['properties'] = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
+        $out['required'] = is_array($schema['required'] ?? null) ? $schema['required'] : [];
+        foreach ($schema['allOf'] as $member) {
+            if (!is_array($member)) {
+                continue;
+            }
+            if (is_string($member['$ref'] ?? null)) {
+                if (isset($seen[$member['$ref']])) {
+                    continue;
+                }
+                $seen[$member['$ref']] = true;
+            }
+            $member = self::deref($doc, $member);
+            if (is_array($member['allOf'] ?? null)) {
+                $member = self::merged($doc, $member, $seen);
+            }
+            $out['properties'] += is_array($member['properties'] ?? null) ? $member['properties'] : [];
+            $out['required'] = array_merge($out['required'], is_array($member['required'] ?? null) ? $member['required'] : []);
+            $out['type'] ??= $member['type'] ?? null;
+        }
+        if ($out['properties'] !== []) {
+            $out['type'] ??= 'object';
+        }
+
+        return $out;
+    }
+
     /** @param array<string, mixed> $schema */
     private static function field(array $doc, string $name, array $schema, bool $required, int $depth, mixed $description): array
     {
+        $type = self::type($doc, $schema);
+        // The constraints and description of a field that names another schema are that schema's.
+        if (is_string($schema['$ref'] ?? null)) {
+            $schema = self::deref($doc, $schema) + array_diff_key($schema, ['$ref' => true]);
+        }
         $constraints = [];
         foreach (['minimum' => 'min', 'maximum' => 'max', 'minLength' => 'min length', 'maxLength' => 'max length', 'minItems' => 'min items', 'maxItems' => 'max items', 'pattern' => 'matches', 'format' => 'format'] as $key => $label) {
             if (is_scalar($schema[$key] ?? null)) {
@@ -247,6 +385,9 @@ final class ApiReference
         if (array_key_exists('default', $schema)) {
             $constraints[] = 'default: ' . json_encode($schema['default'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         }
+        if (array_key_exists('const', $schema)) {
+            $constraints[] = 'always ' . json_encode($schema['const'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        }
         $enum = $schema['enum'] ?? ($schema['items']['enum'] ?? null);
         if (is_array($enum) && $enum !== []) {
             $constraints[] = 'one of: ' . implode(', ', array_map(static fn (mixed $v): string => is_string($v) ? $v : (string) json_encode($v), $enum));
@@ -255,7 +396,7 @@ final class ApiReference
         return [
             'name' => $name,
             'depth' => $depth,
-            'type' => self::type($doc, $schema),
+            'type' => $type,
             'required' => $required,
             'description' => self::markdown(is_string($description) ? $description : ($schema['description'] ?? null)),
             'constraints' => $constraints,
@@ -278,10 +419,22 @@ final class ApiReference
                 return implode(' | ', array_values(array_unique(explode(' | ', implode(' | ', $parts)))));
             }
         }
+        if (is_array($schema['allOf'] ?? null) && $schema['allOf'] !== []) {
+            $named = array_values(array_filter(array_map(static fn (mixed $v): ?string => is_array($v) && is_string($v['$ref'] ?? null) ? (string) preg_replace('#^.*/#', '', $v['$ref']) : null, $schema['allOf'])));
+            return $named !== [] ? implode(' & ', $named) : 'object';
+        }
+        if (array_key_exists('const', $schema) && !isset($schema['type'])) {
+            return (string) json_encode($schema['const'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        }
         $types = (array) ($schema['type'] ?? (is_array($schema['properties'] ?? null) ? 'object' : ''));
         $out = [];
         foreach ($types as $type) {
-            $out[] = $type === 'array' ? self::type($doc, is_array($schema['items'] ?? null) ? $schema['items'] : [], $level + 1) . '[]' : (string) $type;
+            if ($type === 'array') {
+                $item = self::type($doc, is_array($schema['items'] ?? null) ? $schema['items'] : [], $level + 1);
+                $out[] = (str_contains($item, ' ') ? "($item)" : $item) . '[]';
+            } else {
+                $out[] = (string) $type;
+            }
         }
         $out = array_values(array_filter($out, static fn (string $t): bool => $t !== '' && $t !== '[]'));
 
@@ -295,8 +448,14 @@ final class ApiReference
             return null;
         }
         $schema = self::deref($doc, $schema);
+        if (array_key_exists('const', $schema)) {
+            return $schema['const'];
+        }
         if (array_key_exists('default', $schema)) {
             return $schema['default'];
+        }
+        if (is_array($schema['allOf'] ?? null)) {
+            $schema = self::merged($doc, $schema, []);
         }
         if (is_array($schema['enum'] ?? null) && $schema['enum'] !== []) {
             return $schema['enum'][0];
@@ -335,15 +494,22 @@ final class ApiReference
 
     private static function curl(string $method, string $url, string $type, mixed $example): string
     {
-        $lines = ["curl -X $method '$url'", "  -H 'Accept: application/json'"];
+        // -g: braces and brackets in the URL (`/notes/{id}`, `?where[a]=1`) are the path, not curl globs.
+        $lines = ["curl -g -X $method " . self::shell($url), "  -H 'Accept: application/json'"];
         if ($type === 'application/json') {
             $lines[] = "  -H 'Content-Type: application/json'";
-            $lines[] = "  -d '" . str_replace("'", "'\\''", (string) json_encode($example ?? new \stdClass(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) . "'";
+            $lines[] = '  -d ' . self::shell((string) json_encode($example ?? new \stdClass(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
         } elseif ($type === 'multipart/form-data') {
             $lines[] = "  -F 'file=@./file'";
         }
 
         return implode(" \\\n", $lines);
+    }
+
+    /** A shell word in single quotes, whatever it holds. */
+    private static function shell(string $word): string
+    {
+        return "'" . str_replace("'", "'\\''", $word) . "'";
     }
 
     private static function fetch(string $method, string $url, string $type, mixed $example): string
@@ -375,10 +541,22 @@ final class ApiReference
         return is_array($value) ? $value : [];
     }
 
+    /** @param array<string, true> $taken */
+    private static function unique(string $slug, array &$taken): string
+    {
+        $out = $slug;
+        for ($n = 2; isset($taken[$out]); $n++) {
+            $out = "$slug-$n";
+        }
+        $taken[$out] = true;
+
+        return $out;
+    }
+
     /** `WordPress` → `word-press`, `actions-approveComment` → `actions-approve-comment`. */
     public static function slug(string $name): string
     {
-        $kebab = (string) preg_replace('/(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/', '-', $name);
+        $kebab = (string) preg_replace('/(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/', '-', remove_accents($name));
 
         return trim((string) preg_replace('/[^a-z0-9]+/', '-', strtolower($kebab)), '-') ?: 'api';
     }
@@ -390,8 +568,45 @@ final class ApiReference
             return '';
         }
         static $cache = [];
+        if (isset($cache[$text])) {
+            return $cache[$text];
+        }
+        try {
+            $blocks = parse_blocks(\First\Sync\Markdown::toBlocks($text));
+        } catch (\Throwable) {
+            return $cache[$text] = '<p>' . esc_html($text) . '</p>';
+        }
 
-        return $cache[$text] ??= trim(do_blocks(\First\Sync\Markdown::toBlocks($text)));
+        return $cache[$text] = trim(self::staticHtml($blocks));
+    }
+
+    /**
+     * The saved HTML of the blocks plain Markdown makes (paragraphs, headings, lists, quotes, code,
+     * tables, rules), joined. No block is rendered: a document's description can't run the site's
+     * dynamic blocks (latest posts, a login form, a plugin's block), and any other block is dropped.
+     *
+     * @param list<array<string, mixed>> $blocks
+     */
+    private static function staticHtml(array $blocks): string
+    {
+        $out = '';
+        foreach ($blocks as $block) {
+            $name = $block['blockName'] ?? null;
+            if ($name === null) {
+                $out .= (string) ($block['innerHTML'] ?? '');
+                continue;
+            }
+            if (!in_array($name, self::STATIC_BLOCKS, true)) {
+                continue;
+            }
+            $inner = $block['innerBlocks'] ?? [];
+            $i = 0;
+            foreach ($block['innerContent'] ?? [] as $chunk) {
+                $out .= is_string($chunk) ? $chunk : self::staticHtml([$inner[$i++] ?? []]);
+            }
+        }
+
+        return $out;
     }
 
     /** PHP arrays to the values compiled code reads: a list is an array, a map an object. */

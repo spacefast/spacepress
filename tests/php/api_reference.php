@@ -36,7 +36,7 @@ $out['index'] = [
     'server' => $texts($x, '//p[@class="server"]'),
     'tags' => array_map(static fn (DOMElement $s): string => $s->getAttribute('id'), iterator_to_array($x->query('//main/section'))),
     'notes' => array_map(static fn (DOMElement $a): string => parse_url($a->getAttribute('href'), PHP_URL_PATH), iterator_to_array($x->query('//section[@id="notes"]//a'))),
-    'description' => $texts($x, '//main/p[contains(@class, "wp-block-paragraph")]/code')[0] ?? null,
+    'description' => $texts($x, '//main/p[not(@class)]/code')[0] ?? null,
 ];
 // One operation: parameters with where they go and their constraints, the body, responses and samples.
 [$status, $x] = page("$url/api/notes/notes-list");
@@ -60,5 +60,19 @@ $out['missing'] = page("$url/api/notes/nope")[0];
 [$status, $x] = page("$url/partner");
 $out['partner'] = ['status' => $status, 'h1' => $texts($x, '//h1'), 'server' => $texts($x, '//p[@class="server"]'), 'params' => $texts($x, '//ul[@class="params"]/li'), 'fields' => $texts($x, '//ul[@class="fields"]/li'), 'id' => $texts($x, '//section/@id')];
 
+// A document with blocks in a description, a quote in its server, and colliding slugs.
+wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'A published post', 'post_content' => 'x']);
+[$status, $x] = page("$url/edge");
+$description = $x->query('//div[@class="description"]')->item(0);
+$out['edge'] = [
+    'status' => $status,
+    'description' => trim(preg_replace('/\s+/', ' ', $description?->textContent ?? '')),
+    'renders blocks' => str_contains($x->document->saveHTML($description) ?? '', 'A published post') || $x->query('//div[@class="description"]//a[contains(@href, "wp-login")]')->length > 0,
+    'sections' => array_map(static fn (DOMElement $s): string => $s->getAttribute('id'), iterator_to_array($x->query('//section'))),
+    'params' => $texts($x, '//section[1]/ul[@class="params"]/li'),
+    'fields' => $texts($x, '//section[1]/ul[@class="fields"]/li'),
+    'body' => $texts($x, '//section[2]/p[@class="body"]'),
+    'curl' => $x->query('//section[1]/pre[@class="curl"]')->item(0)?->textContent,
+];
 $site->destroy();
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), "\n";

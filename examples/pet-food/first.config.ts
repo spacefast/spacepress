@@ -4,7 +4,6 @@ import { DAY_MS, WINDOW_DAYS, ownerId, ownFood, ownPet, projection, queueStockCh
 
 export default defineConfig({
   name: "pet-food",
-  admin: true,
   collections,
   tables,
   hooks: {

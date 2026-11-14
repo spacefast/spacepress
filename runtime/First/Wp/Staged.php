@@ -60,6 +60,9 @@ final class Staged
             }
         }
         add_action(self::CRON, [self::class, 'due'], 10, 1);
+        // Internal, as core's `auto-draft`: a query for `any` status (get_children's default) skips it.
+        $status = static fn () => register_post_status(WpPostStore::STAGED_STATUS, ['internal' => true, 'label' => 'Staged']);
+        did_action('init') ? $status() : add_action('init', $status, 0);
         // A staged ability is listed only to a caller whose update rule may allow something.
         add_filter('wp_get_abilities_item_include', [self::class, 'listed'], 10, 2);
         add_filter('rest_request_after_callbacks', [self::class, 'abilityItem'], 10, 3);
@@ -447,11 +450,12 @@ final class Staged
         if (!$store instanceof CompositeStore) {
             return $response;
         }
-        // The staged revision, and every staged revision that was promoted or discarded (they keep
-        // their record, `_first_staged`): none of them is a version a reader saw.
+        // Every staged revision that was promoted or discarded (they keep their record,
+        // `_first_staged`): none of them is a version a reader saw. Core counts `inherit` revisions
+        // only, so the current staged revision, with its own status, is not in its count.
         $wpdb = $store->db->wpdb();
         $hidden = array_map('intval', array_column($store->db->run(
-            "SELECT r.ID FROM `{$wpdb->posts}` r JOIN `{$wpdb->postmeta}` m ON m.post_id = r.ID AND m.meta_key = ? WHERE r.post_parent = ? AND r.post_type = 'revision'",
+            "SELECT r.ID FROM `{$wpdb->posts}` r JOIN `{$wpdb->postmeta}` m ON m.post_id = r.ID AND m.meta_key = ? WHERE r.post_parent = ? AND r.post_type = 'revision' AND r.post_status = 'inherit'",
             [self::META, $post->ID],
         ), 'ID'));
         if ($hidden === []) {

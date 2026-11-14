@@ -87,6 +87,56 @@ final class Plugin
                 3,
             );
         });
+        // Failed password attempts through WordPress's own sign-in (wp-login.php, XML-RPC where a
+        // site turns it on, any caller of wp_authenticate) are limited per address and per login, with
+        // the limits of Identity's own password sign-in ({@see Api}, `sign-in/password`). A failure is
+        // counted when WordPress reports it; once a counter is full, every attempt is refused until
+        // the window ends, the right password too. Core's handlers (priority 20) and the email one
+        // below (21) answer whatever came before them, so the refusal comes after them.
+        $buckets = static fn(string $login): array => [
+            "wp-password:" . ($_SERVER["REMOTE_ADDR"] ?? ""),
+            "wp-password-account:" . strtolower($login),
+        ];
+        add_filter(
+            "authenticate",
+            static function ($user, $login = "", $password = "") use ($buckets) {
+                if (!is_string($login) || !is_string($password) || $login === "" || $password === "") {
+                    return $user;
+                }
+                try {
+                    foreach ($buckets($login) as $bucket) {
+                        if (self::$security->limited($bucket)) {
+                            return self::refusal(new Failure("rate_limited", "Too many attempts. Try again later.", 429));
+                        }
+                    }
+                } catch (Failure $e) {
+                    return self::refusal($e);
+                }
+                return $user;
+            },
+            30,
+            3,
+        );
+        add_action(
+            "wp_login_failed",
+            static function ($login, $error = null) use ($buckets): void {
+                // Not a wrong guess: Identity's own refusals, made after the password was accepted or
+                // before anything was checked.
+                $own = ["rate_limited", "storage_unavailable", "storage_conflict", "identity_mfa_required", "account_unavailable"];
+                if (!is_string($login) || $login === "" || ($error instanceof \WP_Error && array_intersect($error->get_error_codes(), $own))) {
+                    return;
+                }
+                foreach ($buckets($login) as $bucket) {
+                    try {
+                        self::$security->limit($bucket, PHP_INT_MAX);
+                    } catch (Failure) {
+                        // Storage can't count this one; the next attempt's check refuses if it still can't.
+                    }
+                }
+            },
+            10,
+            2,
+        );
         add_filter(
             "authenticate",
             static function ($user, $login, $password) {

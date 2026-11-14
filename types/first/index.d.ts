@@ -1140,7 +1140,10 @@ export interface ConfigInput<
   locales?: TLocales;
   /** Build-only WordPress plugin dependencies. */
   plugins?: Readonly<Record<string, WordPressPlugin>>;
-  /** Ship the optional admin screens (`first-admin`) with the build. Default `false`. */
+  /**
+   * Ship First Admin (`first-admin`), the default admin at `/wp-admin/new/`, with the build. Default `true`;
+   * `false` leaves only classic wp-admin.
+   */
   admin?: boolean;
   /**
    * Keep the site's authors public as WordPress ships them: author archives, `?author=N`, the users

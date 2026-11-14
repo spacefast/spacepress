@@ -5,7 +5,7 @@
  * correctly. The defaults only serve code that runs before `init()`.
  */
 export interface SiteConfig {
-	/** The app's mount path, without a trailing slash: `/first-admin` or `/blog/first-admin`. */
+	/** The app's mount path, without a trailing slash: `/wp-admin/new` or `/blog/wp-admin/new`. */
 	mountPath: string;
 	/** `admin_url()`: an absolute URL ending in `/`. */
 	adminUrl: string;
@@ -15,7 +15,7 @@ let config: SiteConfig | undefined;
 
 function defaults(): SiteConfig {
 	return {
-		mountPath: '/first-admin',
+		mountPath: '/wp-admin/new',
 		adminUrl: `${ window.location.origin }/wp-admin/`,
 	};
 }

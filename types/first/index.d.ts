@@ -475,6 +475,11 @@ export interface CollectionMeta<TName extends string, TCols extends ColumnsConfi
   /** Shape accepted by `db.insert(...).values(...)`. */
   readonly $inferInsert: ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
   /**
+   * Hooks on this kind (spec §2.8), in the file that declares it. Returns the kind, so calls chain;
+   * several handlers for one event run in order.
+   */
+  on<TSelf extends AnyCollection>(this: TSelf, hooks: CollectionHooks<TSelf>): TSelf;
+  /**
    * A compound index (spec §2.9), on SQL tables; `unique: true` also refuses a second row with the same
    * values. Fields a compiled `where` or `orderBy` names get one each without this.
    */
@@ -1056,6 +1061,8 @@ export interface CollectionHooks<T extends AnyCollection> {
   afterUpdate?: (row: Row<T>, previous: Row<T>, ctx: HookCtx) => Awaitable<void>;
   beforeDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
   afterDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** A collection's item became published: created published, updated into it, or its scheduled time came. */
+  afterPublish?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
 }
 
 export type Hooks<TSchema extends Schema> = {

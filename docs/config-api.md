@@ -1415,7 +1415,14 @@ There are no CPU or memory limits.
 
 ## Hooks
 
-`hooks.<collectionKey>` in `defineConfig`:
+`.on({ ... })` on the kind, in the file that declares it:
+
+```ts
+export const items = table({ name: text(), quantity: integer().default(1) }).on({
+  beforeCreate(data) { data.name = data.name.trim(); },
+  async afterUpdate(row) { if (row.quantity === 0) await restock(row.id); },
+});
+```
 
 | hook | arguments | notes |
 |---|---|---|
@@ -1424,6 +1431,13 @@ There are no CPU or memory limits.
 | `beforeUpdate` | `(patch: Partial<Insert>, existing: Row, ctx)` | mutate `patch` or return a replacement |
 | `afterUpdate` | `(row: Row, previous: Row, ctx)` | |
 | `beforeDelete` / `afterDelete` | `(row: Row, ctx)` | throw to abort |
+| `afterPublish` | `(row: Row, ctx)` | collections only: the item was created published, updated into published, or its scheduled time came |
+
+`.on()` returns the kind, so calls chain, and several handlers for one event run in
+order. Each handler is typed by its own kind. `.on()` on a kind imported from another
+file is a build error; handler functions themselves may come from anywhere.
+`hooks.<kind>` in `defineConfig` still works until the registries go; its handlers run
+before the kind's `.on()` handlers.
 
 `ctx` is `{ user: { id, name, role } | null }`.
 

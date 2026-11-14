@@ -320,8 +320,8 @@ boot on a site that misses any of them and names each one;
 - **Access rules** per collection, per action and per field, as roles or
   functions; a collection's read, update and delete rules can return a filter
   instead of a boolean. `showIf` drives conditional fields in the editor.
-- **Jobs, webhooks and an outbox**: enqueue from a hook, run after the request
-  commits through Action Scheduler, retry with backoff.
+- **Jobs and webhooks**: enqueue from a hook, queued in the request's
+  transaction, run after it commits through Action Scheduler, retry with backoff.
 - **WordPress Abilities and MCP**: your collections' reads and writes, actions
   and globals are registered as Abilities and exposed on a named MCP server,
   so agents can use them. Jobs join with `agents: true`; `agents: false` opts

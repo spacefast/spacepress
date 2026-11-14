@@ -317,17 +317,12 @@ function first_admin_enqueue_classic_screen( $id ) {
 	$asset = is_file( FIRST_ADMIN_PLUGIN_DIR . 'build/packages/screens/index.asset.php' )
 		? include FIRST_ADMIN_PLUGIN_DIR . 'build/packages/screens/index.asset.php'
 		: array( 'dependencies' => array(), 'version' => FIRST_ADMIN_VERSION );
-	// Classic globals the module expects (React, wp.data, wp.apiFetch with its nonce), then the module.
+	// Classic globals the module expects (React, wp.apiFetch with its nonce). The module mounts itself
+	// on the page's `#first-admin-screen` element, which names the screen in `data-screen-id` (runtime/admin/classic-screen.js).
 	wp_register_script( 'first-admin-screen-prerequisites', '', $asset['dependencies'], $asset['version'], true );
-	wp_add_inline_script(
-		'first-admin-screen-prerequisites',
-		sprintf(
-			'import( "@first-admin/screens" ).then( ( mod ) => mod.mountClassic( document.getElementById( "first-admin-screen" ), %s ) );',
-			wp_json_encode( array( 'id' => $id, 'host' => 'classic' ), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
-		)
-	);
 	wp_enqueue_script( 'first-admin-screen-prerequisites' );
-	wp_enqueue_script_module( '@first-admin/screens' );
+	wp_register_script_module( 'first-admin-screen-classic', FIRST_ADMIN_PLUGIN_URL . 'classic-screen.js', array( array( 'id' => '@first-admin/screens', 'import' => 'static' ) ), FIRST_ADMIN_VERSION );
+	wp_enqueue_script_module( 'first-admin-screen-classic' );
 	// The modules import `__i18n__`, which First Admin's import map scopes; print that map in place
 	// of core's (same position: before the modules).
 	remove_action( 'admin_print_footer_scripts', array( wp_script_modules(), 'print_import_map' ), 9 );
@@ -348,7 +343,7 @@ function first_admin_render_classic_screen( $id ) {
 	if ( '' !== $screen['description'] ) {
 		echo '<p class="description">' . esc_html( $screen['description'] ) . '</p>';
 	}
-	echo '<div id="first-admin-screen" data-screen="' . esc_attr( $id ) . '"></div></div>';
+	echo '<div id="first-admin-screen" data-screen-id="' . esc_attr( $id ) . '"></div></div>';
 }
 
 /**

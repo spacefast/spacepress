@@ -2,7 +2,7 @@
 // renders natively in both admins: First Admin's /screens/<id> route and a classic wp-admin page.
 // Both show the same fields and actions, run the same Ability, and the server decides access in
 // both: a subscriber sees the screen but may not approve, in either admin.
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 const harness = JSON.parse(
@@ -19,10 +19,22 @@ const auth = ( role: string ) => ( {
 } );
 
 /** A post for the comments to belong to. */
-async function post( request: import( '@playwright/test' ).APIRequestContext ): Promise< number > {
+async function post( request: APIRequestContext ): Promise< number > {
 	const made = await request.post( `${ site }/__first/api/v1/posts`, { headers: auth( 'admin' ), data: { title: `Screen post ${ Date.now() }` } } );
 	expect( made.status(), await made.text() ).toBe( 201 );
 	return ( await made.json() ).data.id;
+}
+
+/**
+ * An unapproved comment. Created as a subscriber: the test app approves comments that other roles
+ * create (tests/wp/app/first.config.ts, comments.afterCreate).
+ */
+async function comment( request: APIRequestContext, postId: number, body: string ): Promise< number > {
+	const made = await request.post( `${ site }/__first/api/v1/comments`, { headers: auth( 'subscriber' ), data: { postId, name: 'Reader', body } } );
+	expect( made.status(), await made.text() ).toBe( 201 );
+	const row = ( await made.json() ).data;
+	expect( row.approved ).toBe( false );
+	return row.id;
 }
 
 async function signIn( page: Page, role: 'admin' | 'subscriber' ) {
@@ -47,7 +59,7 @@ async function shown( page: Page, body: string ) {
 	await expect( row ).toBeVisible();
 	const headings = await screen.getByRole( 'columnheader' ).allInnerTexts();
 	await row.getByRole( 'button', { name: 'Actions' } ).click();
-	const actions = await page.getByRole( 'menuitem' ).allInnerTexts();
+	const actions = await page.getByRole( 'menu' ).last().getByRole( 'menuitem' ).allInnerTexts();
 	await page.keyboard.press( 'Escape' );
 	return { headings: headings.map( ( h ) => h.trim() ).filter( Boolean ), actions, row };
 }
@@ -58,23 +70,15 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 	const errors: string[] = [];
 	page.on( 'pageerror', ( e ) => errors.push( e.message ) );
 	const postId = await post( request );
-	const made = [];
+	const made: { which: string; body: string; id: number }[] = [];
 	for ( const which of Object.keys( hosts ) ) {
 		const body = `Screen check ${ which } ${ Date.now() }`;
-		const created = await request.post( `${ site }/__first/api/v1/comments`, {
-			headers: auth( 'admin' ),
-			data: { postId, name: 'Reader', body },
-		} );
-		made.push( { which, body, created } );
-	}
-	for ( const m of made ) {
-		expect( m.created.status(), await m.created.text() ).toBe( 201 );
+		made.push( { which, body, id: await comment( request, postId, body ) } );
 	}
 	await signIn( page, 'admin' );
 	const seen: Record< string, { headings: string[]; actions: string[] } > = {};
 	for ( const [ which, path ] of Object.entries( hosts ) ) {
-		const { body, created } = made.find( ( m ) => m.which === which )!;
-		const id = ( await created.json() ).data.id;
+		const { body, id } = made.find( ( m ) => m.which === which )!;
 		await page.goto( `${ site }${ path }` );
 		if ( which === 'classic wp-admin' ) {
 			// wp-admin's own chrome around it: the admin menu lists the page under Comments.
@@ -88,9 +92,9 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 		// Approve runs blog/comments-update through core's run route, in this admin.
 		const ran = page.waitForResponse( ( r ) => r.url().includes( '/wp-abilities/v1/abilities/blog/comments-update/run' ) );
 		await row.getByRole( 'button', { name: 'Actions' } ).click();
-		await page.getByRole( 'menuitem', { name: 'Approve' } ).click();
+		await page.getByRole( 'menu' ).last().getByRole( 'menuitem', { name: 'Approve' } ).click();
 		expect( ( await ran ).status() ).toBe( 200 );
-		await expect( page.getByText( 'Approve: done.' ) ).toBeVisible();
+		await expect( page.locator( '[data-screen="test-comments"]' ).getByText( 'Approve: done.' ) ).toBeVisible();
 		const stored = await request.get( `${ site }/__first/api/v1/comments/${ id }`, { headers: auth( 'admin' ) } );
 		expect( ( await stored.json() ).data.approved ).toBe( true );
 	}
@@ -101,9 +105,7 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 
 test( 'the server decides access, the same way in both admins', async ( { page, request } ) => {
 	const body = `Subscriber check ${ Date.now() }`;
-	const created = await request.post( `${ site }/__first/api/v1/comments`, { headers: auth( 'admin' ), data: { postId: await post( request ), name: 'Reader', body } } );
-	expect( created.status() ).toBe( 201 );
-	const id = ( await created.json() ).data.id;
+	const id = await comment( request, await post( request ), body );
 	await signIn( page, 'subscriber' );
 	for ( const path of Object.values( hosts ) ) {
 		await page.goto( `${ site }${ path }` );
@@ -111,7 +113,7 @@ test( 'the server decides access, the same way in both admins', async ( { page, 
 		const { row } = await shown( page, body );
 		const ran = page.waitForResponse( ( r ) => r.url().includes( '/wp-abilities/v1/abilities/blog/comments-update/run' ) );
 		await row.getByRole( 'button', { name: 'Actions' } ).click();
-		await page.getByRole( 'menuitem', { name: 'Approve' } ).click();
+		await page.getByRole( 'menu' ).last().getByRole( 'menuitem', { name: 'Approve' } ).click();
 		// The table's update rule is "editor": the ability refuses, and the screen says so.
 		expect( ( await ran ).status() ).toBe( 403 );
 		await expect( page.locator( '[data-screen="test-comments"]' ).locator( '.components-notice.is-error' ) ).toBeVisible();

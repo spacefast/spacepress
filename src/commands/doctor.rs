@@ -132,6 +132,13 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
     let mut request = agent.get(url.as_str());
     if let Some(token) = token {
         request = request.header("Authorization", format!("Bearer {token}"));
+    } else if let Some(password) = std::env::var("FIRST_APP_PASSWORD").ok().filter(|p| !p.is_empty()) {
+        // As the other site commands take it: `user:application-password`. `FIRST_TOKEN` wins when
+        // both are set, as it did before this was accepted.
+        request = request.header(
+            "Authorization",
+            format!("Basic {}", crate::sync::client::base64(password.as_bytes())),
+        );
     }
     let mut response = request
         .call()
@@ -202,6 +209,58 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
                 "off: Akismet is not active (set it up through Jetpack); comments are not spam-checked".to_string()
             },
         );
+        // Sealed mode (docs/sealed.md). An active plugin the config doesn't list fails doctor. Must-use
+        // plugins, drop-ins and theme PHP can't be listed in any config (a host's own are among
+        // them), so they are shown and never fail. The site reports; First stops and removes nothing.
+        let sealed = &versions["sealed"];
+        let names = |key: &str| -> Option<Vec<String>> {
+            sealed[key]
+                .as_array()
+                .map(|list| list.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        };
+        match (names("plugins"), names("networkPlugins")) {
+            (Some(plugins), Some(network)) => {
+                let unlisted: Vec<String> = plugins.into_iter().chain(network).collect();
+                let enforced = sealed["enforced"].as_str().unwrap_or("report");
+                check(
+                    checks,
+                    "sealed",
+                    unlisted.is_empty(),
+                    if unlisted.is_empty() {
+                        format!("every active plugin is listed (enforced by {enforced})")
+                    } else {
+                        format!("active but not in first.config.ts: {}", unlisted.join(", "))
+                    },
+                );
+                let also: Vec<String> = ["muPlugins", "dropins", "theme"]
+                    .iter()
+                    .flat_map(|key| names(key).unwrap_or_default())
+                    .collect();
+                check(
+                    checks,
+                    "sealed: other code WordPress loads",
+                    true,
+                    if also.is_empty() {
+                        "no must-use plugin, drop-in or theme PHP".to_string()
+                    } else {
+                        also.join(", ")
+                    },
+                );
+            }
+            _ if sealed.is_object() => check(
+                checks,
+                "sealed",
+                false,
+                "sign in as an administrator (FIRST_TOKEN or FIRST_APP_PASSWORD) to see what the site loads",
+            ),
+            _ if manifest["sealed"].is_array() => check(
+                checks,
+                "sealed",
+                false,
+                "this build is sealed, but the site doesn't report it: deploy this build",
+            ),
+            _ => {}
+        }
         let incompatible = versions["incompatibleTables"].as_array();
         check(
             checks,

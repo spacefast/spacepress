@@ -228,7 +228,8 @@ $out['fourth colophon route'] = page(fetch("$url/colophon"));
 // A query string through WordPress's own address arrives unslashed at the route.
 $out['fourth by id'] = fetch("$url/?page_id=$guideId&q=it%27s")['headers']['location'][0] ?? null;
 wp_cache_flush();
-$out['pages'] = array_map('intval', $GLOBALS['wpdb']->get_col("SELECT COUNT(*) FROM {$GLOBALS['wpdb']->postmeta} WHERE meta_key = '_first_route' GROUP BY meta_value"));
+// page.md Pages only: static page.tsx routes have code-owned Pages of their own (RoutePages).
+$out['pages'] = array_map('intval', $GLOBALS['wpdb']->get_col("SELECT COUNT(*) FROM {$GLOBALS['wpdb']->postmeta} m WHERE m.meta_key = '_first_route' AND NOT EXISTS (SELECT 1 FROM {$GLOBALS['wpdb']->postmeta} c WHERE c.post_id = m.post_id AND c.meta_key = '_first_code_page') GROUP BY m.meta_value"));
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

@@ -138,6 +138,22 @@ rebuild that must match the committed bundle, and a check that the prefixed
 PHP dependencies regenerate byte-for-byte (see
 [`docs/dependencies.md`](docs/dependencies.md)).
 
+### Kept sources: a PR that changes what the authoring surface accepts
+
+Two suites hold source that hosts keep and compile again later. A PR that changes what
+`first.config.ts` and `first/` accept runs both:
+
+- `cargo test --test zero_bundle`: source bundles the 0.3.0 compiler captured (before the rename to
+  First). They must keep compiling as 0.3.0 served them, with no new migration. Only
+  `src/zero_bundle.rs` reads their old forms.
+- `cargo test --test first_sources`: First source bundles captured at chosen commits
+  ([`tests/fixtures/first-sources/`](tests/fixtures/first-sources/README.md)). Each compiles with the
+  current compiler, plans exactly its committed plan against its own baseline, loses no data, and
+  stores what it stored when captured. Until the first release is tagged, a PR that deliberately
+  changes an authoring form recaptures them (`tests/fixtures/first-sources/capture.sh head`) and adds a
+  row to the README's table of breaks. From the first release on, a release's captures are never
+  recaptured: a release may not refuse source an earlier release accepted.
+
 Dev uses `first build --preserve-data <snapshot.json>` to check the candidate
 against its last applied schema before writing migrations. It also checks the
 accepted migration history. To apply field removals, changed types or constraints,

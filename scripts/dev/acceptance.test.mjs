@@ -87,7 +87,7 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
   const site = join(project, '.first/dev/wordpress');
   t.after(async () => {
     const failures = [];
-    const studio = async (...args) => (await exec('npx', ['--yes', '--package', 'wp-studio@2.1.1', '--', 'studio', ...args], { timeout: 60000, maxBuffer: 4 * 1024 * 1024 })).stdout;
+    const studio = async (...args) => (await exec('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', ...args], { timeout: 60000, maxBuffer: 4 * 1024 * 1024 })).stdout;
     const sites = async () => JSON.parse(await studio('list', '--format=json'));
     try { await command(['dev', 'stop', project], env); }
     catch (error) { failures.push(error); }

@@ -52,6 +52,12 @@ export interface Metadata {
 /** `export const guard` in a layout: who may see everything below it. */
 export type Guard = "anyone" | "authenticated" | "subscriber" | "author" | "editor" | "admin" | boolean | ((ctx: { user: User | null }) => boolean);
 
+/**
+ * `export async function staticParams(): Promise<StaticParams<"blog/[slug]">>` in a prebuilt dynamic
+ * page: one entry per page to build, with a value for each folder parameter (Astro's `getStaticPaths`).
+ */
+export type StaticParams<R extends keyof Routes | string = string> = Params<R>[];
+
 /** `export const search = { page: integer().default(1) }`: the typed query string of a page. */
 export type SearchParams<S> = S;
 

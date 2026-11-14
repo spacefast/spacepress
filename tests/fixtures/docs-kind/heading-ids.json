@@ -1,0 +1,73 @@
+{
+ "about": "Heading text and the id github-slugger 2.0.0 gives it (slug(), lowercase), which First's heading ids follow. A heading whose text keeps nothing is `section` in First, where github-slugger gives an empty id.",
+ "cases": [
+  [
+   "Why",
+   "why"
+  ],
+  [
+   "What's `first/app/`?",
+   "whats-firstapp"
+  ],
+  [
+   "Use the running app: the site’s MCP endpoint",
+   "use-the-running-app-the-sites-mcp-endpoint"
+  ],
+  [
+   "first/app/",
+   "firstapp"
+  ],
+  [
+   "Compiles (47)",
+   "compiles-47"
+  ],
+  [
+   "Hooks, actions, globals, config",
+   "hooks-actions-globals-config"
+  ],
+  [
+   "café_au-lait  x",
+   "café_au-lait--x"
+  ],
+  [
+   "C++ & Rust?",
+   "c--rust"
+  ],
+  [
+   "日本語 テキスト",
+   "日本語-テキスト"
+  ],
+  [
+   "emoji 🎉 here",
+   "emoji--here"
+  ],
+  [
+   "— dash —",
+   "-dash-"
+  ],
+  [
+   "a.b",
+   "ab"
+  ],
+  [
+   "Ⓐ circled 🅐",
+   "ⓐ-circled-🅐"
+  ],
+  [
+   "Ⅻ roman",
+   "ⅻ-roman"
+  ],
+  [
+   "Ünïcödé",
+   "ünïcödé"
+  ],
+  [
+   "x́y",
+   "x́y"
+  ],
+  [
+   "!!!",
+   "section"
+  ]
+ ]
+}

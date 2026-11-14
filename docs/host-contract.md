@@ -18,6 +18,13 @@ it on assumptions.
 released before the rename to First, `zero.source-bundle.v1` (see [Deploy on Spacefast](spacefast-deploy.md)).
 `previous-output` is the tree of the version being replaced: its snapshot is the migration baseline.
 
+A client released before the rename (the hosted MCP server 0.9.0) uploads the raw project instead of
+a capture: `zero.config.ts` at the root, the relative modules it imports and `public/`. A host may
+pass that directory as `<sources>` to `compile-sources` or `compile-to-store`, or capture it first
+with `first::host::sources`; First captures it as the 0.3.0 compiler did and compiles that capture. Refused: an npm import (a host
+installs no packages; the owner publishes from the CLI), TSX pages (`pages/` or `zero/pages.json`),
+and a tree that also holds `first.config.ts` or a capture.
+
 ## Manifest
 
 Besides `format`, `hostContract`, `compiler` and the platform versions (`wordpress`, `php`, `requires`):

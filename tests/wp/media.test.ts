@@ -789,6 +789,29 @@ test("a media item reads on the API exactly as on core's media route: its parent
         assert.deepEqual(Buffer.from(await response.arrayBuffer()), Buffer.from(thumbnail.bytes, "base64"));
       }
     }
+    // On a fresh replica, code that reads an attachment's file inside one of the API's GET
+    // dispatches that isn't a media item read (here a GET ability run whose callback reads it) gets
+    // the bytes, not a scratch path that was never downloaded.
+    const viaGet: { inside: string; bytes: number } = JSON.parse(replicaPhp(String.raw`
+      wp_set_current_user(1);
+      $id = ${attachment.id};
+      $seen = null;
+      add_filter('rest_pre_dispatch', static function ($result, $server, $request) use ($id, &$seen) {
+        if ($request->get_route() === '/first-probe/attached') {
+          $path = get_attached_file($id);
+          $seen = ['inside' => $request->get_method(), 'bytes' => is_string($path) && is_file($path) ? filesize($path) : 0];
+          return new WP_REST_Response(['ok' => true]);
+        }
+        return $result;
+      }, 10, 3);
+      \First\Wp\Runtime::plugin()->app();
+      $run = new ReflectionMethod(\First\Wp\Facade::class, 'run');
+      $run->invoke(null, new WP_REST_Request('GET', '/first-probe/attached'));
+      echo wp_json_encode($seen);
+    `));
+    assert.equal(viaGet.inside, "GET");
+    assert.ok(viaGet.bytes > 0, "the file was downloaded for the code that reads it");
+
     // The core image editor scales and restores on B using remote originals and backup sizes.
     const edited: { msg?: string; error?: string } = JSON.parse(replicaPhp(String.raw`
       require_once ABSPATH . 'wp-admin/includes/image.php';

@@ -24,6 +24,8 @@ pub struct Args {
     pub(crate) preserve_data: Option<PathBuf>,
     /// Refuse plugin grants the committed lock doesn't hold (also on whenever `CI` is set).
     pub(crate) frozen: bool,
+    /// `first doctor --links`: follow every link and anchor the site's pages make.
+    pub(crate) links: bool,
 }
 
 pub(crate) const COMMANDS: &str = include_str!("../runtime/First/Cli/commands.json");
@@ -104,6 +106,7 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
         allow_destructive: false,
         preserve_data: None,
         frozen: false,
+        links: false,
     };
     let command = args.command.clone();
     let fail = |message: String| usage_error(&command, message);
@@ -125,6 +128,7 @@ fn parse_args(command: String, mut it: impl Iterator<Item = String>) -> Result<A
                 args.site = Some(it.next().ok_or_else(|| fail("--site needs a URL".into()))?)
             }
             "--json" if matches!(command.as_str(), "doctor" | "check") => args.json = true,
+            "--links" if command == "doctor" => args.links = true,
             "--frozen" if matches!(command.as_str(), "build" | "check") => args.frozen = true,
             "--out" if command != "check" => {
                 args.out = Some(PathBuf::from(

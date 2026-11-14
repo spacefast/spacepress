@@ -31,8 +31,14 @@ try {
 
   // Signing in as the harness's admin lands on First Admin, the default admin (at `/wp-admin/new/`;
   // `admin.php?page=first-admin` where the server applies no rewrite rule).
-  await page.fill("#user_login", "admin");
-  await page.fill("#user_pass", "first-test-admin");
+  // wp-login.php focuses and selects its username field 200 ms after it loads; a fill that lands on
+  // that moment types the password over the username. Fill until both fields hold their text.
+  for (let attempt = 0; ; attempt++) {
+    await page.fill("#user_login", "admin");
+    await page.fill("#user_pass", "first-test-admin");
+    if ((await page.inputValue("#user_login")) === "admin" && (await page.inputValue("#user_pass")) === "first-test-admin") break;
+    if (attempt === 20) throw new Error("the WordPress sign-in form would not keep its values");
+  }
   await Promise.all([page.waitForNavigation(), page.click("#wp-submit")]);
   const landed = new URL(page.url());
   out.signedIn = landed.pathname === "/wp-admin/new/" || (landed.pathname === "/wp-admin/admin.php" && landed.searchParams.get("page") === "first-admin") ? "first admin" : landed.pathname + landed.search;

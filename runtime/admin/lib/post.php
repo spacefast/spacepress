@@ -430,3 +430,15 @@ function first_admin_add_duplicate_post_support() {
 	add_post_type_support( 'page', 'duplicate-post' );
 }
 add_action( 'init', 'first_admin_add_duplicate_post_support' );
+
+// WordPress 7.2 registers the editor's entity actions on the server. The attachment editor offers
+// neither duplicating nor trashing an attachment; on 7.1 its route unregisters them in the browser.
+add_action(
+	'wp_entity_actions_api_init',
+	static function () {
+		if ( function_exists( 'wp_unregister_entity_actions' ) ) {
+			wp_unregister_entity_actions( 'postType', 'attachment', array( 'duplicate-post', 'move-to-trash' ) );
+		}
+	},
+	20
+);

@@ -58,9 +58,10 @@ Each is a short procedure that links to the documentation for depth:
 - Files keep their permissions, and an `AGENTS.md` that links to another file of
   the project (`CLAUDE.md`) is written through the link. A skills directory that
   links outside the project is refused, before anything is written.
-- The workflow is First's while its first line says `first init --github` wrote it: a rerun
-  (with or without `--github`) writes it back when the synced folders change. Delete that line to
-  keep your own edits; it is never touched again.
+- The workflow is First's while its first line says `first init --github` wrote it for this
+  project: a rerun (with or without `--github`) writes it back when the synced folders change.
+  Another project in the same repository leaves it alone. Delete that line to keep your own edits;
+  it is never touched again.
 - A project with its own `CLAUDE.md` should import the file with a line
   `@AGENTS.md`; `first init` says so when it is missing.
 

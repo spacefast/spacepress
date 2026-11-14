@@ -2584,6 +2584,10 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
         )
     };
     std::fs::write(project.join("first.config.ts"), config(&["content/posts"])).unwrap();
+    // Outside a git repository there is no root for GitHub to read the workflow from: refused.
+    let out = init(&project, &["--github"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).contains("git repository"), "{}", text(&out.stderr));
     let git = Command::new("git").args(["init", "-q"]).arg(repo).output().unwrap();
     assert!(git.status.success());
     let path = repo.join(".github/workflows/first-sync.yml");
@@ -2596,12 +2600,19 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
     let out = init(&project, &["--github"]);
     assert!(out.status.success(), "{}", text(&out.stderr));
     assert!(
-        text(&out.stdout).contains("wrote ../.github/workflows/first-sync.yml"),
+        text(&out.stdout).contains(&format!(
+            "wrote {}",
+            std::path::Path::new("..")
+                .join(".github/workflows/first-sync.yml")
+                .display()
+        )),
         "{}",
         text(&out.stdout)
     );
     let workflow = std::fs::read_to_string(&path).unwrap();
     for expected in [
+        "# Written by `first init --github` for site; delete this line to keep your own edits.\n",
+        "  push:\n    branches: [\"**\"]\n",
         "    types: [first-content-changed]\n",
         "  schedule:\n",
         "      - \"site/content/posts/**\"\n",
@@ -2628,7 +2639,7 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
     std::fs::write(project.join("first.config.ts"), config(&["content/posts", "docs"])).unwrap();
     let checked = first().arg("check").arg(&project).output().unwrap();
     assert!(
-        text(&checked.stderr).contains(".github/workflows/first-sync.yml no longer matches"),
+        text(&checked.stderr).contains(".github/workflows/first-sync.yml is out of date"),
         "{}",
         text(&checked.stderr)
     );
@@ -2640,13 +2651,49 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
             .contains("      - \"site/docs/**\"\n")
     );
 
-    // Its header line deleted, the file is the author's: never rewritten, never reported.
+    // Another project in the same repository: its plain first init and first check leave this
+    // project's workflow alone, and its --github refuses to take it.
+    let other = repo.join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    std::fs::write(other.join("first.config.ts"), config(&["notes"])).unwrap();
+    let ours = std::fs::read_to_string(&path).unwrap();
+    assert!(init(&other, &[]).status.success());
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        ours,
+        "another project's init never rewrites it"
+    );
+    let checked = first().arg("check").arg(&other).output().unwrap();
+    assert!(
+        !text(&checked.stderr).contains("first-sync.yml"),
+        "{}",
+        text(&checked.stderr)
+    );
+    let taken = init(&other, &["--github"]);
+    assert_eq!(taken.status.code(), Some(1));
+    assert!(
+        text(&taken.stderr).contains("written for the project at site"),
+        "{}",
+        text(&taken.stderr)
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), ours);
+    assert!(init(&project, &["--check"]).status.success());
+
+    // Its header line deleted, the file is the author's: never rewritten, never reported, and
+    // --github says so rather than replace it.
     let mine = std::fs::read_to_string(&path)
         .unwrap()
         .replacen("# Written by", "# Adapted from", 1);
     std::fs::write(&path, &mine).unwrap();
     std::fs::write(project.join("first.config.ts"), config(&["content/posts"])).unwrap();
-    assert!(init(&project, &["--github"]).status.success());
+    assert!(init(&project, &[]).status.success());
+    let refused = init(&project, &["--github"]);
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(
+        text(&refused.stderr).contains("is your own"),
+        "{}",
+        text(&refused.stderr)
+    );
     assert_eq!(std::fs::read_to_string(&path).unwrap(), mine);
     let checked = first().arg("check").arg(&project).output().unwrap();
     assert!(

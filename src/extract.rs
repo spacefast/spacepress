@@ -126,6 +126,7 @@ const CONFIG_KEYS: &[&str] = &[
     "locales",
     "plugins",
     "admin",
+    "publicAuthors",
     "services",
     "use",
     "frontend",
@@ -245,6 +246,12 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         }
     };
     out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
+    out.schema.public_authors = bool_option(
+        &cfg_map,
+        "publicAuthors",
+        false,
+        span_of(ev, config, "publicAuthors", config_span),
+    )?;
     let runtime_schema = span_of(ev, config, "runtimeSchema", config_span);
     out.schema.runtime_schema = bool_option(&cfg_map, "runtimeSchema", false, runtime_schema)?.then(Default::default);
     out.schema.frontend = match cfg_map.get("frontend") {

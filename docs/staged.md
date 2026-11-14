@@ -84,7 +84,8 @@ out, whether it changed or not.
 
 A promote is an update of the item by the caller, with the staged fields as the patch. So the
 update rule, field write rules, validation, `beforeUpdate` and `afterUpdate`, unique checks, the
-revision, URL purges, change notices and webhooks all run exactly as for `PATCH /<kind>/<id>`. The
+revision, URL purges, change notices, webhooks and core's `rest_insert_{type}` and
+`rest_after_insert_{type}` hooks all run exactly as for `PATCH /<kind>/<id>`. The
 update and the end of the staged version are one transaction: a promote that is refused changes
 nothing and keeps the staged version.
 
@@ -100,8 +101,9 @@ wrote.
 cron event, the one core uses for scheduled posts. No other cron, worker or queue is involved. The
 caller must be able to promote now.
 
-When the event runs, the promote runs as the user who scheduled it, under the rules as they are
-then. If it is refused or fails, nothing changes, the schedule is cleared, and the reason is kept
+When the event runs, the promote runs as whoever scheduled it, under the rules as they are then:
+the same user, a signed-out caller as a signed-out caller, and only the trusted CLI's own schedule
+with the CLI's authority. A schedule that names nobody is refused. If it is refused or fails, nothing changes, the schedule is cleared, and the reason is kept
 on the staged version as `error` for its editors. It is not retried. Staging more fields keeps the
 schedule.
 
@@ -118,7 +120,8 @@ revisions and is recorded as discarded and by whom; nothing is deleted.
 
 - `api` returns the staged version without signing in, through an anonymous visitor's field masks
   and without `by`, `promoteAt` or `error`. Use it from an external frontend or a `first/app` page.
-- `url` is the item's own page rendering the staged title, content and fields. It is set for a
+- `url` is the item's own page rendering the staged title, content and fields an anonymous visitor
+  may read; a field hidden from them is blank there, staged or live. It is set for a
   kind with a `url` that the theme renders, and `null` otherwise.
 
 A token is an HMAC over the kind, the item, the staged revision and an expiry, keyed with the
@@ -134,7 +137,12 @@ Only a caller who passes the item's update rule, or who holds a valid preview to
 For anyone else nothing differs between an item with a staged version and one without: the item's
 row, lists, counts, search, `?format=md`, the Markdown twin, the page, feeds, `llms.txt`, the
 sitemap, core REST (including the item's `version-history` and `predecessor-version` links, which
-core counts for every reader), and the `404` of every staged route and ability.
+core counts for every reader), and the `404` of every staged route and ability, also when the item's
+update rule throws on the staged data.
+
+Nor can they tell afterwards: a discarded or promoted staged revision stays in the item's history
+for its editors, but core's links leave it out, so a discard leaves them as they were and a promote
+moves them as one update does.
 
 ## Abilities and credentials
 

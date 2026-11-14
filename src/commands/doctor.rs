@@ -253,7 +253,26 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
             pending.map_or("missing diagnostics".to_string(), |pending| pending.len().to_string()),
         );
     }
+    runtime_schema(&description["data"], checks);
     Ok(())
+}
+
+/// With `runtimeSchema`: whether the site serves its newest schema version. A version table whose
+/// chain doesn't check out, or an option written outside apply, makes it serve less, and says why.
+fn runtime_schema(description: &Value, checks: &mut Vec<Value>) {
+    let Some(runtime) = description.get("runtimeSchema") else {
+        return;
+    };
+    let version = runtime["version"].as_u64().unwrap_or(0);
+    match runtime["problem"].as_str() {
+        Some(problem) => check(
+            checks,
+            "site runtime schema",
+            false,
+            format!("version {version}: {problem}"),
+        ),
+        None => check(checks, "site runtime schema", true, format!("version {version}")),
+    }
 }
 
 /// Locales as Polylang stores them: lowercase slugs (`pt-BR` → `pt-br`), sorted for comparison.
@@ -265,6 +284,26 @@ fn language_slugs(list: &[Value]) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::runtime_schema;
+
+    #[test]
+    fn a_runtime_schema_problem_fails_the_check_and_says_why() {
+        let mut checks = Vec::new();
+        runtime_schema(&serde_json::json!({ "name": "app" }), &mut checks);
+        assert!(checks.is_empty(), "an app without runtimeSchema reports nothing");
+        runtime_schema(&serde_json::json!({ "runtimeSchema": { "version": 4 } }), &mut checks);
+        runtime_schema(
+            &serde_json::json!({ "runtimeSchema": { "version": 3, "problem": "schema version 2 does not match its hash" } }),
+            &mut checks,
+        );
+        assert_eq!(checks[0]["ok"], true, "{checks:?}");
+        assert_eq!(checks[1]["ok"], false, "{checks:?}");
+        assert_eq!(
+            checks[1]["detail"],
+            "version 3: schema version 2 does not match its hash"
+        );
+    }
+
     #[test]
     fn regional_locales_match_polylang_slugs() {
         let configured = [serde_json::json!("pt-BR"), serde_json::json!("en")];

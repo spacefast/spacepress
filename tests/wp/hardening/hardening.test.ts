@@ -256,16 +256,18 @@ test("timezone: the Space's timezone from FIRST_SITE_TIMEZONE; the owner's setti
 
 test("blockTheme: First's minimal block theme renders when no installed theme is active", async () => {
   const stored = wp("option", "get", "stylesheet", "--skip-plugins");
-  wp("option", "update", "template", "gone-theme", "--skip-plugins");
-  wp("option", "update", "stylesheet", "gone-theme", "--skip-plugins");
+  // --skip-themes: between the two writes the template and stylesheet name different themes, and
+  // WordPress 7.2's default theme requires files from the template's directory when it loads.
+  wp("option", "update", "template", "gone-theme", "--skip-plugins", "--skip-themes");
+  wp("option", "update", "stylesheet", "gone-theme", "--skip-plugins", "--skip-themes");
   try {
     assert.deepEqual(evalJson("echo wp_json_encode([get_stylesheet(), wp_is_block_theme()]);"), ["first-default", true]);
     const response = await page("/");
     assert.equal(response.status, 200);
     assert.match(await response.text(), /wp-block-site-title/);
   } finally {
-    wp("option", "update", "template", stored, "--skip-plugins");
-    wp("option", "update", "stylesheet", stored, "--skip-plugins");
+    wp("option", "update", "template", stored, "--skip-plugins", "--skip-themes");
+    wp("option", "update", "stylesheet", stored, "--skip-plugins", "--skip-themes");
   }
   assert.equal(evalJson("echo wp_json_encode(get_stylesheet());"), stored, "an installed theme stays the owner's");
 });

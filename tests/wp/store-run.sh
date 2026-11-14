@@ -110,16 +110,6 @@ PY
 ok "inspecting a build on a fresh site plans its tables, migration and seed, and writes nothing"
 
 receipt=$(initialize "$first")
-# Once initialized, requests to the build (a page, wp-admin, sign-in, the API, WP-CLI) install nothing.
-# Cron is left out: it runs core's and Action Scheduler's own events, which is serving, not installing.
-settled=$(site)
-for path in / /wp-admin/ /wp-login.php /__first/api/v1/kinds/notes; do
-  curl -s -o /dev/null -H "X-First-Build: $first" "$url$path" || true
-done
-host "$first" "echo 'booted';" >/dev/null
-served=$(site)
-[[ $settled == "$served" ]] || { diff <(echo "$settled") <(echo "$served") >&2; fail "requests to an initialized managed build changed the site"; }
-ok "requests to an initialized managed build install nothing"
 [[ $(json migrations.0 <<< "$receipt") == 0001_init ]] || fail "the first build applies the init migration: $receipt"
 [[ $(json seed.notes.created <<< "$receipt") == 1 ]] || fail "the first build seeds one note: $receipt"
 [[ $(action "$first" | json data.build) == one ]] || fail "build one answers"

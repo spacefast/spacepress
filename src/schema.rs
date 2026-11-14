@@ -364,6 +364,10 @@ pub struct Collection {
     pub existing_table: Option<String>,
     /// `was: "old"`: the stored name before a rename (spec §2.6).
     pub was: Option<String>,
+    /// The registry key an `existingTable` binding was first built under, kept across `was` renames
+    /// (the snapshot's `adoptedAs`). The converter names a Zero 0.8 table's collection after it, so
+    /// this is the name the 0.8 table's digest is over (`First\Wp\Guard`). Set by the pipeline.
+    pub adopted_as: Option<String>,
     pub label: String,
     pub editor: bool,
     pub drafts: bool,

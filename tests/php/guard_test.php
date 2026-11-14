@@ -29,6 +29,10 @@ eq('an app option is written', $call('update_option', ['guard_app_setting', 'on'
 eq('and read back', $call('get_option', ['guard_app_setting']), 'on');
 eq('and deleted', $call('delete_option', ['guard_app_setting']), true);
 eq('a site setting that holds nothing dangerous is readable', $call('get_option', ['blogname']), get_option('blogname'));
+// WordPress allows spaces inside a name; only trailing ones are trimmed (and padded by MySQL).
+eq('an app option with spaces in its name is written', $call('update_option', ['my app settings', 'on']), true);
+eq('and read back', $call('get_option', ['my app settings']), 'on');
+eq('and deleted', $call('delete_option', ['my app settings']), true);
 
 $plugins = get_option('active_plugins');
 $protected = ['active_plugins', 'active_sitewide_plugins', 'template', 'stylesheet', 'siteurl', 'home', 'admin_email',
@@ -90,18 +94,40 @@ foreach (['wp_users', 'wp_usermeta', 'WP_Options', 'wp_posts', 'wp_first_posts',
 }
 $refused('another prefix is refused', 'other_orders', 'wp_');
 // A longer prefix that starts with this one is another site in the same database.
-$wp->connection()->run('CREATE TABLE wp_other_options (option_id INTEGER PRIMARY KEY)');
+$wp->connection()->run('CREATE TABLE wp_other_options (option_id INTEGER PRIMARY KEY, option_name VARCHAR(191), option_value LONGTEXT, autoload VARCHAR(20))');
 $wp->connection()->run('CREATE TABLE wp_other_users (ID INTEGER PRIMARY KEY)');
 $refused('a table under a longer prefix that has its own options table is refused', 'wp_other_users', 'wp_');
 $allowed('a table without such a site beside it is not', 'wp_otherthing_rows', 'wp_');
+// A prefix need not end in `_`: an install prefixed `wp_shop` has wp_shopusers and wp_shopoptions.
+$wp->connection()->run('CREATE TABLE wp_shopoptions (option_id INTEGER PRIMARY KEY, option_name VARCHAR(191), option_value LONGTEXT, autoload VARCHAR(20))');
+$wp->connection()->run('CREATE TABLE wp_shopusers (ID INTEGER PRIMARY KEY)');
+$refused('a longer prefix without a trailing _ is another site: its users', 'wp_shopusers', 'wp_');
+$refused('and its options', 'wp_shopoptions', 'wp_');
+$refused('and any of its tables, whatever the case', 'WP_ShopOrders', 'wp_');
+$allowed('a name that only shares the start of that prefix is not under it', 'wp_shoes', 'wp_');
+// A plugin's own `…options` table without WordPress's options columns is not another site.
+$wp->connection()->run('CREATE TABLE wp_myplugin_options (id INTEGER PRIMARY KEY, label TEXT)');
+$allowed("a plugin's own options table is an app table", 'wp_myplugin_options', 'wp_');
+$allowed('and so are the tables beside it', 'wp_myplugin_rows', 'wp_');
+// CUSTOM_USER_TABLE and CUSTOM_USER_META_TABLE rename WordPress's users tables.
+global $wpdb;
+[$users, $usermeta] = [$wpdb->users, $wpdb->usermeta];
+[$wpdb->users, $wpdb->usermeta] = ['wp_accounts', 'shared_accountmeta'];
+$refused('a renamed users table is refused', 'wp_accounts', 'wp_');
+$refused('in any case', 'WP_Accounts', 'wp_');
+$refused('a renamed usermeta table outside the prefix is refused', 'shared_accountmeta', 'wp_');
+[$wpdb->users, $wpdb->usermeta] = [$users, $usermeta];
+$allowed('the name is an app table again once WordPress no longer uses it', 'wp_accounts', 'wp_');
 foreach (['wp_first_identity_accounts', 'wp_identity_sessions', 'wp_wc_orders', 'wp_woocommerce_sessions'] as $t) {
     $refused("$t is refused", $t, 'wp_');
 }
 
 // The 0.8 table name `sf_<space>_<table>_<digest>` as src/config_migrate/app/transform.rs `physical` writes it.
-$legacyOf = static fn (string $space, string $t) => substr('sf_' . substr(trim((string) preg_replace('/[^a-z0-9]+/', '_', strtolower($space)), '_'), 0, 48) . '_' . $t, 0, 53) . '_' . substr(hash('sha256', "$space\0$t"), 0, 10);
+$part = static fn (string $s) => substr(trim((string) preg_replace('/[^a-z0-9]+/', '_', strtolower($s)), '_'), 0, 48);
+$legacyOf = static fn (string $space, string $t) => substr('sf_' . $part($space) . '_' . $part($t), 0, 53) . '_' . substr(hash('sha256', "$space\0$t"), 0, 10);
 $sfz = static fn (string $space) => 'sfz_' . substr(hash('sha256', $space), 0, 24) . '_';
 eq('the helper matches the converter fixture name', $legacyOf('spc_migrate_test', 'tasks'), 'sf_spc_migrate_test_tasks_3c47092ff0');
+eq('and a camelCase one (first migrate app --space spc_x)', $legacyOf('spc_x', 'myTasks'), 'sf_spc_x_mytasks_a102734393');
 // No Space from the host: no 0.8 table binds, whatever the prefix.
 $refused('a 0.8 table on a host that names no Space is refused', $legacyOf('spc_mine', 'tasks'), $sfz('spc_mine'));
 eq('no FIRST_SPACE_ID in the in-process site', defined('FIRST_SPACE_ID'), false);
@@ -129,12 +155,34 @@ $GLOBALS['GUARD_SPACE'] = 'Space-Mixed.1';
 $allowed('a mixed-case Space id adopts its own tables', $legacyOf('Space-Mixed.1', 'tasks'), $sfz('Space-Mixed.1'));
 $GLOBALS['GUARD_SPACE'] = 'spc_long';
 $refused('a cut name alone is not enough: the digest needs the table name', $legacyOf('spc_long', str_repeat('t', 60)), $sfz('spc_long'));
+$adopts = static function (string $label, string $table, string $prefix, array $names) {
+    try {
+        Guard::table($table, $prefix, $names);
+        check($label, true);
+    } catch (\First\HttpError $e) {
+        check($label, false, $e->getMessage());
+    }
+};
+$adopts('a long table name the converter cut adopts through the collection named after it', $legacyOf('spc_long', str_repeat('t', 60)), $sfz('spc_long'), [str_repeat('t', 60)]);
+// A collection renamed with `was` keeps its 0.8 table: the digest is over the name it was adopted
+// under, which the compiler keeps as `adoptedAs` (src/pipeline.rs adopted_names).
+$GLOBALS['GUARD_SPACE'] = 'spc_mine';
+$myTasks = $legacyOf('spc_mine', 'myTasks');
+$spec = ['key' => 'items', 'existingTable' => $myTasks];
 try {
-    Guard::table($legacyOf('spc_long', str_repeat('t', 60)), $sfz('spc_long'), str_repeat('t', 60));
-    check('a long table name the converter cut adopts through the collection named after it', true);
+    Guard::table($myTasks, $mine, Guard::names('items', $spec));
+    check('a renamed collection without its adopted name does not match the digest', false, 'accepted');
 } catch (\First\HttpError $e) {
-    check('a long table name the converter cut adopts through the collection named after it', false, $e->getMessage());
+    check('a renamed collection without its adopted name does not match the digest', $e->errorCode === 'existing_table_refused');
 }
+$adopts('a collection renamed with was still binds its 0.8 table', $myTasks, $mine, Guard::names('items', $spec + ['adoptedAs' => 'myTasks']));
+$adopts("a snapshot from before adoptedAs names the stored table (my_tasks), whose key's digest still matches", $myTasks, $mine, Guard::names('items', $spec + ['adoptedAs' => 'my_tasks']));
+$adopts('a renamed collection over a cut 0.8 name', $legacyOf('spc_mine', 'aVeryLongTableNameThatTheConverterCutsDownToSize'), $mine,
+    Guard::names('short', ['key' => 'short', 'adoptedAs' => 'aVeryLongTableNameThatTheConverterCutsDownToSize']));
+// The converter hashes the whole 0.8 name, however long; only the physical name is cut.
+$huge = 'items' . str_repeat('X', 70);
+$adopts('a 0.8 table name longer than 64 characters still adopts', $legacyOf('spc_mine', $huge), $mine, Guard::names('items', ['key' => 'items', 'adoptedAs' => $huge]));
+$refused("another Space's renamed table, whatever names the app gives", $legacyOf('spc_other', 'myTasks'), $mine);
 $GLOBALS['GUARD_SPACE'] = '';
 
 // The migrator refuses an unchecked binding before it reads the table or writes the ledger.
@@ -147,6 +195,55 @@ $migrator = new Migrator($wp->connection(), $dir, new \First\Schema($bad));
 problem('the migrator refuses an existingTable of WordPress users', static fn () => $migrator->migrate(), 409, 'existing_table_refused');
 eq('and records nothing', in_array('0001_adopt', $migrator->pending(), true), true);
 array_map('unlink', glob("$dir/*"));
+
+// A historical adoption is checked on its own: a later migration of the same deploy dropped its
+// collection, so no collection binds the table any more.
+$GLOBALS['GUARD_SPACE'] = 'spc_mine';
+$legacy = $legacyOf('spc_mine', 'myTasks');
+$wp->connection()->run("CREATE TABLE `$legacy` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `title` TEXT)");
+$wp->connection()->run("INSERT INTO `$legacy` (`title`) VALUES ('kept')");
+// The Migrator reads $wpdb->prefix; the Space's sfz_ prefix is set around each run.
+$under = static function (string $prefix, callable $fn) use ($wpdb) {
+    $was = $wpdb->prefix;
+    $wpdb->prefix = $prefix;
+    try {
+        return $fn();
+    } finally {
+        $wpdb->prefix = $was;
+    }
+};
+$adoptRecord = static fn (string $table, ?string $name) => '-- first-adopt ' . json_encode(array_filter(['table' => $table, 'name' => $name], static fn ($v) => $v !== null)
+    + ['indexes' => [['name' => 'PRIMARY', 'unique' => true, 'columns' => ['id']]], 'foreignKeys' => [], 'integerColumns' => [['name' => 'id', 'unsigned' => true]]])
+    . "\nSELECT `id`, `title` FROM `$table` LIMIT 0;";
+$history = static function (string $adopt, string $table) use ($dir): void {
+    array_map('unlink', glob("$dir/*"));
+    file_put_contents("$dir/0001_adopt.sql", $adopt);
+    file_put_contents("$dir/0002_update.sql", '-- first-check ' . json_encode(['check' => 'drop', 'name' => 'myTasks', 'table' => $table, 'adopted' => true]) . "\nDROP TABLE `$table`;");
+};
+$later = $schema; // the blog schema binds no existingTable: the collection is gone
+$history($adoptRecord($legacy, 'myTasks'), $legacy);
+$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}first__migrations`");
+$replay = new Migrator($wp->connection(), $dir, new \First\Schema($later), ['myTasks' => 1]);
+try {
+    $under($mine, static fn () => $replay->migrate());
+    check('an adoption whose collection a later migration drops replays with the drop confirmed', true);
+} catch (\Throwable $e) {
+    check('an adoption whose collection a later migration drops replays with the drop confirmed', false, $e->getMessage());
+}
+eq('and both migrations are recorded', $under($mine, static fn () => array_values(array_intersect(['0001_adopt', '0002_update'], $replay->pending()))), []);
+eq('the drop ran as confirmed', $wp->connection()->run("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?", [$legacy]), []);
+// The same historical record is still refused for a table no Space or site may bind.
+foreach (['wp_users' => 'WordPress users', $sfz('spc_other') . 'users' => "another Space's users", $legacyOf('spc_other', 'myTasks') => "another Space's 0.8 table",
+    'wp_first__migrations' => "First's own", 'wp_actionscheduler_actions' => "Action Scheduler's", 'wp_shopusers' => "another install's"] as $table => $what) {
+    $history($adoptRecord($table, 'myTasks'), $table);
+    $site = $table === 'wp_shopusers' ? 'wp_' : $mine;
+    $wp->connection()->run("DROP TABLE IF EXISTS `{$site}first__migrations`");
+    $replay = new Migrator($wp->connection(), $dir, new \First\Schema($later), ['myTasks' => 0]);
+    problem("a historical adoption of $what's table is still refused", static fn () => $under($site, static fn () => $replay->migrate()), 409, 'existing_table_refused');
+}
+$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}first__migrations`");
+array_map('unlink', glob("$dir/*"));
 rmdir($dir);
+$GLOBALS['GUARD_SPACE'] = '';
 
 finish('guard');

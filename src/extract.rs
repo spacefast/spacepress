@@ -435,6 +435,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     table: c.table().to_string(),
                     existing_table: None,
                     was: None,
+                    adopted_as: None,
                     label: title_case(c.table()),
                     editor: true,
                     drafts: true,

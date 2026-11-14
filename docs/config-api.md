@@ -1011,18 +1011,24 @@ before the first migration reads the table and on every request that uses it
 (`409 existing_table_refused` otherwise). It must be either:
 
 - a table under this site's `$wpdb->prefix` that is not WordPress's own (`posts`,
-  `users`, `options`, ...), First's (`{prefix}first_*`), identity's, WooCommerce's,
-  Action Scheduler's (`{prefix}actionscheduler_*`) or another site's: a network
-  site (`{prefix}2_*`) or a site whose longer prefix starts with this one
-  (`wp_shop_` beside `wp_`, found by its options table); or
+  `users`, `options`, ..., and the tables `CUSTOM_USER_TABLE` and
+  `CUSTOM_USER_META_TABLE` name), First's (`{prefix}first_*`), identity's,
+  WooCommerce's, Action Scheduler's (`{prefix}actionscheduler_*`) or another
+  site's: a network site (`{prefix}2_*`) or a site whose longer prefix starts with
+  this one (`wp_shop_` or `wp_shop` beside `wp_`, found by its `options` table); or
 - this Space's own Zero 0.8 table, `sf_<space>_<table>_<10 hex>` as
   [`first migrate app --space`](migrating-from-zero.md#application-source-migration)
   writes it, with the converter's digest of the Space id and the table name (the
-  collection that binds it is named after that table). The Space id comes from the
+  collection that binds it is named after that table; a `was` rename keeps that
+  name as the snapshot's `adoptedAs`). The Space id comes from the
   host: Spacefast's `spacefast_content_space_id()`, or the `FIRST_SPACE_ID`
   constant elsewhere; on a Spacefast `sfz_` prefix it must also be the Space the
   prefix was made from. A host that names no Space binds no 0.8 table, and a
   Space never binds another's, even one whose id starts with its own.
+
+The first migration's adoption record is checked the same way on its own, so a
+deploy that applies it together with a later migration that drops the table's
+collection (with the `--drop` that needs) still runs.
 
 It is distinct from `storageName`, which still identifies the logical resource's
 migration history. The binding is committed in the snapshot and cannot change

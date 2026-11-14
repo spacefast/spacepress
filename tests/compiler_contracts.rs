@@ -4607,6 +4607,96 @@ fn was_renames_only_what_a_table_stores() {
     );
 }
 
+/// A Zero 0.8 table's name ends in a digest over the 0.8 table name, which the converter gives the
+/// binding collection's key. The runtime checks it (`First\Wp\Guard`), so the key the binding was
+/// first built under travels as `adoptedAs` in the snapshot, the adoption record and schema.php,
+/// and survives a `was` rename of the collection.
+#[test]
+fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
+    let tmp = tempfile::tempdir().unwrap();
+    let build = |config: &str, previous: Option<Value>| -> first::pipeline::Built {
+        std::fs::write(tmp.path().join("first.config.ts"), config).unwrap();
+        let program = first::loader::load(&tmp.path().join("first.config.ts")).unwrap();
+        first::pipeline::build(
+            tmp.path(),
+            &program,
+            || first::pipeline::Previous::from_project(previous, ["0001_init.sql"]),
+            |_| None,
+        )
+        .unwrap_or_else(|d| panic!("{}", d.message))
+    };
+    let head = "import { defineConfig, table, text } from 'first';";
+    let legacy = "sf_spc_x_mytasks_a102734393";
+    let adopted = build(
+        &format!(
+            "{head} const myTasks = table({{ title: text() }}, {{ existingTable: '{legacy}' }}); export default defineConfig({{ tables: {{ myTasks }} }});"
+        ),
+        None,
+    );
+    assert_eq!(adopted.snapshot["tables"]["my_tasks"]["adoptedAs"], "myTasks");
+    let sql = &adopted.migrations[0].1;
+    let record: Value = serde_json::from_str(
+        sql.lines()
+            .find_map(|l| l.strip_prefix("-- first-adopt "))
+            .expect("an adoption record"),
+    )
+    .unwrap();
+    assert_eq!((&record["table"], &record["name"]), (&json!(legacy), &json!("myTasks")));
+    assert!(first::schema_php::render(&adopted.schema).contains("'adoptedAs' => 'myTasks',"));
+
+    // Renamed with `was`: the table and the name it was adopted under stay.
+    let renamed = build(
+        &format!(
+            "{head} const items = table({{ title: text() }}, {{ was: 'my_tasks', existingTable: '{legacy}' }}); export default defineConfig({{ tables: {{ items }} }});"
+        ),
+        Some(adopted.snapshot.clone()),
+    );
+    assert_eq!(renamed.snapshot["tables"]["items"]["adoptedAs"], "myTasks");
+    assert!(first::schema_php::render(&renamed.schema).contains("'adoptedAs' => 'myTasks',"));
+    // Renamed again, and on a snapshot from before `adoptedAs` (the stored name stands for it).
+    let again = build(
+        &format!(
+            "{head} const things = table({{ title: text() }}, {{ was: 'items', existingTable: '{legacy}' }}); export default defineConfig({{ tables: {{ things }} }});"
+        ),
+        Some(renamed.snapshot.clone()),
+    );
+    assert_eq!(again.snapshot["tables"]["things"]["adoptedAs"], "myTasks");
+    let mut old = adopted.snapshot.clone();
+    old["tables"]["my_tasks"].as_object_mut().unwrap().remove("adoptedAs");
+    let from_old = build(
+        &format!(
+            "{head} const items = table({{ title: text() }}, {{ was: 'my_tasks', existingTable: '{legacy}' }}); export default defineConfig({{ tables: {{ items }} }});"
+        ),
+        Some(old),
+    );
+    assert_eq!(from_old.snapshot["tables"]["items"]["adoptedAs"], "my_tasks");
+
+    // A key that is its own stored name writes nothing new: earlier snapshots stay as they are.
+    let plain = build(
+        &format!(
+            "{head} const tasks = table({{ title: text() }}, {{ existingTable: 'sf_spc_x_tasks_0123456789' }}); export default defineConfig({{ tables: {{ tasks }} }});"
+        ),
+        None,
+    );
+    assert!(plain.snapshot["tables"]["tasks"].get("adoptedAs").is_none());
+    assert!(!first::schema_php::render(&plain.schema).contains("adoptedAs"));
+    // A table stored before `adoptedAs` keeps its stored name, even under a new key: the key may be
+    // a later alias (`storageName` keeps the storage), not the name the 0.8 table was made from.
+    let mut old = plain.snapshot.clone();
+    old["tables"]["tasks"].as_object_mut().unwrap().remove("adoptedAs");
+    let aliased = build(
+        &format!(
+            "{head} const chores = table({{ title: text() }}, {{ storageName: 'tasks', existingTable: 'sf_spc_x_tasks_0123456789' }}); export default defineConfig({{ tables: {{ chores }} }});"
+        ),
+        Some(old),
+    );
+    assert!(
+        aliased.snapshot["tables"]["tasks"].get("adoptedAs").is_none(),
+        "{:#}",
+        aliased.snapshot
+    );
+}
+
 /// The OpenAPI document and the Abilities describe one value one way. `src/json_schema.rs` is the
 /// compiler's copy of `Wp\Abilities\JsonSchema`, and this runs both: for every kind, global and
 /// action of an app, the schema in `first/_generated/openapi.json` is the one the registered

@@ -111,7 +111,7 @@ pub fn option_access(function: &str) -> Option<&'static str> {
 /// option. Compared as `First\Wp\Guard::protects` does: trimmed, lowercased, printable ASCII only.
 pub fn protected_option(name: &str) -> Option<(&'static str, bool)> {
     let name = name.trim_matches([' ', '\t', '\n', '\r', '\0', '\x0b']);
-    if name.bytes().any(|b| !(0x21..=0x7e).contains(&b)) {
+    if name.bytes().any(|b| !(0x20..=0x7e).contains(&b)) {
         return Some((
             "an option name outside printable ASCII can match a protected one in MySQL",
             false,

@@ -114,6 +114,10 @@ fn table_snapshot(c: &Collection, schema: &Schema) -> Json {
     if let Some(old) = &c.was {
         table["was"] = old.clone().into();
     }
+    // Only when it isn't the stored name: without `adoptedAs` the table was adopted under that.
+    if let Some(name) = c.adopted_as.as_ref().filter(|name| **name != c.table) {
+        table["adoptedAs"] = name.clone().into();
+    }
     if c.auth {
         // WordPress keeps auth rows in wp_users/wp_usermeta (§6.2), so MySQL gets no table.
         table["auth"] = true.into();
@@ -418,7 +422,10 @@ fn create_table(t: &str, def: &Json, tables: &Map) -> String {
                 "onUpdate": r["onUpdate"].as_str().unwrap_or("restrict").to_uppercase() }))
             })
             .collect();
-        let adoption = json!({ "table": def["existingTable"], "indexes": expected_indexes,
+        // `name`, the name it is adopted under, lets the runtime check this record on its own, even
+        // once a later migration drops the table's collection (a Zero 0.8 table's digest is over it).
+        let name = def["adoptedAs"].as_str().unwrap_or(t);
+        let adoption = json!({ "table": def["existingTable"], "name": name, "indexes": expected_indexes,
             "foreignKeys": foreign_keys, "integerColumns": integer_columns });
         return format!(
             "-- first-adopt {adoption}\nSELECT {} FROM {} LIMIT 0;",

@@ -118,6 +118,12 @@ final class Schema
         return $this->raw['files'] ?? [];
     }
 
+    /** `publicAuthors`: core's author archives and user listings stay public (spec §6). */
+    public function publicAuthors(): bool
+    {
+        return ($this->raw['publicAuthors'] ?? false) === true;
+    }
+
     public function auth(): array
     {
         return $this->raw['auth'] ?? ['collection' => null, 'guests' => true, 'accessTtl' => 300, 'refreshTtl' => 2592000];
@@ -262,7 +268,9 @@ final class Schema
 
         return Extensions::describe(($runtimeSchema === null ? [] : [
             // The schema below is the build's plus this version of the site's own changes (spec §2.10).
-            'runtimeSchema' => ['version' => $runtimeSchema['active']['version'] ?? 0, 'hash' => $runtimeSchema['active']['hash'] ?? '', 'build' => ['version' => $runtimeSchema['version'] ?? 0, 'hash' => $runtimeSchema['hash'] ?? '']],
+            'runtimeSchema' => ['version' => $runtimeSchema['active']['version'] ?? 0, 'hash' => $runtimeSchema['active']['hash'] ?? '', 'build' => ['version' => $runtimeSchema['version'] ?? 0, 'hash' => $runtimeSchema['hash'] ?? '']]
+                // Why the site serves less than its newest version: a broken chain or an option written outside apply.
+                + (isset($runtimeSchema['active']['problem']) ? ['problem' => $runtimeSchema['active']['problem']] : []),
         ]) + [
             'name' => $this->name(),
             'runtime' => ['series' => $this->runtime()],

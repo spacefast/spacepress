@@ -122,6 +122,12 @@ const exampleChecks: Record<string, { title: string; run: (base: string, admin: 
 			assert.match(note.body, /data-wp-interactive="fullsite\/CheerButton"/);
 			assert.match(note.body, /<button[^>]*class="cheer"[^>]*>3 cheers</);
 			assert.doesNotMatch(note.body, /Check the photo credit/, "desk notes shown to a signed-out visitor");
+			// Issue #311's page: a first/app page that lists every note it may read. A signed-out
+			// visitor reads the published ones only; the seeded draft is for staff.
+			const applause = await visitor("/applause");
+			assert.equal(applause.status, 200);
+			assert.match(applause.body, /Dawn on the ridge/);
+			assert.doesNotMatch(applause.body, /Notes for next week/, "a draft is listed on /applause to a signed-out visitor");
 		},
 	},
 };

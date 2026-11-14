@@ -406,6 +406,12 @@ pub fn apply(lock: Option<&Lock>, ev: &mut Evaluator<'_>, ext: &mut Extracted) -
             return Err(refuse(kind, "an override names a kind this project doesn't declare")
                 .help("run `first pull` again, or remove the entry from the lock"));
         }
+        if !global && !ext.schema.collections[kind].editor {
+            return Err(refuse(
+                kind,
+                format!("`{kind}` is a table(), and tables change only in the project's schema file"),
+            ));
+        }
         match entry.get("label") {
             None => {}
             Some(Json::String(label)) if !label.is_empty() => match global {
@@ -1191,6 +1197,10 @@ mod tests {
             serde_json::to_value(&articles.columns["rating"].ui).unwrap(),
             serde_json::json!({ "label": "Stars", "width": 50 })
         );
+        let table = serde_json::json!({ "format": FORMAT, "version": 3, "hash": "h", "overrides": { "collections": {
+            "votes": { "label": "Ballots" } } } });
+        let refused = build(Some(&table)).expect_err("a table's label is build-only");
+        assert!(refused.message.contains("`votes` is a table()"), "{}", refused.message);
         for (ui, expected) in [
             (serde_json::json!({ "rating": { "width": 500 } }), "F3101"),
             (serde_json::json!({ "rating": { "colour": "red" } }), "F3101"),

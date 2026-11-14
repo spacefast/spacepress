@@ -66,7 +66,7 @@ test("native user filters expose private fields only to account administrators",
   const firstName = `Private${suffix}`;
   const id = Number(wp("user", "create", `filter-${suffix}`, email, "--role=author", `--first_name=${firstName}`, "--display_name=Public author", "--porcelain"));
   const post = wp("post", "create", `--post_author=${id}`, "--post_title=Public author filter fixture", "--post_status=publish", "--porcelain");
-  const users = async (query: Record<string, string>, headers: Record<string, string> = {}) => {
+  const users = async (query: Record<string, string>, headers: Record<string, string>) => {
     const response = await fetch(`${site}/wp-json/wp/v2/users?${new URLSearchParams({ include: String(id), ...query })}`, { headers });
     assert.equal(response.status, 200);
     const data: unknown = await response.json();
@@ -77,7 +77,10 @@ test("native user filters expose private fields only to account administrators",
     });
   };
   try {
-    assert.deepEqual(await users({}), [id]);
+    assert.deepEqual(await users({}, auth("subscriber")), [id]);
+    // Signed out, the site lists no user at all, whatever the filter (the `authors` hardening switch).
+    const anonymous = await fetch(`${site}/wp-json/wp/v2/users?${new URLSearchParams({ include: String(id), email_search: email })}`);
+    assert.equal(anonymous.status, 401);
     const privateQueries: Record<string, string>[] = [
         { email_search: "not-this-author@example.test" },
         { email_search_not: email },
@@ -86,9 +89,7 @@ test("native user filters expose private fields only to account administrators",
         { registered_after: "2999-01-01" },
         { registered_before: "1900-01-01" },
     ];
-    for (const headers of [{}, auth("subscriber")]) {
-      for (const query of privateQueries) assert.deepEqual(await users(query, headers), [id], JSON.stringify(query));
-    }
+    for (const query of privateQueries) assert.deepEqual(await users(query, auth("subscriber")), [id], JSON.stringify(query));
     assert.deepEqual(await users({ email_search: email }, auth("admin")), [id]);
     assert.deepEqual(await users({ email_search: "not-this-author@example.test" }, auth("admin")), []);
   } finally {

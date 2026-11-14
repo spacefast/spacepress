@@ -747,7 +747,7 @@ function wpCliRoot(string $dir): string
     if (!is_dir($root)) {
         // Built aside and moved in, so a concurrent request (the test server's) never sees half of it.
         $final = $root;
-        $root = "$final." . getmypid();
+        $root = "$final." . getmypid() . '.' . bin2hex(random_bytes(4));
         mkdir($root);
         foreach (scandir($site['core']) as $entry) {
             if ($entry !== '.' && $entry !== '..' && $entry !== 'wp-config.php' && $entry !== 'wp-content') {
@@ -761,6 +761,9 @@ function wpCliRoot(string $dir): string
         if (!@rename($root, $final)) {
             array_map('unlink', glob("$root/*"));
             rmdir($root);
+            if (!is_dir($final)) {
+                throw new RuntimeException("could not create $final");
+            }
         }
         $root = $final;
     }

@@ -424,6 +424,17 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "there's no hook called `beforeCreat`",
         "first.config.ts:3:",
     );
+    // Ruling 18: `.on()` belongs to the declaration; `afterPublish` to collections.
+    rejects(
+        "reject-on-imported",
+        ".on() belongs to the kind's declaration, in the file that declares it",
+        "first/hooks.ts:2:1",
+    );
+    rejects(
+        "reject-after-publish-table",
+        "`afterPublish` is for collections: a table() row is never published",
+        "first/schema.ts:2:64",
+    );
     // §1.2: modifiers per column kind, pointing at the modifier call.
     rejects(
         "reject-modifier-kind",

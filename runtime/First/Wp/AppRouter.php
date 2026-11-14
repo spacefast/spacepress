@@ -297,7 +297,8 @@ final class AppRouter
         if ($this->plugin->unavailable() !== null) {
             $this->document(503, ['title' => get_bloginfo('name')], '<p>' . esc_html__('This page is temporarily unavailable.') . '</p>');
         }
-        $viewer = CoreAccess::viewer();
+        // A prerender (First\Render\Prebuilt) is a signed-out visitor's render, whatever came with it.
+        $viewer = \First\Render\Prebuilt::prerendering() ? new Viewer(null) : CoreAccess::viewer();
         if ($viewer === null) {
             $this->notFound();
         }

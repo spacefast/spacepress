@@ -111,9 +111,10 @@ final class Purges
         return array_keys($paths);
     }
 
+    /** A host's page cache listens, or prebuilt pages need to know what changed. */
     private static function listening(): bool
     {
-        return has_action('first_purge_urls') !== false;
+        return has_action('first_purge_urls') !== false || \First\Render\Prebuilt::active();
     }
 
     /** URLs a write changed that no post hook names (First's own writes): announced with the rest. */
@@ -160,7 +161,10 @@ final class Purges
         self::$paths = [];
         self::$scheduled = false;
         if ($paths !== [] && self::listening()) {
-            do_action('first_purge_urls', $paths);
+            \First\Render\Prebuilt::stale($paths);
+            if (has_action('first_purge_urls') !== false) {
+                do_action('first_purge_urls', $paths);
+            }
         }
     }
 

@@ -51,9 +51,10 @@ final class Cache
         Extensions::onWritten(self::written(...));
     }
 
+    /** A host's page cache listens for purges, or prebuilt pages need to know what changed. */
     private static function listening(): bool
     {
-        return function_exists('has_action') && has_action('first_purge_urls') !== false;
+        return function_exists('has_action') && (has_action('first_purge_urls') !== false || Prebuilt::active());
     }
 
     /**
@@ -77,7 +78,8 @@ final class Cache
      */
     public static function record(string $uri, array $reads): void
     {
-        if (!self::listening()) {
+        // A prerender records what it read, so a write knows which prebuilt URLs it changed.
+        if (!self::listening() && !Prebuilt::prerendering()) {
             return;
         }
         $url = self::path($uri);
@@ -141,7 +143,10 @@ final class Cache
             return;
         }
         $paths = count($urls) > self::PURGE_LIMIT ? ['/*'] : \First\Wp\Purges::paths(array_map('home_url', $urls));
-        do_action('first_purge_urls', $paths);
+        Prebuilt::stale($paths);
+        if (has_action('first_purge_urls') !== false) {
+            do_action('first_purge_urls', $paths);
+        }
     }
 
     /** A request URI as stored: the path below the home path, with its query string. */

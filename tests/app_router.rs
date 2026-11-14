@@ -1056,6 +1056,91 @@ fn prerender_and_static_params_reach_the_route_table() {
     );
 }
 
+/// Prebuilt pages next to server-rendered ones (docs/decisions/2026-11-13-static-output.md): an
+/// Action Scheduler action renders each prebuilt URL as a signed-out visitor and writes its HTML and
+/// Markdown; the app serves them before WordPress parses the request; a write deletes the files of
+/// the URLs it changed and schedules their rebuild, so a visitor never gets stale content. The
+/// listing `first export` reads is an editor's.
+#[test]
+fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
+    let project = fixture("app-prebuilt", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_prebuilt.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    use serde_json::json;
+    // The URLs: the literal route, each published note (the draft is not one), each staticParams entry.
+    assert_eq!(
+        seen["list"],
+        json!([200, ["/notes/hello", "/tags/field", "/tags/lab%20notes", "/about"]])
+    );
+    assert_eq!(
+        (&seen["list anonymous"], &seen["list subscriber"]),
+        (&json!(401), &json!(403))
+    );
+    // Nothing is served from a file before the build action has run; init schedules it once.
+    assert_eq!(seen["before"], false);
+    assert_eq!((&seen["scheduled"], &seen["ran"]), (&json!(true), &json!(true)));
+    assert_eq!(
+        seen["files"],
+        json!([
+            "about.html",
+            "about.md",
+            "notes/hello.html",
+            "notes/hello.md",
+            "tags/field.html",
+            "tags/field.md",
+            "tags/lab%20notes.html",
+            "tags/lab%20notes.md"
+        ])
+    );
+    // Served from the file, with the cacheable policy, its title and its Markdown twin.
+    assert_eq!(
+        seen["about"],
+        json!([
+            200,
+            true,
+            "public, s-maxage=300, max-age=0, must-revalidate",
+            true,
+            true
+        ])
+    );
+    assert_eq!(
+        seen["about.md"],
+        json!([200, true, "text/markdown; charset=UTF-8", "# About\n\nWritten once.\n"])
+    );
+    assert_eq!(seen["note"], json!([true, "<h1>Hello"]));
+    assert_eq!(seen["tag"], json!([true, "lab notes"]));
+    // Pages that don't say prerender render per request; a draft stays a 404.
+    assert_eq!((&seen["home"], &seen["live"]), (&json!(false), &json!(false)));
+    assert_eq!(seen["draft"], json!([404, false]));
+    // A signed-in visitor, a query string or a forged prerender header fall through to WordPress.
+    for key in ["signed in", "query", "forged"] {
+        assert_eq!(seen[key], false, "{key}");
+    }
+    // An edit: the note renders per request with the new title at once, other prebuilt pages keep
+    // their files, and the action writes the new file.
+    assert_eq!(seen["after write"], json!([false, "<h1>Hello again"]));
+    assert_eq!(seen["about kept"], true);
+    assert_eq!(seen["rebuilt"], json!([true, "<h1>Hello again"]));
+    // A note published later is built; unpublished, its files go and it is a 404.
+    assert_eq!(seen["published later"], true);
+    assert_eq!(seen["unpublished"], json!([404, false]));
+    assert_eq!(seen["unpublished after rebuild"], json!([404, false]));
+}
+
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.
 fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value {
     let project = fixture("frontend-modes", variant);

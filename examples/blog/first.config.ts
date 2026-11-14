@@ -14,6 +14,8 @@ export const authors = collection({
   userId: integer().optional(),                       // the User.id that owns this author profile
 }, { label: "Authors", title: "name", uid: true, access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
+export const decks = files({ accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "anyone", create: "author", delete: "editor" } });
+
 export const posts = collection({
   // Translated per locale (§7.3). The other fields are shared by a post's translations, except
   // each row's own slug, status and dates.
@@ -31,7 +33,7 @@ export const posts = collection({
     noindex: boolean().default(false),
   }).showIf({ status: "published" }).optional(),
   // The talk's slide deck: a private file, downloaded through a signed link (§7.2).
-  deck: file({ bucket: "decks" }).optional(),
+  deck: file(decks).optional(),
   gallery: repeater({ image: media({ accept: "image" }), caption: text().max(120).optional() }).max(12).optional(),
   sections: blocks({
     hero: { heading: text().max(80), image: media({ accept: "image" }).optional() },
@@ -76,7 +78,7 @@ export const tables = { comments };
 export const users = { members };
 export const entities = { ...collections, ...tables, ...users };
 
-export const settings = global("settings", {
+export const settings = global({
   siteTitle: text().default("My blog").max(80),
   tagline: text().max(160).optional(),
   postsPerPage: integer().default(10).min(1).max(50),
@@ -90,9 +92,7 @@ export default defineConfig({
   locales: { default: "en", all: ["en", "de"] },
   // A 600×400 crop of every image for cards, centred on the image's focal point (§7.2).
   media: { sizes: { card: { width: 600, height: 400, fit: "cover" } } },
-  files: {
-    decks: files("decks", { accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "anyone", create: "author", delete: "editor" } }),
-  },
+  files: { decks },
   // Every post change is POSTed, signed, to BLOG_HOOK_URL and retried on failure (§6.1).
   webhooks: [{ url: env("BLOG_HOOK_URL"), secret: env("BLOG_HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted"] }],
   jobs: {

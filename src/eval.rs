@@ -12,6 +12,7 @@ use crate::num::js_number_to_string;
 use crate::schema::{ColType, RefAction, RelKind};
 use crate::value::*;
 use indexmap::IndexMap;
+use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -2800,16 +2801,25 @@ impl<'p> Evaluator<'p> {
             Builtin::Column(ty) => self.make_column(ty.name(), &args, span),
             Builtin::Field(name) => self.make_column(name, &args, span),
             Builtin::DefineGlobal => {
-                let Value::Str(name) = arg(0) else {
-                    return err(span, "global() needs a name first: `global(\"settings\", { ... })`");
+                // `global(fields, options?)`: the export names it. A 0.3.0 capture passes the name first.
+                let (name, at) = match arg(0) {
+                    Value::Str(name) if self.legacy => (Some(name.to_string()), 1),
+                    Value::Str(name) => {
+                        return err_help(
+                            span,
+                            format!("`global(\"{name}\", ...)` no longer takes a name: the export names it"),
+                            format!("write `export const {name} = global({{ ... }})`"),
+                        );
+                    }
+                    _ => (None, 0),
                 };
-                let fields_val = arg(1);
+                let fields_val = arg(at);
                 let fields = self.fields_object(
                     &fields_val,
                     span,
-                    "global() needs an object of fields as its second argument",
+                    "global() needs an object of fields: `export const settings = global({ title: text() })`",
                 )?;
-                let options = match arg(2) {
+                let options = match arg(at + 1) {
                     Value::Undef => None,
                     o @ Value::Object(_) => Some(o),
                     other => {
@@ -2819,8 +2829,12 @@ impl<'p> Evaluator<'p> {
                         );
                     }
                 };
+                let cell = OnceCell::new();
+                if let Some(name) = name {
+                    let _ = cell.set(name);
+                }
                 Ok(Value::Global(Rc::new(GlobalVal {
-                    name: name.to_string(),
+                    name: cell,
                     fields,
                     options,
                     span,
@@ -2913,15 +2927,31 @@ impl<'p> Evaluator<'p> {
                 ),
             },
             Builtin::Files => {
-                let Value::Str(name) = arg(0) else {
-                    return err(span, "files() needs a bucket name");
+                // `files(options)`: the export names the bucket. A 0.3.0 capture passes the name first.
+                let (name, options) = match arg(0) {
+                    Value::Str(name) if self.legacy => (Some(name.to_string()), arg(1)),
+                    Value::Str(name) => {
+                        return err_help(
+                            span,
+                            format!("`files(\"{name}\", ...)` no longer takes a name: the export names the bucket"),
+                            format!("write `export const {name} = files({{ accept: [...], maxBytes }})`"),
+                        );
+                    }
+                    options => (None, options),
                 };
-                let options = arg(1);
                 if !matches!(options, Value::Object(_)) {
-                    return err(span, "files() needs an options object");
+                    return err_help(
+                        span,
+                        "files() needs an options object",
+                        "write `export const decks = files({ accept: [\"application/pdf\"], maxBytes: 20_000_000 })`",
+                    );
+                }
+                let cell = OnceCell::new();
+                if let Some(name) = name {
+                    let _ = cell.set(name);
                 }
                 Ok(Value::FileBucket(Rc::new(FileBucketVal {
-                    name: name.to_string(),
+                    name: cell,
                     options,
                     span,
                 })))
@@ -3064,6 +3094,33 @@ impl<'p> Evaluator<'p> {
         let mut c = ColBuilder::new(ty, span);
         let opts_val = args.first().cloned().unwrap_or(Value::Undef);
         match builder {
+            // `file(decks)`: the exported `files()` value (ruling 12).
+            "file" => match &opts_val {
+                Value::FileBucket(b) => {
+                    c.bucket = Some(BucketRef::Value(b.clone()));
+                    return Ok(Value::Column(Rc::new(c)));
+                }
+                Value::Object(o) if self.legacy && o.borrow().contains_key("bucket") => {}
+                Value::Object(o) if matches!(o.borrow().get("bucket"), Some(Value::Str(_))) => {
+                    let Some(Value::Str(name)) = o.borrow().get("bucket").cloned() else {
+                        unreachable!()
+                    };
+                    return err_help(
+                        span,
+                        format!("`file({{ bucket: \"{name}\" }})` is now `file({name})`"),
+                        format!(
+                            "pass the exported bucket: `export const {name} = files({{ ... }})`, then `file({name})`"
+                        ),
+                    );
+                }
+                other => {
+                    return err_help(
+                        span,
+                        format!("file() takes an exported files() bucket, not {}", other.describe()),
+                        "write `export const decks = files({ accept: [\"application/pdf\"], maxBytes: 20_000_000 })`, then `file(decks)`",
+                    );
+                }
+            },
             "select" => {
                 c.enum_values = Some(self.select_options(&opts_val, span)?);
                 return Ok(Value::Column(Rc::new(c)));
@@ -3149,7 +3206,7 @@ impl<'p> Evaluator<'p> {
                     }
                 },
                 "bucket" => match v {
-                    Value::Str(s) if !s.is_empty() => c.bucket = Some(s.to_string()),
+                    Value::Str(s) if !s.is_empty() => c.bucket = Some(BucketRef::Name(s.to_string())),
                     _ => return err(ksp, "`bucket` must be a bucket name"),
                 },
                 "source" => match v {

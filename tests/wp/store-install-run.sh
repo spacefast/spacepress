@@ -45,7 +45,7 @@ root=/var/www/html/wp-content/plugins/first-store
 site() {
   local q
   for q in "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ORDER BY 1, 2" \
-    "SELECT option_name, MD5(option_value) FROM wp_options WHERE option_name NOT LIKE '\\_transient%' AND option_name NOT LIKE '\\_site\\_transient%' AND option_name <> 'first_test_contract' AND option_name NOT LIKE 'action\\_scheduler\\_lock\\_%' ORDER BY 1" \
+    "SELECT option_name, MD5(option_value) FROM wp_options WHERE option_name NOT LIKE '\\_transient%' AND option_name NOT LIKE '\\_site\\_transient%' AND option_name NOT IN ('first_test_contract', 'first_installlane_hook_ran') AND option_name NOT LIKE 'action\\_scheduler\\_lock\\_%' ORDER BY 1" \
     "SELECT * FROM wp_first__migrations ORDER BY app, id" "SELECT ID, post_type, post_status, post_name FROM wp_posts ORDER BY ID" \
     "SELECT post_id, meta_key, MD5(meta_value) FROM wp_postmeta ORDER BY 1, 2" "SELECT user_id, meta_key, MD5(meta_value) FROM wp_usermeta ORDER BY 1, 2" \
     "SELECT hook, status, \`group_id\` FROM wp_actionscheduler_actions WHERE status = 'pending' ORDER BY 1"; do
@@ -55,6 +55,7 @@ site() {
   "$here/harness.sh" compose exec -T wordpress sh -c 'find /var/www/html/wp-content/uploads/first-private 2>/dev/null | sort' || true
 }
 host() { wp --exec="define('FIRST_TEST_BUILD', '$build');" eval "$@"; }
+inspect() { wp --exec="define('FIRST_TEST_BUILD', '$1'); define('FIRST_TEST_INSPECT', true);" eval "echo json_encode(First\\Loader\\Loader::inspect('$root', '$1')$2);"; }
 
 "$here/harness.sh" up --wp-content "$work/content" --platform > "$work/harness.json"
 url=$(json url < "$work/harness.json")
@@ -64,13 +65,20 @@ url=$(json url < "$work/harness.json")
 probe_route() { wp eval 'wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . "/test-probe-route.php", "<?php\nadd_filter(\"first_private_probe_url\", fn (\$u) => str_replace(home_url(), \"http://wordpress\", \$u));\n");' >/dev/null; }
 probe_route
 
+# A boot runs the app's own `init` hook (tests/wp/store/install/first/wp-hooks/init), which writes an
+# option: that is the app serving, not First installing. So the boot checks here leave that one
+# option out, and the hook gets its own checks.
 fresh=$(site)
+inspect "$build" "['install']" >/dev/null
+[[ $(wp option get first_installlane_hook_ran 2>/dev/null) == "" ]] || fail "inspecting ran the app's compiled WordPress hook"
 host "echo 'booted';" >/dev/null
+[[ $(wp option get first_installlane_hook_ran) == yes ]] || fail "a managed boot runs the app's compiled WordPress hooks"
+wp option delete first_installlane_hook_ran >/dev/null
 booted=$(site)
 [[ $fresh == "$booted" ]] || { diff <(echo "$fresh") <(echo "$booted") >&2; fail "a managed boot before initialize changed the site"; }
-ok "a managed boot before initialize installs nothing"
+ok "a managed boot before initialize installs nothing; inspecting runs none of the app's hooks"
 
-plan=$(host "echo json_encode(First\\Loader\\Loader::inspect('$root', '$build')['install']);")
+plan=$(inspect "$build" "['install']")
 python3 - "$plan" <<'PY' || fail "a fresh site's install plan: $plan"
 import json,sys
 steps=sorted((s['step'], s.get('route','')) for s in json.loads(sys.argv[1]))
@@ -84,7 +92,7 @@ ok "inspection plans the Pages and one rewrite rebuild, and writes nothing"
 receipt=$(host "echo json_encode(First\\Loader\\Loader::initialize('$root', '$build'));")
 [[ $(json migrations.0 <<< "$receipt") == 0001_init ]] || fail "initialize applies the init migration: $receipt"
 initialized=$(site)
-[[ $(host "echo json_encode(First\\Loader\\Loader::inspect('$root', '$build')['install']);") == '[]' ]] || fail "after initialize nothing is left to install"
+[[ $(inspect "$build" "['install']") == '[]' ]] || fail "after initialize nothing is left to install"
 # Initialize from WP-CLI set up private files: the secret, the deny rules and a passing probe.
 [[ $(wp option get first_runtime_private_ok) == 1 && -n $(wp option get first_runtime_secret) ]] || fail "initialize set up and probed private files"
 "$here/harness.sh" compose exec -T wordpress sh -c 'test -f /var/www/html/wp-content/uploads/first-private/.htaccess' || fail "initialize wrote the private files' deny rules"
@@ -128,9 +136,9 @@ sed -i.bak 's#url: "/notes/:id"#url: "/memos/:id"#' "$work/installlane/first.con
 "$bin" sources "$work/installlane" --out "$work/sources-url"
 moved=$("$bin" compile-to-store "$work/sources-url" "$store" "$work/sources-url" "$build" | json build)
 before=$(site)
-steps=$(wp --exec="define('FIRST_TEST_BUILD', '$moved');" eval "echo json_encode(First\\Loader\\Loader::inspect('$root', '$moved')['install']);")
+steps=$(inspect "$moved" "['install']")
 [[ $steps == '[{"step":"rewrite-rules"}]' ]] || fail "a URL-pattern change plans one step: $steps"
-[[ $(host "echo json_encode(First\\Loader\\Loader::inspect('$root', '$build')['install']);") == '[]' ]] || fail "the initialized build plans no step"
+[[ $(inspect "$build" "['install']") == '[]' ]] || fail "the initialized build plans no step"
 [[ $before == "$(site)" ]] || fail "inspecting the candidates changed the site"
 ok "a candidate that changes only a URL pattern plans one step; the initialized build plans none"
 

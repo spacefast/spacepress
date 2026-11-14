@@ -62,6 +62,7 @@ action() { curl -sS -X POST -H 'Content-Type: application/json' -H "X-First-Buil
 # WP-CLI as the host: select the build before WordPress loads, then call the loader.
 host() { local build="$1"; shift; wp --exec="define('FIRST_TEST_BUILD', '$build');" eval "$@"; }
 root=/var/www/html/wp-content/plugins/first-store
+inspect() { wp --exec="define('FIRST_TEST_BUILD', '$1'); define('FIRST_TEST_INSPECT', true);" eval "echo json_encode(First\\Loader\\Loader::inspect('$root', '$1')$2);"; }
 initialize() { host "$1" "echo json_encode(First\\Loader\\Loader::initialize('$root', '$1'));"; }
 gc() { host "$1" "echo json_encode(First\\Loader\\Store::gc('$root', json_decode('$2'), $3));"; }
 
@@ -93,7 +94,7 @@ ok "a managed boot before initialize writes nothing"
 # Before the first initialize: inspection plans every system table, the init migration and the
 # seed, and writes none of them.
 fresh=$(site)
-plan=$(host "$first" "echo json_encode(First\\Loader\\Loader::inspect('$root', '$first'));")
+plan=$(inspect "$first" "")
 python3 - "$plan" <<'PY' || fail "a fresh site's plan: $plan"
 import json,sys
 out=json.loads(sys.argv[1])
@@ -164,7 +165,7 @@ sed -i.bak -e "s/BUILD_LABEL/three/" -e 's/table({ title: text() }/table({ title
 third=$("$bin" compile-to-store "$work/three/sources" "$store" "$work/three/sources" "$first" | json build)
 [[ -f "$store/baseline/$third/migrations/0002_update.sql" ]] || fail "build three's baseline holds its new migration"
 before=$(site)
-inspected=$(host "$third" "echo json_encode(First\\Loader\\Loader::inspect('$root', '$third'));")
+inspected=$(inspect "$third" "")
 python3 - "$inspected" <<'PY' || fail "inspection reports the refusal and the plan: $inspected"
 import json,sys
 out=json.loads(sys.argv[1])
@@ -177,7 +178,7 @@ PY
 after=$(site)
 [[ $before == "$after" ]] || { diff <(echo "$before") <(echo "$after") >&2; fail "inspecting a refused candidate changed the site"; }
 ok "inspecting a refused candidate reports why and changes nothing"
-planned=$(host "$first" "echo json_encode(First\\Loader\\Loader::inspect('$root', '$first'));")
+planned=$(inspect "$first" "")
 [[ $(json refusals <<< "$planned") == '[]' && $(json migrations <<< "$planned") == '[]' ]] || fail "an initialized build plans nothing: $planned"
 [[ $before == "$(site)" ]] || fail "inspecting an initialized build changed the site"
 ok "inspecting a build that already initialized plans nothing"

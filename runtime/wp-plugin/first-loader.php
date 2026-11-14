@@ -186,7 +186,9 @@ final class Loader
      * Options: `variables` (array<string,string>: the app's only runtime variables; missing means none),
      * `users` (load first-identity
      * even without an auth collection), `beforeIdentity` (callable run just before first-identity loads),
-     * `url` (the public base URL of `$root`, for plugin asset URLs).
+     * `url` (the public base URL of `$root`, for plugin asset URLs), `inspect` (mount it to inspect, not
+     * to serve: the app's compiled WordPress hooks are not registered, so nothing of the app's own code
+     * runs; see {@see inspect()}).
      */
     public static function load(string $root, string $build, array $options = []): void
     {
@@ -217,7 +219,7 @@ final class Loader
         if (!is_file($runtime . '/first-runtime/first/bootstrap.php') || !is_file($app . '/first/app/schema.php')) {
             throw new \RuntimeException("First build $build is incomplete");
         }
-        self::$loaded = ['root' => $root, 'build' => $build, 'manifest' => $manifest];
+        self::$loaded = ['root' => $root, 'build' => $build, 'manifest' => $manifest, 'inspect' => !empty($options['inspect'])];
         // Restrict lookup before feature registration, schema loading, or app boot.
         require_once $runtime . '/first-runtime/first/Env.php';
         \First\Env::isolate($variables);
@@ -318,7 +320,13 @@ final class Loader
         return self::$schema;
     }
 
-    /** `{root, build, manifest, identity}` of this request's build, or null. */
+    /** Whether this request mounted its build to inspect it (`inspect` in {@see load()}). */
+    public static function inspecting(): bool
+    {
+        return (self::$loaded['inspect'] ?? false) === true;
+    }
+
+    /** `{root, build, manifest, identity, inspect}` of this request's build, or null. */
     public static function loaded(): ?array
     {
         return self::$loaded;
@@ -336,6 +344,9 @@ final class Loader
         $root = rtrim($root, '/');
         if (self::$loaded === null || self::$loaded['root'] !== $root || self::$loaded['build'] !== $build) {
             throw new \LogicException('Load this First build before initializing it');
+        }
+        if (self::$loaded['inspect']) {
+            throw new \LogicException('A build mounted to inspect is not initialized: load it again without `inspect`');
         }
         $receipt = Store::receipt($root, $build);
         if ($receipt !== null) {

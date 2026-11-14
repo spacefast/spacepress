@@ -123,7 +123,10 @@ final class Plugin
         SearchHandler::register($this);
         Purges::register($this);
         Staged::register($this);
-        Hooks::register($this);
+        // A build mounted to inspect it (Loader::load `inspect`) runs none of the app's own code.
+        if (!(class_exists(\First\Loader\Loader::class, false) && \First\Loader\Loader::inspecting())) {
+            Hooks::register($this);
+        }
         add_action('admin_menu', [$this, 'adminMenu'], 9);
         // A plugin updated by copying files in has no activation; the first request of any kind
         // (REST, front end, cron, CLI, admin) applies its pending migrations before First serves it.

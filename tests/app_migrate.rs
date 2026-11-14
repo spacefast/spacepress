@@ -1708,6 +1708,82 @@ fn query_names_map_one_to_one_and_nested_pages_keep_imports() {
     assert!(out.join("first/app/docs/data.ts").is_file());
 }
 
+/// 0.8 kept handlers and tables in separate namespaces; v2 has one (docs/decisions/
+/// 2026-11-11-authoring-surface.md, ruling 39). The candidate exports every kind and action by
+/// name; a query named like its table keeps the table's name for the table and becomes
+/// `<name>Query`, which the converted client calls. A name that is taken twice, or `default`,
+/// is a located refusal.
+#[test]
+fn a_handler_named_like_a_table_is_exported_under_a_suffixed_name() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("source");
+    project(
+        &root,
+        r#"{ name: "named", schema: { notes: table({ body: string() }) }, queries: { notes: query(async (ctx) => ctx.db.notes.withIndex("by_creation").collect()) }, mutations: { add: mutation(async (ctx, body: string) => ctx.db.notes.insert({ body })) } }"#,
+    );
+    let index = root.join("server/index.ts");
+    let text = std::fs::read_to_string(&index).unwrap().replace(
+        "import { capsule }",
+        "import { capsule, mutation, query, string, table }",
+    );
+    std::fs::write(&index, &text).unwrap();
+    let out = temp.path().join("candidate");
+    let (ok, report) = migrate(&root, &out, &["--fresh"]);
+    assert!(ok, "{report:#}");
+    assert!(
+        report["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["pointer"] == "/queries/notes" && e["outcome"] == "review"),
+        "{report:#}"
+    );
+    build(&out);
+    let results = run_actions(
+        &out,
+        &[],
+        &serde_json::json!([["add", { "body": "one" }], ["notesQuery", {}]]),
+    );
+    assert_eq!(results[1]["data"][0]["body"], "one", "{results}");
+    // The table keeps its name: its storage and its ledger follow it.
+    let snapshot: Value =
+        serde_json::from_slice(&std::fs::read(out.join("first/_generated/migrations/snapshot.json")).unwrap()).unwrap();
+    assert!(snapshot["tables"]["notes"].is_object(), "{snapshot}");
+
+    // When the suffixed name is taken too, and for `default`, the publish stays on 0.8.
+    for (handlers, pointer) in [
+        (
+            r#"queries: { notes: query(async (ctx) => 1), notesQuery: query(async (ctx) => 2) }"#,
+            "/queries/notes",
+        ),
+        (r#"queries: { default: query(async (ctx) => 1) }"#, "/queries/default"),
+    ] {
+        let root = temp.path().join("refused");
+        let _ = std::fs::remove_dir_all(&root);
+        project(
+            &root,
+            &format!(r#"{{ name: "named", schema: {{ notes: table({{ body: string() }}) }}, {handlers} }}"#),
+        );
+        std::fs::write(
+            root.join("server/index.ts"),
+            std::fs::read_to_string(root.join("server/index.ts"))
+                .unwrap()
+                .replace("import { capsule }", "import { capsule, query, string, table }"),
+        )
+        .unwrap();
+        let (ok, refused) = migrate(&root, &temp.path().join("refused-out"), &["--fresh", "--dry-run"]);
+        assert!(!ok, "{handlers}");
+        let error = refused["errors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["code"] == "Z08_HANDLER_NAME")
+            .unwrap_or_else(|| panic!("{refused:#}"));
+        assert_eq!(error["pointer"], pointer, "{refused:#}");
+        assert_eq!(error["file"], "server/index.ts", "{refused:#}");
+    }
+}
+
 /// Runs each named action of a built app in PHP with `inputs`, under `env`, and returns the results.
 fn run_actions(project: &Path, env: &[(&str, &str)], calls: &Value) -> Value {
     let content = project.join("first/dist/wp-content/plugins");
@@ -2504,6 +2580,28 @@ console.log(JSON.stringify({ sent, result }));
     assert_eq!(ran["sent"][0]["url"], "/__first/api/v1/actions/banner", "{ran}");
     assert_eq!(ran["sent"][0]["method"], "POST");
     assert_eq!(ran["result"], "ABABAB");
+    // A handler named like a table is the v2 action `<name>Query` (ruling 39): the generated
+    // handler list carries that name, and the bridge posts there with the same input.
+    let handlers = out.join("public/first/handlers.js");
+    let listed = std::fs::read_to_string(&handlers).unwrap();
+    std::fs::write(
+        &handlers,
+        listed.replacen("\"banner\": {", "\"banner\": {\n    \"action\": \"bannerAction\",", 1),
+    )
+    .unwrap();
+    let renamed = Command::new("node")
+        .args(["--input-type=module", "-e", script])
+        .arg(out.join("public/first/client.js"))
+        .output()
+        .unwrap();
+    assert!(renamed.status.success(), "{}", String::from_utf8_lossy(&renamed.stderr));
+    let renamed: Value = serde_json::from_slice(&renamed.stdout).unwrap();
+    assert_eq!(
+        renamed["sent"][0]["url"], "/__first/api/v1/actions/bannerAction",
+        "{renamed}"
+    );
+    assert_eq!(renamed["sent"][0]["body"], ran["sent"][0]["body"]);
+    std::fs::write(&handlers, listed).unwrap();
     // The body the bridge sent is exactly what the generated action takes.
     build(&out);
     let results = run_actions(

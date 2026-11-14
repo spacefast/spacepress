@@ -112,6 +112,108 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     );
 }
 
+/// The `defineConfig` registry keys are refused at the key, each with the export that replaces it
+/// (ruling 36); a key that differs from its binding names the key, so API and stored names stay.
+#[test]
+fn removed_registry_keys_name_the_export_that_replaces_them() {
+    for (key, message, help) in [
+        (
+            "collections",
+            "`collections` is gone: a kind registers by its export",
+            "`export const notes = collection({ ... })`",
+        ),
+        (
+            "tables",
+            "`tables` is gone: a table registers by its export",
+            "export it as `productVariants`, its name here: `export { variants as productVariants }`",
+        ),
+        (
+            "users",
+            "`users` is gone: the users kind registers by its export",
+            "`export const members = userProjection({ ... })`",
+        ),
+        (
+            "globals",
+            "`globals` is gone: a global registers by its export",
+            "`export const settings = global({ ... })`",
+        ),
+        (
+            "files",
+            "`files` is gone: a file bucket registers by its export",
+            "`file(decks)` takes the export",
+        ),
+        (
+            "actions",
+            "`actions` is gone: an action registers by its export",
+            "the client call is `first.like()`",
+        ),
+        (
+            "jobs",
+            "`jobs` is gone: a job registers by its export",
+            "`export const digest = job(...)`",
+        ),
+        (
+            "hooks",
+            "`hooks` is gone: hooks are declared on the kind",
+            "`export const notes = collection({ ... }).on({",
+        ),
+    ] {
+        let fixture = format!("reject-config-{key}");
+        rejects(&fixture, message, "first.config.ts:3:31");
+        rejects(&fixture, help, "first.config.ts:3:31");
+    }
+    // A kind built in app source without an export would have no name (ruling 37, F1222).
+    rejects(
+        "reject-unexported-kind",
+        "`hidden` is a table but isn't exported, so it has no name",
+        "first/schema.ts:4:16",
+    );
+    let out = first()
+        .args(["check", "--json"])
+        .arg(root().join("tests/fixtures/reject-unexported-kind"))
+        .output()
+        .unwrap();
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["diagnostics"][0]["code"], "F1222", "{report}");
+}
+
+/// `first.config.ts`'s own exports register like those of modules under first/ (spec §1.1), and
+/// `export { a as b }` registers `b`: the API name and the stored name are the export name.
+#[test]
+fn config_file_exports_register_under_their_export_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("first.config.ts"),
+        r#"import { action, defineConfig, table, text } from "first";
+const variants = table({ name: text() }, { access: { read: "anyone" } });
+export { variants as productVariants };
+export const ping = action({ input: {}, access: "anyone", handler: () => 1 });
+export default defineConfig({ name: "exported" });
+"#,
+    )
+    .unwrap();
+    let out = first().arg("build").arg(tmp.path()).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let snapshot: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(tmp.path().join("first/_generated/migrations/snapshot.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        snapshot["tables"].as_object().unwrap().keys().collect::<Vec<_>>(),
+        ["product_variants"]
+    );
+    let schema = Command::new("php")
+        .args(["-r", "echo json_encode(require $argv[1]);"])
+        .arg(
+            tmp.path()
+                .join("first/dist/wp-content/plugins/first-app-exported/first/app/schema.php"),
+        )
+        .output()
+        .unwrap();
+    let schema: serde_json::Value = serde_json::from_slice(&schema.stdout).unwrap();
+    assert_eq!(schema["collections"]["product_variants"]["key"], "productVariants");
+    assert!(schema["actions"]["ping"].is_object(), "{}", schema["actions"]);
+}
+
 /// The field forms the authoring surface replaced are refused where they're written, naming the
 /// replacement (docs/spec/spec.md §2.5, §8).
 #[test]
@@ -515,135 +617,139 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "`when` defaults to a `at` value that isn't a real ISO 8601 date or timestamp",
         "first.config.ts:4:",
     );
-    // Each case owns a separate registry invariant, exercised through the compiler.
+    // Each case owns a separate schema invariant, exercised through the compiler: the kinds it
+    // declares (exported, as kinds register) and the defineConfig options beside them.
     let tmp = tempfile::tempdir().unwrap();
-    for (body, message) in [
+    for (declarations, options, message) in [
         (
-            "collections: { notes: table({ title: text() }) }",
-            "table() belongs in `tables`",
-        ),
-        (
-            "collections: { notes: collection({ title: text() }) }, tables: { notes: table({}) }",
-            "share the physical name `notes`",
-        ),
-        (
-            "collections: { stockItems: collection({ title: text() }) }, tables: { stock_items: table({}) }",
+            "export const stockItems = collection({ title: text() }); export const stock_items = table({});",
+            "",
             "share the physical name `stock_items`",
         ),
         (
-            "tables: { first: shared, second: shared }",
-            "a definition can only be registered once",
-        ),
-        (
-            "tables: { notes: table({}, { storageName: 'bad-name' }) }",
+            "export const notes = table({}, { storageName: 'bad-name' });",
+            "",
             "`storageName` must be an identifier",
         ),
         (
-            "tables: { notes: table({}, { storageName: 'media' }) }",
+            "export const notes = table({}, { storageName: 'media' });",
+            "",
             "\"media\" is reserved",
         ),
         (
-            "tables: { media: table({}, { storageName: 'assets' }) }",
+            "export const media = table({}, { storageName: 'assets' });",
+            "",
             "\"media\" is reserved",
         ),
         (
-            "collections: { services: collection({ title: text() }) }",
+            "export const services = collection({ title: text() });",
+            "",
             "\"services\" is reserved",
         ),
         (
-            "tables: { notes: table({}, { storageName: 'existing' }), other: table({}, { storageName: 'existing' }) }",
+            "export const notes = table({}, { storageName: 'existing' }); export const other = table({}, { storageName: 'existing' });",
+            "",
             "share the physical name `existing`",
         ),
         (
-            "collections: { notes: collection({ title: text() }) }, tables: { notes: table({}, { storageName: 'other' }) }",
-            "duplicate logical registration `notes`",
-        ),
-        (
-            "globals: { status: global({ label: text().default('Ready').optional() }) }",
+            "export const status = global({ label: text().default('Ready').optional() });",
+            "",
             "\"status\" is reserved by generated client types",
         ),
         (
-            "globals: { user: global({ label: text().default('Ready').optional() }) }",
+            "export const user = global({ label: text().default('Ready').optional() });",
+            "",
             "\"user\" is reserved by generated client types",
         ),
         (
-            "globals: { record: global({ label: text().default('Ready').optional() }) }",
+            "export const record = global({ label: text().default('Ready').optional() });",
+            "",
             "\"record\" is reserved by generated client types",
         ),
         (
-            "globals: { client: global({ label: text().default('Ready').optional() }) }",
+            "export const client = global({ label: text().default('Ready').optional() });",
+            "",
             "\"client\" is reserved by generated client types",
         ),
         (
-            "globals: { extract: global({ label: text().default('Ready').optional() }) }",
+            "export const extract = global({ label: text().default('Ready').optional() });",
+            "",
             "\"extract\" is reserved by generated client types",
         ),
-        ("tables: []", "`tables` must be an object"),
         (
-            "tables: { notes: table({}), notes: table({}) }",
-            "duplicate registration `tables.notes`",
-        ),
-        ("tables: {}, tables: {}", "duplicate `tables` registry"),
-        (
+            "",
             "uploads: { backend: 's3', bucket: 'uploads', credentials: { accessKeyId: 'literal', secretAccessKey: 'literal' } }",
             "must be env(",
         ),
         (
+            "",
             "uploads: { backend: 's3', bucket: 'uploads' }",
             "need runtime credentials",
         ),
-        ("uploads: { backend: 'local', bucket: 'uploads' }", "has no option"),
+        ("", "uploads: { backend: 'local', bucket: 'uploads' }", "has no option"),
         (
-            "collections: { notes: collection({ title: text() }, { revisions: false }) }",
+            "export const notes = collection({ title: text() }, { revisions: false });",
+            "",
             "collections always have native revisions",
         ),
         (
-            "tables: { notes: table({ title: text().optional() }, { comments: true }) }",
+            "export const notes = table({ title: text().optional() }, { comments: true });",
+            "",
             "only collection() kinds take comments",
         ),
         (
-            "tables: { notes: table({ title: text().optional() }, { staged: true }) }",
+            "export const notes = table({ title: text().optional() }, { staged: true });",
+            "",
             "only collection() kinds have staged versions",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { staged: 1 }) }",
+            "export const notes = collection({ title: text() }, { staged: 1 });",
+            "",
             "`staged` must be true or false",
         ),
         (
-            "collections: { notes: collection({ title: text() }), notesStaged: collection({ title: text() }) }",
+            "export const notes = collection({ title: text() }); export const notesStaged = collection({ title: text() });",
+            "",
             "ability kebab collision: notes-staged-get",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { comments: 'yes' }) }",
+            "export const notes = collection({ title: text() }, { comments: 'yes' });",
+            "",
             "`comments` is true, false or an options object",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { comments: { guest: true } }) }",
+            "export const notes = collection({ title: text() }, { comments: { guest: true } });",
+            "",
             "`comments` has no option `guest`",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { comments: { moderation: 'sometimes' } }) }",
+            "export const notes = collection({ title: text() }, { comments: { moderation: 'sometimes' } });",
+            "",
             "`comments.moderation` can't be \"sometimes\"",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { comments: { threaded: 11 } }) }",
+            "export const notes = collection({ title: text() }, { comments: { threaded: 11 } });",
+            "",
             "`comments.threaded` can't be",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { comments: { closeAfterDays: 0 } }) }",
+            "export const notes = collection({ title: text() }, { comments: { closeAfterDays: 0 } });",
+            "",
             "`comments.closeAfterDays` can't be",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { comments: { types: ['review'] } }) }",
+            "export const notes = collection({ title: text() }, { comments: { types: ['review'] } });",
+            "",
             "comment types aren't built yet",
         ),
         (
-            "tables: { notes: table({ title: text().optional() }, { comments: { guests: true } }) }",
+            "export const notes = table({ title: text().optional() }, { comments: { guests: true } });",
+            "",
             "only collection() kinds take comments",
         ),
     ] {
         std::fs::write(tmp.path().join("first.config.ts"), format!(
-            "import {{ collection, table, global, text, defineConfig }} from 'first'; const shared = table({{}}); export default defineConfig({{ {body} }});"
+            "import {{ collection, table, global, text, defineConfig }} from 'first'; {declarations} export default defineConfig({{ {options} }});"
         )).unwrap();
         let checked = first().arg("check").arg(tmp.path()).output().unwrap();
         assert_eq!(checked.status.code(), Some(1));

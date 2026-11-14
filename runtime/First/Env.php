@@ -29,28 +29,24 @@ final class Env
     ];
 
     /**
-     * What the web server API puts in the process environment for each request (FastCGI
-     * parameters, which `getenv()` returns under php-fpm and CGI): headers (`HTTP_COOKIE`,
-     * `HTTP_AUTHORIZATION`, `HTTP_PROXY`), Apache's copies of them after a rewrite
-     * (`REDIRECT_HTTP_AUTHORIZATION`, `REDIRECT_QUERY_STRING`, `REDIRECT_URL`), the CGI
-     * meta-variables (`QUERY_STRING`, `REQUEST_URI`, `PATH_INFO`, `CONTENT_TYPE`, `REMOTE_ADDR` …),
-     * and the visitor's basic-auth credentials. They are exact names, so an app's own
-     * `SERVER_URL` or `REDIRECT_URI` isn't one. They are visitor input, not settings, so the process
-     * environment fallback never returns them. A wp-config.php constant can't come from a request,
-     * so the constant fallback still reads these names (an app's own `REDIRECT_URI` keeps working
-     * there), and an isolated host's own variables may use them too.
+     * What PHP-FPM puts in the process environment for each request: the FastCGI parameters
+     * nginx (or any FastCGI server) passes, which `getenv()` returns. That is the request headers
+     * (`HTTP_COOKIE`, `HTTP_AUTHORIZATION`, `HTTP_PROXY`), the visitor's basic-auth credentials,
+     * and the CGI meta-variables (`QUERY_STRING`, `REQUEST_URI`, `PATH_INFO`, `CONTENT_TYPE`,
+     * `REMOTE_ADDR` …). They are visitor input, not settings, so the process environment fallback
+     * never returns them. They are exact names, so an app's own `SERVER_URL` isn't one. A
+     * wp-config.php constant can't come from a request, so the constant fallback still reads
+     * these names, and an isolated host's own variables may use them too.
      */
     private const REQUEST_PREFIXES = ['HTTP_', 'PHP_AUTH_'];
-    /** CGI/1.1 meta-variables (RFC 3875 §4.1) and the ones Apache, nginx and php-fpm add. */
+    /** CGI/1.1 meta-variables (RFC 3875 §4.1) and the ones nginx's fastcgi_params and PHP-FPM add. */
     private const REQUEST_NAMES = [
         'AUTH_TYPE', 'CONTENT_LENGTH', 'CONTENT_TYPE', 'GATEWAY_INTERFACE', 'PATH_INFO',
         'PATH_TRANSLATED', 'QUERY_STRING', 'REMOTE_ADDR', 'REMOTE_HOST', 'REMOTE_IDENT',
         'REMOTE_PORT', 'REMOTE_USER', 'REQUEST_METHOD', 'REQUEST_SCHEME', 'REQUEST_URI',
-        'REQUEST_TIME', 'REQUEST_TIME_FLOAT', 'SCRIPT_NAME', 'SCRIPT_FILENAME', 'SCRIPT_URI',
-        'SCRIPT_URL', 'SERVER_ADDR', 'SERVER_NAME', 'SERVER_PORT', 'SERVER_PROTOCOL',
-        'SERVER_SOFTWARE', 'SERVER_ADMIN', 'SERVER_SIGNATURE', 'DOCUMENT_ROOT', 'DOCUMENT_URI',
-        'CONTEXT_PREFIX', 'CONTEXT_DOCUMENT_ROOT', 'HTTPS', 'ORIG_PATH_INFO', 'UNIQUE_ID',
-        'FCGI_ROLE',
+        'SCRIPT_NAME', 'SCRIPT_FILENAME', 'SERVER_ADDR', 'SERVER_NAME', 'SERVER_PORT',
+        'SERVER_PROTOCOL', 'SERVER_SOFTWARE', 'DOCUMENT_ROOT', 'DOCUMENT_URI', 'HTTPS',
+        'ORIG_PATH_INFO', 'FCGI_ROLE',
     ];
 
     public static function hostSecret(string $name): bool
@@ -61,17 +57,6 @@ final class Env
     public static function requestValue(string $name): bool
     {
         $upper = strtoupper($name);
-        // Apache's copy of a request value after an internal redirect, at any depth
-        // (`REDIRECT_HTTP_AUTHORIZATION`, `REDIRECT_REDIRECT_QUERY_STRING`), plus the two it adds of
-        // its own (`REDIRECT_URL`, `REDIRECT_STATUS`). An app's `REDIRECT_URI` is none of these.
-        $redirected = false;
-        while (str_starts_with($upper, 'REDIRECT_')) {
-            $upper = substr($upper, 9);
-            $redirected = true;
-        }
-        if ($redirected && in_array($upper, ['URL', 'STATUS'], true)) {
-            return true;
-        }
         if (in_array($upper, self::REQUEST_NAMES, true)) {
             return true;
         }

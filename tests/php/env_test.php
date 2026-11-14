@@ -30,7 +30,6 @@ define('WP_SECRETS_KEY', 'secrets-api-site-key');
 putenv('HTTP_COOKIE=wordpress_logged_in_x=platform-session');
 putenv('HTTP_PROXY=http://attacker.example');
 putenv('PHP_AUTH_PW=basic-password');
-putenv('REDIRECT_HTTP_AUTHORIZATION=Basic redirected');
 Env::isolate(['DB_PASSWORD' => 'from-a-variable', 'HTTP_PROXY' => 'http://proxy.internal:3128', 'DB_URL' => 'mysql://app', 'APP_VALUE' => 'kept']);
 eq('an isolated host never passes WordPress secrets, but its own variables keep request-like names',
     [Env::get('DB_PASSWORD'), Env::get('db_password'), Env::get('HTTP_PROXY'), Env::get('DB_URL'), Env::get('HTTP_COOKIE'), Env::get('APP_VALUE')],
@@ -40,19 +39,19 @@ eq('an isolated host never passes WordPress secrets, but its own variables keep 
     $scope->setValue(null, null);
 })();
 eq('standalone lookup never falls back to WordPress secrets or per-request server values',
-    [Env::get('DB_PASSWORD'), Env::get('LOGGED_IN_SALT'), Env::get('SECRET_KEY'), Env::get('WP_SECRETS_KEY'), Env::get('HTTP_COOKIE'), Env::get('HTTP_PROXY'), Env::get('PHP_AUTH_PW'), Env::get('REDIRECT_HTTP_AUTHORIZATION'), Env::resolve(['env' => 'DB_PASSWORD']), Env::get('FIRST_ENV_CONSTANT')],
-    [null, null, null, null, null, null, null, null, null, 'standalone-constant']);
+    [Env::get('DB_PASSWORD'), Env::get('LOGGED_IN_SALT'), Env::get('SECRET_KEY'), Env::get('WP_SECRETS_KEY'), Env::get('HTTP_COOKIE'), Env::get('HTTP_PROXY'), Env::get('PHP_AUTH_PW'), Env::resolve(['env' => 'DB_PASSWORD']), Env::get('FIRST_ENV_CONSTANT')],
+    [null, null, null, null, null, null, null, null, 'standalone-constant']);
 eq('host secrets are exact names; request values are prefixes',
     [array_map([Env::class, 'hostSecret'], ['db_host', 'DB_URL', 'NONCE_KEY', 'SECRET_SALT', 'wp_secrets_key_previous', 'WEBHOOK_SECRET']),
-     array_map([Env::class, 'requestValue'], ['HTTP_X_ANYTHING', 'redirect_query_string', 'PHP_AUTH_USER', 'REMOTE_USER', 'HTTPS_ONLY', 'FIRST_NOW'])],
+     array_map([Env::class, 'requestValue'], ['HTTP_X_ANYTHING', 'query_string', 'PHP_AUTH_USER', 'REMOTE_USER', 'HTTPS_ONLY', 'FIRST_NOW'])],
     [[true, false, true, true, true, false], [true, true, true, true, false, false]]);
 eq('core\'s filesystem and proxy credentials are WordPress secrets too',
     array_map([Env::class, 'hostSecret'], ['FTP_PASS', 'ftp_privkey', 'FTP_USER', 'FTP_PUBKEY', 'WP_PROXY_USERNAME', 'WP_PROXY_PASSWORD', 'WP_PROXY_HOST']),
     [true, true, true, true, true, true, false]);
 eq('CGI meta-variables are request values by exact name; an app\'s look-alike names are not',
-    array_map([Env::class, 'requestValue'], ['QUERY_STRING', 'REQUEST_URI', 'PATH_INFO', 'CONTENT_TYPE', 'REMOTE_ADDR', 'SCRIPT_URL', 'REDIRECT_QUERY_STRING', 'REDIRECT_REDIRECT_HTTP_COOKIE', 'REDIRECT_STATUS',
-        'REDIRECT_URI', 'SERVER_URL', 'URL', 'STATUS', 'PATH', 'CONTENT_API_KEY', 'REQUEST_TIMEOUT']),
-    [true, true, true, true, true, true, true, true, true, false, false, false, false, false, false, false]);
+    array_map([Env::class, 'requestValue'], ['QUERY_STRING', 'REQUEST_URI', 'PATH_INFO', 'CONTENT_TYPE', 'REMOTE_ADDR', 'SCRIPT_FILENAME',
+        'REDIRECT_URI', 'SERVER_URL', 'URL', 'PATH', 'CONTENT_API_KEY', 'REQUEST_TIMEOUT']),
+    [true, true, true, true, true, true, false, false, false, false, false, false]);
 (static function (): void {
     putenv('QUERY_STRING=visitor=1');
     putenv('REDIRECT_URI=https://app.example/process');
@@ -69,6 +68,5 @@ putenv('REDIRECT_URI');
 putenv('HTTP_COOKIE');
 putenv('HTTP_PROXY');
 putenv('PHP_AUTH_PW');
-putenv('REDIRECT_HTTP_AUTHORIZATION');
 putenv('FIRST_ENV_PROCESS');
 finish('env');

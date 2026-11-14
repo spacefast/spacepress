@@ -1671,15 +1671,14 @@ credentials core reads for its filesystem and outgoing proxy (`FTP_USER`,
 `WP_PROXY_PASSWORD`) are a build error in `process.env` and `env()`, and read
 as unset at runtime on every host.
 
-Values the web server sets for each request are visitor input, so on a plain
+Values PHP-FPM sets for each request are visitor input, so on a plain
 WordPress install the process environment never supplies them: request headers
-(`HTTP_*`), basic-auth credentials (`PHP_AUTH_*`), the CGI meta-variables by
+(`HTTP_*`), basic-auth credentials (`PHP_AUTH_*`), and the CGI meta-variables by
 exact name (`QUERY_STRING`, `REQUEST_URI`, `PATH_INFO`, `CONTENT_TYPE`,
-`REMOTE_ADDR`, `SCRIPT_URL` and the rest), and Apache's `REDIRECT_` copies of
-any of them. A `wp-config.php` constant of the same name still reads, since a
-request can't set one, and a managed host's own variables may use these names.
-Names that only look alike, such as an app's `REDIRECT_URI` or `SERVER_URL`,
-are ordinary variables.
+`REMOTE_ADDR` and the rest). A `wp-config.php` constant of the same name still
+reads, since a request can't set one, and a managed host's own variables may use
+these names. Names that only look alike, such as an app's `REDIRECT_URI` or
+`SERVER_URL`, are ordinary variables.
 
 The name must be written out. A computed name (`process.env[key]`), iterating
 or spreading `process.env`, writing to it, and every other `process` member are

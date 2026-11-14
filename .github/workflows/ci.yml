@@ -37,8 +37,8 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --lib
   # Three shards in parallel: the compiler suites and the npm comparison (about 26 minutes); the
-  # three slowest test targets, `slow` (app_migrate, config_migrate and sync, about 14); and fmt,
-  # clippy, every other test target and the acceptance scripts, `rest` (about 20). Test targets
+  # slowest test targets, `slow` (app_migrate, app_router, config_migrate, sync and wp_plugins);
+  # and fmt, clippy, every other test target and the acceptance scripts, `rest`. Test targets
   # come from cargo metadata, so a new one lands in `rest` without a workflow edit. With `slow`
   # inside it, `rest` took 26 to 36 minutes, and four of nine full runs on 2026-11-13 hit the
   # 40-minute limit.
@@ -85,7 +85,7 @@ jobs:
       # Migrated apps are type-checked with the standard Node declarations (tests/app_migrate.rs).
       - run: npm ci --prefix tests/host-types --ignore-scripts --no-audit --no-fund
       # Chromium drives compiled client components on WordPress (tests/app_router.rs).
-      - if: matrix.shard == 'rest'
+      - if: matrix.shard == 'slow'
         run: |
           npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
           npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
@@ -99,7 +99,7 @@ jobs:
       - name: cargo test (${{ matrix.shard }})
         run: |
           compiler=(compiler compiler_contracts)
-          slow=(app_migrate config_migrate sync)
+          slow=(app_migrate app_router config_migrate sync wp_plugins)
           if [ "$SHARD" = compiler ]; then
             cargo test --locked "${compiler[@]/#/--test=}"
           elif [ "$SHARD" = slow ]; then

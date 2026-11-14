@@ -62,7 +62,7 @@ Host contract version: **1** (`hostContract` in the manifest).
 | `/__first/*` | First's HTTP API (`/__first/api/v1/*`): kinds, globals, actions, files, `/me`; served before the theme, outside `/wp-json`. Route it to WordPress and never cache it: every answer is `Cache-Control: private, no-store` with `Vary: Cookie, Authorization`, except file streams |
 | `/identity/*` | First Identity's issuer and pages, when the app mounts identity |
 | `/wp-json/first-identity/v1/*` | First Identity's REST API |
-| `/wp-admin/new/*` | First Admin, unless the app sets `admin: false`: wp-admin's `admin.php?page=first-admin`, with the route in the path. Route it to WordPress like the rest of `/wp-admin/` |
+| `/wp-admin/new/*` | First Admin, unless the app sets `admin: false`: served by wp-admin's `admin.php?page=first-admin`. Apache applies the plugin's `.htaccess` rule; any other server must send a path that is not a file to WordPress's `index.php`, which redirects it to `admin.php?page=first-admin&p=<route>` |
 | `/first-admin/*` | the admin's earlier address, redirected to `/wp-admin/new/*` |
 
 The app API is `/__first/api/v1`; actions are `POST /__first/api/v1/actions/<name>`. The generated client is a file of the compiled tree (`client/client.js`); the host chooses the URL it serves it at.

@@ -70,17 +70,26 @@ status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: applic
 ok "a build is not served before it initializes"
 
 # Everything inspection could touch: tables and their columns, options (roles and rewrite rules
-# among them; not the test host's own call log, which every boot writes), the ledger, posts and meta,
+# among them; not the test host's own call log, which every boot writes, nor Action Scheduler's
+# queue-runner lock, which serving takes), the ledger, posts and meta,
 # and scheduled events.
 site() {
   local q
   for q in "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ORDER BY 1, 2" \
-    "SELECT option_name, MD5(option_value) FROM wp_options WHERE option_name NOT LIKE '\\_transient%' AND option_name NOT LIKE '\\_site\\_transient%' AND option_name <> 'first_test_contract' ORDER BY 1" \
+    "SELECT option_name, MD5(option_value) FROM wp_options WHERE option_name NOT LIKE '\\_transient%' AND option_name NOT LIKE '\\_site\\_transient%' AND option_name <> 'first_test_contract' AND option_name NOT LIKE 'action\\_scheduler\\_lock\\_%' ORDER BY 1" \
     "SELECT * FROM wp_first__migrations ORDER BY app, id" "SELECT (SELECT COUNT(*) FROM wp_posts), (SELECT MAX(post_modified_gmt) FROM wp_posts), (SELECT COUNT(*) FROM wp_postmeta), (SELECT COUNT(*) FROM wp_usermeta)" "SELECT * FROM wp_first_notes ORDER BY id"; do
     "$here/harness.sh" sql "$q" 2>/dev/null || echo "missing: $q"
   done
   wp cron event list --fields=hook,next_run_gmt --format=csv 2>/dev/null | sort
 }
+# A managed boot installs nothing: WordPress with build one mounted from WP-CLI, before it
+# initialized, leaves the site as it was. (The test host serves HTTP only for initialized builds.)
+fresh=$(site)
+host "$first" "echo 'booted';" >/dev/null
+booted=$(site)
+[[ $fresh == "$booted" ]] || { diff <(echo "$fresh") <(echo "$booted") >&2; fail "a managed boot before initialize changed the site"; }
+ok "a managed boot before initialize writes nothing"
+
 # Before the first initialize: inspection plans every system table, the init migration and the
 # seed, and writes none of them.
 fresh=$(site)
@@ -101,11 +110,22 @@ PY
 ok "inspecting a build on a fresh site plans its tables, migration and seed, and writes nothing"
 
 receipt=$(initialize "$first")
+# Once initialized, requests to the build (a page, wp-admin, sign-in, the API, WP-CLI) install nothing.
+# Cron is left out: it runs core's and Action Scheduler's own events, which is serving, not installing.
+settled=$(site)
+for path in / /wp-admin/ /wp-login.php /__first/api/v1/kinds/notes; do
+  curl -s -o /dev/null -H "X-First-Build: $first" "$url$path" || true
+done
+host "$first" "echo 'booted';" >/dev/null
+served=$(site)
+[[ $settled == "$served" ]] || { diff <(echo "$settled") <(echo "$served") >&2; fail "requests to an initialized managed build changed the site"; }
+ok "requests to an initialized managed build install nothing"
 [[ $(json migrations.0 <<< "$receipt") == 0001_init ]] || fail "the first build applies the init migration: $receipt"
 [[ $(json seed.notes.created <<< "$receipt") == 1 ]] || fail "the first build seeds one note: $receipt"
 [[ $(action "$first" | json data.build) == one ]] || fail "build one answers"
 [[ $(action "$first" | json data.notes) == 1 ]] || fail "build one reads the seeded note"
 ok "initialize migrates, seeds and marks build one ready"
+
 
 again=$(initialize "$first")
 [[ $again == "$receipt" ]] || fail "a ready build returns its stored receipt: $again"

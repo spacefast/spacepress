@@ -54,7 +54,8 @@ first/app/
   missing, unpublished or unreadable items. You don't export anything to bind it.
 - `export const guard = "subscriber" | (ctx) => true | redirect("/login")` on a
   layout protects everything below it.
-- Static pages (no request data, no guard) are prerendered at build time (§6).
+- A page that exports `prerender = true` is prebuilt, and with `defineConfig({ output: "static" })`
+  every page is: built, [decision](../decisions/2026-11-13-static-output.md) (§6.1).
 - `page.md` (built, [decision](../decisions/2026-11-13-content-pages.md)): the file is the first
   version of a WordPress Page. The site stores it once per file version and never overwrites a
   Page someone edited; the route renders the stored Page inside its layouts. Front matter is
@@ -245,8 +246,10 @@ TSX subset, so they are examples as well as product.
   enough. First's early hook (the engine's pre-WordPress lane, before
   `advanced-cache.php` loads) sees `Accept: text/markdown` and answers it
   before any cache lookup:
-  - it serves the prebuilt `.md` file when there is one;
-  - otherwise it renders with `batcache_cancel()` and
+  - it renders with `batcache_cancel()` (`MarkdownTwins::negotiate()`), also for a prebuilt page:
+    the prebuilt-file lane leaves `Accept: text/markdown` to it (#457). This lane doesn't serve
+    the prebuilt `.md` file;
+  - and answers with
     `Cache-Control: private, no-store`, plus `Vary: Accept` and
     `Content-Location: <url>.md`.
 
@@ -264,8 +267,8 @@ TSX subset, so they are examples as well as product.
   the `.md` twins). The app plugin names itself on that plugin's
   `wpai_markdown_feeds_conflicting_plugins` list, so its settings say so.
 - Items render to markdown from their stored content (`Markdown::fromBlocks`).
-  Code pages render from their compiled output, as an anonymous visitor (built); prebuilt static
-  twins wait for the build-time policy in §6.1.
+  Code pages render from their compiled output, as an anonymous visitor (built). A prebuilt page's
+  twin is written beside its HTML and served from the same file lane (§6.1).
 - `/llms.txt` lists kinds with URLs plus pages, with descriptions.
 - In WordPress-rendered mode, First serves markdown for every kind URL.
 - Backend-only sites: `GET /wp-json/wp/v2/posts/<id>?format=md` (built), and `GET /__first/api/v1/posts/<id>?format=md` once the facade lands (workstream 2).
@@ -302,10 +305,23 @@ policy for each response.
 Every read in a render is bound to the visitor, so an anonymous render is what any anonymous
 visitor sees.
 
-Deferred until the compiler can prove a route's reads don't depend on the viewer: a policy decided
-per route at build time, **prebuilt** pages (HTML + `.md` in `dist/`, served by the engine before
-WordPress) for routes that read nothing request-dependent, and `first check --json` printing each
-route's policy and the reason.
+**Prebuilt pages** (built, [decision](../decisions/2026-11-13-static-output.md)) need no proof that a
+route is viewer-independent: a prebuilt page is the same anonymous render, made ahead of time.
+- **Which pages.** A page opts in with `export const prerender = true`, or every page is prebuilt
+  under `output: "static"`. A page that can't be prebuilt (a layout `guard`, `search`, a viewer
+  function, a dynamic segment with nothing to list) is a build error.
+- **On WordPress** (`output: "server"` only). An Action Scheduler action renders each prebuilt URL
+  as a signed-out visitor and writes its HTML and `.md` below `wp-content/cache/first-prebuilt/`.
+  The app plugin serves them before WordPress parses the request. A write that purges a prebuilt
+  URL removes its files and schedules the rebuild (on-demand regeneration). What no write
+  announces (an option a page reads, a menu, the time) can be up to an hour old: a file is never
+  served past an hour, and every file is rebuilt after 45 minutes. Site-wide settings drop every
+  file at once.
+- **As a static site** (`output: "static"`). `first export` writes the whole site to
+  `first/dist/static/` from local content or from a hosted site. Nothing is prebuilt on a WordPress
+  site for a static app.
+
+Still deferred: a policy decided per route at build time, and `first check --json` printing it.
 
 ### 6.2 Purges by URL
 
@@ -341,7 +357,7 @@ route's policy and the reason.
 - **Representations:** every cacheable URL has exactly one representation per
   cache key. HTML and markdown are separate URLs (`/x` and `/x.md`). Content
   negotiation on `/x` (§5) bypasses every cache, because neither Batcache nor
-  the engine's prebuilt-file lane keys on `Accept`.
+  the app plugin's prebuilt-file lane keys on `Accept` (the file lane steps aside for it).
 
 - **URL purge:** the edge-cache purge action accepts `purge_uris` (query strings
   kept, each host checked against the site) and purges the whole domain only

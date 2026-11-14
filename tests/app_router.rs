@@ -1222,6 +1222,21 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     assert_eq!(seen["purge all, no files"], true);
     // A render that began before a write named its path is not written.
     assert_eq!(seen["race"], json!([true, false, false]));
+    // current.json, for a host serving the files before PHP: this build's directory and the headers to
+    // send; gone with the files, and not written while the site hides itself from the public.
+    assert_eq!(
+        seen["pointer"],
+        json!([
+            true,
+            3600,
+            "public, max-age=0, s-maxage=300, must-revalidate",
+            "UTF-8",
+            "",
+            true
+        ])
+    );
+    assert_eq!(seen["pointer after forget"], false);
+    assert_eq!(seen["pointer while private"], json!([false, false]));
 }
 
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.

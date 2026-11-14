@@ -133,6 +133,50 @@ pub const MOUNT: &[(&str, &str)] = &[
 /// Sealed mode (`sealed: true`, docs/sealed.md): what a host does with the allow-list.
 pub const SEALED: &str = "When the app sets `sealed: true`, the hosted manifest and the build manifest carry `sealed`: the plugin directory names that may load (First's own, the platform pins, and the plugins the config declares). The key is absent when the app isn't sealed. First itself only refuses new activations and reports what else is loaded, because WordPress loads drop-ins, must-use plugins and active plugins before First's app plugin. A host that wants the list enforced does it in its own early code (a must-use plugin of the host's, or `sunrise.php`): it filters `option_active_plugins` with `First\\Loader\\Loader::allowedPlugins($active, $sealed)`, keeps the hidden entries stored with `First\\Loader\\Loader::keepUnlisted($new, $stored, $sealed)` on `pre_update_option_active_plugins`, ships no must-use plugin or drop-in beyond its own, and defines `FIRST_SEALED_ENFORCED` so the app reports `enforced: \"host\"`. `allowedPlugins` never passes `vip-block-data-api` or `vip-decoupled-bundle`, whatever list it is given: each serves stored content around the app's read rules. Nothing changes for sites that don't serve a First app. docs/sealed.md has the example.";
 
+/// Prebuilt pages (`prerender = true` with `output: "server"`; docs/decisions/2026-11-13-static-output.md):
+/// when a host may answer a URL from its file before PHP, and what it must send. Every rule is what
+/// `First\Render\Prebuilt::serve()` checks at `plugins_loaded`, which answers the same files when the
+/// host doesn't; a host that serves them sooner must decide the same way, and send anything it can't
+/// decide to PHP.
+pub const PREBUILT: &[(&str, &str)] = &[
+    (
+        "Where",
+        "`wp-content/cache/first-prebuilt/` (moved by the `first_prebuilt_dir` filter) holds one directory per build, named by 16 hex characters, and `current.json`. Only the directory `current.json` names (`build`) is served; when `current.json` is absent, nothing is: the site has no complete build yet, or it hides itself from the public, or a site-wide change dropped every file",
+    ),
+    (
+        "Request",
+        "`GET` or `HEAD`, with no query string, below the site's home path (`home` in `current.json`, `\"\"` at the domain root). Any other method or a query string goes to PHP",
+    ),
+    (
+        "Cookies",
+        "none whose name starts with `wordpress_logged_in_`, `wordpress_sec_`, `wp-postpass_` or `comment_author_`, and none named `wp_lang`, `zi_session` or `__Host-zi_session`. Any of them goes to PHP",
+    ),
+    (
+        "Accept",
+        "a request whose `Accept` contains `text/markdown` goes to PHP (the Markdown negotiation answers it); the `.md` URL itself is a file like any other",
+    ),
+    (
+        "Path to file",
+        "below the home path, `/` is `index.html`, `/x/y` is `x/y.html`, `/x/y.md` is `x/y.md`, and `/index.md` is the home page's twin. A path ending in `/` other than `/`, a path that is `/index`, a path whose segments aren't each exactly `rawurlencode(rawurldecode(segment))` (one spelling per file), or one that decodes to `..`, NUL or `\\` goes to PHP",
+    ),
+    (
+        "Age",
+        "a file whose modification time is more than `maxAge` seconds ago (`current.json`; 3600) goes to PHP. Files are rewritten well within that window",
+    ),
+    (
+        "Missing file",
+        "goes to PHP: the page isn't prebuilt, or a write removed its file and its rebuild hasn't run",
+    ),
+    (
+        "Response",
+        "`200` with the file's bytes (none for `HEAD`) and `Content-Length`; `Cache-Control` from `current.json` (`cacheControl`, what a cacheable render sends); `X-First-Prebuilt: 1`; for `.html`, `Content-Type: text/html; charset=<charset>` and `Link: <url>.md; rel=\"alternate\"; type=\"text/markdown\"` (`/index.md` for `/`); for `.md`, `Content-Type: text/markdown; charset=UTF-8`, `X-Content-Type-Options: nosniff` and `Link: <url>; rel=\"canonical\"`; and `Content-Signal: <contentSignal>` when it is not empty",
+    ),
+    (
+        "Purges and rebuilds",
+        "a write that changes a prebuilt page removes its files at once, before the write's purge is announced on `first_purge_urls`, and schedules the rebuild (the `first_prebuild` Action Scheduler action, run by the host's jobs worker like any other). Until it has run, the URL has no file and goes to PHP. A host's page cache is purged as for any page; the files need no purge of their own. A full rebuild (deploy, hourly, a site-wide change) rewrites `current.json` when it completes",
+    ),
+];
+
 /// The table-prefix rule.
 pub const TABLE_PREFIX: &str = "First puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}first_<table>`, system tables `{prefix}first__<name>`, identity tables `{prefix}first_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads.";
 
@@ -152,6 +196,7 @@ pub fn manifest_host() -> Value {
         "mount": "First\\Loader\\Loader::load",
         "jobsCommand": "wp first jobs tick",
         "maxTablePrefix": 64 - MAX_SUFFIX,
+        "prebuilt": {"dir": "wp-content/cache/first-prebuilt", "pointer": "current.json"},
     })
 }
 
@@ -180,6 +225,11 @@ pub fn render_doc() -> String {
     }
     out.push_str(&format!("\n### Background work\n\n`{JOBS_COMMAND}`\n\n"));
     out.push_str(&format!("### Sealed mode\n\n{SEALED}\n\n"));
+    out.push_str("### Prebuilt pages\n\nA host may answer a prebuilt page's URL from its file before PHP. It must decide as `First\\Render\\Prebuilt::serve()` does, and send every request it can't decide to PHP, which answers the same files at `plugins_loaded`.\n\n| Rule | What |\n|---|---|\n");
+    for (rule, what) in PREBUILT {
+        out.push_str(&format!("| {rule} | {what} |\n"));
+    }
+    out.push('\n');
     out.push_str(&format!("### Table prefix\n\n{TABLE_PREFIX} The longest name First adds after it is {MAX_SUFFIX} characters, so a prefix may be at most {} characters.\n\n", 64 - MAX_SUFFIX));
     out.push_str("### Manifest `host` object\n\n```json\n");
     out.push_str(&serde_json::to_string_pretty(&manifest_host()).unwrap());

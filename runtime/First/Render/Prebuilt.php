@@ -128,10 +128,47 @@ final class Prebuilt
         if (self::$plugin === null) {
             return;
         }
+        // The pointer goes first: a host serving files before PHP stops at once.
+        @unlink(self::pointer());
         if (is_dir(self::dir())) {
             self::remove(self::dir());
         }
         delete_option(self::option());
+    }
+
+    /**
+     * `current.json` beside the build directories: what a host that serves prebuilt files before PHP
+     * needs and can't compute itself (docs/host-contract.md, "Prebuilt pages"). Written when a full
+     * build completes, removed with the files.
+     */
+    public static function pointer(): string
+    {
+        return dirname(self::dir()) . '/current.json';
+    }
+
+    /** Writes the pointer for this build, or removes it while the site hides itself from the public. */
+    private static function publish(): void
+    {
+        $public = (int) get_option('blog_public', 1) >= 0 && !get_option('wpcom_public_coming_soon') && !get_option('wpcom_coming_soon');
+        if (!apply_filters('first_prebuilt_serve', $public, '/')) {
+            @unlink(self::pointer());
+            return;
+        }
+        [$control] = Cache::policy(200, true, false);
+        $pointer = [
+            'build' => basename(self::dir()),
+            'maxAge' => self::MAX_AGE,
+            'cacheControl' => $control,
+            'charset' => (string) get_option('blog_charset'),
+            'contentSignal' => MarkdownTwins::contentSignal(),
+            'home' => rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/'),
+        ];
+        $tmp = self::pointer() . '.' . bin2hex(random_bytes(4)) . '.tmp';
+        if (wp_mkdir_p(dirname(self::pointer())) && file_put_contents($tmp, (string) wp_json_encode($pointer, JSON_UNESCAPED_SLASHES)) !== false) {
+            rename($tmp, self::pointer());
+        } else {
+            @unlink($tmp);
+        }
     }
 
     /** Prebuilt files are served here and kept current: the build is `output: "server"` with a prebuilt page. */
@@ -597,6 +634,7 @@ final class Prebuilt
         }
         if ($all) {
             update_option(self::option(), ['state' => 'built', 'at' => time(), 'retry' => 60], false);
+            self::publish();
         }
     }
 

@@ -186,5 +186,26 @@ $m = new ReflectionMethod(\First\Render\Prebuilt::class, 'write');
 $written = $m->invoke(null, \First\Render\Prebuilt::dir() . '/about.html', 'old', '/about', $started);
 $out['race'] = [$before, $written, is_file(\First\Render\Prebuilt::dir() . '/about.html')];
 
+// What a host that serves the files before PHP reads (docs/host-contract.md, "Prebuilt pages"):
+// current.json names this build's directory and the headers to send, and goes with the files.
+do_action('init');
+$drain();
+$pointer = json_decode((string) @file_get_contents(\First\Render\Prebuilt::pointer()), true);
+$out['pointer'] = is_array($pointer) ? [
+    $pointer['build'] === basename(\First\Render\Prebuilt::dir()),
+    $pointer['maxAge'], $pointer['cacheControl'], $pointer['charset'], $pointer['home'],
+    is_file(dirname(\First\Render\Prebuilt::pointer()) . '/' . $pointer['build'] . '/about.html'),
+] : null;
+\First\Render\Prebuilt::forget();
+$out['pointer after forget'] = is_file(\First\Render\Prebuilt::pointer());
+do_action('init');
+$drain();
+update_option('blog_public', -1);
+$out['pointer while private'] = [is_file(\First\Render\Prebuilt::pointer())];
+do_action('init');
+$drain();
+$out['pointer while private'][] = is_file(\First\Render\Prebuilt::pointer());
+update_option('blog_public', 1);
+
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

@@ -541,7 +541,7 @@ test("Apache denies the direct /wp-content/uploads/first-private/ URL", async ()
   assert.equal((await fetch(`${harness.url}/wp-content/uploads/first-private/blog/decks/${file}`)).status, 403);
 });
 
-test("file({ bucket }) columns: checked on API and editor writes, populated for the owner only, nulled on delete", async () => {
+test("file(bucket) columns: checked on API and editor writes, populated for the owner only, nulled on delete", async () => {
   probe();
   const row = await deck("talk");
   await problem("POST", "/talks", { as: "author", body: { title: "Bad", deck: 999999 } }, { status: 422, code: "invalid_input", pointer: "/deck" });

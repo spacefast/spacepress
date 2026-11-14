@@ -2027,7 +2027,7 @@ mod tests {
         let doc = document(
             "import { collection, global, text } from \"first\";\n\
              export const categories = collection({ title: text() }, { title: \"title\" });\n\
-             export const posts = global(\"posts\", { motto: text().default(\"x\") });\n",
+             export const posts = global({ motto: text().default(\"x\") });\n",
         );
         assert_eq!(dangling(&doc), Vec::<String>::new());
         assert_eq!(doc["paths"]["/tags"]["get"]["operationId"], "tags.list");

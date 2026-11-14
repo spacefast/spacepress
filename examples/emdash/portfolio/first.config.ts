@@ -48,7 +48,7 @@ export const pages = collection({
   seo: group({ title: text().max(160).optional(), description: text().max(300).optional(), noindex: boolean().default(false) }).optional(),
 }, { label: "Portfolio pages", title: "title", content: "body", access: editorial });
 
-export const settings = global("settings", {
+export const settings = global({
   title: text().default("Norma").max(80),
   tagline: text({ multiline: true }).max(400).optional(),
   logo: media({ accept: "image" }).optional(),

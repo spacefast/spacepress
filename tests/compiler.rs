@@ -527,23 +527,23 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "duplicate logical registration `notes`",
         ),
         (
-            "globals: { status: global('status', { label: text().default('Ready').optional() }) }",
+            "globals: { status: global({ label: text().default('Ready').optional() }) }",
             "\"status\" is reserved by generated client types",
         ),
         (
-            "globals: { user: global('user', { label: text().default('Ready').optional() }) }",
+            "globals: { user: global({ label: text().default('Ready').optional() }) }",
             "\"user\" is reserved by generated client types",
         ),
         (
-            "globals: { record: global('record', { label: text().default('Ready').optional() }) }",
+            "globals: { record: global({ label: text().default('Ready').optional() }) }",
             "\"record\" is reserved by generated client types",
         ),
         (
-            "globals: { client: global('client', { label: text().default('Ready').optional() }) }",
+            "globals: { client: global({ label: text().default('Ready').optional() }) }",
             "\"client\" is reserved by generated client types",
         ),
         (
-            "globals: { extract: global('extract', { label: text().default('Ready').optional() }) }",
+            "globals: { extract: global({ label: text().default('Ready').optional() }) }",
             "\"extract\" is reserved by generated client types",
         ),
         ("tables: []", "`tables` must be an object"),

@@ -2886,7 +2886,7 @@ fn phase2_config(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, 
         for (name, value) in object(v, span, "files")? {
             let Value::FileBucket(bucket) = value else {
                 return Err(Diag::new(span, "files entries must use files()")
-                    .help("write files(\"decks\", { accept: [\"application/pdf\"], maxBytes: 20000000 })"));
+                    .help("write `export const decks = files({ accept: [\"application/pdf\"], maxBytes: 20000000 })` and list it as `files: { decks }`"));
             };
             let sp = bucket.span;
             // The export name (the registry key) names the bucket; a 0.3.0 capture's own name must match.

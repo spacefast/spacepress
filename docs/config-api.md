@@ -407,7 +407,7 @@ Phase-2 modifiers:
   with a top-level `OR`. It never hides data from the API.
 - `.localized()`: the field is translated per locale (text, richText, json,
   select, group, repeater, blocks). See [Locales](#locales).
-- `file({ bucket })`: a column holding a private file's id. See [Files](#files).
+- `file(bucket)`: a column holding a private file's id from an exported `files()` bucket. See [Files](#files).
 
 Each modifier is checked against the column kind (design §1.2): `.max()` on a
 boolean, `.pattern()` on a number, `.onDelete()` on text and so on fail the
@@ -600,7 +600,7 @@ answers exactly what core answers under First's rules.
 | `POST /__first/api/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
 | `GET /__first/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
 | `POST /__first/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
-| `GET /__first/api/v1/search?q=…[&kinds=a,b][&limit=n]` | | `{ data: { q, results: [{ kind, rows }] } }`: the same search on every kind, as the caller; a kind the caller may not read is left out |
+| `GET /__first/api/v1/search?q=…[&kinds=a,b][&limit=n]` | `GET /wp/v2/search?search=…` (kinds with a `url`, as subtypes of `post`) | `{ data: { q, results: [{ kind, rows }] } }`: the same search on every kind, as the caller; a kind the caller may not read is left out |
 | `GET /__first/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
 | `GET /__first/api/v1/openapi.json` | | the API as an OpenAPI 3.1 document; public |
 
@@ -771,6 +771,30 @@ scripts. It never fetches other sites or WordPress's own paths (`/wp-admin`, `/w
 Content edited in wp-admin, synced Markdown and TSX pages are checked the same way, so run it
 against `first dev` before a release and against the published site after one.
 
+### Astro's `src/content.config.ts`
+
+An Astro project's content collections are kinds as they stand
+([decision](decisions/2026-11-14-astro-content-config.md)). Each `glob()` collection in
+`src/content.config.ts` syncs its folder of Markdown, `**/*.md` as a folder tree (a hierarchical
+kind; the path is the slug) and `*.md` as the folder alone, with its Zod schema read as fields:
+
+| Zod | First field |
+| --- | --- |
+| `z.string()`, `.url()`, `.email()` | `text()`, `url()`, `email()` |
+| `z.number()`, `.int()` | `number()`, `integer()` |
+| `z.boolean()` | `boolean()` |
+| `z.date()`, `z.coerce.date()` | `date()` (front matter `YYYY-MM-DD`) |
+| `z.enum([...])` | `select([...])` |
+| `z.array(z.string())`, `z.array(z.number())` | `json<string[]>()`, `json<number[]>()` |
+| `z.array(z.enum([...]))` | `select([...]).many()` |
+
+`.optional()`, `.nullable()`, `.default(<literal>)`, `.min()`, `.max()`, `.nonnegative()` and
+`.positive()` on an `.int()` carry over. The collection needs a required `title` (or `name`)
+string, and its name is the kind's (an identifier of at most 14 characters). A field First can't
+map (`z.object()`, a union, `image()`, `reference()`, a transform, a list of objects) is a build
+error at the field in `src/content.config.ts`: declare that collection in `first/` instead.
+Collections with another loader, or imported from another file, stay Astro's.
+
 ### Components in Markdown
 
 A component in `first/components/` can be used in synced Markdown as a block
@@ -867,8 +891,8 @@ backend.
 
 ### Globals
 
-`global(name, fields, { label?, access?: { read?, update? } })`, registered in
-`defineConfig({ globals: { name } })`. One record per global; fields use the
+`export const settings = global(fields, { label?, access?: { read?, update? } })`:
+the export names it. One record per global; fields use the
 sub-field rules, and a required field needs a default. `GET`/`PATCH
 /__first/api/v1/<name>`.
 
@@ -880,13 +904,14 @@ focal point (`PATCH /media/<id>` with `{ focal: { x, y } }`, editors only;
 centre by default); `inside` scales to fit. Media rows carry
 `sizes.<name>.url`.
 
-<a id="files"></a>Private files live in logical file resources:
+<a id="files"></a>Private files live in logical buckets, each named by its export:
 
 ```ts
-files: { decks: files("decks", { accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "owner", delete: "editor" } }) },
+export const decks = files({ accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "owner", delete: "editor" } });
+export const talks = collection({ title: text(), deck: file(decks).optional() });
 ```
 
-and a `file({ bucket: "decks" })` column holds one by id. Files never get a
+and a `file(decks)` column holds one by id. Files never get a
 public URL: `GET /files/<bucket>/<id>` returns the row with a signed `url`
 valid for five minutes, and that link streams the bytes through PHP. `"owner"` means the uploader. Uploads outside
 `accept` are refused (422 at `/file`); uploads over `maxBytes` get 413
@@ -909,7 +934,7 @@ uploads: {
 ```
 
 This backend stores private files, media originals and generated sizes, including
-standard WordPress editor uploads. `client.files.decks` and `file({ bucket: "decks" })`
+standard WordPress editor uploads. `client.files.decks` and `file(decks)`
 keep naming the logical resource; `uploads.bucket` is the physical provider bucket.
 Collections and tables can both reference files and media. Credentials resolve
 only at runtime; the compiler requires `env()` references. An optional
@@ -1022,11 +1047,21 @@ keeps its TEXT/DOUBLE storage and string response IDs.
 
 ### Schema changes at deploy
 
-`first check --json` lists each SQL index the deploy keeps, and why it exists,
-under `indexes`: `{ table, name, unique, columns, reason }`. The reasons are
-the primary key, `.unique()`, a reference (MySQL indexes a foreign key),
-drafts (status and publish date) and locales (one row per locale in a
-translation group). Post-backed kinds use WordPress's own indexes.
+Indexes on a SQL table come from the schema and from your code:
+
+- the primary key, `.unique()`, a reference (MySQL indexes a foreign key),
+  drafts (status and publish date) and locales (one row per locale in a
+  translation group);
+- every field a compiled `where` or `orderBy` names (in actions, hooks, jobs,
+  routes and pages), unless an index already starts with it. A long text
+  field (more than 191 characters, no `.max()`), a list or a JSON value gets
+  none;
+- compound ones you declare: `table({ ... }).index(["post", "author"], { unique: true })`.
+
+`first check --json` lists each index under `indexes`:
+`{ table, name, unique, columns, reason }`. A new index is an additive change:
+`first build` writes it as a migration. Post-backed kinds use WordPress's own
+indexes on `wp_posts` and its meta.
 
 `first build` writes the SQL for each schema change to `first/_generated/migrations/`.
 You don't edit or review it. The deploy (`wp first migrate`, the first request after
@@ -1088,7 +1123,8 @@ table rows, posts and post meta.
   of a collection each run in one transaction. A throw rolls back every write
   in it, to tables and to content alike.
 - A job enqueued from a hook or an action runs after the request commits,
-  never inside it.
+  never inside it. It is queued in the request's transaction: a rollback
+  leaves no job and nothing for Action Scheduler to run.
 - Handlers in `first/wp-hooks/` run wherever WordPress fires the hook. Outside
   a First write (a page view, cron, a save of a post type First doesn't own)
   there is no First transaction and each write commits on its own. When the
@@ -1269,8 +1305,12 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   <version> [--parent=<n>]` (`wp first schema …` on a server). `apply` takes a JSON list of changes
   (or a whole change set) and applies it on the newest version unless `--parent` says otherwise.
   `rollback` applies the reverse of a version as a new version.
-- **wp-admin.** Tools → Schema versions lists every version, newest first, with who made it and
-  each change in words, and says which runtime changes the running build doesn't contain yet.
+- **Both admins.** Schema versions (Tools in classic wp-admin, the sidebar in First Admin) lists
+  every version, newest first, with who made it and each change in words, and says which runtime
+  changes the running build doesn't contain yet. It is a screen declared once
+  ([admin-screens.md](admin-screens.md)) over `<app>/schema-read`, whose versions carry the same
+  `by` and `summary`. With `admin: false` there is no screen; `first schema list` and the
+  `<app>/schema-read` ability show the same.
 
 Taxonomies can't be added at runtime: `taxonomy()` is not in this First version.
 

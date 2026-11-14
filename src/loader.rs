@@ -71,6 +71,57 @@ pub trait Fs {
     fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf>;
 }
 
+/// A file system with one more file: a module First writes for the project and never puts on disk.
+struct Generated<'a> {
+    inner: &'a dyn Fs,
+    path: &'a Path,
+    source: &'a str,
+}
+
+impl Fs for Generated<'_> {
+    fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
+        self.inner.read_dir(path)
+    }
+    fn is_symlink(&self, path: &Path) -> bool {
+        self.inner.is_symlink(path)
+    }
+    fn allow_packages(&self) -> bool {
+        self.inner.allow_packages()
+    }
+    fn frozen_capture(&self) -> bool {
+        self.inner.frozen_capture()
+    }
+    fn module_alias(&self) -> Option<&'static str> {
+        None
+    }
+    fn legacy_fields(&self) -> bool {
+        self.inner.legacy_fields()
+    }
+    fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
+        if path == self.path {
+            Ok(self.source.to_string())
+        } else {
+            self.inner.read_to_string(path)
+        }
+    }
+    fn is_file(&self, path: &Path) -> bool {
+        path == self.path || self.inner.is_file(path)
+    }
+    fn is_dir(&self, path: &Path) -> bool {
+        self.inner.is_dir(path)
+    }
+    fn exists(&self, path: &Path) -> bool {
+        path == self.path || self.inner.exists(path)
+    }
+    fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
+        if path == self.path {
+            Ok(path.to_path_buf())
+        } else {
+            self.inner.canonicalize(path)
+        }
+    }
+}
+
 /// The real file system.
 pub struct Disk;
 
@@ -180,6 +231,22 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
             }
         }
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    }
+    // An Astro project's `src/content.config.ts`: its glob collections are kinds (crate::astro_content).
+    match crate::astro_content::module(&*fs, &program.root) {
+        Ok(Some((path, source))) => {
+            let generated = Generated {
+                inner: &*fs,
+                path: &path,
+                source: &source,
+            };
+            match load_module(&generated, &path, &mut program, &mut by_path, &mut diagnostics) {
+                Ok(module) => program.app_modules.push(module),
+                Err(d) => diagnostics.push(d.phase(diag::Code::Schema)),
+            }
+        }
+        Ok(None) => {}
+        Err(d) => diagnostics.push(d),
     }
     // Pages beside first.config.ts are from before `first/app/`: refuse them rather than build a
     // site without them. (A converted 0.8 capsule's `pages/` is read by `first migrate`, not here.)

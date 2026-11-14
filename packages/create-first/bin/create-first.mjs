@@ -64,7 +64,7 @@ async function main() {
     if (code !== 0) throw new Error(`App created at ${destination}, but npm install failed. Fix the reported download/tool error, then run npm install there. Your app was preserved.`);
   }
   const agents = await agentFiles(destination, !args.includes('--no-install'));
-  process.stdout.write(`\nCreated ${name}.\n\n  cd ${JSON.stringify(directories[0])}\n${args.includes('--no-install') ? '  npm install\n' : ''}${agents ? '' : '  npx first init    # AGENTS.md, .mcp.json and skills for coding agents\n'}  npm run dev\n\nOpen /wp-content/plugins/first-app-${name}/public/index.html on the printed WordPress URL.\n“Write a note” opens the native editor. See README.md for local credentials and commands.\n${agents ? 'AGENTS.md, .mcp.json and the agent skills describe this project to coding agents; run npx first init after changing the config.\n' : ''}`);
+  process.stdout.write(`\nCreated ${name}.\n\n  cd ${JSON.stringify(directories[0])}\n${args.includes('--no-install') ? '  npm install\n' : ''}${agents ? '' : '  npx first init    # AGENTS.md, .mcp.json and skills for coding agents\n'}  npm run dev\n\nOpen /index.html on the printed WordPress URL.\n“Write a note” opens the native editor. See README.md for local credentials and commands.\n${agents ? 'AGENTS.md, .mcp.json and the agent skills describe this project to coding agents; run npx first init after changing the config.\n' : ''}`);
 }
 
 main().catch((error) => { process.stderr.write(`create-first: ${error.message}\n`); process.exitCode = 1; });

@@ -106,7 +106,10 @@ export interface Query<T> extends Promise<T> {
 
 export interface CollectionClient<K extends CollectionKey> {
   list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Query<RowWith<K, W>[]>;
-  /** One page and the `cursor` of the next (null on the last page): pass it back as `cursor`. */
+  /**
+   * One page and the `cursor` of the next (null on the last page): pass it back as `cursor`. A page
+   * with `offset` can be awaited but not subscribed to (`subscribe` throws): subscribe by `cursor`.
+   */
   paginate<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
     q?: ListQuery<K, ExactWith<K, W>> & { cursor?: string | null },
   ): Query<{ rows: RowWith<K, W>[]; cursor: string | null }>;
@@ -581,8 +584,11 @@ export function createClient(options: ClientOptions = {}): Client {
   function switchTo(next: Held | null, from: string): boolean {
     if (currentSid() !== from) return false;
     store({ ...(next ?? {}), sid: randomString(12) });
+    identityChanged?.();
     return true;
   }
+  /** Set once subscriptions exist: a sign-in or sign-out asks every one of them again, as the new visitor. */
+  let identityChanged: (() => void) | null = null;
   /** Keep the same identity (refresh): replace the tokens, keep the sid. */
   function hold(next: Held, sid: string): void {
     store({ ...next, sid });
@@ -960,8 +966,13 @@ export function createClient(options: ClientOptions = {}): Client {
     error?: FirstError;
     due: boolean;
     subscribers: Set<Subscriber>;
-    /** Optimistic updates, oldest first. `after`: the last request sent before the write was known to be committed (null: not settled). */
+    /** Optimistic updates, oldest first. `after`: the last request for this read sent before the write was known to be committed (null: not settled). */
     overlays: { apply: (current: unknown) => unknown; after: number | null }[];
+    /** Requests that carried this read: the last one sent, and the last one answered. */
+    sent: number;
+    answered: number;
+    /** `sent` when the last write through this client returned. */
+    sentAtWrite: number;
   }
   const subscriptions = new Map<string, Subscription>();
   let serverWindow = { min: 2_000, max: 30_000 };
@@ -969,63 +980,102 @@ export function createClient(options: ClientOptions = {}): Client {
     typeof pollOpt === "number" ? { min: pollOpt, max: pollOpt } : { min: (pollOpt || {}).min ?? serverWindow.min, max: (pollOpt || {}).max ?? serverWindow.max };
   let gap = bounds().min;
   let liveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** When the armed poll fires (Date.now() milliseconds). */
+  let liveAt = 0;
   let asking = false;
   let askAgain = false;
   let kicked = false;
-  // Requests are numbered as they are sent. An answer to a request sent after a write committed holds that write.
+  // Requests are numbered as they are sent. An answer to a request for a read sent after a write
+  // committed holds that write; each read keeps the numbers of its own requests.
   let sent = 0;
-  let answered = 0;
   let writes = 0;
-  let sentAtLastWrite = 0;
   let stopNotices: (() => void) | null = null;
-  const page = () => (globalThis as { document?: { visibilityState?: string; addEventListener?(type: string, fn: () => void): void; removeEventListener?(type: string, fn: () => void): void } }).document;
-  const hidden = () => page()?.visibilityState === "hidden";
+  type Listens = { addEventListener?(type: string, fn: (event: unknown) => void): void; removeEventListener?(type: string, fn: (event: unknown) => void): void };
+  const page = () => (globalThis as { document?: Listens & { visibilityState?: string; prerendering?: boolean } }).document;
+  // A prerendered page is hidden until it is activated, whatever visibilityState says meanwhile.
+  const hidden = () => page()?.visibilityState === "hidden" || page()?.prerendering === true;
   const markDue = (which: (s: Subscription) => boolean) => {
     for (const s of subscriptions.values()) if (which(s)) s.due = true;
   };
+  /**
+   * Runs one subscriber callback. A subscriber's own failure (its render threw, its error handler
+   * threw) is its own: the others, the answer and the requests after it all stand. It is reported
+   * as the page reports an uncaught error.
+   */
+  const guarded = (fn: () => void) => {
+    try {
+      fn();
+    } catch (e) {
+      const report = (globalThis as { reportError?: (e: unknown) => void }).reportError;
+      if (typeof report === "function") report(e);
+      else console.error(e);
+    }
+  };
+  /** Tells every subscriber of `s` about `error`, each in its own guarded call. */
+  const fail = (s: Subscription, error: FirstError) => {
+    for (const to of [...s.subscribers]) guarded(() => to.onError?.(error));
+  };
   const deliver = (s: Subscription, to: Subscriber) => {
-    if (s.error) return to.onError?.(s.error);
+    if (s.error) return guarded(() => to.onError?.(s.error!));
     if (!s.has) return;
     // A `get` of a row that is missing, or that this visitor may not read, is the API's 404.
-    if (s.descriptor.op === "get" && s.data === null) return to.onError?.(new FirstError({ type: "about:blank", title: "Not found", status: 404, code: "not_found", detail: `No ${s.descriptor.kind} row` }));
-    to.onData(s.overlays.reduce((data, overlay) => overlay.apply(data), s.data));
+    if (s.descriptor.op === "get" && s.data === null) return guarded(() => to.onError?.(new FirstError({ type: "about:blank", title: "Not found", status: 404, code: "not_found", detail: `No ${s.descriptor.kind} row` })));
+    const data = s.overlays.reduce((current, overlay) => overlay.apply(current), s.data);
+    guarded(() => to.onData(data));
   };
   const emit = (s: Subscription) => {
     for (const to of [...s.subscribers]) deliver(s, to);
   };
-  const reschedule = () => {
-    if (liveTimer !== null) clearTimeout(liveTimer);
-    liveTimer = null;
+  /**
+   * Arms the interval poll. It asks for every subscription, so other requests (a notice, a write,
+   * a new subscriber) don't restart it: `restart` is only for a changed interval or state.
+   */
+  const reschedule = (restart = false) => {
     const every = live ? livePollMs : pollOpt === false ? false : gap;
-    if (subscriptions.size === 0 || every === false || hidden()) return;
+    const off = subscriptions.size === 0 || every === false || hidden();
+    if (off) {
+      if (liveTimer !== null) clearTimeout(liveTimer);
+      liveTimer = null;
+      return;
+    }
     // Jittered, so the tabs of a busy page don't all ask at once. A fixed interval is taken as given.
     const jitter = !live && typeof pollOpt === "number" ? 1 : 0.8 + Math.random() * 0.4;
+    const due = Date.now() + Math.round(every * jitter);
+    // An armed poll is kept unless this one would come sooner: other requests (a notice, a write,
+    // a new subscriber) ask only for some reads, and must never push back the one that asks for all.
+    if (liveTimer !== null && !restart && due >= liveAt) return;
+    if (liveTimer !== null) clearTimeout(liveTimer);
+    liveAt = due;
     liveTimer = setTimeout(() => {
       liveTimer = null;
       markDue(() => true);
-      void ask();
-    }, Math.round(every * jitter));
+      void ask(true);
+    }, due - Date.now());
   };
   /** One answer applied to its subscription; true when the result changed. */
   const settle = (s: Subscription, result: unknown, request: number): boolean => {
-    const overlays = s.overlays.length;
-    s.overlays = s.overlays.filter((o) => o.after === null || request <= o.after);
-    const dropped = s.overlays.length !== overlays;
     if (!isObject(result)) {
-      for (const to of [...s.subscribers]) to.onError?.(networkError("POST /_live: the answer has no result for this read"));
+      fail(s, networkError("POST /_live: the answer has no result for this read"));
       return false;
     }
     if (result.pending === true) {
-      s.due = askAgain = true; // the server ran out of time for this request; ask again at once
+      // The server ran out of time for this request; ask again at once. No data came, so an
+      // optimistic update stays: nothing yet holds its write.
+      s.due = askAgain = true;
       return false;
     }
+    // An answer with data (fresh, or "not modified" over what is held) holds every write committed
+    // before its request was sent: updates settled before then are replaced by it.
+    const overlays = s.overlays.length;
+    s.overlays = s.overlays.filter((o) => o.after === null || request <= o.after);
+    const dropped = s.overlays.length !== overlays;
     if (isObject(result.error)) {
       s.token = undefined;
       const error = toError(new Response(null, { status: typeof result.error.status === "number" && result.error.status >= 400 ? result.error.status : 500 }), result.error);
       // A read that stays refused reports it once, not on every poll.
       const same = s.error !== undefined && s.error.status === error.status && s.error.code === error.code && s.error.detail === error.detail;
       s.error = error;
-      if (!same) emit(s);
+      if (!same || dropped) emit(s);
       return false;
     }
     if (typeof result.token === "string") s.token = result.token;
@@ -1039,7 +1089,7 @@ export function createClient(options: ClientOptions = {}): Client {
     if (changed || dropped || recovered) emit(s);
     return changed;
   };
-  async function ask(): Promise<void> {
+  async function ask(fromTimer = false): Promise<void> {
     if (asking) {
       askAgain = true;
       return;
@@ -1048,29 +1098,38 @@ export function createClient(options: ClientOptions = {}): Client {
     try {
       do {
         askAgain = false;
+        // Another client on the same storage signed in or out: this one's reads are the old visitor's.
+        if (currentSid() !== askedAs) forget();
         const due = [...subscriptions.entries()].filter(([, s]) => s.due);
         if (due.length === 0) break;
         let changed = false;
         let failed = false;
-        for (let i = 0; i < due.length; i += 20) {
-          const batch = due.slice(i, i + 20);
-          for (const [, s] of batch) s.due = false;
+        for (const batch of batches(due)) {
           const number = ++sent;
+          const visitor = currentSid();
+          for (const [, s] of batch) {
+            s.due = false;
+            s.sent = number;
+          }
           try {
             const out = await request<{ results?: unknown[]; poll?: { minMs?: unknown; maxMs?: unknown } }>("POST", "/_live", {
               json: { queries: batch.map(([, s]) => (s.token === undefined ? s.descriptor : { ...s.descriptor, token: s.token })) },
             });
+            // Sent as a visitor who has since signed in or out: the new visitor's request is already due.
+            if (currentSid() !== visitor) continue;
             const { minMs, maxMs } = out.poll ?? {};
             if (typeof minMs === "number" && typeof maxMs === "number" && minMs > 0 && maxMs >= minMs) serverWindow = { min: minMs, max: maxMs };
             // A subscription ended, or ended and started again, while the request was out has no use for its answer.
-            answered = Math.max(answered, number);
             batch.forEach(([key, s], j) => {
-              if (subscriptions.get(key) === s) changed = settle(s, out.results?.[j], number) || changed;
+              if (subscriptions.get(key) !== s) return;
+              s.answered = Math.max(s.answered, number);
+              changed = settle(s, out.results?.[j], number) || changed;
             });
           } catch (e) {
+            if (currentSid() !== visitor) continue;
             failed = true;
             const error = e instanceof FirstError ? e : networkError(String(e));
-            for (const [key, s] of batch) if (subscriptions.get(key) === s) for (const to of [...s.subscribers]) to.onError?.(error);
+            for (const [key, s] of batch) if (subscriptions.get(key) === s) fail(s, error);
           }
         }
         // Back off while nothing changes, further while the server fails; start over after a change.
@@ -1079,9 +1138,34 @@ export function createClient(options: ClientOptions = {}): Client {
       } while (askAgain);
     } finally {
       asking = false;
-      reschedule();
+      // The interval's own poll arms the next one; any other request may only bring it sooner.
+      reschedule(fromTimer);
     }
   }
+  /**
+   * Requests of at most 20 reads and 30,000 bytes, under the endpoint's 20 and 32 KiB. A read too
+   * large alone still goes alone, and the server answers it with its 413.
+   */
+  const utf8 = new TextEncoder();
+  const batches = <T extends [string, Subscription]>(due: T[]): T[][] => {
+    const out: T[][] = [];
+    let batch: T[] = [];
+    let size = 0;
+    for (const entry of due) {
+      const s = entry[1];
+      // UTF-8 bytes, as the server counts its body, not UTF-16 characters.
+      const bytes = utf8.encode(JSON.stringify(s.token === undefined ? s.descriptor : { ...s.descriptor, token: s.token })).length + 1;
+      if (batch.length > 0 && (batch.length === 20 || size + bytes > 30_000)) {
+        out.push(batch);
+        batch = [];
+        size = 0;
+      }
+      batch.push(entry);
+      size += bytes;
+    }
+    if (batch.length > 0) out.push(batch);
+    return out;
+  };
   /** Ask soon: every subscription marked due in this turn travels in one request. */
   const kick = () => {
     if (kicked) return;
@@ -1095,29 +1179,55 @@ export function createClient(options: ClientOptions = {}): Client {
   const wrote = <T>(written: Promise<T>, collection?: string): Promise<T> =>
     written.then((result) => {
       writes++;
-      sentAtLastWrite = sent;
+      for (const s of subscriptions.values()) s.sentAtWrite = s.sent;
       if (subscriptions.size > 0) {
         markDue((s) => collection === undefined || s.deps.has(collection));
         kick();
       }
       return result;
     });
+  /** The visitor the held tokens and data are for: the stored session's id when they were last asked. */
+  let askedAs = currentSid();
+  /** A new visitor: every subscription is asked again, without the previous visitor's tokens. */
+  const forget = () => {
+    askedAs = currentSid();
+    for (const s of subscriptions.values()) {
+      s.due = true;
+      s.token = undefined; // a token is for the visitor it was issued to
+    }
+    gap = bounds().min;
+  };
+  identityChanged = () => {
+    if (subscriptions.size === 0) return;
+    forget();
+    if (!hidden()) kick();
+  };
   const shown = () => {
-    if (hidden()) return reschedule(); // stops the interval
+    if (hidden()) return reschedule(true); // stops the interval
     gap = bounds().min;
     markDue(() => true);
     kick();
   };
+  /** `pageshow`: only a page restored from the back/forward cache (`persisted`) needs to ask again. */
+  const restored = (event: unknown) => {
+    if ((event as { persisted?: boolean } | null)?.persisted === true) shown();
+  };
   function subscribe(key: string, descriptor: ReadCall, deps: readonly string[], to: Subscriber, seed?: { token: string; data: unknown }): () => void {
     let s = subscriptions.get(key);
     if (!s) {
-      s = { descriptor, deps: new Set(deps), has: seed !== undefined, data: seed?.data, token: seed?.token, due: true, subscribers: new Set(), overlays: [] };
+      s = { descriptor, deps: new Set(deps), has: seed !== undefined, data: seed?.data, token: seed?.token, due: true, subscribers: new Set(), overlays: [], sent: 0, answered: 0, sentAtWrite: 0 };
       subscriptions.set(key, s);
       if (subscriptions.size === 1) {
+        // Shown again: a tab made visible, a prerendered page activated (speculation rules), or a page
+        // restored from the back/forward cache, which may have been frozen for a long time.
         page()?.addEventListener?.("visibilitychange", shown);
+        page()?.addEventListener?.("prerenderingchange", shown);
+        (globalThis as Listens).addEventListener?.("pageshow", restored);
         const onStatus = () => {
-          if (live) markDue(() => true), kick(); // catch up on what changed while the transport was down
-          else reschedule();
+          // Catch up on what changed while the transport was down; a hidden tab does so when shown.
+          if (live) markDue(() => true);
+          if (live && !hidden()) kick();
+          reschedule(true);
         };
         statusListeners.add(onStatus);
         const stop = realtime.subscribe(null, (notice) => {
@@ -1134,24 +1244,30 @@ export function createClient(options: ClientOptions = {}): Client {
     subscription.subscribers.add(to);
     // What an earlier subscriber of the same read already holds, at once.
     if (subscription.has || subscription.error) queueMicrotask(() => subscription.subscribers.has(to) && deliver(subscription, to));
-    kick();
+    // A hidden tab (opened in the background, or prerendered) sends nothing: a seeded read already
+    // shows its server-rendered answer, and an unseeded one has no one to show an answer to. Both
+    // stay due, and the `shown` handler asks for them when the tab becomes visible.
+    if (!hidden()) kick();
     return () => {
       subscription.subscribers.delete(to);
       if (subscription.subscribers.size > 0 || subscriptions.get(key) !== subscription) return;
       subscriptions.delete(key);
       if (subscriptions.size > 0) return;
       page()?.removeEventListener?.("visibilitychange", shown);
+      page()?.removeEventListener?.("prerenderingchange", shown);
+      (globalThis as Listens).removeEventListener?.("pageshow", restored);
       stopNotices?.();
       stopNotices = null;
       gap = bounds().min;
-      reschedule();
+      reschedule(true);
     };
   }
   function optimistic(key: string, update: (current: unknown) => unknown): { settle(): void; rollback(): void } {
     const s = subscriptions.get(key);
     const overlay = { apply: update, after: null as number | null };
     const since = writes;
-    if (s?.has) {
+    // Kept even before the first answer: it applies to that answer when it arrives.
+    if (s) {
       s.overlays.push(overlay);
       emit(s);
     }
@@ -1165,9 +1281,9 @@ export function createClient(options: ClientOptions = {}): Client {
         if (!s || !s.overlays.includes(overlay)) return;
         // Kept until an answer that holds the write arrives: one to a request sent after the write
         // returned (a write through this client), or else to one sent from now on.
-        overlay.after = writes > since ? sentAtLastWrite : sent;
-        if (answered > overlay.after) return drop(); // that answer is already shown
-        if (sent > overlay.after || subscriptions.get(key) !== s) return; // it is on its way
+        overlay.after = writes > since ? s.sentAtWrite : s.sent;
+        if (s.answered > overlay.after) return drop(); // that answer is already shown
+        if (s.sent > overlay.after || subscriptions.get(key) !== s) return; // it is on its way
         s.due = true;
         kick();
       },
@@ -1182,9 +1298,13 @@ export function createClient(options: ClientOptions = {}): Client {
     if (!isObject(result) || !("data" in result)) throw networkError("POST /_live: the answer has no result");
     return result.data as T;
   }
-  function query<T>(descriptor: ReadCall, deps: readonly string[], run: () => Promise<T>): Query<T> {
+  /**
+   * `refuse`: why this read can't be subscribed to (it can still be awaited). `keyed`: arguments
+   * that tell two reads apart without being sent with the subscription (a paginate's `offset`).
+   */
+  function query<T>(descriptor: ReadCall, deps: readonly string[], run: () => Promise<T>, refuse?: string, keyed?: Json): Query<T> {
     // A page read is keyed apart from every kind read, whatever a kind is called.
-    const key = JSON.stringify(descriptor.op === "page" ? ["page", descriptor.args.url, descriptor.args.region] : [descriptor.kind, descriptor.op, descriptor.id ?? null, descriptor.args ?? {}]);
+    const key = JSON.stringify(descriptor.op === "page" ? ["page", descriptor.args.url, descriptor.args.region] : [descriptor.kind, descriptor.op, descriptor.id ?? null, descriptor.args ?? {}, ...(keyed ? [keyed] : [])]);
     // Nothing is sent until the read is awaited or subscribed to.
     let started: Promise<T> | undefined;
     const promise = () => (started ??= run());
@@ -1194,7 +1314,10 @@ export function createClient(options: ClientOptions = {}): Client {
       catch: (onRejected) => promise().catch(onRejected),
       finally: (onFinally) => promise().finally(onFinally),
       [Symbol.toStringTag]: "Query",
-      subscribe: (onData, onError, seed) => subscribe(key, descriptor, deps, { onData: onData as (data: unknown) => void, onError }, seed),
+      subscribe: (onData, onError, seed) => {
+        if (refuse !== undefined) throw new TypeError(refuse);
+        return subscribe(key, descriptor, deps, { onData: onData as (data: unknown) => void, onError }, seed);
+      },
       optimistic: (update) => optimistic(key, update as (current: unknown) => unknown),
     };
     return read as Query<T>;
@@ -1204,14 +1327,15 @@ export function createClient(options: ClientOptions = {}): Client {
     const desc: { path: string } = SCHEMA.collections[key];
     const path = `/${seg(desc.path)}`;
     const one = (id: string | number) => `${path}/${seg(id)}`;
-    const reads = (q: Json | undefined) => dependencies(key, q?.with);
+    const reads = (q: Json | undefined) => dependencies(key, q?.with, q?.where);
     const list = (q?: Json) => query({ kind: key, op: "list", args: liveArgs(q) }, reads(q), () => request("GET", path, { query: listParams(q) }));
     const paginate = (q?: Json) =>
-      query({ kind: key, op: "paginate", args: liveArgs(q) }, reads(q), () => {
+      // A subscribed page is reached by `cursor`: the endpoint's paginate takes no `offset`.
+      query({ kind: key, op: "paginate", args: liveArgs(q && { ...q, offset: undefined }) }, reads(q), () => {
         const params = listParams(q);
         if (typeof q?.cursor === "string") params.set("cursor", q.cursor);
         return request("GET", path, { query: params, envelope: true });
-      });
+      }, typeof q?.offset === "number" ? "paginate({ offset }) can be awaited but not subscribed to: page by cursor" : undefined, typeof q?.offset === "number" ? { offset: q.offset } : undefined);
     return {
       list,
       paginate,
@@ -1222,7 +1346,7 @@ export function createClient(options: ClientOptions = {}): Client {
         ),
       count: (q?: Json) => {
         const descriptor: ReadCall = { kind: key, op: "count", args: liveArgs(q ? { where: q.where, status: q.status, locale: q.locale } : undefined) };
-        return query<number>(descriptor, [key], () => once(descriptor));
+        return query<number>(descriptor, dependencies(key, undefined, q?.where), () => once(descriptor));
       },
       create: (data: unknown) => wrote(request("POST", path, { json: data }), key),
       update: (id: string | number, patch: unknown) => wrote(request("PATCH", one(id), { json: patch }), key),
@@ -1372,16 +1496,27 @@ function watchWith<T>(hub: Hub, collections: readonly string[], read: () => Prom
 }
 
 /** The collection and every collection its `with` loads: a change to any of them refreshes the read. */
-function dependencies(key: string, w: unknown, seen = new Set<string>()): string[] {
+function dependencies(key: string, w: unknown, where?: unknown, seen = new Set<string>()): string[] {
   seen.add(key);
   const relations: Record<string, { collection?: string }> = (SCHEMA.collections as Record<string, { relations?: Record<string, { collection?: string }> }>)[key]?.relations ?? {};
   if (isObject(w)) {
     for (const [name, v] of Object.entries(w)) {
       const target = relations[name]?.collection;
-      if (!v || typeof target !== "string" || seen.has(target)) continue;
-      dependencies(target, isObject(v) ? v.with : undefined, seen);
+      if (!v || typeof target !== "string") continue;
+      dependencies(target, isObject(v) ? v.with : undefined, isObject(v) ? v.where : undefined, seen);
     }
   }
+  // A filter through a relation (`{ author: { name: "x" } }`, under AND, OR or NOT too) reads that kind.
+  const filter = (f: unknown) => {
+    if (Array.isArray(f)) return f.forEach(filter);
+    if (!isObject(f)) return;
+    for (const [name, v] of Object.entries(f)) {
+      if (name === "AND" || name === "OR" || name === "NOT") filter(v);
+      // `{ rel: { ... } }` filters the related rows; `{ rel: [] }` asks for rows with none of them.
+      else if (typeof relations[name]?.collection === "string" && (isObject(v) || (Array.isArray(v) && v.length === 0))) dependencies(relations[name]!.collection!, undefined, isObject(v) ? v : undefined, seen);
+    }
+  };
+  filter(where);
   return [...seen];
 }
 

@@ -12,6 +12,7 @@ use crate::num::js_number_to_string;
 use crate::schema::{ColType, RefAction, RelKind};
 use crate::value::*;
 use indexmap::IndexMap;
+use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -2497,6 +2498,9 @@ impl<'p> Evaluator<'p> {
             Value::Regex(p, _) if prop == "source" => Ok(Value::str(&crate::builtins::regex_source(p))),
             Value::Regex(_, f) if prop == "flags" => Ok(Value::str(f)),
             Value::Num(_) | Value::Column(_) | Value::Regex(..) => bound(),
+            Value::Collection(c) if prop == "index" && !c.columns.contains_key(prop) => {
+                Ok(Value::Bound(Rc::new(v.clone()), Rc::from(prop)))
+            }
             Value::Collection(c) => {
                 if c.columns.contains_key(prop) {
                     Ok(Value::ColRef(Rc::new(ColRefVal {
@@ -2791,21 +2795,31 @@ impl<'p> Evaluator<'p> {
                     columns,
                     options,
                     span,
+                    indexes: std::cell::RefCell::new(Vec::new()),
                 })))
             }
             Builtin::Column(ty) => self.make_column(ty.name(), &args, span),
             Builtin::Field(name) => self.make_column(name, &args, span),
             Builtin::DefineGlobal => {
-                let Value::Str(name) = arg(0) else {
-                    return err(span, "global() needs a name first: `global(\"settings\", { ... })`");
+                // `global(fields, options?)`: the export names it. A 0.3.0 capture passes the name first.
+                let (name, at) = match arg(0) {
+                    Value::Str(name) if self.legacy => (Some(name.to_string()), 1),
+                    Value::Str(name) => {
+                        return err_help(
+                            span,
+                            format!("`global(\"{name}\", ...)` no longer takes a name: the export names it"),
+                            format!("write `export const {name} = global({{ ... }})`"),
+                        );
+                    }
+                    _ => (None, 0),
                 };
-                let fields_val = arg(1);
+                let fields_val = arg(at);
                 let fields = self.fields_object(
                     &fields_val,
                     span,
-                    "global() needs an object of fields as its second argument",
+                    "global() needs an object of fields: `export const settings = global({ title: text() })`",
                 )?;
-                let options = match arg(2) {
+                let options = match arg(at + 1) {
                     Value::Undef => None,
                     o @ Value::Object(_) => Some(o),
                     other => {
@@ -2815,8 +2829,12 @@ impl<'p> Evaluator<'p> {
                         );
                     }
                 };
+                let cell = OnceCell::new();
+                if let Some(name) = name {
+                    let _ = cell.set(name);
+                }
                 Ok(Value::Global(Rc::new(GlobalVal {
-                    name: name.to_string(),
+                    name: cell,
                     fields,
                     options,
                     span,
@@ -2909,15 +2927,31 @@ impl<'p> Evaluator<'p> {
                 ),
             },
             Builtin::Files => {
-                let Value::Str(name) = arg(0) else {
-                    return err(span, "files() needs a bucket name");
+                // `files(options)`: the export names the bucket. A 0.3.0 capture passes the name first.
+                let (name, options) = match arg(0) {
+                    Value::Str(name) if self.legacy => (Some(name.to_string()), arg(1)),
+                    Value::Str(name) => {
+                        return err_help(
+                            span,
+                            format!("`files(\"{name}\", ...)` no longer takes a name: the export names the bucket"),
+                            format!("write `export const {name} = files({{ accept: [...], maxBytes }})`"),
+                        );
+                    }
+                    options => (None, options),
                 };
-                let options = arg(1);
                 if !matches!(options, Value::Object(_)) {
-                    return err(span, "files() needs an options object");
+                    return err_help(
+                        span,
+                        "files() needs an options object",
+                        "write `export const decks = files({ accept: [\"application/pdf\"], maxBytes: 20_000_000 })`",
+                    );
+                }
+                let cell = OnceCell::new();
+                if let Some(name) = name {
+                    let _ = cell.set(name);
                 }
                 Ok(Value::FileBucket(Rc::new(FileBucketVal {
-                    name: name.to_string(),
+                    name: cell,
                     options,
                     span,
                 })))
@@ -3060,6 +3094,33 @@ impl<'p> Evaluator<'p> {
         let mut c = ColBuilder::new(ty, span);
         let opts_val = args.first().cloned().unwrap_or(Value::Undef);
         match builder {
+            // `file(decks)`: the exported `files()` value (ruling 12).
+            "file" => match &opts_val {
+                Value::FileBucket(b) => {
+                    c.bucket = Some(BucketRef::Value(b.clone()));
+                    return Ok(Value::Column(Rc::new(c)));
+                }
+                Value::Object(o) if self.legacy && o.borrow().contains_key("bucket") => {}
+                Value::Object(o) if matches!(o.borrow().get("bucket"), Some(Value::Str(_))) => {
+                    let Some(Value::Str(name)) = o.borrow().get("bucket").cloned() else {
+                        unreachable!()
+                    };
+                    return err_help(
+                        span,
+                        format!("`file({{ bucket: \"{name}\" }})` is now `file({name})`"),
+                        format!(
+                            "pass the exported bucket: `export const {name} = files({{ ... }})`, then `file({name})`"
+                        ),
+                    );
+                }
+                other => {
+                    return err_help(
+                        span,
+                        format!("file() takes an exported files() bucket, not {}", other.describe()),
+                        "write `export const decks = files({ accept: [\"application/pdf\"], maxBytes: 20_000_000 })`, then `file(decks)`",
+                    );
+                }
+            },
             "select" => {
                 c.enum_values = Some(self.select_options(&opts_val, span)?);
                 return Ok(Value::Column(Rc::new(c)));
@@ -3145,7 +3206,7 @@ impl<'p> Evaluator<'p> {
                     }
                 },
                 "bucket" => match v {
-                    Value::Str(s) if !s.is_empty() => c.bucket = Some(s.to_string()),
+                    Value::Str(s) if !s.is_empty() => c.bucket = Some(BucketRef::Name(s.to_string())),
                     _ => return err(ksp, "`bucket` must be a bucket name"),
                 },
                 "source" => match v {
@@ -3723,6 +3784,70 @@ impl<'p> Evaluator<'p> {
                         "build the collection with its entries; mutate it inside a hook or action",
                     ),
                 }
+            }
+            Value::Collection(c) if m == "index" => {
+                let fields = match args.first() {
+                    Some(Value::Array(a)) => a
+                        .borrow()
+                        .iter()
+                        .map(|v| match v {
+                            Value::Str(s) => Ok(s.to_string()),
+                            other => Err(other.describe()),
+                        })
+                        .collect::<Result<Vec<_>, _>>(),
+                    _ => Err("no list".into()),
+                };
+                let Ok(fields) = fields.and_then(|f| {
+                    if f.is_empty() {
+                        Err("an empty list".into())
+                    } else {
+                        Ok(f)
+                    }
+                }) else {
+                    return err_help(
+                        span,
+                        "`.index()` takes a list of field names",
+                        "write `.index([\"post\", \"author\"], { unique: true })`",
+                    );
+                };
+                let unique = match args.get(1) {
+                    None | Some(Value::Undef) => false,
+                    Some(Value::Object(o)) => {
+                        let o = o.borrow();
+                        if let Some(k) = o.keys().find(|k| k.as_str() != "unique") {
+                            return err_help(
+                                span,
+                                format!("`.index()` options have no `{k}`"),
+                                "the only option is `unique: true`",
+                            );
+                        }
+                        match o.get("unique") {
+                            None | Some(Value::Undef) => false,
+                            Some(Value::Bool(b)) => *b,
+                            Some(_) => return err(span, "`unique` must be true or false"),
+                        }
+                    }
+                    Some(other) => {
+                        return err(
+                            span,
+                            format!("`.index()` options must be an object, not {}", other.describe()),
+                        );
+                    }
+                };
+                for f in &fields {
+                    if !c.columns.contains_key(f) {
+                        let mut d = Diag::new(
+                            span,
+                            format!("`.index()` names `{f}`, which is not a field of this kind"),
+                        );
+                        if let Some(s) = suggest(f, c.columns.keys().map(String::as_str)) {
+                            d = d.help(format!("did you mean `{s}`?"));
+                        }
+                        return Err(Ctl::Err(d));
+                    }
+                }
+                c.indexes.borrow_mut().push((fields, unique, span));
+                Ok(recv.clone())
             }
             other => err(span, format!("{} has no method `{m}`", other.describe())),
         }

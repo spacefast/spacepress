@@ -14,5 +14,4 @@ The existing First WordPress integration and telemetry adapter derive from
 Spacefast's earlier admin work under the same license. Bundled WordPress
 packages are copyright the WordPress contributors, GPL-2.0-or-later;
 build/THIRD-PARTY-LICENSES.txt records dependency and workspace notices.
-Dashicons retain apps/packages/boot/src/dashicons/LICENSE.md. The Brotli
-decoder retains its MIT license and original copyright notice.
+The Brotli decoder retains its MIT license and original copyright notice.

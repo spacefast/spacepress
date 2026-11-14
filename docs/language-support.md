@@ -580,9 +580,17 @@ Locale collation depends on the host and cannot be reproduced deterministically.
 
 Status: **supported**.
 
-Optional chains support guarded property/index steps and single optional method calls. A non-optional continuation after a short-circuiting link is refused at source; guard each nullable step explicitly. Parenthesized chain boundaries retain ordinary property access and call behavior.
+Optional chains support guarded property/index steps and single optional method calls. In imported JavaScript, optional calls `f?.()`, `o.m?.()` and `o[k]?.()` read the callee once (keeping its receiver) and skip the call and its arguments when it is null or undefined (tests/differential/language/optional-calls.ts). A non-optional continuation after a short-circuiting link is refused at source; guard each nullable step explicitly. Parenthesized chain boundaries retain ordinary property access and call behavior.
 
 [Evidence](../tests/compiler_contracts.rs) (`optional_chains_refuse_unguarded_continuations_at_source`)
+
+## optional-call-typed
+
+Status: **refused**. Diagnostic: `F4001`.
+
+Optional calls compile in imported JavaScript. In typed TypeScript, check the function first: `if (f) f(...)`.
+
+[Evidence](../tests/fixtures/reject-optional-call-typed)
 
 ## parameter-default-scope
 

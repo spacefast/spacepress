@@ -54,6 +54,14 @@ only admin and login lands there, as in WordPress.
 Editor asset URLs use WordPress's registered installation URL, including the
 subdirectory prefix.
 
+## Screens in both admins
+
+A screen declared once with `first_admin_register_screen()` appears in First
+Admin (`/wp-admin/new/screens/<id>`) and as a classic wp-admin page, rendered by
+the same component, with actions that run Abilities. First declares Schema
+versions and one list per `table()` kind this way. See
+[admin-screens.md](admin-screens.md).
+
 ## Source scope
 
 The admin includes the complete distributable next-admin / CIAB Admin plugin
@@ -63,8 +71,9 @@ Styles, Navigation, taxonomy and comment fields, importers and the AI-agent
 integration package. These surfaces are retained alongside First's schema-driven
 collections, tables, relations, media and globals.
 
-The default `/` route is First's collection overview. `/dashboard` opens the
-upstream dashboard. The sidebar includes native WordPress content types as well
+The home route `/` is the upstream dashboard, as upstream has it;
+`/collections` is First's collection overview (Collections → All collections in
+the sidebar). The sidebar includes native WordPress content types as well
 as First collections; mapped types appear through the access-aware First adapter.
 Native content uses WordPress's editor routes. The complete upstream attachment
 editor is at `/types/attachment/edit/:id`; `Edit image` opens it from First
@@ -72,6 +81,25 @@ media details, with crop/rotate/flip tools and WordPress-native image saving. Fi
 editor with Secure Custom Fields and First's existing REST authorization.
 Database tables use First's table forms and relation pickers. Hiding navigation
 never grants or revokes access: the server remains the authority.
+
+## Styles
+
+First Admin keeps the upstream look. Where a pinned WordPress package changed
+underneath it, the change is the smallest one that keeps that look:
+
+| Change | Why |
+|---|---|
+| `font-weight: var(--wpds-typography-font-weight-emphasis, 499)` (and `-default, 400`) for `$font-weight-medium`/`-regular` | the pinned `@wordpress/base-styles` removed those variables; the tokens carry the same values |
+| `@first-admin/theme` passes the `bg` seed also as `background` | the pinned `@wordpress/theme` renamed it |
+| The site hub wraps its title in a `<span>` | the upstream stylesheet sizes the link's first span, which the pinned `@wordpress/ui` Link no longer adds |
+| `style` on design-system popups and primitives | the pinned Base UI types moved it |
+| The page opts in to view transitions (`@view-transition`) | the router starts one on each navigation; without the opt-in the browser aborts it with an error |
+
+Everything else that differs from the retained originals is behaviour: the
+mount and subdirectory URLs, First's schema screens, and the AI chat button,
+which needs a provider (see External services). First's own screens
+(`packages/schema`) use `@wordpress/components` and DataViews with upstream's
+spacing.
 
 ## Provenance and updates
 
@@ -156,6 +184,14 @@ may enable `ai_agent_enabled` through `first_admin_boot_context` and implement
 `window.wpOrchestratorAgent.ask`. Missing providers reject requests explicitly.
 See the package README for its events and slot contract. Hosted AI execution
 and hosted account invitations are not proven by local WordPress tests.
+
+The slot stays unwired on purpose. It needs a model that turns a prompt into
+answers and tool calls; First's agent surface (the site's MCP endpoint,
+`/wp-json/mcp/first-<app>`, and the app's Abilities) is the tools side of that,
+not a model. Wiring the two together would still need a hosted model and its
+credentials, which First does not ship. An agent outside the site (Claude Code,
+an MCP client) already uses that endpoint and the same Abilities the admin's
+screens run, under the same permissions; see `first mcp` and docs/agents.md.
 
 Telemetry calls use an inert compatibility adapter: First sends no upstream
 usage events. The three upstream dashboard demonstration widgets retain their

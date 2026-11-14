@@ -893,6 +893,9 @@ __first_jobs(id TEXT PK /* uuid */, job TEXT, input TEXT, key TEXT NULL, state T
 __first_receipts(scope TEXT, key TEXT, userId INT /* 0 anonymous */, inputHash CHAR(64), state TEXT /* started|done */, result TEXT NULL, createdAt TEXT, PRIMARY KEY(scope, key, userId))
 ```
 
+> Superseded for the outbox: the runtime now writes each job's Action Scheduler action in the
+> enqueuing transaction and no longer writes `first__outbox` (docs/runtime-contract.md, transactions).
+
 `First\Jobs` (`runtime/First/Jobs/{Jobs,Outbox,Receipts,Runner,Queue}.php`):
 
 - `Jobs::enqueue(name, input, opts)`: validate input like an action

@@ -107,6 +107,7 @@ final class Plugin
         });
         Facade::register($this);
         AppRouter::register($this);
+        PublicFiles::register($this);
         Comments::register($this);
         // Code blocks: highlighted with their title and marked lines, grouped into tabs (no script).
         add_filter('render_block_core/code', [\First\Content\Code::class, 'render'], 10, 2);
@@ -118,6 +119,7 @@ final class Plugin
         KindUrls::register($this);
         MarkdownTwins::register($this->mainFile);
         Sitemap::register($this);
+        SearchHandler::register($this);
         Purges::register($this);
         Staged::register($this);
         Hooks::register($this);
@@ -558,9 +560,16 @@ final class Plugin
         Scf::registerFilters();
     }
 
+    /**
+     * The app's own wp-admin menu: the parent of its globals (SCF options pages) and of First Admin's
+     * table screens (runtime/admin/lib/screens.php), so it exists when the app has either.
+     */
     public function adminMenu(): void
     {
-        if ($this->schema->globals() === []) {
+        // The kinds First Admin gives a classic list screen (runtime/admin/lib/screens.php uses the same test).
+        $tables = array_filter($this->schema->collections(), static fn (array $c): bool => !isset($c['wp']['postType']) && empty($c['auth'])
+            && ($c['api']['list'] ?? true) !== false && ($c['agents'] ?? true) !== false);
+        if ($this->schema->globals() === [] && ($tables === [] || !function_exists('first_admin_register_screen'))) {
             return;
         }
         $slug = 'first-' . $this->schema->name();

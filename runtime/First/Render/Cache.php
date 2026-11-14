@@ -15,8 +15,9 @@ use function First\db;
  *
  * Policy, per response, from what the render was:
  * - an anonymous visitor's 200 render of a page no layout guards is **cacheable**:
- *   `Cache-Control: public, s-maxage=<window>, max-age=0, must-revalidate`, so Batcache and the
- *   edge keep it for everyone (a twin is always rendered as an anonymous visitor too);
+ *   `Cache-Control: public, max-age=0, s-maxage=<window>, must-revalidate`, so Batcache and the
+ *   edge keep it for everyone (a twin is always rendered as an anonymous visitor too). `s-maxage`
+ *   comes after `max-age`: Batcache reads the last `max-age` in the header as its own window;
  * - anything else (a signed-in viewer, a guarded section, an error, a 404) is
  *   `private, no-store`, and calls `batcache_cancel()` where Batcache runs.
  *
@@ -25,7 +26,8 @@ use function First\db;
  * row, and every URL that listed the kind, are announced on the host's `first_purge_urls` action
  * with their `.md` twins (`Wp\Purges::paths`), the same channel WordPress content writes use.
  * A write that touches more than PURGE_LIMIT URLs announces `/*` instead: a whole-host purge.
- * Nothing is recorded or announced when no host listens (`has_action('first_purge_urls')`).
+ * Nothing is recorded or announced when no host listens (`has_action('first_purge_urls')`); the
+ * runtime listens itself where Batcache, the VIP edge cache or Jetpack Boost runs (`Wp\PageCaches`).
  */
 final class Cache
 {
@@ -66,7 +68,7 @@ final class Cache
     {
         if ($status === 200 && $anonymous && !$guarded) {
             $window = max(0, (int) apply_filters('first_app_cache_window', self::WINDOW));
-            return ["public, s-maxage=$window, max-age=0, must-revalidate", true];
+            return ["public, max-age=0, s-maxage=$window, must-revalidate", true];
         }
         return ['private, no-store, max-age=0', false];
     }

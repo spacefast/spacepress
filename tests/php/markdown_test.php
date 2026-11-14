@@ -440,10 +440,12 @@ $edit = $writes(static fn () => wp_update_post(['ID' => $hello, 'post_name' => '
 eq('one write, one announcement', count($edit), 1);
 $paths = $edit[0] ?? [];
 foreach (['/hello-world/', '/hello-world.md', '/hello-again/', '/hello-again.md', '/', '/index.md', '/page/2/', '/page/2.md',
-    '/category/field-notes/', '/category/field-notes.md', '/author/admin/', '/author/admin.md', '/feed/', '/llms.txt'] as $path) {
+    '/category/field-notes/', '/category/field-notes.md', '/author/admin/', '/author/admin.md', '/feed/', '/llms.txt',
+    // The feeds VIP Cache Manager purges too: comments, the post's own comments, its terms'.
+    '/comments/feed/', '/hello-world/feed/', '/hello-again/feed/', '/category/field-notes/feed/'] as $path) {
     check("a slug change purges $path", in_array($path, $paths, true), $paths);
 }
-check('feeds and llms.txt get no .md twin', !in_array('/feed.md', $paths, true) && !in_array('/llms.txt.md', $paths, true), $paths);
+check('feeds and llms.txt get no .md twin, and feeds no page 2', array_filter($paths, static fn (string $p): bool => (bool) preg_match('#/feed(/page/2/?|\.md)|llms\.txt\.md#', $p)) === [], $paths);
 eq('every path is root-relative and listed once', [count($paths), count(array_unique($paths)), array_filter($paths, static fn (string $p): bool => !str_starts_with($p, '/'))], [count($paths), count($paths), []]);
 $cat = wp_insert_term('Elsewhere', 'category');
 $moved = $writes(static fn () => wp_set_post_categories($hello, [$cat['term_id']]))[0] ?? [];

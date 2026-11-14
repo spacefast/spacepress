@@ -1594,7 +1594,7 @@ export const nope = state.result?.nope;
             "method": "post",
             "action": "/__first/api/v1/actions/subscribe",
             "hidden": [["_first_return", "hidden", "/?ref=nav"]],
-            "page cache": "public, s-maxage=300, max-age=0, must-revalidate",
+            "page cache": "public, max-age=0, s-maxage=300, must-revalidate",
         }),
         "an anonymous page with a form stays shared and carries no nonce: {seen}"
     );
@@ -1694,7 +1694,7 @@ fn comments_follow_the_kind_policy_on_every_path() {
         seen["signed out"],
         serde_json::json!({
             "status": 200, "thread": ["First!"], "forms": 0, "sign in": "Sign in to comment",
-            "cache": "public, s-maxage=300, max-age=0, must-revalidate",
+            "cache": "public, max-age=0, s-maxage=300, must-revalidate",
         }),
         "{seen}"
     );

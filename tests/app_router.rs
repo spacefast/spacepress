@@ -1942,8 +1942,14 @@ fn comments_follow_the_kind_policy_on_every_path() {
     );
     assert_eq!(seen["featured purged"], serde_json::json!([true, true]), "{seen}");
     // The page cache: a comment event that changes what visitors see of the thread purges the
-    // item's URL, its twin and its comments feed; a held or spam submission purges nothing.
-    let note = serde_json::json!(["/notes/open-note/", "/notes/open-note.md", "/notes/open-note/feed/"]);
+    // item's URL (under both spellings the router answers), its twin and its comments feed; a held
+    // or spam submission purges nothing.
+    let note = serde_json::json!([
+        "/notes/open-note/",
+        "/notes/open-note.md",
+        "/notes/open-note",
+        "/notes/open-note/feed/"
+    ]);
     let none = serde_json::json!([]);
     for (event, want) in [
         ("held", &none),

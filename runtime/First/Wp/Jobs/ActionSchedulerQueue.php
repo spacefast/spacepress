@@ -34,6 +34,12 @@ final class ActionSchedulerQueue implements Queue
                 // Storage is behind this build: run the job once it has caught up, not on the old schema.
                 (new self())->schedule($id, \First\Js::iso(\First\Js::now() + 60_000));
             } elseif ($plugin?->app() !== null) {
+                // A delivery that arrives before its job's time is an older one: a failed attempt moved
+                // the job later and scheduled its own delivery for then. Running now would skip the backoff.
+                $runAt = \First\Jobs\Storage::run('SELECT "runAt" FROM {jobs} WHERE "id" = ?', [$id])[0]['runAt'] ?? null;
+                if (is_string($runAt) && \First\Js::date($runAt) > \First\Js::now()) {
+                    return;
+                }
                 Runner::run($id);
             } else {
                 // No First app is running (deactivated or uninstalled, runtime still active). A job

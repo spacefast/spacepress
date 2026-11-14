@@ -86,18 +86,21 @@ final class Tick
         // 5. Due Action Scheduler actions, claimed first as Action Scheduler's own runners do
         // (ActionScheduler_QueueRunner::do_batch): an action another tick or runner holds is not
         // ours to run, and one we hold no other runner starts. A job delivery whose job already ran
-        // above finds it done and completes as a no-op (ActionSchedulerQueue's handler); one moved
-        // later by a failed attempt waits for its new time (Runner::run refuses jobs not yet due).
+        // above finds it done and completes as a no-op (ActionSchedulerQueue's handler).
         if (class_exists(\ActionScheduler::class) && $left($processed) > 0) {
             $store = \ActionScheduler::store();
-            // The runner's own housekeeping first: claims a dead process left go back to the queue
-            // and actions it left running are failed (after Action Scheduler's 5-minute timeouts).
+            // The runner's own housekeeping first, with its timeouts (ActionScheduler_QueueRunner::run):
+            // claims a dead process left go back to the queue and actions it left running are failed.
+            $cleanup = 10 * absint(apply_filters('action_scheduler_queue_runner_time_limit', 30));
             $cleaner = new \ActionScheduler_QueueCleaner($store);
-            $cleaner->reset_timeouts();
-            $cleaner->mark_failures();
+            $cleaner->reset_timeouts($cleanup);
+            $cleaner->mark_failures($cleanup);
             // One more than we may run: if it is claimed, more is left. Releasing the claim hands
-            // whatever we didn't run back to the queue.
+            // whatever we didn't run back to the queue. The fatal-error monitor releases it, and fails
+            // the action that was running, if an action ends the process (as do_batch attaches it).
             $claim = $store->stake_claim($left($processed) + 1);
+            $monitor = new \ActionScheduler_FatalErrorMonitor($store);
+            $monitor->attach($claim);
             try {
                 $ran = 0;
                 foreach ($claim->get_actions() as $id) {
@@ -105,7 +108,7 @@ final class Tick
                         $remaining = true;
                         break;
                     }
-                    if ((int) $store->get_claim_id((int) $id) !== (int) $claim->get_id()) {
+                    if ($store->get_claim_id((int) $id) !== $claim->get_id()) {
                         break; // the claim was lost (timed out and taken by another runner)
                     }
                     \ActionScheduler::runner()->process_action((int) $id, 'first-jobs-tick');
@@ -117,6 +120,7 @@ final class Tick
                 }
                 $remaining = $remaining || count($claim->get_actions()) > $ran;
             } finally {
+                $monitor->detach();
                 $store->release_claim($claim);
             }
         }
@@ -125,6 +129,11 @@ final class Tick
         // while another cron run holds it, this tick leaves the events to it; if another run takes it
         // over mid-way, this one stops. Action Scheduler's own queue hook is skipped: its actions were
         // run above, within the limit.
+        // Read from the database, not this process's options cache: it was filled when WordPress loaded,
+        // and since then another run may have run events or taken and released the lock.
+        wp_cache_delete('alloptions', 'options');
+        wp_cache_delete('notoptions', 'options');
+        wp_cache_delete('cron', 'options');
         $cron = function_exists('wp_get_ready_cron_jobs') ? wp_get_ready_cron_jobs() : [];
         $lock = $cron === [] ? null : self::cronLock();
         if ($lock !== null) {
@@ -175,14 +184,15 @@ final class Tick
      */
     private static function cronLock(): ?string
     {
-        $held = get_transient('doing_cron');
-        if ($held && (float) $held + WP_CRON_LOCK_TIMEOUT > microtime(true)) {
+        $held = self::cronLockValue();
+        if ($held !== '' && (float) $held + WP_CRON_LOCK_TIMEOUT > microtime(true)) {
             return null;
         }
         $lock = sprintf('%.22F', microtime(true));
         set_transient('doing_cron', $lock);
 
-        return $lock;
+        // Ours only if it reads back: another run may have taken it in between.
+        return self::cronLockValue() === $lock ? $lock : null;
     }
 
     /** The cron lock as stored right now, past any cached copy (wp-cron.php's _get_cron_lock()). */

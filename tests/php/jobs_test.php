@@ -457,4 +457,50 @@ check('while another cron run (wp-cron.php) holds the lock, a tick leaves its ev
 delete_transient('doing_cron');
 eq('once the lock is free, the next tick runs them', [\First\Jobs\Tick::run()['processed'], $ran], [1, ['event first']]);
 
+// Another run changes the database behind this process's options cache (filled when WordPress loaded):
+// a tick reads the lock and the due events from the database, not from that cache.
+global $wpdb;
+wp_schedule_single_event(time() - 10, 'first_test_cron_second');
+get_transient('doing_cron'); // cached as absent
+$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->options} (option_name, option_value, autoload) VALUES ('_transient_doing_cron', %s, 'off')", sprintf('%.22F', microtime(true))));
+$ran = [];
+check('a lock another run took after this process loaded is respected', \First\Jobs\Tick::run()['processed'] === 0 && $ran === [], $ran);
+$wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = '_transient_doing_cron'");
+wp_cache_delete('alloptions', 'options');
+wp_cache_delete('notoptions', 'options');
+_get_cron_array(); // the event is in this process's cache
+$wpdb->query($wpdb->prepare("UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = 'cron'", serialize(['version' => 2])));
+check('an event another run already ran is not run again from a stale cache', \First\Jobs\Tick::run()['processed'] === 0 && $ran === [], $ran);
+
+// While a tick runs an action, Action Scheduler's fatal-error monitor holds its claim: a fatal error in
+// the action fails it and releases the claim, instead of leaving both for the 5-minute timeouts.
+$monitored = null;
+as_schedule_single_action(time() - 10, 'first_test_monitor', [], 'first-tests');
+add_action('first_test_monitor', static function () use (&$monitored): void {
+    global $wp_filter;
+    $monitored = false;
+    foreach ($wp_filter['shutdown']->callbacks ?? [] as $callbacks) {
+        foreach ($callbacks as $callback) {
+            $monitored = $monitored || (is_array($callback['function']) && $callback['function'][0] instanceof ActionScheduler_FatalErrorMonitor);
+        }
+    }
+});
+\First\Jobs\Tick::run();
+global $wp_filter;
+$left = false;
+foreach ($wp_filter['shutdown']->callbacks ?? [] as $callbacks) {
+    foreach ($callbacks as $callback) {
+        $left = $left || (is_array($callback['function']) && $callback['function'][0] instanceof ActionScheduler_FatalErrorMonitor);
+    }
+}
+eq('the fatal-error monitor watches the claim while an action runs, and is detached after', [$monitored, $left], [true, false]);
+
+// An older delivery of a job that a failed attempt moved later doesn't run it early: the backoff holds.
+$backoffId = $tickId(20);
+$wp->exec('INSERT INTO {prefix}first__jobs (`id`, `job`, `input`, `state`, `attempts`, `runAt`, `createdAt`) VALUES (?, ?, ?, ?, 1, ?, ?)',
+    [$backoffId, 'notify', json_encode(['postId' => $pid, 'note' => 'fail']), 'failed', $at(8 * 86400 + 3600), $at(0)]);
+as_schedule_single_action(time() - 10, \First\Wp\Jobs\ActionSchedulerQueue::HOOK, ['id' => $backoffId], 'first-tests', false);
+\First\Jobs\Tick::run();
+eq('a due delivery for a job whose retry is later leaves the job waiting', [(int) $job($backoffId)['attempts'], $job($backoffId)['state']], [1, 'failed']);
+
 finish('jobs');

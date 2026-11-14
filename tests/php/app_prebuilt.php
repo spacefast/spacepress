@@ -126,5 +126,43 @@ $out['unpublished'] = [fetch("$url/notes/late")['status'], fetch("$url/notes/lat
 $drain();
 $out['unpublished after rebuild'] = [fetch("$url/notes/late")['status'], fetch("$url/notes/late")['prebuilt']];
 
+
+// A field stored outside the core post fields: the page read the item, so the write still names it.
+wp_set_current_user(1);
+\First\db()->update('notes', ['summary' => 'Fresh summary'], ['id' => (int) $hello['id']]);
+$written();
+$site->actAs(null);
+$out['meta field'] = [fetch("$url/notes/hello")['prebuilt'], $text(fetch("$url/notes/hello"), 'summary')];
+$drain();
+$out['meta field rebuilt'] = [fetch("$url/notes/hello")['prebuilt'], $text(fetch("$url/notes/hello"), 'summary')];
+// A site-wide setting no content write announces: every file goes, and the next build has it.
+update_option('blogname', 'Renamed');
+$out['renamed'] = [fetch("$url/about")['prebuilt'], fetch("$url/notes/hello")['prebuilt']];
+do_action('init');
+$drain();
+$out['renamed rebuilt'] = fetch("$url/about")['prebuilt'];
+// A file past MAX_AGE is not served; the next full build replaces it.
+$file = \First\Render\Prebuilt::dir() . '/about.html';
+touch($file, time() - \First\Render\Prebuilt::MAX_AGE - 10);
+clearstatcache();
+$out['too old'] = fetch("$url/about")['prebuilt'];
+// `/index` is not the home page.
+$out['index'] = fetch("$url/index")['prebuilt'];
+// A gate (a private-site plugin) vetoes serving files; the request reaches WordPress.
+file_put_contents($site->content . '/mu-plugins/gate.php', "<?php add_filter('first_prebuilt_serve', '__return_false');");
+$out['gated'] = fetch("$url/notes/hello")['prebuilt'];
+unlink($site->content . '/mu-plugins/gate.php');
+// An expired or reused-past-expiry token is an ordinary request.
+$expired = \First\Render\Prebuilt::token('/live', time() - 5);
+$live = fetch("$url/live", ['X-First-Prerender: ' . $expired]);
+$out['expired token'] = $live['cache'];
+$fresh = fetch("$url/live", ['X-First-Prerender: ' . \First\Render\Prebuilt::token('/live')]);
+$out['fresh token'] = $fresh['cache'];
+// A value staticParams no longer lists loses its file at the next build.
+update_option('prebuilt_drop', 'lab notes');
+\First\Render\Prebuilt::stale(['/tags/lab%20notes']);
+$drain();
+$out['dropped value'] = [is_file(\First\Render\Prebuilt::dir() . '/tags/lab%20notes.html'), fetch("$url/tags/field")['prebuilt']];
+
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

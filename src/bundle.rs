@@ -896,6 +896,12 @@ fn hosted_first(schema: &crate::schema::Schema) -> Vec<String> {
         .collect()
 }
 
+/// Plugins a sealed site never runs, declared or not: each serves stored content around First's
+/// read rules. The Block Data API answers a post's raw `post_content` after an item-level check
+/// only, which shows a rich text field that a field rule hides; the decoupled bundle ships that
+/// API and WPGraphQL. Kept in step with `Sealed::DENIED` in the runtime.
+pub(crate) const SEALED_DENIED: [&str; 2] = ["vip-block-data-api", "vip-decoupled-bundle"];
+
 /// A sealed app's plugin allow-list (docs/sealed.md), by directory slug: `first` (the First plugins
 /// of this target, which its caller names), First's admin, the platform pins this app needs, and
 /// the WordPress plugins the config declares. `None` when the app isn't sealed. Plugin packages (`use`) are compiled into the app

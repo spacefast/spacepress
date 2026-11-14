@@ -29,6 +29,15 @@ use First\Schema;
  */
 final class Sealed
 {
+    /**
+     * Plugins a sealed site never runs, whatever the list says: each serves stored content around
+     * First's read rules. The Block Data API answers a post's raw `post_content` after an item-level
+     * check only, which shows a rich text field that a field rule hides; the decoupled bundle ships
+     * that API and WPGraphQL. The compiler refuses a sealed config that declares one (the same list,
+     * `SEALED_DENIED`); this is for a list written some other way, and for the report.
+     */
+    public const DENIED = ['vip-block-data-api', 'vip-decoupled-bundle'];
+
     /** @var ?array<string, true> plugin directory slugs that may run: the list the build wrote */
     private static ?array $allowed = null;
     /** @var array<string, true> the plugins the app can't run without: First's own and the platform's */
@@ -41,7 +50,7 @@ final class Sealed
             return;
         }
         // The list is the build's (schema.php, the same one its manifests carry): nothing is added here.
-        self::$allowed = array_fill_keys($listed, true);
+        self::$allowed = self::listed($listed);
         // What the app can't run without: the runtime, the app itself, identity and the platform pins.
         // First's admin is First's own and always listed, but the site runs without it (classic
         // wp-admin stays), so it deactivates like any declared plugin.
@@ -57,6 +66,17 @@ final class Sealed
         add_filter('network_admin_plugin_action_links', [self::class, 'actionLinks'], PHP_INT_MAX, 2);
         add_action('admin_notices', [self::class, 'notice']);
         add_action('network_admin_notices', [self::class, 'notice']);
+    }
+
+    /**
+     * The slugs that may run, from a list: never one of {@see DENIED}, whoever wrote the list.
+     *
+     * @param list<string> $listed
+     * @return array<string, true>
+     */
+    public static function listed(array $listed): array
+    {
+        return array_diff_key(array_fill_keys($listed, true), array_fill_keys(self::DENIED, true));
     }
 
     /**
@@ -113,6 +133,10 @@ final class Sealed
 
     public static function message(string $plugin): string
     {
+        if (in_array(self::slug($plugin), self::DENIED, true)) {
+            return "Refused: this site is sealed (sealed: true in first.config.ts), and a sealed site never runs $plugin: it serves stored content around First's read rules. Turn sealed mode off to run it.";
+        }
+
         return "Refused: this site is sealed (sealed: true in first.config.ts), and $plugin isn't one of the plugins it runs. Declare it under `plugins` in first.config.ts and deploy, or turn sealed mode off.";
     }
 

@@ -57,6 +57,16 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 - `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
 - `<Content value>` renders a post body through `the_content`. `<Html value>` places a literal as written and runs anything else through `wp_kses_post`.
 
+### Forms that post to an action
+
+<RepoFile path="tests/fixtures/forms/first/app/page.tsx" />
+
+- `<form action={subscribe}>` posts to the action you import from your server code. It works with JavaScript off: the browser sends the form, the action runs as the visitor, and they come back to the same page.
+- `useFormState(subscribe)` reads what came back, once: `result` (the action's return value), `error` (`code`, `message`, and `fields.<name>` for the field it is about) and `values` (what was typed, to fill the form again; never a `type="password"` field).
+- Fields read as the action's input says: a number field from its digits, a `boolean()` from a checkbox (unchecked is `false`), and an empty field as absent.
+- The page a form comes back to is never cached for anyone else. A page with a form stays cacheable for signed-out visitors. A signed-in page's form carries the REST nonce. Only your own pages may post.
+- To go somewhere else after success, call `redirect()` when `state.result` is set.
+
 ### Markdown pages
 
 <RepoFile path="tests/fixtures/app-router/first/app/(site)/guide/page.md" />

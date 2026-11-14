@@ -366,14 +366,18 @@ final class AppRouter
             if (($page['search'] ?? null) !== null) {
                 $props->p['search'] = $this->search($page['search']);
             }
-            if (($route['kind'] ?? null) !== null) {
-                $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $params));
-                if ($item === null) {
-                    throw Halt::notFoundSignal();
+            // The item a kind URL names is one of the render's reads: a write to any of its fields
+            // purges this URL (and rebuilds a prebuilt one), not only a write core's post hooks see.
+            [$head, $body] = Reads::during(function () use ($route, $params, $viewer, $props, $page, $layouts): array {
+                if (($route['kind'] ?? null) !== null) {
+                    $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $params));
+                    if ($item === null) {
+                        throw Halt::notFoundSignal();
+                    }
+                    $props->p['item'] = $item;
                 }
-                $props->p['item'] = $item;
-            }
-            [$head, $body] = Reads::during(fn (): array => Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props)), $reads);
+                return Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props));
+            }, $reads);
         } catch (Halt $halt) {
             if ($halt->location !== null) {
                 nocache_headers();
@@ -396,7 +400,8 @@ final class AppRouter
         // Cache policy and purges (rendering.md §6.1, §6.2): an anonymous visitor's render of a
         // page no layout guards is shared; what it read decides which writes purge its URL.
         $guarded = array_filter($layouts, static fn (array $l): bool => ($l['guard'] ?? null) !== null) !== [];
-        [$this->cacheControl, $shared] = \First\Render\Cache::policy($status, $viewer->user === null, $guarded);
+        // A page a form came back to (`?_flash=`) shows that visitor's result or error: never shared.
+        [$this->cacheControl, $shared] = \First\Render\Cache::policy($status, $viewer->user === null && !\First\Render\Forms::marked(), $guarded);
         if ($shared) {
             \First\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         }
@@ -734,6 +739,10 @@ final class AppRouter
             }
         }
         header('Cache-Control: ' . $this->cacheControl);
+        if (\First\Render\Prebuilt::prerendering()) {
+            // The prebuild writes a file only from an answer the router rendered for it.
+            header('X-First-Prerendered: 1');
+        }
         header('Content-Type: text/html; charset=' . get_option('blog_charset'));
         // First writes the only <title> and canonical for its pages.
         remove_action('wp_head', '_wp_render_title_tag', 1);

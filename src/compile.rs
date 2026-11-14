@@ -4126,6 +4126,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn ident(&mut self, n: &str, span: Span) -> Result<Out> {
+        if let Some(field) = n.strip_prefix(client::LIVE_SEED)
+            && self.client.is_some()
+        {
+            return self.client_live_seed(field, span);
+        }
         match self.resolve(n, span)? {
             Resolved::Local(l) => Ok(Out {
                 php: l.php.clone(),

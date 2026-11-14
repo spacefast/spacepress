@@ -671,8 +671,10 @@ pub struct App {
 
 #[derive(Debug, Clone)]
 pub struct AppRoute {
-    /// The folder below `app/`, `/` for the root: stable across builds.
+    /// The folder below `app/`, `/` for the root, or the page's own `route.id`: stable across builds.
     pub id: String,
+    /// Where the page set its id itself (`export const route = { id }`, or `id:` in a `page.md`).
+    pub explicit_id: Option<crate::diag::Span>,
     /// `/blog/:slug`, `/docs/*rest` (one or more), `/docs/**rest` (zero or more).
     pub pattern: String,
     pub page: Option<String>,

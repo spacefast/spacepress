@@ -122,14 +122,12 @@ test('wasm captures the full-site pages bundle byte for byte like native sources
       assert.equal(capture[key], fs.readFileSync(path.join(temp, 'native', file), 'utf8'), file);
     }
     const files = JSON.parse(capture.app).files;
-    for (const name of ['first/pages.json', 'pages/notes/[slug]/page.tsx', 'islands/cheer.client.ts', 'pages/about/compass.svg']) {
+    for (const name of ['first/app/notes/[slug]/page.tsx', 'first/app/notes/[slug]/note.module.css', 'first/app/about/compass.svg', 'first/components/CheerButton.tsx']) {
       assert.equal(typeof files[name], 'string', name);
     }
     const memory = Object.fromEntries(Object.entries(files).filter(([name]) => !name.startsWith('first/_generated/migrations/')));
     for (const name of fs.readdirSync(path.join(project, 'first/_generated/migrations'))) memory[`first/_generated/migrations/${name}`] = fs.readFileSync(path.join(project, 'first/_generated/migrations', name), 'utf8');
     assert.equal(call(exports, 'first_sources', { project: '/site', files: memory }).app, capture.app, 'an in-memory project captures the same bytes');
-    fs.writeFileSync(path.join(project, 'pages/page.tsx'), fs.readFileSync(path.join(project, 'pages/page.tsx'), 'utf8') + '\n');
-    assert.equal(call(exports, 'first_sources', { project }).check.diagnostics[0].code, 'first_source_needs_local_capture');
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 

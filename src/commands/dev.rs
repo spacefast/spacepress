@@ -92,6 +92,21 @@ fn alive(pid: u64, state: &Path) -> bool {
 /// port and the process itself, so it does not start Studio. A site started by a compiler from
 /// before that file is asked of Studio.
 pub(super) fn status(project: &Path) -> Result<serde_json::Value, String> {
+    status_with(project, |mut studio| {
+        studio
+            .stdin(std::process::Stdio::null())
+            .output()
+            .map_err(|e| format!("first needs Node.js 22+ and npm (npx) for the dev site: {e}"))
+    })
+}
+
+/// [`status`], with `run` running Studio's own status when the project has no state file (a site
+/// started by a compiler from before it). `first mcp` passes a runner bounded by its timeout and
+/// cancellation.
+pub(super) fn status_with(
+    project: &Path,
+    run: impl FnOnce(Command) -> Result<std::process::Output, String>,
+) -> Result<serde_json::Value, String> {
     use serde_json::{Value, json};
     let dir = project.join(".first/dev");
     let read = |name: &str| {
@@ -135,10 +150,7 @@ pub(super) fn status(project: &Path) -> Result<serde_json::Value, String> {
             [&state["wordpress"], &state["php"]],
         ));
     }
-    let out = command(project, "status")?
-        .stdin(std::process::Stdio::null())
-        .output()
-        .map_err(|e| format!("first needs Node.js 22+ and npm (npx) for the dev site: {e}"))?;
+    let out = run(command(project, "status")?)?;
     let studio: Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
     let Some(url) = studio["siteUrl"].as_str().filter(|_| out.status.success()) else {
         let said = String::from_utf8_lossy(&out.stderr);

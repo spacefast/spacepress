@@ -132,6 +132,9 @@ test("the users kind: rows as First reads them, writes through First's rules, cr
     assert.deepEqual([one.status, one.json.code], [401, "unauthenticated"], `member ${id}`);
   }
   assert.equal((await fetch(`${harness.url}/wp-json/wp/v2/users`)).status, 401);
+  // A rule that gives a visitor no user makes nobody a public author: no archive, no sitemap file.
+  assert.equal((await fetch(`${harness.url}/author/admin/`)).status, 404);
+  assert.equal((await fetch(`${harness.url}/wp-sitemap-users-1.xml`)).status, 404);
   // A PATCH of only core user fields still runs First's update: validation, field rules, hooks.
   const name = (await ok("GET", `/members/${sub}`, { as: "subscriber" })).name;
   const long = await f("PATCH", `/members/${sub}`, { as: "subscriber", body: { name: "x".repeat(81) } });

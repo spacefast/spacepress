@@ -43,8 +43,8 @@ final class Sealed
         // The list is the build's (schema.php, the same one its manifests carry): nothing is added here.
         self::$allowed = array_fill_keys($listed, true);
         // What the app can't run without: the runtime, the app itself, identity and the platform pins.
-        // First's admin and the pages plugin are First's own and always listed, but the site runs
-        // without them (classic wp-admin stays), so they deactivate like any declared plugin.
+        // First's admin is First's own and always listed, but the site runs without it (classic
+        // wp-admin stays), so it deactivates like any declared plugin.
         self::$required = array_fill_keys(array_filter($listed, static fn (string $slug): bool => in_array($slug, ['first-runtime', 'first-identity', 'first-app-' . $schema->name()], true)
             || isset(Platform::PLUGINS[$slug])), true);
         // Every activation path (wp-admin's single, bulk and network screens, core's REST plugins

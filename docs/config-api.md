@@ -255,10 +255,18 @@ app is active they are closed to visitors who aren't signed in:
 | `/wp/v2/users`, `/wp/v2/users/<id>`, the same through `?rest_route=`, `/batch/v1` or any letter case | 401 |
 | a post's REST `_embed=author` | the embed holds that 401, not the user |
 | `?author=<id>` (core redirects it to `/author/<login>/`), `?author_name=`, `/author/<login>/`, its feed and its `.md` twin | 404, no redirect |
-| the users sitemap (`/wp-sitemap-users-1.xml`), and its entry in `/wp-sitemap.xml` | gone |
+| the users sitemap (`/wp-sitemap-users-1.xml`), and its entry in `/wp-sitemap.xml` | gone (with a users kind: only the users below) |
 | a post's oEmbed `author_name` and `author_url` | the site's name and address, as core answers for a post with no author |
 | `/__first/api/v1/users` | follows the core route (401) |
 | the app's own users kind on First's API (`GET /__first/api/v1/<kind>`) | its read rule decides, as for every viewer: a rule that needs a signed-in user (`self`, a role) answers the list with First's 401, a rule that filters answers with the rows it gives a signed-out visitor (often none), and one user is a 401 unless the rule gives that row to anyone, whether or not the id exists |
+
+With a users kind, its read rule also says who is a public author, user by
+user: a user whose row the rule gives a signed-out visitor keeps their author
+archive, `?author=<id>`, sitemap entry and oEmbed author fields, as WordPress
+ships them. Every other user's stay closed, with the same 404 a login nobody
+has gets, and a kind whose rule gives a visitor no user has no public author
+and no users sitemap file. Core's `/wp/v2/users` stays closed either way; the
+kind's own route on First's API is where an app reads its users.
 
 Signed-in users and credentials keep core's answers (the block editor's author
 picker), and the users kind's read rule decides what First's API shows. A
@@ -271,7 +279,7 @@ Authors are public, as WordPress ships them, when the app says so: either set
 export default defineConfig({ publicAuthors: true });
 ```
 
-or give the users kind a read rule that lets anyone read users
+or give the users kind a read rule that lets anyone read every user
 (`access: { read: "anyone" }`). `GET /__first/api/v1` reports which applies under
 `runtime.wp.publicAuthors`.
 
@@ -664,19 +672,24 @@ content/docs/
   the editor's page attributes edit them, and `:path` in the url is the parent chain.
 - A file's name is its slug and its folder its parent; front matter never holds either. Put
   `order: 2` in front matter to sort; siblings with the same order sort by title.
-- Slugs are unique in the kind, so two folders can't both hold an `install.md`.
+- A folder tree's file slugs are unique, so two folders can't both hold an `install.md`; a file
+  without a `uid` is identified by its slug, so moving it keeps its page. On the site, as in
+  WordPress, a slug is unique among siblings, and URLs resolve the whole path.
 - `first sync` moves a file when its page moves on the site, and turns a page that gains children
-  into its folder's `index.md`.
+  into its folder's `index.md`; an `index.md` you wrote stays one, and moving a folder moves its
+  pages.
+- Pages edited in wp-admin can come back to the repository as a pull request, and Markdown merged
+  in git can go to the site, on a schedule: [Content in git](../docs-site/docs/publishing/content-in-git.mdx).
 
 A page reads the navigation from `"first/content"`, as the visitor:
 
 ```tsx
-// first/app/docs/[...path]/page.tsx
+// first/app/docs/[[...path]]/page.tsx  (or [...path]; /docs itself is first/app/docs/page.tsx)
 import { docs } from "first:db";
 import { Content, type PageProps } from "first/app";
 import { nav, pager, headings } from "first/content";
 
-export default async function Doc({ item }: PageProps<"docs/[...path]">) {
+export default async function Doc({ item }: PageProps<"docs/[[...path]]">) {
   const tree = await nav(docs, item);           // [{ id, title, href, current, open, children }]
   const { prev, next } = await pager(docs, item);
   const toc = headings(item);                   // [{ depth: 2 | 3, text, id }]
@@ -716,6 +729,29 @@ Back up the **database**.
 - Props are text, a choice of text literals, numbers and booleans; anything else is a build error.
   A tag the site doesn't know, an unknown prop, a wrong value or an unclosed tag is refused.
 
+### Code blocks
+
+A fenced code block is highlighted when its page renders, in light and dark themes, with no
+script on the page ([decision](decisions/2026-11-13-code-blocks.md)). The fence takes a title,
+lines to mark and a group; blocks with one group show as tabs:
+
+````md
+```ts title="first.config.ts" {2,4-5}
+import { defineConfig } from "first";
+```
+
+```sh group="install"
+npm install first
+```
+
+```sh title="pnpm" group="install"
+pnpm add first
+```
+````
+
+It is WordPress's own code block underneath, so the block editor edits it, and `first sync` writes
+the same fence back. 185 languages; `text` (or any unknown language) shows the code as written.
+
 ### Seeding and `first sync`
 
 Every publish seeds synced files: missing records are created, trashed records stay deleted, and no records are removed.
@@ -735,6 +771,12 @@ both (`first sync resolve <uid>` applies your edit of it).
 matches records and deletes nothing. It commits the files it wrote unless
 `--no-commit`. `first build` adds `.first/*` and `!.first/sync-base.json` to
 `.gitignore`, because the sync base is committed.
+
+`first sync --pr [--repo owner/name] [--base branch]`, with `GITHUB_TOKEN` as well, runs the sync on
+a temporary worktree of the default branch instead of the checkout, and opens one pull request (or
+updates the open one) with the site's changes; conflict files go in it, listed in a comment. It
+needs no `gh`. [Content in git](../docs-site/docs/publishing/content-in-git.mdx) describes the loop,
+the permissions it needs and the conflicts.
 
 What sync leaves out: `$onUpdate` columns, derived and hidden system columns,
 and fields the viewer's field access hides. References to a `uid` collection are written as that
@@ -1030,7 +1072,11 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   has a default (`schema_required`); a name every kind or site has is not available
   (`schema_reserved`); a removed name comes back only with the stored type it had, and a name
   that any build which ran on the site stores as another type keeps that type (`schema_retype`), so
-  two builds the host serves at once never read one value two ways; something a build declares is not removed at runtime (`schema_in_use`, or
+  two builds the host serves at once never read one value two ways; a field stores its values under
+  keys no other field of its storage uses, sub-fields and repeater rows included (`seo_title` is
+  refused next to a group `seo` with a `title`, and so is a global `site_meta` with a field `title`
+  next to a global `site` with a field `meta_title`: both would be `first_global_site_meta_title`);
+  something a build declares is not removed at runtime (`schema_in_use`, or
   `schema_build_only` when no runtime change added it). Every other operation (renaming, retyping,
   tables, hooks, actions, jobs, pages, taxonomies) is `schema_build_only`, with the source edit to
   make. Fields of a translated or synced collection are build-only for now.
@@ -1068,11 +1114,40 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   `schema_in_use`. To remove it, delete it from your code and from the lock, build and deploy.
 - **Deploying.** A build that lacks the site's changes does not drop them: they stay active, with
   their data, and `wp first migrate` lists them under `runtimeSchema.kept`. A build that declares
-  a runtime name, or a removed one, with another stored type is refused before any table changes,
-  with the fix (usually: `first pull`, then build).
+  a runtime name, or a removed one, in a way that reads its stored values differently (another type,
+  other options, other sub-fields or layouts, or a `table()` named like a runtime collection) is
+  refused before any table changes, with the fix (usually: `first pull`, then build). A build that
+  only changes a runtime field's rules or presentation is listed under `runtimeSchema.changed`; its
+  declaration is used. Applying a change takes the same lock a deploy holds, so the two never
+  interleave; a change that waited for a deploy is refused with 409 `schema_build_changed` and is
+  proposed again on the new build.
+- **Moving a change into source.** Declare the field or kind there as the site stores it (the lock
+  shows it). A kind the site added keeps building after you declare it: its title and body are the
+  ones source declares.
 
-Applying a change is `First\Wp\SchemaVersions::of($plugin)->apply($parent, $changeSet, $actor)`
-from PHP; the Abilities, the `first schema` commands and the admin screen are not built yet.
+- **Agents (Abilities and MCP).** `<app>/schema-read` returns the active version, every stored
+  version with its changes, and what a deploy of the running build would keep.
+  `<app>/schema-propose` takes `{ changes }` and returns them in stored form with their effect on
+  stored data; it writes nothing. `<app>/schema-apply` takes `{ parent, changes }` and stores the
+  next version. Read and propose run over GET, so `changes` may also be one JSON string there. All
+  three are tools on the app's MCP server. Reading and proposing need `manage_options`. Applying
+  needs `first_apply_schema`. The administrator role is given it once, the first time the app runs
+  with `runtimeSchema`, and from then on it is an ordinary capability: `wp cap remove administrator
+  first_apply_schema` or `wp user remove-cap <user> first_apply_schema` takes it away for good. To
+  stop one way of signing in without touching the user, list it in the option
+  `first_<app>_schema_apply_denied`: `{ "user": <id>, "password": "<uuid>" }` for one application
+  password (a password it creates later is denied too), `{ "user": <id>, "credential":
+  "application-password" }` for all of that user's passwords, present and future, or `{ "user":
+  <id>, "credential": "bearer" }` for every First Identity access token they are issued. A wp-admin
+  session is not denied this way; take the capability instead. Each version records the user and,
+  when one signed the request, the application password's UUID and name (never the secret).
+- **Commands.** `first schema list | diff <version> | apply <file|-> [--parent=<n>] | rollback
+  <version> [--parent=<n>]` (`wp first schema …` on a server). `apply` takes a JSON list of changes
+  (or a whole change set) and applies it on the newest version unless `--parent` says otherwise.
+  `rollback` applies the reverse of a version as a new version.
+- **wp-admin.** Tools → Schema versions lists every version, newest first, with who made it and
+  each change in words, and says which runtime changes the running build doesn't contain yet.
+
 Taxonomies can't be added at runtime: `taxonomy()` is not in this First version.
 
 ## Plugin packages

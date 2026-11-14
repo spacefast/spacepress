@@ -18,6 +18,11 @@ use First\Viewer;
  * app is active they are closed, unless the app makes its authors public: `publicAuthors: true` in the
  * config, or a users kind whose read rule lets anyone read users.
  *
+ * A users kind whose read rule gives a signed-out visitor some users' rows makes those users public
+ * authors, one by one ({@see visible()}): their archive, `?author=<id>`, sitemap entry (narrowed by
+ * {@see Sitemap}) and oEmbed fields answer as WordPress ships them, and every other user's stay
+ * closed. Core's `/wp/v2/users` stays closed either way; First's API serves the kind.
+ *
  * Signed-in users keep core's answers on the REST routes (the block editor lists authors), and the
  * users kind's own rules decide what First's API shows ({@see UserMeta}). Nothing is written.
  */
@@ -31,24 +36,59 @@ final class Authors
     {
         add_filter('rest_pre_dispatch', static fn (mixed $result, mixed $server, mixed $request): mixed => self::route($schema, $result, $request), 5, 3);
         add_filter('request', static fn (array $vars): array => self::archive($schema, $vars), PHP_INT_MAX);
-        add_filter('wp_sitemaps_add_provider', static fn (mixed $provider, string $name): mixed => $name === 'users' && !self::public($schema) ? false : $provider, 10, 2);
-        add_filter('oembed_response_data', static function (array $data) use ($schema): array {
+        // With a users kind the sitemap stays and lists only the users a visitor may read ({@see Sitemap}).
+        add_filter('wp_sitemaps_add_provider', static fn (mixed $provider, string $name): mixed => $name === 'users' && !self::public($schema) && self::kind($schema) === null ? false : $provider, 10, 2);
+        add_filter('oembed_response_data', static function (mixed $data, mixed $post = null) use ($schema): mixed {
+            if (!is_array($data) || self::visible($schema, $post instanceof \WP_Post ? (int) $post->post_author : 0)) {
+                return $data;
+            }
+
             // Core's own answer for a post with no author: the site's name and address.
-            return self::public($schema) ? $data : ['author_name' => get_bloginfo('name'), 'author_url' => get_home_url()] + $data;
-        }, PHP_INT_MAX);
+            return ['author_name' => get_bloginfo('name'), 'author_url' => get_home_url()] + $data;
+        }, PHP_INT_MAX, 2);
+    }
+
+    /** The app's users kind, or null when it has none. */
+    private static function kind(Schema $schema): ?string
+    {
+        $users = $schema->auth()['collection'] ?? null;
+
+        return is_string($users) ? $users : null;
     }
 
     /** Whether the app makes its authors public: the config's flag, or a users kind anyone may read. */
     public static function public(Schema $schema): bool
     {
         if (self::$public === null) {
-            $users = $schema->auth()['collection'] ?? null;
+            $users = self::kind($schema);
             $rule = $users === null ? null : Access::collectionRules($schema->collection($users))['read'];
             self::$public = $schema->publicAuthors()
                 || ($rule !== null && Access::isShorthand($rule) && Access::evaluate($rule, new Viewer(null), 'read') === true);
         }
 
         return self::$public;
+    }
+
+    /**
+     * Whether a signed-out visitor may see this user as an author: the app's authors are public, or
+     * its users kind's read rule gives a visitor that user's row. While storage is behind the build
+     * the rule can't be asked, so nobody is.
+     */
+    public static function visible(Schema $schema, int $user): bool
+    {
+        if (self::public($schema)) {
+            return true;
+        }
+        $users = self::kind($schema);
+        $plugin = Plugin::instance();
+        if ($users === null || $user <= 0 || $plugin === null || $plugin->unavailable() !== null) {
+            return false;
+        }
+        try {
+            return $plugin->db()->findFirst($users, ['where' => ['id' => $user]], new Viewer(null)) !== null;
+        } catch (HttpError) {
+            return false; // the rule refuses signed-out visitors
+        }
     }
 
     /**
@@ -79,35 +119,46 @@ final class Authors
      */
     private static function ruled(Schema $schema, \WP_REST_Request $request): bool
     {
-        $users = $schema->auth()['collection'] ?? null;
-        if ($users === null || !Facade::dispatching() || $request->get_method() !== 'GET') {
+        if (self::kind($schema) === null || !Facade::dispatching() || $request->get_method() !== 'GET') {
             return false;
         }
         $route = strtolower(untrailingslashit($request->get_route()));
         if ($route === '/wp/v2/users') {
             return true;
         }
-        if (!preg_match('#^/wp/v2/users/(\d+)$#', $route, $m)) {
-            return false;
-        }
-        try {
-            return Plugin::instance()?->db()->findFirst($users, ['where' => ['id' => (int) $m[1]]], new Viewer(null)) !== null;
-        } catch (HttpError) {
-            return false;
-        }
+
+        return preg_match('#^/wp/v2/users/(\d+)$#', $route, $m) === 1 && self::visible($schema, (int) $m[1]);
     }
 
     /**
      * request: an author archive (`/author/<login>/`, `?author=<id>`, `?author_name=`, their feeds and
-     * Markdown twins) is a 404, before core resolves it or redirects `?author=<id>` to the login.
+     * Markdown twins) is a 404, before core resolves it or redirects `?author=<id>` to the login,
+     * unless it names one user a visitor may see as an author ({@see visible()}). Every other form
+     * (a list of ids, an excluded id, a login nobody has) gets the same 404.
      *
      * @param array<string, mixed> $vars
      * @return array<string, mixed>
      */
     private static function archive(Schema $schema, array $vars): array
     {
-        if ((isset($vars['author']) || isset($vars['author_name'])) && !self::public($schema) && !is_admin()) {
-            return ['error' => '404'];
+        if ((!isset($vars['author']) && !isset($vars['author_name'])) || self::public($schema) || is_admin()) {
+            return $vars;
+        }
+        $named = [];
+        if (isset($vars['author'])) {
+            $id = is_scalar($vars['author']) ? (string) $vars['author'] : '';
+            $named[] = ctype_digit($id) ? (int) $id : 0;
+        }
+        if (isset($vars['author_name'])) {
+            // As core reads it: the last segment of the path, as a user's nicename.
+            $parts = is_string($vars['author_name']) ? array_values(array_filter(explode('/', $vars['author_name']), static fn (string $p): bool => $p !== '')) : [];
+            $user = $parts === [] ? false : get_user_by('slug', sanitize_title_for_query($parts[count($parts) - 1]));
+            $named[] = $user instanceof \WP_User ? (int) $user->ID : 0;
+        }
+        foreach ($named as $id) {
+            if (!self::visible($schema, $id)) {
+                return ['error' => '404'];
+            }
         }
 
         return $vars;

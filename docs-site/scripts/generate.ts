@@ -87,12 +87,22 @@ function prose(markdown: string, from: string): string {
 	return toFirst(held).replace(/\u0000(\d+)\u0000/g, (_, i: string) => urls[Number(i)]!);
 }
 
-/** Relative links in a README point into the repository on GitHub. */
+/**
+ * Relative links in a README point into the repository on GitHub. Code is left as written:
+ * `obj[sym](x)` in a code span or fence is a call, not a link.
+ */
 function repoLinks(markdown: string, from: string): string {
-	return markdown.replace(/\]\((?!https?:|#|mailto:)([^)\s]+)\)/g, (_, target: string) => {
-		const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(from), target));
-		return `](${resolved.endsWith("/") || !path.extname(resolved) ? tree : github}/${resolved.replace(/\/$/, "")})`;
-	});
+	return markdown
+		.split(/(```[\s\S]*?```|`[^`\n]*`)/)
+		.map((part, i) =>
+			i % 2 === 1
+				? part
+				: part.replace(/\]\((?!https?:|#|mailto:)([^)\s]+)\)/g, (_, target: string) => {
+						const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(from), target));
+						return `](${resolved.endsWith("/") || !path.extname(resolved) ? tree : github}/${resolved.replace(/\/$/, "")})`;
+					}),
+		)
+		.join("");
 }
 
 function compileSummary(name: string, dir: string): { ok: boolean; text: string; counts?: Record<string, number> } {
@@ -194,6 +204,18 @@ A plugin that is not in the table above still installs. \`first check\` and \`fi
 | --- | --- | --- |
 ${Object.entries(platform.plugins).map(([slug, p]) => `| \`${slug}\` | \`${p.version}\` | \`${p.sha256}\` |`).join("\n")}
 `,
+);
+
+// ---------------------------------------------------------------------------------------------
+// Agents: docs/agents.md, the one description of `first init`, `first mcp` and the site's MCP
+// endpoint. The page here is that file, so the two never say different things.
+// ---------------------------------------------------------------------------------------------
+
+page(
+	"docs/agents.mdx",
+	{ title: "Agents", description: "Set a project up for coding agents with first init and first mcp, and connect an agent to a running app's MCP endpoint.", sidebar: { order: 5 } },
+	"docs/agents.md",
+	mdx(prose(read("docs/agents.md").replace(/^#\s+.+\n+/, ""), "docs/agents.md")),
 );
 
 // ---------------------------------------------------------------------------------------------
@@ -644,7 +666,7 @@ page(
 
 // Directories the generator owns outright, and generated files that share docs/reference with
 // hand-written ones. A file in an owned directory that the generator didn't write fails --check.
-const generatedRoots = ["docs/examples", "docs/changelog", "openapi", "docs/reference/wordpress-plugins.mdx", "docs/reference/cli.mdx", "docs/reference/diagnostics.mdx", "docs/reference/config.mdx", "docs/reference/client.mdx", "docs/reference/language-support.mdx"];
+const generatedRoots = ["docs/agents.mdx", "docs/examples", "docs/changelog", "openapi", "docs/reference/wordpress-plugins.mdx", "docs/reference/cli.mdx", "docs/reference/diagnostics.mdx", "docs/reference/config.mdx", "docs/reference/client.mdx", "docs/reference/language-support.mdx"];
 const onDisk = new Set<string>();
 for (const root of generatedRoots) {
 	const full = path.join(site, root);

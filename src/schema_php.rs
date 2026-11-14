@@ -302,14 +302,8 @@ pub fn render(schema: &Schema) -> String {
     let _ = writeln!(out, "    'name' => {},", php_str(&schema.name));
     let _ = writeln!(out, "    'admin' => {},", schema.admin);
     // The complete allow-list (docs/sealed.md), the same one the build's manifests carry: the runtime
-    // reads it here and decides nothing itself. The pages plugin is always listed: `first-pages build`
-    // installs it beside the app, after this file is written.
-    if let Some(slugs) = crate::bundle::sealed_plugins(
-        schema,
-        crate::app_plugin::first_plugins(schema)
-            .into_iter()
-            .chain([format!("first-pages-{}", schema.name)]),
-    ) {
+    // reads it here and decides nothing itself.
+    if let Some(slugs) = crate::bundle::sealed_plugins(schema, crate::app_plugin::first_plugins(schema)) {
         let slugs: Vec<String> = slugs.iter().map(|slug| php_str(slug)).collect();
         let _ = writeln!(out, "    'sealed' => ['plugins' => [{}]],", slugs.join(", "));
     }

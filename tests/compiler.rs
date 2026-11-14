@@ -2521,7 +2521,7 @@ export default defineConfig({ name: "kindurls", sealed: true });
     // only with `locales`).
     assert_eq!(
         built["sealed"],
-        serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-pages-kindurls", "first-runtime", "mcp-adapter", "secure-custom-fields", "two-factor"]})
+        serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "secure-custom-fields", "two-factor"]})
     );
     let built = schema(
         r#"import { defineConfig } from "first";
@@ -2530,7 +2530,7 @@ export default defineConfig({ name: "kindurls", sealed: true, admin: true, local
     );
     assert_eq!(
         built["sealed"],
-        serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-pages-kindurls", "first-runtime", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor"]})
+        serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor"]})
     );
     let refused = tmp.path().join("app-sealed-refused");
     std::fs::create_dir_all(&refused).unwrap();

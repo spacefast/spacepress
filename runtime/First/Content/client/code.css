@@ -1,0 +1,57 @@
+/* Code blocks (First\Content\Code): Atom One Light and Atom One Dark from highlight.php's
+ * bundled styles (MIT, Daniel Gamage), switched by the visitor's colour scheme; titles, marked
+ * lines and tab groups. No script: tabs switch with radio inputs. */
+.first-code-block { margin: 1.5em 0; }
+.first-code { margin: 0; padding: 0.75em 0; overflow-x: auto; border-radius: 6px; font-size: 0.875em; line-height: 1.6; }
+.first-code code { display: block; background: none; padding: 0; }
+.first-code-line { display: block; padding: 0 1em; min-height: 1.6em; }
+.first-code-title { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8125em; padding: 0.4em 1em; border-radius: 6px 6px 0 0; }
+.first-code-title + .first-code { border-top-left-radius: 0; border-top-right-radius: 0; }
+.first-code-group { margin: 1.5em 0; display: flex; flex-wrap: wrap; }
+.first-code-group > .first-code-tab-input { position: absolute; opacity: 0; pointer-events: none; }
+.first-code-group > .first-code-tab { order: 0; cursor: pointer; padding: 0.4em 1em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8125em; border-bottom: 2px solid transparent; }
+.first-code-group > .first-code-panel { order: 1; width: 100%; margin: 0; display: none; }
+.first-code-group > .first-code-tab-input:focus-visible + .first-code-tab { outline: 2px solid currentColor; outline-offset: -2px; }
+.first-code-group > .first-code-tab-input:nth-of-type(1):checked ~ .first-code-panel:nth-of-type(1),
+.first-code-group > .first-code-tab-input:nth-of-type(2):checked ~ .first-code-panel:nth-of-type(2),
+.first-code-group > .first-code-tab-input:nth-of-type(3):checked ~ .first-code-panel:nth-of-type(3),
+.first-code-group > .first-code-tab-input:nth-of-type(4):checked ~ .first-code-panel:nth-of-type(4),
+.first-code-group > .first-code-tab-input:nth-of-type(5):checked ~ .first-code-panel:nth-of-type(5),
+.first-code-group > .first-code-tab-input:nth-of-type(6):checked ~ .first-code-panel:nth-of-type(6),
+.first-code-group > .first-code-tab-input:nth-of-type(7):checked ~ .first-code-panel:nth-of-type(7),
+.first-code-group > .first-code-tab-input:nth-of-type(8):checked ~ .first-code-panel:nth-of-type(8) { display: block; }
+.first-code-group > .first-code-tab-input:checked + .first-code-tab { border-bottom-color: currentColor; font-weight: 600; }
+.first-code-group .first-code-title { display: none; }
+
+@media (prefers-color-scheme: light), (prefers-color-scheme: no-preference) {
+.first-code-title { background: #eaeaeb; color: #383a42; }
+.first-code-marked { background: rgba(56, 58, 66, 0.08); box-shadow: inset 3px 0 0 #4078f2; }
+.first-code {  color: #383a42;  background: #fafafa; }
+.first-code .hljs-comment, .first-code .hljs-quote { color: #a0a1a7; font-style: italic; }
+.first-code .hljs-doctag, .first-code .hljs-keyword, .first-code .hljs-formula { color: #a626a4; }
+.first-code .hljs-section, .first-code .hljs-name, .first-code .hljs-selector-tag, .first-code .hljs-deletion, .first-code .hljs-subst { color: #e45649; }
+.first-code .hljs-literal { color: #0184bb; }
+.first-code .hljs-string, .first-code .hljs-regexp, .first-code .hljs-addition, .first-code .hljs-attribute, .first-code .hljs-meta-string { color: #50a14f; }
+.first-code .hljs-built_in, .first-code .hljs-class .hljs-title { color: #c18401; }
+.first-code .hljs-attr, .first-code .hljs-variable, .first-code .hljs-template-variable, .first-code .hljs-type, .first-code .hljs-selector-class, .first-code .hljs-selector-attr, .first-code .hljs-selector-pseudo, .first-code .hljs-number { color: #986801; }
+.first-code .hljs-symbol, .first-code .hljs-bullet, .first-code .hljs-link, .first-code .hljs-meta, .first-code .hljs-selector-id, .first-code .hljs-title { color: #4078f2; }
+.first-code .hljs-emphasis { font-style: italic; }
+.first-code .hljs-strong { font-weight: bold; }
+.first-code .hljs-link { text-decoration: underline; }
+}
+@media (prefers-color-scheme: dark) {
+.first-code-title { background: #21252b; color: #abb2bf; }
+.first-code-marked { background: rgba(171, 178, 191, 0.1); box-shadow: inset 3px 0 0 #61aeee; }
+.first-code {  color: #abb2bf;  background: #282c34; }
+.first-code .hljs-comment, .first-code .hljs-quote { color: #5c6370; font-style: italic; }
+.first-code .hljs-doctag, .first-code .hljs-keyword, .first-code .hljs-formula { color: #c678dd; }
+.first-code .hljs-section, .first-code .hljs-name, .first-code .hljs-selector-tag, .first-code .hljs-deletion, .first-code .hljs-subst { color: #e06c75; }
+.first-code .hljs-literal { color: #56b6c2; }
+.first-code .hljs-string, .first-code .hljs-regexp, .first-code .hljs-addition, .first-code .hljs-attribute, .first-code .hljs-meta-string { color: #98c379; }
+.first-code .hljs-built_in, .first-code .hljs-class .hljs-title { color: #e6c07b; }
+.first-code .hljs-attr, .first-code .hljs-variable, .first-code .hljs-template-variable, .first-code .hljs-type, .first-code .hljs-selector-class, .first-code .hljs-selector-attr, .first-code .hljs-selector-pseudo, .first-code .hljs-number { color: #d19a66; }
+.first-code .hljs-symbol, .first-code .hljs-bullet, .first-code .hljs-link, .first-code .hljs-meta, .first-code .hljs-selector-id, .first-code .hljs-title { color: #61aeee; }
+.first-code .hljs-emphasis { font-style: italic; }
+.first-code .hljs-strong { font-weight: bold; }
+.first-code .hljs-link { text-decoration: underline; }
+}

@@ -1075,6 +1075,8 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
         uris.contains(&"first-docs:///docs-site/docs/getting-started.mdx"),
         "{uris:?}"
     );
+    // The site's copy of a docs/ page is not a second page to search.
+    assert!(!uris.contains(&"first-docs:///docs-site/docs/agents.mdx"), "{uris:?}");
     assert!(
         !uris
             .iter()
@@ -2271,6 +2273,8 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
         .flat_map(|group| table[*group].as_array().unwrap())
         .map(|row| row["name"].as_str().unwrap())
         .collect();
+    // The documentation the binary embeds, to check each page a skill points to.
+    let mut embedded = Mcp::initialized(&agent_kit(), &[]);
     let mut names = Vec::new();
     for entry in std::fs::read_dir(root().join("skills")).unwrap() {
         let dir = entry.unwrap().path();
@@ -2323,8 +2327,13 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
 
         // Every `first <command>` it names, in inline code or in a shell block, is in the command
         // table (or is `first help`).
+        // The skill's reference files count too.
+        let every_file: String = files_under(&dir)
+            .iter()
+            .map(|file| std::fs::read_to_string(dir.join(file)).unwrap())
+            .collect();
         let mut named = Vec::new();
-        for (i, part) in skill.split("```").enumerate() {
+        for (i, part) in every_file.split("```").enumerate() {
             if i % 2 == 1 {
                 named.extend(part.lines().map(str::trim).filter(|line| line.starts_with("first ")));
             } else {
@@ -2338,18 +2347,47 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
         }
         assert!(!named.is_empty(), "{name} names no command");
         for usage in named {
-            let words: Vec<&str> = usage.split_whitespace().skip(1).take(2).collect();
-            let two = words.join(" ");
-            assert!(
-                words[0] == "help" || commands.contains(&words[0]) || commands.contains(&two.as_str()),
-                "{name} names `{usage}`, which is not in the command table"
-            );
+            let words: Vec<&str> = usage.split_whitespace().skip(1).collect();
+            let two = words.iter().take(2).copied().collect::<Vec<_>>().join(" ");
+            let command = if commands.contains(&two.as_str()) {
+                two
+            } else {
+                words[0].to_string()
+            };
+            if command == "help" {
+                continue;
+            }
+            let row = ["build", "site"]
+                .iter()
+                .flat_map(|group| table[*group].as_array().unwrap())
+                .find(|row| row["name"] == command.as_str())
+                .unwrap_or_else(|| panic!("{name} names `{usage}`, which is not in the command table"));
+            // Each option it passes is one the command takes. `first wp` forwards WP-CLI's own.
+            if command != "wp" {
+                let takes = row["args"].as_str().unwrap();
+                for flag in words.iter().filter(|word| word.starts_with("--")) {
+                    let flag = flag.split('=').next().unwrap();
+                    assert!(
+                        takes.contains(flag),
+                        "{name} passes {flag} to `first {command}`, which takes {takes}"
+                    );
+                }
+            }
         }
-        // Every documentation page it points to is committed.
-        for (at, _) in skill.match_indices("`docs") {
-            let path: &str = skill[at + 1..].split('`').next().unwrap();
+        // Every documentation page it points to is one `first mcp`'s `docs_read` serves, unless the
+        // skill says it is not.
+        for (at, _) in every_file.match_indices("`docs") {
+            let path: &str = every_file[at + 1..].split('`').next().unwrap();
             if path.ends_with(".md") || path.ends_with(".mdx") {
                 assert!(root().join(path).is_file(), "{name} points to {path}");
+                let line = every_file[at..].lines().next().unwrap();
+                if !line.contains("not served by `docs_read`") {
+                    let read = embedded.call("docs_read", serde_json::json!({ "path": path }));
+                    assert_eq!(
+                        read["isError"], false,
+                        "{name} points to {path}, which docs_read does not serve"
+                    );
+                }
             }
         }
         names.push(name);
@@ -2390,6 +2428,8 @@ fn the_code_in_the_skills_compiles_as_one_project() {
             let Some((language, code)) = block.split_once('\n') else {
                 continue;
             };
+            // Every block says its language, so a TypeScript sample is never skipped for lack of a tag.
+            assert!(!language.trim().is_empty(), "{skill}: a code block without a language");
             if !matches!(language.trim(), "ts" | "tsx") {
                 continue;
             }
@@ -2416,6 +2456,25 @@ fn the_code_in_the_skills_compiles_as_one_project() {
     assert!(written.len() >= 4, "{written:?}");
     let checked = first().arg("check").arg(project.path()).output().unwrap();
     assert!(checked.status.success(), "{written:?}\n{}", text(&checked.stderr));
+    // What the skills say about the kinds in their samples is what the compiler makes of them: a
+    // kind's storage name is the snake_case of its export name, and the API path uses it.
+    let mut mcp = Mcp::initialized(project.path(), &[]);
+    let schema = mcp.ok("schema", serde_json::json!({}));
+    for (kind, described) in schema["kinds"].as_object().unwrap() {
+        let snake: String = kind
+            .chars()
+            .flat_map(|c| {
+                let lower = c.to_ascii_lowercase();
+                if c.is_ascii_uppercase() {
+                    vec!['_', lower]
+                } else {
+                    vec![c]
+                }
+            })
+            .collect();
+        assert_eq!(described["path"], snake.as_str(), "{kind}");
+    }
+    mcp.finish();
 }
 
 /// `npm create @spacefast/first` ends with `first init`: a new project has the agent files, written
@@ -2498,4 +2557,330 @@ fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
         text(&scaffolded.stdout)
     );
     assert!(other.join("first.config.ts").is_file() && !other.join("AGENTS.md").exists());
+}
+
+/// `first init --github` writes the content sync workflow at the repository's root, with the
+/// project's synced folders as its push paths; reruns keep it in step until its header line is
+/// deleted. With `ACTIONLINT` set (a path to actionlint), the file is also linted.
+#[test]
+fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path();
+    let project = repo.join("site");
+    std::fs::create_dir_all(&project).unwrap();
+    let config = |dirs: &[&str]| {
+        let kinds: Vec<String> = dirs
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                format!("const k{i} = collection({{ title: text(), body: richText().optional() }}, {{ content: \"body\", sync: \"{d}/*.md\" }});\n")
+            })
+            .collect();
+        let names: Vec<String> = (0..dirs.len()).map(|i| format!("k{i}")).collect();
+        format!(
+            "import {{ defineConfig, collection, text, richText }} from \"first\";\n{}export default defineConfig({{ name: \"gh\", collections: {{ {} }} }});\n",
+            kinds.concat(),
+            names.join(", ")
+        )
+    };
+    std::fs::write(project.join("first.config.ts"), config(&["content/posts"])).unwrap();
+    // Outside a git repository there is no root for GitHub to read the workflow from: refused.
+    let out = init(&project, &["--github"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).contains("git repository"), "{}", text(&out.stderr));
+    let git = Command::new("git").args(["init", "-q"]).arg(repo).output().unwrap();
+    assert!(git.status.success());
+    let path = repo.join(".github/workflows/first-sync.yml");
+
+    // Without --github: no workflow.
+    let out = init(&project, &[]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(!path.exists());
+
+    let out = init(&project, &["--github"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stdout).contains(&format!(
+            "wrote {}",
+            std::path::Path::new("..")
+                .join(".github/workflows/first-sync.yml")
+                .display()
+        )),
+        "{}",
+        text(&out.stdout)
+    );
+    let workflow = std::fs::read_to_string(&path).unwrap();
+    for expected in [
+        "# Written by `first init --github` for site; delete this line to keep your own edits.\n",
+        "  push:\n    branches: [\"**\"]\n",
+        "    types: [first-content-changed]\n",
+        "  schedule:\n",
+        "      - \"site/content/posts/**\"\n",
+        "        working-directory: \"site\"\n",
+        "  contents: write\n  pull-requests: write\n",
+        "run: npx --no-install first sync --pr --site \"$FIRST_SITE_URL\"\n",
+        "FIRST_APP_PASSWORD: ${{ secrets.FIRST_APP_PASSWORD }}\n",
+    ] {
+        assert!(workflow.contains(expected), "{expected:?} in\n{workflow}");
+    }
+    // Every action is pinned by a full commit SHA.
+    for line in workflow.lines().filter(|l| l.contains("uses: ")) {
+        let pin = line.split('@').nth(1).unwrap().split_whitespace().next().unwrap();
+        assert!(pin.len() == 40 && pin.bytes().all(|b| b.is_ascii_hexdigit()), "{line}");
+    }
+    if let Some(actionlint) = std::env::var_os("ACTIONLINT") {
+        let lint = Command::new(actionlint).arg(&path).output().unwrap();
+        assert!(lint.status.success(), "{}{}", text(&lint.stdout), text(&lint.stderr));
+    }
+
+    // In step: --check passes, and a rerun without --github writes nothing.
+    assert!(init(&project, &["--check"]).status.success());
+    // A new synced folder: first check says so, --check fails, and a plain rerun updates the paths.
+    std::fs::write(project.join("first.config.ts"), config(&["content/posts", "docs"])).unwrap();
+    let checked = first().arg("check").arg(&project).output().unwrap();
+    assert!(
+        text(&checked.stderr).contains(".github/workflows/first-sync.yml is out of date"),
+        "{}",
+        text(&checked.stderr)
+    );
+    assert_eq!(init(&project, &["--check"]).status.code(), Some(1));
+    assert!(init(&project, &[]).status.success());
+    assert!(
+        std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("      - \"site/docs/**\"\n")
+    );
+
+    // Another project in the same repository: its plain first init and first check leave this
+    // project's workflow alone, and its --github refuses to take it.
+    let other = repo.join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    std::fs::write(other.join("first.config.ts"), config(&["notes"])).unwrap();
+    let ours = std::fs::read_to_string(&path).unwrap();
+    assert!(init(&other, &[]).status.success());
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        ours,
+        "another project's init never rewrites it"
+    );
+    let checked = first().arg("check").arg(&other).output().unwrap();
+    assert!(
+        !text(&checked.stderr).contains("first-sync.yml"),
+        "{}",
+        text(&checked.stderr)
+    );
+    let taken = init(&other, &["--github"]);
+    assert_eq!(taken.status.code(), Some(1));
+    assert!(
+        text(&taken.stderr).contains("written for the project at site"),
+        "{}",
+        text(&taken.stderr)
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), ours);
+    assert!(init(&project, &["--check"]).status.success());
+
+    // Its header line deleted, the file is the author's: never rewritten, never reported, and
+    // --github says so rather than replace it.
+    let mine = std::fs::read_to_string(&path)
+        .unwrap()
+        .replacen("# Written by", "# Adapted from", 1);
+    std::fs::write(&path, &mine).unwrap();
+    std::fs::write(project.join("first.config.ts"), config(&["content/posts"])).unwrap();
+    assert!(init(&project, &[]).status.success());
+    let refused = init(&project, &["--github"]);
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(
+        text(&refused.stderr).contains("is your own"),
+        "{}",
+        text(&refused.stderr)
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), mine);
+    let checked = first().arg("check").arg(&project).output().unwrap();
+    assert!(
+        !text(&checked.stderr).contains("first-sync.yml"),
+        "{}",
+        text(&checked.stderr)
+    );
+}
+
+/// What `first init` must leave alone: an author's prose that quotes a marker, the formatting of
+/// their `.mcp.json`, a link they made, the permissions of their files, a skills directory they
+/// removed, and anything outside the project.
+#[cfg(unix)]
+#[test]
+fn init_keeps_the_authors_files_as_they_wrote_them_and_writes_only_inside_the_project() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("kit");
+    copy_tree(&agent_kit(), &project);
+    let read = |name: &str| std::fs::read_to_string(project.join(name)).unwrap();
+
+    // A marker quoted in prose is text: the section goes after it, and a rerun keeps the prose.
+    let prose = "Do not edit below `<!-- first:begin -->`.\n\n# Team notes\n\nRule A.\n";
+    std::fs::write(project.join("AGENTS.md"), prose).unwrap();
+    // The author's .mcp.json: its numbers and layout are theirs.
+    let mcp =
+        "{\"t\":1e3,\"big\":123456789012345678901234567890,\n    \"mcpServers\": {\"x\": {\"command\": \"y\"}}}\n";
+    std::fs::write(project.join(".mcp.json"), mcp).unwrap();
+    assert!(init(&project, &[]).status.success());
+    let agents = read("AGENTS.md");
+    assert!(agents.starts_with(prose), "{agents}");
+    assert_eq!(agents.matches("\n<!-- first:begin -->\n").count(), 1);
+    assert!(init(&project, &[]).status.success());
+    assert!(read("AGENTS.md").starts_with(prose));
+    let written = read(".mcp.json");
+    assert!(
+        written.starts_with("{\"t\":1e3,\"big\":123456789012345678901234567890,\n    \"mcpServers\": {"),
+        "{written}"
+    );
+    assert!(written.ends_with("\"x\": {\"command\": \"y\"}}}\n"), "{written}");
+    let parsed: serde_json::Value = serde_json::from_str(&written).unwrap();
+    assert_eq!(parsed["mcpServers"]["first"]["args"][2], "mcp");
+    assert_eq!(init(&project, &["--check"]).status.code(), Some(0));
+
+    // Permissions: an existing file keeps its own; a new one gets what any new file gets.
+    std::fs::set_permissions(project.join("AGENTS.md"), std::fs::Permissions::from_mode(0o664)).unwrap();
+    std::fs::write(
+        project.join("first/schema.ts"),
+        read("first/schema.ts") + "\nexport const extra = table({ n: text() });\n",
+    )
+    .unwrap();
+    assert!(init(&project, &[]).status.success());
+    let mode = |name: &str| std::fs::metadata(project.join(name)).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode("AGENTS.md"), 0o664);
+    let fresh = dir.path().join("fresh");
+    std::fs::write(&fresh, "").unwrap();
+    let usual = std::fs::metadata(&fresh).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(".agents/skills/first-add-kind/SKILL.md"), usual);
+
+    // A skills directory the author deleted stays deleted, and nothing reports it out of date.
+    std::fs::remove_dir_all(project.join(".claude")).unwrap();
+    assert_eq!(init(&project, &["--check"]).status.code(), Some(0));
+    let checked = first().arg("check").arg(&project).output().unwrap();
+    assert!(
+        !text(&checked.stderr).contains("first init"),
+        "{}",
+        text(&checked.stderr)
+    );
+    assert!(init(&project, &[]).status.success());
+    assert!(!project.join(".claude").exists());
+
+    // AGENTS.md as a link to another file of the project: written through, and still a link.
+    let linked = dir.path().join("linked");
+    copy_tree(&agent_kit(), &linked);
+    std::fs::write(linked.join("CLAUDE.md"), "# Mine\n").unwrap();
+    std::os::unix::fs::symlink("CLAUDE.md", linked.join("AGENTS.md")).unwrap();
+    assert!(init(&linked, &[]).status.success());
+    assert!(
+        std::fs::symlink_metadata(linked.join("AGENTS.md"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    let claude = std::fs::read_to_string(linked.join("CLAUDE.md")).unwrap();
+    assert!(
+        claude.starts_with("# Mine\n") && claude.contains("<!-- first:begin -->"),
+        "{claude}"
+    );
+
+    // A skills directory that links out of the project is refused before anything is written.
+    let escaping = dir.path().join("escaping");
+    copy_tree(&agent_kit(), &escaping);
+    let outside = dir.path().join("outside");
+    std::fs::create_dir(&outside).unwrap();
+    std::os::unix::fs::symlink(&outside, escaping.join(".claude")).unwrap();
+    let refused = init(&escaping, &[]);
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(
+        text(&refused.stderr).contains(".claude is a symbolic link"),
+        "{}",
+        text(&refused.stderr)
+    );
+    assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
+    assert!(!escaping.join("AGENTS.md").exists() && !escaping.join(".agents").exists());
+}
+
+/// A server started with no PATH (a client that passes a bare environment) still compiles: what
+/// it runs around a command needs no program from PATH.
+#[test]
+fn mcp_compiles_with_no_path() {
+    let mut mcp = Mcp::start(&agent_kit(), &[], |command| {
+        command.env("PATH", "");
+    });
+    mcp.modern = true;
+    assert_eq!(mcp.ok("check", serde_json::json!({}))["ok"], true);
+    assert_eq!(mcp.ok("schema", serde_json::json!({}))["name"], "agentkit");
+    mcp.finish();
+}
+
+/// A client that kills the server (SIGTERM, as the stdio transport's shutdown escalates to) leaves
+/// nothing the server started running.
+#[cfg(unix)]
+#[test]
+fn mcp_killed_by_its_client_leaves_no_command_running() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    let pids = tempfile::tempdir().unwrap();
+    let wp = scripted_wp(&format!("sleep 600 & echo $! > {}/$$; wait", pids.path().display()));
+    let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
+        with_path(command, wp.path())
+    });
+    mcp.write(
+        &serde_json::json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": { "name": "query", "arguments": { "kind": "notes", "site": "@slow" }, "_meta": modern_meta() } })
+        .to_string(),
+    );
+    let started = || -> Vec<PathBuf> {
+        std::fs::read_dir(pids.path())
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect()
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    while started().is_empty() || !running(&started()[0]) {
+        assert!(std::time::Instant::now() < deadline, "the site command never started");
+        std::thread::yield_now();
+    }
+    let server = mcp.child.id();
+    assert!(Command::new("kill").arg(server.to_string()).status().unwrap().success());
+    mcp.child.wait().unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while running(&started()[0]) {
+        assert!(std::time::Instant::now() < deadline, "the command outlived the server");
+        std::thread::yield_now();
+    }
+}
+
+/// `dev_status` on a site with no state file asks Studio through `npx`; a hung `npx` (offline, a
+/// stalled registry) is stopped at the server's timeout, and the next request is answered.
+#[cfg(unix)]
+#[test]
+fn mcp_dev_status_is_bounded_by_the_servers_timeout() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("first.config.ts"), CONFIG).unwrap();
+    // A site `first dev` created, from before the state file.
+    std::fs::create_dir_all(project.path().join(".first/dev")).unwrap();
+    std::fs::write(project.path().join(".first/dev/owner.json"), r#"{"created":true}"#).unwrap();
+    let tools = tempfile::tempdir().unwrap();
+    let npx = tools.path().join("npx");
+    std::fs::write(&npx, "#!/bin/sh\nsleep 600\n").unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&npx, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let mut mcp = Mcp::start(project.path(), &[], |command| {
+        with_path(command, tools.path());
+        command.env("FIRST_MCP_TIMEOUT", "2");
+    });
+    mcp.modern = true;
+    let started = std::time::Instant::now();
+    let refused = mcp.refused("dev_status", serde_json::json!({}));
+    assert!(refused.contains("took longer than 2 seconds"), "{refused}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(60));
+    assert!(
+        mcp.result("server/discover", serde_json::json!({}))
+            .get("supportedVersions")
+            .is_some()
+    );
+    mcp.finish();
 }

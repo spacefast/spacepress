@@ -41,8 +41,6 @@ pub struct BuildManifest {
     pub identity: bool,
     /// Mount `first-admin`.
     pub admin: bool,
-    /// `first-pages-<name>` when the app has pages.
-    pub pages: Option<String>,
     /// The app's schema snapshot, relative to the store root.
     pub snapshot: String,
     /// The generated client directory, relative to the store root, when the app has one.
@@ -260,7 +258,6 @@ pub fn compile_to_store(
         app: app_hash.clone(),
         identity: compiled.identity,
         admin: compiled.admin,
-        pages: compiled.pages,
         snapshot: format!("app/{app_hash}/snapshot.json"),
         client,
         sealed: compiled.sealed,

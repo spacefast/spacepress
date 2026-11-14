@@ -192,7 +192,7 @@ final class Purges
             if ($page > 0) {
                 $urls[] = (string) get_permalink($page);
             }
-            $urls[] = get_author_posts_url((int) $post->post_author);
+            $urls[] = Authors::archiveUrl((int) $post->post_author);
         }
         $archive = get_post_type_archive_link($post->post_type);
         if (is_string($archive)) {

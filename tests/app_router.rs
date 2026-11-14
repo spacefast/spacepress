@@ -1201,7 +1201,14 @@ fn frontend_modes_on_wordpress() {
             "both ids": 404,
             "listed embed": [false, "/author/editor/"],
             "unlisted embed": [true, ""],
-            "core route": [401, 401]
+            "core route": [401, 401],
+            "api list": true,
+            "api listed": 200,
+            "api unlisted": 401,
+            "api missing": 401,
+            "purged": true,
+            "unlisted after": 404,
+            "public sitemap": ["/author/admin/", "/author/editor/"]
         }),
         "{theme}"
     );

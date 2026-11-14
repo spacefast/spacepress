@@ -24,7 +24,7 @@ final class Hardening
     private const RULES = 'first_rewrite_rules';
 
     /** In the order spec.md §6 lists them. */
-    public const SWITCHES = ['xmlrpc', 'pings', 'emoji', 'fileEditors', 'pluginAndThemeInstalls', 'autoUpdates', 'customizer', 'comments', 'schemaLock', 'authors', 'permalinks', 'timezone', 'blockTheme'];
+    public const SWITCHES = ['xmlrpc', 'pings', 'emoji', 'fileEditors', 'pluginAndThemeInstalls', 'autoUpdates', 'customizer', 'comments', 'authors', 'schemaLock', 'permalinks', 'timezone', 'blockTheme'];
 
     private static bool $applied = false;
 

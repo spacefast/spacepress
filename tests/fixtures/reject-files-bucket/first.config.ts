@@ -1,3 +1,4 @@
-import { collection, text, email, integer, boolean, richText, slug, group, repeater, json, media, file, files, job, jobs, once, env, global, action, defineConfig, db, table } from "first";
-const notes = table({ deck: file({ bucket: "missing" }).optional() });
-export default defineConfig({ tables: { notes },  });
+import { defineConfig, file, files, table } from "first";
+const decks = files({ accept: ["application/pdf"], maxBytes: 10 });
+const notes = table({ deck: file(decks).optional() });
+export default defineConfig({ tables: { notes } });

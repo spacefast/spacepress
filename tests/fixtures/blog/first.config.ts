@@ -61,7 +61,7 @@ export const tables = { comments };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
 
-export const settings = global("settings", {
+export const settings = global({
   siteTitle: text().default("My blog").max(80),
   tagline: text().max(160).optional(),
   postsPerPage: integer().default(10).min(1).max(50),

@@ -73,14 +73,21 @@ final class Security
      * Count one attempt in a bucket, and refuse it when the bucket holds more than $max.
      *
      * A bucket is one row, and its window starts at the first attempt: `expires_at` is set then and
-     * stays until it has passed, when the next attempt starts a new window from one. A window that
-     * followed the clock (every multiple of $window seconds) would let $max attempts through just
-     * before a multiple and $max more just after.
+     * stays until it has passed, when the next attempt starts a new window from one. So a bucket
+     * allows $max attempts per window in the long run, and its windows don't line up with the clock
+     * or with other buckets'. It is still a counter per window, not a count over every span of
+     * $window seconds: one attempt, then $max - 1 as that window ends and $max as the next begins,
+     * is 2 * $max - 1 allowed close together.
      *
-     * One statement, so two requests at once both count. Both assignments read the stored
-     * `expires_at`: MariaDB and MySQL apply them left to right, so `hits` comes first; SQLite reads
-     * the stored row for every expression. Rows from before this change have other ids and expire
-     * unread ({@see Maintenance::run()} deletes them).
+     * The write is one statement, so two requests at once both count. Both assignments read the
+     * stored `expires_at`: MariaDB and MySQL apply them left to right, so `hits` comes first; SQLite
+     * reads the stored row for every expression. The count is read back in the same transaction,
+     * which holds the row until then: without it, another request restarting the window between the
+     * write and the read would hand this one the new window's count. The refusal is thrown after the
+     * commit, so a refused attempt stays counted.
+     *
+     * Rows from before windows started at the first attempt have other ids and expire unread
+     * ({@see Maintenance::run()} deletes them).
      */
     public function limit(
         string $bucket,
@@ -89,19 +96,22 @@ final class Security
     ): void {
         $id = self::hash($bucket);
         $now = self::now();
-        $this->db->run(
-            "INSERT INTO {$this->db->prefix}limits (id,hits,expires_at) VALUES (%s,1,%d) ON DUPLICATE KEY UPDATE hits=IF(expires_at<%d,1,hits+1), expires_at=IF(expires_at<%d,%d,expires_at)",
-            $id,
-            $now + $window,
-            $now,
-            $now,
-            $now + $window,
-        );
-        $row = $this->db->row(
-            "SELECT hits FROM {$this->db->prefix}limits WHERE id=%s",
-            $id,
-        );
-        if ((int) $row["hits"] > $max) {
+        $hits = $this->db->transaction(function () use ($id, $now, $window): int {
+            $this->db->run(
+                "INSERT INTO {$this->db->prefix}limits (id,hits,expires_at) VALUES (%s,1,%d) ON DUPLICATE KEY UPDATE hits=IF(expires_at<%d,1,hits+1), expires_at=IF(expires_at<%d,%d,expires_at)",
+                $id,
+                $now + $window,
+                $now,
+                $now,
+                $now + $window,
+            );
+            $row = $this->db->row(
+                "SELECT hits FROM {$this->db->prefix}limits WHERE id=%s",
+                $id,
+            );
+            return (int) $row["hits"];
+        });
+        if ($hits > $max) {
             throw new Failure(
                 "rate_limited",
                 "Too many attempts. Try again later.",
@@ -111,7 +121,8 @@ final class Security
     }
     /**
      * Whether a bucket has reached $max in its current window. Counts nothing ({@see limit()} does);
-     * a window that has ended holds nothing.
+     * a window that has ended holds nothing. A caller that checks here and counts later (WordPress's
+     * sign-in does) lets through the requests already in flight when the bucket fills.
      */
     public function limited(string $bucket, int $max = 10): bool
     {

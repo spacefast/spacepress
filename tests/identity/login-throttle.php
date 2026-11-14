@@ -188,6 +188,37 @@ $at(599);
 check($limit() === 'rate_limited', 'nor before the window that began at 299 ends');
 $at(600);
 check([$limit(), $rows()] === ['ok', [[1, $epoch + 900]]], 'the first attempt after it starts the next window');
+
+// An attempt is judged by the count it wrote. Between its write and its read, another request can't
+// restart the window and hand it the new window's count: the row is held until the count is read.
+// Here a second connection tries exactly that, the moment the limiter reads.
+$clear();
+$at(299);
+check([$limit(), $limit(), $limit()] === ['ok', 'ok', 'ok'], 'a bucket at its limit, in the last second of nothing in particular');
+$other = new wpdb(DB_USER, DB_PASSWORD, DB_NAME, DB_HOST);
+$other->suppress_errors(true);
+$table = $db->prefix . 'limits';
+$id = Security::hash("probe-$tag");
+$held = null;
+$intrude = static function (string $query) use ($other, $table, $id, $epoch, &$held): string {
+    if ($held === null && str_starts_with($query, "SELECT hits FROM $table WHERE id=") && !str_contains($query, 'expires_at')) {
+        // NOWAIT: answers at once, with an error when another connection holds the row.
+        $other->query($other->prepare("SELECT id FROM $table WHERE id=%s FOR UPDATE NOWAIT", $id));
+        $held = $other->last_error !== '';
+        if (!$held) {
+            // The row is free: do what a request a second later would, and restart the window.
+            $other->query($other->prepare("UPDATE $table SET hits=1, expires_at=%d WHERE id=%s", $epoch + 900, $id));
+        }
+    }
+    return $query;
+};
+add_filter('query', $intrude);
+$fourth = $limit();
+remove_filter('query', $intrude);
+$other->close();
+check($held === true, 'the limiter holds the row from its write to its read');
+check($fourth === 'rate_limited', 'so the fourth attempt is refused, whatever arrives meanwhile');
+check($rows() === [[4, $epoch + 599]], 'and stays counted in its own window');
 $at(100);
 
 // Identity's own password sign-in keeps its own two counters: filling WordPress's doesn't close it,

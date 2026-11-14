@@ -833,7 +833,7 @@ function wpTemplate(string $file, array $fixture): string
     $vars = ['name' => $name, 'slug' => "first-app-$name", 'label' => ucfirst($name), 'Name' => ucfirst($name), 'requires' => $requires, 'runtimeRequires' => implode(', ', $runtimeRequires),
         'wpVersion' => $platform['wordpress'], 'phpVersion' => $platform['php'], 'runtimeSeries' => wpConstant("$repo/runtime/First/Schema.php", 'SERIES'),
         'firstVersion' => wpConstant("$repo/runtime/First/Wp/Runtime.php", 'VERSION'), 'version' => wpConstant("$repo/runtime/First/Wp/Runtime.php", 'VERSION'),
-        'schemaHash' => substr(hash('sha256', json_encode($fixture['schema'])), 0, 16)];
+        'schemaHash' => substr(hash('sha256', json_encode($fixture['schema'])), 0, 16), 'runtimeHash' => 'tests'];
     $out = (string) file_get_contents($file);
     foreach ($vars as $k => $v) {
         $out = str_replace('{{' . $k . '}}', (string) $v, $out);

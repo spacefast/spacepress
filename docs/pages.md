@@ -161,9 +161,10 @@ export default function Note({ item }: PageProps<"notes/[slug]">) {
 JavaScript. The item's kind must turn `comments` on; otherwise the build stops
 at the prop. Who may comment, moderation and reply depth belong to the kind, not
 the component, and are enforced wherever a comment is created: the form, the
-API and core's comment form all give the same answer. Until a kind's `comments`
-takes options, the policy is signed-in users only, first-time moderation, and
-replies three levels deep (a deeper reply is refused). See
+API and core's comment form all give the same answer. `comments: true` is
+signed-in users only, first-time moderation, and replies three levels deep (a
+deeper reply is refused); `comments: { guests, moderation, threaded,
+closeAfterDays }` changes any of them ([Comments](config-api.md#comments)). See
 [the decision](decisions/2026-11-14-comments.md).
 
 ## Markdown pages

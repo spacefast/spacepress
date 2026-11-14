@@ -285,7 +285,7 @@ final class MarkdownTwins
         }
         if (self::$twin !== null) {
             // A `first/app/` page renders its own twin, from its compiled output (rendering.md §5).
-            $app = AppRouter::instance()?->twin(self::htmlUrl());
+            $app = AppRouter::instance()?->twin(self::htmlUrl(), $reads);
             [$status, $body] = $app ?? self::document();
             $headers = self::headers();
             if ($status === 200) {
@@ -295,6 +295,12 @@ final class MarkdownTwins
                 self::$negotiated = ['status' => $status, 'headers' => $headers, 'body' => $body];
 
                 return;
+            }
+            // A `.md` URL's twin is shared like an anonymous page (it is rendered as one): what it
+            // read decides which writes purge it, as for the page (rendering.md §6.2). Recorded under
+            // the twin's own URL: the page's layouts read more than the twin, and keep their record.
+            if ($app !== null && $status === 200) {
+                \First\Render\Cache::record(self::$twin, $reads);
             }
             self::emit($status, $headers, $body);
         }
@@ -566,6 +572,11 @@ final class MarkdownTwins
     private static function headers(): array
     {
         $headers = ['Content-Type' => self::CONTENT_TYPE, 'X-Content-Type-Options' => 'nosniff'];
+        if (\First\Render\Prebuilt::prerendering()) {
+            // Rendered for the prebuild, which writes a twin file only from such an answer.
+            $headers['X-First-Prerendered'] = '1';
+            $headers['Cache-Control'] = 'private, no-store, max-age=0';
+        }
         $signal = self::contentSignal();
         if ($signal !== '') {
             $headers['Content-Signal'] = $signal;

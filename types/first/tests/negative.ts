@@ -1,7 +1,7 @@
 // Negative checks: each @ts-expect-error must be consumed by a real mistake.
 import {
   action, blocks, boolean, collection, db, defineConfig, global, HttpError, integer, media, repeater, richText, select, text, url,
-  table, ref,
+  table, ref, taxonomy, terms,
 } from "first";
 import { authors, comments, items, locations, posts, entities, settings, shoppingList, UNITS } from "./schema";
 import type { AppRelations } from "./register";
@@ -254,3 +254,9 @@ export { crypto } from "first";
 ref(locations).many().onDelete("setNull");
 // @ts-expect-error a many-ref takes no default
 ref(locations).many().default([1]);
+// @ts-expect-error a terms field is already a list
+terms(taxonomy()).many();
+// @ts-expect-error terms() takes a taxonomy
+terms(locations);
+// @ts-expect-error term fields take no richText yet
+taxonomy({ body: richText() });

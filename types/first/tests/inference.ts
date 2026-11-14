@@ -3,7 +3,7 @@ import {
   action, db, defineConfig, integer, text, job, email,
   type AccessCtx, type BlockValue, type BeforeHookCtx, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx,
 } from "first";
-import { authors, comments, items, locations, posts, entities, settings, shoppingList } from "./schema";
+import { authors, comments, items, locations, notes, posts, entities, settings, shoppingList } from "./schema";
 import type { AppRelations } from "./register";
 
 export type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
@@ -80,6 +80,25 @@ async function queries() {
   expectType<Equal<NonNullable<typeof withRelated>["related"], { title: string }[]>>();
   expectType<Equal<NonNullable<typeof withRelated>["relatedFrom"][number]["related"], number[] | null>>();
   await db.update(posts).set({ related: [1, 2] }).where({ id: 1 });
+
+  // A term row (ruling 26): its own fields and the authored ones; `with` both ways (ruling 27).
+  const topic = await db.query.topics.findFirst({ where: { posts: { title: "x" } }, with: { posts: { columns: { title: true } } } });
+  expectType<Equal<NonNullable<typeof topic>["name"], string>>();
+  expectType<Equal<NonNullable<typeof topic>["slug"], string>>();
+  expectType<Equal<NonNullable<typeof topic>["parent"], number | null>>();
+  expectType<Equal<NonNullable<typeof topic>["count"], number>>();
+  expectType<Equal<NonNullable<typeof topic>["url"], string | null>>();
+  expectType<Equal<NonNullable<typeof topic>["color"], string | null>>();
+  expectType<Equal<NonNullable<typeof topic>["posts"], { title: string }[]>>();
+  const label = await db.query.labels.findFirst();
+  expectType<Equal<"parent" extends keyof NonNullable<typeof label> ? true : false, false>>();
+  // The item field is the term ids; `with` puts the term rows in their place.
+  const tagged = await db.query.notes.findFirst({ where: { labelIds: { has: 2 } } });
+  expectType<Equal<NonNullable<typeof tagged>["labelIds"], number[]>>();
+  const withTerms = await db.query.notes.findFirst({ with: { labelIds: { columns: { name: true } } } });
+  expectType<Equal<NonNullable<typeof withTerms>["labelIds"], { name: string }[]>>();
+  await db.insert(notes).values({ title: "n" });
+  await db.update(notes).set({ labelIds: [1, 2] }).where({ id: 1 });
 
   // A required ref -> not nullable once loaded.
   const comment = await db.query.comments.findFirst({ with: { postId: true } });

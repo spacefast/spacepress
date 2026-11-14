@@ -449,7 +449,7 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
 }
 
 /** Metadata every collection carries alongside its column references. */
-export type StorageKind = "collection" | "table" | "userProjection";
+export type StorageKind = "collection" | "table" | "userProjection" | "taxonomy";
 
 export interface CollectionMeta<TName extends string, TCols extends ColumnsConfig, TAuth extends boolean = false, TStorage extends StorageKind = StorageKind> {
   readonly [collectionBrand]: { columns: TCols; auth: TAuth; storage: TStorage };
@@ -555,6 +555,51 @@ export declare function table<
 export declare function userProjection<TCols extends ColumnsConfig, TUid extends boolean = false>(fields: TCols,
   options?: NoInfer<CollectionOptions<Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">>> & { drafts?: false; revisions?: false; uid?: TUid },
 ): Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">;
+
+/** A term's own fields (docs/decisions/2026-11-11-authoring-surface.md, ruling 26). */
+type TermColumns<THierarchical extends boolean> = {
+  name: ColumnBuilder<"text", string, true, false>;
+  slug: ColumnBuilder<"slug", string, true, true>;
+  description: ColumnBuilder<"text", string, true, true>;
+  count: ColumnBuilder<"integer", number, true, true>;
+  url: ColumnBuilder<"text", string, false, true>;
+} & (THierarchical extends true ? { parent: ColumnBuilder<"integer", number, false, false> } : {});
+
+/** Field builders a term field takes in this release: no containers, rich text, files or lists of refs. */
+type TermFieldKind = Exclude<ColumnKind, "richText" | "file" | "group" | "repeater" | "blocks" | "slug" | "mediaList" | "refList">;
+type TermFields = Record<string, ColumnBuilder<TermFieldKind, any, boolean, boolean, false, boolean>>;
+
+/** `taxonomy()` options (rulings 24-31). */
+export interface TaxonomyOptions<T extends AnyCollection = AnyCollection, THierarchical extends boolean = boolean> {
+  /** Stored as `first_<storageName>`: at most 26 characters. Defaults to the export name in snake_case. */
+  storageName?: string;
+  /** Shown in wp-admin. */
+  label?: string;
+  /** Terms nest: adds `parent`, and `:path` in `url` is the chain of ancestor slugs. */
+  hierarchical?: THierarchical;
+  /** The term URL: `:slug`, `:id` and, hierarchical, `:path`. With one, core's sitemap lists the terms and a term has an archive. */
+  url?: `/${string}`;
+  /** The app's collections whose items carry these terms, in a field named after this export. */
+  on?: readonly AnyCollection[];
+  /** With `locales` set, `false` is required: one vocabulary shared by every locale. */
+  translations?: false;
+  /** Default: anyone reads, `editor` creates, updates and deletes. Assigning terms is a write to the item. */
+  access?: AccessConfig<T>;
+}
+
+/** A taxonomy: terms in WordPress's term tables, with term meta fields, attached to collections. */
+export declare function taxonomy<TFields extends TermFields = {}, THierarchical extends boolean = false>(
+  fields?: TFields,
+  options?: NoInfer<TaxonomyOptions<Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">>> & { hierarchical?: THierarchical },
+): Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">;
+
+/**
+ * An item's terms of `taxonomy`: the term ids in write order (`[]` when none), kept as WordPress's
+ * term relationships. `with: { field: true }` loads the term rows, and the taxonomy gets a list of the
+ * items named after this kind. The same field `on` adds, under another name or with `.access()`,
+ * `.ui()` or `.reverse()`; the build refuses any other modifier.
+ */
+export declare function terms(taxonomy: CollectionMeta<string, ColumnsConfig, false, "taxonomy"> | (() => CollectionMeta<string, ColumnsConfig, false, "taxonomy">)): ColumnBuilder<"refList", number[], true, true, false, false>;
 
 type ColumnsOf<T> = T extends { readonly [collectionBrand]: { columns: infer C } } ? C : never;
 
@@ -1119,12 +1164,14 @@ export interface ConfigInput<
   TCollections extends Schema = Schema,
   TTables extends Schema = Schema,
   TUsers extends Schema = Schema,
+  TTaxonomies extends Schema = Schema,
 > {
   /** Project name: plugin slug (`first-<name>`), wp-admin menu, client docs. Default: the project directory name. */
   name?: string;
   collections?: TCollections & Record<string, CollectionMeta<string, ColumnsConfig, false, "collection">>;
   tables?: TTables & Record<string, CollectionMeta<string, ColumnsConfig, false, "table">>;
   users?: TUsers & Record<string, CollectionMeta<string, ColumnsConfig, true, "userProjection">>;
+  taxonomies?: TTaxonomies & Record<string, CollectionMeta<string, ColumnsConfig, false, "taxonomy">>;
   /** Key = the name used in `db.globals.<key>` and `/globals/<key>`. */
   globals?: TGlobals;
   /** `NoInfer`: types come from the explicit registries, so unknown hook keys are errors. */
@@ -1184,12 +1231,12 @@ export interface FirstConfig<
 }
 
 export declare function defineConfig<
-  TCollections extends Schema = {}, TTables extends Schema = {}, TUsers extends Schema = {},
-  TRelations extends Relations<TCollections & TTables & TUsers, any> = Relations<TCollections & TTables & TUsers, {}>,
+  TCollections extends Schema = {}, TTables extends Schema = {}, TUsers extends Schema = {}, TTaxonomies extends Schema = {},
+  TRelations extends Relations<TCollections & TTables & TUsers & TTaxonomies, any> = Relations<TCollections & TTables & TUsers & TTaxonomies, {}>,
   TGlobals extends Record<string, AnyGlobal> = {},
   TJobs extends Record<string, AnyJob> = {},
   const TLocales extends LocalesConfig = LocalesConfig,
->(config: ConfigInput<TCollections & TTables & TUsers, TRelations, TGlobals, TJobs, TLocales, TCollections, TTables, TUsers>): FirstConfig<TCollections & TTables & TUsers, TRelations, TGlobals, TJobs, TLocales>;
+>(config: ConfigInput<TCollections & TTables & TUsers & TTaxonomies, TRelations, TGlobals, TJobs, TLocales, TCollections, TTables, TUsers, TTaxonomies>): FirstConfig<TCollections & TTables & TUsers & TTaxonomies, TRelations, TGlobals, TJobs, TLocales>;
 
 declare const pluginBrand: unique symbol;
 /** A plugin package's definition: `export default (options) => definePlugin({ ... })`. */

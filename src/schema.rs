@@ -274,7 +274,10 @@ impl Column {
 
     /// Writers may omit it on insert.
     pub fn optional_on_insert(&self) -> bool {
-        !self.not_null || self.default.is_some() || self.auto_increment
+        !self.not_null
+            || self.default.is_some()
+            || self.auto_increment
+            || self.ty == ColType::Slug && self.source.is_some()
     }
 }
 

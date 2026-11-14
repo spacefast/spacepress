@@ -370,7 +370,8 @@ final class Schema
     /** True when a create must receive this column (no default, not generated). */
     public static function isRequired(array $col): bool
     {
-        return ($col['notNull'] ?? false) && !isset($col['default']) && !($col['autoIncrement'] ?? false) && !($col['readOnly'] ?? false);
+        return ($col['notNull'] ?? false) && !isset($col['default']) && !($col['autoIncrement'] ?? false) && !($col['readOnly'] ?? false)
+            && !($col['type'] === 'slug' && isset($col['source'])); // derived when left out
     }
 
     public static function isJsonType(string $type): bool

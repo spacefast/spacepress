@@ -1260,8 +1260,12 @@ fn taxonomy_kind(
     let mut name = Column::new("name", ColType::Text);
     name.not_null = true;
     columns.insert("name".into(), name);
-    // Optional: core derives it from the name, unique within the taxonomy.
-    columns.insert("slug".into(), Column::new("slug", ColType::Slug));
+    // Always set: core derives it from the name when a create leaves it out, unique within the
+    // taxonomy, as a collection's slug derives from its `source`.
+    let mut slug = Column::new("slug", ColType::Slug);
+    slug.not_null = true;
+    slug.source = Some("name".into());
+    columns.insert("slug".into(), slug);
     let mut description = Column::new("description", ColType::Text);
     description.not_null = true;
     description.multiline = true;

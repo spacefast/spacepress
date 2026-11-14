@@ -658,6 +658,8 @@ impl Builder<'_> {
             "The site's users: WordPress's own users, with these fields. The same routes also answer at `/users`."
         } else if c.editor {
             "A collection: WordPress posts of their own type, with the block editor."
+        } else if c.taxonomy.is_some() {
+            "A taxonomy: WordPress terms of their own taxonomy, attached to collections. Assigning terms is a write to the item."
         } else {
             "A table of the app's own."
         };
@@ -778,7 +780,7 @@ impl Builder<'_> {
             }
             // Only a table's create runs through First's receipts (`TableController`); a post kind's
             // or the users kind's create is core's insert, which takes no key.
-            if !c.editor && !c.auth {
+            if !c.editor && !c.auth && c.taxonomy.is_none() {
                 op = op.params([idempotency_key(false)]);
             }
             self.paths.add(

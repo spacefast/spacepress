@@ -548,7 +548,7 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
         .collect();
     let _ = writeln!(s, "export interface {n} {{ {} }}", row.join("; "));
     let mut insert: Vec<String> = columns()
-        .filter(|col| !col.auto_increment && !col.derived)
+        .filter(|col| !col.auto_increment && !col.derived && !col.read_only)
         .map(|col| {
             // Slugs derive from their source when omitted.
             let opt = col.optional_on_insert() || col.ty == ColType::Slug && col.source.is_some();
@@ -588,7 +588,9 @@ fn collection_types(s: &mut String, c: &Collection, names: &IndexMap<String, Str
     }
     // `locale` is fixed per row and `translationOf` only applies on create, so neither is patchable.
     let mut patch: Vec<String> = columns()
-        .filter(|col| !(col.auto_increment || col.derived || c.localized && col.system && col.name == "locale"))
+        .filter(|col| {
+            !(col.auto_increment || col.derived || col.read_only || c.localized && col.system && col.name == "locale")
+        })
         .map(|col| format!("{}?: {}", key(&col.name), col_ts(col, Mode::Patch)))
         .collect();
     if c.auth {

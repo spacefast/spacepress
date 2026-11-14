@@ -159,7 +159,7 @@ return [
             'columns' => [
                 'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
                 'name' => ['type' => 'text', 'notNull' => true],
-                'slug' => ['type' => 'slug'],
+                'slug' => ['type' => 'slug', 'notNull' => true, 'source' => 'name'],
                 'description' => ['type' => 'text', 'multiline' => true, 'notNull' => true, 'default' => ['value' => '']],
                 'parent' => ['type' => 'integer'],
                 'count' => ['type' => 'integer', 'notNull' => true, 'readOnly' => true],
@@ -208,7 +208,7 @@ return [
             'columns' => [
                 'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
                 'name' => ['type' => 'text', 'notNull' => true],
-                'slug' => ['type' => 'slug'],
+                'slug' => ['type' => 'slug', 'notNull' => true, 'source' => 'name'],
                 'description' => ['type' => 'text', 'multiline' => true, 'notNull' => true, 'default' => ['value' => '']],
                 'count' => ['type' => 'integer', 'notNull' => true, 'readOnly' => true],
                 'url' => ['type' => 'text', 'readOnly' => true],

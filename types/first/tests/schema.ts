@@ -4,7 +4,7 @@
 import {
   blocks, boolean, collection, date, email, global, group, integer, json, media,
   repeater, richText, select, slug, text, timestamp, url,
-  table, ref, type AnyCollection,
+  table, ref, type AnyCollection, taxonomy, terms,
 } from "first";
 
 export const UNITS = ["pcs", "g", "kg"] as const;
@@ -95,7 +95,14 @@ export const settings = global("settings", {
   social: repeater({ label: text().max(40), href: url() }).optional(),
 }, { label: "Site settings", access: { update: "admin" } });
 
-export const collections = { authors, posts };
+// A taxonomy (docs/decisions/2026-11-11-authoring-surface.md, rulings 24-33): `on` gives posts a
+// `topics` field; `terms()` writes the same kind of field out under another name.
+export const topics = taxonomy({ color: text().optional() }, { hierarchical: true, url: "/topics/:path", on: [posts] });
+export const labels = taxonomy();
+export const notes = collection({ title: text(), labelIds: terms(labels).reverse("labelled") });
+
+export const collections = { authors, posts, notes };
 export const tables = { locations, items, shoppingList, comments };
 export const users = {  };
-export const entities = { ...collections, ...tables, ...users };
+export const taxonomies = { topics, labels };
+export const entities = { ...collections, ...tables, ...users, ...taxonomies };

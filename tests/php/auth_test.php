@@ -166,5 +166,88 @@ require_once ABSPATH . 'wp-admin/includes/user.php';
 wp_delete_user($late);
 eq('a user deleted by WordPress leaves no entries', $entries($late), []);
 
+// ================================================================ sign-in doesn't reveal which accounts exist
+
+// The loginErrors switch (Hardening::loginErrors), with first-identity active. wp-login.php itself
+// (the form, lost password, "check your email") is proven over HTTP in tests/wp/hardening.
+$generic = __('<strong>Error:</strong> Invalid username, email address or incorrect password.');
+$loginErrors = static function (string ...$codes): string {
+    $GLOBALS['errors'] = new WP_Error();
+    foreach ($codes as $code) {
+        $GLOBALS['errors']->add($code, "core's $code message");
+    }
+    try {
+        return apply_filters('login_errors', "core's message");
+    } finally {
+        unset($GLOBALS['errors']);
+    }
+};
+eq('wp-login.php: an unknown username, an unknown email, a wrong password and an unknown lost-password account read the same',
+    array_map($loginErrors, ['invalid_username', 'invalid_email', 'incorrect_password', 'invalidcombo']), array_fill(0, 4, $generic));
+eq('… while errors that say nothing about the account stay core\'s', $loginErrors('empty_password'), "core's message");
+$_GET['checkemail'] = 'confirm';
+$confirm = apply_filters('wp_login_errors', new WP_Error('confirm', 'Check your email for the confirmation link', 'message'), '');
+unset($_GET['checkemail']);
+check('"check your email" says the email goes out only if the account exists', str_starts_with($confirm->get_error_message('confirm'), 'If there is an account associated') && $confirm->get_error_data('confirm') === 'message', $confirm->get_error_messages());
+
+/** What wp_authenticate() costs: password checks and hashes, by core's own filters. */
+$cost = static function (string $login, string $password): array {
+    $checks = 0;
+    $hashes = 0;
+    $check = static function (mixed $ok) use (&$checks): mixed {
+        $checks++;
+        return $ok;
+    };
+    $hash = static function (mixed $algorithm) use (&$hashes): mixed {
+        $hashes++;
+        return $algorithm;
+    };
+    add_filter('check_password', $check);
+    add_filter('wp_hash_password_algorithm', $hash);
+    try {
+        $result = wp_authenticate($login, $password);
+    } finally {
+        remove_filter('check_password', $check);
+        remove_filter('wp_hash_password_algorithm', $hash);
+    }
+
+    return [is_wp_error($result) ? $result->get_error_code() : 'signed in', $checks + $hashes];
+};
+$pass = 'correct horse battery stapler';
+$known = $wp->addUser('known', 'subscriber', $pass);
+eq('an unknown username is a wrong password, and costs one password hash like one', [$cost('nobody', 'guess'), $cost('known', 'guess')], [['incorrect_password', 1], ['incorrect_password', 1]]);
+eq('so is an unknown email, and a wrong password for a known email is checked once (not again by first-identity)',
+    [$cost('nobody@example.test', 'guess'), $cost('known@example.test', 'guess')], [['incorrect_password', 1], ['incorrect_password', 1]]);
+$twin = wp_insert_user(['user_login' => 'twin@example.test', 'user_email' => 'twin@example.test', 'user_pass' => $pass, 'role' => 'subscriber']);
+eq('a login that is also the same user\'s email is checked once, not by both of core\'s checks', [$cost('twin@example.test', 'guess'), $cost('twin@example.test', $pass)[0]], [['incorrect_password', 1], 'signed in']);
+eq('the right password still signs in, by username or email', [$cost('known@example.test', $pass)[0], $cost('known', $pass)[0]], ['signed in', 'signed in']);
+
+// first-identity's second factor: wp-login.php sends an account with one to the identity sign-in, but
+// only after the password checks out, so a wrong password doesn't reveal the account or its factor.
+\First\Identity\Plugin::$accounts->ensure($known);
+$mfa = new \First\Identity\Mfa(\First\Identity\Plugin::$db, \First\Identity\Plugin::$security);
+$totp = \First\Identity\Vendor\OTPHP\TOTP::createFromSecret($mfa->setup($known, 'Login errors')['secret']);
+check('the account has a second factor', $mfa->verify($known, $totp->now(), true));
+eq('with a second factor, a wrong password is a wrong password (one check), and the right one asks for the factor',
+    [$cost('known@example.test', 'guess'), $cost('known', $pass)[0]], [['incorrect_password', 1], 'identity_mfa_required']);
+
+// Application passwords: core answers REST with the error's code, which said "unknown user" apart from "wrong password".
+$appPassword = static function (string $login): string {
+    add_filter('application_password_is_api_request', '__return_true');
+    try {
+        $result = wp_authenticate_application_password(null, $login, 'abcd efgh ijkl mnop qrst uvwx');
+    } finally {
+        remove_filter('application_password_is_api_request', '__return_true');
+    }
+
+    return is_wp_error($result) ? implode(',', $result->get_error_codes()) : 'signed in';
+};
+$guestId = wp_insert_user(['user_login' => 'zg_probe', 'user_pass' => wp_generate_password(32), 'role' => 'first_guest']);
+eq('an application password for an unknown user or email, or for a guest who may not use one, gets the wrong-password error',
+    array_map($appPassword, ['nobody', 'nobody@example.test', 'zg_probe', 'admin']), array_fill(0, 4, 'incorrect_password'));
+add_filter('wp_is_application_passwords_available', '__return_false');
+eq('with application passwords off, every user gets "not available"', array_map($appPassword, ['nobody', 'admin']), ['application_passwords_disabled', 'application_passwords_disabled']);
+remove_filter('wp_is_application_passwords_available', '__return_false');
+
 require dirname(__DIR__) . '/identity/native-auth-storage.php';
 finish('auth_test');

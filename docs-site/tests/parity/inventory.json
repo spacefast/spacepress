@@ -596,6 +596,8 @@
 				"firstapp",
 				"a-layout",
 				"a-page-with-its-own-form-handler",
+				"forms-that-post-to-an-action",
+				"comments",
 				"markdown-pages",
 				"a-docs-section-a-folder-of-markdown-as-a-kind",
 				"typed-search-a-guard-http-handlers",
@@ -899,7 +901,8 @@
 				"options",
 				"the-readme-that-build-writes",
 				"signing-in",
-				"live-updates"
+				"live-updates",
+				"react"
 			],
 			"prev": "/reference/config",
 			"next": "/reference/cli",
@@ -1124,7 +1127,7 @@
 			"stops": [],
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/language-support.mdx",
 			"toc": [
-				"compiles-47",
+				"compiles-49",
 				"compiles-and-differs-from-javascript-2",
 				"refused-92"
 			],

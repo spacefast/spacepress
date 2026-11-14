@@ -86,6 +86,18 @@ final class Security
             );
         }
     }
+    /** Whether a bucket has reached its limit in this window. Counts nothing ({@see limit()} does). */
+    public function limited(
+        string $bucket,
+        int $max = 10,
+        int $window = 300,
+    ): bool {
+        $row = $this->db->row(
+            "SELECT hits FROM {$this->db->prefix}limits WHERE id=%s",
+            self::hash($bucket . ":" . intdiv(time(), $window)),
+        );
+        return $row !== null && (int) $row["hits"] >= $max;
+    }
     public function challenge(
         string $purpose,
         int $uid,

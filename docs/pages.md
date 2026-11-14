@@ -94,6 +94,72 @@ checked against the app's routes and `PageProps<"notes/[slug]">` types
 { "compilerOptions": { "jsx": "react-jsx", "jsxImportSource": "first" } }
 ```
 
+## Forms
+
+`<form action={subscribe}>` posts to an action imported from your server code,
+and works without JavaScript:
+
+```tsx
+import { useFormState } from "first/app";
+import { subscribe } from "../server";
+
+export default function Page() {
+  const state = useFormState(subscribe);
+  return (
+    <form action={subscribe}>
+      {state.error ? <p>{state.error.message}</p> : null}
+      {state.result ? <p>Subscribed {state.result.email}</p> : null}
+      <input name="email" type="email" defaultValue={state.values.email ?? ""} />
+      <button>Subscribe</button>
+    </form>
+  );
+}
+```
+
+- The form posts form-encoded to the action's endpoint
+  (`/__first/api/v1/actions/<name>`), with a hidden `_first_return` (the page's
+  path and query). The action runs as the visitor, exactly as a JSON call runs
+  it, and the answer is `303 See Other` back to that page.
+- Fields read as the action's input types them: `integer()` and `number()` from
+  their digits, `boolean()` from a checkbox (unchecked is `false`), select and
+  reference lists from repeated names, an empty field as absent. A value that
+  doesn't parse reaches the action's validation, which names the field. Uploads
+  are refused (415); use the media API.
+- What came back is a flash: a cookie sealed with the site's key, named by
+  `?_flash=<id>` on the redirect, read once and deleted, gone after two
+  minutes. Nothing is stored on the server. The marked URL is never served
+  from or stored in a shared cache.
+- `useFormState(action)` reads it: `{ pending, error, result, values }`.
+  `error.fields` maps the field an input error is about to its message;
+  `values` refills the form and never holds a password field. `pending` is
+  `false` on the server; the JavaScript submit sets it.
+- A page with a form stays cacheable for signed-out visitors: it carries no
+  nonce. A page rendered for a signed-in user carries the REST nonce; without
+  it, the action runs signed out. A post with another site's `Origin` is
+  refused.
+- A `"use client"` component calls its action from `onSubmit` instead;
+  `method` and `encType` on a form with an action are build errors.
+
+## Comments
+
+```tsx
+import { Comments, type PageProps } from "first/app";
+
+export default function Note({ item }: PageProps<"notes/[slug]">) {
+  return <article><h1>{item.title}</h1><Comments for={item} /></article>;
+}
+```
+
+`<Comments for={item} />` renders the item's thread as the visitor may read it
+(approved comments, plus their own held ones) and a form that works without
+JavaScript. The item's kind must turn `comments` on; otherwise the build stops
+at the prop. Who may comment, moderation and reply depth belong to the kind, not
+the component, and are enforced wherever a comment is created: the form, the
+API and core's comment form all give the same answer. Until a kind's `comments`
+takes options, the policy is signed-in users only, first-time moderation, and
+replies three levels deep (a deeper reply is refused). See
+[the decision](decisions/2026-11-14-comments.md).
+
 ## Markdown pages
 
 ```md
@@ -238,6 +304,10 @@ export function CheerButton({ noteId, count: initial }: { noteId: number; count:
   `useMount`, `useEvent`, `useRef` and `sharedState` come from `"first/client"`.
 - Calling an imported action posts to its endpoint with the REST nonce, as the
   visitor.
+- A list over state or props, `items.map((item) => <li key={item.id}>…</li>)`,
+  and a conditional over elements, `{open && <p>…</p>}` or
+  `{empty ? <em>…</em> : <b>…</b>}`, re-render in the browser from a
+  `<template>`. Each item and each branch is one element; each item has a `key`.
 - The component returns one element. React context, third-party React
   components, npm imports and `dangerouslySetInnerHTML` are refused at the line.
 

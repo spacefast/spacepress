@@ -508,10 +508,13 @@ pub struct Schema {
     pub media: Json,
     pub uploads: Option<Json>,
     pub locales: Option<Json>,
-    /// `defineConfig({ admin: true })`: the build ships the optional admin screens plugin.
+    /// The build ships the `first-admin` plugin (the default); `defineConfig({ admin: false })` leaves it out.
     pub admin: bool,
     /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `first/app`.
     pub frontend: Option<crate::kind_url::Frontend>,
+    /// `defineConfig({ output })` (docs/decisions/2026-11-13-static-output.md): `Server` renders
+    /// pages per request and prebuilds the ones that say `prerender = true`; `Static` prebuilds them all.
+    pub output: Output,
     /// `defineConfig({ publicAuthors: true })`: core's author archives, author routes and user
     /// listings stay public, as WordPress ships them (the users kind's read rule can also allow it).
     pub public_authors: bool,
@@ -521,6 +524,16 @@ pub struct Schema {
     /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
     /// while it runs. Holds what the build read from the lock `first pull` writes.
     pub runtime_schema: Option<RuntimeSchema>,
+}
+
+/// `output` in `defineConfig`, Astro's word for it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Output {
+    /// Pages render on WordPress per request; a page that exports `prerender = true` is prebuilt.
+    #[default]
+    Server,
+    /// Every page is prebuilt; `first export` writes a site with no WordPress at runtime.
+    Static,
 }
 
 /// The site schema version a build contains: zero and no hash before any `first pull`.
@@ -550,8 +563,9 @@ impl Default for Schema {
             media: serde_json::json!({"sizes": {}}),
             uploads: None,
             locales: None,
-            admin: false,
+            admin: true,
             frontend: None,
+            output: Output::Server,
             public_authors: false,
             sealed: None,
             runtime_schema: None,
@@ -683,6 +697,8 @@ pub struct AppRoute {
     pub error: Option<String>,
     /// The stylesheets the page and its layouts import, in link order (`assets::stylesheets`).
     pub styles: Vec<String>,
+    /// The page is prebuilt: its file says `prerender = true`, or the config says `output: "static"`.
+    pub prerender: bool,
     /// The kind whose `url` this page serves (spec §2.7), with each pattern placeholder's folder
     /// parameter: the page receives that kind's `item`, and a missing one is a 404.
     pub kind: Option<(String, Vec<(String, String)>)>,
@@ -702,6 +718,11 @@ pub struct AppFile {
     /// them (`export const signature`, a raw signed webhook). Exactly one when there are handlers.
     pub access: Option<Access>,
     pub signature: Option<Json>,
+    /// `export const prerender = true | false` (pages): `None` when the page says nothing, so it
+    /// follows the config's `output`.
+    pub prerender: Option<bool>,
+    /// `export async function staticParams()`: the compiled function listing a dynamic page's params.
+    pub static_params: Option<String>,
 }
 
 #[derive(Debug, Clone)]

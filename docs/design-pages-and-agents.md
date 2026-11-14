@@ -161,7 +161,7 @@ journal/
         │       ├── assets/*.css|*.js             # hashed
         │       ├── theme/                        # optional immutable theme payload (§4.6)
         │       └── agents/manifest.php           # §4.10
-        ├── plugins/first-admin/                   # only with admin: true
+        ├── plugins/first-admin/                   # unless admin: false
         └── themes/first-journal/                  # stable stylesheet path; theme-mode only
             ├── style.css
             ├── theme.json
@@ -212,7 +212,6 @@ export default defineConfig({
   collections: { authors, posts },
   jobs: { notifyReaders: job({ input: { postId: ref("posts").notNull() }, retries: 3, async handler() { /* … */ } }) },
   pages: { sync: true },          // content-owned pages are editable and round-trip (§4.8)
-  admin: true,
 });
 ```
 
@@ -1058,7 +1057,6 @@ export default defineConfig({
   name: "pantry",
   collections: { items },
   actions: { expiringSoon, discard },
-  admin: true,
   agents: {
     pantryHelper: agent({
       label: "Pantry helper",

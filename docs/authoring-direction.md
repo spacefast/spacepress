@@ -57,7 +57,6 @@ export default defineConfig({
   collections: { products },
   tables: { stock },
   relations,
-  admin: true,
 });
 ```
 

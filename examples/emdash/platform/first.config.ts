@@ -32,7 +32,7 @@ export const guides = collection({ title: text(), body: richText().optional(), s
 export const deliveries = table({ message: text() }, { access: { read: "editor" } });
 
 export default defineConfig({
-  name: "platform", admin: true,
+  name: "platform",
   collections: { stories, writers, guides }, tables: { tasks, deliveries },
   locales: { default: "en", all: ["en", "fr"] },
   media: { sizes: { card: { width: 120, height: 120, fit: "cover" }, wide: { width: 200 } } },

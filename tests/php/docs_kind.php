@@ -143,6 +143,14 @@ $wpdb->update($wpdb->posts, ['post_content' => get_post_field('post_content', $i
 clean_post_cache($intro);
 $gallery = doc(fetch("$url/docs/introduction"));
 $out['headings beside a gallery'] = [$gallery['toc'], $gallery['anchors']];
+
+// Heading ids follow GitHub's rule: each case's id as github-slugger gives it. Prints the ones that differ.
+$ids = json_decode((string) file_get_contents(dirname(__DIR__) . '/fixtures/docs-kind/heading-ids.json'), true, flags: JSON_THROW_ON_ERROR);
+$out['heading ids'] = array_values(array_filter(array_map(static fn (array $c): ?array => \First\Content\Nav::slug($c[0]) === $c[1] ? null : [$c[0], $c[1], \First\Content\Nav::slug($c[0])], $ids['cases'])));
+$out['heading id cases'] = count($ids['cases']);
+// A heading with its own id keeps it, and no generated id repeats it; the rest number around it.
+$own = ("<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">Why</h2>\n<!-- /wp:heading -->\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\" id=\"why\">Mine</h2>\n<!-- /wp:heading -->\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">Why</h2>\n<!-- /wp:heading -->");
+$out['own ids'] = array_map(static fn (\First\JsObject $h): string => $h->p['id'], \First\Content\Nav::headings(['content' => $own], 'content')->a);
 // The query API reads the same tree.
 $out['api'] = array_map(static fn (array $r): array => [$r['slug'], $r['parent'] === null ? null : $byId[$r['parent']] ?? $r['parent'], $r['order']], \First\Seam::toPhp(\First\Seam::kindList('docs', ['orderBy' => ['order' => 'asc'], 'where' => ['parent' => null]], true)));
 
@@ -161,6 +169,8 @@ $out['blocks twin'] = fetch("$url/docs/guides/install.md")['body'];
 // An editor changes a prop in the block editor: the file's tag follows.
 $changed = str_replace('{"type":"warning","title":"Before you start"}', '{"type":"note","title":"Before you start"}', $stored);
 $out['blocks edited back'] = \First\Sync\Markdown::fromBlocks($changed);
+// The editor stores a cleared text field or choice as "": written back, the prop isn't there.
+$out['blocks cleared back'] = \First\Sync\Markdown::fromBlocks('<!-- wp:docskind/status {"label":"","kind":""} /-->' . "\n\n" . '<!-- wp:docskind/badge {"label":"x","count":3} /-->');
 // What a Markdown file can't say about a block is refused with the reason, never stored half.
 foreach ([
     'unknown tag' => "<Tabs>\nx\n</Tabs>\n",

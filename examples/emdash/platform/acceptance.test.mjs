@@ -58,7 +58,7 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
       try {
         await command(['dev', 'stop', project]);
         cleanup.stopped = JSON.parse(await command(['dev', 'status', project])).isOnline === false;
-        await exec('npx', ['--yes', '--package', 'wp-studio@2.1.1', '--', 'studio', 'delete', '--path', cleanup.site, '--no-files'], { cwd: repo, timeout: 120000 });
+        await exec('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', 'delete', '--path', cleanup.site, '--no-files'], { cwd: repo, timeout: 120000 });
         cleanup.registrationDeleted = true;
       } catch (error) { cleanup.error = error.message; }
     }
@@ -273,7 +273,7 @@ test('platform editorial workflow on an owned native Studio WordPress site', { t
       await admin.screenshot({ path: join(evidence, 'native-plugins.png'), fullPage: true });
       await admin.goto(`${base}/wp-admin/options-general.php`);
       await expect(admin.locator('#blogdescription')).toHaveValue('Preserve this native setting');
-      await admin.goto(`${base}/first-admin/`);
+      await admin.goto(`${base}/wp-admin/new/`);
       await expect(admin.getByRole('heading', { name: 'Collections', exact: true })).toBeVisible();
       await expect(admin.getByRole('link', { name: 'Stories', exact: true }).last()).toBeVisible();
       await admin.screenshot({ path: join(evidence, 'first-admin.png'), fullPage: true });

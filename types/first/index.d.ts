@@ -1140,7 +1140,10 @@ export interface ConfigInput<
   locales?: TLocales;
   /** Build-only WordPress plugin dependencies. */
   plugins?: Readonly<Record<string, WordPressPlugin>>;
-  /** Ship the optional admin screens (`first-admin`) with the build. Default `false`. */
+  /**
+   * Ship First Admin (`first-admin`), the default admin at `/wp-admin/new/`, with the build. Default `true`;
+   * `false` leaves only classic wp-admin.
+   */
   admin?: boolean;
   /**
    * Keep the site's authors public as WordPress ships them: author archives, `?author=N`, the users
@@ -1166,6 +1169,12 @@ export interface ConfigInput<
    * for backend only; an external site's `https://` address to point links, previews and feeds there.
    */
   frontend?: false | `https://${string}` | `http://localhost${string}` | `http://127.0.0.1${string}`;
+  /**
+   * `"server"` (the default): `first/app/` pages render on WordPress per request, and a page that
+   * exports `prerender = true` is prebuilt. `"static"`: every page is prebuilt, and `first export`
+   * writes a site that needs no WordPress to serve it.
+   */
+  output?: "server" | "static";
   /**
    * Plugin packages, registered in order: `use: [seo({ ... })]`. Each one's capabilities are
    * inferred from its compiled code and granted by the committed `first/_generated/plugins.lock.json`.

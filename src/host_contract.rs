@@ -25,8 +25,12 @@ pub const RESERVED_PATHS: &[(&str, &str)] = &[
     ),
     ("/wp-json/first-identity/v1/*", "First Identity's REST API"),
     (
+        "/wp-admin/new/*",
+        "First Admin, unless the app sets `admin: false`: served by wp-admin's `admin.php?page=first-admin`. Apache applies the plugin's `.htaccess` rule; any other server must send a path that is not a file to WordPress's `index.php`, which redirects it to `admin.php?page=first-admin&p=<route>`",
+    ),
+    (
         "/first-admin/*",
-        "the optional admin screens, when the app sets `admin: true`",
+        "the admin's earlier address, redirected to `/wp-admin/new/*`",
     ),
 ];
 
@@ -122,7 +126,7 @@ pub const MOUNT: &[(&str, &str)] = &[
 ];
 
 /// Sealed mode (`sealed: true`, docs/sealed.md): what a host does with the allow-list.
-pub const SEALED: &str = "When the app sets `sealed: true`, the hosted manifest and the build manifest carry `sealed`: the plugin directory names that may load (First's own, the platform pins, and the plugins the config declares). The key is absent when the app isn't sealed. First itself only refuses new activations and reports what else is loaded, because WordPress loads drop-ins, must-use plugins and active plugins before First's app plugin. A host that wants the list enforced does it in its own early code (a must-use plugin of the host's, or `sunrise.php`): it filters `option_active_plugins` with `First\\Loader\\Loader::allowedPlugins($active, $sealed)`, keeps the hidden entries stored with `First\\Loader\\Loader::keepUnlisted($new, $stored, $sealed)` on `pre_update_option_active_plugins`, ships no must-use plugin or drop-in beyond its own, and defines `FIRST_SEALED_ENFORCED` so the app reports `enforced: \"host\"`. Nothing changes for sites that don't serve a First app. docs/sealed.md has the example.";
+pub const SEALED: &str = "When the app sets `sealed: true`, the hosted manifest and the build manifest carry `sealed`: the plugin directory names that may load (First's own, the platform pins, and the plugins the config declares). The key is absent when the app isn't sealed. First itself only refuses new activations and reports what else is loaded, because WordPress loads drop-ins, must-use plugins and active plugins before First's app plugin. A host that wants the list enforced does it in its own early code (a must-use plugin of the host's, or `sunrise.php`): it filters `option_active_plugins` with `First\\Loader\\Loader::allowedPlugins($active, $sealed)`, keeps the hidden entries stored with `First\\Loader\\Loader::keepUnlisted($new, $stored, $sealed)` on `pre_update_option_active_plugins`, ships no must-use plugin or drop-in beyond its own, and defines `FIRST_SEALED_ENFORCED` so the app reports `enforced: \"host\"`. `allowedPlugins` never passes `vip-block-data-api` or `vip-decoupled-bundle`, whatever list it is given: each serves stored content around the app's read rules. Nothing changes for sites that don't serve a First app. docs/sealed.md has the example.";
 
 /// The table-prefix rule.
 pub const TABLE_PREFIX: &str = "First puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}first_<table>`, system tables `{prefix}first__<name>`, identity tables `{prefix}first_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads.";

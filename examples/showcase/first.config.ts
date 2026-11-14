@@ -53,7 +53,6 @@ class Headline {
 
 export default defineConfig({
   name: "showcase",
-  admin: true,
   collections: { stories },
   tables: { tasks, locations, items, shoppingList },
   globals: {

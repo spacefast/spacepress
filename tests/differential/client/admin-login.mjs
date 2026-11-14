@@ -1,8 +1,8 @@
-// Usage: node admin-login.mjs <site url> [external frontend url]
-// wp-admin and sign-in in a front-end mode (tests/app_router.rs `admin_and_login_work_in_every_frontend_mode`),
-// in Chromium (playwright-core, pinned by tests/differential/client/package.json): the login screen
-// renders, signing in lands in wp-admin, the dashboard and a list screen render as wp-admin (not
-// the app, not a theme), `/wp-admin/` while signed out goes to the login screen, the REST nonce
+// Usage: node admin-login.mjs <site url>
+// wp-admin and sign-in in a front-end mode (tests/app_router.rs `frontend_modes_on_wordpress`), in
+// Chromium (playwright-core, pinned by tests/differential/client/package.json): the login screen
+// renders, signing in lands on First Admin (the default admin), classic wp-admin's dashboard and a
+// list screen render as wp-admin (not the app, not a theme), `/wp-admin/` while signed out goes to the login screen, the REST nonce
 // wp-admin uses works, and signing out ends the session. Prints JSON.
 import { createRequire } from "node:module";
 import { readdirSync } from "node:fs";
@@ -29,11 +29,16 @@ try {
   out.signedOut = { at: new URL(page.url()).pathname, redirectTo: new URL(page.url()).searchParams.get("redirect_to") !== null };
   out.loginForm = await page.locator("#loginform").count();
 
-  // Signing in as the harness's admin lands on the dashboard, rendered by wp-admin.
+  // Signing in as the harness's admin lands on First Admin, the default admin (at `/wp-admin/new/`;
+  // `admin.php?page=first-admin` where the server applies no rewrite rule).
   await page.fill("#user_login", "admin");
   await page.fill("#user_pass", "first-test-admin");
   await Promise.all([page.waitForNavigation(), page.click("#wp-submit")]);
-  out.signedIn = {
+  const landed = new URL(page.url());
+  out.signedIn = landed.pathname === "/wp-admin/new/" || (landed.pathname === "/wp-admin/admin.php" && landed.searchParams.get("page") === "first-admin") ? "first admin" : landed.pathname + landed.search;
+  // Classic wp-admin stays beside it: its dashboard renders as wp-admin.
+  await page.goto(`${url}/wp-admin/index.php`);
+  out.classic = {
     at: new URL(page.url()).pathname,
     adminBar: await page.locator("#wpadminbar").count(),
     menu: await page.locator("#adminmenu").count(),

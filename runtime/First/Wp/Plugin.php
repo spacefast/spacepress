@@ -475,14 +475,18 @@ final class Plugin
     }
 
     /**
-     * Whether `schema.php` on disk is still the build this request loaded. A deploy that replaced it
-     * while this request ran makes this false; the next request loads the new one.
+     * Whether the build this request loaded is still the one the site runs: the build hash the last
+     * deploy recorded (migrateNow), read fresh. On a managed build store a deploy changes which
+     * build's directory is mounted and never rewrites the file this request loaded, so the recorded
+     * hash, not the file, says what is live. Also false when a deploy replaced the file in place.
      */
     public function buildIsCurrent(): bool
     {
+        wp_cache_delete('alloptions', 'options');
+        wp_cache_delete($this->schemaOption(), 'options');
         clearstatcache(true, $this->dir . '/first/app/schema.php');
 
-        return $this->schemaHash() === $this->loadedHash;
+        return get_option($this->schemaOption()) === $this->loadedHash && $this->schemaHash() === $this->loadedHash;
     }
 
     private function schemaOption(): string

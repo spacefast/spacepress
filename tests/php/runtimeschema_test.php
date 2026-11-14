@@ -196,7 +196,9 @@ $winner = $outcomes[0]['field'];
 
 // ================================================================ apply and deploy share one lock
 // A deploy holds the schema lock while it migrates. An apply that starts meanwhile waits for it, and
-// then checks the change against the build that is live, not the one its own request loaded.
+// then checks the change against the build that is live, not the one its own request loaded. On a
+// managed build store each build has its own directory, so the deploy changes which build the site
+// runs (the recorded build hash), never the file this request loaded: that is what the deploy here does.
 $hold = "$wp->dir/hold.php";
 file_put_contents($hold, '<?php
 require ' . var_export(__DIR__ . '/wp.php', true) . ';
@@ -206,28 +208,23 @@ wpDefine($dir, $site["url"]);
 $_SERVER["REQUEST_METHOD"] = "GET";
 require_once ABSPATH . "wp-settings.php";
 $plugin = \First\Wp\Runtime::plugin();
+$option = "first_" . $plugin->schema->name() . "_schema";
 // The lock a deploy takes (Plugin::migrateLocked).
-\First\Wp\Migrator::locked($plugin->connection(), "first_" . $plugin->schema->name() . "_schema", static function () use ($argv): void {
+\First\Wp\Migrator::locked($plugin->connection(), $option, static function () use ($option): void {
     fwrite(STDOUT, "held\n");
-    // While the deploy holds the lock, the new build lands: it declares `lockProbe` as an integer.
-    file_put_contents($argv[1], $argv[2]);
     usleep(1500000);
+    // Just before it lets go, the deploy records the build it migrated to (Plugin::migrateNow).
+    update_option($option, hash("sha256", "another build"), false);
 });
 ');
-$newBuild = $base;
-$newBuild['collections']['articles']['columns']['lockProbe'] = ['type' => 'integer'];
-$newBuild = array_replace_recursive((require "$wp->content/plugins/first-app-rtschema/first/app/schema.php"), ['collections' => ['articles' => ['columns' => ['lockProbe' => ['type' => 'integer']]]]]);
-$schemaFile = "$wp->content/plugins/first-app-rtschema/first/app/schema.php";
-$before = (string) file_get_contents($schemaFile);
-$deployer = proc_open([PHP_BINARY, '-d', 'memory_limit=512M', $hold, $schemaFile, '<?php return ' . var_export($newBuild, true) . ';'], [1 => ['pipe', 'w'], 2 => ['file', "$wp->dir/hold.log", 'a']], $pipes);
+$recorded = get_option('first_rtschema_schema');
+$deployer = proc_open([PHP_BINARY, '-d', 'memory_limit=512M', $hold], [1 => ['pipe', 'w'], 2 => ['file', "$wp->dir/hold.log", 'a']], $pipes);
 eq('the deploy holds the lock', fgets($pipes[1]), "held\n");
-$started = microtime(true);
+// Without the shared lock this apply would land before the deploy records its build, and be accepted.
 $lockRefusal = $refusal(fn () => $versions->apply(count($versions->list()), $add('lockProbe', ['type' => 'text']), $admin));
-$waited = microtime(true) - $started;
 proc_close($deployer);
-check('an apply during a deploy waits for the deploy\'s lock', $waited > 0.5, $waited);
-eq('and is checked against the build that is live once it holds it', $lockRefusal, '409 schema_build_changed /changes');
-file_put_contents($schemaFile, $before);
+eq('an apply during a deploy waits for it, and is checked against the build the deploy made live', $lockRefusal, '409 schema_build_changed /changes');
+update_option('first_rtschema_schema', $recorded, false);
 
 // ================================================================ the option is a copy of the versions
 delete_option(Loader::option('rtschema'));
@@ -452,10 +449,20 @@ $runAs = static function (string $ability, array $input, string $credential) use
     return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), is_string($body) ? json_decode($body, true) : null];
 };
 [$status, $mintedAnswer] = $runAs('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Minted']]], $mintedAuth);
-echo json_encode($mintedAnswer), "\n";
 eq('a password a denied one created can\'t apply either: the deny passed to it', [$status, $mintedAnswer['code'] ?? null], [403, 'first_forbidden']);
 [$status] = $runAs('schema-read', [], $mintedAuth);
 eq('it signs in fine otherwise', $status, 405);
+// Core lets an administrator create passwords for another user too: one a denied password makes for
+// someone else is denied as well.
+$colleague = $wp->addUser('colleague_admin', 'admin');
+[$status, $forColleague] = http('POST', $wp->url() . "/wp-json/wp/v2/users/$colleague/application-passwords", ['name' => 'made by a denied password'], 'admin');
+eq('a denied password can create one for another administrator through core', $status, 201);
+wp_cache_delete($colleague, 'user_meta');
+\First\Wp\AgentScope::store($colleague, $forColleague['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
+eq('and that one can\'t apply either', $runAs('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Colleague']]], "colleague_admin:{$forColleague['password']}")[0], 403);
+// A deny list written as the first release documented it, a list of password UUIDs, still denies.
+update_option('first_rtschema_schema_apply_denied', [$applied['actor']['credential']['uuid']]);
+eq('a password UUID listed on its own is denied', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Old form']]], 'admin')[0], 403);
 // Denying a user's application passwords as a kind: every one of them, present and future.
 update_option('first_rtschema_schema_apply_denied', [['user' => $wp->userId('admin'), 'credential' => 'application-password']]);
 eq('denying all of a user\'s application passwords covers the one they sign in with now', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Kind']]], 'admin')[0], 403);
@@ -472,12 +479,17 @@ eq('an explicit false on the role does the same', $run('schema-apply', ['parent'
 $role->add_cap(\First\RuntimeSchema\Surfaces::APPLY);
 eq('and they apply again once it is given back', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Yes']]], 'admin')[0], 200);
 // The grant happens once: an administrator account made later gets it from the role, and taking it
-// from that one user (`wp user remove-cap`) holds too.
+// from that one user holds while the role keeps it: the user gets the capability as false.
 $later = $wp->addUser('later_admin', 'admin');
 check('a later administrator holds the capability through the role', user_can($later, \First\RuntimeSchema\Surfaces::APPLY));
-(new WP_User($later))->remove_cap(\First\RuntimeSchema\Surfaces::APPLY);
-$role->remove_cap(\First\RuntimeSchema\Surfaces::APPLY);
-check('with it removed from the role and that user, they don\'t hold it', !user_can($later, \First\RuntimeSchema\Surfaces::APPLY));
+(new WP_User($later))->add_cap(\First\RuntimeSchema\Surfaces::APPLY, false);
+check('given it as false, that one administrator doesn\'t hold it, though the role does', !user_can($later, \First\RuntimeSchema\Surfaces::APPLY) && user_can($wp->userId('admin'), \First\RuntimeSchema\Surfaces::APPLY));
+// A site that took it from the role before the grant was recorded (an explicit false, as the first
+// release had it) keeps it taken when the grant runs.
+$role->add_cap(\First\RuntimeSchema\Surfaces::APPLY, false);
+delete_option('first_schema_apply_granted');
+\First\RuntimeSchema\Surfaces::grant();
+check('the grant leaves a false on the role as it is', !user_can($wp->userId('admin'), \First\RuntimeSchema\Surfaces::APPLY), get_role('administrator')->capabilities[\First\RuntimeSchema\Surfaces::APPLY] ?? 'absent');
 $role->add_cap(\First\RuntimeSchema\Surfaces::APPLY);
 
 // The abilities are on the app's MCP server with the rest of its tools.

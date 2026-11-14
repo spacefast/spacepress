@@ -252,12 +252,12 @@ final class SchemaVersions
     }
 
     /**
-     * What a build that is about to run on this site would do to the site's runtime changes.
-     * Nothing is ever dropped: changes the build doesn't contain stay active and are listed in
-     * `kept`; fields both declare with the same stored shape but other rules or presentation are
-     * `changed` (the build's declaration is used); names the site removed that the build's code uses are active again and listed in
-     * `restored`. `refusals` are the cases where the build and the site disagree about stored data: a
-     * name both declare with different stored types.
+     * What a build that is about to run on this site would do to the site's runtime changes
+     * ({@see \First\RuntimeSchema\Deploy::check()}). Nothing is ever dropped: changes the build
+     * doesn't contain stay active and are listed in `kept`; fields both declare with the same stored
+     * shape but other rules or presentation are `changed` (the build's declaration is used); names
+     * the site removed that the build's code uses are active again and listed in `restored`.
+     * `refusals` are the cases where the build would read or write the site's stored values another way.
      *
      * @return array{site: array{version: int, hash: string}, build: array{version: int, hash: string}, kept: list<string>, changed: list<string>, restored: list<string>, refusals: list<array{code: string, name: string, message: string, fix: string}>}
      */

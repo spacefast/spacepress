@@ -680,3 +680,21 @@ test("a many-ref writes and reads its join table over /first/v1 and through a co
   first("delete", "oracle_kids", JSON.stringify({ id }));
   assert.equal(wp("eval", `global $wpdb; echo $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}first_oracle_kids_mentors WHERE owner_id = %d", ${id}));`), "0");
 });
+
+test("a core update of a First post sets its featured image and its terms, as core's update does", async () => {
+  // A taxonomy and thumbnails on a First post type, as a theme or plugin adds them.
+  wp("eval", `wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . '/first-test-jot-terms.php', base64_decode('${Buffer.from("<?php\nadd_action('init', function () { register_taxonomy('first_test_mood', 'first_jottings', ['show_in_rest' => true, 'rest_base' => 'moods']); add_post_type_support('first_jottings', 'thumbnail'); }, 20);\n").toString("base64")}'));`);
+  try {
+    const id = first("insert", "jottings", JSON.stringify({ title: `Termed ${run}`, status: "published" }))[0].id;
+    const term = Number(wp("term", "create", "first_test_mood", `Calm ${run}`, "--porcelain"));
+    const image = Number(wp("eval", "echo wp_insert_attachment(['post_mime_type' => 'image/png', 'post_title' => 'cover', 'post_status' => 'inherit'], 'cover.png');"));
+    const set = await http("POST", `${core}/first_jottings/${id}`, { as: "editor", body: { featured_media: image, moods: [term] } });
+    assert.equal(set.status, 200, JSON.stringify(set.json));
+    assert.deepEqual([set.json.featured_media, set.json.moods], [image, [term]]);
+    assert.equal(Number(wp("post", "meta", "get", String(id), "_thumbnail_id")), image);
+    const cleared = await http("POST", `${core}/first_jottings/${id}`, { as: "editor", body: { featured_media: 0, moods: [] } });
+    assert.deepEqual([cleared.status, cleared.json.featured_media, cleared.json.moods], [200, 0, []]);
+  } finally {
+    wp("eval", "@unlink(WPMU_PLUGIN_DIR . '/first-test-jot-terms.php');");
+  }
+});

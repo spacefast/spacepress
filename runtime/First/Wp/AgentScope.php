@@ -478,6 +478,17 @@ final class AgentScope
 
     // ================================================================ creating and changing credentials
 
+    /** Whether this request's logged-in cookie was valid (`auth_cookie_valid`, as core's REST cookie check reads it). */
+    private static bool $cookie = false;
+
+    /** Registered as the runtime loads, before any user is resolved. */
+    public static function trackCookie(): void
+    {
+        add_action('auth_cookie_valid', static function (): void {
+            self::$cookie = true;
+        });
+    }
+
     /** The Application Passwords forms in wp-admin, and core's REST route behind them. */
     private static function credentials(): void
     {
@@ -487,7 +498,7 @@ final class AgentScope
             $asked = is_array($args) ? ($args[self::KEY] ?? null) : null;
             // Core's own Application Passwords screens create through this REST route with the browser's
             // cookie; a password another plugin creates in PHP keeps core's behaviour.
-            $form = !empty($GLOBALS['wp_rest_auth_cookie']) && wp_is_serving_rest_request()
+            $form = self::$cookie && wp_is_serving_rest_request()
                 && preg_match(self::PASSWORDS, (string) ($GLOBALS['wp']->query_vars['rest_route'] ?? '')) === 1;
             if (is_array($asked) || $form) {
                 self::store((int) $userId, (string) ($item['uuid'] ?? ''), self::normalize((is_array($asked) ? $asked : []) + self::DEFAULT));

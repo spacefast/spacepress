@@ -79,7 +79,8 @@ function first_admin_remove_qsa_flag( $rules ) {
  * elsewhere the pretty URL takes the redirect in first_admin_front_request().
  */
 function first_admin_persist_rewrite_rule() {
-	if ( get_option( FIRST_ADMIN_REWRITE_OPTION ) === FIRST_ADMIN_VERSION || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+	// A build mounted from the store writes the rule when the host initializes it, never on a request.
+	if ( get_option( FIRST_ADMIN_REWRITE_OPTION ) === FIRST_ADMIN_VERSION || ( defined( 'WP_CLI' ) && WP_CLI ) || \First\Wp\Runtime::managed() ) {
 		return;
 	}
 	require_once ABSPATH . 'wp-admin/includes/file.php';
@@ -88,6 +89,22 @@ function first_admin_persist_rewrite_rule() {
 	flush_rewrite_rules( true );
 	update_option( FIRST_ADMIN_REWRITE_OPTION, FIRST_ADMIN_VERSION, true );
 	$GLOBALS['first_admin_rule_written'] = true;
+}
+
+/**
+ * Whether the rule is recorded as written for this version of First Admin (read without writing).
+ *
+ * @return bool
+ */
+function first_admin_rewrite_recorded() {
+	return get_option( FIRST_ADMIN_REWRITE_OPTION ) === FIRST_ADMIN_VERSION;
+}
+
+/**
+ * Records the rule as written for this version, after the caller flushed the rules with it registered.
+ */
+function first_admin_record_rewrite() {
+	update_option( FIRST_ADMIN_REWRITE_OPTION, FIRST_ADMIN_VERSION, true );
 }
 
 /**

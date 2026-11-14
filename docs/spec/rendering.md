@@ -290,7 +290,7 @@ policy for each response.
 
 | The response is | Policy |
 |---|---|
-| an anonymous visitor's 200 render of a page no layout guards | **cacheable**: Batcache stores it, and the edge caches with `public, s-maxage=<window>, max-age=0, must-revalidate`; signed-in users, previews and comment-author cookies bypass |
+| an anonymous visitor's 200 render of a page no layout guards | **cacheable**: Batcache stores it, and the edge caches with `public, max-age=0, s-maxage=<window>, must-revalidate`; signed-in users, previews and comment-author cookies bypass |
 | anything else (a signed-in visitor, a guarded section, an error, a 404) | `private, no-store`; still fast, because the shell has no viewer data when the viewer part is a client component |
 
 Every read in a render is bound to the visitor, so an anonymous render is what any anonymous

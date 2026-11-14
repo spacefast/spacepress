@@ -97,9 +97,11 @@ site-wide endpoint and `{ search }` read `first__search` through First's own SQL
 for core's list routes strip `s` before core's `WP_Query` runs (`FirstQuery::coreArgs`) and select the
 rows themselves. So on a site with ElasticPress, First's kinds are searched by First, with the reader's
 access, and WordPress's own searches (the theme's `?s=`, core's `/wp/v2/search`, other plugins'
-`WP_Query`) are ElasticPress's, as before. Neither needs the other turned off. ElasticPress indexing a
-First post type would serve core's search over it from Elasticsearch, outside First's field access;
-a site that wants that should exclude First's post types from ElasticPress's indexable types.
+`WP_Query`) are ElasticPress's, as before. Neither needs the other turned off. ElasticPress indexes
+only `public` post types by default (`Post::get_indexable_post_types`), and First registers its kinds
+with `public => false`, so it doesn't index them. A site that adds them through
+`ep_indexable_post_types` would have core searches over them answered from Elasticsearch, outside
+First's field access; it shouldn't.
 
 ## Not done
 

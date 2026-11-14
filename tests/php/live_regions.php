@@ -124,6 +124,29 @@ $was = $renders();
 [$thread2] = post($url, [$page("/notes/$slug", 'thread', $thread['token'])]);
 $out['comments'] = [$shape($thread), str_contains($thread['data']['html'] ?? '', 'Live hello'), $shape($thread2), str_contains($thread2['data']['html'] ?? '', 'Live hello'), 'rendered' => $renders() - $was];
 
+// The visitor key includes the post-password cookie: a password-protected note is in the region
+// only for a visitor holding its cookie, and a token issued to one visitor is never "not modified"
+// for the other.
+wp_set_current_user(1);
+\First\db()->insert('notes', ['title' => 'Locked', 'slug' => 'locked', 'status' => 'published']);
+wp_update_post(['ID' => (int) \First\db()->findFirst('notes', ['where' => ['slug' => 'locked']])['id'], 'post_password' => 'open sesame']);
+$site->actAs(null);
+require_once ABSPATH . WPINC . '/class-phpass.php';
+$pass = ['Cookie: wp-postpass_' . COOKIEHASH . '=' . rawurlencode((new PasswordHash(8, true))->HashPassword('open sesame'))];
+[$without] = post($url, [$page('/', 'notes')]);
+[$with] = post($url, [$page('/', 'notes')], $pass);
+[$crossA] = post($url, [$page('/', 'notes', $without['token'])], $pass);
+[$crossB] = post($url, [$page('/', 'notes', $with['token'])]);
+$out['password'] = [
+    'without' => in_array('Locked', $items($without), true),
+    'with' => in_array('Locked', $items($with), true),
+    'without token, with cookie' => [$shape($crossA), in_array('Locked', $items($crossA), true)],
+    'with token, without cookie' => [$shape($crossB), in_array('Locked', $items($crossB), true)],
+];
+wp_set_current_user(1);
+wp_delete_post((int) \First\db()->findFirst('notes', ['where' => ['slug' => 'locked']])['id'], true);
+$site->actAs(null);
+
 // A new build of the same page: the held token is a different question, so the region renders.
 $schemaFile = \First\Wp\Runtime::plugin()->dir . '/first/app/schema.php';
 [$held] = post($url, [$page('/', 'notes')]);

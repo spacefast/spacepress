@@ -1912,6 +1912,14 @@ fn live_regions_answer_page_reads() {
             // `<Live>` around `<Comments>`: core's comment query has no counter, so the page renders
             // on every poll and a new approved comment shows on the next one.
             "comments": { "0": "changed", "1": false, "2": "changed", "3": true, "rendered": 1 },
+            // The visitor key includes the post-password cookie: a protected note shows only with
+            // it, and neither visitor's token is "not modified" for the other.
+            "password": {
+                "without": false,
+                "with": true,
+                "without token, with cookie": ["changed", true],
+                "with token, without cookie": ["changed", false],
+            },
             // Same data, new build: the region renders again.
             "new build": ["changed", true],
         })

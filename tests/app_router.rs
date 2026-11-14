@@ -1532,6 +1532,192 @@ fn refuses_client_code_outside_the_subset() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// Forms without JavaScript (rendering.md §4.2), as a browser with scripts off submits them: the
+/// form posts form-encoded to its action, the facade answers 303 back to the page with a sealed,
+/// read-once flash, and `useFormState` shows the result or the error. The page a form comes back
+/// to is never shared, a cross-site post is refused, and a signed-in form carries the REST nonce.
+#[test]
+fn forms_work_without_javascript() {
+    let project = fixture("forms", "serve");
+    build(&project);
+    // `useFormState(action)` is typed with the action's result.
+    let types = root().join("types/first");
+    std::fs::write(
+        project.join("tsconfig.json"),
+        serde_json::json!({
+            "compilerOptions": {
+                "target": "ES2022", "lib": ["ES2022", "DOM"], "module": "ESNext", "moduleResolution": "bundler",
+                "strict": true, "noEmit": true, "types": [], "jsx": "react-jsx", "jsxImportSource": "first",
+                "allowImportingTsExtensions": true,
+                "paths": { "first": [types.join("index.d.ts")], "first/*": [types.join("*.d.ts")] },
+            },
+            "include": ["first.config.ts", "first", "typed.ts"],
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("typed.ts"),
+        r#"import { useFormState } from "first/app";
+import { subscribe } from "./first/server";
+const state = useFormState(subscribe);
+export const seats: number | undefined = state.result?.seats;
+// @ts-expect-error: the result has no `nope`
+export const nope = state.result?.nope;
+"#,
+    )
+    .unwrap();
+    let tsc = Command::new("tsc")
+        .arg("-p")
+        .arg(&project)
+        .output()
+        .expect("tsc is required");
+    assert!(tsc.status.success(), "{}", String::from_utf8_lossy(&tsc.stdout));
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/forms.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        seen["form"],
+        serde_json::json!({
+            "method": "post",
+            "action": "/__first/api/v1/actions/subscribe",
+            "hidden": [["_first_return", "hidden", "/?ref=nav"]],
+            "page cache": "public, s-maxage=300, max-age=0, must-revalidate",
+        }),
+        "an anonymous page with a form stays shared and carries no nonce: {seen}"
+    );
+    assert_eq!(
+        seen["success"],
+        serde_json::json!({
+            "status": 303,
+            "location": "/?ref=nav&_flash=ID",
+            "cookie flags": ["Max-Age=120", "Path=/", "HttpOnly", "SameSite=Lax"],
+            "done": "Subscribed ada@example.test for 3 (weekly: true)",
+            "back cache": "private, no-store, max-age=0",
+            "cookie cleared": true,
+            "again": null,
+            "forged": null,
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["unchecked"],
+        serde_json::json!("Subscribed bo@example.test for 1 (weekly: false)")
+    );
+    assert_eq!(
+        seen["invalid"],
+        serde_json::json!({
+            "status": 303,
+            "error": "email must be an email address",
+            "field": "email must be an email address",
+            "refilled": "not an email",
+            "seats refilled": "2",
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["password"],
+        serde_json::json!(["Unknown field 'password'", "", "p@example.test"]),
+        "{seen}"
+    );
+    assert_eq!(seen["handler error"], serde_json::json!("Five seats at most"));
+    assert_eq!(seen["not a number"], serde_json::json!("seats must be an integer"));
+    assert_eq!(seen["open redirect"], serde_json::json!(true));
+    assert_eq!(
+        seen["cross site"],
+        serde_json::json!([303, "A form posts to an action only from this site's own pages", null])
+    );
+    assert_eq!(
+        seen["json"],
+        serde_json::json!([200, 1]),
+        "a JSON call to the same URL is unchanged"
+    );
+    assert_eq!(
+        seen["signed out"],
+        serde_json::json!(["Sign in to do run members", null])
+    );
+    let user = seen["signed in"]["user"].as_i64().unwrap();
+    assert_eq!(
+        seen["signed in"],
+        serde_json::json!({
+            "nonce": true,
+            "page cache": "private, no-store, max-age=0",
+            "member": format!("Ann by {user}"),
+            "user": user,
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["no nonce"],
+        serde_json::json!([303, "Sign in to do run members", null]),
+        "{seen}"
+    );
+}
+
+/// What a form with an action can't be is a build error at the line, with the fix.
+#[test]
+fn refuses_forms_it_cannot_post() {
+    let dir = std::env::temp_dir().join(format!("first-forms-reject-{}", std::process::id()));
+    let server = (
+        "first/server.ts",
+        "import { action, text } from \"first\";\nexport const send = action({ input: { name: text() }, access: \"anyone\", async handler({ name }) { return name; } });\n",
+    );
+    let page = |body: &str| {
+        format!("import {{ useFormState }} from \"first/app\";\nimport {{ send }} from \"../server\";\n{body}\n")
+    };
+    rejects(
+        &dir,
+        &[
+            server,
+            (
+                "first/app/page.tsx",
+                &page("export default function Page() { return <form action={send} method=\"get\"><button/></form>; }"),
+            ),
+        ],
+        "a form with an action posts it form-encoded",
+        "first/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[
+            server,
+            (
+                "first/app/page.tsx",
+                &page(
+                    "const other = 1;\nexport default function Page() { const s = useFormState(other); return <b>{String(s.pending)}</b>; }",
+                ),
+            ),
+        ],
+        "`useFormState()` takes an action imported from your server code",
+        "first/app/page.tsx:4:",
+    );
+    rejects(
+        &dir,
+        &[
+            server,
+            (
+                "first/components/Box.tsx",
+                "\"use client\";\nimport { send } from \"../server\";\nexport function Box() { return <form action={send}><button/></form>; }\n",
+            ),
+        ],
+        "a \"use client\" component's form calls its action from a handler",
+        "first/components/Box.tsx:3:",
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// The record's browser check: compiled client components on a real WordPress page, in Chromium
 /// with `SCRIPT_DEBUG` (the Interactivity runtime's development build, the one that warns).
 /// Hydration changes nothing in the server HTML, the runtime logs no warnings, a click calls the

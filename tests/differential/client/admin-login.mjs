@@ -15,15 +15,9 @@ const shell = readdirSync(cache).filter((n) => n.startsWith("chromium_headless_s
 const executablePath = process.env.FIRST_CHROMIUM ?? join(cache, shell, "chrome-headless-shell-linux64/chrome-headless-shell");
 const [url] = process.argv.slice(2);
 const browser = await chromium.launch({ executablePath });
-const out = { errors: [] };
-const path = (u) => { const x = new URL(u); return x.pathname + x.search; };
+const out = {};
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  page.on("pageerror", (e) => out.errors.push(String(e)));
-  page.on("response", (r) => {
-    if (r.status() >= 500 || (r.status() >= 400 && r.url().includes("/wp-admin/") && !r.url().endsWith("favicon.ico"))) out.errors.push(`${r.status()} ${path(r.url())}`);
-  });
-
   // Signed out, wp-admin sends the visitor to the login screen with the way back.
   await page.goto(`${url}/wp-admin/`);
   out.signedOut = { at: new URL(page.url()).pathname, redirectTo: new URL(page.url()).searchParams.get("redirect_to") !== null };

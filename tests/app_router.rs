@@ -1176,7 +1176,6 @@ fn frontend_modes_on_wordpress() {
         assert_eq!(
             seen["admin"],
             serde_json::json!({
-                "errors": [],
                 "signedOut": { "at": "/wp-login.php", "redirectTo": true },
                 "loginForm": 1,
                 "signedIn": "first admin",

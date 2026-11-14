@@ -656,6 +656,25 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         "parallel route slot",
         "first/app/@modal",
     );
+    // `apiReference()` reads a JSON file of the app's `public/`, named as a literal.
+    rejects(
+        &dir,
+        &[(
+            "first/app/api/page.tsx",
+            "import { apiReference } from \"first/content\";\nconst file = \"x.json\";\nexport default function P() { return <p>{apiReference(file).title}</p>; }\n",
+        )],
+        "`apiReference()` takes the path of a JSON file in `public/`, as a string literal",
+        "first/app/api/page.tsx:3",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/api/page.tsx",
+            "import { apiReference } from \"first/content\";\nexport default function P() { return <p>{apiReference(\"../secrets.json\").title}</p>; }\n",
+        )],
+        "`apiReference()` takes the path of a JSON file in `public/`",
+        "first/app/api/page.tsx:2",
+    );
     rejects(
         &dir,
         &[("first/app/docs/[...rest]/more/page.tsx", page)],
@@ -1481,6 +1500,103 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
 
 /// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
 /// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
+/// `apiReference()` from "first/content": the app's own OpenAPI document, and one in `public/`,
+/// rendered by pages as an API reference, on WordPress over HTTP (tests/php/api_reference.php).
+#[test]
+fn api_reference_renders_openapi_as_pages() {
+    let project = fixture("api-reference", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/api_reference.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    // The index: the document's title, this site as its server, a section per tag in the
+    // document's order, and a link per operation named by its operationId.
+    let index = &seen["index"];
+    assert_eq!(index["status"], 200);
+    assert_eq!(index["h1"], serde_json::json!(["Apiref API"]));
+    assert!(
+        index["server"][0].as_str().unwrap().ends_with("/__first/api/v1"),
+        "{index}"
+    );
+    assert_eq!(index["tags"][0], "notes");
+    assert_eq!(index["tags"][1], "actions");
+    assert_eq!(index["tags"][2], "word-press");
+    assert_eq!(index["notes"][0], "/api/notes/notes-list");
+    assert_eq!(index["notes"][4], "/api/notes/notes-delete");
+    // The document's Markdown description, as HTML.
+    assert_eq!(index["description"], "apiref");
+    // One operation: the endpoint, who may call it, each parameter with where it goes and its
+    // constraints, the response's fields nested by depth, and a request sample.
+    let list = &seen["list"];
+    assert_eq!(list["endpoint"], serde_json::json!(["GET /notes"]));
+    assert_eq!(list["access"], serde_json::json!(["anyone"]));
+    assert_eq!(
+        list["limit"],
+        serde_json::json!(["integer", "in query", "min 1 · default: 50"])
+    );
+    assert_eq!(list["response"][0], "depth-0 data Note[]");
+    assert_eq!(list["response"][2], "depth-1 title string");
+    assert_eq!(list["response"][3], "depth-1 body string | null");
+    assert_eq!(
+        list["response"].as_array().unwrap().last().unwrap(),
+        "depth-0 cursor string | null"
+    );
+    assert!(
+        list["curl"][0].as_str().unwrap().starts_with("curl -X GET 'http://"),
+        "{list}"
+    );
+    // A write: its JSON body's fields, and samples that send the required ones.
+    let create = &seen["create"];
+    assert_eq!(create["body type"], serde_json::json!(["application/json"]));
+    assert_eq!(create["body"][0], "title string");
+    assert!(
+        create["curl"][0]
+            .as_str()
+            .unwrap()
+            .contains(r#"-d '{"title":"string"}'"#),
+        "{create}"
+    );
+    assert!(
+        create["fetch"][0]
+            .as_str()
+            .unwrap()
+            .contains(r#"body: JSON.stringify({"title":"string"})"#),
+        "{create}"
+    );
+    assert_eq!(seen["missing"], 404);
+    // A document in public/: path-level parameters, $refs followed, a schema that refers to
+    // itself shown once (the cycle stops), and nested fields one level deeper.
+    assert_eq!(
+        seen["partner"],
+        serde_json::json!({
+            "status": 200,
+            "h1": ["Partner API"],
+            "server": ["https://partner.example/v2"],
+            "params": ["id path string required"],
+            "fields": [
+                "200 d0 id: string required",
+                "200 d0 lines: Line[]",
+                "200 d1 sku: string (matches ^[A-Z]+$)",
+                "200 d1 qty: integer (min 1)",
+                "200 d0 parent: Order"
+            ],
+            "id": ["get-order"]
+        })
+    );
+}
+
 /// `nav`, `pager` and `headings` from "first/content", on WordPress over HTTP (tests/php/docs_kind.php).
 #[test]
 fn docs_kind_serves_a_folder_tree_with_navigation() {

@@ -76,6 +76,15 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 - The item's kind turns `comments` on; on a kind without it the build stops at the prop.
 - Who may comment, moderation and reply depth are the kind's, enforced wherever a comment is created: this form, `POST /__first/api/v1/comments` and WordPress's own comment form all get the same answer. With `comments: true`: signed-in users only, a first comment waits for approval, replies go three levels deep; the kind's `comments` options change any of them.
 
+### Search
+
+<RepoFile path="tests/fixtures/search/first/app/notes-search/page.tsx" />
+
+- `<Search />` is a form that works with JavaScript off: a `GET` of the page with the query in `q`.
+- `<SearchResults kind="notes" q={search.q} />` lists the rows the visitor may read that match, each its title linked to the kind's URL. A draft, or a match only in a field the visitor can't read, never shows and isn't counted.
+- One kind pages with `page`, as `<Pagination>` does. With no `kind`, every searchable kind with a URL is searched, a few rows each, with a link to the rest.
+- A page that searched is never cached for anyone else, and is `noindex`. The bare form page is cached like any other.
+
 ### Markdown pages
 
 <RepoFile path="tests/fixtures/app-router/first/app/(site)/guide/page.md" />

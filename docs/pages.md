@@ -167,6 +167,47 @@ deeper reply is refused); `comments: { guests, moderation, threaded,
 closeAfterDays }` changes any of them ([Comments](config-api.md#comments)). See
 [the decision](decisions/2026-11-14-comments.md).
 
+## Search
+
+```tsx
+import { integer, text } from "first";
+import { Search, SearchResults, type PageProps } from "first/app";
+
+export const search = { q: text().optional(), page: integer().default(1) };
+
+export default function Find({ search }: PageProps) {
+  return <main><Search /><SearchResults kind="notes" q={search.q} page={search.page} /></main>;
+}
+```
+
+`<Search>` is a search form that works without JavaScript: a `GET` of this page
+(or `action`, a path on this site) with the query in `q`, never WordPress's own
+`s`. The input takes at most 200 characters.
+
+`<SearchResults q>` lists the rows that match, as the visitor may read them:
+- a draft, or a match only in a field the visitor may not read, never shows and
+  isn't counted;
+- each result is its title, linked to its kind's URL, so `kind` must be a kind
+  with a `url` (the build says so at the prop otherwise; for anything else,
+  render the rows yourself with `kind.list({ search })`);
+- one kind pages with `page`, the same parameter as `<Pagination>`, and its
+  links keep `q`;
+- with no `kind`, every searchable kind with a URL: up to `perPage` (10) rows
+  each, under the kind's name, with a link to the rest at `?q=…&kind=<name>`.
+  A `kind=` the search doesn't cover finds nothing;
+- an empty `q` (or only spaces) renders nothing and reads nothing; a `q` longer
+  than 200 characters, typed into the URL, shows a short message.
+
+Matching is by word prefix (`gard` finds "gardens"), and the first 8 words of a
+query count. On MySQL and MariaDB, words shorter than the server's minimum
+(3 characters on InnoDB) and its stopwords don't match.
+
+A page that searched (a non-empty `q`) is the visitor's alone: `private,
+no-store`, `noindex` (header and meta tag), and never recorded for page-cache
+purges, since every distinct query would be one more cached URL listing the
+kind. The bare form page is cached like any other. See
+[the decision](decisions/2026-11-14-search.md).
+
 ## Markdown pages
 
 ```md

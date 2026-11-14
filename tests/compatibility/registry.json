@@ -1062,6 +1062,13 @@
       "guidance": "`<Pagination page={search.page} pages={n} />` from \"first/app\" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page."
     },
     {
+      "id": "jsx-search",
+      "status": "supported",
+      "evidence": "tests/app_router.rs",
+      "test": "search_pages_answer_as_the_visitor",
+      "guidance": "`<Search />` and `<SearchResults q={search.q} />` from \"first/app\" are a search form that works without JavaScript (a GET with `q`) and the matching rows the visitor may read, each its title linked to its kind's URL; one kind pages with `page`, every kind groups per kind. A page that searched is private, noindex and never recorded for purges."
+    },
+    {
       "id": "jsx-form-action",
       "status": "supported",
       "evidence": "tests/app_router.rs",

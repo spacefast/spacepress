@@ -1962,6 +1962,176 @@ fn comments_follow_the_kind_policy_on_every_path() {
     assert_eq!(seen["memo"], 403, "a kind without comments takes none: {seen}");
 }
 
+/// `<Search>` and `<SearchResults>` (docs/decisions/2026-11-14-search.md) on WordPress, fetched as a
+/// browser without JavaScript would: the bare form is cacheable; a page that searched is private,
+/// `noindex`, and recorded nowhere; results are what the visitor may read, linked to their kinds'
+/// URLs, paged by `<Pagination>`'s parameter, and grouped per kind site-wide.
+#[test]
+fn search_pages_answer_as_the_visitor() {
+    let project = fixture("search", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/search_pages.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    use serde_json::json;
+    let shared = "public, max-age=0, s-maxage=300, must-revalidate";
+    let private = "private, no-store, max-age=0";
+    // The bare form: a GET to the action, cacheable and indexable.
+    assert_eq!(
+        seen["form"],
+        json!({ "method": "get", "action": "/find", "cache": shared, "robots": null }),
+        "{seen}"
+    );
+    // No query (or only spaces): no read, no "no results", still shared.
+    for key in ["empty", "blank q"] {
+        assert_eq!(seen[key]["status"], 200, "{key}: {seen}");
+        assert_eq!(seen[key]["cache"], shared, "{key}: {seen}");
+        assert_eq!(seen[key]["count"], json!(null), "{key}: {seen}");
+        assert_eq!(seen[key]["robots meta"], false, "{key}: {seen}");
+    }
+    assert_eq!(seen["blank q"]["input"], json!(["q", "200", ""]), "{seen}");
+    // Site-wide: notes and guides (memos has no URL), two per kind, a link to the rest of notes.
+    let site = &seen["site"];
+    assert_eq!(
+        (
+            &site["status"],
+            &site["cache"],
+            &site["robots header"],
+            &site["robots meta"]
+        ),
+        (&json!(200), &json!(private), &json!("noindex"), &json!(true)),
+        "{seen}"
+    );
+    assert_eq!(site["count"], "4 results", "{seen}");
+    assert_eq!(site["groups"], json!(["Notes", "Guides"]), "{seen}");
+    assert_eq!(
+        site["results"],
+        json!([
+            "Tea ceremony /notes/tea-ceremony/",
+            "Tea gardens /notes/tea-gardens/",
+            "Tea guide /guides/tea-guide/"
+        ]),
+        "{seen}"
+    );
+    assert_eq!(site["more"], json!(["/find?q=tea&kind=notes"]), "{seen}");
+    assert_eq!(site["input"], json!(["q", "200", "tea"]), "{seen}");
+    // One kind, paged by `page`, links keeping `q`; the draft and the hidden-field match never count.
+    assert_eq!(seen["one kind"]["count"], "3 results", "{seen}");
+    assert_eq!(seen["one kind"]["results"].as_array().unwrap().len(), 2, "{seen}");
+    assert_eq!(
+        seen["one kind"]["pages"],
+        json!(["2 q=tea&page=2", "Next q=tea&page=2"]),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["page two"]["results"],
+        json!(["Tea history /notes/tea-history/"]),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["page two"]["pages"],
+        json!(["Previous q=tea", "1 q=tea"]),
+        "{seen}"
+    );
+    assert_eq!(seen["hidden field"]["count"], "No results.", "{seen}");
+    assert_eq!(seen["hidden field"]["results"], json!([]), "{seen}");
+    // `kind=` narrows the site-wide page; a kind it doesn't cover, or no kind at all, finds nothing.
+    assert_eq!(seen["narrowed"]["count"], "3 results", "{seen}");
+    assert_eq!(seen["narrowed"]["groups"], json!([]), "{seen}");
+    assert_eq!(
+        seen["narrowed"]["pages"],
+        json!(["2 q=tea&kind=notes&page=2", "Next q=tea&kind=notes&page=2"]),
+        "{seen}"
+    );
+    for key in ["narrowed to memos", "narrowed to nothing"] {
+        assert_eq!(
+            (&seen[key]["status"], &seen[key]["count"]),
+            (&json!(200), &json!("No results.")),
+            "{key}: {seen}"
+        );
+    }
+    // Longer than the input allows: a plain message, never an error page.
+    assert_eq!(seen["too long"]["status"], 200, "{seen}");
+    assert_eq!(
+        seen["too long"]["too long"], "Searches are at most 200 characters.",
+        "{seen}"
+    );
+    // Every search above, and three more: nothing in the page cache's read index.
+    assert_eq!(seen["recorded"], 0, "{seen}");
+    // A signed-in editor finds the draft and the hidden-field match, in a private response.
+    assert_eq!(seen["editor"]["cache"], private, "{seen}");
+    assert_eq!(seen["editor"]["count"], "4 results", "{seen}");
+    assert_eq!(
+        seen["editor"]["results"][0], "Draft about tea /notes/draft-about-tea/",
+        "{seen}"
+    );
+    assert_eq!(
+        seen["editor hidden"],
+        json!(["Plain note /notes/plain-note/"]),
+        "{seen}"
+    );
+}
+
+/// `<SearchResults kind>` names a kind with a url, literally; `<Search action>` is a literal path on
+/// this site. Anything else is a build error at the prop, with the fix.
+#[test]
+fn refuses_search_it_cannot_link() {
+    let dir = std::env::temp_dir().join(format!("first-search-reject-{}", std::process::id()));
+    let schema = (
+        "first/schema.ts",
+        "import { collection, text } from \"first\";\nexport const memos = collection({ title: text() }, { title: \"title\", access: { read: \"anyone\", create: \"editor\", update: \"editor\", delete: \"editor\" } });\n",
+    );
+    let page = |body: &str| {
+        format!(
+            "import {{ Search, SearchResults }} from \"first/app\";\nexport default function P() {{\n  return {body};\n}}\n"
+        )
+    };
+    rejects(
+        &dir,
+        &[
+            schema,
+            ("first/app/page.tsx", &page("<SearchResults kind=\"memos\" q=\"x\" />")),
+        ],
+        "`memos` has no url for a result to link to",
+        "first/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[
+            schema,
+            ("first/app/page.tsx", &page("<SearchResults kind=\"nope\" q=\"x\" />")),
+        ],
+        "there is no kind `nope` to search",
+        "first/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[
+            schema,
+            (
+                "first/app/page.tsx",
+                &page("<Search action=\"https://elsewhere.example/\" />"),
+            ),
+        ],
+        "`<Search action>` is a path on this site",
+        "first/app/page.tsx:3:",
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// `<Comments for>` on a kind without `comments`, or on something that isn't an item, is a build
 /// error at the prop.
 #[test]

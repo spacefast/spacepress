@@ -1120,6 +1120,14 @@ Status: **supported**.
 
 [Evidence](../tests/app_router.rs) (`app_router_serves_pages_on_wordpress`)
 
+## jsx-search
+
+Status: **supported**.
+
+`<Search />` and `<SearchResults q={search.q} />` from "first/app" are a search form that works without JavaScript (a GET with `q`) and the matching rows the visitor may read, each its title linked to its kind's URL; one kind pages with `page`, every kind groups per kind. A page that searched is private, noindex and never recorded for purges.
+
+[Evidence](../tests/app_router.rs) (`search_pages_answer_as_the_visitor`)
+
 ## jsx-form-action
 
 Status: **supported**.

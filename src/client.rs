@@ -771,21 +771,10 @@ pub fn files(
         ("types.ts".to_string(), types_ts(schema, results).into_bytes()),
         ("schema.ts".to_string(), schema_ts(schema).into_bytes()),
     ];
+    let source = browser_source(schema, results);
+    out.push(("client.js".into(), browser_javascript(&source).into_bytes()));
     #[cfg(feature = "host")]
-    if let Some(bytes) = runtime("client/index.ts") {
-        let runtime = String::from_utf8_lossy(bytes);
-        let body = runtime
-            .lines()
-            .filter(|line| {
-                !line.starts_with("import ") && !line.starts_with("export type *") && *line != "export { SCHEMA };"
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        let source = format!("{}\n{}\n{}", types_ts(schema, results), schema_ts(schema), body);
-        let (javascript, declarations) = browser_artifacts(&source);
-        out.push(("client.js".into(), javascript.into_bytes()));
-        out.push(("client.d.ts".into(), declarations.into_bytes()));
-    }
+    out.push(("client.d.ts".into(), browser_declarations(&source).into_bytes()));
     // The copied runtime half of the client is MIT; its notice travels with it. `react.ts` is the
     // optional hooks entry point: it imports no React, so it type-checks in a project without one.
     for f in ["index.ts", "react.ts", "README.md", "LICENSE"] {
@@ -802,13 +791,54 @@ pub(crate) fn registry_value(c: &Column) -> String {
     value_ts_with(c, false, &crate::types::json_authored_ty)
 }
 
-/// Emit a dependency-free browser module and matching declarations from the canonical client.
-/// This strips client TypeScript only; compiler input bundles retain their original sources.
+/// The runtime half of the typed client, compiled in, so the browser compiler (which carries no
+/// embedded runtime) writes the same `client.js` as `first build`.
+const CLIENT_RUNTIME: &str = include_str!("../runtime/client/index.ts");
+
+/// The canonical client as one TypeScript module: the app's types and schema, then the runtime
+/// half without its imports (`runtime/client/index.ts`).
+fn browser_source(schema: &Schema, results: &HashMap<String, Ty>) -> String {
+    let body = CLIENT_RUNTIME
+        .lines()
+        .filter(|line| {
+            !line.starts_with("import ") && !line.starts_with("export type *") && *line != "export { SCHEMA };"
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("{}\n{}\n{}", types_ts(schema, results), schema_ts(schema), body)
+}
+
+/// The declarations matching [`browser_javascript`], for TypeScript projects that import `client.js`.
 #[cfg(feature = "host")]
-fn browser_artifacts(source: &str) -> (String, String) {
+fn browser_declarations(source: &str) -> String {
     use oxc_allocator::Allocator;
     use oxc_codegen::Codegen;
     use oxc_isolated_declarations::{IsolatedDeclarations, IsolatedDeclarationsOptions};
+    use oxc_parser::Parser;
+    use oxc_span::SourceType;
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, SourceType::ts()).parse();
+    assert!(
+        parsed.diagnostics.is_empty(),
+        "invalid generated client: {:?}",
+        parsed.diagnostics
+    );
+    let declarations = IsolatedDeclarations::new(&allocator, IsolatedDeclarationsOptions { strip_internal: true })
+        .build(&parsed.program);
+    assert!(
+        declarations.diagnostics.is_empty(),
+        "invalid generated declarations: {:?}",
+        declarations.diagnostics
+    );
+    Codegen::new().build(&declarations.program).code
+}
+
+/// A dependency-free browser module from the canonical client: its TypeScript stripped, nothing
+/// else changed. The app plugin serves it as the script module `@first/client`, so pages that keep
+/// data live use the same client, protocol and polling as every other caller.
+fn browser_javascript(source: &str) -> String {
+    use oxc_allocator::Allocator;
+    use oxc_codegen::Codegen;
     use oxc_parser::Parser;
     use oxc_semantic::SemanticBuilder;
     use oxc_span::SourceType;
@@ -821,14 +851,6 @@ fn browser_artifacts(source: &str) -> (String, String) {
         parsed.diagnostics
     );
     let mut program = parsed.program;
-    let declarations =
-        IsolatedDeclarations::new(&allocator, IsolatedDeclarationsOptions { strip_internal: true }).build(&program);
-    assert!(
-        declarations.diagnostics.is_empty(),
-        "invalid generated declarations: {:?}",
-        declarations.diagnostics
-    );
-    let declarations = Codegen::new().build(&declarations.program).code;
     let semantic = SemanticBuilder::new().with_excess_capacity(2.0).build(&program);
     assert!(
         semantic.diagnostics.is_empty(),
@@ -846,5 +868,5 @@ fn browser_artifacts(source: &str) -> (String, String) {
         "invalid browser client: {:?}",
         transformed.diagnostics
     );
-    (Codegen::new().build(&program).code, declarations)
+    Codegen::new().build(&program).code
 }

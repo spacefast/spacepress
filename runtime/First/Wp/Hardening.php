@@ -318,6 +318,19 @@ final class Hardening
         add_action('shutdown', $drop, PHP_INT_MAX);
     }
 
+    /**
+     * Whether the stored rewrite rules are ones First built: core would otherwise rebuild them on the
+     * next request. Read past the option filter that hides stale rules, without writing anything.
+     */
+    public static function rulesCurrent(): bool
+    {
+        global $wpdb;
+        $stored = maybe_unserialize($wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'rewrite_rules')));
+        $recorded = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::RULES));
+
+        return is_array($stored) && $stored !== [] && $recorded === self::fingerprint($stored);
+    }
+
     private static function fingerprint(array $rules): string
     {
         return self::PERMALINKS . ':' . md5(serialize($rules));

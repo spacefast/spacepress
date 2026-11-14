@@ -238,6 +238,10 @@ final class Db
             throw new \LogicException('count() needs the WordPress store');
         }
 
+        // A count reads no rows, so the read hooks don't see it: a render that counts a kind still
+        // depends on every write to it (its purges, and live regions).
+        Render\Reads::listed($collection);
+
         return (int) ($store->db->run($q['sql'], $q['params'])[0]['n'] ?? 0);
     }
 

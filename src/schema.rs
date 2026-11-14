@@ -484,6 +484,8 @@ pub struct Schema {
     pub components: IndexMap<String, String>,
     /// `"use client"` components (generator B): namespace → its store module.
     pub islands: IndexMap<String, Island>,
+    /// Components content may use as blocks (`export const blocks` in a component file).
+    pub blocks: Vec<crate::content_blocks::Block>,
     /// Imported stylesheets and images (`crate::assets`), by output file name below
     /// `first/app/assets/`.
     pub assets: IndexMap<String, Vec<u8>>,
@@ -500,6 +502,9 @@ pub struct Schema {
     pub admin: bool,
     /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `first/app`.
     pub frontend: Option<crate::kind_url::Frontend>,
+    /// `defineConfig({ publicAuthors: true })`: core's author archives, author routes and user
+    /// listings stay public, as WordPress ships them (the users kind's read rule can also allow it).
+    pub public_authors: bool,
     /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
     /// while it runs. Holds what the build read from the lock `first pull` writes.
     pub runtime_schema: Option<RuntimeSchema>,
@@ -524,6 +529,7 @@ impl Default for Schema {
             components: IndexMap::new(),
             app: None,
             islands: IndexMap::new(),
+            blocks: Vec::new(),
             assets: IndexMap::new(),
             wp_views: false,
             files: IndexMap::new(),
@@ -533,6 +539,7 @@ impl Default for Schema {
             locales: None,
             admin: false,
             frontend: None,
+            public_authors: false,
             runtime_schema: None,
         }
     }
@@ -641,7 +648,7 @@ pub struct App {
     pub not_found: Option<AppRoute>,
     /// Route file (relative to `first/`) → its compiled exports.
     pub files: IndexMap<String, AppFile>,
-    /// Content-owned pages (`page.md`), by route id: what the site stores as a WordPress Page.
+    /// Content-owned pages (`page.md`), by URL path: what the site stores as a WordPress Page.
     pub content: IndexMap<String, crate::content_page::Page>,
     /// The table is a 0.3.0 capture's `routes` config (`extract::legacy::routes`), served as 0.3.0
     /// served it: matched per method, reads trusted, the front end left to the theme.

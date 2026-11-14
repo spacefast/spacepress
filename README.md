@@ -162,6 +162,13 @@ the database, uploads and other installed plugins remain in
 `examples/pantry/.first/dev/wordpress` for the next start. The login above is
 for disposable local development only, never production.
 
+`first dev --detach` does the same in the background: it returns once the site
+is up, keeps rebuilding on save, and writes its output to
+`.first/dev/dev.log`. A coding agent's shell gets that without the flag (the
+output is not a terminal and `CLAUDECODE`, `CODEX_SANDBOX`, `AI_AGENT` or
+`AGENT` is set, outside CI); `--foreground` keeps the command attached.
+`first dev status --json` reports the URL, the port and that process.
+
 To leave the site running without watching, use `--no-watch`:
 
 ```sh
@@ -354,8 +361,7 @@ and the build pins and ships them too.
 Deploy to [Spacefast](https://spacefast.com) with `sf publish` from a project
 containing `first.config.ts`, or use the hosted MCP publish tool. Spacefast captures
 and compiles source on the host. REST endpoints, actions, [HTTP routes](docs/config-api.md#http-routes)
-and [TSX pages](docs/pages.md) work on the Space hostname; render pages locally
-with `first-pages build` before publishing. Realtime is not supported.
+and [TSX pages](docs/pages.md) work on the Space hostname. Realtime is not supported.
 See the [Spacefast deploy guide](docs/spacefast-deploy.md) and, for an existing
 Space, the [migration procedure](docs/migrating-from-zero.md#migrate-a-spacefast-app).
 
@@ -408,10 +414,11 @@ In progress: First Admin, an optional admin plugin for First apps. Its source is
 in the repo under `runtime/admin/`, and `defineConfig({ admin: true })` ships
 it as a fourth plugin; its screens are still being completed.
 
-First Pages is an optional TSX frontend in `packages/pages`: layouts,
-collection routes and viewer-bound data rendered by WordPress.
+Pages are an optional TSX front end under `first/app/`: layouts, pages,
+`"use client"` components on the Interactivity API, stylesheets and HTTP
+routes, compiled to PHP and rendered by WordPress as the visitor.
 [`examples/full-site`](examples/full-site) is a complete site; see
-[`docs/pages.md`](docs/pages.md) for its supported subset and limits.
+[`docs/pages.md`](docs/pages.md) for the supported subset.
 
 What's next, none of it shipped:
 

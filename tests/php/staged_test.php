@@ -39,12 +39,35 @@ $fixed['staged'] = false;
 $fixed['wp'] = ['postType' => 'first_fixed', 'groupKey' => 'group_first_fixed', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_fixed_'];
 $fixed['access'] = array_fill_keys(['read', 'create', 'update', 'delete'], ['role' => 'editor']);
 $schema['collections']['fixed'] = $fixed;
+// Anyone may update a guestbook entry; its `mood` only an admin may set. And `riddles`: an update
+// rule that throws when the data it is given asks it to.
+foreach (['guestbook' => ['role' => 'anyone'], 'riddles' => ['fn' => 'riddles__access__update']] as $key => $update) {
+    $extra = $schema['collections']['authors'];
+    $extra['key'] = $key;
+    $extra['wp'] = ['postType' => "first_$key", 'groupKey' => "group_first_$key", 'metaPrefix' => 'first_', 'fieldKeyPrefix' => "field_first_{$key}_"];
+    $extra['access'] = ['read' => ['role' => 'anyone'], 'create' => ['role' => 'editor'], 'update' => $update, 'delete' => ['role' => 'editor']];
+    $extra['columns']['mood'] = ['type' => 'text', 'access' => ['read' => ['role' => 'admin'], 'update' => ['role' => 'admin']]];
+    $extra['columns']['email']['unique'] = false;
+    $schema['collections'][$key] = $extra;
+}
 $schema['webhooks'] = [['url' => ['env' => 'FIRST_HOOK_URL'], 'secret' => ['env' => 'FIRST_HOOK_SECRET'], 'events' => ['posts.updated']]];
 putenv('FIRST_HOOK_URL=http://127.0.0.1:9/hook');
 putenv('FIRST_HOOK_SECRET=whsec_test');
 $functions = file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
 
     /** Every update of a post leaves one comment naming the change and who made it. */
+    /** Editors only; and a rule that is handed `bio: "boom"` throws, as a buggy rule might. */
+    function riddles__access__update(\First\JsObject $ctx)
+    {
+        $data = \First\Js::prop($ctx, 'data');
+        if ($data !== null && \First\Js::prop($data, 'bio') === 'boom') {
+            throw new \RuntimeException('the rule could not read this data');
+        }
+        $user = \First\Js::prop($ctx, 'user');
+
+        return $user !== null && in_array(\First\Js::prop($user, 'role'), ['editor', 'admin'], true);
+    }
+
     function posts__afterUpdate(\First\JsObject $row, \First\JsObject $previous, \First\JsObject $ctx)
     {
         $user = \First\Js::prop($ctx, 'user');
@@ -61,7 +84,7 @@ $site = wpSite('staged', [
         <?php
         add_filter('template_include', static function () {
             $file = WP_CONTENT_DIR . '/staged-template.php';
-            file_put_contents($file, '<?php while (have_posts()) { the_post(); echo "<h1>", get_the_title(), "</h1><main>", get_the_content(), "</main><p id=\"excerpt\">", esc_html((string) get_post_meta(get_the_ID(), "first_excerpt", true)), "</p><p id=\"kicker\">", esc_html((string) get_post_meta(get_the_ID(), "first_kicker", true)), "</p>"; }');
+            file_put_contents($file, '<?php while (have_posts()) { the_post(); echo "<h1>", get_the_title(), "</h1><main>", get_the_content(), "</main><p id=\"excerpt\">", esc_html((string) get_post_meta(get_the_ID(), "first_excerpt", true)), "</p><p id=\"kicker\">", esc_html((string) get_post_meta(get_the_ID(), "first_kicker", true)), "</p><p id=\"memo\">", esc_html((string) get_post_meta(get_the_ID(), "first_memo", true)), "</p>"; }');
 
             return $file;
         }, PHP_INT_MAX);
@@ -394,7 +417,8 @@ $listed = static function (?string $as) use ($site): array {
     }
 };
 [$code, $subscriber, $item] = $listed('sub');
-eq('a subscriber, whose update rule covers no row here, is offered no staged ability', [$code, $subscriber, $item], [200, [], 404]);
+eq('a subscriber is offered staged abilities only where the update rule admits them (guestbook: anyone)',
+    [$code, array_values(array_filter($subscriber, static fn (string $n) => !str_starts_with($n, 'blog/guestbook-'))), $item], [200, [], 404]);
 [, $author] = $listed('alice');
 check('an author is offered the posts kind\'s, where their update rule covers their own posts', in_array('blog/posts-staged-promote', $author, true)
     && !in_array('blog/authors-staged-promote', $author, true), $author);
@@ -416,7 +440,7 @@ $tools = static function (?string $as) use ($site): array {
         wp_set_current_user(0);
     }
 };
-eq('the MCP tools list offers a subscriber no staged tool', $tools('sub'), []);
+eq('the MCP tools list offers a subscriber no staged tool outside the guestbook', array_values(array_filter($tools('sub'), static fn (string $n) => !str_starts_with($n, 'blog-guestbook-'))), []);
 check('… and an editor the posts kind\'s', in_array('blog-posts-staged-promote', $tools('ed'), true));
 $run = static function (string $ability, array $input, ?string $as) use ($site): mixed {
     $site->actAs($as);
@@ -597,5 +621,108 @@ eq('the trusted CLI is never refused by a lock', (function () use ($site, $rev):
 
     return $site->cli('update', 'posts', json_encode(['id' => $rev]), json_encode(['excerpt' => 'cli']))[0];
 })(), 0);
+
+// ================================================================ review fixes
+
+// 1. A promote scheduled by a signed-out caller runs as a signed-out caller, never as the system.
+$guest = $db->insert('guestbook', ['name' => 'Guest live', 'email' => 'g@example.com', 'mood' => 'calm'], true)[0]['id'];
+eq('an anonymous caller may stage where the update rule admits anyone', api('PATCH', "/guestbook/$guest/staged", ['name' => 'Guest staged'], null)[0], 200);
+isProblem('… but not a field it may not set', api('PATCH', "/guestbook/$guest/staged", ['mood' => 'furious'], null), 401, 'unauthenticated', '/mood');
+$at = gmdate('Y-m-d\TH:i:s.000\Z', time() + 7200);
+[$code, $scheduled] = api('POST', "/guestbook/$guest/staged/promote", ['at' => $at], null);
+eq('an anonymous caller schedules a promote of what it staged', [$code, $scheduled['promoteAt'] ?? null], [200, $at]);
+$rid = $stagedPosts($guest)[0];
+eq('… recorded as anonymous, never as the trusted CLI', json_decode((string) get_post_meta($rid, Staged::META, true), true)['promoteBy'] ?? null, 'anonymous');
+// Before it runs, trusted code stages the admin-only field into the same version. The anonymous
+// promote must refuse it rather than make it live with the system's authority.
+$site->cli('staged', 'stage', 'guestbook', (string) $guest, '{"mood":"furious"}');
+eq('… the schedule survives the trusted stage', json_decode((string) get_post_meta($rid, Staged::META, true), true)['promoteBy'] ?? null, 'anonymous');
+$due = static function () use ($rid): void {
+    putenv('FIRST_NOW=' . gmdate('Y-m-d\TH:i:s.000\Z', time() + 7201));
+    do_action('publish_future_post', $rid);
+    putenv('FIRST_NOW');
+};
+$due();
+$row = $db->findFirst('guestbook', ['where' => ['id' => $guest]]);
+eq('the anonymous schedule promotes as anonymous: the admin-only field is refused, nothing goes live',
+    [$row['mood'], $row['name'], json_decode((string) get_post_meta($rid, Staged::META, true), true)['error']['code'] ?? null], ['calm', 'Guest live', 'unauthenticated']);
+// A scheduled record that names no actor (as one could from before actors were named).
+update_metadata('post', $rid, Staged::META, wp_slash(json_encode(['fields' => ['name', 'mood'], 'promoteAt' => $at])));
+$due();
+eq('a schedule that names no actor is refused, never promoted as the system',
+    [$db->findFirst('guestbook', ['where' => ['id' => $guest]])['mood'], json_decode((string) get_post_meta($rid, Staged::META, true), true)['error']['code'] ?? null], ['calm', 'forbidden']);
+$site->cli('staged', 'discard', 'guestbook', (string) $guest);
+
+// 2. After a discard, a reader can't tell a staged version ever existed; a promote counts as one update.
+$traceless = $db->insert('posts', ['title' => 'Traceless', 'slug' => 'traceless'], true)[0]['id'];
+$db->update('posts', ['excerpt' => 'an ordinary update'], ['id' => $traceless]);
+$reader = static function () use ($url, $traceless): array {
+    $item = json_decode(fetch("$url/wp-json/wp/v2/first_posts/$traceless")['body'], true);
+
+    return [$item['_links']['version-history'][0]['count'] ?? null, $item['_links']['predecessor-version'][0]['id'] ?? null, $item['modified_gmt'] ?? null, $item['date_gmt'] ?? null];
+};
+$before = $reader();
+api('PATCH', "/posts/$traceless/staged", ['title' => 'Never seen'], 'ed');
+api('DELETE', "/posts/$traceless/staged", as: 'ed');
+eq('after a discard, a reader sees the revision count, the predecessor and the dates as before', $reader(), $before);
+$db->update('posts', ['excerpt' => 'another ordinary update'], ['id' => $traceless]);
+$afterUpdate = $reader();
+api('PATCH', "/posts/$traceless/staged", ['title' => 'Promoted'], 'ed');
+api('POST', "/posts/$traceless/staged/promote", null, 'ed');
+eq('a promote adds one to the count, as one update does', $reader()[0] - $afterUpdate[0], $afterUpdate[0] - $before[0]);
+check('… and the predecessor is the promote\'s own revision, not the staged one', $reader()[1] !== $afterUpdate[1] && !in_array($reader()[1], array_map('intval', array_column(
+    $site->sql("SELECT post_id FROM {prefix}postmeta WHERE meta_key = ?", [Staged::META]), 'post_id')), true));
+
+// 3. The preview page shows only what an anonymous visitor may read of the staged change.
+$masked = $db->insert('posts', ['title' => 'Masked', 'slug' => 'masked', 'excerpt' => 'public excerpt', 'memo' => 'live memo'], true)[0]['id'];
+api('PATCH', "/posts/$masked/staged", ['excerpt' => 'staged excerpt', 'memo' => 'staged secret memo'], 'admin');
+[, $maskedLink] = api('POST', "/posts/$masked/staged/preview", as: 'admin');
+$pageBody = fetch((string) $maskedLink['url'])['body']; // the template prints first_memo too
+check('the preview page renders the staged field anyone may read', str_contains($pageBody, 'staged excerpt'), $pageBody);
+check('… and never the admin-only one, staged or live', !str_contains($pageBody, 'staged secret memo') && !str_contains($pageBody, 'live memo'), $pageBody);
+
+// 4. A rule that throws on the staged data answers as a refusal: the same 404 as with nothing staged.
+$riddle = $db->insert('riddles', ['name' => 'Riddle', 'email' => 'r@example.com'], true)[0]['id'];
+$plain = api('GET', "/riddles/$riddle/staged", as: 'sub');
+$site->cli('staged', 'stage', 'riddles', (string) $riddle, '{"bio":"boom"}');
+$withThrow = api('GET', "/riddles/$riddle/staged", as: 'sub');
+eq('a subscriber gets the missing row\'s 404 whether or not the staged data makes the rule throw',
+    [$withThrow[0], $withThrow[1]['code'] ?? null], [$plain[0], $plain[1]['code'] ?? null]);
+eq('… which is the 404', $withThrow[0], 404);
+
+// 5. A promote fires the REST hooks an API update fires.
+$restSeen = [];
+foreach (['rest_insert_first_posts', 'rest_after_insert_first_posts'] as $hook) {
+    add_action($hook, static function (\WP_Post $post, \WP_REST_Request $request, bool $creating) use (&$restSeen, $hook): void {
+        $restSeen[] = [$hook, $post->ID, $request->get_param('title'), $creating];
+    }, 10, 3);
+}
+$hooked = $db->insert('posts', ['title' => 'Hooked', 'slug' => 'hooked'], true)[0]['id'];
+api('PATCH', "/posts/$hooked/staged", ['title' => 'Hooked promoted'], 'ed');
+api('POST', "/posts/$hooked/staged/promote", null, 'ed');
+eq('a promote fires rest_insert_ and rest_after_insert_ with the update', $restSeen,
+    [['rest_insert_first_posts', $hooked, 'Hooked promoted', false], ['rest_after_insert_first_posts', $hooked, 'Hooked promoted', false]]);
+
+// Listeners on core's post hooks: staging writes a revision post, which must not look like a change
+// to the live item to anything that purges or pings it.
+$livePosts = [];
+$listen = static function (mixed $post) use (&$livePosts): void {
+    $id = $post instanceof \WP_Post ? $post->ID : (int) $post;
+    $livePosts[] = get_post_type($id);
+};
+foreach (['save_post', 'clean_post_cache', 'publish_future_post', 'transition_post_status'] as $hook) {
+    add_action($hook, $hook === 'transition_post_status' ? static fn ($new, $old, $post) => $listen($post) : $listen, 10, $hook === 'transition_post_status' ? 3 : 1);
+}
+$announced = [];
+$purge = static function (array $paths) use (&$announced): void { $announced[] = $paths; };
+add_action('first_purge_urls', $purge);
+$quiet = $db->insert('posts', ['title' => 'Quiet', 'slug' => 'quiet'], true)[0]['id'];
+\First\Wp\Purges::flush();
+[$livePosts, $announced] = [[], []];
+api('PATCH', "/posts/$quiet/staged", ['title' => 'Quiet staged'], 'ed');
+\First\Wp\Purges::flush();
+eq('staging announces no URL purge', $announced, []);
+eq('… and every post hook it fires is for the revision post, never the live item', array_values(array_unique($livePosts)), ['revision']);
+remove_action('first_purge_urls', $purge);
 
 finish('staged');

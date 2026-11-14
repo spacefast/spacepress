@@ -39,8 +39,12 @@ final class Plugin
     /** @var array<string, int> `--drop` confirmations for this process's migration (SchemaCheck) */
     private array $drops = [];
 
+    /** The hash of the `schema.php` this request loaded, taken when it booted. */
+    private string $loadedHash = '';
+
     public function __construct(public readonly string $dir, string $mainFile, public readonly Schema $schema)
     {
+        $this->loadedHash = (string) @hash_file('sha256', $dir . '/first/app/schema.php');
         self::$instance = $this;
         $this->mainFile = $mainFile;
         Hardening::apply($schema);
@@ -57,6 +61,7 @@ final class Plugin
             }
         });
         CoreAccess::register();
+        AgentScope::register();
         EditorSave::register();
         ProfileForm::register();
         if (($this->schema->auth()['collection'] ?? null) !== null) {
@@ -101,6 +106,11 @@ final class Plugin
         });
         Facade::register($this);
         AppRouter::register($this);
+        // Code blocks: highlighted with their title and marked lines, grouped into tabs (no script).
+        add_filter('render_block_core/code', [\First\Content\Code::class, 'render'], 10, 2);
+        add_filter('the_content', [\First\Content\Code::class, 'groups'], 20);
+        // Components content may use as blocks (first/components: `export const blocks`).
+        add_action('init', [\First\Content\Blocks::class, 'register'], 5);
         ContentPages::register($this);
         KindUrls::register($this);
         MarkdownTwins::register();
@@ -149,7 +159,10 @@ final class Plugin
                 if (is_string($mark)) {
                     Migrator::locked($this->connection(), $this->schemaOption(), fn () => $this->migrator()->markApplied($mark));
                 }
-                [$code, $out] = [0, \First\Js::jsonStringify(['data' => ['applied' => $this->migrateLocked()]])];
+                $applied = $this->migrateLocked();
+                // With runtimeSchema: what this build leaves to the site's own schema versions (spec §2.10).
+                $runtime = SchemaVersions::of($this)?->deployCheck();
+                [$code, $out] = [0, \First\Js::jsonStringify(['data' => ['applied' => $applied] + ($runtime === null ? [] : ['runtimeSchema' => array_diff_key($runtime, ['refusals' => true])])])];
             } catch (\Throwable $e) {
                 [$code, $out] = [1, \First\Js::jsonStringify(['error' => \First\App::problem($e)])];
             }
@@ -388,6 +401,12 @@ final class Plugin
 
     private function migrateNow(): array
     {
+        // A build that reads a runtime field's stored values as another type is refused before any
+        // table changes, with the rest of the deploy's refusals (spec §2.10).
+        $runtime = SchemaVersions::of($this)?->deployCheck();
+        if (($runtime['refusals'] ?? []) !== []) {
+            throw new SchemaRefused(array_map(static fn (array $r): array => $r + ['rows' => 0], $runtime['refusals']));
+        }
         $applied = $this->migrator()->migrate();
         if (($compiled = \First\RuntimeSchema\Loader::compiled()) !== null) {
             // `runtimeSchema`: runtime changes are checked against the fields of every build that ran here.
@@ -445,6 +464,26 @@ final class Plugin
         return $this->migrator()->nonInnoDb();
     }
 
+    /**
+     * The named lock a deploy holds while it checks and migrates storage. Applying a runtime schema
+     * change takes the same lock (spec §2.10), so it never interleaves with a deploy.
+     */
+    public function schemaLock(): string
+    {
+        return $this->schemaOption();
+    }
+
+    /**
+     * Whether `schema.php` on disk is still the build this request loaded. A deploy that replaced it
+     * while this request ran makes this false; the next request loads the new one.
+     */
+    public function buildIsCurrent(): bool
+    {
+        clearstatcache(true, $this->dir . '/first/app/schema.php');
+
+        return $this->schemaHash() === $this->loadedHash;
+    }
+
     private function schemaOption(): string
     {
         return 'first_' . $this->schema->name() . '_schema';
@@ -458,7 +497,7 @@ final class Plugin
     /** Identifies the compiled schema this request runs: what a runtime schema version was validated on. */
     public function buildHash(): string
     {
-        return $this->schemaHash();
+        return $this->loadedHash;
     }
 
     // ================================================================ registration

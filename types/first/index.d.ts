@@ -1045,7 +1045,15 @@ export type InferActionInput<TInput extends ColumnsConfig> = Simplify<
 
 export interface Action<TInput extends ColumnsConfig = ColumnsConfig, TResult = unknown> {
   readonly [actionBrand]: { input: TInput; result: TResult };
+  /**
+   * From a `"use client"` component: a `fetch` to the action's endpoint, with the REST nonce. The
+   * parameter is checked through `ClientInput`, so an action of any input stays an `AnyAction`.
+   */
+  <I extends ClientInput<TInput>>(input: I): Promise<Awaited<TResult>>;
 }
+
+/** The input a client call passes: the action's input, or anything for `AnyAction`. */
+type ClientInput<TInput extends ColumnsConfig> = ColumnsConfig extends TInput ? Record<string, unknown> : InferActionInput<TInput>;
 
 export type AnyAction = Action<ColumnsConfig, unknown>;
 
@@ -1122,6 +1130,12 @@ export interface ConfigInput<
   plugins?: Readonly<Record<string, WordPressPlugin>>;
   /** Ship the optional admin screens (`first-admin`) with the build. Default `false`. */
   admin?: boolean;
+  /**
+   * Keep the site's authors public as WordPress ships them: author archives, `?author=N`, the users
+   * sitemap, author names in oEmbed and unauthenticated `/wp/v2/users`. Default `false`: closed, unless
+   * the users kind's read rule lets anyone read users.
+   */
+  publicAuthors?: boolean;
   /**
    * Let the running site add collections, globals and fields, each change stored there as a numbered
    * schema version. The build declares the changes listed in `first/_generated/runtime-schema.json`. Default `false`.

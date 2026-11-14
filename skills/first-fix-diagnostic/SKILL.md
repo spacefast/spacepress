@@ -31,7 +31,9 @@ editor can still be refused. The diagnostic says what was refused and usually ho
 2. Read each entry of `diagnostics`:
    - `code`: the kind of problem. `F1001` is a syntax error, `F1002` a construct outside the
      supported subset, `F1003` an import that does not resolve, `F2001` a failure while the config
-     was evaluated, `F3001` an invalid schema, `F4001` a handler that does not type-check or compile.
+     was evaluated (an unknown builder or modifier is one), `F3001` an invalid schema (an unknown
+     kind option, a field rule that cannot hold), `F4001` a handler that does not type-check or
+     compile.
    - `message` and `help`: what is wrong, and the fix when the compiler knows one. Apply `help` first.
    - `location`: `file`, `line` and `column` (both one-based), relative to the project.
    - `groups` collects the same message at several locations: fix every site of a group the same way.
@@ -39,7 +41,8 @@ editor can still be refused. The diagnostic says what was refused and usually ho
 3. Open the file at the location and fix the cause, not the symptom:
    - A refused construct (`F1002`, or a more specific code): rewrite it in the supported subset. Look
      the code or the construct up with `docs_search`, or read `docs/language-support.md`.
-   - A schema error (`F3001`): the field, kind or option is not one First has. Read
+   - An unknown builder or modifier (`F2001`, "\"first\" has no export named …" or no method of
+     that name) or an invalid kind option (`F3001`): First has no such API. Read
      `docs/config-api.md` for the builders and their modifiers.
    - `F1210`: a file under `first/` imports from outside `first/`. Move the imported file in.
    - `F1221`: two exports share a name, or a kind, action or job is a default export. Rename one.

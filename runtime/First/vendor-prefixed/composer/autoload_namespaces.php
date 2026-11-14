@@ -6,4 +6,6 @@ $vendorDir = dirname(__DIR__);
 $baseDir = dirname($vendorDir);
 
 return array(
+    'First\\Vendor\\Highlight\\' => array($vendorDir . '/scrivo/highlight.php'),
+    'First\\Vendor\\HighlightUtilities\\' => array($vendorDir . '/scrivo/highlight.php'),
 );

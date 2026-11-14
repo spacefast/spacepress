@@ -2486,6 +2486,28 @@ export default defineConfig({ name: "kindurls" });
 "#,
     );
     assert!(built.get("frontend").is_none(), "{built}");
+    // `publicAuthors` reaches the runtime only when set (spec.md §6, the authors switch).
+    assert!(built.get("publicAuthors").is_none(), "{built}");
+    let built = schema(
+        r#"import { defineConfig } from "first";
+export default defineConfig({ name: "kindurls", publicAuthors: true });
+"#,
+    );
+    assert_eq!(built["publicAuthors"], true);
+    let refused = tmp.path().join("app-public-authors");
+    std::fs::create_dir_all(&refused).unwrap();
+    std::fs::write(
+        refused.join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"kindurls\", publicAuthors: \"yes\" });\n",
+    )
+    .unwrap();
+    let out = first().args(["build", "--quiet"]).arg(&refused).output().unwrap();
+    assert!(!out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("publicAuthors must be true or false"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     // `staged: false` is the one staged setting the schema carries: collections stage unless it is there.
     let built = schema(
         r#"import { collection, defineConfig, text } from "first";
@@ -2676,6 +2698,92 @@ fn refuses_the_old_ledger_path_and_older_snapshots_instead_of_renumbering() {
 }
 
 /// The auth-collection fixture the PHP suites run on is exactly what the compiler emits for it.
+/// Storage follows the builder (docs/config-api.md, "Schema changes at deploy"). A kind the ledger
+/// holds as a SQL table, declared again with collection(), is refused at its declaration before any
+/// migration is written: building it would plan the table's drop. Declared with table() again it
+/// builds with no migration. The other way, posts declared as a table() still build, with a warning.
+#[test]
+fn a_stored_table_declared_with_collection_is_refused_before_anything_is_written() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path();
+    std::fs::create_dir_all(project.join("first")).unwrap();
+    std::fs::write(
+        project.join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"stored\" });\n",
+    )
+    .unwrap();
+    let schema = |builder: &str| {
+        std::fs::write(
+            project.join("first/schema.ts"),
+            format!(
+                "import {{ {builder}, text }} from \"first\";\nexport const memos = {builder}({{ title: text() }});\n"
+            ),
+        )
+        .unwrap();
+    };
+    let ledger = || {
+        let dir = project.join("first/_generated/migrations");
+        let mut files: Vec<(String, Vec<u8>)> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| {
+                let e = e.unwrap();
+                (
+                    e.file_name().to_string_lossy().into_owned(),
+                    std::fs::read(e.path()).unwrap(),
+                )
+            })
+            .collect();
+        files.sort();
+        files
+    };
+    schema("table");
+    let built = first().args(["build", "--quiet"]).arg(project).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let deployed = ledger();
+
+    schema("collection");
+    for command in ["check", "build"] {
+        let out = first().arg(command).arg(project).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{command}: {stderr}");
+        assert!(
+            stderr.contains("`memos` is stored as a SQL table, and collection() is always WordPress posts"),
+            "{stderr}"
+        );
+        assert!(stderr.contains("--> first/schema.ts:2:22"), "{stderr}");
+        assert!(stderr.contains("help: declare it with table() again"), "{stderr}");
+        assert_eq!(ledger(), deployed, "{command} wrote nothing to the ledger");
+    }
+
+    schema("table");
+    let again = first().args(["build", "--quiet"]).arg(project).output().unwrap();
+    assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
+    assert_eq!(ledger(), deployed, "table() again needs no migration");
+
+    // Posts declared as a table() lose nothing (they stay in wp_posts), so that builds and warns.
+    let posts = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(posts.path().join("first")).unwrap();
+    std::fs::copy(project.join("first.config.ts"), posts.path().join("first.config.ts")).unwrap();
+    let declare = |builder: &str| {
+        std::fs::write(
+            posts.path().join("first/schema.ts"),
+            format!(
+                "import {{ {builder}, text }} from \"first\";\nexport const memos = {builder}({{ title: text() }});\n"
+            ),
+        )
+        .unwrap();
+        first().args(["build"]).arg(posts.path()).output().unwrap()
+    };
+    assert!(declare("collection").status.success());
+    let warned = declare("table");
+    assert!(warned.status.success(), "{}", String::from_utf8_lossy(&warned.stderr));
+    assert!(
+        String::from_utf8_lossy(&warned.stderr).contains("creates an empty SQL table for \"memos\""),
+        "{}",
+        String::from_utf8_lossy(&warned.stderr)
+    );
+}
+
 #[test]
 fn auth_fixture_matches_the_compiler() {
     let tmp = std::env::temp_dir().join(format!("first-auth-fixture-{}", std::process::id()));

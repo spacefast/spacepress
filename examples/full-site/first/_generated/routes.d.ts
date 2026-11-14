@@ -5,7 +5,12 @@ export {};
 declare module "first/app" {
   interface Routes {
     "api/feed.json": { path: `/api/feed.json`; params: {  } };
+    "notes/featured": { path: `/notes/featured`; params: {  } };
     "webhooks/stripe": { path: `/webhooks/stripe`; params: {  } };
+    "notes/[slug]": { path: `/notes/${string}`; params: { slug: string }; item: import("first").RegisteredKinds extends { notes: { $inferSelect: infer R } } ? R : Record<string, unknown> };
+    "about": { path: `/about`; params: {  } };
     "applause": { path: `/applause`; params: {  } };
+    "notes": { path: `/notes`; params: {  } };
+    "/": { path: `/`; params: {  } };
   }
 }

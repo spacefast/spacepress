@@ -6,29 +6,22 @@ compiles the source on the host and initializes the candidate before making it
 ready. Each immutable version runs its own compiled code.
 
 Generated REST endpoints, actions, [HTTP routes](config-api.md#http-routes)
-and [live updates](#live-updates) work on the Space hostname. TSX pages are not
-hosted yet: keep your frontend in public assets or publish it separately.
-Static files in `public/` are published as they are.
+and [live updates](#live-updates) work on the Space hostname, and so do the
+pages and HTTP handlers under `first/app/` with the stylesheets and SVGs they
+import. Static files in `public/` are published as they are.
 
 ## Publish an app
+
+No released `spacefast` CLI captures a `first.config.ts` project yet. The
+current release, 0.9.0, captures a project only when it has `zero.config.ts`,
+and has no `sf first` commands; run the checks below with the `first` command.
 
 1. Install the `spacefast` CLI and authenticate with `sf login`.
 2. Check the project from its root:
 
    ```sh
-   sf first check
+   first check
    ```
-
-   If the project has `pages/`, render them locally first and commit the
-   result:
-
-   ```sh
-   sf first build
-   npx @spacefast/first-pages build
-   ```
-
-   `first-pages build` writes `first/pages.json`, the render artifact. The host
-   cannot run page modules, so it builds the pages plugin from this file.
 
 3. Publish to your Space:
 
@@ -38,13 +31,10 @@ Static files in `public/` are published as they are.
 
    The CLI captures `.first-source/app.first.json`, `vendor.first.json`, and
    `manifest.json`, then uploads those private bundles and the public assets.
-   The app bundle carries `first/pages.json` and the page sources it was
-   rendered from. Capture, check, and source migration use the CLI's bundled
-   WebAssembly compiler. Publishing does not need a native First executable.
-
-   Capture refuses a stale render with `first_source_needs_local_capture`, for
-   example after a page or `first.config.ts` changed. Run `first-pages build`
-   again and publish.
+   The app bundle carries `first/app/` pages and components with the
+   stylesheets and SVGs they import. Capture, check, and source migration use
+   the CLI's bundled WebAssembly compiler. Publishing does not need a native
+   First executable.
 
 4. Wait for the publish receipt to report readiness. Open its Space URL and
    check a page, a collection read, an action and any route before handing the
@@ -54,10 +44,9 @@ The hosted MCP publish tool also accepts raw `first.config.ts`, relative `.ts`
 modules, and `public/`. The host captures raw source when `.first-source/` is
 absent. Host capture resolves relative imports and the `first` module.
 
-If host capture reports `first_source_needs_local_capture`, the project needs a
-local step. Either an import needs package resolution, or `pages/` has no
-current render. Install the project's dependencies, run `first-pages build` when
-the project has pages, and publish with `sf publish`. The CLI captures supported
+If host capture reports `first_source_needs_local_capture`, an import needs
+package resolution. Install the project's dependencies and publish with
+`sf publish`. The CLI captures supported
 installed package sources into the vendor bundle. The host never runs npm
 install or JavaScript.
 
@@ -69,9 +58,8 @@ upload. It compiles to the same tree as the app captured as First. A capture wit
 `src/zero_bundle.rs` holds all of it, to be deleted once no released client sends
 that format.
 
-Use `sf first build` to emit local WordPress plugins and `sf first dev` to run
-WordPress Studio. These two commands use the native optional platform package
-shipped with the CLI. See the [local development guide](../CONTRIBUTING.md#the-commands).
+Use `first build` to emit local WordPress plugins and `first dev` to run
+WordPress Studio. See the [local development guide](../CONTRIBUTING.md#the-commands).
 
 ## Call a REST endpoint, action or route
 
@@ -85,9 +73,10 @@ curl --fail-with-body 'https://your-space.example/__first/api/v1/actions/hello' 
 ```
 
 Use the action's declared input and access rule. A successful call returns
-`{ "data": ... }`. The generated client supplies the same contracts at
-`/__spacefast/client.js` and `/__spacefast/client.d.ts`. The version-specific
-app companion is `/__spacefast/zero/client.js` with its `client.d.ts`.
+`{ "data": ... }`. The generated client in `first/_generated/client/` supplies
+the same contracts. `/__spacefast/client.js` is Spacefast's own client, for
+connectors, the Spacefast Share session and collaboration, not the app's (see
+[Connectors](#connectors)).
 
 A custom method and path, such as `GET /api/feed.json` or a
 `POST /webhooks/stripe` that answers plain text, is a
@@ -105,15 +94,60 @@ setup.
 `watch` works with no setup on Spacefast:
 
 ```ts
-import { createClient } from "/__spacefast/client.js";
+import { createClient } from "./first/_generated/client/index.ts";
 
 createClient().todos.watch({ where: { done: false } }, (todos) => render(todos));
 ```
 
 Spacefast registers a Publisher that sends each commit's change notice to the
-Space's realtime room. The `/__spacefast/client.js` bundle registers the
-matching Cast transport, so every client on the page uses it. Without a live
+Space's realtime room. Spacefast loads the matching Cast transport on the
+Space's pages, and it registers with every client on the page. Without a live
 connection, watched reads poll. See [Live updates](realtime.md) for the API.
+
+## Connectors
+
+A First app uses [Spacefast connectors](https://spacefast.com/docs/connectors)
+like any other Space. Declare roles in the Spacefast config, `connectors` in
+`sf.jsonc` or `spacefast.config.ts` beside `first.config.ts`, and call them from
+the page. Spacefast answers `/__spacefast/connectors/<role>/<tool>` and
+`/__spacefast/client.js` before WordPress runs, so no First route can take
+those paths. A root catch-all leaves them alone on other hosts too.
+
+```jsonc
+// sf.jsonc
+{ "connectors": { "crm": { "connector": "hubspot", "tools": ["list_deals"] } } }
+```
+
+`sf client` writes the typed `spacefast.generated.ts` at the project root, for a
+frontend you build yourself:
+
+```ts
+import { space } from "./spacefast.generated";
+
+const deals = await space.connectors.crm.list_deals({ stage: "won" });
+```
+
+A page without a build imports `space` from `/__spacefast/client.js`. A
+`"use client"` component under `first/app/` can't import packages, so it calls
+the route itself:
+
+```tsx
+"use client";
+import { useState } from "first/client";
+
+export function Deals() {
+  const [deals, setDeals] = useState("");
+  const load = async () => {
+    const response = await window.fetch("/__spacefast/connectors/crm/list_deals");
+    const answer = await response.json();
+    setDeals(answer.state === "ok" ? JSON.stringify(answer.data) : answer.message);
+  };
+  return <button onClick={load}>Load deals {deals}</button>;
+}
+```
+
+Server code can't call connectors on First yet: there is no connector API in
+`first`, and actions, hooks and routes can't reach a role.
 
 ## Migrate an existing 0.8 Space
 
@@ -156,13 +190,13 @@ Versions in one environment share its latest forward schema. Bind media and
 request origins to that Space. The [migration guide](migrating-from-zero.md#retire-imported-spacefast-sessions)
 lists the extra rules for Spaces moved from an earlier Zero.
 
-A compiled version with `"pages": "first-pages-<app>"` in its manifest ships a
-third plugin beside `first-runtime` and `first-app-<app>`. Mount it after the app,
-from the same version: `plugins/first-pages-<app>/first-pages-<app>.php` under
-`.first-compiled/`. Its URLs (pages and their `assets/`) and the app's routes
-are WordPress front-controller requests on the Space hostname, so send unknown
-paths to WordPress rather than answering 404 at the edge. Serve the plugin's
-`assets/` directory as static files of that version.
+The app's `first/app/` pages (`pagePaths` in the manifest) and routes (`routes`)
+are WordPress front-controller requests on the Space hostname, so send those
+paths to WordPress rather than answering 404 at the edge. The stylesheets and
+SVGs they import are static files of the version, under the app plugin's
+`first/app/assets/`, named by a hash of their bytes: serve them with a long
+cache lifetime. A bundle captured for the old pages renderer (`pages/`,
+`first/pages.json`) is refused.
 
 Unscoped cron and WP-CLI must load no app. Each scoped job needs the Space,
 environment, and version before entering the same database and cache scope as

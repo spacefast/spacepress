@@ -13,6 +13,7 @@ require __DIR__ . '/../../runtime/First/bootstrap.php';
 require __DIR__ . '/harness.php';
 
 use First\RuntimeSchema\Changes;
+use First\RuntimeSchema\Kinds;
 use First\RuntimeSchema\Loader;
 use First\RuntimeSchema\Refused;
 
@@ -140,6 +141,8 @@ eq('a field the kind lacks has nothing to present', $verdict($set(['op' => 'setF
 eq('nor has a system field', $verdict($set(['op' => 'setFieldUi', 'kind' => 'articles', 'field' => 'status', 'ui' => ['label' => 'x']]), $kinds), '422 schema_invalid /changes/0/field');
 eq('a label on a kind the app lacks is refused', $verdict($set(['op' => 'setLabel', 'kind' => 'nope', 'label' => 'x']), $kinds), '422 schema_invalid /changes/0/kind');
 eq('a label that is not text is refused', $verdict($set(['op' => 'setLabel', 'kind' => 'articles', 'label' => ['a']]), $kinds), '422 schema_format /changes/0/label');
+eq('a table() kind\'s label is build-only', $verdict($set(['op' => 'setLabel', 'kind' => 'votes', 'label' => 'Ballots']), $kinds), '422 schema_build_only /changes/0/kind');
+eq('and so is its fields\' presentation', $verdict($set(['op' => 'setFieldUi', 'kind' => 'votes', 'field' => 'weight', 'ui' => ['label' => 'Weight']]), $kinds), '422 schema_build_only /changes/0/kind');
 
 // ---------------------------------------------------------------- removal hides; rollback reverses
 $removeField = static fn (string $kind, string $field): array => $set(['op' => 'removeField', 'kind' => $kind, 'field' => $field]);
@@ -176,7 +179,7 @@ eq('an operation names a kind or a global, not both', $verdict($set(['op' => 'se
 $declared = ['collections' => ['events' => ['starts' => 'text']], 'globals' => ['banner' => ['text' => 'integer']]];
 $verdictWith = static function (array $changeSet) use ($kinds, $empty, $declared): string {
     try {
-        Changes::resolve($kinds, $empty, $changeSet, $declared);
+        Changes::resolve($kinds, $empty, $changeSet, null, $declared);
 
         return 'accept';
     } catch (Refused $e) {
@@ -209,6 +212,62 @@ $uiGone = Changes::resolve($kinds, $grown['state'], $set(['op' => 'setFieldUi', 
 $uiBack = Changes::resolve($kinds, $uiGone['state'], ['format' => Loader::FORMAT, 'changes' => Changes::reverse($grown['state'], $uiGone['changes'])]);
 eq('undoing a version that presented a field and then removed it leaves the field as it was before', Loader::apply($kinds, $uiBack['state']), $schema);
 eq('undoing the version that added a kind, after another built on it, removes the kind whole', Loader::apply($kinds, Changes::resolve($kinds, $grown['state'], ['format' => Loader::FORMAT, 'changes' => Changes::reverse($empty, $site['changes'])])['state'])['collections'], $kinds['collections']);
+
+// ---------------------------------------------------------------- what a deploy does with the site's changes
+$deploy = static fn (array $built, array $state): array => \First\RuntimeSchema\Deploy::check($built, $state);
+$codes = static fn (array $r): array => array_map(static fn (array $x): string => "{$x['code']} {$x['name']}", $r['refusals']);
+$withMood = Changes::resolve($kinds, $empty, $add('articles', 'mood', ['type' => 'text', 'enum' => ['calm', 'loud']]))['state'];
+eq('a build without the runtime field keeps it', $deploy($kinds, $withMood)['kept'], ['articles.mood']);
+$same = $kinds;
+$same['collections']['articles']['columns']['mood'] = ['type' => 'text', 'enum' => ['calm', 'loud']];
+eq('a build that declares it the same way leaves nothing to report', [$deploy($same, $withMood)['kept'], $deploy($same, $withMood)['refusals'], $deploy($same, $withMood)['changed']], [[], [], []]);
+$other = $kinds;
+$other['collections']['articles']['columns']['mood'] = ['type' => 'text', 'enum' => ['calm', 'loud', 'angry']];
+eq('a build that gives a runtime select other options is refused', $codes($deploy($other, $withMood)), ['runtime_type_differs articles.mood']);
+$plain = $kinds;
+$plain['collections']['articles']['columns']['mood'] = ['type' => 'text'];
+eq('and so is one that declares it without options', $codes($deploy($plain, $withMood)), ['runtime_type_differs articles.mood']);
+$longer = $kinds;
+$longer['collections']['articles']['columns']['mood'] = ['type' => 'text', 'enum' => ['calm', 'loud'], 'ui' => ['label' => 'Mood']];
+eq('a build that only presents it differently is reported as changed, not refused', [$codes($deploy($longer, $withMood)), $deploy($longer, $withMood)['changed']], [[], ['articles.mood']]);
+$withVenue = Changes::resolve($kinds, $empty, $add('articles', 'venue', ['type' => 'group', 'fields' => ['name' => ['type' => 'text'], 'city' => ['type' => 'text']]]))['state'];
+$subs = $kinds;
+$subs['collections']['articles']['columns']['venue'] = ['type' => 'group', 'fields' => ['name' => ['type' => 'text'], 'city' => ['type' => 'integer']]];
+eq('a build whose group sub-field has another type is refused', $codes($deploy($subs, $withVenue)), ['runtime_type_differs articles.venue']);
+$fewer = $kinds;
+$fewer['collections']['articles']['columns']['venue'] = ['type' => 'group', 'fields' => ['name' => ['type' => 'text']]];
+eq('and so is one with other sub-fields', $codes($deploy($fewer, $withVenue)), ['runtime_type_differs articles.venue']);
+$withEvents = Changes::resolve($kinds, $empty, $set(['op' => 'addCollection', 'kind' => 'events', 'definition' => ['fields' => ['title' => ['type' => 'text', 'notNull' => true]]]]))['state'];
+$table = $kinds;
+$table['collections']['events'] = ['key' => 'events', 'editor' => false, 'wp' => null, 'table' => 'first_events', 'primaryKey' => 'id', 'columns' => ['id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true], 'title' => ['type' => 'text', 'notNull' => true]]];
+eq('a build that declares a table() named like a runtime collection is refused', $codes($deploy($table, $withEvents)), ['runtime_kind_differs events']);
+eq('a build that declares the runtime collection as a collection is fine', $deploy(Loader::apply($kinds, $withEvents)['collections'] + [] === [] ? $kinds : ['collections' => Loader::apply($kinds, $withEvents)['collections']] + $kinds, $withEvents)['refusals'], []);
+
+// ---------------------------------------------------------------- the option is data, not code
+// Whoever can write the option (another plugin, a database tool) must not be able to give the site
+// more than a runtime change could: access rules, hooks or post types of their own.
+$good = Changes::resolve($kinds, $empty, $set(['op' => 'addCollection', 'kind' => 'events', 'definition' => ['fields' => ['title' => ['type' => 'text', 'notNull' => true]]]],
+    ['op' => 'addField', 'kind' => 'articles', 'field' => 'teaser', 'definition' => ['type' => 'text']]))['state'];
+$good = ['format' => Loader::FORMAT, 'version' => 1, 'hash' => 'h'] + $good;
+$tampered = $good;
+$tampered['compiled']['collections']['events']['access'] = ['read' => ['role' => 'anyone'], 'create' => ['allow' => true], 'update' => ['allow' => true], 'delete' => ['allow' => true]];
+$tampered['compiled']['collections']['events']['hooks'] = ['beforeCreate' => 'phpinfo'];
+$tampered['compiled']['collections']['events']['wp']['postType'] = 'post';
+$tampered['compiled']['collections']['sneaky'] = Kinds::expandCollection('sneaky', ['fields' => ['title' => ['type' => 'text', 'notNull' => true]]]);
+$tampered['collections']['articles']['columns']['teaser'] = ['type' => 'text', 'rules' => ['validate' => 'phpinfo'], 'default' => ['fn' => 'phpinfo']];
+$tampered['collections']['articles']['columns']['owned'] = ['type' => 'text', 'access' => ['read' => ['fn' => 'phpinfo']]];
+$tampered['overrides']['collections']['articles'] = ['label' => 'Stories', 'access' => ['read' => ['allow' => true]], 'ui' => ['rating' => ['label' => 'Stars', 'validate' => 'phpinfo']]];
+$loaded = Loader::apply($kinds, $tampered);
+$clean = Loader::apply($kinds, $good);
+eq('an added kind is rebuilt from its stored definition: the option can\'t give it access rules, hooks or another post type',
+    $loaded['collections']['events'], $clean['collections']['events']);
+eq('a kind no runtime change added is not served', isset($loaded['collections']['sneaky']), false);
+eq('a field the option holds that no change could make (a function, an access rule) is not served',
+    [isset($loaded['collections']['articles']['columns']['teaser']), isset($loaded['collections']['articles']['columns']['owned'])], [false, false]);
+eq('one the option holds as a change made it is', $clean['collections']['articles']['columns']['teaser'], ['type' => 'text']);
+eq('an override carries a label and field presentation only; presentation a change couldn\'t set is ignored',
+    [$loaded['collections']['articles']['label'], $loaded['collections']['articles']['access'], $loaded['collections']['articles']['columns']['rating']],
+    ['Stories', $kinds['collections']['articles']['access'], ['type' => 'integer']]);
 
 // ---------------------------------------------------------------- replay
 $first = Changes::resolve($kinds, $empty, $add('articles', 'subtitle', $text));

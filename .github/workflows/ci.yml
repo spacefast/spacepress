@@ -36,9 +36,12 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --lib
-  # Two shards in parallel: the compiler suites and the npm comparison (about 26 minutes), and
-  # fmt, clippy and every other test target (about 20). Test targets come from cargo metadata,
-  # so a new one lands in `rest` without a workflow edit.
+  # Three shards in parallel: the compiler suites and the npm comparison (about 26 minutes); the
+  # slowest test targets, `slow` (app_migrate, app_router, config_migrate, sync and wp_plugins);
+  # and fmt, clippy, every other test target and the acceptance scripts, `rest`. Test targets
+  # come from cargo metadata, so a new one lands in `rest` without a workflow edit. With `slow`
+  # inside it, `rest` took 26 to 36 minutes, and four of nine full runs on 2026-11-13 hit the
+  # 40-minute limit.
   rust:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
@@ -46,7 +49,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [compiler, rest]
+        shard: [compiler, slow, rest]
     env:
       SHARD: ${{ matrix.shard }}
       FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
@@ -82,7 +85,7 @@ jobs:
       # Migrated apps are type-checked with the standard Node declarations (tests/app_migrate.rs).
       - run: npm ci --prefix tests/host-types --ignore-scripts --no-audit --no-fund
       # Chromium drives compiled client components on WordPress (tests/app_router.rs).
-      - if: matrix.shard == 'rest'
+      - if: matrix.shard == 'slow'
         run: |
           npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
           npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
@@ -96,12 +99,15 @@ jobs:
       - name: cargo test (${{ matrix.shard }})
         run: |
           compiler=(compiler compiler_contracts)
+          slow=(app_migrate app_router config_migrate sync wp_plugins)
           if [ "$SHARD" = compiler ]; then
             cargo test --locked "${compiler[@]/#/--test=}"
+          elif [ "$SHARD" = slow ]; then
+            cargo test --locked "${slow[@]/#/--test=}"
           else
             rest=()
             for name in $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].targets[] | select(.kind[] == "test") | .name'); do
-              [[ " ${compiler[*]} " == *" $name "* ]] || rest+=("--test=$name")
+              [[ " ${compiler[*]} ${slow[*]} " == *" $name "* ]] || rest+=("--test=$name")
             done
             cargo test --locked --lib --bins "${rest[@]}"
             cargo test --locked --doc
@@ -260,41 +266,6 @@ jobs:
       - run: node --test scripts/dev/studio.test.mjs
       - run: node --test packages/cli/test/*.test.mjs packages/create-first/test/*.test.mjs scripts/release/archive.test.mjs
 
-  pages:
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '22'
-      - run: corepack enable
-      # The pages build reads the example's compiled schema, so the compiler builds it first.
-      - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal
-      - run: cargo build --locked --bin first
-      - run: target/debug/first build examples/full-site
-      - run: pnpm install --frozen-lockfile
-        working-directory: packages/blocks
-      - run: pnpm build
-        working-directory: packages/blocks
-      - run: pnpm install --frozen-lockfile
-        working-directory: packages/pages
-      - run: pnpm check
-        working-directory: packages/pages
-      - name: The committed render artifact is current
-        run: |
-          (cd packages/pages && pnpm build)
-          node packages/pages/bin/first-pages.mjs build examples/full-site
-          git diff --exit-code examples/full-site/first/pages.json
-      - run: pnpm test:package
-        working-directory: packages/pages
-      - run: npx --yes playwright-core@1.62.1 install --with-deps chromium-headless-shell
-      - run: pnpm test:wp
-        working-directory: packages/pages
-        env:
-          FIRST_BIN: ${{ github.workspace }}/target/debug/first
-
   wp:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
@@ -372,8 +343,6 @@ jobs:
             .first/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
-      # The app migration lane renders converted static pages with packages/pages, built with pnpm.
-      - run: corepack enable
       - run: cargo build --locked --bin first
       - name: Zero 0.8 site, app-user and application migrations
         run: FIRST_WP_PROJECT=first-wp-migrate FIRST_WP_PORT=8794 tests/wp/migrate-run.sh
@@ -455,7 +424,7 @@ jobs:
       - name: Shared S3 storage across disposable replicas
         run: FIRST_WP_PROJECT=first-wp-s3 FIRST_WP_PORT=8792 FIRST_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
 
-  # Hosted TSX pages, the island in Chromium and custom HTTP routes, from `first compile-sources`.
+  # Hosted first/app pages, client components in Chromium and route.ts handlers, from `first compile-sources`.
   wp-pages:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
@@ -485,13 +454,11 @@ jobs:
             .first/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
-      - run: corepack enable
       - run: cargo build --locked --bin first
-      - name: Hosted pages, island, action and HTTP routes from compile-sources
+      - name: Hosted pages, client components, action and HTTP routes from compile-sources
         run: |
-          (cd packages/blocks && pnpm install --frozen-lockfile && pnpm build)
-          (cd packages/pages && pnpm install --frozen-lockfile)
-          npx --yes playwright-core@1.62.1 install --with-deps chromium-headless-shell
+          npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
+          npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
           FIRST_WP_PROJECT=first-wp-pages FIRST_WP_PORT=8873 tests/wp/hosted-pages-run.sh
 
   # `first dev` from a release binary after removing its build checkout.

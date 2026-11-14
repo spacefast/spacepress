@@ -127,7 +127,9 @@ Three official contracts require separate attention:
   runtime. First declares them in `first.config.ts` and compiles them. A source
   edit plus rebuild is a different agent workflow, not the same runtime tool.
   An opt-in runtime path exists for collections, globals, their fields, labels and presentation
-  ([`runtimeSchema`](config-api.md#runtime-schema-changes)); its agent tools are not built yet.
+  ([`runtimeSchema`](config-api.md#runtime-schema-changes)) through the app's own Abilities and MCP
+  tools (`schema-read`, `schema-propose`, `schema-apply`), and `first pull` brings those changes back
+  into the project.
 - **Whole-site transfer:** portable export/analyze/import/resume/receipt includes
   media, principals, comments and approvals. Config migration and Markdown sync
   cover smaller seams.

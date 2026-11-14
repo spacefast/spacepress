@@ -36,6 +36,11 @@ final class Loader
         return 'first_' . $app . '_runtime_schema';
     }
 
+    /** Where `schema.php` was loaded from: `references.php` is beside it. */
+    private static ?string $dir = null;
+    /** @var array|false|null the build's references index; false when the build has none */
+    private static array|false|null $references = null;
+
     /** The stored type of every field a build that initialized on this site declared. */
     public static function declaredOption(string $app): string
     {
@@ -102,6 +107,27 @@ final class Loader
 
     public const EMPTY = ['format' => self::FORMAT, 'version' => 0, 'hash' => ''];
 
+    /**
+     * The seal a state is written with: a hash of everything else in it, the newest version's chain
+     * hash included. Only apply writes a state, and it seals what it writes, so a state whose seal
+     * doesn't match was written some other way and is not served.
+     */
+    public static function seal(array $state): string
+    {
+        unset($state['seal']);
+        ksort($state);
+
+        return hash('sha256', serialize($state));
+    }
+
+    /** A state with its seal. */
+    public static function sealed(array $state): array
+    {
+        unset($state['seal']);
+
+        return $state + ['seal' => self::seal($state)];
+    }
+
     /** The site's active version ({@see Changes::fold()} for its keys); version 0 before any change. */
     public static function state(string $app): array
     {
@@ -110,10 +136,46 @@ final class Loader
         return is_array($state) ? $state : self::EMPTY;
     }
 
+    /**
+     * Which fields the build's compiled code can name (`first/app/references.php`, written by `first
+     * build`); null for a build without one, which then has nothing that may be hidden.
+     */
+    public static function references(): ?array
+    {
+        if (self::$references === null) {
+            $file = self::$dir === null ? null : self::$dir . '/references.php';
+            $loaded = $file !== null && is_file($file) ? require $file : false;
+            self::$references = is_array($loaded) && ($loaded['format'] ?? null) === self::FORMAT ? $loaded : false;
+        }
+
+        return self::$references === false ? null : self::$references;
+    }
+
+    /**
+     * Whether the running site may hide a field the build declares: only an optional one that no
+     * compiled code names. Such a field reads "no value" either way, so hiding it changes nothing a
+     * hook, action, job or page can observe.
+     */
+    public static function hidableField(array $compiled, ?array $references, string $section, string $kind, string $field): bool
+    {
+        $definition = $compiled[$section][$kind][$section === 'globals' ? 'fields' : 'columns'][$field] ?? null;
+
+        return $definition !== null && $references !== null && !($definition['notNull'] ?? false)
+            && !($definition['system'] ?? false) && !in_array($field, $references[$section][$kind] ?? [$field], true);
+    }
+
+    /** The same for a whole kind the build declares: one no compiled code names. */
+    public static function hidableKind(array $compiled, ?array $references, string $section, string $kind): bool
+    {
+        return isset($compiled[$section][$kind]) && $references !== null && !in_array($kind, $references['kinds'] ?? [$kind], true);
+    }
+
     /** `schema.php` with the site's active version on top; `runtimeSchema.active` says which version. */
-    public static function merge(array $raw): array
+    public static function merge(array $raw, ?string $dir = null): array
     {
         self::$compiled = $raw;
+        self::$dir = $dir;
+        self::$references = null;
         if (!function_exists('get_option')) {
             // A host that reads the build before WordPress has loaded its options gets the compiled
             // schema; the app mounts later (plugins_loaded) and loads it again with the options there.
@@ -122,16 +184,35 @@ final class Loader
             return $raw;
         }
 
-        return self::apply($raw, self::state((string) ($raw['name'] ?? 'app')));
+        $state = self::state((string) ($raw['name'] ?? 'app'));
+        if (($state['version'] ?? 0) !== 0 && ($state['seal'] ?? null) !== self::seal($state)) {
+            // Not written by apply: serve the build alone until apply (or `wp first schema list`)
+            // rebuilds the option from the stored versions.
+            $raw['runtimeSchema']['active'] = ['version' => (int) ($state['version'] ?? 0), 'hash' => (string) ($state['hash'] ?? ''),
+                'problem' => 'the runtime schema option does not match its own hash; apply a change, or run `wp first schema list`, to rebuild it from the stored versions'];
+
+            return $raw;
+        }
+        $problem = is_string($state['problem'] ?? null) ? $state['problem'] : null;
+
+        // The index is read only when the site removed something: nothing else needs it per request.
+        $raw = self::apply($raw, $state, isset($state['removed']) ? self::references() : null);
+        if ($problem !== null) {
+            $raw['runtimeSchema']['active']['problem'] = $problem;
+        }
+
+        return $raw;
     }
 
     /**
      * A compiled schema with a state on top. The build's own declarations are never replaced: a kind,
      * a field or a relation it declares wins over a stored one of the same name. Only a label and a
-     * field's `ui`, which are presentation and nothing else, replace what the build says.
+     * field's `ui`, which are presentation and nothing else, replace what the build says, and a
+     * name the site removed is hidden from the build only where that is safe ({@see hidableField()}).
      */
-    public static function apply(array $raw, array $state): array
+    public static function apply(array $raw, array $state, ?array $references = null): array
     {
+        $compiled = $raw;
         $active = ['version' => (int) ($state['version'] ?? 0), 'hash' => (string) ($state['hash'] ?? '')];
         if (($state['format'] ?? null) !== self::FORMAT) {
             // Written by a newer runtime: this one serves the compiled schema and says so.
@@ -140,10 +221,20 @@ final class Loader
 
             return $raw;
         }
+        // The option is data whoever can write options may change, so it is read as the operations a
+        // runtime change can make, and nothing else: an added kind is rebuilt from its stored
+        // definition (the access rules, post type and hooks are the ones expandCollection gives every
+        // runtime kind), and a field is served only in a stored form the validator accepts. Anything
+        // else in the option is ignored; the version table is the record, and apply rewrites the option.
         foreach (['collections', 'globals'] as $section) {
-            foreach ($state['compiled'][$section] ?? [] as $name => $kind) {
+            foreach ($state['added'][$section] ?? [] as $name => $stored) {
+                $name = (string) $name;
                 // A name is one thing across the app, so anything the build declares under it wins.
-                if (!isset($raw['collections'][$name]) && !isset($raw['globals'][$name]) && !isset($raw['actions'][$name]) && !isset($raw['jobs'][$name])) {
+                if (isset($raw['collections'][$name]) || isset($raw['globals'][$name]) || isset($raw['actions'][$name]) || isset($raw['jobs'][$name])) {
+                    continue;
+                }
+                $kind = self::kind($section, $name, $stored);
+                if ($kind !== null) {
                     $raw[$section][$name] = $kind;
                 }
             }
@@ -151,25 +242,45 @@ final class Loader
         foreach ($state['collections'] ?? [] as $kind => $entry) {
             if (isset($raw['collections'][$kind]['wp']['postType'])) {
                 // A row carries its relations under their names, so a relation the build declares wins too.
-                $raw['collections'][$kind]['columns'] += array_diff_key($entry['columns'] ?? [], $raw['collections'][$kind]['relations'] ?? []);
+                $raw['collections'][$kind]['columns'] += array_diff_key(self::fields((string) $kind, $entry['columns'] ?? [], Validator::COLLECTION), $raw['collections'][$kind]['relations'] ?? []);
             }
         }
         foreach ($state['globals'] ?? [] as $kind => $entry) {
             if (isset($raw['globals'][$kind])) {
-                $raw['globals'][$kind]['fields'] += $entry['fields'] ?? [];
+                $raw['globals'][$kind]['fields'] += self::fields((string) $kind, $entry['fields'] ?? [], Validator::GLOBAL);
             }
         }
         foreach (['collections' => 'columns', 'globals' => 'fields'] as $section => $inner) {
+            foreach ($state['removed'][$section] ?? [] as $kind => $removed) {
+                if (!isset($compiled[$section][$kind])) {
+                    continue;
+                }
+                if ($removed['kind'] ?? false) {
+                    if (self::hidableKind($compiled, $references, $section, $kind)) {
+                        unset($raw[$section][$kind]);
+                    }
+                    continue;
+                }
+                foreach ($removed['fields'] ?? [] as $field => $_) {
+                    if (self::hidableField($compiled, $references, $section, $kind, (string) $field)) {
+                        unset($raw[$section][$kind][$inner][$field]);
+                    }
+                }
+            }
             foreach ($state['overrides'][$section] ?? [] as $kind => $override) {
                 if (!isset($raw[$section][$kind])) {
                     continue;
                 }
-                if (isset($override['label'])) {
+                if (is_string($override['label'] ?? null) && $override['label'] !== '' && strlen($override['label']) <= 120) {
                     $raw[$section][$kind]['label'] = $override['label'];
                 }
-                foreach ($override['ui'] ?? [] as $field => $ui) {
+                foreach (is_array($override['ui'] ?? null) ? $override['ui'] : [] as $field => $ui) {
                     if (isset($raw[$section][$kind][$inner][$field])) {
-                        $raw[$section][$kind][$inner][$field]['ui'] = $ui;
+                        try {
+                            $raw[$section][$kind][$inner][$field]['ui'] = Validator::presentation($ui, "$kind.$field");
+                        } catch (Refused) {
+                            // Not a presentation a change could set: ignored.
+                        }
                     }
                 }
             }
@@ -178,4 +289,32 @@ final class Loader
 
         return $raw;
     }
+
+    /** An added kind's `schema.php` array, built from its stored definition; null when that isn't one. */
+    private static function kind(string $section, string $name, mixed $stored): ?array
+    {
+        try {
+            return $section === 'globals'
+                ? Kinds::expandGlobal($name, Kinds::global($name, $stored))
+                : Kinds::expandCollection($name, Kinds::collection($name, $stored));
+        } catch (Refused|\TypeError) {
+            return null;
+        }
+    }
+
+    /** The stored fields the validator accepts, in its stored form; the rest are left out. */
+    private static function fields(string $kind, mixed $fields, string $place): array
+    {
+        $out = [];
+        foreach (is_array($fields) ? $fields : [] as $field => $definition) {
+            try {
+                $out[(string) $field] = Validator::definition("$kind.$field", (string) $field, $definition, $place);
+            } catch (Refused|\TypeError) {
+                // Not a field a change could add: left out.
+            }
+        }
+
+        return $out;
+    }
+
 }

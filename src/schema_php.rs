@@ -301,6 +301,9 @@ pub fn render(schema: &Schema) -> String {
     let _ = writeln!(out, "    'runtime' => '{}',", crate::platform::SERIES);
     let _ = writeln!(out, "    'name' => {},", php_str(&schema.name));
     let _ = writeln!(out, "    'admin' => {},", schema.admin);
+    if schema.public_authors {
+        out.push_str("    'publicAuthors' => true,\n");
+    }
     match &schema.frontend {
         None => {}
         Some(crate::kind_url::Frontend::Off) => out.push_str("    'frontend' => false,\n"),
@@ -348,6 +351,9 @@ pub fn render(schema: &Schema) -> String {
         for (name, function) in &schema.components {
             let _ = writeln!(out, "        {} => {},", php_str(name), php_str(function));
         }
+    }
+    if !schema.blocks.is_empty() {
+        out.push_str(&crate::content_blocks::schema_php(&schema.blocks));
     }
     if !schema.islands.is_empty() {
         out.push_str("    ],\n    'islands' => [\n");

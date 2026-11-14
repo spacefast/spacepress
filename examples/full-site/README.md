@@ -1,49 +1,35 @@
 # Field Notes
 
-A complete First site with TSX routes and layouts, Gutenberg rich text,
-viewer-bound listings and detail pages, CSS modules, metadata and a
-WordPress Interactivity API action. Native WordPress remains the content
-editor. The Pages package is optional and does not change backend-only apps.
+A complete First site: TSX pages and layouts under `first/app/`, a note's own
+URL (`/notes/<slug>`) rendered from its row, a stylesheet, a CSS module and an
+SVG imported from TSX, a `"use client"` cheer button on the Interactivity API,
+and two HTTP routes (`route.ts`): a JSON Feed and a signed webhook. WordPress
+stays the content editor, and every page reads as the visitor.
 
-From a repository checkout with Node 22.18+, Corepack and the First binary:
+| File | What it does |
+|---|---|
+| `first.config.ts` | The `notes` collection (served at `/notes/:slug`) and the `cheers` table |
+| `first/actions.ts` | `cheer`, the one public action |
+| `first/app/layout.tsx` | The site's header, nav and footer; imports `global.css` |
+| `first/app/page.tsx`, `notes/page.tsx`, `notes/featured/page.tsx` | Listings of published notes |
+| `first/app/notes/[slug]/page.tsx` | One note, its body through `the_content`, and its cheer button; uses `note.module.css` |
+| `first/app/about/page.tsx` | A static page that imports `compass.svg` |
+| `first/app/applause/page.tsx` | Every note with a cheer button |
+| `first/components/CheerButton.tsx` | The `"use client"` component: state, a handler, an action call |
+| `first/app/api/feed.json/route.ts`, `webhooks/stripe/route.ts` | HTTP routes outside `/wp-json` |
 
-```sh
-cd packages/blocks
-pnpm install --frozen-lockfile
-pnpm build
-cd ../pages
-pnpm install --frozen-lockfile
-pnpm build
-cd ../..
-first dev examples/full-site --port 8872 --no-watch
-node packages/pages/bin/first-pages.mjs build examples/full-site
-cp -R examples/full-site/first/dist/wp-content/plugins/first-pages-fullsite \
-  examples/full-site/.first/dev/wordpress/wp-content/plugins/
-first wp --site examples/full-site plugin activate first-pages-fullsite
-```
-
-Open the URL printed by `first dev`, then `/wp-admin/` to create published
-Notes. The listing at `/notes/` and the corresponding `/notes/<slug>/` page
-read the saved content on every request. The Cheer button calls the compiled
-First action and persists its count. Drafts and desk notes are visible only
-to the roles allowed by the config.
-
-After editing TSX or CSS, build Pages again and replace the installed
-`first-pages-fullsite` directory with that output. After changing the backend
-config, rebuild the backend first, then Pages. The example does not watch
-frontend sources or automatically install the optional plugin.
-
-Stop WordPress with `first dev stop examples/full-site`. Content persists in
-the example's ignored `.first/dev/` directory.
-
-For a disposable end-to-end run that seeds content, edits it through native
-REST, exercises the browser action and removes its site:
+Run it locally:
 
 ```sh
-cd packages/pages
-pnpm exec playwright-core install --with-deps chromium-headless-shell
-FIRST_BIN=/absolute/path/to/first pnpm test:wp
+first dev examples/full-site --port 8872
 ```
 
-The [Pages guide](../../docs/pages.md) documents the supported TSX subset and
-the features that remain unimplemented.
+Open the URL `first dev` prints, then `/wp-admin/` to write and publish Notes.
+`/notes/` and `/notes/<slug>` read the saved content on every request, a draft
+is a 404 to visitors, and desk notes show only to staff. The cheer button
+updates in place and stores its count. Edit any page and `first dev` rebuilds.
+
+`tests/wp/hosted-pages-run.sh` runs the same site on WordPress and MariaDB from
+`first compile-sources` output, as a host serves it, and clicks the cheer
+button in Chromium. The [Pages guide](../../docs/pages.md) documents the TSX
+subset.

@@ -497,6 +497,13 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
   - core auto-updates;
   - the Customizer;
   - comments on kinds without `comments`;
+  - listing the site's users to the public: core's user routes, author
+    archives, the users sitemap and oEmbed author fields, unless
+    `publicAuthors: true` or the users kind is readable by anyone (a users
+    kind whose read rule gives a visitor some users keeps those as authors);
+  - changing the app's schema on the site: `first.config.ts` is the only way to
+    change the field groups, post types, taxonomies, meta, roles and
+    capabilities First generates (`docs/config-api.md`, "Schema lock");
   - the theme front end when `app/` or `frontend` takes over.
 - **Spam checks:** First uses the Akismet a site sets up through Jetpack. While it
   has a key (Jetpack's connection or `WPCOM_API_KEY`), Akismet checks every
@@ -536,9 +543,9 @@ run on a box or in wasm. Check its crate API before depending on it.
   - `db.query`, `db.insert`, `db.update` and `db.delete`;
   - review of `first/_generated/migrations/*.sql`;
   - the generated `first/client/` source.
-- **Pages:** the `first_<name>` post types for kinds WordPress already has,
-  `@spacefast/first-pages`, `first/pages.json`, `load()`, `<Show>`, `orElse()`,
-  `count()`, `collectionPage()` and `<Island>`.
+- **Pages:** the `first_<name>` post types for kinds WordPress already has.
+  Deleted: `@spacefast/first-pages`, `first/pages.json`, `load()`, `<Show>`,
+  `orElse()`, `count()`, `collectionPage()` and `<Island>`.
 
 ## 9. Zero 0.8 and Lakebed → this
 

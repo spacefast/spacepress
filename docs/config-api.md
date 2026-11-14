@@ -163,6 +163,8 @@ isn't changed either. None of these switches can be turned off in
 | `autoUpdates` | no automatic core, plugin or theme updates |
 | `customizer` | `customize` is refused, so `customize.php` and its links are gone |
 | `comments` | comments closed on every post type except collections with `comments: true` |
+| `authors` | the site's users aren't listed to the public: core's user routes, author archives, `?author=N`, the users sitemap and oEmbed's author fields (see [Authors](#authors)) |
+| `schemaLock` | the app's schema is changed in `first.config.ts` and nowhere on the site (see [Schema lock](#schema-lock)) |
 | `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
 | `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
 | `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
@@ -170,6 +172,113 @@ isn't changed either. None of these switches can be turned off in
 `GET /__first/api/v1` lists the switches in `runtime.wp.hardening`. The object cache
 is whatever the host's `object-cache.php` drop-in provides. A plugin can't
 install a drop-in, so the host supplies it (on Spacefast, the box image does).
+
+### Schema lock
+
+`first.config.ts` in the project's repository is the only way to change what
+First generates from it: its Secure Custom Fields field groups and options
+pages, its post types, its registered meta, and its roles and capabilities.
+First registers all of these in code on every request, so the site's database
+holds no copy of them to edit. What a site could still do is store something
+that takes their place or attaches to them. That is refused for every user,
+administrators included, with a message that names `first.config.ts`:
+
+```
+Refused: the field list of first_notes belongs to the app's schema, which First
+builds from first.config.ts. Change it there and deploy the app; it can't be
+changed on the site.
+```
+
+| refused | where |
+|---|---|
+| a field group, field, post type, taxonomy or options page saved under one of First's names (`group_first_…`, `field_first_…`, a `first_…` post type or taxonomy, a global's options page), compared as WordPress stores the name: without letter case, accents or the characters it strips | SCF's screens in wp-admin, quick edit and duplicate, its import tool, its abilities over REST (`/wp-abilities/v1/…/run`) and MCP |
+| a field group attached to a First kind's post type or a global's options page, at any depth of its fields; a taxonomy attached to a First kind | the same |
+| one of First's options (a global's values) written from wp-admin's all-options screen (`options.php`) | wp-admin |
+
+A wp-admin screen answers 403 with the message on a page. A REST call answers
+403 with the code `first_schema_locked` and the same message. Over MCP the
+refusal is the tool call's error result (`isError: true`) with the same message,
+as the MCP Adapter reports every ability error.
+
+These apply without a refusal screen, because the write that would carry them is
+another plugin's or SCF's own, and stopping it whole would break more than it
+protects:
+
+- An SCF object already in the database that is First's (stored by WP-CLI, or
+  while the app was inactive) is never loaded, so it can't register a post type
+  or taxonomy over First's or change one of First's field groups. A field group
+  stored in the database never applies to a First kind or a global's options
+  page, whatever its location rules say.
+- A value posted through a field First didn't register is not saved when it
+  lands on a First kind's post, a global's options page, or the user meta and
+  options First's own fields write. The rest of the save goes on.
+- A write to WordPress's role definitions, from any plugin or from
+  `options.php`, is saved without any change to a role First creates
+  (`first_guest`) and without a capability of a First kind added to or taken
+  from any role (`edit_others_first_notes`): the kind's access rules answer
+  those capabilities for everyone. A write that isn't a set of roles at all
+  keeps the roles as they are. The rest of the write stands, and the response
+  carries a `First-Schema-Lock` header with the message; on a wp-admin settings
+  screen it is also a settings notice.
+
+First's meta is registered in code too. Its values are content, edited through
+First's own validation on every route. Its keys are protected in every form the
+database matches them by (letter case and accents), so wp-admin's Custom Fields
+box can't add or change one.
+
+Everything else stays open: content, media, users and their roles, settings,
+other plugins' own settings and field groups, the site's own SCF field groups,
+post types, taxonomies and options pages, and activating installed plugins. A
+site's own object that is First's can still be moved to the trash or turned off.
+
+WP-CLI is not refused. It is the operator's trusted channel, as it is for
+`wp first insert`; what it stores that is First's is still never loaded. PHP
+that runs on the site (another plugin, a theme's `functions.php`) can register
+what it likes in code: the lock is about edits made on the site, not about code
+that is deployed to it.
+
+### Authors
+
+WordPress ships with several ways for a visitor to enumerate a site's users,
+each showing a login or the display name WordPress fills from it. While a First
+app is active they are closed to visitors who aren't signed in:
+
+| route | answer |
+|---|---|
+| `/wp/v2/users`, `/wp/v2/users/<id>`, the same through `?rest_route=`, `/batch/v1` or any letter case | 401 |
+| a post's REST `_embed=author` | the embed holds that 401, not the user |
+| `?author=<id>` (core redirects it to `/author/<login>/`), `?author_name=`, `/author/<login>/`, its feed and its `.md` twin | 404, no redirect |
+| the users sitemap (`/wp-sitemap-users-1.xml`), and its entry in `/wp-sitemap.xml` | gone (with a users kind: only the users below) |
+| a post's oEmbed `author_name` and `author_url` | the site's name and address, as core answers for a post with no author |
+| `/__first/api/v1/users` | follows the core route (401) |
+| the app's own users kind on First's API (`GET /__first/api/v1/<kind>`) | its read rule decides, as for every viewer: a rule that needs a signed-in user (`self`, a role) answers the list with First's 401, a rule that filters answers with the rows it gives a signed-out visitor (often none), and one user is a 401 unless the rule gives that row to anyone, whether or not the id exists |
+
+With a users kind, its read rule also says who is a public author, user by
+user: a user whose row the rule gives a signed-out visitor keeps their author
+archive, `?author=<id>`, sitemap entry and oEmbed author fields, as WordPress
+ships them. Every other user's stay closed, with the same 404 a login nobody
+has gets, and a kind whose rule gives a visitor no user has no public author
+and no users sitemap file. Core's `/wp/v2/users` stays closed either way; the
+kind's own route on First's API is where an app reads its users.
+
+Signed-in users and credentials keep core's answers (the block editor's author
+picker), and the users kind's read rule decides what First's API shows. A
+scoped agent credential without `personal` sees what core shows anyone
+([agents](agents.md)).
+
+Authors are public, as WordPress ships them, when the app says so: either set
+
+```ts
+export default defineConfig({ publicAuthors: true });
+```
+
+or give the users kind a read rule that lets anyone read every user
+(`access: { read: "anyone" }`). `GET /__first/api/v1` reports which applies under
+`runtime.wp.publicAuthors`.
+
+A post's byline and its feed's `<dc:creator>` still show the author's display
+name, which is what a site publishes on purpose. Set a display name that isn't
+the login (WordPress's default) for users whose login should stay private.
 
 ## Mixed content and app data
 
@@ -326,7 +435,7 @@ registered once.
 | `uid` | `false` (`true` with `sync`) | stable immutable `uid` on every row |
 | `sync` | none | project-relative `*.md` or `*.json` pattern for `first sync` |
 | `agents` | `true` | expose operations as WordPress abilities |
-| `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. The site's sitemap (`/wp-sitemap.xml`) lists the kind's items a signed-out visitor may read. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
+| `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
 
 Collections need a title and physical names of at most 14 characters (WordPress
 prefixes `first_`). Built-in route names are reserved (`media`, `files`,
@@ -556,19 +665,24 @@ content/docs/
   the editor's page attributes edit them, and `:path` in the url is the parent chain.
 - A file's name is its slug and its folder its parent; front matter never holds either. Put
   `order: 2` in front matter to sort; siblings with the same order sort by title.
-- Slugs are unique in the kind, so two folders can't both hold an `install.md`.
+- A folder tree's file slugs are unique, so two folders can't both hold an `install.md`; a file
+  without a `uid` is identified by its slug, so moving it keeps its page. On the site, as in
+  WordPress, a slug is unique among siblings, and URLs resolve the whole path.
 - `first sync` moves a file when its page moves on the site, and turns a page that gains children
-  into its folder's `index.md`.
+  into its folder's `index.md`; an `index.md` you wrote stays one, and moving a folder moves its
+  pages.
+- Pages edited in wp-admin can come back to the repository as a pull request, and Markdown merged
+  in git can go to the site, on a schedule: [Content in git](../docs-site/docs/publishing/content-in-git.mdx).
 
 A page reads the navigation from `"first/content"`, as the visitor:
 
 ```tsx
-// first/app/docs/[...path]/page.tsx
+// first/app/docs/[[...path]]/page.tsx  (or [...path]; /docs itself is first/app/docs/page.tsx)
 import { docs } from "first:db";
 import { Content, type PageProps } from "first/app";
 import { nav, pager, headings } from "first/content";
 
-export default async function Doc({ item }: PageProps<"docs/[...path]">) {
+export default async function Doc({ item }: PageProps<"docs/[[...path]]">) {
   const tree = await nav(docs, item);           // [{ id, title, href, current, open, children }]
   const { prev, next } = await pager(docs, item);
   const toc = headings(item);                   // [{ depth: 2 | 3, text, id }]
@@ -578,6 +692,58 @@ export default async function Doc({ item }: PageProps<"docs/[...path]">) {
 
 The tree is the published items the visitor may read, siblings by order then title, four levels
 deep. `headings()` gives the ids the page renders its headings with.
+
+### Components in Markdown
+
+A component in `first/components/` can be used in synced Markdown as a block
+([decision](decisions/2026-11-13-components-in-markdown.md)). Its file lists it:
+
+```tsx
+// first/components/Callout.tsx
+export const blocks = ["Callout"];
+export function Callout({ type, title, children }: { type: "note" | "warning"; title?: string; children?: JSX.Element }) {
+  return <aside className={`callout callout-${type}`}>{title && <p>{title}</p>}{children}</aside>;
+}
+```
+
+```md
+<Callout type="warning" title="Before you start">
+Back up the **database**.
+</Callout>
+
+<Badge label="New" count={3} />
+```
+
+- In WordPress it is a block (`<app>/callout`) the editor inserts and edits; the site renders it
+  through the component, with the inner content as `children`.
+- In the file it is the tag, on lines of its own. Values are `"text"`, `{true}`, `{false}` or
+  `{number}`; the content between the tags is Markdown. `first sync` writes the block back as the
+  same tag.
+- Props are text, a choice of text literals, numbers and booleans; anything else is a build error.
+  A tag the site doesn't know, an unknown prop, a wrong value or an unclosed tag is refused.
+
+### Code blocks
+
+A fenced code block is highlighted when its page renders, in light and dark themes, with no
+script on the page ([decision](decisions/2026-11-13-code-blocks.md)). The fence takes a title,
+lines to mark and a group; blocks with one group show as tabs:
+
+````md
+```ts title="first.config.ts" {2,4-5}
+import { defineConfig } from "first";
+```
+
+```sh group="install"
+npm install first
+```
+
+```sh title="pnpm" group="install"
+pnpm add first
+```
+````
+
+It is WordPress's own code block underneath, so the block editor edits it, and `first sync` writes
+the same fence back. 185 languages; `text` (or any unknown language) shows the code as written.
 
 ### Seeding and `first sync`
 
@@ -598,6 +764,12 @@ both (`first sync resolve <uid>` applies your edit of it).
 matches records and deletes nothing. It commits the files it wrote unless
 `--no-commit`. `first build` adds `.first/*` and `!.first/sync-base.json` to
 `.gitignore`, because the sync base is committed.
+
+`first sync --pr [--repo owner/name] [--base branch]`, with `GITHUB_TOKEN` as well, runs the sync on
+a temporary worktree of the default branch instead of the checkout, and opens one pull request (or
+updates the open one) with the site's changes; conflict files go in it, listed in a comment. It
+needs no `gh`. [Content in git](../docs-site/docs/publishing/content-in-git.mdx) describes the loop,
+the permissions it needs and the conflicts.
 
 What sync leaves out: `$onUpdate` columns, derived and hidden system columns,
 and fields the viewer's field access hides. References to a `uid` collection are written as that
@@ -767,7 +939,7 @@ the live rows before it runs any of them:
 | A field becomes required with `.default(v)` | rows without a value get `v`, then it applies |
 | A field becomes required, no default, and rows lack it | refused: `required_field_missing` with the count |
 | A kind or field is removed and holds rows | refused: `drop_has_rows` with the count, until the deploy passes `--drop=name=rows` |
-| A `table()` that holds rows is declared with `collection()` | refused: `drop_has_rows` with the count. Storage follows the builder, so the build plans the table's drop and moves no rows. To keep the rows, don't pass `--drop`: delete every migration file numbered after the last deployed one, restore `snapshot.json` from the last deployed build (`git checkout`), declare `table()` again and build. The build writes no migration for this kind and plans your other changes again. Building `table()` on top of the drop instead writes a second migration that recreates the table, and the drop before it is still refused |
+| A `table()` is declared with `collection()` | refused by `first build` and `first check` at the declaration, before a migration is written: storage follows the builder. Declare it with `table()` again; its rows stay where they are and no migration is written. A ledger that already holds the table's drop (built before this refusal) is refused at deploy with `drop_has_rows`; to keep the rows, don't pass `--drop`: delete every migration file numbered after the last deployed one, restore `snapshot.json` from the last deployed build (`git checkout`), declare `table()` again and build |
 | A `collection()` that holds posts is declared with `table()` | the build creates an empty SQL table and warns. The posts stay in `wp_posts` and the app no longer reads them; nothing moves them. If a `table()` refers to the kind and holds post IDs, the new foreign key can't be added and the deploy fails with that database error |
 | A field's type or length narrows (`.max(100)`, `.unique()`, text to integer, ...) and values wouldn't fit | refused: `value_does_not_fit` with the count; MySQL would truncate or convert them |
 | `--drop=name=rows` doesn't match the live count | refused: `drop_count_mismatch` with the live count |
@@ -876,7 +1048,7 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
 | `addGlobalField` | `global`, `field`, `definition` | a field on a global |
 | `addCollection` | `kind`, `definition` | a new collection: `{ label?, access?, fields }`, with `title` a required text field and `content`, when present, the rich text body |
 | `addGlobal` | `global`, `definition` | a new global: `{ label?, access?, fields }` |
-| `setLabel` | `kind` or `global`, `label` | the label shown for a kind; `null` takes the runtime label off |
+| `setLabel` | `kind` or `global`, `label` | the label shown for a collection or global; `null` takes the runtime label off. A `table()` is build-only, its label included |
 | `setFieldUi` | `kind` or `global`, `field`, `ui` | a field's `label`, `help`, `placeholder` and `width`; `null` takes it off |
 | `removeField` | `kind` or `global`, `field` | hides a field a runtime change added |
 | `removeCollection`, `removeGlobal` | `kind` / `global` | hides a kind a runtime change added |
@@ -893,7 +1065,11 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   has a default (`schema_required`); a name every kind or site has is not available
   (`schema_reserved`); a removed name comes back only with the stored type it had, and a name
   that any build which ran on the site stores as another type keeps that type (`schema_retype`), so
-  two builds the host serves at once never read one value two ways; something a build declares is not removed at runtime (`schema_in_use`, or
+  two builds the host serves at once never read one value two ways; a field stores its values under
+  keys no other field of its storage uses, sub-fields and repeater rows included (`seo_title` is
+  refused next to a group `seo` with a `title`, and so is a global `site_meta` with a field `title`
+  next to a global `site` with a field `meta_title`: both would be `first_global_site_meta_title`);
+  something a build declares is not removed at runtime (`schema_in_use`, or
   `schema_build_only` when no runtime change added it). Every other operation (renaming, retyping,
   tables, hooks, actions, jobs, pages, taxonomies) is `schema_build_only`, with the source edit to
   make. Fields of a translated or synced collection are build-only for now.
@@ -908,6 +1084,15 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   form, and a hash chained to the parent's. Rows are never updated or deleted. A change names the
   version it was made against; when another was applied first it is refused with 409
   `schema_conflict`.
+- **What the site trusts.** The version table is the record. Each row's hash covers it and its
+  parent's hash, and every read of the versions checks the chain; a row changed outside First
+  refuses further changes (409 `schema_chain_broken`) and `first pull`, the site keeps serving the
+  last state that checked out, and `GET /__first/api/v1` and `first doctor` report the problem.
+  The option is sealed by apply; an option written any other way is not served until a read of
+  the versions rebuilds it. When it is served, it is read as the operations a change can make: an
+  added kind is rebuilt from its stored definition, and a field, label or presentation is served
+  only in the form the rules accept, so the option can't give a kind access rules, hooks or
+  functions.
 - **Loading.** The active version's additions are in one autoloaded option,
   `first_<app>_runtime_schema`. A request adds them to the compiled schema and does nothing else.
   A kind, field or relation the build declares itself is never replaced; only a label and a
@@ -915,14 +1100,58 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   collection is post type `first_<name>` with no SQL table. Both are registered like compiled
   ones, from the request after the change. `GET /__first/api/v1` reports `runtimeSchema: {
   version, hash, build }`.
-- **In the project.** `first/_generated/runtime-schema.json` lists a site's changes for the build:
-  `collections` and `globals` (fields added to declared kinds), `added` (new kinds) and `overrides`
-  (labels and presentation). The build declares them as if they were authored. A build that lacks
-  the site's changes does not drop them: they stay active, with their data.
+- **In the project.** `first pull [dir] [--site url] [--check]` writes the site's newest version to
+  `first/_generated/runtime-schema.json`: `collections` and `globals` (fields added to declared
+  kinds), `added` (new kinds) and `overrides` (labels and presentation), with the version number
+  and hash. It reads `GET /__first/api/v1/schema-versions/lock`, which answers administrators only
+  (`FIRST_APP_PASSWORD` or `FIRST_TOKEN`). Before it keeps the new lock it compiles the project
+  with it; a lock the project can't compile (it declares one of the names differently, say) is
+  not written, and the error says why. Then it refreshes `first/_generated/` (types, client).
+  `--check` exits 1 when the lock is behind the site and writes nothing. The build declares what
+  the lock lists as if it were authored, and records the version in `schema.php`.
+- **What compiled code uses.** With the flag on, `first build` writes `first/app/references.php`:
+  every field and kind name that occurs as a word in a source file it loaded. A field the build
+  declares can be removed at runtime only when it is optional and its name occurs nowhere; a kind,
+  only when its name occurs nowhere. A field your code reads, or a required one, is
+  `schema_in_use`. To remove it, delete it from your code and from the lock, build and deploy.
+- **Deploying.** A build that lacks the site's changes does not drop them: they stay active, with
+  their data, and `wp first migrate` lists them under `runtimeSchema.kept`. A build that declares
+  a runtime name, or a removed one, in a way that reads its stored values differently (another type,
+  other options, other sub-fields or layouts, or a `table()` named like a runtime collection) is
+  refused before any table changes, with the fix (usually: `first pull`, then build). A build that
+  only changes a runtime field's rules or presentation is listed under `runtimeSchema.changed`; its
+  declaration is used. Applying a change takes the same lock a deploy holds, so the two never
+  interleave; a change that waited for a deploy is refused with 409 `schema_build_changed` and is
+  proposed again on the new build.
+- **Moving a change into source.** Declare the field or kind there as the site stores it (the lock
+  shows it). A kind the site added keeps building after you declare it: its title and body are the
+  ones source declares.
 
-This release has the store, the loader, the rules and the build's reading of the lock. Applying a
-change is `First\Wp\SchemaVersions::of($plugin)->apply($parent, $changeSet, $actor)` from PHP;
-the Abilities, the `first schema` commands, `first pull` and the admin screen are not built yet.
+- **Agents (Abilities and MCP).** `<app>/schema-read` returns the active version, every stored
+  version with its changes, and what a deploy of the running build would keep.
+  `<app>/schema-propose` takes `{ changes }` and returns them in stored form with their effect on
+  stored data; it writes nothing. `<app>/schema-apply` takes `{ parent, changes }` and stores the
+  next version. Read and propose run over GET, so `changes` may also be one JSON string there. All
+  three are tools on the app's MCP server. Reading and proposing need `manage_options`. Applying
+  needs `first_apply_schema`. The administrator role is given it once, the first time the app runs
+  with `runtimeSchema`, and from then on it is an ordinary capability: `wp cap remove administrator
+  first_apply_schema` or `wp user remove-cap <user> first_apply_schema` takes it away for good. To
+  stop one way of signing in without touching the user, list it in the option
+  `first_<app>_schema_apply_denied`: `{ "user": <id>, "password": "<uuid>" }` for one application
+  password (a password it creates later is denied too), `{ "user": <id>, "credential":
+  "application-password" }` for all of that user's passwords, present and future, or `{ "user":
+  <id>, "credential": "bearer" }` for every First Identity access token they are issued. A wp-admin
+  session is not denied this way; take the capability instead. Each version records the user and,
+  when one signed the request, the application password's UUID and name (never the secret). A
+  credential scoped without personal data reads the versions without the login and the password's
+  name.
+- **Commands.** `first schema list | diff <version> | apply <file|-> [--parent=<n>] | rollback
+  <version> [--parent=<n>]` (`wp first schema …` on a server). `apply` takes a JSON list of changes
+  (or a whole change set) and applies it on the newest version unless `--parent` says otherwise.
+  `rollback` applies the reverse of a version as a new version.
+- **wp-admin.** Tools → Schema versions lists every version, newest first, with who made it and
+  each change in words, and says which runtime changes the running build doesn't contain yet.
+
 Taxonomies can't be added at runtime: `taxonomy()` is not in this First version.
 
 ## Plugin packages

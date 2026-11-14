@@ -69,6 +69,23 @@ What makes this comparable:
 - Each build in the store keeps `storage.json` (what it stores and how, without access rules or UI)
   and `baseline/<build>/` (its snapshot, migrations and storage description, with their hashes).
 
+## Kept sources
+
+A First release may not refuse source an earlier release accepted for a managed site.
+`tests/first_sources.rs` holds captures at the commit where the rule starts (there is no release
+yet), each with the plan a recompile against its own baseline produces (empty) and its
+`storage.json`. Until the first release is tagged, a change that deliberately alters what the
+authoring surface accepts recaptures them and adds a row to the table of breaks in
+`tests/fixtures/first-sources/README.md`; from the first release on, each release adds captures
+that are never recaptured.
+
+`storage.json` leaves out the indexes the compiler infers from the code's queries
+(`<field>_queried`): they follow the code, so adding a filter changes no storage description. An
+ordinary deployment that adds or drops one still has a migration step, and with the second half that
+step will close the site while it runs. Running those steps with the site open (both directions are
+safe for the old code and the new) is open: it is the first narrowing to design before the second
+half.
+
 ## The interim limit
 
 Today a host may still select a build per request (`docs/host-contract.md`, Lifecycle). A request

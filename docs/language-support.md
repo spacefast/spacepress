@@ -584,14 +584,6 @@ Imported JavaScript compiles crypto.subtle.digest(algorithm, data): SHA-1, SHA-2
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
-## subtle-digest-typed
-
-Status: **refused**. Diagnostic: `F4001`.
-
-Typed TypeScript hashes with createHash("sha256").update(text).digest("hex") from "node:crypto".
-
-[Evidence](../tests/fixtures/reject-subtle-digest-typed)
-
 ## optional-chains
 
 Status: **supported**.
@@ -812,7 +804,7 @@ env("NAME") is a deferred reference inside defineConfig (webhook URLs and secret
 
 Status: **refused**. Diagnostic: `F4001`.
 
-SubtleCrypto needs ArrayBuffers and is not compiled. Hash and sign with createHash and createHmac from "node:crypto".
+Imported JavaScript compiles crypto.subtle.digest (see subtle-digest). Typed TypeScript hashes and signs with createHash and createHmac from "node:crypto".
 
 [Evidence](../tests/fixtures/reject-crypto-subtle)
 

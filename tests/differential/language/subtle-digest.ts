@@ -3,7 +3,7 @@
 // ArrayBuffer; an unknown algorithm or non-binary data rejects (NotSupportedError, TypeError).
 // files-sdk 3.1.2's sha256Hex is included verbatim. Every action runs under Node and as compiled
 // PHP; the JSON results must be byte-identical. Typed TypeScript refuses crypto.subtle
-// (tests/fixtures/reject-subtle-digest-typed).
+// (tests/fixtures/reject-crypto-subtle).
 import { action, defineConfig } from "first";
 import { digests } from "./subtle-digest-helpers.mjs";
 

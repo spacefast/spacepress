@@ -541,6 +541,21 @@
       "guidance": "Imported JavaScript runs Object.assign(target, ...sources) on an object or array target (own enumerable string keys, then symbols, null and undefined sources skipped, TypeError on a null target), Reflect.ownKeys on plain objects and arrays (integer keys ascending, then strings in insertion order, then symbols; arrays add length), and Object.prototype.toString.call(x) at request time. Evidence: tests/differential/language/object-reflect.ts. Typed code keeps Object.assign at build time only."
     },
     {
+      "id": "string-from-char-code",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "language_constructs_match_node_through_generated_php",
+      "guidance": "String.fromCharCode(...codes) (each ToUint16, one UTF-16 code unit, so surrogate pairs combine) and String.fromCodePoint(...points) (RangeError outside 0..0x10FFFF or for a fraction) compile in typed TypeScript, imported JavaScript and configuration evaluation. Evidence: tests/differential/language/char-codes.ts."
+    },
+    {
+      "id": "lone-surrogate-char-code",
+      "status": "refused",
+      "code": "F2001",
+      "fixture": "tests/fixtures/reject-lone-surrogate-char-code",
+      "message": "this makes a string with a lone UTF-16 surrogate, which First can't represent",
+      "guidance": "Strings are stored as UTF-8, which has no lone surrogates. Pair each high surrogate with a low one, or build the character with String.fromCodePoint. At run time the same call throws a RangeError."
+    },
+    {
       "id": "optional-chains",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",

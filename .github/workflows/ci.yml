@@ -425,6 +425,8 @@ jobs:
         run: FIRST_WP_PROJECT=first-wp-sealed FIRST_WP_PORT=8895 tests/wp/hardening/sealed-run.sh
       - name: Build store, managed initialize, and inspecting a candidate without changing the site
         run: FIRST_WP_PROJECT=first-wp-store FIRST_WP_PORT=8901 tests/wp/store-run.sh
+      - name: A managed build installs only from initialize, and installs what plugins install on boot
+        run: FIRST_WP_PROJECT=first-wp-store-install FIRST_WP_PORT=8903 tests/wp/store-install-run.sh
 
   wp-s3:
     if: github.event_name != 'pull_request'

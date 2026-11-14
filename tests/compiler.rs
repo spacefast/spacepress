@@ -2538,6 +2538,44 @@ export default defineConfig({ name: "kindurls", publicAuthors: true });
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
+    // `sealed: true` carries the declared plugins' slugs into schema.php (docs/sealed.md); absent
+    // when it's off, as in the builds above.
+    assert!(built.get("sealed").is_none(), "{built}");
+    let built = schema(
+        r#"import { defineConfig } from "first";
+export default defineConfig({ name: "kindurls", sealed: true });
+"#,
+    );
+    // The complete list for a plain WordPress build of this app: First's own plugins (its admin
+    // always, whether or not this build ships it) and the platform pins (Polylang only with
+    // `locales`).
+    assert_eq!(
+        built["sealed"],
+        serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "secure-custom-fields", "two-factor"]})
+    );
+    let built = schema(
+        r#"import { defineConfig } from "first";
+export default defineConfig({ name: "kindurls", sealed: true, admin: true, locales: { default: "en", all: ["en", "de"] } });
+"#,
+    );
+    assert_eq!(
+        built["sealed"],
+        serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor"]})
+    );
+    let refused = tmp.path().join("app-sealed-refused");
+    std::fs::create_dir_all(&refused).unwrap();
+    std::fs::write(
+        refused.join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"kindurls\", sealed: \"yes\" });\n",
+    )
+    .unwrap();
+    let out = first().args(["build", "--quiet"]).arg(&refused).output().unwrap();
+    assert!(!out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("sealed must be true or false"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     // `staged: false` is the one staged setting the schema carries: collections stage unless it is there.
     let built = schema(
         r#"import { collection, defineConfig, text } from "first";

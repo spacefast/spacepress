@@ -48,6 +48,7 @@ final class Plugin
         self::$instance = $this;
         $this->mainFile = $mainFile;
         Hardening::apply($schema);
+        Sealed::apply($schema);
         add_action('init', [$this, 'registerPostTypes'], 0);
         add_action('acf/init', [$this, 'registerFields'], 5);
         add_action('acf/init', fn () => WpUserStore::registerFields($this->schema), 5);

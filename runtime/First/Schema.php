@@ -118,6 +118,14 @@ final class Schema
         return $this->raw['files'] ?? [];
     }
 
+    /** `sealed`: the plugin directory slugs a sealed site runs (docs/sealed.md), or null when the site isn't sealed. */
+    public function sealed(): ?array
+    {
+        $sealed = $this->raw['sealed'] ?? null;
+
+        return is_array($sealed) ? array_values(array_filter((array) ($sealed['plugins'] ?? []), 'is_string')) : null;
+    }
+
     /** `publicAuthors`: core's author archives and user listings stay public (spec §6). */
     public function publicAuthors(): bool
     {

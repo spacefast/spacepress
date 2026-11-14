@@ -21,7 +21,7 @@ tsc -p examples/home-maintenance
 ./target/debug/first dev examples/home-maintenance --port 8896 --no-watch
 ```
 
-Open `http://localhost:8896/wp-admin/` or `http://localhost:8896/first-admin/`.
+Open `http://localhost:8896/wp-admin/` or `http://localhost:8896/wp-admin/new/`.
 The disposable Studio account is `admin` with password `first-test-admin`.
 Studio activates the generated artifact, including Secure Custom Fields,
 Action Scheduler, MCP Adapter, First Identity, and First Admin.

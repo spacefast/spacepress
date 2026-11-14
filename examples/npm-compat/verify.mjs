@@ -60,9 +60,10 @@ function typedSource(probe, source) {
 }
 const importLine = (entry, specifier) =>
   `import ${entry.named ? "{" + entry.binding + "}" : entry.binding} from ${JSON.stringify(specifier)};`;
+// Each case builds this app and runs only its action in PHP: no admin plugin to write and zip.
 const config = `import {action, defineConfig} from "first";
 import {run} from "./first/run";
-export default defineConfig({name: "npm-compat", actions: {probe: action({access: "anyone", input: {}, handler: () => run()})}});
+export default defineConfig({name: "npm-compat", admin: false, actions: {probe: action({access: "anyone", input: {}, handler: () => run()})}});
 `;
 if (!options.isolated) await rm(work, { recursive: true, force: true });
 await mkdir(work, { recursive: true });

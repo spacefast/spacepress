@@ -78,7 +78,6 @@ async function scheduleOverdue(task: InferSelectModel<typeof tasks>) {
 
 export default defineConfig({
   name: "home-maintenance",
-  admin: true,
   collections,
   files: { manuals },
   hooks: {

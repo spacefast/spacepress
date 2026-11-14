@@ -1222,6 +1222,9 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     assert_eq!(seen["purge all, no files"], true);
     // A render that began before a write named its path is not written.
     assert_eq!(seen["race"], json!([true, false, false]));
+    // `Accept: text/markdown` on the HTML URL is never answered with the HTML file: the file lane
+    // steps aside for the Markdown negotiation, which a host's engine runs.
+    assert_eq!(seen["accept markdown"], json!([false, true]));
 }
 
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.
@@ -2047,6 +2050,97 @@ fn refuses_forms_it_cannot_post() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// The subscription endpoint's `page` read for `<Live>` regions (docs/decisions/2026-11-14-live-regions.md),
+/// over HTTP on WordPress: the region's HTML as the visitor sees it, "not modified" by counter only
+/// when every kind the page read has one (and then without rendering), render-and-compare when it
+/// read nothing, problems (never HTML) for a guard, a missing region and anything not a page path,
+/// four page reads per request at most, nothing recorded for the page cache, and a new build is a
+/// new question.
+#[test]
+fn live_regions_answer_page_reads() {
+    let project = fixture("live-regions", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/live_regions.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        seen,
+        serde_json::json!({
+            // The region's own HTML, not the page's.
+            // The kinds the render read come back, by the client's schema key, for its deps.
+            "first": ["changed", ["One"], false, ["notes"]],
+            // Asked again, unchanged: answered by counter, with no render.
+            "again": { "0": "unchanged", "rendered": 0 },
+            // Two renders of the same data hash the same.
+            "same hash": true,
+            "after write": ["changed", ["One", "Two"]],
+            // A draft an anonymous visitor can't read is no change for them.
+            "after draft": "unchanged",
+            // A page that read nothing has no counters: it renders and compares.
+            "no reads": { "0": "changed", "1": "unchanged", "rendered": 1 },
+            "guarded anonymous": "error 401 unauthenticated",
+            "missing region": "error 404 not_found",
+            "not a page": "error 404 not_found",
+            "host": "error 422 invalid_input",
+            "scheme": "error 422 invalid_input",
+            "bad region": "error 422 invalid_input",
+            "cap": [["changed", "changed", "changed", "changed", "pending"], "changed"],
+            // An editor reads the guarded page and the drafts; their renders record nothing for the
+            // shared page cache, while an anonymous GET does.
+            "editor": ["changed", 3, ["One", "Two", "Draft"]],
+            "records nothing": 0,
+            "a GET records": true,
+            // `<Live>` around `<Comments>`: core's comment query has no counter, so the page renders
+            // on every poll and a new approved comment shows on the next one.
+            "comments": { "0": "changed", "1": false, "2": "changed", "3": true, "rendered": 1 },
+            // The visitor key includes the post-password cookie: a protected note shows only with
+            // it, and neither visitor's token is "not modified" for the other.
+            "password": {
+                "without": false,
+                "with": true,
+                "without token, with cookie": ["changed", true],
+                "with token, without cookie": ["changed", false],
+            },
+            // Same data, new build: the region renders again.
+            "new build": ["changed", true],
+        })
+    );
+}
+
+/// `<Live>` without a literal id, or inside a client component, is a build error at the element.
+#[test]
+fn refuses_live_regions_it_cannot_name() {
+    let dir = std::env::temp_dir().join(format!("first-live-reject-{}", std::process::id()));
+    let page = |body: &str| {
+        format!("import {{ Live }} from \"first/app\";\nexport default function Home() {{\n  return {body};\n}}\n")
+    };
+    rejects(
+        &dir,
+        &[("first/app/page.tsx", &page("<Live><p>x</p></Live>"))],
+        "`<Live>` needs an `id`",
+        "first/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[("first/app/page.tsx", &page("<Live id=\"Not Ok\"><p>x</p></Live>"))],
+        "`<Live id>` is a literal id",
+        "first/app/page.tsx:3:",
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// The record's browser check: compiled client components on a real WordPress page, in Chromium
 /// with `SCRIPT_DEBUG` (the Interactivity runtime's development build, the one that warns).
 /// Hydration changes nothing in the server HTML, the runtime logs no warnings, a click calls the
@@ -2133,6 +2227,12 @@ fn client_components_hydrate_in_the_browser() {
         seen["kept"], true,
         "the server-rendered item is kept, not re-created: {seen}"
     );
+    // The typed client is served from the app plugin as a module the browser imports as is.
+    assert_eq!(
+        seen["client"],
+        serde_json::json!([200, "text/javascript;charset=UTF-8", "function", "function"]),
+        "{seen}"
+    );
 }
 
 /// rendering.md §6.1 and §6.2 for `first/app/` pages, on WordPress with a stand-in host listening
@@ -2201,6 +2301,11 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         "{index:?}"
     );
     assert!(!index.iter().any(|r| r.ends_with(" /about")), "{index:?}");
+    assert_eq!(
+        seen["count reads"],
+        serde_json::json!({ "notes": { "ids": [], "listed": true } }),
+        "a count depends on every row of its kind"
+    );
     assert_eq!(
         seen["purged"],
         serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])

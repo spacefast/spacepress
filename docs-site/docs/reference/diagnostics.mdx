@@ -53,6 +53,7 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F2001` | computed class method keys must be symbols | [`reject-class-computed-string-key`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-class-computed-string-key) |
 | `F2001` | "first" has no export named `fetch` | [`reject-first-fetch-import`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-first-fetch-import) |
 | `F2001` | a generator function can't be a comparator while the config is evaluated | [`reject-generator-comparator`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-generator-comparator) |
+| `F2001` | this makes a string with a lone UTF-16 surrogate, which First can't represent | [`reject-lone-surrogate-char-code`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-lone-surrogate-char-code) |
 | `F2001` | "node:crypto" has no `createCipheriv` in First code | [`reject-node-crypto-member`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-node-crypto-member) |
 | `F2001` | Object.create with a prototype other than null or Object.prototype | [`reject-object-create-proto`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-object-create-proto) |
 | `F2001` | the comparator returned a symbol, which can't convert to a number | [`reject-symbol-comparator`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-symbol-comparator) |
@@ -120,7 +121,7 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F4001` | symbol-keyed class methods only work in imported JavaScript | [`reject-typescript-class-symbol-method`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-typescript-class-symbol-method) |
 | `F4001` | symbols aren't supported in TypeScript code yet | [`reject-typescript-symbol`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-typescript-symbol) |
 | `F4001` | `crypto.getRandomValues` needs typed arrays | [`reject-crypto-random-values`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-crypto-random-values) |
-| `F4001` | `crypto.subtle` isn't available in First code | [`reject-crypto-subtle`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-crypto-subtle) |
+| `F4001` | `crypto.subtle.digest` works in imported JavaScript only | [`reject-crypto-subtle`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-crypto-subtle) |
 | `F4001` | `acme/site-info` takes \{ field: "name" \| "url" \}, not \{ field: "title" \} | [`reject-ability-input`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-ability-input) |
 | `F4001` | abilities.call() needs the ability name as a string literal | [`reject-ability-name`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-ability-name) |
 | `F4001` | unknown ability `acme/site-infos` | [`reject-ability-unknown`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-ability-unknown) |

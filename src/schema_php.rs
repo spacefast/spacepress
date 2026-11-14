@@ -381,10 +381,11 @@ pub fn render(schema: &Schema) -> String {
         for (namespace, island) in &schema.islands {
             let _ = writeln!(
                 out,
-                "        {} => ['file' => {}, 'actions' => [{}]],",
+                "        {} => ['file' => {}, 'actions' => [{}]{}],",
                 php_str(namespace),
                 php_str(&island.file),
-                island.actions.iter().map(|a| php_str(a)).collect::<Vec<_>>().join(", ")
+                island.actions.iter().map(|a| php_str(a)).collect::<Vec<_>>().join(", "),
+                if island.live { ", 'live' => true" } else { "" }
             );
         }
     }

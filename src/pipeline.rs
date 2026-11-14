@@ -319,6 +319,7 @@ pub fn build(
                 file: format!("{stem}.{hash}.js"),
                 source,
                 actions: analysis.server_actions.iter().cloned().collect(),
+                live: !analysis.live.is_empty(),
             },
         );
     }

@@ -21,7 +21,15 @@ use std::fmt::Write as _;
 use std::rc::Rc;
 
 /// Hooks `"first/client"` exports.
-pub const HOOKS: &[&str] = &["useState", "useEffect", "useMount", "useEvent", "useRef", "sharedState"];
+pub const HOOKS: &[&str] = &[
+    "useState",
+    "useEffect",
+    "useMount",
+    "useEvent",
+    "useRef",
+    "sharedState",
+    "useLive",
+];
 
 /// What a reference in a client component's markup or code reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +81,9 @@ pub struct Analysis {
     pub shared: Vec<(String, Expr)>,
     /// The props the component destructures, in order.
     pub props: Vec<String>,
+    /// `const todos = useLive("todos", { where, limit })`: (field, kind, args, enabled). The field is
+    /// a context value `{ data, error, loading }` the server seeds and the browser keeps current.
+    pub live: Vec<(String, String, Expr, Expr)>,
 }
 
 pub(crate) fn refuse(span: Span, message: impl Into<String>, help: impl Into<String>) -> Diag {
@@ -302,6 +313,101 @@ pub fn analyse(
                             if let Some(s) = setter {
                                 a.bindings.insert(s, Binding::Setter { field: name });
                             }
+                        }
+                        "useLive" => {
+                            let Pat::Id(name, _) = pat else {
+                                return Err(refuse(
+                                    *span,
+                                    "`useLive` is assigned to a name",
+                                    "write `const todos = useLive(\"todos\", { where: { done: false } })`",
+                                ));
+                            };
+                            let help = "write `useLive(\"todos\", { where: { done: false }, limit: 20 })`";
+                            let (kind, rest) = match args.as_slice() {
+                                [
+                                    ArrEl::Item(Expr {
+                                        kind: ExprKind::Str(k), ..
+                                    }),
+                                    rest @ ..,
+                                ] if rest.len() <= 2 => (k.clone(), rest),
+                                _ => {
+                                    return Err(refuse(
+                                        init.span,
+                                        "`useLive` takes a kind's name, its query and options",
+                                        help,
+                                    ));
+                                }
+                            };
+                            let query = match rest.first() {
+                                None => Expr {
+                                    kind: ExprKind::Object(Vec::new()),
+                                    span: init.span,
+                                },
+                                Some(ArrEl::Item(q)) => q.clone(),
+                                Some(ArrEl::Spread(x)) => {
+                                    return Err(refuse(x.span, "`useLive` takes its query as an object", help));
+                                }
+                            };
+                            // The browser subscribes to the read the server answered: its arguments
+                            // come from props and literals, which both sides have.
+                            let mut fixed = true;
+                            visit(&query, &mut |x| {
+                                if let ExprKind::Ident(n) = &x.kind
+                                    && !matches!(
+                                        a.bindings.get(n),
+                                        Some(Binding::Prop) | Some(Binding::Static(_)) | None
+                                    )
+                                {
+                                    fixed = false;
+                                }
+                                if matches!(x.kind, ExprKind::Func(_) | ExprKind::Await(_)) {
+                                    fixed = false;
+                                }
+                            });
+                            if !fixed {
+                                return Err(refuse(
+                                    query.span,
+                                    "a `useLive` query reads props and literals only",
+                                    "pass what the query depends on as a prop; a query that follows state changes isn't supported yet",
+                                ));
+                            }
+                            let enabled = match rest.get(1) {
+                                None => Expr {
+                                    kind: ExprKind::Bool(true),
+                                    span: init.span,
+                                },
+                                Some(ArrEl::Item(Expr {
+                                    kind: ExprKind::Object(props),
+                                    span: ospan,
+                                })) => {
+                                    let mut enabled = Expr {
+                                        kind: ExprKind::Bool(true),
+                                        span: *ospan,
+                                    };
+                                    for p in props {
+                                        match p {
+                                            Prop::KV(PropKey::Static(k), v) if k == "enabled" => enabled = v.clone(),
+                                            _ => {
+                                                return Err(refuse(
+                                                    *ospan,
+                                                    "`useLive` options are `{ enabled }`",
+                                                    "the server's answer seeds the read, so there is no `seed` option",
+                                                ));
+                                            }
+                                        }
+                                    }
+                                    enabled
+                                }
+                                Some(ArrEl::Item(o)) | Some(ArrEl::Spread(o)) => {
+                                    return Err(refuse(
+                                        o.span,
+                                        "`useLive` options are an object",
+                                        "write `{ enabled: false }`",
+                                    ));
+                                }
+                            };
+                            a.live.push((name.clone(), kind, query, enabled));
+                            a.bindings.insert(name.clone(), Binding::State { setter: None });
                         }
                         "useRef" => {
                             let Pat::Id(name, _) = pat else {
@@ -547,6 +653,9 @@ impl Analysis {
         out.push_str(
             "import { store, getContext, getElement, getConfig, withSyncEvent } from \"@wordpress/interactivity\";\n\n",
         );
+        if !self.live.is_empty() {
+            out.push_str("import { live } from \"@first/live\";\n");
+        }
         let _ = writeln!(out, "const ns = {};", js_str(&self.namespace));
         out.push_str("const call = async (name, input) => {\n  const config = getConfig(ns);\n  const response = await fetch(config.actions[name], { method: \"POST\", credentials: \"same-origin\", headers: { \"content-type\": \"application/json\", \"x-wp-nonce\": config.nonce }, body: JSON.stringify(input ?? {}) });\n  const result = await response.json();\n  if (!response.ok) throw new Error(result?.detail ?? result?.error?.message ?? `action ${name} failed`);\n  return result.data;\n};\n\n");
         let _ = writeln!(out, "const {{ state, actions }} = store(ns, {{");
@@ -568,6 +677,15 @@ impl Analysis {
         out.push_str("  },\n  callbacks: {\n");
         for (name, f) in self.watch.iter().chain(&self.init) {
             out.push_str(&self.function(name, f, "    ")?);
+        }
+        // Each `useLive` field subscribes when its element hydrates, to the read whose answer the
+        // server put in context (its descriptor and token beside it), and stops when it goes.
+        for (field, _, _, _) in &self.live {
+            let _ = writeln!(
+                out,
+                "    live_{field}() {{\n      const context = getContext();\n      return live(context, {});\n    }},",
+                js_str(field)
+            );
         }
         out.push_str("  },\n});\n");
         Ok(out)

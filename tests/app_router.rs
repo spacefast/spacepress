@@ -1611,6 +1611,13 @@ fn client_components_hydrate_in_the_browser() {
         seen["kept"], true,
         "the server-rendered item is kept, not re-created: {seen}"
     );
+    // `useLive`: the server's answer is in the first render (not loading), and another visitor's
+    // write reaches the page by the typed client's poll, with no reload.
+    assert_eq!(
+        seen["live"],
+        serde_json::json!({ "before": ["Ada"], "loading": "no", "write": 201, "after": ["Ada", "Grace"], "polled": true }),
+        "{seen}"
+    );
     // The typed client is served from the app plugin as a module the browser imports as is.
     assert_eq!(
         seen["client"],

@@ -62,7 +62,8 @@ try {
     draft: await page.inputValue(".draft"),
     reloaded: await page.evaluate(() => performance.getEntriesByType("navigation").length),
   };
-  out.answers = answers;
+  out.answers = [...answers];
+  await page.close();
 
   // A cached copy taken before the data changed (as an edge would serve it): the first request brings
   // the region current, with no poll needed.

@@ -144,6 +144,7 @@ impl Compiler<'_, '_> {
         }
         let allowed: &[&str] = match name {
             "Content" | "Html" => &["value"],
+            "Pagination" => &["page", "pages", "param", "className", "aria-label"],
             "Link" => &[
                 "href",
                 "children",
@@ -168,6 +169,41 @@ impl Compiler<'_, '_> {
         }
         let get = |k: &str| named.iter().find(|(n, _)| *n == k).map(|(_, v)| *v);
         match name {
+            "Pagination" => {
+                let mut arg = |k: &str, want: Ty, default: Option<&str>| -> Result<String> {
+                    match get(k) {
+                        None => default.map(str::to_string).ok_or_else(|| {
+                            crate::diag::Diag::new(span, format!("`<Pagination>` needs `{k}`"))
+                                .help("write `<Pagination page={search.page} pages={Math.ceil(total / 20)} />`")
+                        }),
+                        Some(v) => {
+                            let out = self.expr(v)?;
+                            let out = self.finish_value(out, v.span)?;
+                            if !assignable(&out.ty, &want) {
+                                return err(
+                                    v.span,
+                                    format!(
+                                        "`<Pagination {k}>` takes {}, not {}",
+                                        want.describe(),
+                                        out.ty.describe()
+                                    ),
+                                );
+                            }
+                            Ok(out.php)
+                        }
+                    }
+                };
+                let page = arg("page", Ty::Num, None)?;
+                let pages = arg("pages", Ty::Num, None)?;
+                let param = arg("param", Ty::Str, Some("'page'"))?;
+                let optional = Ty::union([Ty::Str, Ty::Null, Ty::Undefined]);
+                let class = arg("className", optional.clone(), Some("null"))?;
+                let label = arg("aria-label", optional, Some("null"))?;
+                Ok(Out::atom(
+                    format!("\\First\\Render\\Pagination::render({page}, {pages}, {param}, {class}, {label})"),
+                    Ty::Html,
+                ))
+            }
             "Content" | "Html" => {
                 let Some(value) = get("value") else {
                     return err_help(

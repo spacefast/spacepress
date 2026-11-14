@@ -344,8 +344,18 @@ final class Runtime
         // Every step initialize would run, in order, as one open set: whatever reads it (the deployment
         // that decides whether a plan is empty) counts kinds it doesn't know too.
         $steps = [];
-        if ($legacy) {
-            $steps[] = self::step('stored-names', 'stored-names');
+        // The one-time moves of a site that ran 0.3 (before the rename): identity's names first, as
+        // initialize runs them, then the runtime's. `state` is `started` for a run that was interrupted.
+        $connection = new Connection($wpdb);
+        $names = [];
+        if (class_exists(\First\Identity\Legacy\ZeroNames::class)) {
+            $names['identity'] = \First\Identity\Legacy\ZeroNames::state($wpdb);
+        }
+        $names['runtime'] = ZeroNames::state($connection);
+        foreach ($names as $which => $state) {
+            if ($state === 'pending' || $state === 'started') {
+                $steps[] = array_replace(self::step('names', "names:$which"), ['state' => $state]);
+            }
         }
         if ($recorded !== self::tablesVersion()) {
             $steps[] = self::step('system-tables', 'system-tables', ['to' => self::tablesVersion()]);

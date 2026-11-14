@@ -1,3 +1,3 @@
 import { collection, text, defineConfig, env, table } from "first";
-const notes = table({ secret: text().access({ read: env("ALLOW_READ") !== null }).optional() });
-export default defineConfig({ tables: { notes } });
+export const notes = table({ secret: text().access({ read: env("ALLOW_READ") !== null }).optional() });
+export default defineConfig({});

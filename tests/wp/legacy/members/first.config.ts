@@ -2,7 +2,7 @@
 // with defaults of each usermeta storage form (text, boolean, date, timestamp, multiple select) and
 // a column without one.
 import { defineConfig, text, email, select, boolean, date, timestamp, userProjection } from "first";
-const members = userProjection({
+export const members = userProjection({
   email: email().unique().max(191),
   name: text().max(80),
   plan: select(["free", "pro"]).default("free"),
@@ -12,4 +12,4 @@ const members = userProjection({
   topics: select(["news", "events", "jobs"]).many().default(["news", "events"]),
   bio: text().max(200).optional(),
 }, { access: { read: "self", update: "self", create: "anyone", delete: "admin" } });
-export default defineConfig({ name: "members", users: { members } });
+export default defineConfig({ name: "members" });

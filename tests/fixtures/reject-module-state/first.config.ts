@@ -1,4 +1,4 @@
 import { collection, defineConfig, table } from "first";
 let count = 0;
-const a = table({  });
-export default defineConfig({ tables: { a }, hooks: { a: { afterCreate(row) { count = count + 1; } } } });
+export const a = table({  }).on({ afterCreate(row) { count = count + 1; } });
+export default defineConfig({});

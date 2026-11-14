@@ -8,8 +8,6 @@ function pair([a = 1, b = a]: number[]): number {
   return a + b;
 }
 
-export default defineConfig({
-  actions: {
-    sum: action({ access: "anyone", handler: () => pick({ a: 2 }) + pair([3]) }),
-  },
-});
+export const sum = action({ access: "anyone", handler: () => pick({ a: 2 }) + pair([3]) });
+
+export default defineConfig({});

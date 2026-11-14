@@ -7,15 +7,13 @@ class Deferred {
   }
 }
 
-export default defineConfig({
-  actions: {
-    probe: action({
-      input: {},
-      handler: async () => {
-        const out: unknown[] = [];
-        for await (const v of [new Deferred()]) out.push(v);
-        return out;
-      },
-    }),
+export const probe = action({
+  input: {},
+  handler: async () => {
+    const out: unknown[] = [];
+    for await (const v of [new Deferred()]) out.push(v);
+    return out;
   },
 });
+
+export default defineConfig({});

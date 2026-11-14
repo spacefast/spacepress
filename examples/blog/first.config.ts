@@ -53,6 +53,13 @@ export const posts = collection({
     update: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor" ? true : { authorId: { userId: ctx.user?.id ?? -1 } },
     delete: "editor",
   },
+}).on({
+  async beforeCreate(data, ctx) {
+    if (data.authorId == null && ctx.user) {
+      const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
+      if (author) data.authorId = author.id;
+    }
+  },
 });
 
 export const comments = table({
@@ -64,6 +71,18 @@ export const comments = table({
   createdAt: timestamp().defaultNow(),
 }, {
   access: { read: (ctx) => ["author", "editor", "admin"].includes(ctx.user?.role ?? "") ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
+}).on({
+  // Readers can't approve their own comments, whatever they send.
+  async beforeCreate(data, ctx) {
+    if (!["author", "editor", "admin"].includes(ctx.user?.role ?? "")) data.approved = false;
+  },
+  async afterCreate(row, ctx) {
+    if (["author", "editor", "admin"].includes(ctx.user?.role ?? "")) {
+      await db.update(comments).set({ approved: true }).where({ id: row.id });
+    } else {
+      await jobs.notifyEditors.enqueue({ commentId: row.id }, { key: `comment-${row.id}` });
+    }
+  },
 });
 
 // Readers who sign in (§6.2): the first-identity screens on WordPress.
@@ -85,67 +104,40 @@ export const settings = global({
   social: repeater({ label: text().max(40), href: url() }).optional(),
 }, { label: "Site settings" });
 
+// Runs after the comment's request commits, on the queue (Action Scheduler on WordPress).
+export const notifyEditors = job({
+  input: { commentId: integer() },
+  retries: 3,
+  // A real site would email its editors here; this one stamps the comment so you can see it ran.
+  handler: async ({ commentId }) => {
+    await db.update(comments).set({ notifiedAt: new Date().toISOString() }).where({ id: commentId });
+  },
+});
+
+export const approveComment = action({
+  input: { id: integer() },
+  access: "editor",
+  async handler({ id }) {
+    const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
+    if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
+    return row;
+  },
+});
+
+export const publishedCount = action({
+  input: {},
+  access: "anyone",
+  async handler() {
+    const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
+    return { count: rows.length };
+  },
+});
+
 export default defineConfig({
   name: "blog",
-  collections, tables, users,
-  globals: { settings },
   locales: { default: "en", all: ["en", "de"] },
   // A 600×400 crop of every image for cards, centred on the image's focal point (§7.2).
   media: { sizes: { card: { width: 600, height: 400, fit: "cover" } } },
-  files: { decks },
   // Every post change is POSTed, signed, to BLOG_HOOK_URL and retried on failure (§6.1).
   webhooks: [{ url: env("BLOG_HOOK_URL"), secret: env("BLOG_HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted"] }],
-  jobs: {
-    // Runs after the comment's request commits, on the queue (Action Scheduler on WordPress).
-    notifyEditors: job({
-      input: { commentId: integer() },
-      retries: 3,
-      // A real site would email its editors here; this one stamps the comment so you can see it ran.
-      handler: async ({ commentId }) => {
-        await db.update(comments).set({ notifiedAt: new Date().toISOString() }).where({ id: commentId });
-      },
-    }),
-  },
-  hooks: {
-    posts: {
-      async beforeCreate(data, ctx) {
-        if (data.authorId == null && ctx.user) {
-          const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
-          if (author) data.authorId = author.id;
-        }
-      },
-    },
-    comments: {
-      // Readers can't approve their own comments, whatever they send.
-      async beforeCreate(data, ctx) {
-        if (!["author", "editor", "admin"].includes(ctx.user?.role ?? "")) data.approved = false;
-      },
-      async afterCreate(row, ctx) {
-        if (["author", "editor", "admin"].includes(ctx.user?.role ?? "")) {
-          await db.update(comments).set({ approved: true }).where({ id: row.id });
-        } else {
-          await jobs.notifyEditors.enqueue({ commentId: row.id }, { key: `comment-${row.id}` });
-        }
-      },
-    },
-  },
-  actions: {
-    approveComment: action({
-      input: { id: integer() },
-      access: "editor",
-      async handler({ id }) {
-        const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
-        if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
-        return row;
-      },
-    }),
-    publishedCount: action({
-      input: {},
-      access: "anyone",
-      async handler() {
-        const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
-        return { count: rows.length };
-      },
-    }),
-  },
 });

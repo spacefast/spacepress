@@ -88,11 +88,11 @@ function visibleField(ctx: FieldContext): boolean { switch (ctx.op) { case "read
 function maybeFirst() { const values = ["a"]; values.unshift("b"); switch (values[0]) { case "a": return true; } }
 function maybeDefault() { const { words = ["a"] } = { words: undefined }; words.unshift("b"); switch (words[0]) { case "a": return true; } }
 function maybeFunction() { const predicates = [() => true]; predicates.unshift(() => false); const flag = predicates[0]!(); switch (flag) { case true: return true; } }
-const audit = table({ note: text() }, { agents: false });
-const authors = collection({ name: text(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }).optional(), avatar: media().access({ read: "authenticated" }).optional() }, { title: "name", uid: true });
+export const audit = table({ note: text() }, { agents: false });
+export const authors = collection({ name: text(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }).optional(), avatar: media().access({ read: "authenticated" }).optional() }, { title: "name", uid: true });
 export const decks = files({ accept: ["application/pdf", "image/*"], maxBytes: 20000000, access: { read: "owner", create: ctx => ctx.user !== null, delete: "owner" } });
 
-const posts = collection({
+export const posts = collection({
   title: text().localized(), content: richText().localized().optional(), slug: slug({ source: "title" }).optional(),
   authorId: ref(authors).optional().onDelete("restrict"), deck: file(decks).optional(),
   seo: group({ kind: select(["a", "b"]).optional(), enabled: boolean().optional(), label: text().access({ read: visibleField }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }).optional() }).showIf({ status: "published" }).optional(),
@@ -100,41 +100,42 @@ const posts = collection({
   sections: blocks({ hero: { kind: text().optional(), label: text().access({ update: ctx => { switch (ctx.op) { case "read": throw new Error("not an update"); case "create": return false; case "update": return visibleRole(ctx); } } }).showIf({ kind: { ne: "hidden" } }).optional() } }).optional(),
   tags: select(["news", "guide"]).many().localized().optional(), meta: json().localized().optional(),
 }, { sync: "content/./posts/*.md", agents: true });
-const members = userProjection({ email: email().unique().max(191), name: text().optional() }, { access: { read: "self", create: "anyone", update: "self", delete: "admin" } });
+export const members = userProjection({ email: email().unique().max(191), name: text().optional() }, { access: { read: "self", create: "anyone", update: "self", delete: "admin" } });
 export const collections = { authors, posts };
 export const tables = { audit };
 export const users = { members };
 export const entities = { ...collections, ...tables, ...users };
+export const settings = global({ title: text().default("Hello").optional() }, { agents: false });
+
+export const sendWelcome = job({ input: { email: email(), payload: json<{ message: string }>(), data: group({ label: text().default("welcome").optional(), payload: json<{ suffix: string }>().optional() }).optional() }, retries: 5, agents: true, handler: async (input, ctx: JobCtx) => { let choose = yes; choose = no; if (visible(input.email) && !(await choose())) { await db.insert(audit).values({ note: input.payload.message + ":" + ctx.jobId + ":" + ctx.attempt + ":" + (input.data?.payload?.suffix ?? "") }); } } });
+
+export const inbound = action({ input: { allow: boolean().default(true) }, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: (input, ctx): boolean => { if (ctx.user === null) return false; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return allowed(input.allow) && !allowed(null); } } });
+
+export const widened = action({ input: {}, handler: () => {
+  const values = ["a"]; values.unshift("b");
+  let choice = values.length > 0 ? "a" : "b"; choice = "c";
+  const finite: ("a" | "b")[] = ["a"]; finite.push("b");
+  const nested = [1].map(() => ["a"]).map((items: string[]) => { items.unshift("b"); return items; });
+  const callbacks = [1].map(() => ["a"]).map(items => { items.unshift("b"); switch (items[0]) { case "a": return true; } });
+  const pairs: [string, number][] = [["a", 2]];
+  const tuples = pairs.map(([label = "", count = 0]) => label.repeat(count));
+  const optional: { pair?: [string, number], words?: ("a" | "b")[] } = {};
+  const { pair = ["a", 2], words: finiteDefaults = ["a"] } = optional;
+  finiteDefaults.push("b");
+  const defaultTuple = pair[0]!.repeat(pair[1]!);
+  const reduced = ["a"].reduce((acc, value) => acc + value);
+  const reducedNested = [1].map(() => ["a"]).reduce((acc, value) => acc.concat(value));
+  const numeric = updateNumeric(1);
+  const effects = { captured: captureNumeric(1), invoked: invokeNumeric(1), loop: loopNumeric(1), helper: helperNumeric(), maybeCaptured: maybeCapture(1), maybeHelper: maybeHelper(), shadow: shadowNumeric(1), early: earlyNumeric(0), byValue: byValueNumeric(1), passed: passedNumeric(), callback: callbackNumeric(), defaulted: defaultNumeric(1), localDefaulted: localDefaultNumeric(1), logical: logicalNumeric(1), nullableArguments: nullableArguments(null) };
+  const formatted = formatNumeric(-1);
+  const numericChoice = values.length > 0 ? 0 : 1;
+  const inferredNumber = numericChoice.toString();
+  const selected = finite[0]; if (selected === undefined) throw new Error("missing element"); switch (selected) { case "a": case "b": return { values, choice, finite: finite.map((value: "a" | "b") => value), nested, callbacks, tuples, finiteDefaults, defaultTuple, reduced, reducedNested, numeric, effects, formatted, inferredNumber, functionMaybe: maybeFunction(), defaultMaybe: maybeDefault(), maybe: maybeFirst() }; }
+} });
+
 export default defineConfig({
-  name: "phase2", collections, tables, users,
+  name: "phase2",
   uploads: { backend: "s3", bucket: env("UPLOAD_BUCKET"), region: "us-east-1", endpoint: env("UPLOAD_ENDPOINT"), pathStyle: true, prefix: "phase2", credentials: { accessKeyId: env("UPLOAD_KEY"), secretAccessKey: env("UPLOAD_SECRET") } },
   locales: { default: "en", all: ["en", "de"] }, media: { sizes: { thumb: { width: 300, height: 300, fit: "cover" }, wide: { width: 1600 } } },
-  files: { decks },
-  globals: { settings: global({ title: text().default("Hello").optional() }, { agents: false }) },
-  jobs: { sendWelcome: job({ input: { email: email(), payload: json<{ message: string }>(), data: group({ label: text().default("welcome").optional(), payload: json<{ suffix: string }>().optional() }).optional() }, retries: 5, agents: true, handler: async (input, ctx: JobCtx) => { let choose = yes; choose = no; if (visible(input.email) && !(await choose())) { await db.insert(audit).values({ note: input.payload.message + ":" + ctx.jobId + ":" + ctx.attempt + ":" + (input.data?.payload?.suffix ?? "") }); } } }) },
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted", "*"] }, { url: "https://example.com/hook", secret: env("OTHER_SECRET"), events: ["members.created"] }],
-  actions: {
-    inbound: action({ input: { allow: boolean().default(true) }, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: (input, ctx): boolean => { if (ctx.user === null) return false; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return allowed(input.allow) && !allowed(null); } } }),
-    widened: action({ input: {}, handler: () => {
-      const values = ["a"]; values.unshift("b");
-      let choice = values.length > 0 ? "a" : "b"; choice = "c";
-      const finite: ("a" | "b")[] = ["a"]; finite.push("b");
-      const nested = [1].map(() => ["a"]).map((items: string[]) => { items.unshift("b"); return items; });
-      const callbacks = [1].map(() => ["a"]).map(items => { items.unshift("b"); switch (items[0]) { case "a": return true; } });
-      const pairs: [string, number][] = [["a", 2]];
-      const tuples = pairs.map(([label = "", count = 0]) => label.repeat(count));
-      const optional: { pair?: [string, number], words?: ("a" | "b")[] } = {};
-      const { pair = ["a", 2], words: finiteDefaults = ["a"] } = optional;
-      finiteDefaults.push("b");
-      const defaultTuple = pair[0]!.repeat(pair[1]!);
-      const reduced = ["a"].reduce((acc, value) => acc + value);
-      const reducedNested = [1].map(() => ["a"]).reduce((acc, value) => acc.concat(value));
-      const numeric = updateNumeric(1);
-      const effects = { captured: captureNumeric(1), invoked: invokeNumeric(1), loop: loopNumeric(1), helper: helperNumeric(), maybeCaptured: maybeCapture(1), maybeHelper: maybeHelper(), shadow: shadowNumeric(1), early: earlyNumeric(0), byValue: byValueNumeric(1), passed: passedNumeric(), callback: callbackNumeric(), defaulted: defaultNumeric(1), localDefaulted: localDefaultNumeric(1), logical: logicalNumeric(1), nullableArguments: nullableArguments(null) };
-      const formatted = formatNumeric(-1);
-      const numericChoice = values.length > 0 ? 0 : 1;
-      const inferredNumber = numericChoice.toString();
-      const selected = finite[0]; if (selected === undefined) throw new Error("missing element"); switch (selected) { case "a": case "b": return { values, choice, finite: finite.map((value: "a" | "b") => value), nested, callbacks, tuples, finiteDefaults, defaultTuple, reduced, reducedNested, numeric, effects, formatted, inferredNumber, functionMaybe: maybeFunction(), defaultMaybe: maybeDefault(), maybe: maybeFirst() }; }
-    } }),
-  },
 });

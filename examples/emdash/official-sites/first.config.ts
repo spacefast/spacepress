@@ -3,7 +3,7 @@ import { action, collection, defineConfig, media, richText, text } from "first";
 import { getReadingTime } from "./first/backend/reading-time";
 
 // Native WordPress titles and blocks; the remaining fields are editable in SCF.
-const posts = collection({
+export const posts = collection({
   title: text(),
   body: richText().optional(),
   excerpt: text({ multiline: true }).optional(),
@@ -18,7 +18,7 @@ const posts = collection({
   },
 });
 
-const pages = collection({
+export const pages = collection({
   title: text(),
   body: richText().optional(),
   seoTitle: text().optional(),
@@ -31,16 +31,14 @@ const pages = collection({
   },
 });
 
+export const readingTime = action({
+  input: { content: text() },
+  access: "anyone",
+  handler: ({ content }) => ({ minutes: getReadingTime([{ _type: "block", children: [{ _type: "span", text: content }] }]) }),
+});
+
 export default defineConfig({
   name: "emdash-starter",
   // Keep WordPress's complete native admin, plugin and settings screens.
   admin: false,
-  collections: { posts, pages },
-  actions: {
-    readingTime: action({
-      input: { content: text() },
-      access: "anyone",
-      handler: ({ content }) => ({ minutes: getReadingTime([{ _type: "block", children: [{ _type: "span", text: content }] }]) }),
-    }),
-  },
 });

@@ -2,10 +2,9 @@
 // every kind of thing the API serves, so every operation in first/_generated/openapi.json is called.
 import { defineConfig, files } from "first";
 
+export const decks = files({ accept: ["text/plain"], maxBytes: 100_000, access: { read: "owner", create: "author", delete: "owner" } });
+
 export default defineConfig({
   name: "openapi",
-  files: {
-    decks: files({ accept: ["text/plain"], maxBytes: 100_000, access: { read: "owner", create: "author", delete: "owner" } }),
-  },
   services: { search: { notes: ["title"] } },
 });

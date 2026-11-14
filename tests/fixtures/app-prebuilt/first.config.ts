@@ -9,4 +9,4 @@ export const notes = collection({
   summary: text().optional(),
 }, { title: "title", url: "/notes/:slug", access: { read: (ctx) => (ctx.user ? true : { status: "published" }), create: "editor", update: "editor", delete: "editor" } });
 
-export default defineConfig({ name: "prebuilt", collections: { notes } });
+export default defineConfig({ name: "prebuilt" });

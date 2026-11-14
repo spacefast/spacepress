@@ -7,7 +7,6 @@ import {
   integer,
   table,
   text,
-  type CollectionHooks,
   type InferSelectModel, select, ref,
 } from "first";
 import { stories } from "./stories";
@@ -50,7 +49,25 @@ export const items = table(
       delete: "editor",
     },
   },
-);
+).on({
+  beforeCreate(data) {
+    data.name = data.name.trim();
+    if (!data.name)
+      throw new HttpError(422, "invalid_input", "Give this item a name.");
+  },
+  beforeUpdate(patch) {
+    if (patch.name !== undefined) {
+      const name = patch.name?.trim();
+      if (!name)
+        throw new HttpError(422, "invalid_input", "Give this item a name.");
+      patch.name = name;
+    }
+  },
+  afterCreate: async (item) => {
+    await syncShopping(item);
+  },
+  afterUpdate: syncShopping,
+});
 
 export const shoppingList = table(
   {
@@ -92,26 +109,6 @@ async function syncShopping(item: Item, previous?: Item) {
     })
     .where({ id: entry.id });
 }
-
-export const itemHooks: CollectionHooks<typeof items> = {
-  beforeCreate(data) {
-    data.name = data.name.trim();
-    if (!data.name)
-      throw new HttpError(422, "invalid_input", "Give this item a name.");
-  },
-  beforeUpdate(patch) {
-    if (patch.name !== undefined) {
-      const name = patch.name?.trim();
-      if (!name)
-        throw new HttpError(422, "invalid_input", "Give this item a name.");
-      patch.name = name;
-    }
-  },
-  afterCreate: async (item) => {
-    await syncShopping(item);
-  },
-  afterUpdate: syncShopping,
-};
 
 async function changeStock(itemId: number, amount: number, consuming: boolean) {
   const item = await db.query.items.findFirst({ where: { id: itemId } });

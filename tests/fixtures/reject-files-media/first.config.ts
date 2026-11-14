@@ -1,3 +1,5 @@
-import { collection, text, email, integer, boolean, richText, slug, group, repeater, json, media, file, files, job, jobs, once, env, global, action, defineConfig, db, table } from "first";
-const notes = table({ x: text().optional() });
-export default defineConfig({ tables: { notes }, files: { media: files({ accept: ["image/*"], maxBytes: 100 }) } });
+import { defineConfig, files, table, text } from "first";
+export const notes = table({ x: text().optional() });
+// `media` is the WordPress media library's name: a bucket can't take it.
+export const media = files({ accept: ["image/*"], maxBytes: 100 });
+export default defineConfig({});

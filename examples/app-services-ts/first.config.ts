@@ -1,6 +1,6 @@
 import { collection, defineConfig, env, text } from "first";
 
-const articles = collection({
+export const articles = collection({
   title: text(),
   excerpt: text().optional(),
 }, {
@@ -12,7 +12,6 @@ const articles = collection({
 
 export default defineConfig({
   name: "services-ts",
-  collections: { articles },
   services: {
     forms: {
       contact: {

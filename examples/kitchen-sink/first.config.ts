@@ -24,6 +24,14 @@ export const pages = collection({
     read: (ctx) => ["editor", "admin"].includes(ctx.user?.role ?? "") ? true : { status: "published" },
     create: "editor", update: "editor", delete: "admin",
   },
+}).on({
+  beforeCreate(data) {
+    data.title = data.title.trim();
+    if (data.title === "") throw new HttpError(422, "invalid_input", "Give this page a title");
+  },
+  async afterCreate(page) {
+    await jobs.recordPage.enqueue({ pageId: page.id }, { key: `page-${page.id}` });
+  },
 });
 
 export const handouts = files({ accept: ["application/pdf"], maxBytes: 5_000_000, access: { read: "authenticated", create: "editor", delete: "admin" } });
@@ -71,51 +79,34 @@ export const settings = global({
   links: repeater({ label: text(), href: url() }).optional(),
 }, { label: "Site settings", access: { read: "anyone", update: "admin" } });
 
+export const recordPage = job({
+  input: { pageId: integer() }, retries: 3,
+  async handler({ pageId }) {
+    await db.insert(activity).values({ pageId, message: "Page created" });
+  },
+});
+
+export const publishPage = action({
+  input: { title: text(), body: text() }, access: "editor",
+  async handler({ title, body }) {
+    const [page] = await db.insert(pages).values({ title, body, status: "published" }).returning();
+    return page;
+  },
+});
+
+export const renameMember = action({
+  input: { id: integer(), name: text() }, access: "admin",
+  async handler({ id, name }) {
+    const [member] = await db.update(members).set({ name }).where({ id }).returning();
+    if (!member) throw new HttpError(404, "not_found", "Member not found");
+    return member;
+  },
+});
+
 export default defineConfig({
   name: "kitchen-sink",
-  collections: { pages, events },
-  tables: { registrations, activity },
-  users: { members },
-  globals: { settings },
   locales: { default: "en", all: ["en", "de"] },
   media: { sizes: { card: { width: 600, height: 400, fit: "cover" }, avatar: { width: 96, height: 96, fit: "cover" } } },
-  files: { handouts },
   plugins: { "classic-editor": "1.6.7" },
   webhooks: [{ url: env("KITCHEN_WEBHOOK_URL"), secret: env("KITCHEN_WEBHOOK_SECRET"), events: ["pages.created", "pages.updated"] }],
-  hooks: {
-    pages: {
-      beforeCreate(data) {
-        data.title = data.title.trim();
-        if (data.title === "") throw new HttpError(422, "invalid_input", "Give this page a title");
-      },
-      async afterCreate(page) {
-        await jobs.recordPage.enqueue({ pageId: page.id }, { key: `page-${page.id}` });
-      },
-    },
-  },
-  jobs: {
-    recordPage: job({
-      input: { pageId: integer() }, retries: 3,
-      async handler({ pageId }) {
-        await db.insert(activity).values({ pageId, message: "Page created" });
-      },
-    }),
-  },
-  actions: {
-    publishPage: action({
-      input: { title: text(), body: text() }, access: "editor",
-      async handler({ title, body }) {
-        const [page] = await db.insert(pages).values({ title, body, status: "published" }).returning();
-        return page;
-      },
-    }),
-    renameMember: action({
-      input: { id: integer(), name: text() }, access: "admin",
-      async handler({ id, name }) {
-        const [member] = await db.update(members).set({ name }).where({ id }).returning();
-        if (!member) throw new HttpError(404, "not_found", "Member not found");
-        return member;
-      },
-    }),
-  },
 });

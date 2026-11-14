@@ -1,14 +1,12 @@
 import { action, defineConfig } from "first";
 
-export default defineConfig({
-  actions: {
-    drop: action({
-      input: {},
-      handler: () => {
-        const items = ["a", "b", "c"];
-        delete items[0];
-        return items;
-      },
-    }),
+export const drop = action({
+  input: {},
+  handler: () => {
+    const items = ["a", "b", "c"];
+    delete items[0];
+    return items;
   },
 });
+
+export default defineConfig({});

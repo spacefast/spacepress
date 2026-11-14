@@ -28,44 +28,36 @@ export const reads = table({
   ownerId,
 }, {
   access: { read: mine, create: "authenticated", update: mine, delete: mine },
+}).on({
+  beforeCreate(data, ctx) {
+    data.ownerId = signedIn(ctx);
+    if (data.minutes <= 0) throw new HttpError(422, "invalid_input", "minutes must be positive");
+  },
+  async afterCreate(row) {
+    await jobs.tally.enqueue({ bookId: row.bookId }, { key: `tally-${row.bookId}` });
+  },
+});
+
+// POST /__first/api/v1/actions/logRead, typed in the generated client.
+export const logRead = action({
+  input: { bookId: integer(), minutes: integer() },
+  access: "authenticated",
+  async handler({ bookId, minutes }, ctx) {
+    const [read] = await db.insert(reads).values({ bookId, minutes, ownerId: signedIn(ctx) }).returning();
+    return read;
+  },
+});
+
+// A job runs after the request, on Action Scheduler: here it totals a book's reading time.
+export const tally = job({
+  input: { bookId: integer() },
+  async handler({ bookId }) {
+    const all = await db.query.reads.findMany({ where: { bookId } });
+    const minutesRead = all.reduce((sum, r) => sum + r.minutes, 0);
+    await db.update(books).set({ minutesRead }).where({ id: bookId });
+  },
 });
 
 export default defineConfig({
   name: "reading-list",
-  collections: { books },
-  tables: { reads },
-  hooks: {
-    // Hooks compile to PHP and run inside the write. Throwing rolls it back.
-    reads: {
-      beforeCreate(data, ctx) {
-        data.ownerId = signedIn(ctx);
-        if (data.minutes <= 0) throw new HttpError(422, "invalid_input", "minutes must be positive");
-      },
-      async afterCreate(row) {
-        await jobs.tally.enqueue({ bookId: row.bookId }, { key: `tally-${row.bookId}` });
-      },
-    },
-  },
-  actions: {
-    // POST /__first/api/v1/actions/logRead, typed in the generated client.
-    logRead: action({
-      input: { bookId: integer(), minutes: integer() },
-      access: "authenticated",
-      async handler({ bookId, minutes }, ctx) {
-        const [read] = await db.insert(reads).values({ bookId, minutes, ownerId: signedIn(ctx) }).returning();
-        return read;
-      },
-    }),
-  },
-  jobs: {
-    // A job runs after the request, on Action Scheduler: here it totals a book's reading time.
-    tally: job({
-      input: { bookId: integer() },
-      async handler({ bookId }) {
-        const all = await db.query.reads.findMany({ where: { bookId } });
-        const minutesRead = all.reduce((sum, r) => sum + r.minutes, 0);
-        await db.update(books).set({ minutesRead }).where({ id: bookId });
-      },
-    }),
-  },
 });

@@ -9,7 +9,6 @@ import {
 } from "first";
 import {
   consume,
-  itemHooks,
   items,
   locations,
   restock,
@@ -34,7 +33,11 @@ export const tasks = table(
       delete: "editor",
     },
   },
-);
+).on({
+  beforeCreate(data) {
+    data.title = data.title.trim();
+  },
+});
 
 class Headline {
   constructor(public text: string) {}
@@ -51,35 +54,21 @@ class Headline {
   }
 }
 
+export const settings = global(
+  {
+    title: text().default("The small things, shipped."),
+    description: text().default("A working publication, built with First.").optional(),
+  },
+  { access: { read: "anyone", update: "editor" } },
+);
+
+export const previewHeadline = action({
+  access: "anyone",
+  input: { title: text().min(1).max(120) },
+  handler: ({ title }) => new Headline(title).preview(),
+});
+
 export default defineConfig({
   name: "showcase",
-  collections: { stories },
-  tables: { tasks, locations, items, shoppingList },
-  globals: {
-    settings: global(
-      {
-        title: text().default("The small things, shipped."),
-        description: text().default("A working publication, built with First.").optional(),
-      },
-      { access: { read: "anyone", update: "editor" } },
-    ),
-  },
   media: { sizes: { card: { width: 960, height: 600, fit: "cover" } } },
-  hooks: {
-    items: itemHooks,
-    tasks: {
-      beforeCreate(data) {
-        data.title = data.title.trim();
-      },
-    },
-  },
-  actions: {
-    consume,
-    restock,
-    previewHeadline: action({
-      access: "anyone",
-      input: { title: text().min(1).max(120) },
-      handler: ({ title }) => new Headline(title).preview(),
-    }),
-  },
 });

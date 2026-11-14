@@ -27,29 +27,22 @@ export const settings = global({
   siteTitle: text().default("Carry").max(80),
 }, { label: "Settings" });
 
+export const stamp = job({
+  input: { id: integer() },
+  handler: async ({ id }) => {
+    await db.update(notes).set({ done: true }).where({ id });
+  },
+});
+
+export const later = action({
+  input: { id: integer() },
+  access: "anyone",
+  async handler({ id }) {
+    await jobs.stamp.enqueue({ id }, { key: `note-${id}` });
+    return { queued: id };
+  },
+});
+
 export default defineConfig({
   name: "carry",
-  tables: { notes },
-  collections: { posts },
-  users: { members },
-  globals: { settings },
-  files: { decks },
-  jobs: {
-    stamp: job({
-      input: { id: integer() },
-      handler: async ({ id }) => {
-        await db.update(notes).set({ done: true }).where({ id });
-      },
-    }),
-  },
-  actions: {
-    later: action({
-      input: { id: integer() },
-      access: "anyone",
-      async handler({ id }) {
-        await jobs.stamp.enqueue({ id }, { key: `note-${id}` });
-        return { queued: id };
-      },
-    }),
-  },
 });

@@ -8,4 +8,4 @@ export const notes = collection({
   access: { read: 'anyone', create: 'editor', update: 'editor', delete: 'editor' },
 });
 
-export default defineConfig({ name: '__ZERO_APP_NAME__', collections: { notes } });
+export default defineConfig({ name: '__ZERO_APP_NAME__' });

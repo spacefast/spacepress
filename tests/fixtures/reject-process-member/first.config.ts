@@ -1,3 +1,5 @@
 import { action, defineConfig } from "first";
-export default defineConfig({ actions: { a: action({ input: {}, access: "anyone",
-  handler() { return process.cwd(); } }) } });
+export const a = action({ input: {}, access: "anyone",
+  handler() { return process.cwd(); } });
+
+export default defineConfig({});

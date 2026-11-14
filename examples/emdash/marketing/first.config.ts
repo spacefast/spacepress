@@ -231,6 +231,4 @@ export const site = global(
 // Keep WordPress's full admin, plugins, settings, media library and SCF options screens.
 export default defineConfig({
   name: "emdash-marketing",
-  collections: { pages },
-  globals: { site },
 });

@@ -26,7 +26,19 @@ export const systems = collection({
 }, { title: "name", label: "Home systems", access: {
   read: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), create: "authenticated",
   update: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), delete: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }),
-} });
+} }).on({
+  beforeCreate(data, ctx) {
+    if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
+    data.ownerId = ctx.user.id;
+    data.name = data.name.trim();
+    data.room = data.room.trim();
+  },
+  beforeUpdate(patch, existing) {
+    patch.ownerId = existing.ownerId;
+    if (patch.name !== undefined) patch.name = patch.name.trim();
+    if (patch.room !== undefined) patch.room = patch.room.trim();
+  },
+});
 
 export const tasks = collection({
   title: text().min(1).max(160),
@@ -40,7 +52,25 @@ export const tasks = collection({
 }, { title: "title", content: "instructions", label: "Maintenance tasks", access: {
   read: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), create: "authenticated",
   update: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), delete: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }),
-} });
+} }).on({
+  async beforeCreate(data, ctx) {
+    if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
+    data.ownerId = ctx.user.id;
+    await requireSystem(data.systemId, data.ownerId);
+    data.title = data.title.trim();
+    data.overdueAt = null;
+  },
+  async beforeUpdate(patch, existing) {
+    patch.ownerId = existing.ownerId;
+    if (patch.systemId !== undefined) await requireSystem(patch.systemId, existing.ownerId);
+    if (patch.title !== undefined) patch.title = patch.title.trim();
+    if (patch.nextDueOn !== undefined && patch.nextDueOn !== existing.nextDueOn) patch.overdueAt = null;
+  },
+  afterCreate: scheduleOverdue,
+  async afterUpdate(row, previous) {
+    if (row.nextDueOn !== previous.nextDueOn) await scheduleOverdue(row);
+  },
+});
 
 export const doneLogs = collection({
   title: text().default("Maintenance completed"),
@@ -54,7 +84,24 @@ export const doneLogs = collection({
 }, { title: "title", label: "Work done", access: {
   read: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), create: "authenticated",
   update: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }), delete: (ctx) => ({ ownerId: ctx.user?.id ?? -1 }),
-} });
+} }).on({
+  async beforeCreate(data, ctx) {
+    if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
+    data.ownerId = ctx.user.id;
+    const task = await requireTask(data.taskId, data.ownerId);
+    data.systemId = task.systemId;
+    data.title = task.title + " on " + data.doneOn;
+  },
+  async beforeUpdate(patch, existing) {
+    patch.ownerId = existing.ownerId;
+    if (patch.taskId !== undefined && patch.taskId !== existing.taskId) {
+      throw new HttpError(422, "invalid_input", "A work log stays with its original task");
+    }
+    patch.systemId = existing.systemId;
+    const task = await requireTask(patch.taskId ?? existing.taskId, existing.ownerId);
+    patch.title = task.title + " on " + (patch.doneOn ?? existing.doneOn);
+  },
+});
 
 const collections = { systems, tasks, doneLogs };
 
@@ -76,128 +123,74 @@ async function scheduleOverdue(task: InferSelectModel<typeof tasks>) {
   });
 }
 
+export const dueNext = action({
+  input: { days: integer().min(0).max(366).default(30) },
+  access: "authenticated",
+  async handler({ days }, ctx) {
+    if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
+    const userId = ctx.user.id;
+    const through = addDays(today(), days);
+    const due = await db.query.tasks.findMany({
+      where: { ownerId: userId, nextDueOn: { lte: through } },
+      orderBy: { nextDueOn: "asc" },
+    });
+    return { through, tasks: due };
+  },
+});
+
+export const markDone = action({
+  input: {
+    taskId: integer(), notes: text().max(10000).optional(),
+    costCents: integer().min(0).max(100000000).optional(),
+  },
+  access: "authenticated",
+  idempotent: true,
+  async handler({ taskId, notes, costCents }, ctx) {
+    if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
+    const userId = ctx.user.id;
+    const task = await requireTask(taskId, userId);
+    const doneOn = today();
+    const [log] = await db.insert(doneLogs).values({
+      taskId, ownerId: userId, systemId: task.systemId,
+      doneOn, notes: notes ?? "", costCents: costCents ?? 0,
+    }).returning();
+    const [updated] = await db.update(tasks).set({
+      lastDoneOn: doneOn, nextDueOn: addDays(doneOn, task.everyDays), overdueAt: null,
+    }).where({ id: taskId, ownerId: userId }).returning();
+    return { log, task: updated };
+  },
+});
+
+export const yearCost = action({
+  input: { year: integer().min(1900).max(9998) },
+  access: "authenticated",
+  async handler({ year }, ctx) {
+    if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
+    const userId = ctx.user.id;
+    const homeSystems = await db.query.systems.findMany({ where: { ownerId: userId }, orderBy: { name: "asc" } });
+    const logs = await db.query.doneLogs.findMany({
+      where: { ownerId: userId, doneOn: { gte: `${year}-01-01`, lt: `${year + 1}-01-01` } },
+    });
+    const spend = homeSystems.map((system) => {
+      const costs = logs.filter((log) => log.systemId === system.id);
+      return { systemId: system.id, name: system.name, costCents: costs.reduce((sum, log) => sum + log.costCents, 0) };
+    });
+    return { year, systems: spend, totalCents: spend.reduce((sum, system) => sum + system.costCents, 0) };
+  },
+});
+
+export const flagOverdue = job({
+  input: { taskId: integer(), ownerId: integer(), dueOn: date() },
+  retries: 3,
+  async handler({ taskId, ownerId: userId, dueOn }) {
+    const task = await db.query.tasks.findFirst({ where: { id: taskId, ownerId: userId } });
+    if (!task) return;
+    if (task.nextDueOn !== dueOn || task.nextDueOn >= today() || task.overdueAt !== null) return;
+    await db.update(tasks).set({ overdueAt: new Date().toISOString() })
+      .where({ id: taskId, ownerId: userId, nextDueOn: dueOn, overdueAt: { isNull: true } });
+  },
+});
+
 export default defineConfig({
   name: "home-maintenance",
-  collections,
-  files: { manuals },
-  hooks: {
-    systems: {
-      beforeCreate(data, ctx) {
-        if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
-        data.ownerId = ctx.user.id;
-        data.name = data.name.trim();
-        data.room = data.room.trim();
-      },
-      beforeUpdate(patch, existing) {
-        patch.ownerId = existing.ownerId;
-        if (patch.name !== undefined) patch.name = patch.name.trim();
-        if (patch.room !== undefined) patch.room = patch.room.trim();
-      },
-    },
-    tasks: {
-      async beforeCreate(data, ctx) {
-        if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
-        data.ownerId = ctx.user.id;
-        await requireSystem(data.systemId, data.ownerId);
-        data.title = data.title.trim();
-        data.overdueAt = null;
-      },
-      async beforeUpdate(patch, existing) {
-        patch.ownerId = existing.ownerId;
-        if (patch.systemId !== undefined) await requireSystem(patch.systemId, existing.ownerId);
-        if (patch.title !== undefined) patch.title = patch.title.trim();
-        if (patch.nextDueOn !== undefined && patch.nextDueOn !== existing.nextDueOn) patch.overdueAt = null;
-      },
-      afterCreate: scheduleOverdue,
-      async afterUpdate(row, previous) {
-        if (row.nextDueOn !== previous.nextDueOn) await scheduleOverdue(row);
-      },
-    },
-    doneLogs: {
-      async beforeCreate(data, ctx) {
-        if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
-        data.ownerId = ctx.user.id;
-        const task = await requireTask(data.taskId, data.ownerId);
-        data.systemId = task.systemId;
-        data.title = task.title + " on " + data.doneOn;
-      },
-      async beforeUpdate(patch, existing) {
-        patch.ownerId = existing.ownerId;
-        if (patch.taskId !== undefined && patch.taskId !== existing.taskId) {
-          throw new HttpError(422, "invalid_input", "A work log stays with its original task");
-        }
-        patch.systemId = existing.systemId;
-        const task = await requireTask(patch.taskId ?? existing.taskId, existing.ownerId);
-        patch.title = task.title + " on " + (patch.doneOn ?? existing.doneOn);
-      },
-    },
-  },
-  actions: {
-    dueNext: action({
-      input: { days: integer().min(0).max(366).default(30) },
-      access: "authenticated",
-      async handler({ days }, ctx) {
-        if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
-        const userId = ctx.user.id;
-        const through = addDays(today(), days);
-        const due = await db.query.tasks.findMany({
-          where: { ownerId: userId, nextDueOn: { lte: through } },
-          orderBy: { nextDueOn: "asc" },
-        });
-        return { through, tasks: due };
-      },
-    }),
-    markDone: action({
-      input: {
-        taskId: integer(), notes: text().max(10000).optional(),
-        costCents: integer().min(0).max(100000000).optional(),
-      },
-      access: "authenticated",
-      idempotent: true,
-      async handler({ taskId, notes, costCents }, ctx) {
-        if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
-        const userId = ctx.user.id;
-        const task = await requireTask(taskId, userId);
-        const doneOn = today();
-        const [log] = await db.insert(doneLogs).values({
-          taskId, ownerId: userId, systemId: task.systemId,
-          doneOn, notes: notes ?? "", costCents: costCents ?? 0,
-        }).returning();
-        const [updated] = await db.update(tasks).set({
-          lastDoneOn: doneOn, nextDueOn: addDays(doneOn, task.everyDays), overdueAt: null,
-        }).where({ id: taskId, ownerId: userId }).returning();
-        return { log, task: updated };
-      },
-    }),
-    yearCost: action({
-      input: { year: integer().min(1900).max(9998) },
-      access: "authenticated",
-      async handler({ year }, ctx) {
-        if (!ctx.user) throw new HttpError(401, "unauthenticated", "Sign in to maintain your home");
-        const userId = ctx.user.id;
-        const homeSystems = await db.query.systems.findMany({ where: { ownerId: userId }, orderBy: { name: "asc" } });
-        const logs = await db.query.doneLogs.findMany({
-          where: { ownerId: userId, doneOn: { gte: `${year}-01-01`, lt: `${year + 1}-01-01` } },
-        });
-        const spend = homeSystems.map((system) => {
-          const costs = logs.filter((log) => log.systemId === system.id);
-          return { systemId: system.id, name: system.name, costCents: costs.reduce((sum, log) => sum + log.costCents, 0) };
-        });
-        return { year, systems: spend, totalCents: spend.reduce((sum, system) => sum + system.costCents, 0) };
-      },
-    }),
-  },
-  jobs: {
-    flagOverdue: job({
-      input: { taskId: integer(), ownerId: integer(), dueOn: date() },
-      retries: 3,
-      async handler({ taskId, ownerId: userId, dueOn }) {
-        const task = await db.query.tasks.findFirst({ where: { id: taskId, ownerId: userId } });
-        if (!task) return;
-        if (task.nextDueOn !== dueOn || task.nextDueOn >= today() || task.overdueAt !== null) return;
-        await db.update(tasks).set({ overdueAt: new Date().toISOString() })
-          .where({ id: taskId, ownerId: userId, nextDueOn: dueOn, overdueAt: { isNull: true } });
-      },
-    }),
-  },
 });

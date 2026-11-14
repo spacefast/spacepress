@@ -58,6 +58,24 @@ export const posts = collection({
     update: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor" ? true : { authorId: { userId: ctx.user?.id ?? -1 } },
     delete: "editor",
   },
+}).on({
+  // Each time a post becomes published (through the API or the editor) readers hear about it;
+  // the job key collapses repeats still waiting on the queue. Scheduled posts that the clock
+  // publishes run no hooks (both targets), so they announce nothing.
+  async afterCreate(row) {
+    if (row.status === "published") await jobs.notifyReaders.enqueue({ postId: row.id }, { key: `publish-${row.id}` });
+  },
+  async afterUpdate(row, previous) {
+    if (row.status === "published" && previous.status !== "published") {
+      await jobs.notifyReaders.enqueue({ postId: row.id }, { key: `publish-${row.id}` });
+    }
+  },
+  async beforeCreate(data, ctx) {
+    if (data.authorId == null && ctx.user) {
+      const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
+      if (author) data.authorId = author.id;
+    }
+  },
 });
 
 export const comments = table({
@@ -68,6 +86,18 @@ export const comments = table({
   createdAt: timestamp().defaultNow(),
 }, {
   access: { read: (ctx) => STAFF.includes(ctx.user?.role ?? "") ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
+}).on({
+  // Editors can close comments site-wide; readers can't approve their own; staff skip the queue.
+  async beforeCreate(data, ctx) {
+    const site = await db.globals.settings.get();
+    if (!site.commentsOpen) throw new HttpError(403, "comments_closed", "Comments are closed on this site");
+    if (!STAFF.includes(ctx.user?.role ?? "")) data.approved = false;
+  },
+  async afterCreate(row, ctx) {
+    if (STAFF.includes(ctx.user?.role ?? "")) {
+      await db.update(comments).set({ approved: true }).where({ id: row.id });
+    }
+  },
 });
 
 // Newsletter sign-ups are acknowledged by subscribeNewsletter and processed privately on the queue.
@@ -76,7 +106,10 @@ export const subscribers = table({
   email: email().unique().max(191),
   postId: ref(posts).optional(),
   createdAt: timestamp().defaultNow(),
-}, { access: { create: "admin", read: "admin", update: "admin", delete: "admin" } });
+}, { access: { create: "admin", read: "admin", update: "admin", delete: "admin" } }).on({
+  beforeCreate(data) { data.email = data.email.toLowerCase(); },
+  beforeUpdate(data) { const email = data.email; if (email != null) data.email = email.toLowerCase(); },
+});
 
 // Staff see announcement receipts; exact counts stay with the subscriber administrators.
 export const announcements = table({
@@ -104,116 +137,76 @@ export const settings = global({
   social: repeater({ label: text().max(40), href: url() }).optional(),
 }, { label: "Site settings" });
 
+export const subscribeReader = job({
+  input: { email: email().max(191), postId: integer().optional() },
+  agents: false,
+  async handler({ email, postId }) {
+    if (await db.query.subscribers.findFirst({ where: { email } })) return;
+    const post = postId == null ? null : await db.query.posts.findFirst({ where: { id: postId, status: "published" }, locale: "*" });
+    await db.insert(subscribers).values({ email, postId: post?.id ?? null });
+  },
+});
+
+// Runs after the publishing request commits, on the queue (Action Scheduler on WordPress).
+export const notifyReaders = job({
+  input: { postId: integer() },
+  retries: 3,
+  handler: async ({ postId }, ctx) => {
+    const readers = await db.query.subscribers.findMany({ columns: { id: true } });
+    await db.insert(announcements).values({ postId, recipients: readers.length, attempt: ctx.attempt });
+  },
+});
+
+export const subscribeNewsletter = action({
+  input: { email: email().max(191), postId: integer().optional() },
+  access: "anyone",
+  async handler({ email, postId }) {
+    const normalized = email.toLowerCase();
+    await jobs.subscribeReader.enqueue({ email: normalized, postId }, { key: normalized });
+    return { accepted: true };
+  },
+});
+
+// Editors may remove posts and detach private subscriptions; no subscription data is returned.
+export const removePost = action({
+  input: { id: integer() },
+  access: "editor",
+  async handler({ id }) {
+    const [gone] = await db.delete(posts).where({ id }).returning();
+    if (!gone) throw new HttpError(404, "not_found", `No post ${id}`);
+    return { id: gone.id };
+  },
+});
+
+export const moderateComment = action({
+  input: { id: integer(), decision: select(["approve", "reject"]) },
+  access: "editor",
+  async handler({ id, decision }) {
+    if (decision === "reject") {
+      const [gone] = await db.delete(comments).where({ id }).returning();
+      if (!gone) throw new HttpError(404, "not_found", `No comment ${id}`);
+      return { id, approved: false, removed: true };
+    }
+    const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
+    if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
+    return { id, approved: true, removed: false };
+  },
+});
+
+export const frontPage = action({
+  input: {},
+  access: "anyone",
+  async handler() {
+    const featured = await db.query.posts.findMany({ where: { status: "published", featured: true }, columns: { id: true } });
+    return { featured: featured.map((p) => p.id) };
+  },
+});
+
 export default defineConfig({
   name: "site",
-  collections, tables, users,
-  globals: { settings },
   locales: { default: "en", all: ["en", "de"] },
   // A square `card` crop of every image for listings, centred on the image's focal point.
   media: { sizes: { card: { width: 120, height: 120, fit: "cover" } } },
-  // Private: never a public URL; signed 5-minute download links for whoever may read them.
-  files: { manuscripts },
   // Every new comment is POSTed, signed, to the moderation tool at SITE_HOOK_URL (retried on failure).
   webhooks: [{ url: env("SITE_HOOK_URL"), secret: env("SITE_HOOK_SECRET"), events: ["comments.created"] }],
-  jobs: {
-    subscribeReader: job({
-      input: { email: email().max(191), postId: integer().optional() },
-      agents: false,
-      async handler({ email, postId }) {
-        if (await db.query.subscribers.findFirst({ where: { email } })) return;
-        const post = postId == null ? null : await db.query.posts.findFirst({ where: { id: postId, status: "published" }, locale: "*" });
-        await db.insert(subscribers).values({ email, postId: post?.id ?? null });
-      },
-    }),
-    // Runs after the publishing request commits, on the queue (Action Scheduler on WordPress).
-    notifyReaders: job({
-      input: { postId: integer() },
-      retries: 3,
-      handler: async ({ postId }, ctx) => {
-        const readers = await db.query.subscribers.findMany({ columns: { id: true } });
-        await db.insert(announcements).values({ postId, recipients: readers.length, attempt: ctx.attempt });
-      },
-    }),
-  },
-  hooks: {
-    subscribers: {
-      beforeCreate(data) { data.email = data.email.toLowerCase(); },
-      beforeUpdate(data) { const email = data.email; if (email != null) data.email = email.toLowerCase(); },
-    },
-    posts: {
-      // Each time a post becomes published (through the API or the editor) readers hear about it;
-      // the job key collapses repeats still waiting on the queue. Scheduled posts that the clock
-      // publishes run no hooks (both targets), so they announce nothing.
-      async afterCreate(row) {
-        if (row.status === "published") await jobs.notifyReaders.enqueue({ postId: row.id }, { key: `publish-${row.id}` });
-      },
-      async afterUpdate(row, previous) {
-        if (row.status === "published" && previous.status !== "published") {
-          await jobs.notifyReaders.enqueue({ postId: row.id }, { key: `publish-${row.id}` });
-        }
-      },
-      async beforeCreate(data, ctx) {
-        if (data.authorId == null && ctx.user) {
-          const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
-          if (author) data.authorId = author.id;
-        }
-      },
-    },
-    comments: {
-      // Editors can close comments site-wide; readers can't approve their own; staff skip the queue.
-      async beforeCreate(data, ctx) {
-        const site = await db.globals.settings.get();
-        if (!site.commentsOpen) throw new HttpError(403, "comments_closed", "Comments are closed on this site");
-        if (!STAFF.includes(ctx.user?.role ?? "")) data.approved = false;
-      },
-      async afterCreate(row, ctx) {
-        if (STAFF.includes(ctx.user?.role ?? "")) {
-          await db.update(comments).set({ approved: true }).where({ id: row.id });
-        }
-      },
-    },
-  },
-  actions: {
-    subscribeNewsletter: action({
-      input: { email: email().max(191), postId: integer().optional() },
-      access: "anyone",
-      async handler({ email, postId }) {
-        const normalized = email.toLowerCase();
-        await jobs.subscribeReader.enqueue({ email: normalized, postId }, { key: normalized });
-        return { accepted: true };
-      },
-    }),
-    // Editors may remove posts and detach private subscriptions; no subscription data is returned.
-    removePost: action({
-      input: { id: integer() },
-      access: "editor",
-      async handler({ id }) {
-        const [gone] = await db.delete(posts).where({ id }).returning();
-        if (!gone) throw new HttpError(404, "not_found", `No post ${id}`);
-        return { id: gone.id };
-      },
-    }),
-    moderateComment: action({
-      input: { id: integer(), decision: select(["approve", "reject"]) },
-      access: "editor",
-      async handler({ id, decision }) {
-        if (decision === "reject") {
-          const [gone] = await db.delete(comments).where({ id }).returning();
-          if (!gone) throw new HttpError(404, "not_found", `No comment ${id}`);
-          return { id, approved: false, removed: true };
-        }
-        const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
-        if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
-        return { id, approved: true, removed: false };
-      },
-    }),
-    frontPage: action({
-      input: {},
-      access: "anyone",
-      async handler() {
-        const featured = await db.query.posts.findMany({ where: { status: "published", featured: true }, columns: { id: true } });
-        return { featured: featured.map((p) => p.id) };
-      },
-    }),
-  },
 });

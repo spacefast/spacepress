@@ -34,7 +34,5 @@ export const cheers = table({
 
 export default defineConfig({
   name: "fullsite",
-  collections: { notes },
-  tables: { cheers },
   admin: false,
 });

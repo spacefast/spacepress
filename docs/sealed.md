@@ -19,6 +19,14 @@ With `sealed: true`, the only code that runs as a plugin is:
 | the plugins the config declares under `plugins` | exact versions, with checksums in the committed `first/_generated/wp-plugins.lock.json` |
 | plugin packages under `use` (`definePlugin`) | compiled into the app plugin; see [below](#plugin-packages) |
 
+Two plugins are never on the list, declared or not: `vip-block-data-api` and
+`vip-decoupled-bundle`. The Block Data API answers a post's stored content
+after an item-level check only, which shows a rich text field that one of the
+app's field rules hides, and the decoupled bundle ships that API. `first build`
+refuses a sealed config that declares either, the site refuses to activate
+either, and a host that enforces the list never loads either, even if a list
+written some other way names them.
+
 Sealed mode is off by default. With it off, activating other plugins stays
 open, as WordPress ships it, and nothing below applies: no hook is added and no
 build output changes.
@@ -71,9 +79,10 @@ First is an active plugin there. While it is active, sealed mode:
   anything, so this is what keeps an administrator from switching the list off
   in the browser. Declared plugins can be deactivated and reactivated freely.
 - **reports** what is loaded, to administrators:
-  - `plugins` and `networkPlugins`: active plugins that aren't on the list. A
-    plugin that was active before sealed mode turned on appears here and keeps
-    running; First never deactivates or deletes anything.
+  - `plugins` and `networkPlugins`: active plugins that aren't on the list
+    (one of the two never-listed plugins included). A plugin that was active
+    before sealed mode turned on appears here and keeps running; First never
+    deactivates or deletes anything.
   - `muPlugins`, `dropins`, `theme`: every must-use plugin, every drop-in
     present, and the active theme's PHP (see below). No config can list these,
     and a host's own are among them, so they are shown, not judged.

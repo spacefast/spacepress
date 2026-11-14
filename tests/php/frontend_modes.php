@@ -234,5 +234,12 @@ $everyone = array_map($strip, $locs(fetch("$url/wp-sitemap-users-1.xml")['body']
 sort($everyone);
 $out['authors']['public sitemap'] = $everyone;
 file_put_contents($schemaFile, $schemaPhp);
+// wp-admin and sign-in in a browser, in this mode (FIRST_TEST_BROWSER=1; the Rust test sets it
+// when the browser test's packages are installed).
+if (getenv('FIRST_TEST_BROWSER') === '1') {
+    $script = dirname(__DIR__) . '/differential/client/admin-login.mjs';
+    $browser = shell_exec('node ' . escapeshellarg($script) . ' ' . escapeshellarg($url) . ' 2>&1');
+    $out['admin'] = json_decode((string) $browser, true) ?? ['raw' => $browser];
+}
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

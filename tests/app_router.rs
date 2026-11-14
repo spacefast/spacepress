@@ -1095,11 +1095,18 @@ fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value 
         .unwrap();
     }
     build(&project);
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/frontend_modes.php"))
         .arg(project.join("first/dist/wp-content"))
         .env("FIRST_WP_THEMES", "1")
+        .env("FIRST_TEST_BROWSER", "1")
         .output()
         .unwrap();
     assert!(
@@ -1121,6 +1128,27 @@ fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value 
 #[test]
 fn frontend_modes_on_wordpress() {
     let theme = modes("theme", None, false);
+    let app = modes("app", None, true);
+    let off = modes("off", Some("false"), false);
+    let external = modes("external", Some(r#""https://front.example""#), false);
+    // In every mode wp-admin and sign-in work in a browser (spec §5): signed out, wp-admin is the
+    // login screen; signing in lands on the dashboard as wp-admin renders it; a list screen and
+    // wp-admin's REST nonce work; signing out ends the session.
+    for (mode, seen) in [("theme", &theme), ("app", &app), ("off", &off), ("external", &external)] {
+        assert_eq!(
+            seen["admin"],
+            serde_json::json!({
+                "errors": [],
+                "signedOut": { "at": "/wp-login.php", "redirectTo": true },
+                "loginForm": 1,
+                "signedIn": { "at": "/wp-admin/", "adminBar": 1, "menu": 1, "dashboard": 1 },
+                "pages": { "title": "Pages", "table": 1 },
+                "rest": { "status": 200, "role": "administrator" },
+                "signedOutAgain": "/wp-login.php",
+            }),
+            "{mode}"
+        );
+    }
     // With no first/app/, WordPress renders the whole site with its block theme: the home page,
     // core posts, kind URLs and its own 404 template. The app router adds nothing to any of them.
     let by_theme = |status: u64| serde_json::json!({ "status": status, "theme": true, "router": false });
@@ -1165,7 +1193,6 @@ fn frontend_modes_on_wordpress() {
     assert_eq!(theme["about"][0], 404);
     assert_eq!(theme["home"], 200);
 
-    let app = modes("app", None, true);
     // With first/app/, its page renders the note through the router; a kind URL without a page and
     // a core post keep the theme.
     assert_eq!(app["note rendered"]["router"], true, "{app}");
@@ -1192,13 +1219,11 @@ fn frontend_modes_on_wordpress() {
     // WordPress's own post URLs keep working.
     assert_eq!(app["post"], serde_json::json!([301, "/hello-world/"]));
 
-    let off = modes("off", Some("false"), false);
     for key in ["note status", "journal", "home", "draft"] {
         assert_eq!(off[key], 404, "{key}: {off}");
     }
     assert_eq!(off["permalink"], "/notes/hello-note/");
 
-    let external = modes("external", Some(r#""https://front.example""#), false);
     assert_eq!(
         external["permalink"], "https://front.example/notes/hello-note/",
         "{external}"

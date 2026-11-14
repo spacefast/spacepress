@@ -1088,6 +1088,14 @@ A .tsx file under first/components/ that starts with "use client" (after comment
 
 [Evidence](../tests/app_router.rs) (`client_components_compile_to_interactivity_stores`)
 
+## jsx-comments
+
+Status: **supported**.
+
+`<Comments for={item} />` from "first/app" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props.
+
+[Evidence](../tests/app_router.rs) (`comments_follow_the_kind_policy_on_every_path`)
+
 ## jsx-form-action
 
 Status: **supported**.

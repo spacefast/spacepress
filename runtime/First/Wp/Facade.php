@@ -204,6 +204,16 @@ final class Facade
                 return self::json(201, ['data' => Kinds::row($kind, self::upload($base))]);
             }
             self::gate($kind, $method === 'POST' ? 'create' : 'list');
+            if ($method === 'POST' && $kind['type'] === 'comments' && \First\Render\Forms::posted()) {
+                // `<Comments>`'s form without JavaScript: the same create, then 303 back to the page.
+                return self::formSubmit($body, 'comments', static function () use ($kind, $base, $body): mixed {
+                    $fields = ['on' => ['type' => 'integer'], 'parent' => ['type' => 'integer'], 'content' => ['type' => 'text']];
+                    $input = self::body(\First\Render\Forms::decode($fields, $body));
+                    $row = Kinds::row($kind, self::dispatch('POST', $base, self::context($kind), Kinds::input($kind, $input, create: true), 201));
+
+                    return ['id' => $row['id'] ?? null, 'status' => $row['status'] ?? null];
+                });
+            }
             if ($method === 'POST') {
                 $row = self::dispatch('POST', $base, self::context($kind), Kinds::input($kind, self::body($body), create: true), 201);
 
@@ -368,30 +378,48 @@ final class Facade
      */
     private static function form(Plugin $plugin, array $action, string $name, string $body): array
     {
+        return self::formSubmit($body, $name, static function () use ($plugin, $action, $name, $body): mixed {
+            $input = \First\Render\Forms::decode((array) ($action['input'] ?? []), $body);
+            self::$passed = [];
+
+            return self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'");
+        });
+    }
+
+    /**
+     * A browser's form post: refused from another site's page, else $run, and either way `303` back
+     * to the page with the result or the problem in the flash `$flash` reads.
+     *
+     * @return array{int, array<string, string>, string}
+     */
+    private static function formSubmit(string $body, string $flash, \Closure $run): array
+    {
         try {
             $origin = $_SERVER['HTTP_ORIGIN'] ?? null;
             $site = wp_parse_url(home_url('/'));
             if (is_string($origin) && $origin !== 'null'
                 && strtolower($origin) !== strtolower(($site['scheme'] ?? 'https') . '://' . ($site['host'] ?? '') . (isset($site['port']) ? ':' . $site['port'] : ''))) {
-                throw new HttpError(403, 'forbidden', 'A form posts to an action only from this site\'s own pages');
+                throw new HttpError(403, 'forbidden', 'A form posts here only from this site\'s own pages');
             }
-            $input = \First\Render\Forms::decode((array) ($action['input'] ?? []), $body);
-            self::$passed = [];
-            $data = self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'");
 
-            return \First\Render\Forms::redirect($name, $body, $data, null);
+            return \First\Render\Forms::redirect($flash, $body, $run(), null);
         } catch (HttpError | \First\JsError $e) {
-            return \First\Render\Forms::redirect($name, $body, null, \First\App::problem($e));
+            return \First\Render\Forms::redirect($flash, $body, null, \First\App::problem($e));
         }
     }
 
-    /** The action a browser's form post to `$path` names, if this request is one. */
+    /** What a browser's form post to `$path` flashes under (an action's name, or `comments`), if this request is one. */
     private static function formAction(string $method, string $path): ?string
     {
         $segments = array_values(array_filter(explode('/', $path), static fn ($s) => $s !== ''));
+        if ($method !== 'POST' || !\First\Render\Forms::posted()) {
+            return null;
+        }
+        if (count($segments) === 1 && $segments[0] === 'comments') {
+            return 'comments';
+        }
 
-        return $method === 'POST' && count($segments) === 2 && $segments[0] === 'actions' && \First\Render\Forms::posted()
-            ? rawurldecode($segments[1]) : null;
+        return count($segments) === 2 && $segments[0] === 'actions' ? rawurldecode($segments[1]) : null;
     }
 
     /** `GET`/`PATCH /<global>` (spec §3a): the global's read and update Abilities through the run route. */

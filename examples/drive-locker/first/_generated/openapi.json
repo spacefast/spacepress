@@ -14,8 +14,8 @@
     { "bearer": [] }
   ],
   "tags": [
-    { "name": "Drives", "description": "A table of the app's own." },
     { "name": "Places", "description": "A table of the app's own." },
+    { "name": "Drives", "description": "A table of the app's own." },
     { "name": "Health Readings", "description": "A table of the app's own." },
     { "name": "Contents", "description": "A table of the app's own." },
     {
@@ -37,278 +37,6 @@
     { "name": "Schema", "description": "The app described to its clients." }
   ],
   "paths": {
-    "/drives": {
-      "get": {
-        "tags": ["Drives"],
-        "operationId": "drives.list",
-        "summary": "List drives",
-        "x-first-access": "rule",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "The drives rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
-        "parameters": [
-          {
-            "name": "where",
-            "in": "query",
-            "description": "A filter, as JSON: a value or operators per field, with `AND`, `OR` and `NOT`. A filter on a field the caller may not read is refused.",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/DriveFilter" }
-              }
-            }
-          },
-          {
-            "name": "orderBy",
-            "in": "query",
-            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `ownerId`, `label`, `model`, `serial`, `serialKey`, `kind`, `capacityGb`, `interface`, `purchasedOn`, `warrantyUntil`, `placeId`, `status`, `notes`, `tags`, `replacementNeededAt`.",
-            "schema": { "type": "string" }
-          },
-          { "$ref": "#/components/parameters/limit" },
-          { "$ref": "#/components/parameters/offset" },
-          { "$ref": "#/components/parameters/cursor" },
-          {
-            "name": "search",
-            "in": "query",
-            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
-            "schema": { "type": "string", "maxLength": 200 }
-          },
-          {
-            "name": "with",
-            "in": "query",
-            "description": "What to load with each row, comma-separated or as a JSON object: `placeId`, `healthReadings`, `contents`. A relation holds only rows the caller may read.",
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "One page of rows.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": { "$ref": "#/components/schemas/Drive" }
-                    },
-                    "cursor": { "type": ["string", "null"] }
-                  },
-                  "required": ["data", "cursor"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      },
-      "post": {
-        "tags": ["Drives"],
-        "operationId": "drives.create",
-        "summary": "Create in drives",
-        "x-first-access": "rule",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "Creates one drives row and returns it.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
-            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "description": "The new row's fields.",
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/DriveInsert" }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "The new row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Drive" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
-    "/drives/{id}": {
-      "get": {
-        "tags": ["Drives"],
-        "operationId": "drives.get",
-        "summary": "Get one of drives",
-        "x-first-access": "rule",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "One drives row.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          },
-          {
-            "name": "with",
-            "in": "query",
-            "description": "What to load with each row, comma-separated or as a JSON object: `placeId`, `healthReadings`, `contents`. A relation holds only rows the caller may read.",
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Drive" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      },
-      "patch": {
-        "tags": ["Drives"],
-        "operationId": "drives.update",
-        "summary": "Update in drives",
-        "x-first-access": "rule",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "Changes the fields sent on one drives row and returns the row.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "description": "The fields to change.",
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/DrivePatch" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The row after the change.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Drive" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      },
-      "delete": {
-        "tags": ["Drives"],
-        "operationId": "drives.delete",
-        "summary": "Delete from drives",
-        "x-first-access": "rule",
-        "security": [
-          {},
-          { "cookie": [], "nonce": [] },
-          { "applicationPassword": [] },
-          { "bearer": [] }
-        ],
-        "description": "Deletes one drives row for good and returns the row as it was.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "The row's id.",
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The deleted row.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": { "$ref": "#/components/schemas/Drive" }
-                  },
-                  "required": ["data"]
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "404": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "default": { "$ref": "#/components/responses/Problem" }
-        }
-      }
-    },
     "/places": {
       "get": {
         "tags": ["Places"],
@@ -567,6 +295,278 @@
                   "type": "object",
                   "properties": {
                     "data": { "$ref": "#/components/schemas/Place" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/drives": {
+      "get": {
+        "tags": ["Drives"],
+        "operationId": "drives.list",
+        "summary": "List drives",
+        "x-first-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "The drives rows the caller may read, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "where",
+            "in": "query",
+            "description": "A filter, as JSON: a value or operators per field, with `AND`, `OR` and `NOT`. A filter on a field the caller may not read is refused.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DriveFilter" }
+              }
+            }
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "description": "Fields to sort by, comma-separated; `-` before a field sorts it descending (`-createdAt,title`). Fields: `id`, `ownerId`, `label`, `model`, `serial`, `serialKey`, `kind`, `capacityGb`, `interface`, `purchasedOn`, `warrantyUntil`, `placeId`, `status`, `notes`, `tags`, `replacementNeededAt`.",
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Words to find, each at the start of a word, in the title, the content and every text field the caller may read. Only rows the caller may read are found, in the list's own order.",
+            "schema": { "type": "string", "maxLength": 200 }
+          },
+          {
+            "name": "with",
+            "in": "query",
+            "description": "What to load with each row, comma-separated or as a JSON object: `placeId`, `healthReadings`, `contents`. A relation holds only rows the caller may read.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Drive" }
+                    },
+                    "cursor": { "type": ["string", "null"] }
+                  },
+                  "required": ["data", "cursor"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "tags": ["Drives"],
+        "operationId": "drives.create",
+        "summary": "Create in drives",
+        "x-first-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Creates one drives row and returns it.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "A key of 1 to 64 characters. A repeat of the request with the same key and body answers with the first result instead of running again; the same key with another body is refused.",
+            "schema": { "type": "string", "minLength": 1, "maxLength": 64 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The new row's fields.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DriveInsert" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Drive" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/drives/{id}": {
+      "get": {
+        "tags": ["Drives"],
+        "operationId": "drives.get",
+        "summary": "Get one of drives",
+        "x-first-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "One drives row.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "with",
+            "in": "query",
+            "description": "What to load with each row, comma-separated or as a JSON object: `placeId`, `healthReadings`, `contents`. A relation holds only rows the caller may read.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Drive" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "patch": {
+        "tags": ["Drives"],
+        "operationId": "drives.update",
+        "summary": "Update in drives",
+        "x-first-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Changes the fields sent on one drives row and returns the row.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The fields to change.",
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DrivePatch" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The row after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Drive" }
+                  },
+                  "required": ["data"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "422": { "$ref": "#/components/responses/Problem" },
+          "default": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "delete": {
+        "tags": ["Drives"],
+        "operationId": "drives.delete",
+        "summary": "Delete from drives",
+        "x-first-access": "rule",
+        "security": [
+          {},
+          { "cookie": [], "nonce": [] },
+          { "applicationPassword": [] },
+          { "bearer": [] }
+        ],
+        "description": "Deletes one drives row for good and returns the row as it was.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The row's id.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The deleted row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/Drive" }
                   },
                   "required": ["data"]
                 }
@@ -3803,7 +3803,7 @@
                       "properties": {
                         "kind": {
                           "type": "string",
-                          "enum": ["drives", "places", "healthReadings", "contents", "members"],
+                          "enum": ["places", "drives", "healthReadings", "contents", "members"],
                           "description": "The kind, by the name the typed client uses."
                         },
                         "op": { "type": "string", "enum": ["list", "paginate", "get", "count"] },
@@ -3899,7 +3899,7 @@
           {
             "name": "kinds",
             "in": "query",
-            "description": "Only these kinds, comma-separated: `drives`, `places`, `contents`, `members`.",
+            "description": "Only these kinds, comma-separated: `places`, `drives`, `contents`, `members`.",
             "schema": { "type": "string" }
           },
           {
@@ -3926,13 +3926,13 @@
                           "items": {
                             "type": "object",
                             "properties": {
-                              "kind": { "type": "string", "enum": ["drives", "places", "contents", "members"] },
+                              "kind": { "type": "string", "enum": ["places", "drives", "contents", "members"] },
                               "rows": {
                                 "type": "array",
                                 "items": {
                                   "anyOf": [
-                                    { "$ref": "#/components/schemas/Drive" },
                                     { "$ref": "#/components/schemas/Place" },
+                                    { "$ref": "#/components/schemas/Drive" },
                                     { "$ref": "#/components/schemas/Content" },
                                     { "$ref": "#/components/schemas/Member" }
                                   ]
@@ -4107,6 +4107,123 @@
         },
         "required": ["id", "url", "mime"]
       },
+      "Place": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "ownerId": {
+            "type": "integer",
+            "x-first-access": { "create": false, "update": false }
+          },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "kind": { "type": "string", "enum": ["nas-bay", "desktop", "laptop", "drawer", "offsite"] },
+          "drives": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Drive" },
+            "description": "Present when the request asks for it with `with`."
+          }
+        }
+      },
+      "PlaceInsert": {
+        "type": "object",
+        "properties": {
+          "ownerId": { "type": "integer" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "kind": { "type": "string", "enum": ["nas-bay", "desktop", "laptop", "drawer", "offsite"] }
+        },
+        "required": ["name", "kind"]
+      },
+      "PlacePatch": {
+        "type": "object",
+        "properties": {
+          "ownerId": { "type": "integer" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "kind": { "type": "string", "enum": ["nas-bay", "desktop", "laptop", "drawer", "offsite"] }
+        }
+      },
+      "IntegerFilter": {
+        "type": ["integer", "object", "null"],
+        "properties": {
+          "eq": { "type": ["integer", "null"] },
+          "ne": { "type": ["integer", "null"] },
+          "isNull": { "type": "boolean" },
+          "isNotNull": { "type": "boolean" },
+          "gt": { "type": "integer" },
+          "gte": { "type": "integer" },
+          "lt": { "type": "integer" },
+          "lte": { "type": "integer" },
+          "in": {
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "notIn": {
+            "type": "array",
+            "items": { "type": "integer" }
+          },
+          "NOT": { "type": "object" },
+          "OR": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "AND": {
+            "type": "array",
+            "items": { "type": "object" }
+          }
+        }
+      },
+      "StringFilter": {
+        "type": ["string", "object", "null"],
+        "properties": {
+          "eq": { "type": ["string", "null"] },
+          "ne": { "type": ["string", "null"] },
+          "isNull": { "type": "boolean" },
+          "isNotNull": { "type": "boolean" },
+          "gt": { "type": "string" },
+          "gte": { "type": "string" },
+          "lt": { "type": "string" },
+          "lte": { "type": "string" },
+          "in": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "notIn": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "like": { "type": "string" },
+          "notLike": { "type": "string" },
+          "ilike": { "type": "string" },
+          "notIlike": { "type": "string" },
+          "NOT": { "type": "object" },
+          "OR": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "AND": {
+            "type": "array",
+            "items": { "type": "object" }
+          }
+        }
+      },
+      "PlaceFilter": {
+        "type": "object",
+        "properties": {
+          "id": { "$ref": "#/components/schemas/IntegerFilter" },
+          "ownerId": { "$ref": "#/components/schemas/IntegerFilter" },
+          "name": { "$ref": "#/components/schemas/StringFilter" },
+          "kind": { "$ref": "#/components/schemas/StringFilter" },
+          "drives": { "type": "object", "description": "A filter on the related rows." },
+          "AND": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlaceFilter" }
+          },
+          "OR": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlaceFilter" }
+          },
+          "NOT": { "$ref": "#/components/schemas/PlaceFilter" }
+        }
+      },
       "Drive": {
         "type": "object",
         "properties": {
@@ -4201,70 +4318,6 @@
           "replacementNeededAt": { "type": ["string", "integer", "null"] }
         }
       },
-      "IntegerFilter": {
-        "type": ["integer", "object", "null"],
-        "properties": {
-          "eq": { "type": ["integer", "null"] },
-          "ne": { "type": ["integer", "null"] },
-          "isNull": { "type": "boolean" },
-          "isNotNull": { "type": "boolean" },
-          "gt": { "type": "integer" },
-          "gte": { "type": "integer" },
-          "lt": { "type": "integer" },
-          "lte": { "type": "integer" },
-          "in": {
-            "type": "array",
-            "items": { "type": "integer" }
-          },
-          "notIn": {
-            "type": "array",
-            "items": { "type": "integer" }
-          },
-          "NOT": { "type": "object" },
-          "OR": {
-            "type": "array",
-            "items": { "type": "object" }
-          },
-          "AND": {
-            "type": "array",
-            "items": { "type": "object" }
-          }
-        }
-      },
-      "StringFilter": {
-        "type": ["string", "object", "null"],
-        "properties": {
-          "eq": { "type": ["string", "null"] },
-          "ne": { "type": ["string", "null"] },
-          "isNull": { "type": "boolean" },
-          "isNotNull": { "type": "boolean" },
-          "gt": { "type": "string" },
-          "gte": { "type": "string" },
-          "lt": { "type": "string" },
-          "lte": { "type": "string" },
-          "in": {
-            "type": "array",
-            "items": { "type": "string" }
-          },
-          "notIn": {
-            "type": "array",
-            "items": { "type": "string" }
-          },
-          "like": { "type": "string" },
-          "notLike": { "type": "string" },
-          "ilike": { "type": "string" },
-          "notIlike": { "type": "string" },
-          "NOT": { "type": "object" },
-          "OR": {
-            "type": "array",
-            "items": { "type": "object" }
-          },
-          "AND": {
-            "type": "array",
-            "items": { "type": "object" }
-          }
-        }
-      },
       "NumberFilter": {
         "type": ["number", "object", "null"],
         "properties": {
@@ -4324,59 +4377,6 @@
             "items": { "$ref": "#/components/schemas/DriveFilter" }
           },
           "NOT": { "$ref": "#/components/schemas/DriveFilter" }
-        }
-      },
-      "Place": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "integer" },
-          "ownerId": {
-            "type": "integer",
-            "x-first-access": { "create": false, "update": false }
-          },
-          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
-          "kind": { "type": "string", "enum": ["nas-bay", "desktop", "laptop", "drawer", "offsite"] },
-          "drives": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/Drive" },
-            "description": "Present when the request asks for it with `with`."
-          }
-        }
-      },
-      "PlaceInsert": {
-        "type": "object",
-        "properties": {
-          "ownerId": { "type": "integer" },
-          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
-          "kind": { "type": "string", "enum": ["nas-bay", "desktop", "laptop", "drawer", "offsite"] }
-        },
-        "required": ["name", "kind"]
-      },
-      "PlacePatch": {
-        "type": "object",
-        "properties": {
-          "ownerId": { "type": "integer" },
-          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
-          "kind": { "type": "string", "enum": ["nas-bay", "desktop", "laptop", "drawer", "offsite"] }
-        }
-      },
-      "PlaceFilter": {
-        "type": "object",
-        "properties": {
-          "id": { "$ref": "#/components/schemas/IntegerFilter" },
-          "ownerId": { "$ref": "#/components/schemas/IntegerFilter" },
-          "name": { "$ref": "#/components/schemas/StringFilter" },
-          "kind": { "$ref": "#/components/schemas/StringFilter" },
-          "drives": { "type": "object", "description": "A filter on the related rows." },
-          "AND": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/PlaceFilter" }
-          },
-          "OR": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/PlaceFilter" }
-          },
-          "NOT": { "$ref": "#/components/schemas/PlaceFilter" }
         }
       },
       "HealthReading": {

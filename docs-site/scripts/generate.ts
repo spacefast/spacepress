@@ -335,6 +335,7 @@ const variantNames: Record<string, string> = {
 	SourceNeedsLocalCapture: "The host can't capture this source; publish from your machine",
 	ImportFence: "App code imports a file outside `first/`",
 	DuplicateExport: "Two exports register the same name",
+	Unexported: "A kind, global, bucket, action or job is built but not exported, so it has no name",
 };
 for (const { variant } of codes) if (!variantNames[variant]) throw new Error(`src/diag.rs has a new code ${variant}: name it in scripts/generate.ts`);
 

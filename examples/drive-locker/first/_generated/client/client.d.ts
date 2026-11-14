@@ -47,6 +47,94 @@ export interface RevisionSummary {
 }
 export type Status = "draft" | "published" | "scheduled";
 export type Locale = never;
+export interface Place {
+	id: number;
+	ownerId: number;
+	name: string;
+	kind: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+}
+export interface PlaceInsert {
+	ownerId?: number;
+	name: string;
+	kind: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+}
+export interface PlacePatch {
+	ownerId?: number;
+	name?: string;
+	kind?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+}
+export interface PlaceWith {
+	drives?: true | {
+		where?: DriveFilter;
+		orderBy?: DriveOrder;
+		limit?: number;
+		offset?: number;
+		with?: DriveWith;
+	};
+}
+export interface PlaceFilter {
+	id?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	ownerId?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	name?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	kind?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite" | null | {
+		eq?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite" | null;
+		ne?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite" | null;
+		gt?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+		gte?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+		lt?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+		lte?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+		in?: ("nas-bay" | "desktop" | "laptop" | "drawer" | "offsite")[];
+		notIn?: ("nas-bay" | "desktop" | "laptop" | "drawer" | "offsite")[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	drives?: true | DriveFilter;
+	AND?: PlaceFilter[];
+	OR?: PlaceFilter[];
+	NOT?: PlaceFilter;
+}
+export type PlaceOrder = Partial<Record<"id" | "ownerId" | "name" | "kind", "asc" | "desc">> | string;
 export interface Drive {
 	id: number;
 	ownerId: number;
@@ -348,94 +436,6 @@ export interface DriveFilter {
 	NOT?: DriveFilter;
 }
 export type DriveOrder = Partial<Record<"id" | "ownerId" | "label" | "model" | "serial" | "serialKey" | "kind" | "capacityGb" | "interface" | "purchasedOn" | "warrantyUntil" | "placeId" | "status" | "notes" | "replacementNeededAt", "asc" | "desc">> | string;
-export interface Place {
-	id: number;
-	ownerId: number;
-	name: string;
-	kind: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-}
-export interface PlaceInsert {
-	ownerId?: number;
-	name: string;
-	kind: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-}
-export interface PlacePatch {
-	ownerId?: number;
-	name?: string;
-	kind?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-}
-export interface PlaceWith {
-	drives?: true | {
-		where?: DriveFilter;
-		orderBy?: DriveOrder;
-		limit?: number;
-		offset?: number;
-		with?: DriveWith;
-	};
-}
-export interface PlaceFilter {
-	id?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	};
-	ownerId?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	};
-	name?: string | null | {
-		eq?: string | null;
-		ne?: string | null;
-		gt?: string;
-		gte?: string;
-		lt?: string;
-		lte?: string;
-		in?: string[];
-		notIn?: string[];
-		like?: string;
-		ilike?: string;
-		notLike?: string;
-		notIlike?: string;
-		isNull?: true;
-		isNotNull?: true;
-	};
-	kind?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite" | null | {
-		eq?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite" | null;
-		ne?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite" | null;
-		gt?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-		gte?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-		lt?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-		lte?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-		in?: ("nas-bay" | "desktop" | "laptop" | "drawer" | "offsite")[];
-		notIn?: ("nas-bay" | "desktop" | "laptop" | "drawer" | "offsite")[];
-		like?: string;
-		ilike?: string;
-		notLike?: string;
-		notIlike?: string;
-		isNull?: true;
-		isNotNull?: true;
-	};
-	drives?: true | DriveFilter;
-	AND?: PlaceFilter[];
-	OR?: PlaceFilter[];
-	NOT?: PlaceFilter;
-}
-export type PlaceOrder = Partial<Record<"id" | "ownerId" | "name" | "kind", "asc" | "desc">> | string;
 export interface HealthReading {
 	id: number;
 	ownerId: number;
@@ -877,14 +877,6 @@ export type RetireOutput = {
 	replacementNeededAt: string | null;
 };
 export interface Collections {
-	drives: {
-		row: Drive;
-		insert: DriveInsert;
-		patch: DrivePatch;
-		with: DriveWith;
-		filter: DriveFilter;
-		order: DriveOrder;
-	};
 	places: {
 		row: Place;
 		insert: PlaceInsert;
@@ -892,6 +884,14 @@ export interface Collections {
 		with: PlaceWith;
 		filter: PlaceFilter;
 		order: PlaceOrder;
+	};
+	drives: {
+		row: Drive;
+		insert: DriveInsert;
+		patch: DrivePatch;
+		with: DriveWith;
+		filter: DriveFilter;
+		order: DriveOrder;
 	};
 	healthReadings: {
 		row: HealthReading;
@@ -944,6 +944,23 @@ export interface Actions {
 export declare const SCHEMA: {
 	readonly name: "drive-locker";
 	readonly collections: {
+		readonly places: {
+			readonly path: "places";
+			readonly primaryKey: "id";
+			readonly drafts: false;
+			readonly revisions: false;
+			readonly localized: false;
+			readonly relations: {
+				readonly drives: {
+					readonly kind: "many";
+					readonly collection: "drives";
+					readonly optional: false;
+				};
+			};
+			readonly media: readonly [];
+			readonly mediaList: readonly [];
+			readonly files: readonly [];
+		};
 		readonly drives: {
 			readonly path: "drives";
 			readonly primaryKey: "id";
@@ -964,23 +981,6 @@ export declare const SCHEMA: {
 				readonly contents: {
 					readonly kind: "many";
 					readonly collection: "contents";
-					readonly optional: false;
-				};
-			};
-			readonly media: readonly [];
-			readonly mediaList: readonly [];
-			readonly files: readonly [];
-		};
-		readonly places: {
-			readonly path: "places";
-			readonly primaryKey: "id";
-			readonly drafts: false;
-			readonly revisions: false;
-			readonly localized: false;
-			readonly relations: {
-				readonly drives: {
-					readonly kind: "many";
-					readonly collection: "drives";
 					readonly optional: false;
 				};
 			};

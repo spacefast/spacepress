@@ -119,6 +119,8 @@ defineConfig({ tables: { locations } });
 defineConfig({ hooks: {} });
 // @ts-expect-error `actions` is not a defineConfig option
 defineConfig({ actions: {} });
+// @ts-expect-error `files` is not a defineConfig option
+defineConfig({ files: {} });
 
 // --- v1 additions (design §1) ---
 

@@ -203,18 +203,18 @@ test("finite type algebra preserves native outputs and strict client boundaries 
 type Domain = { title: string; note?: string | null; state: "draft" | "published"; items?: { label?: string }[] };
 type Payload = Required<Pick<Domain, "title">> & Partial<Omit<Domain, "title">>;
 class View { constructor(public payload: Payload) {} read(): string { return this.payload.title; } }
-const source = table({ body: json<Payload>().localized(), label: select(["first", "second"]), slug: slug({ source: "label" }), details: group({ nullable: text().optional(), defaulted: text().default("source") }).optional() }, { uid: true });
+export const source = table({ body: json<Payload>().localized(), label: select(["first", "second"]), slug: slug({ source: "label" }), details: group({ nullable: text().optional(), defaulted: text().default("source") }).optional() }, { uid: true });
 type Selected = InferSelectModel<typeof source>;
 type Inserted = InferInsertModel<typeof source>;
-const members = userProjection({ email: email().unique().max(191), name: text() });
+export const members = userProjection({ email: email().unique().max(191), name: text() });
 type Member = InferSelectModel<typeof members>;
 class MemberView { constructor(public row: Member) {} read(): string { return this.row.name; } }
 class SelectedView { constructor(public payload: Selected) {} read(): string { return this.payload.body.title; } }
 type WithoutLocale = Omit<Inserted, "locale">;
 class InsertedView { constructor(public payload: Inserted) {} read(): string { return this.payload.body.title; } }
 class TranslationView { constructor(public payload: WithoutLocale) {} read(): string { return this.payload.body.title; } }
-const documents = table({ payload: json<Payload>(), metadata: group({ payload: json<Payload>() }), selected: json<Selected>(), inserted: json<Inserted>(), translation: json<WithoutLocale>() });
-export default defineConfig({ tables: { documents, source }, users: { members }, locales: { default: "en", all: ["en", "de"] }, actions: { read: action({ input: {}, handler: async () => {
+export const documents = table({ payload: json<Payload>(), metadata: group({ payload: json<Payload>() }), selected: json<Selected>(), inserted: json<Inserted>(), translation: json<WithoutLocale>() });
+export const read = action({ input: {}, handler: async () => {
   const inserted: Inserted = { body: { title: "fresh" }, label: "first" };
   const translated: Inserted = { body: { title: "translated" }, translationOf: 1 };
   const member = await db.query.members.findFirst();
@@ -223,7 +223,8 @@ export default defineConfig({ tables: { documents, source }, users: { members },
   const sourceTitle = !selected ? "" : new SelectedView(selected).read();
   const row = await db.query.documents.findFirst();
   return !row ? null : memberName + sourceTitle + new InsertedView(inserted).read() + new InsertedView(translated).read() + new View(row.payload).read() + new View(row.metadata.payload).read() + new SelectedView(row.selected).read() + new InsertedView(row.inserted).read() + new TranslationView(row.translation).read();
-} }) } });`;
+} });
+export default defineConfig({ locales: { default: "en", all: ["en", "de"] } });`;
     writeFileSync(path.join(dir, "first.config.ts"), storedSource);
     const stored = browserCheck({ name, files: { "first.config.ts": storedSource } });
     assert.equal(stored.envelope, nativeCheck(dir));
@@ -247,8 +248,8 @@ void selected; void inserted; void invalidWire;`);
 
     const recursiveModel = `import { table, json, defineConfig, type InferSelectModel } from "first";
 type Payload = InferSelectModel<typeof source>;
-const source = table({ body: json<Payload>().optional() });
-export default defineConfig({ tables: { source } });`;
+export const source = table({ body: json<Payload>().optional() });
+export default defineConfig({});`;
     writeFileSync(path.join(dir, "first.config.ts"), recursiveModel);
     const recursive = browserCheck({ name, files: { "first.config.ts": recursiveModel } });
     assert.equal(recursive.envelope, nativeCheck(dir));
@@ -256,10 +257,10 @@ export default defineConfig({ tables: { source } });`;
     assert.match(recursive.check.diagnostics[0]?.message ?? "", /recursive JSON model annotations/);
     assert.equal(recursive.check.diagnostics[0]?.location?.file, "first.config.ts");
 
-    const modelTables = Array.from({ length: 15 }, (_, i) => `const model${i} = table({ left: json<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>(), right: json<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>() });`).join("\n");
+    const modelTables = Array.from({ length: 15 }, (_, i) => `export const model${i} = table({ left: json<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>(), right: json<${i === 0 ? "{ label: string }" : `InferSelectModel<typeof model${i - 1}>`}>() });`).join("\n");
     const modelExpansion = `import { table, json, defineConfig, type InferSelectModel } from "first";
 ${modelTables}
-export default defineConfig({ tables: { ${Array.from({ length: 15 }, (_, i) => `model${i}`).reverse().join(", ")} } });`;
+export default defineConfig({});`;
     writeFileSync(path.join(dir, "first.config.ts"), modelExpansion);
     const expandedModel = browserCheck({ name, files: { "first.config.ts": modelExpansion } });
     assert.equal(expandedModel.envelope, nativeCheck(dir));
@@ -278,10 +279,11 @@ export default defineConfig({ tables: { ${Array.from({ length: 15 }, (_, i) => `
 type Box<T> = { value: T };
 ${aliases}
 class C { label: string = "ok"; read(): string { const text: A0 = "ok"; return text; } }
-export default defineConfig({ tables: {}, actions: { run: action({ input: {}, handler: () => {
+export const run = action({ input: {}, handler: () => {
   ${prime ? "new C();" : ""}
   const x: ${nestedType} = ${nestedValue}; return x;
-} }) } });`;
+} });
+export default defineConfig({});`;
     writeFileSync(path.join(dir, "tsconfig.json"), JSON.stringify({
       compilerOptions: { strict: true, noEmit: true, target: "ES2023", module: "Preserve", moduleResolution: "Bundler", paths: { first: [path.join(repo, "types/first/index.d.ts")] }, skipLibCheck: true },
       include: ["first.config.ts"],
@@ -322,9 +324,10 @@ export default defineConfig({ tables: {}, actions: { run: action({ input: {}, ha
     ]) {
       const source = `import { action, defineConfig } from "first";
 type Expanded = ${probe.parts.join(" & ")};
-export default defineConfig({ tables: {}, actions: { run: action({ input: {}, handler: () => {
+export const run = action({ input: {}, handler: () => {
   const x: Expanded = { ${probe.value} }; return x;
-} }) } });`;
+} });
+export default defineConfig({});`;
       writeFileSync(path.join(dir, "first.config.ts"), source);
       const result = browserCheck({ name, files: { "first.config.ts": source } });
       assert.equal(result.envelope, nativeCheck(dir));
@@ -375,15 +378,15 @@ test("shared builtin vectors emit byte-identical PHP in native and WASM", () => 
       declarations.push(`import {js_${value.name}} from './helper.js';`);
       expression = `js_${value.name}()`;
     }
-    actions.push(`${value.name}: action({ input: {}, handler: () => (${expression}) })`);
+    actions.push(`export const ${value.name} = action({ input: {}, handler: () => (${expression}) });`);
     if (value.fold) {
-      declarations.push(`const folded_${value.name} = ${value.expression};`);
-      actions.push(`folded_${value.name}: action({ input: {}, handler: () => folded_${value.name} })`);
+      declarations.push(`const folded_${value.name}_value = ${value.expression};`);
+      actions.push(`export const folded_${value.name} = action({ input: {}, handler: () => folded_${value.name}_value });`);
     }
   }
   vectors.forEach(addVector);
   files["first/helper.js"] = javascript.join("\n");
-  files["first/app.ts"] = `import { action, defineConfig } from 'first';\n${declarations.join("\n")}\nexport default defineConfig({name:'builtinparity',actions:{${actions.join(",\n")}}});`;
+  files["first/app.ts"] = `import { action, defineConfig } from 'first';\n${declarations.join("\n")}\n${actions.join("\n")}\nexport default defineConfig({name:'builtinparity'});`;
   files["first.config.ts"] = "export { default } from './first/app.ts';\n";
   const dir = path.join(repo, "target", `builtin-wasm-${process.pid}`);
   mkdirSync(dir, { recursive: true });

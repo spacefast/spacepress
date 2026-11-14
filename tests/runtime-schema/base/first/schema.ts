@@ -13,4 +13,4 @@ export const articles = collection({
 export const votes = table({ article: integer(), weight: integer().default(1) });
 
 // Stored as the options `first_global_site_<field>`: a runtime global must not overlap them.
-export const site = global("site", { meta_title: text().optional() });
+export const site = global({ meta_title: text().optional() });

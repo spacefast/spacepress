@@ -169,6 +169,21 @@ fn replaced_field_forms_name_their_replacement() {
             "first.config.ts:3:26",
         ),
         (
+            "reject-named-global",
+            "`global(\"settings\", ...)` no longer takes a name: the export names it",
+            "first.config.ts:2:25",
+        ),
+        (
+            "reject-named-files",
+            "`files(\"decks\", ...)` no longer takes a name: the export names the bucket",
+            "first.config.ts:2:22",
+        ),
+        (
+            "reject-file-bucket-name",
+            "`file({ bucket: \"decks\" })` is now `file(decks)`",
+            "first.config.ts:3:36",
+        ),
+        (
             "reject-relations-key",
             "`relations` is gone: a reference is a field",
             "first.config.ts:3:66",
@@ -475,7 +490,7 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-global-required",
         "a global field is required unless it has a default (`title`)",
-        "first.config.ts:3:38",
+        "first.config.ts:3:30",
     );
     // Literal defaults follow the strict ISO timestamp codec, inside structured columns too.
     rejects(
@@ -1928,7 +1943,10 @@ fn rejects_phase2_static_contracts() {
         ("reject-files-cover", "fit: cover requires height"),
         ("reject-files-size-name", "invalid media size name"),
         ("reject-files-size-count", "media supports at most 12 sizes"),
-        ("reject-files-bucket", "unknown file bucket"),
+        (
+            "reject-files-bucket",
+            "file() refers to a files() bucket that isn't exported",
+        ),
         (
             "reject-files-global",
             "file() columns belong to collections, not globals",

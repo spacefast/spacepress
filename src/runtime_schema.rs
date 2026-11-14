@@ -318,10 +318,8 @@ fn kind(
             })?;
         options.insert("access".to_string(), value(&Json::Object(rules.clone())));
     }
-    let mut args = vec![Value::object(columns), Value::object(options)];
-    if global {
-        args.insert(0, Value::str(name));
-    }
+    // A global is named by the registry key it is listed under, as an exported one is by its export.
+    let args = vec![Value::object(columns), Value::object(options)];
     ev.kind_from_data(global, args)
         .map_err(|d| located(name, d, Code::Evaluation))
 }

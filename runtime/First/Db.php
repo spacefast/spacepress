@@ -142,6 +142,9 @@ final class Db
                 if ($pks !== []) {
                     $out[$name] = $pks;
                     Realtime\Module::promoted((string) $name, $pks);
+                    foreach ($pks as $pk) {
+                        $this->afterPromotion((string) $name, $pk);
+                    }
                 }
             }
         }
@@ -792,6 +795,7 @@ final class Db
             $this->store->revisionWrite($collection, $pk, $raw, $this->actor['id'] ?? null);
         }
         $this->hook($collection, $spec, 'afterCreate', $row);
+        $this->published($collection, $spec, $row, null);
         Extensions::written('create', $collection, $row, null);
 
         return $row;
@@ -891,6 +895,7 @@ final class Db
             $this->store->revisionWrite($collection, $pkValue, $raw, $this->actor['id'] ?? null);
         }
         $this->hook($collection, $spec, 'afterUpdate', $row, $previous);
+        $this->published($collection, $spec, $row, $previous);
         Extensions::written('update', $collection, $row, $previous);
 
         return $row;
@@ -1363,6 +1368,33 @@ final class Db
         }
     }
 
+    /** `afterPublish` (spec §2.8): the row is published now and wasn't before (or is new). */
+    private function published(string $collection, array $spec, array $row, ?array $previous): void
+    {
+        if (isset($spec['hooks']['afterPublish']) && ($row['status'] ?? null) === 'published'
+            && ($previous === null || ($previous['status'] ?? null) !== 'published')) {
+            $this->hook($collection, $spec, 'afterPublish', $row);
+        }
+    }
+
+    /**
+     * A scheduled item reached its time (WP cron's `publish_future_post`, or the lazy promotion):
+     * its `afterPublish`, run as the system in one transaction.
+     */
+    public function afterPromotion(string $collection, int|string $pk): void
+    {
+        $spec = $this->schema->collection($collection);
+        if (!isset($spec['hooks']['afterPublish'])) {
+            return;
+        }
+        $this->asEditor(null, function () use ($collection, $spec, $pk) {
+            [$row] = $this->readByPk($collection, $spec, $pk);
+            if (($row['status'] ?? null) === 'published') {
+                $this->hook($collection, $spec, 'afterPublish', $row);
+            }
+        });
+    }
+
     /** Call a hook that receives rows (afterCreate/afterUpdate/before|afterDelete); result ignored. */
     private function hook(string $collection, array $spec, string $name, array $row, ?array $previous = null): void
     {
@@ -1436,6 +1468,7 @@ final class Db
             $spec = $this->schema->collection($collection);
             [$row] = $this->readByPk($collection, $spec, $pk);
             $previousRow === null ? $this->hook($collection, $spec, 'afterCreate', $row) : $this->hook($collection, $spec, 'afterUpdate', $row, $previousRow);
+            $this->published($collection, $spec, $row, $previousRow);
             Extensions::written($previousRow === null ? 'create' : 'update', $collection, $row, $previousRow);
         });
     }

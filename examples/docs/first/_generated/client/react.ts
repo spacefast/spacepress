@@ -29,7 +29,10 @@ export interface ReactLike {
 }
 
 export interface QueryState<T> {
-  /** The latest result; `undefined` until the first answer. Kept while a later refresh fails. */
+  /**
+   * The latest result; `undefined` until the first answer. Kept while a later refresh fails on the
+   * network; cleared when the server refuses the read (401, 403, 404), as after a sign-out.
+   */
   data: T | undefined;
   /** The problem of the last refresh, if it failed: a refused read (401, 403, 404) or the network. */
   error: FirstError | undefined;
@@ -104,7 +107,10 @@ export function createHooks(React: ReactLike): Hooks {
               changed();
             },
             (error) => {
-              held.state = { data: held.state.data, error, loading: false };
+              // A network failure keeps what was shown. A refusal (401, 403, a 404 on `get`) means
+              // this visitor may not read it, for example after signing out: the data goes.
+              const refused = error.status === 401 || error.status === 403 || error.status === 404;
+              held.state = { data: refused ? undefined : held.state.data, error, loading: false };
               changed();
             },
             seed,

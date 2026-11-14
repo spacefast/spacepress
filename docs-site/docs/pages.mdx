@@ -73,7 +73,7 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 
 - `<Comments for={item} />` shows the thread as the visitor may read it (approved comments, plus their own held ones) and a form that works without JavaScript.
 - The item's kind turns `comments` on; on a kind without it the build stops at the prop.
-- Who may comment, moderation and reply depth are the kind's, enforced wherever a comment is created: this form, `POST /__first/api/v1/comments` and WordPress's own comment form all get the same answer. For now: signed-in users only, a first comment waits for approval, replies go three levels deep.
+- Who may comment, moderation and reply depth are the kind's, enforced wherever a comment is created: this form, `POST /__first/api/v1/comments` and WordPress's own comment form all get the same answer. With `comments: true`: signed-in users only, a first comment waits for approval, replies go three levels deep; the kind's `comments` options change any of them.
 
 ### Markdown pages
 
@@ -170,6 +170,36 @@ Every page also has a Markdown twin at the same URL plus `.md` (or with `Accept:
 The site's sitemap is WordPress's own, at `/wp-sitemap.xml`. It lists the same pages, unless a page's metadata says `robots: { index: false }`, and the items of every kind with a `url` that a signed-out visitor may read. Drafts, rows an access rule hides and password-protected items are never in it.
 
 Each `page.tsx` route without parameters is also a hidden, code-owned WordPress Page. Its route ID is the folder path, or the page's own: `export const route = { id: "notes.featured" }` keeps the Page when the file moves, and the old URL redirects to the new one. Menus, SEO plugins and `get_permalink()` see a normal published Page whose link is the route URL, `/` is the front page, and the Page keeps its ID across builds. Code Pages are absent from the wp-admin Pages list, its counts and REST `context=edit` lists; nobody may edit or delete them; WordPress's own addresses for them redirect to the route. A route under a `guard` stores its Page private.
+
+## Static output
+
+Pages render on WordPress per request by default. As in Astro, two settings prebuild them instead:
+
+| You want | Write |
+|---|---|
+| Some pages prebuilt, the rest per request, on one WordPress | `export const prerender = true` in those pages |
+| The whole site as static files, with no WordPress serving it | `defineConfig({ output: "static" })`, then `first export` |
+| Static files rendered from a WordPress that editors use elsewhere | the same, with `first export --site https://cms.example.com` |
+
+A prebuilt page is what a signed-out visitor sees, rendered by the page's own compiled code. A page under a `guard`, one with `search`, or one that asks WordPress who the visitor is can't be prebuilt; each is a build error with its fix. A page that serves a kind's `url` is built once per published item. Any other dynamic page lists its URLs with `staticParams`, Astro's `getStaticPaths`:
+
+```tsx
+import type { PageProps, StaticParams } from "first/app";
+
+export const prerender = true;
+
+export async function staticParams(): Promise<StaticParams<"tags/[tag]">> {
+  return ["field", "notes"].map((tag) => ({ tag }));
+}
+
+export default function Tag({ params }: PageProps<"tags/[tag]">) {
+  return <h1>{params.tag}</h1>;
+}
+```
+
+On WordPress, a prebuilt page is written to a file after each deploy by an Action Scheduler action and served before WordPress parses the request. A write that changes what it shows deletes the file at once and schedules its rebuild, so nobody sees old content.
+
+`first export` writes `first/dist/static/`: `docs/intro.html` for `/docs/intro`, with `docs/intro.md` beside it, plus `index.html`, `404.html`, `llms.txt`, `robots.txt`, `sitemap.xml` (with `--site-url`), `_redirects` for moved items, and the stylesheets, images and Interactivity API modules the pages use. Without `--site` it renders `first/content/` in a throwaway WordPress on SQLite. With `--site`, it renders the hosted site's published content with an editor's `FIRST_APP_PASSWORD` or `FIRST_TOKEN`; client components call the site's public actions, and sign-in and comments happen there. A static site has no server, so an action call without `--site`, or a link to a page the export doesn't contain, is refused with the fix.
 
 ## From the old `pages/` renderer
 

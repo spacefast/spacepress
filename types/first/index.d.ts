@@ -393,6 +393,20 @@ type ColumnsOfKind<TCols, TKind extends ColumnKind, TNotNull extends boolean = b
 }[keyof TCols] &
   string;
 
+/** How comments behave on a collection (`comments: true` is every default). */
+export interface CommentOptions {
+  /** Anonymous visitors may comment, with a name and email. Default `false`: signed-in users only. */
+  guests?: boolean;
+  /** `"none"` approves at once; `"first-time"` (default) holds a commenter's first comment; `"all"` holds every one. */
+  moderation?: "none" | "first-time" | "all";
+  /** Reply depth: `true` (default) is 3 levels, `false` is flat, or a depth from 1 to 10. */
+  threaded?: boolean | number;
+  /** Close comments this many days after the item was published. Default: never. */
+  closeAfterDays?: number | null;
+  /** Comment types allowed besides normal comments. Not built yet: leave it out. */
+  types?: readonly [];
+}
+
 /** Options shared by the `collection()` signatures; `T` is the collection being defined. */
 export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Physical resource name, without prefixes. Defaults to the registry key in snake_case.
@@ -430,8 +444,11 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
    * discarded. Default true for collections; `false` turns them off. collection() only.
    */
   staged?: boolean;
-  /** WordPress comments on this collection's post type. Default false: comments are closed on every kind that doesn't turn them on. */
-  comments?: boolean;
+  /**
+   * WordPress comments on this collection's post type: `true` for the defaults, or `CommentOptions`.
+   * Default false: comments are closed on every kind that doesn't turn them on.
+   */
+  comments?: boolean | CommentOptions;
   /** The WordPress post title: a NOT NULL `text()` column. Default: a text column named `title`. Required for collections. */
   title?: ColumnsOfKind<ColumnsOf<T>, "text", true>;
   /** The WordPress post_content (block editor): a `richText()` column. Default: a richText column named `content`. */
@@ -457,6 +474,16 @@ export interface CollectionMeta<TName extends string, TCols extends ColumnsConfi
   readonly $inferSelect: SelectShape<TCols>;
   /** Shape accepted by `db.insert(...).values(...)`. */
   readonly $inferInsert: ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
+  /**
+   * Hooks on this kind (spec §2.8), in the file that declares it. Returns the kind, so calls chain;
+   * several handlers for one event run in order.
+   */
+  on<TSelf extends AnyCollection>(this: TSelf, hooks: CollectionHooks<TSelf>): TSelf;
+  /**
+   * A compound index (spec §2.9), on SQL tables; `unique: true` also refuses a second row with the same
+   * values. Fields a compiled `where` or `orderBy` names get one each without this.
+   */
+  index(fields: readonly [keyof TCols & string, ...(keyof TCols & string)[]], options?: { unique?: boolean }): this;
 }
 
 type ColumnRefs<TName extends string, TCols extends ColumnsConfig> = {
@@ -1034,6 +1061,8 @@ export interface CollectionHooks<T extends AnyCollection> {
   afterUpdate?: (row: Row<T>, previous: Row<T>, ctx: HookCtx) => Awaitable<void>;
   beforeDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
   afterDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** A collection's item became published: created published, updated into it, or its scheduled time came. */
+  afterPublish?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
 }
 
 export type Hooks<TSchema extends Schema> = {

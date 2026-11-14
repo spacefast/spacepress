@@ -21,7 +21,9 @@ class First_Admin_REST_View_Config_Controller extends WP_REST_Controller {
 	 * @since 1.0.0
 	 */
 	public function __construct() {
-		$this->namespace = 'wp/v2';
+		// First: its own namespace. WordPress 7.1 serves `/wp/v2/view-config` itself (core's
+		// editors read it); registered there too, this controller answered first and core's never ran.
+		$this->namespace = 'first-admin/v1';
 		$this->rest_base = 'view-config';
 	}
 

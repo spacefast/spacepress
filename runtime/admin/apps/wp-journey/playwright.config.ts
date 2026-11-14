@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 export default defineConfig({
 	testDir: '.',
-	testMatch: 'admin.spec.ts',
+	testMatch: [ 'admin.spec.ts', 'screens.spec.ts' ],
 	workers: 1,
 	retries: 0,
 	timeout: 90000,

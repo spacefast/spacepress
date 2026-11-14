@@ -171,11 +171,20 @@ final class Islands
             }
             wp_register_script_module($handle, $plugin->url('first/app/client/' . $island['file']), $deps, null);
             wp_enqueue_script_module($handle);
+            // A <Link> that swaps the router region onto this page loads the store then
+            // (core marks the tag `data-wp-router-options`), and merges this page's config.
+            wp_interactivity()->add_client_navigation_support_to_script_module($handle);
             $actions = [];
             foreach ($island['actions'] as $action) {
                 $actions[$action] = Wp\Facade::url('/actions/' . rawurlencode((string) $action));
             }
-            wp_interactivity_config($namespace, ['actions' => (object) $actions, 'nonce' => wp_create_nonce('wp_rest')]);
+            // A prebuilt page is the same file for days, past a nonce's lifetime, and only signed-out
+            // visitors get it: they need no nonce, and an expired one would refuse their calls.
+            $config = ['actions' => (object) $actions];
+            if (!\First\Render\Prebuilt::prerendering()) {
+                $config['nonce'] = wp_create_nonce('wp_rest');
+            }
+            wp_interactivity_config($namespace, $config);
         }
     }
 }

@@ -2215,3 +2215,91 @@ fn static_routes_have_code_owned_pages() {
         (&serde_json::json!(4), &serde_json::json!(3))
     );
 }
+
+/// An explicit route id (`export const route = { id }` on a page.tsx, `id:` in a page.md's front
+/// matter) keeps the page's WordPress Page when its file moves to another URL: the second build
+/// moves both files under `company/`, and both Pages keep their IDs with the new URL as their link,
+/// while the old URLs redirect there. Without an id the route id is the folder path.
+#[test]
+fn route_ids_keep_pages_when_files_move() {
+    let first = fixture("route-ids", "first");
+    build(&first);
+    let second = fixture("route-ids", "second");
+    let app = second.join("first/app");
+    std::fs::create_dir_all(app.join("company")).unwrap();
+    for page in ["about", "colophon"] {
+        std::fs::rename(app.join(page), app.join("company").join(page)).unwrap();
+    }
+    build(&second);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/route_ids.php"))
+        .arg(first.join("first/dist/wp-content"))
+        .arg(second.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&first);
+    let _ = std::fs::remove_dir_all(&second);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{stdout}{}", String::from_utf8_lossy(&out.stderr));
+    let json: String = stdout
+        .lines()
+        .skip_while(|l| !l.starts_with('{'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let seen: serde_json::Value = serde_json::from_str(&json).unwrap_or_else(|_| panic!("{stdout}"));
+    assert_eq!(seen["first served"], serde_json::json!([200, 200]));
+    assert_eq!(
+        seen["second served"],
+        serde_json::json!([200, 200, 301, 301]),
+        "the old URLs redirect"
+    );
+    for (title, before, after) in [
+        ("About", "/about", "/company/about"),
+        ("Colophon", "/colophon", "/company/colophon"),
+    ] {
+        assert_eq!(seen["first"][title]["link"], before, "{title}: {seen}");
+        assert_eq!(
+            seen["second"][title]["id"], seen["first"][title]["id"],
+            "{title} keeps its Page"
+        );
+        assert_eq!(seen["second"][title]["link"], after, "{title}: {seen}");
+        assert_eq!(seen["second"][title]["status"], "publish");
+    }
+    let titles: Vec<&String> = seen["second"].as_object().unwrap().keys().collect();
+    assert_eq!(titles, ["About", "Colophon", "Home"], "one Page each, none duplicated");
+}
+
+/// A route id is a literal, and two pages can't share one; the error is at the export.
+#[test]
+fn refuses_route_ids_it_cannot_keep() {
+    let dir = std::env::temp_dir().join(format!("first-route-ids-{}", std::process::id()));
+    let page =
+        |id: &str| format!("export const route = {{ id: {id} }};\nexport default function P() {{ return <p/>; }}\n");
+    rejects(
+        &dir,
+        &[
+            ("first/app/a/page.tsx", &page("\"site.page\"")),
+            ("first/app/b/page.tsx", &page("\"site.page\"")),
+        ],
+        "route id `site.page` is already app/a/page.tsx's",
+        "first/app/b/page.tsx:1:14",
+    );
+    rejects(
+        &dir,
+        &[("first/app/a/page.tsx", &page("\"site page\""))],
+        "`route` must be `{ id: \"…\" }` with a literal id",
+        "first/app/a/page.tsx:1:14",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/a/page.tsx", &page("\"site.page\"")),
+            ("first/app/b/page.md", "---\nid: site.page\ntitle: B\n---\n\nText.\n"),
+        ],
+        "id `site.page` is already app/a/page.tsx's",
+        "first/app/b/page.md:2:",
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

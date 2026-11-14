@@ -435,7 +435,7 @@ registered once.
 | `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
 | `revisions` | `true` for collections, `false` for tables | collections always keep native revisions; tables may opt in |
 | `staged` | `true` for collections | collections only; [staged versions](staged.md): a change saved beside the live item, then compared, promoted or discarded. `false` turns them off |
-| `comments` | `false` | collections only; WordPress comments on the post type. Comments are closed on every kind that doesn't set it ([opinionated WordPress](#opinionated-wordpress)) |
+| `comments` | `false` | collections only; WordPress comments on the post type: `true`, or `{ guests?, moderation?, threaded?, closeAfterDays? }` (see [Comments](#comments)). Comments are closed on every kind that doesn't set it ([opinionated WordPress](#opinionated-wordpress)) |
 | `title` | a `title: text()` column | WordPress post title; must be a required `text()` for collections |
 | `content` | a `content: richText()` column | WordPress post content |
 | `access` | read `"anyone"`, writes `"editor"` | see below |
@@ -449,6 +449,23 @@ Collections need a title and physical names of at most 14 characters (WordPress
 prefixes `first_`). Built-in route names are reserved (`media`, `files`,
 `globals`, `actions`, `me`, `auth`, `services`, `search`). User projections retain
 WordPress identity storage; see [Sign-in](#sign-in).
+
+<a id="comments"></a>`comments: true` turns WordPress comments on for a collection with these
+defaults; an object changes any of them:
+
+| option | default | meaning |
+|---|---|---|
+| `guests` | `false` | anonymous visitors may comment, with a name and email; otherwise signed-in users only |
+| `moderation` | `"first-time"` | `"none"` approves at once; `"first-time"` holds a commenter's first comment until one is approved; `"all"` holds every comment |
+| `threaded` | `true` (3 levels) | reply depth: `false` is flat, or a number from 1 to 10 |
+| `closeAfterDays` | never | comments close this many days after the item was published |
+
+```ts
+export const posts = collection({ title: text() }, { comments: { guests: true, moderation: "all" } });
+```
+
+An unknown option or an impossible value fails the build and names the fix. `types` is
+reserved for comment types and refused until they exist.
 
 ### Files that moved into `first/_generated/`
 

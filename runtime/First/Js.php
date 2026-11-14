@@ -973,7 +973,7 @@ final class Js
         return preg_replace('/[' . self::WS . ']+$/uD', '', $s) ?? rtrim($s);
     }
 
-    public static function replace(string $s, string|RegExp $pattern, string|callable $replacement): string
+    public static function replace(string $s, string|RegExp $pattern, string|\Closure $replacement): string
     {
         if ($pattern instanceof RegExp) {
             if ($pattern->sticky) { throw new JsError('Sticky replacement is not supported', 'TypeError'); }
@@ -990,7 +990,7 @@ final class Js
         return self::applyReplacements($s, [[$pos, $pos + strlen($pattern), [], []]], $replacement, false);
     }
 
-    public static function replaceAll(string $s, string|RegExp $pattern, string|callable $replacement): string
+    public static function replaceAll(string $s, string|RegExp $pattern, string|\Closure $replacement): string
     {
         if ($pattern instanceof RegExp) {
             if (!$pattern->global) {
@@ -1017,7 +1017,7 @@ final class Js
     /**
      * @param iterable<array{int, int, list<?string>, array<string, ?string>}> $matches byte ranges + captures
      */
-    private static function applyReplacements(string $s, iterable $matches, string|callable $replacement, bool $named): string
+    private static function applyReplacements(string $s, iterable $matches, string|\Closure $replacement, bool $named): string
     {
         $out = '';
         $last = 0;
@@ -1464,7 +1464,7 @@ final class Js
         return $a->a[$index];
     }
 
-    public static function find(JsArray $a, callable $f): mixed
+    public static function find(JsArray $a, \Closure $f): mixed
     {
         for ($i = 0, $len = count($a->a); $i < $len; $i++) {
             $value = self::element($a, $i);
@@ -1473,7 +1473,7 @@ final class Js
         return JsUndefined::Value;
     }
 
-    public static function findIndex(JsArray $a, callable $f): int
+    public static function findIndex(JsArray $a, \Closure $f): int
     {
         for ($i = 0, $len = count($a->a); $i < $len; $i++) {
             $value = self::element($a, $i);
@@ -1482,7 +1482,7 @@ final class Js
         return -1;
     }
 
-    public static function findLast(JsArray $a, callable $f): mixed
+    public static function findLast(JsArray $a, \Closure $f): mixed
     {
         for ($i = count($a->a) - 1; $i >= 0; $i--) {
             $value = self::element($a, $i);
@@ -1491,7 +1491,7 @@ final class Js
         return JsUndefined::Value;
     }
 
-    public static function findLastIndex(JsArray $a, callable $f): int
+    public static function findLastIndex(JsArray $a, \Closure $f): int
     {
         for ($i = count($a->a) - 1; $i >= 0; $i--) {
             $value = self::element($a, $i);
@@ -1500,12 +1500,12 @@ final class Js
         return -1;
     }
 
-    public static function some(JsArray $a, callable $f): bool
+    public static function some(JsArray $a, \Closure $f): bool
     {
         return self::findIndex($a, $f) !== -1;
     }
 
-    public static function every(JsArray $a, callable $f): bool
+    public static function every(JsArray $a, \Closure $f): bool
     {
         for ($i = 0, $len = count($a->a); $i < $len; $i++) {
             $value = self::element($a, $i);
@@ -1514,7 +1514,7 @@ final class Js
         return true;
     }
 
-    public static function filter(JsArray $a, callable $f): JsArray
+    public static function filter(JsArray $a, \Closure $f): JsArray
     {
         $out = new JsArray();
         for ($i = 0, $len = count($a->a); $i < $len; $i++) {
@@ -1524,7 +1524,7 @@ final class Js
         return $out;
     }
 
-    public static function map(JsArray $a, callable $f): JsArray
+    public static function map(JsArray $a, \Closure $f): JsArray
     {
         $out = new JsArray();
         for ($i = 0, $len = count($a->a); $i < $len; $i++) {
@@ -1534,7 +1534,7 @@ final class Js
         return $out;
     }
 
-    public static function forEach(JsArray $a, callable $f): JsUndefined
+    public static function forEach(JsArray $a, \Closure $f): JsUndefined
     {
         for ($i = 0, $len = count($a->a); $i < $len; $i++) {
             $value = self::element($a, $i);
@@ -1626,7 +1626,7 @@ final class Js
         return $out;
     }
 
-    public static function from(JsArray|string $source, ?callable $f = null): JsArray
+    public static function from(JsArray|string $source, ?\Closure $f = null): JsArray
     {
         $source = is_string($source) ? new JsArray(mb_str_split($source, 1, 'UTF-8')) : $source;
         $out = new JsArray();
@@ -1768,7 +1768,7 @@ final class Js
         return $out;
     }
 
-    public static function reduce(JsArray $a, callable $f, mixed ...$init): mixed
+    public static function reduce(JsArray $a, \Closure $f, mixed ...$init): mixed
     {
         $len = count($a->a);
         if ($init === [] && $len === 0) { throw new JsError('Reduce of empty array with no initial value', 'TypeError'); }
@@ -1792,7 +1792,7 @@ final class Js
         return $out;
     }
 
-    public static function flatMap(JsArray $a, callable $f): JsArray
+    public static function flatMap(JsArray $a, \Closure $f): JsArray
     {
         $out = new JsArray();
         for ($i = 0, $len = count($a->a); $i < $len; $i++) {
@@ -1850,7 +1850,7 @@ final class Js
         return is_float($x) && $x === 0.0 && fdiv(1, $x) < 0;
     }
 
-    public static function range(int|float $n, callable $f): JsArray
+    public static function range(int|float $n, \Closure $f): JsArray
     {
         $n = max(0, self::toInteger($n));
         if ($n > 5000000) { throw new JsError('Array.from result is too large', 'RangeError'); }

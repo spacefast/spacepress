@@ -668,7 +668,7 @@ final class AppRouter
             throw new \First\HttpError(404, 'not_found', "The page at $path has no live region '$region'");
         }
 
-        return ['html' => $captured['html'], 'reads' => $captured['reads'], 'unseen' => $captured['unseen']];
+        return ['html' => $captured['html'], 'reads' => $captured['reads'], 'unseen' => $captured['unseen'], 'notices' => array_keys($captured['extra'] ?? [])];
     }
 
     /** A render error: logged, and the nearest `error.tsx` (or a plain message) with a 500. */

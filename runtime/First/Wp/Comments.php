@@ -118,9 +118,16 @@ final class Comments
         return $approved($from) || $approved($to);
     }
 
-    /** A visible change to $comment's thread: its item's cached pages are purged. */
+    /**
+     * The change notice key for core comments: never a kind's export name, so it can't be mistaken
+     * for an app collection's. Replaced when `wp.comments` is a kind announced through the write path.
+     */
+    public const NOTICE = 'wp:comments';
+
+    /** A visible change to $comment's thread: its item's cached pages are purged, and live pages told. */
     private static function seen(\WP_Comment $comment): void
     {
+        \First\Realtime\Module::changed(self::NOTICE, 'update');
         $post = get_post((int) $comment->comment_post_ID);
         if ($post instanceof \WP_Post && $post->post_status === 'publish') {
             $link = get_permalink($post);

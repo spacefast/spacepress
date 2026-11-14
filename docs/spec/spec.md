@@ -337,8 +337,11 @@ build. The full design and what was measured are in
   those fields and kinds, so the next build contains them and the site's
   additions become no-ops. Deploying a build that lacks the site's runtime
   changes never drops them: the deploy-time check lists them and they stay
-  active. A deploy is refused only when the build declares a name the site
-  uses, or used and hid, with a different stored type.
+  active. A deploy is refused only when the build would read or write the
+  site's stored values another way: it declares a name the site uses, or used
+  and hid, with a different stored shape; one of its fields is stored under a
+  key a runtime field uses; or it declares something other than a collection,
+  or a collection without its stored body, under a runtime collection's name.
 - **Surfaces.** Abilities `<app>/schema-read`, `<app>/schema-propose` (validate
   and return the diff, apply nothing) and `<app>/schema-apply` (its own
   capability, so a credential can be denied it); `first schema list | diff |

@@ -439,6 +439,8 @@ pub struct CollectionVal {
     pub span: Span,
     /// `.on({ ... })` calls in order: (the handlers object, where the call is).
     pub hooks: RefCell<Vec<(Value, Span)>>,
+    /// `.index(fields, { unique? })` calls: compound indexes the author declared (spec §2.9).
+    pub indexes: std::cell::RefCell<Vec<(Vec<String>, bool, Span)>>,
 }
 
 impl CollectionVal {

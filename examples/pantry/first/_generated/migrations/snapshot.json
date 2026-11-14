@@ -192,7 +192,12 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "expiresOn",
+        "id",
+        "quantity"
+      ]
     },
     "shopping_list": {
       "editor": false,
@@ -281,7 +286,10 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "itemId"
+      ]
     }
   }
 }

@@ -126,6 +126,10 @@ final class Facade
             }
             $auth = self::authenticate();
             if ($auth instanceof \WP_Error) {
+                // A form whose nonce has expired goes back to its page with the error, as a refused action does.
+                if (($form = self::formAction($method, $path)) !== null) {
+                    self::emit(...\First\Render\Forms::redirect($form, (string) file_get_contents('php://input'), null, \First\App::problem(self::fromWpError($auth, 401))));
+                }
                 self::problem($auth);
             }
             $query = self::query();
@@ -341,6 +345,9 @@ final class Facade
             return $plugin->app()->handle('POST', '/actions/' . rawurlencode($name), [], $body, self::headers());
         }
         \First\App::allow($method, ($action['readonly'] ?? false) ? ['GET', 'HEAD', 'POST'] : ['POST']);
+        if ($method === 'POST' && \First\Render\Forms::posted()) {
+            return self::form($plugin, $action, $name, $body);
+        }
         // No arguments is the empty object, not the empty list an empty PHP array encodes as.
         $given = $method === 'POST' ? [] : self::queryInput($query);
         $input = $method === 'POST' ? $body : ($given === [] ? '{}' : (string) Js::jsonStringify($given));
@@ -349,6 +356,42 @@ final class Facade
         [$status, $headers, $out] = self::json(200, ['data' => self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'")]);
 
         return [$status, self::$passed + $headers, $out];
+    }
+
+    /**
+     * A browser's form post to an action (`<form action={name}>`, rendering.md §4.2): the fields read
+     * as the action's input, the action run as a JSON call runs it, and `303 See Other` back to the
+     * page with the result or the error in a flash. Only a form on this site's own pages may post:
+     * a cross-site `Origin` is refused before anything runs.
+     *
+     * @return array{int, array<string, string>, string}
+     */
+    private static function form(Plugin $plugin, array $action, string $name, string $body): array
+    {
+        try {
+            $origin = $_SERVER['HTTP_ORIGIN'] ?? null;
+            $site = wp_parse_url(home_url('/'));
+            if (is_string($origin) && $origin !== 'null'
+                && strtolower($origin) !== strtolower(($site['scheme'] ?? 'https') . '://' . ($site['host'] ?? '') . (isset($site['port']) ? ':' . $site['port'] : ''))) {
+                throw new HttpError(403, 'forbidden', 'A form posts to an action only from this site\'s own pages');
+            }
+            $input = \First\Render\Forms::decode((array) ($action['input'] ?? []), $body);
+            self::$passed = [];
+            $data = self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'");
+
+            return \First\Render\Forms::redirect($name, $body, $data, null);
+        } catch (HttpError | \First\JsError $e) {
+            return \First\Render\Forms::redirect($name, $body, null, \First\App::problem($e));
+        }
+    }
+
+    /** The action a browser's form post to `$path` names, if this request is one. */
+    private static function formAction(string $method, string $path): ?string
+    {
+        $segments = array_values(array_filter(explode('/', $path), static fn ($s) => $s !== ''));
+
+        return $method === 'POST' && count($segments) === 2 && $segments[0] === 'actions' && \First\Render\Forms::posted()
+            ? rawurldecode($segments[1]) : null;
     }
 
     /** `GET`/`PATCH /<global>` (spec §3a): the global's read and update Abilities through the run route. */

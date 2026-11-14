@@ -145,6 +145,8 @@ Every page also has a Markdown twin at the same URL plus `.md` (or with `Accept:
 
 The site's sitemap is WordPress's own, at `/wp-sitemap.xml`. It lists the same pages, unless a page's metadata says `robots: { index: false }`, and the items of every kind with a `url` that a signed-out visitor may read. Drafts, rows an access rule hides and password-protected items are never in it.
 
+Each `page.tsx` route without parameters is also a hidden, code-owned WordPress Page. Menus, SEO plugins and `get_permalink()` see a normal published Page whose link is the route URL, `/` is the front page, and the Page keeps its ID across builds. Code Pages are absent from the wp-admin Pages list, its counts and REST `context=edit` lists; nobody may edit or delete them; WordPress's own addresses for them redirect to the route. A route under a `guard` stores its Page private.
+
 ## From the old `pages/` renderer
 
 The separate `pages/` renderer (`@spacefast/first-pages`, `first-pages build` and `first/pages.json`) is gone. A project that still has `pages/` beside `first.config.ts` fails to build with the move as the fix, and a host refuses a capture that carries old-renderer pages.

@@ -2119,3 +2119,99 @@ fn page_reads_run_as_the_visitor() {
     assert_eq!(seen["editor"]["page cache"], "private, no-store, max-age=0");
     assert_eq!(seen["anonymous after editor"], public);
 }
+
+/// docs/spec/rendering.md §7, "Kept from today": each static `page.tsx` route has a hidden,
+/// code-owned WordPress Page (tests/php/route_pages.php). WordPress, menus and SEO plugins see a
+/// normal Page whose link is the route URL; wp-admin, its counts and REST edit lists don't list it;
+/// nobody may edit or delete it; WordPress's own addresses for it redirect to the route.
+#[test]
+fn static_routes_have_code_owned_pages() {
+    let project = fixture("app-router", "route-pages");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/route_pages.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let seen: serde_json::Value = serde_json::from_str(
+        stdout
+            .lines()
+            .skip_while(|l| !l.starts_with('{'))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .as_str(),
+    )
+    .unwrap_or_else(|_| panic!("{stdout}"));
+    let url = |path: &str| -> String {
+        let link = seen["pages"]["/"]["link"].as_str().unwrap();
+        format!("{}{path}", link.trim_end_matches('/'))
+    };
+    // One Page per static page.tsx route: `page.md` routes own their own, parameterised routes none.
+    let routes: Vec<&String> = seen["pages"].as_object().unwrap().keys().collect();
+    assert_eq!(routes, ["(site)/about", "/", "account", "broken", "notes"], "{seen}");
+    for (route, path) in [("(site)/about", "/about"), ("/", "/"), ("notes", "/notes")] {
+        let page = &seen["pages"][route];
+        assert_eq!(
+            (page["status"].as_str(), page["link"].as_str(), page["meta"].as_str()),
+            (Some("publish"), Some(url(path).as_str()), Some(route)),
+            "{route}"
+        );
+    }
+    // A route under a guard stores its Page private; the root is the front page.
+    assert_eq!(seen["pages"]["account"]["status"], "private");
+    assert_eq!(seen["pages"]["/"]["title"], "Home");
+    assert_eq!(seen["front"], serde_json::json!(["page", true]));
+    assert_eq!(seen["canonical"], url("/notes"));
+    // Hidden from wp-admin, its counts and REST edit lists; a public REST list has them like any page.
+    for title in ["Home", "Notes", "About", "Account", "Broken"] {
+        assert!(
+            !seen["admin list"].as_array().unwrap().iter().any(|t| t == title),
+            "{title}: {seen}"
+        );
+        assert!(
+            !seen["rest edit"].as_array().unwrap().iter().any(|t| t == title),
+            "{title}: {seen}"
+        );
+    }
+    assert!(
+        seen["rest view"].as_array().unwrap().iter().any(|t| t == "About"),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["admin count publish"], 4,
+        "Native, Colophon, Field guide, Sample Page"
+    );
+    // Locked: no edit or delete, and a write that skips capability checks changes nothing.
+    assert_eq!(seen["can edit"], serde_json::json!([false, false, true]));
+    assert_eq!(seen["after bypass"], serde_json::json!(["Notes", "publish"]));
+    // Menus link the route; a lost record finds the same Pages again, so menu items keep working.
+    assert_eq!(seen["menu"], serde_json::json!([url("/about")]));
+    assert_eq!(seen["adopted"], true);
+    // WordPress's own addresses for a code Page go to the route; a site's own Page is untouched.
+    assert_eq!(seen["page_id redirect"], serde_json::json!([301, url("/about")]));
+    assert_eq!(seen["slug redirect"], serde_json::json!([301, url("/")]));
+    assert_eq!(
+        (&seen["about"], &seen["native"]),
+        (&serde_json::json!(200), &serde_json::json!(200))
+    );
+    // The route renders with its Page as the queried object, as the page template would have it.
+    assert_eq!(
+        (&seen["body class"], &seen["home body class"]),
+        (&serde_json::json!(true), &serde_json::json!(true))
+    );
+    // The sitemap lists the route once, from the app's pages; core's page sitemap leaves code Pages out.
+    assert_eq!(
+        (&seen["sitemap pages"], &seen["sitemap app"]),
+        (&serde_json::json!(4), &serde_json::json!(3))
+    );
+}

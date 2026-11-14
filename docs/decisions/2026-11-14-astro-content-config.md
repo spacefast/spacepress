@@ -22,7 +22,7 @@ const blog = defineCollection({
 export const collections = { blog };
 ```
 
-the build has the kind `blog`, as if `first/` held
+the build has the kind `blog`, as if `first/` held (the builders are imported under private names)
 
 ```ts
 export const blog = collection(
@@ -36,20 +36,27 @@ export const blog = collection(
   loader, a `z.object()` schema (or a schema function that returns one), and
   `export const collections = { ... }`. Collections with any other loader (a remote one, or
   `firstLoader()` reading a First site) stay Astro's and are skipped.
-- **Field mapping.** `z.string()` → `text()` (`.url()` → `url()`, `.email()` → `email()`),
-  `z.number()` → `number()` (`.int()` → `integer()`), `z.boolean()` → `boolean()`, `z.date()` and
-  `z.coerce.date()` → `date()`, `z.enum([...])` → `select([...])`, `z.array(z.string() | z.number())`
-  → `json<T[]>()`, `z.array(z.enum([...]))` → `select([...]).many()`. `.optional()`, `.nullable()`,
-  `.default(<literal>)`, `.min()`, `.max()`, `.positive()` and `.nonnegative()` carry over.
-- **What it can't map is a build error at the field**, naming it and saying what to do:
-  `z.object()`, unions, records, `image()`, `reference()`, transforms and refinements, lists of
-  objects, a field named like one First adds (`slug`, `body`, `parent`, `order`, `status`, ...), a
-  collection with no `title` (or `name`) string, and a glob pattern other than `**/*.md` or `*.md`.
-  The author moves such a collection into `first/` and writes it in First's own forms there.
-- **The folder tree is the sync.** Every collection syncs as `<base>/**/*.md` on a hierarchical
-  kind: a file's path below the base is its slug and folders are parents, which is how Astro names
-  entries (`2024/post.md` is the entry `2024/post`). `first sync` keeps the files and the site in
-  step as it does for any synced kind.
+- **Field mapping.** `z.string()` → `text()` (`.url()` → `url()`, http(s) only; `.email()` →
+  `email()`), `z.number()` → `number()` (`.int()` → `integer()`), `z.boolean()` → `boolean()`,
+  `z.date()` and `z.coerce.date()` → `date()` (front matter `YYYY-MM-DD`), `z.enum([...])` →
+  `select([...])`, `z.array(z.string() | z.number())` → `json<T[]>()` (items unchecked),
+  `z.array(z.enum([...]))` → `select([...]).many()`. `.optional()`, `.nullable()`,
+  `.default(<literal>)`, `.min()`, `.max()`, `.nonnegative()` and `.positive()` on an `.int()`
+  carry over.
+- **What it can't map is a build error in `src/content.config.ts`, at the field**, naming it and
+  saying what to do: `z.object()`, unions, records, `image()`, `reference()`, transforms and
+  refinements, `.positive()` on a number that isn't `.int()`, lists of objects, a default of
+  another type than the field, a field name First can't use (not an identifier, or one First adds:
+  `slug`, `body`, `parent`, `order`, `status`, `locale`, ...), a collection name First can't use
+  (not an identifier, a reserved route like `media`, more than 14 characters), a collection without
+  a required `title` (or `name`) string, a loader passed by name, and a glob pattern other than
+  `**/*.md` or `*.md`. The author moves such a collection into `first/` and writes it in First's own
+  forms there. A collection imported from another file is not read.
+- **The files are the sync.** `**/*.md` is a hierarchical kind synced as a folder tree: a file's
+  path below the base is its slug and folders are parents, which is how Astro names entries
+  (`2024/post.md` is the entry `2024/post`). `*.md` is a flat kind synced from that folder alone,
+  its slug following the title. `first sync` keeps the files and the site in step as for any
+  synced kind. A pattern that leaves files out (`[^_]*.md`) is refused, as sync reads every file.
 - **Access** is the default for a published collection: anyone reads, editors write.
 - **One small hook.** The loader writes the kinds as one generated module
   (`first/_astro_content.ts`, never on disk) and loads it like any module under `first/`; checking,

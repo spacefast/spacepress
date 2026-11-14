@@ -48,6 +48,8 @@ struct Collection {
     fields: Vec<Field>,
     /// The field the title option points at.
     title: String,
+    /// `**/*.md`: a folder tree. `*.md`: the folder alone.
+    nested: bool,
 }
 
 /// The First module for `src/content.config.ts`, or `None` when the project has none.
@@ -65,8 +67,9 @@ pub fn module(fs: &dyn crate::loader::Fs, root: &Path) -> Result<Option<(PathBuf
 }
 
 fn write(collections: &[Collection]) -> String {
+    // The builders under names no collection can take (a collection may be called `text`).
     let mut out = String::from(
-        "// Generated from src/content.config.ts: each Astro content collection as a First kind.\nimport { collection, text, slug, richText, number, integer, boolean, date, timestamp, url, email, json, select } from \"first\";\n",
+        "// Generated from src/content.config.ts: each Astro content collection as a First kind.\nimport { collection as __collection, text as __text, slug as __slug, richText as __richText, number as __number, integer as __integer, boolean as __boolean, date as __date, url as __url, email as __email, json as __json, select as __select } from \"first\";\n",
     );
     for c in collections {
         let mut fields: Vec<String> = c
@@ -74,14 +77,21 @@ fn write(collections: &[Collection]) -> String {
             .iter()
             .map(|f| format!("{}: {}", key(&f.name), f.builder))
             .collect();
-        fields.push("slug: slug()".into());
-        fields.push("body: richText().optional()".into());
+        // A folder tree's file name is its slug; a flat folder's slug follows the title, as
+        // `first sync` names its files by slug.
+        fields.push(if c.nested {
+            "slug: __slug()".into()
+        } else {
+            format!("slug: __slug({{ source: {:?} }})", c.title)
+        });
+        fields.push("body: __richText().optional()".into());
         let _ = writeln!(
             out,
-            "export const {} = collection({{ {} }}, {{ title: {:?}, content: \"body\", hierarchical: true, sync: {:?}, access: {{ read: \"anyone\", create: \"editor\", update: \"editor\", delete: \"editor\" }} }});",
+            "export const {} = __collection({{ {} }}, {{ title: {:?}, content: \"body\", hierarchical: {}, sync: {:?}, access: {{ read: \"anyone\", create: \"editor\", update: \"editor\", delete: \"editor\" }} }});",
             c.name,
             fields.join(", "),
             c.title,
+            c.nested,
             c.sync
         );
     }
@@ -108,7 +118,24 @@ const RESERVED: &[(&str, &str)] = &[
     ("order", "First adds `order` to a folder tree"),
     ("status", "First adds `status` for drafts"),
     ("publishedAt", "First adds `publishedAt` for drafts"),
+    ("locale", "First reserves it for translations"),
+    ("translations", "First reserves it for translations"),
+    ("translationOf", "First reserves it for translations"),
+    ("translationGroup", "First reserves it for translations"),
 ];
+
+/// Collection names First serves a route of its own under (extract.rs `RESERVED_COLLECTIONS`).
+const RESERVED_KINDS: &[&str] = &[
+    "media", "files", "globals", "actions", "me", "_schema", "auth", "services", "search",
+];
+/// WordPress post types are at most 20 characters, and First's are `first_<name>`.
+const MAX_NAME: usize = 20 - "first_".len();
+
+/// A name First can use as an identifier: a letter, then letters, digits and underscores.
+fn ident(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic()) && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
 
 struct Reader<'s> {
     source: &'s str,
@@ -205,24 +232,40 @@ fn read(source: &str, file: u32) -> Result<Vec<Collection>> {
                 "name it: `blog: defineCollection(...)`",
             ));
         };
-        // `blog` (shorthand or a reference) names a `const blog = defineCollection(...)`.
+        // `blog` (shorthand or a reference) names a `const blog = defineCollection(...)`. A
+        // collection defined elsewhere (imported) isn't read: it stays Astro's.
         let value = match p.value.get_inner_expression() {
             a::Expression::Identifier(id) => match consts.iter().find(|(n, _)| *n == id.name.as_str()) {
                 Some((_, e)) => *e,
-                None => {
-                    return Err(unsupported(
-                        file,
-                        id.span,
-                        &format!("`{}`", id.name),
-                        "define it in this file: `const blog = defineCollection({ ... })`",
-                    ));
-                }
+                None => continue,
             },
             other => other,
         };
-        if let Some(c) = reader.define(&name, value)? {
-            out.push(c);
+        let Some(c) = reader.define(&name, value)? else {
+            continue;
+        };
+        let key = span(file, p.key.span());
+        let physical = crate::schema::physical_name(&name);
+        if !ident(&name) || name.starts_with("__") {
+            return Err(Diag::new(key, format!("collection `{name}` can't be a First kind's name"))
+                .help("name it with letters, digits and underscores, starting with a letter: it is the kind's API name")
+                .code(Code::Schema));
         }
+        if RESERVED_KINDS.contains(&physical.as_str()) {
+            return Err(
+                Diag::new(key, format!("collection `{name}` can't be a First kind's name"))
+                    .help(format!(
+                        "First serves a route of its own at `{physical}`; rename the collection"
+                    ))
+                    .code(Code::Schema),
+            );
+        }
+        if physical.len() > MAX_NAME {
+            return Err(Diag::new(key, format!("collection `{name}` can't be a First kind's name"))
+                .help(format!("a kind is a WordPress post type `first_{physical}`, at most 20 characters; use a name of at most {MAX_NAME}"))
+                .code(Code::Schema));
+        }
+        out.push(c);
     }
     Ok(out)
 }
@@ -284,10 +327,17 @@ impl<'s> Reader<'s> {
                 "add `loader: glob({ pattern: \"**/*.md\", base: \"./src/content/<name>\" })`",
             ));
         };
+        if let a::Expression::Identifier(id) = loader.get_inner_expression() {
+            return Err(fail(
+                id.span,
+                &format!("the loader `{}` of `{name}`", id.name),
+                "write the loader in place, `loader: glob({ pattern, base })`, so First can read which files it syncs",
+            ));
+        }
         if !matches!(called(loader), Some((_, "glob"))) {
             return Ok(None);
         }
-        let sync = self.glob(loader, name)?;
+        let (sync, nested) = self.glob(loader, name)?;
         let Some(schema) = schema else {
             return Err(fail(
                 call.span,
@@ -311,6 +361,14 @@ impl<'s> Reader<'s> {
         };
         let fields = self.object(schema)?;
         for f in &fields {
+            if !ident(&f.name) {
+                return Err(Diag::new(
+                    self.at(f.key),
+                    format!("field `{}` of `{name}` can't be a First field", f.name),
+                )
+                .help("name it with letters, digits and underscores, starting with a letter")
+                .code(Code::Schema));
+            }
             if let Some((_, why)) = RESERVED.iter().find(|(r, _)| *r == f.name) {
                 return Err(Diag::new(
                     self.at(f.span),
@@ -322,7 +380,7 @@ impl<'s> Reader<'s> {
         }
         let title = ["title", "name", "heading"]
             .into_iter()
-            .find(|t| fields.iter().any(|f| f.name == *t && f.text))
+            .find(|t| fields.iter().any(|f| f.name == *t && f.text && f.required))
             .map(String::from)
             .ok_or_else(|| {
                 fail(
@@ -342,11 +400,12 @@ impl<'s> Reader<'s> {
                 })
                 .collect(),
             title,
+            nested,
         }))
     }
 
     /// `glob({ pattern, base })` → First's sync pattern for the base folder.
-    fn glob(&self, loader: &a::Expression<'_>, name: &str) -> Result<String> {
+    fn glob(&self, loader: &a::Expression<'_>, name: &str) -> Result<(String, bool)> {
         let fail = |s: oxc_span::Span, help: &str| {
             Diag::new(
                 self.at(s),
@@ -404,14 +463,21 @@ impl<'s> Reader<'s> {
         };
         // `*.md` reads the folder alone and `**/*.md` the folders below it too; both name an entry by
         // its path below the base, which a folder tree also does (`2024/post.md` is `2024/post`).
-        if !matches!(pattern.as_str(), "**/*.md" | "**/[^_]*.md" | "*.md" | "[^_]*.md") {
-            return Err(fail(
-                pattern_span,
-                &format!(
-                    "the pattern `{pattern}` isn't one First syncs: use \"**/*.md\" (or \"*.md\"); First syncs Markdown files, and .mdx, .json and other patterns aren't read"
-                ),
-            ));
-        }
+        // `**/*.md` is a folder tree: an entry's path below the base is its slug and its folders its
+        // parents, as Astro names entries. `*.md` is the folder alone. Patterns that leave files out
+        // (`[^_]*.md`) aren't: sync reads every Markdown file in the folder.
+        let nested = match pattern.as_str() {
+            "**/*.md" => true,
+            "*.md" => false,
+            _ => {
+                return Err(fail(
+                    pattern_span,
+                    &format!(
+                        "the pattern `{pattern}` isn't one First syncs: use \"**/*.md\" or \"*.md\"; First syncs every Markdown file in the folder, so .mdx, .json and patterns that leave files out (`_drafts`) aren't read"
+                    ),
+                ));
+            }
+        };
         let base = base.unwrap_or_else(|| (".".to_string(), call.span));
         let dir = base.0.trim_start_matches("./").trim_end_matches('/');
         if dir.is_empty()
@@ -426,7 +492,14 @@ impl<'s> Reader<'s> {
                 "set `base` to a folder inside the project, e.g. \"./src/content/blog\"",
             ));
         }
-        Ok(format!("{dir}/**/*.md"))
+        Ok((
+            if nested {
+                format!("{dir}/**/*.md")
+            } else {
+                format!("{dir}/*.md")
+            },
+            nested,
+        ))
     }
 
     /// `z.object({ ... })` → its fields.
@@ -470,7 +543,9 @@ impl<'s> Reader<'s> {
                         .code(Code::Schema),
                 );
             };
-            out.push(self.field(&name, &p.value)?);
+            let mut field = self.field(&name, &p.value)?;
+            field.key = p.key.span();
+            out.push(field);
         }
         Ok(out)
     }
@@ -562,13 +637,13 @@ impl<'s> Reader<'s> {
         let mut extra = String::new();
         let mut enum_values: Option<Vec<String>> = None;
         let (mut builder, text) = match base.as_str() {
-            "string" => ("text()".to_string(), true),
-            "number" | "coerce.number" => ("number()".to_string(), false),
-            "boolean" | "coerce.boolean" => ("boolean()".to_string(), false),
+            "string" => ("__text()".to_string(), true),
+            "number" | "coerce.number" => ("__number()".to_string(), false),
+            "boolean" | "coerce.boolean" => ("__boolean()".to_string(), false),
             // Astro's own example: a date written `2022-07-08` or `'Jul 08 2022'` in front matter.
             // First stores a calendar date and reads `YYYY-MM-DD`; a sync with another form is refused
             // at the file, by the field's own check.
-            "date" | "coerce.date" => ("date()".to_string(), false),
+            "date" | "coerce.date" => ("__date()".to_string(), false),
             "enum" => {
                 let values = match args
                     .first()
@@ -618,8 +693,8 @@ impl<'s> Reader<'s> {
                     ));
                 }
                 match item_base.as_str() {
-                    "string" => ("json<string[]>()".to_string(), false),
-                    "number" => ("json<number[]>()".to_string(), false),
+                    "string" => ("__json<string[]>()".to_string(), false),
+                    "number" => ("__json<number[]>()".to_string(), false),
                     "enum" => {
                         let Some(a::Expression::ArrayExpression(arr)) = item_args
                             .first()
@@ -645,7 +720,7 @@ impl<'s> Reader<'s> {
                                 }
                             }
                         }
-                        (format!("select([{}]).many()", values.join(", ")), false)
+                        (format!("__select([{}]).many()", values.join(", ")), false)
                     }
                     other => {
                         return Err(refuse(
@@ -705,11 +780,34 @@ impl<'s> Reader<'s> {
                     };
                     let s = v.span();
                     let text = &self.source[s.start as usize..s.end as usize];
+                    let fits = match v.get_inner_expression() {
+                        a::Expression::StringLiteral(_) => base == "string" || base == "enum",
+                        a::Expression::NumericLiteral(_) | a::Expression::UnaryExpression(_) => {
+                            base.ends_with("number")
+                        }
+                        a::Expression::BooleanLiteral(_) => base.ends_with("boolean"),
+                        a::Expression::ArrayExpression(_) => base == "array",
+                        _ => true,
+                    };
+                    if !fits {
+                        return Err(Diag::new(
+                            self.at(s),
+                            format!("field `{name}`: its default isn't a `z.{base}()` value"),
+                        )
+                        .help("give the default the field's own type")
+                        .code(Code::Schema));
+                    }
                     match v.get_inner_expression() {
                         a::Expression::StringLiteral(_)
                         | a::Expression::NumericLiteral(_)
                         | a::Expression::BooleanLiteral(_) => default = Some(text.to_string()),
                         a::Expression::ArrayExpression(arr) if arr.elements.is_empty() => default = Some("[]".into()),
+                        a::Expression::UnaryExpression(u)
+                            if u.operator == oxc_syntax::operator::UnaryOperator::UnaryNegation
+                                && matches!(u.argument, a::Expression::NumericLiteral(_)) =>
+                        {
+                            default = Some(text.to_string())
+                        }
                         _ => {
                             return Err(refuse(
                                 s,
@@ -721,14 +819,12 @@ impl<'s> Reader<'s> {
                 }
                 "url" if base == "string" => is_url = true,
                 "email" if base == "string" => is_email = true,
-                "int" if base.ends_with("number") => builder = "integer()".into(),
+                "int" if base.ends_with("number") => builder = "__integer()".into(),
                 "min" | "max" if base.ends_with("number") || base == "string" => {
-                    if base == "string" && m == "min" && number()? == 1.0 {
-                        continue; // non-empty: First's required text
-                    }
                     let _ = write!(extra, ".{m}({})", number()?);
                 }
-                "positive" if base.ends_with("number") => extra.push_str(".min(1)"),
+                // Above zero is at least one only for whole numbers.
+                "positive" if base.ends_with("number") && builder == "__integer()" => extra.push_str(".min(1)"),
                 "nonnegative" if base.ends_with("number") => extra.push_str(".min(0)"),
                 "describe" => {}
                 other => {
@@ -741,14 +837,14 @@ impl<'s> Reader<'s> {
             }
         }
         if is_url {
-            builder = "url()".into();
+            builder = "__url()".into();
         }
         if is_email {
-            builder = "email()".into();
+            builder = "__email()".into();
         }
         if let Some(values) = enum_values {
             builder = format!(
-                "select([{}])",
+                "__select([{}])",
                 values.iter().map(|v| format!("{v:?}")).collect::<Vec<_>>().join(", ")
             );
         }
@@ -764,7 +860,9 @@ impl<'s> Reader<'s> {
             name: name.to_string(),
             builder: out,
             text: text && !is_url && !is_email,
+            required: !optional && default.is_none(),
             span: oxc_span::Span::new(value.span().start, value.span().end),
+            key: oxc_span::Span::new(value.span().start, value.span().end),
         })
     }
 }
@@ -774,5 +872,9 @@ struct Mapped {
     builder: String,
     /// A plain string: it can be the kind's title.
     text: bool,
+    /// Neither optional nor defaulted: a title must be.
+    required: bool,
+    /// The field's name in the schema.
+    key: oxc_span::Span,
     span: oxc_span::Span,
 }

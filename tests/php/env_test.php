@@ -49,9 +49,9 @@ eq('core\'s filesystem and proxy credentials are WordPress secrets too',
     array_map([Env::class, 'hostSecret'], ['FTP_PASS', 'ftp_privkey', 'FTP_USER', 'FTP_PUBKEY', 'WP_PROXY_USERNAME', 'WP_PROXY_PASSWORD', 'WP_PROXY_HOST']),
     [true, true, true, true, true, true, false]);
 eq('CGI meta-variables are request values by exact name; an app\'s look-alike names are not',
-    array_map([Env::class, 'requestValue'], ['QUERY_STRING', 'REQUEST_URI', 'PATH_INFO', 'CONTENT_TYPE', 'REMOTE_ADDR', 'SCRIPT_FILENAME',
+    array_map([Env::class, 'requestValue'], ['QUERY_STRING', 'REQUEST_URI', 'PATH_INFO', 'CONTENT_TYPE', 'REMOTE_ADDR', 'SCRIPT_FILENAME', 'ORIG_SCRIPT_NAME', 'REDIRECT_STATUS',
         'REDIRECT_URI', 'SERVER_URL', 'URL', 'PATH', 'CONTENT_API_KEY', 'REQUEST_TIMEOUT']),
-    [true, true, true, true, true, true, false, false, false, false, false, false]);
+    [true, true, true, true, true, true, true, true, false, false, false, false, false, false]);
 (static function (): void {
     putenv('QUERY_STRING=visitor=1');
     putenv('REDIRECT_URI=https://app.example/process');

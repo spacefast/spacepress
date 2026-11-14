@@ -137,7 +137,7 @@ pub(crate) fn reserved_env_error<T>(span: Span, name: &str) -> Result<T> {
     err_help(
         span,
         format!("`{name}` is a host setting, not an app variable"),
-        "WordPress's database login, keys and salts can't be read from app code; give the app its own variable",
+        "WordPress's database login, keys and salts, and core's FTP and proxy credentials, can't be read from app code; give the app its own variable",
     )
 }
 

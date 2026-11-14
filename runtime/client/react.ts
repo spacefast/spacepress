@@ -24,6 +24,8 @@ export interface ReactLike {
   // `any` here only so that every function type is accepted as F.
   useCallback<F extends (...args: any[]) => any>(fn: F, deps: readonly unknown[]): F;
   useMemo<V>(factory: () => V, deps: readonly unknown[]): V;
+  useLayoutEffect(effect: () => void | (() => void), deps?: readonly unknown[]): void;
+  useEffect(effect: () => void | (() => void), deps?: readonly unknown[]): void;
 }
 
 export interface QueryState<T> {
@@ -76,36 +78,43 @@ export interface Hooks {
 }
 
 export function createHooks(React: ReactLike): Hooks {
+  // No hook reads or writes a ref while rendering (the React Compiler's rule): the store is made
+  // from the read of the render that starts it, and a mutation reads its latest callbacks only
+  // when it runs. Effects that copy them run before the browser paints; on a server, where layout
+  // effects warn and never run, a plain effect stands in.
+  const useLatestEffect = typeof document === "undefined" ? React.useEffect : React.useLayoutEffect;
+
   function useQuery<T>(query: Query<T> | null | undefined | false, options: UseQueryOptions<T> = {}): QueryState<T> {
     const active = query && options.enabled !== false ? query : null;
     const key = active?.key ?? null;
-    // The read is usually built inline, so a new object arrives with every render: keep the latest
-    // one, and start a new subscription only when its key changes.
-    const latest = React.useRef({ query: active, seed: options.seed });
-    latest.current = { query: active, seed: options.seed };
+    const seed = options.seed;
+    // The read is usually built inline, so a new object arrives with every render. Reads with the
+    // same key are the same read, so the store starts one subscription per key, from the read of
+    // the render that made it.
     const store = React.useMemo(() => {
-      const { seed } = latest.current;
-      const initial: QueryState<T> = seed && key !== null ? { data: seed.data, error: undefined, loading: false } : { data: undefined, error: undefined, loading: key !== null };
-      let state = initial;
+      const initial: QueryState<T> = seed && active !== null ? { data: seed.data, error: undefined, loading: false } : { data: undefined, error: undefined, loading: active !== null };
+      // The snapshot useSyncExternalStore reads: a new object whenever an answer arrives.
+      const held = { state: initial };
       return {
         subscribe(changed: () => void): () => void {
-          const read = latest.current.query;
-          if (read === null) return () => {};
-          return read.subscribe(
+          if (active === null) return () => {};
+          return active.subscribe(
             (data) => {
-              state = { data, error: undefined, loading: false };
+              held.state = { data, error: undefined, loading: false };
               changed();
             },
             (error) => {
-              state = { data: state.data, error, loading: false };
+              held.state = { data: held.state.data, error, loading: false };
               changed();
             },
             seed,
           );
         },
-        snapshot: () => state,
+        snapshot: () => held.state,
         server: () => initial,
       };
+      // Keyed on the read's key on purpose: a new object for the same read is the same subscription.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [key]);
     return React.useSyncExternalStore(store.subscribe, store.snapshot, store.server);
   }
@@ -113,7 +122,9 @@ export function createHooks(React: ReactLike): Hooks {
   function useMutation<A extends unknown[], R>(run: (...args: A) => Promise<R>, options: UseMutationOptions<A> = {}): Mutation<A, R> {
     const [state, setState] = React.useState<{ pending: number; error: Error | undefined }>({ pending: 0, error: undefined });
     const latest = React.useRef({ run, options });
-    latest.current = { run, options };
+    useLatestEffect(() => {
+      latest.current = { run, options };
+    });
     const mutate = React.useCallback(async (...args: A): Promise<R> => {
       const updates: { settle(): void; rollback(): void }[] = [];
       setState((s) => ({ pending: s.pending + 1, error: undefined }));

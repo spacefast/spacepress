@@ -16,8 +16,6 @@ function Notes() {
   const count = useQuery(first.guestNotes.count({ where }));
   const secrets = useQuery(first.signups.list());
   const off = useQuery(first.guestNotes.list({ where }), { enabled: false });
-  const renders = React.useRef(0);
-  renders.current++;
 
   const add = useMutation((body: string) => first.guestNotes.create({ body }), {
     optimistic: (apply, body) => apply(first.guestNotes.list({ where, orderBy: { id: "asc" } }), (rows) => [...rows, { id: -1, body: `${body} (saving)`, memberId: null }]),
@@ -35,7 +33,6 @@ function Notes() {
       <p id="count">{count.data ?? "…"}</p>
       <p id="secrets">{secrets.loading ? "loading" : secrets.error ? `error ${secrets.error.status} ${secrets.error.code}` : `rows ${secrets.data?.length}`}</p>
       <p id="off">{off.loading ? "loading" : off.data === undefined ? "off" : "on"}</p>
-      <p id="renders">{renders.current}</p>
       <button id="add" onClick={() => void add.mutate(`${prefix} mine`)}>add</button>
       <p id="adding">{add.pending ? "pending" : "idle"}</p>
       <ul id="counts">{counts.data?.map((row) => <li key={row.id}>{row.n}</li>)}</ul>
@@ -46,4 +43,14 @@ function Notes() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<Notes />);
+// React's Profiler reports each commit of the tree, so the test counts renders without the
+// component reading a ref while it renders.
+const commits = document.createElement("p");
+commits.id = "renders";
+commits.textContent = "0";
+document.body.append(commits);
+createRoot(document.getElementById("root")!).render(
+  <React.Profiler id="notes" onRender={() => void (commits.textContent = String(Number(commits.textContent) + 1))}>
+    <Notes />
+  </React.Profiler>,
+);

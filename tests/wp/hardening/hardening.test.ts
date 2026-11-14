@@ -31,7 +31,7 @@ const INSTALL_CAPS = ["install_plugins", "upload_plugins", "update_plugins", "de
 
 test("the active app lists every switch it applies", async () => {
   const schema = (await (await fetch(`${harness.url}/__first/api/v1`, { headers: auth("admin") })).json()) as { data: { runtime: { wp: { hardening: string[] } } } };
-  assert.deepEqual(schema.data.runtime.wp.hardening, ["xmlrpc", "pings", "emoji", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "authors", "schemaLock", "permalinks", "timezone", "blockTheme"]);
+  assert.deepEqual(schema.data.runtime.wp.hardening, ["xmlrpc", "pings", "emoji", "fileEditors", "pluginAndThemeInstalls", "autoUpdates", "customizer", "comments", "authors", "schemaLock", "loginErrors", "permalinks", "timezone", "blockTheme"]);
 });
 
 test("xmlrpc: every call is refused, system methods included, and nothing advertises the endpoint", async () => {
@@ -193,6 +193,42 @@ test("comments: closed on core posts, pages and kinds without `comments`; open w
   assert.ok(listed.some((c: any) => c.id === row.id && /facade on/.test(c.content)), JSON.stringify(listed));
 });
 
+/** wp-login.php's form posted as a browser would, without the test cookie: [status, Location, page]. */
+const signIn = async (log: string, pwd: string) => {
+  const response = await fetch(`${site}/wp-login.php`, { method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ log, pwd }) });
+  return [response.status, response.headers.get("location"), await response.text()] as const;
+};
+const lostPassword = async (user_login: string) => {
+  const response = await fetch(`${site}/wp-login.php?action=lostpassword`, { method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ user_login }) });
+  return [response.status, response.headers.get("location")] as const;
+};
+const GENERIC_LOGIN_ERROR = "<strong>Error:</strong> Invalid username, email address or incorrect password.";
+
+test("loginErrors: wp-login.php answers an unknown account and a wrong password alike", async () => {
+  for (const [log, pwd] of [["nobody-here", "guess"], ["nobody@example.test", "guess"], ["admin", "wrong password"], [wp("user", "get", "admin", "--field=user_email"), "wrong password"]]) {
+    const [status, , body] = await signIn(log, pwd);
+    assert.equal(status, 200, log);
+    assert.ok(body.includes(GENERIC_LOGIN_ERROR), `${log}: ${body.match(/id="login_error"[\s\S]{0,300}/)?.[0]}`);
+    assert.doesNotMatch(body, /is not registered|Unknown email address|The password you entered for/, log);
+    // wp-login.php refills the username only after a wrong password: it is refilled for every account.
+    assert.equal(body.match(/id="user_login"[^>]*value="([^"]*)"/)?.[1], log, `${log}: the typed username is kept`);
+  }
+});
+
+test("loginErrors: lost password says \"check your email\" whether or not the account exists", async () => {
+  for (const login of ["nobody-here", "nobody@example.test", "admin"]) {
+    const [status, location] = await lostPassword(login);
+    assert.equal(status, 302, login);
+    assert.match(location ?? "", /wp-login\.php\?checkemail=confirm$/, login);
+  }
+  // A field left empty is the visitor's mistake, not the account's: core's error stays.
+  const empty = await fetch(`${site}/wp-login.php?action=lostpassword`, { method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ user_login: "" }) });
+  assert.equal(empty.status, 200);
+  assert.match(await empty.text(), /Please enter a username or email address/);
+  const confirm = await (await page("/wp-login.php?checkemail=confirm")).text();
+  assert.match(confirm, /If there is an account associated with the username\/email address, you will receive an email/);
+});
+
 test("permalinks: pretty URLs route even when the stored structure is plain", async () => {
   wp("option", "update", "permalink_structure", "");
   wp("rewrite", "flush");
@@ -255,4 +291,6 @@ test("without an active First app, WordPress keeps XML-RPC, comments, the Custom
   assert.match(await (await page("/", cookie)).text(), /wp-emoji|_wpemojiSettings/);
   assert.deepEqual(evalJson(`echo wp_json_encode([pings_open(${id}), get_option('permalink_structure'), get_option('first_rewrite_rules', null)]);`), [true, "", null]);
   assert.equal((await page(`/?p=${id}`)).status, 200, "plain permalinks route again");
+  assert.match((await signIn("nobody-here", "guess"))[2], /is not registered on this site/, "wp-login.php's own errors again");
+  assert.equal((await lostPassword("nobody-here"))[0], 200, "lost password reports the unknown account again");
 });

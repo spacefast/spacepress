@@ -656,6 +656,25 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         "parallel route slot",
         "first/app/@modal",
     );
+    // `apiReference()` reads a JSON file of the app's `public/`, named as a literal.
+    rejects(
+        &dir,
+        &[(
+            "first/app/api/page.tsx",
+            "import { apiReference } from \"first/content\";\nconst file = \"x.json\";\nexport default function P() { return <p>{apiReference(file).title}</p>; }\n",
+        )],
+        "`apiReference()` takes the path of a JSON file in `public/`, as a string literal",
+        "first/app/api/page.tsx:3",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/api/page.tsx",
+            "import { apiReference } from \"first/content\";\nexport default function P() { return <p>{apiReference(\"../secrets.json\").title}</p>; }\n",
+        )],
+        "`apiReference()` takes the path of a JSON file in `public/`",
+        "first/app/api/page.tsx:2",
+    );
     rejects(
         &dir,
         &[("first/app/docs/[...rest]/more/page.tsx", page)],
@@ -1594,7 +1613,7 @@ export const nope = state.result?.nope;
             "method": "post",
             "action": "/__first/api/v1/actions/subscribe",
             "hidden": [["_first_return", "hidden", "/?ref=nav"]],
-            "page cache": "public, s-maxage=300, max-age=0, must-revalidate",
+            "page cache": "public, max-age=0, s-maxage=300, must-revalidate",
         }),
         "an anonymous page with a form stays shared and carries no nonce: {seen}"
     );
@@ -2063,6 +2082,119 @@ fn doctor_finds_broken_links_and_anchors_on_a_site() {
     );
 }
 
+/// `apiReference()` from "first/content": the app's own OpenAPI document, and one in `public/`,
+/// rendered by pages as an API reference, on WordPress over HTTP (tests/php/api_reference.php).
+#[test]
+fn api_reference_renders_openapi_as_pages() {
+    let project = fixture("api-reference", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/api_reference.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    // The index: the document's title, this site as its server, a section per tag in the
+    // document's order, and a link per operation named by its operationId.
+    let index = &seen["index"];
+    assert_eq!(index["status"], 200);
+    assert_eq!(index["h1"], serde_json::json!(["Apiref API"]));
+    assert!(
+        index["server"][0].as_str().unwrap().ends_with("/__first/api/v1"),
+        "{index}"
+    );
+    assert_eq!(index["tags"][0], "notes");
+    assert_eq!(index["tags"][1], "actions");
+    assert_eq!(index["tags"][2], "word-press");
+    assert_eq!(index["notes"][0], "/api/notes/notes-list");
+    assert_eq!(index["notes"][4], "/api/notes/notes-delete");
+    // The document's Markdown description, as HTML.
+    assert_eq!(index["description"], "apiref");
+    // One operation: the endpoint, who may call it, each parameter with where it goes and its
+    // constraints, the response's fields nested by depth, and a request sample.
+    let list = &seen["list"];
+    assert_eq!(list["endpoint"], serde_json::json!(["GET /notes"]));
+    assert_eq!(list["access"], serde_json::json!(["anyone"]));
+    assert_eq!(
+        list["limit"],
+        serde_json::json!(["integer", "in query", "min 1 · default: 50"])
+    );
+    assert_eq!(list["response"][0], "depth-0 data Note[]");
+    assert_eq!(list["response"][2], "depth-1 title string");
+    assert_eq!(list["response"][3], "depth-1 body string | null");
+    assert_eq!(
+        list["response"].as_array().unwrap().last().unwrap(),
+        "depth-0 cursor string | null"
+    );
+    assert!(
+        list["curl"][0].as_str().unwrap().starts_with("curl -g -X GET 'http://"),
+        "{list}"
+    );
+    // A write: its JSON body's fields, and samples that send the required ones.
+    let create = &seen["create"];
+    assert_eq!(create["body type"], serde_json::json!(["application/json"]));
+    assert_eq!(create["body"][0], "title string");
+    assert!(
+        create["curl"][0]
+            .as_str()
+            .unwrap()
+            .contains(r#"-d '{"title":"string"}'"#),
+        "{create}"
+    );
+    assert!(
+        create["fetch"][0]
+            .as_str()
+            .unwrap()
+            .contains(r#"body: JSON.stringify({"title":"string"})"#),
+        "{create}"
+    );
+    assert_eq!(seen["missing"], 404);
+    // A document in public/: path-level parameters, $refs followed, a schema that refers to
+    // itself shown once (the cycle stops), and nested fields one level deeper.
+    assert_eq!(
+        seen["partner"],
+        serde_json::json!({
+            "status": 200,
+            "h1": ["Partner API"],
+            "server": ["https://partner.example/v2"],
+            "params": ["id path string required"],
+            "fields": [
+                "200 d0 id: string required",
+                "200 d0 lines: Line[]",
+                "200 d1 sku: string (matches ^[A-Z]+$)",
+                "200 d1 qty: integer (min 1)",
+                "200 d0 parent: Order"
+            ],
+            "id": ["get-order"]
+        })
+    );
+    // What goes wrong in practice: a description's blocks are text, never the site's dynamic
+    // blocks; the operation's parameter replaces the path's; allOf and const; JSON over a form
+    // body; slugs that collide get -2; and a quote in the server is quoted in the curl sample.
+    assert_eq!(
+        seen["edge"],
+        serde_json::json!({
+            "status": 200,
+            "description": "Plain text.",
+            "renders blocks": false,
+            "sections": ["unicode--items-list", "unicode--items-list-2"],
+            "params": ["id: integer"],
+            "fields": ["count: Count min 1 required", "kind: \"fixed\" always \"fixed\""],
+            "body": ["application/json note!"],
+            "curl": "curl -g -X GET 'https://h.example/a'\\''b/x/{id}' \\\n  -H 'Accept: application/json'"
+        })
+    );
+}
+
 /// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
 /// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
 /// `nav`, `pager` and `headings` from "first/content", on WordPress over HTTP (tests/php/docs_kind.php).
@@ -2293,7 +2425,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // tags are stored as the app's blocks, their Markdown as inner blocks.
     assert_eq!(
         seen["blocks registered"],
-        serde_json::json!(["docskind/callout", "docskind/badge"])
+        serde_json::json!(["docskind/callout", "docskind/badge", "docskind/status"])
     );
     assert_eq!(
         seen["blocks stored"],
@@ -2316,6 +2448,10 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // Written back, the blocks are the file's tags again, and an editor's change to a prop is too.
     let file = "Run the installer.\n\n<Callout type=\"warning\" title=\"Before you start\">\nBack up the **database**.\n\n- Export it\n- Keep a copy\n</Callout>\n\n<Badge label=\"New\" count={3} />\n\nThen continue.\n";
     assert_eq!(seen["blocks back"], file);
+    assert_eq!(
+        seen["blocks cleared back"],
+        "<Status />\n\n<Badge label=\"x\" count={3} />\n"
+    );
     assert_eq!(
         seen["blocks edited back"],
         file.replace("type=\"warning\"", "type=\"note\"")
@@ -2599,6 +2735,11 @@ fn component_blocks_edit_in_the_block_editor() {
     assert_eq!(seen["badgeEdited"], "<span class=\"badge\">Fresh<b> 3</b></span>");
     assert_eq!(seen["calloutInner"], "Mind the gap.");
     assert_eq!(seen["calloutFields"], serde_json::json!([1, 1]), "{seen}");
+    // A block that renders nothing still has a box to select; an optional choice starts unset, and
+    // can be set and unset again; a cleared text field is empty.
+    assert_eq!(seen["statusEmpty"], "<Status />");
+    assert_eq!(seen["statusKind"], serde_json::json!(["", "live", ""]));
+    assert_eq!(seen["statusCleared"], "");
     let saved = seen["saved"].as_str().unwrap();
     assert!(
         saved.contains("<!-- wp:docskind/badge {\"label\":\"Fresh\",\"count\":3} /-->")

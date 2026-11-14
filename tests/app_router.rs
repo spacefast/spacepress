@@ -1240,6 +1240,18 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     );
     assert_eq!(seen["pointer after forget"], false);
     assert_eq!(seen["pointer while private"], json!([false, false]));
+    assert!(
+        seen["pointer homeUrl"]
+            .as_str()
+            .is_some_and(|u| u.starts_with("http://127.0.0.1:") && !u.ends_with('/')),
+        "{seen}"
+    );
+    // The pointer never names a build other than the current one, never comes back after a forget()
+    // from a build that started before it, and isn't written where a plugin decides per request.
+    assert_eq!(seen["pointer of another build"], false);
+    assert_eq!(seen["pointer after a forget mid-build"], false);
+    assert_eq!(seen["pointer with a serve filter"], false);
+    assert_eq!(seen["spellings"], json!([false, false]));
 }
 
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.

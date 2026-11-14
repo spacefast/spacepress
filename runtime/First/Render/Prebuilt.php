@@ -54,6 +54,8 @@ final class Prebuilt
      * cookie, so a prerender always reaches PHP and is never answered from a stored copy.
      */
     public const COOKIE = 'wordpress_first_prerender';
+    /** The option `forget()` advances, so a build running elsewhere knows its pointer is unwanted. */
+    private const EPOCH = 'first_prebuilt_epoch';
     /** The option holding when a write last named each prebuilt path (`stale()`). */
     private const MARKS = 'first_prebuilt_stale';
 
@@ -89,10 +91,19 @@ final class Prebuilt
             return;
         }
         add_action('plugins_loaded', self::serve(...), PHP_INT_MAX);
-        add_action(self::ACTION, self::build(...), 10, 1);
+        add_action(self::ACTION, self::build(...), 10, 2);
         // After a build is initialized (first request, migrate, activation) the files are made, and
         // made again every MAX_AGE by the same stock Action Scheduler action.
         add_action('init', static function (): void {
+            // A deploy changes the build id without forget(): a pointer naming another build would
+            // have a host serve that build's files. It goes before anything else this request does.
+            $pointer = self::pointer();
+            if (is_file($pointer)) {
+                $named = json_decode((string) @file_get_contents($pointer), true);
+                if (!is_array($named) || ($named['build'] ?? null) !== basename(self::dir())) {
+                    @unlink($pointer);
+                }
+            }
             if (self::$plugin?->unavailable() !== null || !function_exists('as_enqueue_async_action')) {
                 return;
             }
@@ -128,12 +139,29 @@ final class Prebuilt
         if (self::$plugin === null) {
             return;
         }
-        // The pointer goes first: a host serving files before PHP stops at once.
+        // The pointer goes first: a host serving files before PHP stops at once. The epoch tells a
+        // build already running in another process that what it made is no longer wanted.
         @unlink(self::pointer());
+        update_option(self::EPOCH, self::epoch() + 1, false);
         if (is_dir(self::dir())) {
             self::remove(self::dir());
         }
         delete_option(self::option());
+    }
+
+    /** The epoch `forget()` advances, read from the database past any cache in this process. */
+    private static function epoch(): int
+    {
+        global $wpdb;
+        return (int) $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::EPOCH));
+    }
+
+    /** An option read from the database, past this process's option cache. */
+    private static function fresh(string $name): mixed
+    {
+        global $wpdb;
+        $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $name));
+        return $raw === null ? false : maybe_unserialize($raw);
     }
 
     /**
@@ -146,11 +174,18 @@ final class Prebuilt
         return dirname(self::dir()) . '/current.json';
     }
 
-    /** Writes the pointer for this build, or removes it while the site hides itself from the public. */
-    private static function publish(): void
+    /**
+     * Writes the pointer for this build, when what `serve()` decides doesn't depend on the request:
+     * no plugin hooks `first_prebuilt_serve`, `first_app_cache_window`, `first_content_signal` or
+     * `first_prebuilt_dir` (each could answer differently per path or per request), the site shows
+     * itself to the public, and no `forget()` ran since this build started (`$epoch`). Otherwise the
+     * pointer is removed, and only `serve()` answers, request by request.
+     */
+    private static function publish(int $epoch): void
     {
-        $public = (int) get_option('blog_public', 1) >= 0 && !get_option('wpcom_public_coming_soon') && !get_option('wpcom_coming_soon');
-        if (!apply_filters('first_prebuilt_serve', $public, '/')) {
+        $public = (int) self::fresh('blog_public') >= 0 && !self::fresh('wpcom_public_coming_soon') && !self::fresh('wpcom_coming_soon');
+        $filtered = array_filter(['first_prebuilt_serve', 'first_app_cache_window', 'first_content_signal', 'first_prebuilt_dir'], static fn (string $hook): bool => has_filter($hook) !== false);
+        if (!$public || $filtered !== [] || self::epoch() !== $epoch) {
             @unlink(self::pointer());
             return;
         }
@@ -161,7 +196,9 @@ final class Prebuilt
             'cacheControl' => $control,
             'charset' => (string) get_option('blog_charset'),
             'contentSignal' => MarkdownTwins::contentSignal(),
+            // The home path requests start with, and the URL the `Link` headers are built on.
             'home' => rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/'),
+            'homeUrl' => rtrim(home_url('/'), '/'),
         ];
         $tmp = self::pointer() . '.' . bin2hex(random_bytes(4)) . '.tmp';
         if (wp_mkdir_p(dirname(self::pointer())) && file_put_contents($tmp, (string) wp_json_encode($pointer, JSON_UNESCAPED_SLASHES)) !== false) {
@@ -538,11 +575,16 @@ final class Prebuilt
             return;
         }
         foreach (array_keys($_COOKIE) as $name) {
-            if (preg_match('/^(wordpress_logged_in_|wordpress_sec_|wp-postpass_|comment_author_|wp_lang$|zi_session|__Host-zi_session)/', (string) $name) === 1) {
+            if (preg_match('/^(wordpress_logged_in_|wordpress_sec_|wp-postpass_|comment_author_|wp_lang$|zi_session$|__Host-zi_session$)/', (string) $name) === 1) {
                 return;
             }
         }
-        $uri = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
+        $request = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+        // `//x` is a scheme-relative URL to wp_parse_url(), not a path: not a prebuilt page's URL.
+        if (str_starts_with($request, '//')) {
+            return;
+        }
+        $uri = (string) (wp_parse_url($request, PHP_URL_PATH) ?? '/');
         $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
         if ($base !== '' && $uri !== $base && !str_starts_with($uri, $base . '/')) {
             return;
@@ -557,10 +599,13 @@ final class Prebuilt
         if ($html !== '/' && (str_ends_with($html, '/') || str_contains(rawurldecode($html), '..') || str_contains(rawurldecode($html), "\0") || str_contains(rawurldecode($html), '\\'))) {
             return;
         }
-        // Only the spelling the file was written under: `/%61bout` is not `/about`'s URL.
-        foreach (explode('/', trim($html, '/')) as $segment) {
-            if ($segment !== '' && rawurlencode(rawurldecode($segment)) !== $segment) {
-                return;
+        // Only the spelling the file was written under: `/%61bout` is not `/about`'s URL, and neither
+        // are `/a//b` or `/./about`.
+        if ($html !== '/') {
+            foreach (explode('/', substr($html, 1)) as $segment) {
+                if ($segment === '' || $segment === '.' || rawurlencode(rawurldecode($segment)) !== $segment) {
+                    return;
+                }
             }
         }
         $file = self::files($html)[$markdown ? 1 : 0];
@@ -600,17 +645,21 @@ final class Prebuilt
 
     /**
      * The `first_prebuild` action: render paths (all of this build's when `$paths` is empty) and
-     * write their files. More than BATCH paths continue in another action.
+     * write their files. More than BATCH paths continue in another action. `$epoch` is set on the
+     * batches that continue a full build: the `forget()` epoch that build started under, so its last
+     * batch writes the pointer, and none does once `forget()` has run since.
      *
      * @param list<string> $paths
      */
-    public static function build(array $paths = []): void
+    public static function build(array $paths = [], ?int $epoch = null): void
     {
         $plugin = self::$plugin;
         if ($plugin === null || $plugin->unavailable() !== null) {
             return;
         }
         $all = $paths === [];
+        $full = $all || $epoch !== null;
+        $epoch ??= self::epoch();
         $listed = array_column(self::urls($plugin)['urls'], 'path');
         if ($all) {
             self::sweep();
@@ -628,7 +677,7 @@ final class Prebuilt
         }
         $rest = array_slice($paths, self::BATCH);
         if ($rest !== []) {
-            as_enqueue_async_action(self::ACTION, [$rest], 'first');
+            as_enqueue_async_action(self::ACTION, [$rest, $full ? $epoch : null], 'first');
         }
         foreach (array_slice($paths, 0, self::BATCH) as $path) {
             if (!self::render((string) $path)) {
@@ -639,9 +688,13 @@ final class Prebuilt
                 return;
             }
         }
-        if ($all) {
+        // A forget() since this build started dropped its files and state: nothing is recorded.
+        if ($all && self::epoch() === $epoch) {
             update_option(self::option(), ['state' => 'built', 'at' => time(), 'retry' => 60], false);
-            self::publish();
+        }
+        // The pointer is written when a full build's last batch is done.
+        if ($full && $rest === []) {
+            self::publish($epoch);
         }
     }
 

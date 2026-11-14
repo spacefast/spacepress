@@ -125,15 +125,15 @@ A host may answer a prebuilt page's URL from its file before PHP. It must decide
 
 | Rule | What |
 |---|---|
-| Where | `wp-content/cache/first-prebuilt/` (moved by the `first_prebuilt_dir` filter) holds one directory per build, named by 16 hex characters, and `current.json`. Only the directory `current.json` names (`build`) is served; when `current.json` is absent, nothing is: the site has no complete build yet, or it hides itself from the public, or a site-wide change dropped every file |
-| Request | `GET` or `HEAD`, with no query string, below the site's home path (`home` in `current.json`, `""` at the domain root). Any other method or a query string goes to PHP |
-| Cookies | none whose name starts with `wordpress_logged_in_`, `wordpress_sec_`, `wp-postpass_` or `comment_author_`, and none named `wp_lang`, `zi_session` or `__Host-zi_session`. Any of them goes to PHP |
-| Accept | a request whose `Accept` contains `text/markdown` goes to PHP (the Markdown negotiation answers it); the `.md` URL itself is a file like any other |
-| Path to file | below the home path, `/` is `index.html`, `/x/y` is `x/y.html`, `/x/y.md` is `x/y.md`, and `/index.md` is the home page's twin. A path ending in `/` other than `/`, a path that is `/index`, a path whose segments aren't each exactly `rawurlencode(rawurldecode(segment))` (one spelling per file), or one that decodes to `..`, NUL or `\` goes to PHP |
+| Where | `wp-content/cache/first-prebuilt/` holds one directory per build, named by 16 hex characters, and `current.json`. Only the directory `current.json` names (`build`) is served. When `current.json` is absent, nothing is: the site has no complete build yet, it hides itself from the public, a site-wide change dropped every file, a deploy changed the build (the next request removes a pointer that names another build), or a plugin decides per request (a callback on `first_prebuilt_serve`, `first_app_cache_window`, `first_content_signal` or `first_prebuilt_dir`: those sites get no pointer, and only PHP answers) |
+| Request | `GET` or `HEAD`, with no query string, whose path starts with `home` from `current.json` (`""` at the domain root). A request target starting with `//`, any other method or a query string goes to PHP |
+| Cookies | none whose name starts with `wordpress_logged_in_`, `wordpress_sec_`, `wp-postpass_` or `comment_author_`, and none named exactly `wp_lang`, `zi_session` or `__Host-zi_session`. Any of them goes to PHP |
+| Accept | a request whose `Accept` contains `text/markdown` (compared without case) goes to PHP, whatever its path, `.md` URLs included |
+| Path to file | the path below `home`: `/` is `index.html`, `/x/y` is `x/y.html`, `/x/y.md` is `x/y.md`, and `/index.md` is the home page's twin (`index.md`). A path that is `/index`, ends in `/` (other than `/`), has an empty or `.` segment, contains `..`, NUL or `\` anywhere once percent-decoded, or has a segment that isn't exactly `rawurlencode(rawurldecode(segment))` (one spelling per file) goes to PHP |
 | Age | a file whose modification time is more than `maxAge` seconds ago (`current.json`; 3600) goes to PHP. Files are rewritten well within that window |
 | Missing file | goes to PHP: the page isn't prebuilt, or a write removed its file and its rebuild hasn't run |
-| Response | `200` with the file's bytes (none for `HEAD`) and `Content-Length`; `Cache-Control` from `current.json` (`cacheControl`, what a cacheable render sends); `X-First-Prebuilt: 1`; for `.html`, `Content-Type: text/html; charset=<charset>` and `Link: <url>.md; rel="alternate"; type="text/markdown"` (`/index.md` for `/`); for `.md`, `Content-Type: text/markdown; charset=UTF-8`, `X-Content-Type-Options: nosniff` and `Link: <url>; rel="canonical"`; and `Content-Signal: <contentSignal>` when it is not empty |
-| Purges and rebuilds | a write that changes a prebuilt page removes its files at once, before the write's purge is announced on `first_purge_urls`, and schedules the rebuild (the `first_prebuild` Action Scheduler action, run by the host's jobs worker like any other). Until it has run, the URL has no file and goes to PHP. A host's page cache is purged as for any page; the files need no purge of their own. A full rebuild (deploy, hourly, a site-wide change) rewrites `current.json` when it completes |
+| Response | `200` with the file's bytes (none for `HEAD`) and `Content-Length`; `Cache-Control: <cacheControl>`; `X-First-Prebuilt: 1`; for `.html`, `Content-Type: text/html; charset=<charset>` and `Link: <homeUrl><path>.md; rel="alternate"; type="text/markdown"` (`<homeUrl>/index.md` for `/`); for `.md`, `Content-Type: text/markdown; charset=UTF-8`, `X-Content-Type-Options: nosniff` and `Link: <homeUrl><html path>; rel="canonical"` (`<homeUrl>/` for the home page); and `Content-Signal: <contentSignal>` when it is not empty. `cacheControl`, `charset`, `contentSignal` and `homeUrl` (scheme, host, home path, no trailing slash) are in `current.json` |
+| Purges and rebuilds | a write that changes a prebuilt page removes its files at once, before the write's purge is announced on `first_purge_urls`, and schedules the rebuild (the `first_prebuild` Action Scheduler action, run by the host's jobs worker like any other). Until it has run, the URL has no file and goes to PHP. A host's page cache is purged as for any page; the files need no purge of their own. A full rebuild (deploy, every 45 minutes, a site-wide change) writes `current.json` when its last batch completes |
 
 ### Table prefix
 
@@ -173,7 +173,16 @@ First puts every table under WordPress's `$wpdb->prefix` and never changes it. A
   "maxTablePrefix": 35,
   "prebuilt": {
     "dir": "wp-content/cache/first-prebuilt",
-    "pointer": "current.json"
+    "pointer": "current.json",
+    "pointerFields": [
+      "build",
+      "maxAge",
+      "cacheControl",
+      "charset",
+      "contentSignal",
+      "home",
+      "homeUrl"
+    ]
   }
 }
 ```

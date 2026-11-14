@@ -28,6 +28,8 @@ function fetch(string $url, array $headers = []): array
 {
     $ch = curl_init($url);
     $out = [];
+    // The path as written: curl would otherwise resolve `/./` and `/../` before sending.
+    curl_setopt($ch, CURLOPT_PATH_AS_IS, true);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_HTTPHEADER => $headers,
         CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$out): int {
@@ -214,6 +216,30 @@ do_action('init');
 $drain();
 $out['pointer while private'][] = is_file(\First\Render\Prebuilt::pointer());
 update_option('blog_public', 1);
+do_action('init');
+$drain();
+$pointer = json_decode((string) @file_get_contents(\First\Render\Prebuilt::pointer()), true);
+$out['pointer homeUrl'] = $pointer['homeUrl'] ?? null;
+// A pointer naming another build (a deploy changed the build id) goes on the next request.
+$named = $pointer;
+$named['build'] = '0123456789abcdef';
+file_put_contents(\First\Render\Prebuilt::pointer(), json_encode($named));
+fetch("$url/live");
+$out['pointer of another build'] = is_file(\First\Render\Prebuilt::pointer());
+// A build that started before a forget() writes no pointer when it ends.
+$epoch = (new ReflectionMethod(\First\Render\Prebuilt::class, 'epoch'))->invoke(null);
+\First\Render\Prebuilt::forget();
+(new ReflectionMethod(\First\Render\Prebuilt::class, 'publish'))->invoke(null, $epoch);
+$out['pointer after a forget mid-build'] = is_file(\First\Render\Prebuilt::pointer());
+// A plugin that decides per request (a first_prebuilt_serve callback) gets no pointer at all.
+do_action('init');
+$drain();
+add_filter('first_prebuilt_serve', static fn (bool $serve, string $path): bool => $serve && !str_starts_with($path, '/notes/'), 10, 2);
+(new ReflectionMethod(\First\Render\Prebuilt::class, 'publish'))->invoke(null, (new ReflectionMethod(\First\Render\Prebuilt::class, 'epoch'))->invoke(null));
+$out['pointer with a serve filter'] = is_file(\First\Render\Prebuilt::pointer());
+remove_all_filters('first_prebuilt_serve');
+// More spellings that aren't a prebuilt page's URL: an empty segment, a `.` segment, `//`.
+$out['spellings'] = [fetch("$url/notes//hello")['prebuilt'], fetch("$url/./about")['prebuilt']];
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

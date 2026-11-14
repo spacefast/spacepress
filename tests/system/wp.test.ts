@@ -29,7 +29,8 @@ const project = join(work, "wp-site");
 const artifact = join(work, "wp-artifact");
 
 /** The order a site owner activates in: each plugin after every plugin its header requires. */
-const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "polylang", "first-runtime", "first-identity", "first-app-site"];
+// First Admin ships with every build and registers only once the app has (plugins_loaded order): last.
+const ORDER = ["secure-custom-fields", "action-scheduler", "mcp-adapter", "two-factor", "polylang", "first-runtime", "first-identity", "first-app-site", "first-admin"];
 
 const wp = (...args: string[]) => execFileSync(harness, ["wp", ...args], { encoding: "utf8" }).trim();
 const wpFails = (...args: string[]) => {
@@ -362,9 +363,9 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   assert.ok(before.revisions.some((r) => r.length > 0), "no revisions to preserve");
   assert.ok([...before.files, ...before.manuscripts].every((entry) => entry.includes(200)), "every file was served before");
 
-  wp("plugin", "deactivate", "first-app-site", "first-identity", "first-runtime");
+  wp("plugin", "deactivate", "first-admin", "first-app-site", "first-identity", "first-runtime");
   assert.equal((await fetch(`${api}/posts`)).status, 404, "the app's routes go away with the plugin");
-  wp("plugin", "activate", "first-runtime", "first-identity", "first-app-site");
+  wp("plugin", "activate", "first-runtime", "first-identity", "first-app-site", "first-admin");
   assert.deepEqual(await snapshot(), before);
   assert.deepEqual(sql("SELECT CONCAT(app, '/', id) FROM wp_first__migrations"), ["site/0001_init", "site/0002_update", "site/0003_update"], "reactivation re-applies nothing");
 
@@ -394,8 +395,8 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   assert.equal(sql(`SELECT COUNT(*) FROM wp_options WHERE option_name IN ${options}`)[0], "5");
   const posts = sql("SELECT COUNT(*) FROM wp_posts WHERE post_type = 'first_posts'")[0];
   // The owner deactivates everything, Action Scheduler included, then deletes First's plugins.
-  wp("plugin", "deactivate", "first-app-site", "first-identity", "first-runtime", "mcp-adapter", "action-scheduler");
-  wp("plugin", "uninstall", "first-app-site", "first-identity", "first-runtime");
+  wp("plugin", "deactivate", "first-admin", "first-app-site", "first-identity", "first-runtime", "mcp-adapter", "action-scheduler");
+  wp("plugin", "uninstall", "first-admin", "first-app-site", "first-identity", "first-runtime");
   // The harness's own must-use helpers aren't First's plugins; only regular plugins can be deleted.
   assert.deepEqual(JSON.parse(wp("plugin", "list", "--status=active,inactive", "--field=name", "--format=json")).filter((n: string) => n.startsWith("first-")), []);
   const left = caps();
@@ -417,7 +418,7 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   // Installing the same build again picks the content straight back up. The runtime minted a new
   // signing secret on reinstall, so links signed before are dead; the snapshot fetches fresh ones.
   install(artifact);
-  wp("plugin", "activate", "first-runtime", "first-identity", "first-app-site");
+  wp("plugin", "activate", "first-runtime", "first-identity", "first-app-site", "first-admin");
   const after = await snapshot();
   const queuedIndex = after.posts.findIndex((p) => p.id === pendingPost.id);
   assert.ok(queuedIndex >= 0, "the post published just before uninstall is still there");

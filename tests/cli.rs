@@ -891,6 +891,11 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
         serde_json::json!(["guest", "subscriber", "author", "editor", "admin"])
     );
     assert_eq!(schema["endpoints"]["mcp"], "/wp-json/mcp/first-agentkit");
+    // Both admins, with First Admin the default (the kit does not set `admin: false`).
+    assert_eq!(
+        schema["admin"],
+        serde_json::json!({ "default": "/wp-admin/new/", "classic": "/wp-admin/" })
+    );
     let abilities: Vec<&str> = schema["abilities"]
         .as_array()
         .unwrap()

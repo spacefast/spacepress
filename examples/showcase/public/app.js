@@ -21,7 +21,7 @@ function safeUrl(value) {
 
 function editorLink(collection, id, label) {
   const link = node("a", "", label);
-  link.href = `/first-admin/collections/${collection}/${encodeURIComponent(id)}`;
+  link.href = `/wp-admin/new/collections/${collection}/${encodeURIComponent(id)}`;
   link.target = "_blank";
   link.setAttribute("aria-label", `${label} (opens in a new tab)`);
   link.rel = "noopener noreferrer";

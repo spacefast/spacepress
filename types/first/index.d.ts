@@ -838,9 +838,9 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
  * }
  * ```
  *
- * `first build` emits the structural relation graph even without authored relations,
- * so the config can keep every declaration private. Config registration supplies
- * globals and jobs; localized projects also register their locale union.
+ * `first build` emits the kinds, globals and jobs structurally, with the relation graph, so
+ * nothing imports the sources that export them; localized projects also register their locale
+ * union.
  */
 export interface Register {}
 
@@ -904,7 +904,7 @@ export type QueryApi = [RegisteredSchema] extends [never]
       >;
     };
 
-type RegisteredGlobals = Register extends { config: { readonly [configBrand]: { globals: infer G } } } ? G : never;
+type RegisteredGlobals = Register extends { globals: infer G } ? G : never;
 
 /** `db.globals.<key>`: trusted reads and writes of one global. Never-written globals read as their defaults. */
 export interface GlobalApi<G extends AnyGlobal> {
@@ -1138,27 +1138,13 @@ export declare function global<TFields extends FieldsConfig>(
   },
 ): Global<string, TFields>;
 
-export interface ConfigInput<
-  TSchema extends Schema,
-  TRelations extends Relations<TSchema, any>,
-  TGlobals extends Record<string, AnyGlobal> = {},
-  TJobs extends Record<string, AnyJob> = {},
-  TLocales extends LocalesConfig = LocalesConfig,
-  TCollections extends Schema = Schema,
-  TTables extends Schema = Schema,
-  TUsers extends Schema = Schema,
-> {
+/**
+ * What `defineConfig` takes. Kinds, globals, file buckets, actions and jobs aren't listed here: each
+ * registers by its export, from `first.config.ts` or any file under `first/` (docs/spec/spec.md §1.1).
+ */
+export interface ConfigInput<TLocales extends LocalesConfig = LocalesConfig> {
   /** Project name: plugin slug (`first-<name>`), wp-admin menu, client docs. Default: the project directory name. */
   name?: string;
-  collections?: TCollections & Record<string, CollectionMeta<string, ColumnsConfig, false, "collection">>;
-  tables?: TTables & Record<string, CollectionMeta<string, ColumnsConfig, false, "table">>;
-  users?: TUsers & Record<string, CollectionMeta<string, ColumnsConfig, true, "userProjection">>;
-  /** Key = the name used in `db.globals.<key>` and `/globals/<key>`. */
-  globals?: TGlobals;
-  /** `NoInfer`: types come from the explicit registries, so unknown hook keys are errors. */
-  hooks?: NoInfer<Hooks<TSchema>>;
-  actions?: Record<string, AnyAction>;
-  jobs?: TJobs;
   webhooks?: Webhook[];
   /** Private native forms, queued mail, publication search and server-priced checkout. */
   services?: ServicesConfig;
@@ -1210,23 +1196,13 @@ export interface ConfigInput<
   use?: readonly Plugin[];
 }
 
-export interface FirstConfig<
-  TSchema extends Schema = Schema,
-  TRelations extends Relations<TSchema, any> = Relations<TSchema, any>,
-  TGlobals extends Record<string, AnyGlobal> = Record<string, AnyGlobal>,
-  TJobs extends Record<string, AnyJob> = Record<string, AnyJob>,
-  TLocales extends LocalesConfig = LocalesConfig,
-> {
-  readonly [configBrand]: { schema: TSchema; relations: TRelations; globals: TGlobals; jobs: TJobs; locales: TLocales };
+export interface FirstConfig<TLocales extends LocalesConfig = LocalesConfig> {
+  readonly [configBrand]: { locales: TLocales };
 }
 
-export declare function defineConfig<
-  TCollections extends Schema = {}, TTables extends Schema = {}, TUsers extends Schema = {},
-  TRelations extends Relations<TCollections & TTables & TUsers, any> = Relations<TCollections & TTables & TUsers, {}>,
-  TGlobals extends Record<string, AnyGlobal> = {},
-  TJobs extends Record<string, AnyJob> = {},
-  const TLocales extends LocalesConfig = LocalesConfig,
->(config: ConfigInput<TCollections & TTables & TUsers, TRelations, TGlobals, TJobs, TLocales, TCollections, TTables, TUsers>): FirstConfig<TCollections & TTables & TUsers, TRelations, TGlobals, TJobs, TLocales>;
+export declare function defineConfig<const TLocales extends LocalesConfig = LocalesConfig>(
+  config: ConfigInput<TLocales>,
+): FirstConfig<TLocales>;
 
 declare const pluginBrand: unique symbol;
 /** A plugin package's definition: `export default (options) => definePlugin({ ... })`. */
@@ -1301,7 +1277,7 @@ export interface RouteResponse { status?: number; headers?: Record<string, strin
 export interface JobHandle<TInput> {
   enqueue(input: TInput, opts?: EnqueueOptions): Promise<{ id: string }>;
 }
-type RegisteredJobs = Register extends { config: { readonly [configBrand]: { jobs: infer J extends Record<string, AnyJob> } } } ? J : never;
+type RegisteredJobs = Register extends { jobs: infer J extends Record<string, AnyJob> } ? J : never;
 export type JobsApi = [RegisteredJobs] extends [never]
   ? Record<string, JobHandle<Record<string, unknown>>>
   : { readonly [K in keyof RegisteredJobs]: RegisteredJobs[K] extends Job<infer I> ? JobHandle<InsertShape<I>> : never };

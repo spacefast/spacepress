@@ -462,7 +462,7 @@ const sections: { title: string; items: { name: string; doc: string; signature: 
 		}
 	}
 }
-const configInput = /export interface ConfigInput<[\s\S]*?\n> \{([\s\S]*?)\n\}/.exec(dts)?.[1] ?? "";
+const configInput = /export interface ConfigInput<[^{]*?> \{([\s\S]*?)\n\}/.exec(dts)?.[1] ?? "";
 const configKeys: { key: string; doc: string; type: string }[] = [];
 {
 	let doc = "";
@@ -486,14 +486,7 @@ const configKeys: { key: string; doc: string; type: string }[] = [];
 // Keys of ConfigInput without a doc comment in the declarations get a one-line meaning here.
 // The generator fails when a new key has neither, so this list cannot fall behind.
 const defaultDocs: Record<string, string> = {
-	collections: "Editorial content stored as WordPress posts, with the WordPress editor. Build each one with `collection()`.",
-	tables: "App data in SQL tables of their own. Build each one with `table()`.",
-	users: "Fields on WordPress users. Build each one with `userProjection()`.",
-	hooks: "Functions that run before or after a create, update or delete.",
-	actions: "Named endpoints at `POST /__first/api/v1/actions/<name>`. Build each one with `action()`.",
-	jobs: "Background work that runs after the request, on Action Scheduler. Build each one with `job()`.",
 	webhooks: "Signed HTTP calls the app sends when rows change.",
-	files: "Private file buckets. Build each one with `files()`.",
 	uploads: "Limits for uploaded media.",
 	media: "Image sizes WordPress makes for uploaded images.",
 	locales: "The languages content is written in. Setting it installs Polylang.",
@@ -505,7 +498,7 @@ page(
 	{ title: "Config API", description: "Every option of defineConfig and every function first.config.ts can import from \"first\"." },
 	"types/first/index.d.ts",
 	`
-A First app is one \`first.config.ts\`. It imports its building blocks from \`"first"\` and exports \`defineConfig({ ... })\` as the default export.
+A First app starts at \`first.config.ts\`. It imports its building blocks from \`"first"\` and exports \`defineConfig({ ... })\` as the default export. Kinds, globals, file buckets, actions and jobs aren't options: each registers by its export, from \`first.config.ts\` or any file under \`first/\` (\`export const posts = collection({ ... })\`).
 
 ## \`defineConfig\` options
 

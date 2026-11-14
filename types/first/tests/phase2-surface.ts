@@ -1,9 +1,9 @@
 import { collection, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, action, defineConfig, db , table, userProjection, ref } from "first";
-const audit = table({ note: text() }, { agents: false });
-const authors = collection({ name: text(), email: email().optional().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true, access: { create: ctx => ctx.data?.uid !== "reserved" } });
+export const audit = table({ note: text() }, { agents: false });
+export const authors = collection({ name: text(), email: email().optional().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true, access: { create: ctx => ctx.data?.uid !== "reserved" } });
 export const decks = files({ accept: ["application/pdf", "image/*"], maxBytes: 20000000, access: { read: "owner", create: ctx => ctx.user !== null, delete: "owner" } });
 
-const posts = collection({
+export const posts = collection({
   title: text().localized(), content: richText().localized().optional(), slug: slug({ source: "title" }).optional(),
   authorId: ref(authors).optional().onDelete("restrict"), deck: file(decks).optional(),
   seo: group({ kind: select(["a", "b"]).optional(), enabled: boolean().optional(), label: text().optional().access({ read: ctx => ctx.data.label !== "private" }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }) }).optional().showIf({ status: "published" }),
@@ -11,19 +11,14 @@ const posts = collection({
   sections: blocks({ hero: { kind: text().optional(), label: text().optional().access({ update: ctx => ctx.op === "update" }).showIf({ kind: { ne: "hidden" } }) } }).optional(),
   tags: select(["news", "guide"]).many().localized().optional(), meta: json().localized().optional(),
 }, { sync: "content/./posts/*.md", agents: true, access: { create: ctx => ctx.data?.locale === "en" && ctx.data.uid !== "reserved" } });
-const members = userProjection({ email: email().unique().max(191), name: text().optional() }, { uid: true, access: { read: "self", create: ctx => ctx.data?.uid !== "reserved", update: "self", delete: "admin" } });
-export const collections = { authors, posts };
-export const tables = { audit };
-export const users = { members };
-export const entities = { ...collections, ...tables, ...users };
+export const members = userProjection({ email: email().unique().max(191), name: text().optional() }, { uid: true, access: { read: "self", create: ctx => ctx.data?.uid !== "reserved", update: "self", delete: "admin" } });
+export const settings = global({ title: text().default("Hello") }, { agents: false });
+export const sendWelcome = job({ input: { email: email(), data: group({ label: text().default("welcome") }).optional() }, retries: 5, agents: true, handler: async (input, ctx) => { await db.insert(audit).values({ note: input.email + ":" + ctx.jobId + ":" + ctx.attempt }); } });
+export const inbound = action({ input: {}, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: () => true });
 export default defineConfig({
-  name: "phase2", collections, tables, users,
+  name: "phase2",
   locales: { default: "en", all: ["en", "de"] }, media: { sizes: { thumb: { width: 300, height: 300, fit: "cover" }, wide: { width: 1600 } } },
-  files: { decks },
-  globals: { settings: global({ title: text().default("Hello") }, { agents: false }) },
-  jobs: { sendWelcome: job({ input: { email: email(), data: group({ label: text().default("welcome") }).optional() }, retries: 5, agents: true, handler: async (input, ctx) => { await db.insert(audit).values({ note: input.email + ":" + ctx.jobId + ":" + ctx.attempt }); } }) },
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted", "*"] }, { url: "https://example.com/hook", secret: env("OTHER_SECRET"), events: ["members.created"] }],
-  actions: { inbound: action({ input: {}, idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" }, handler: () => true }) },
 });
 
 import { jobs, once, type JobCtx, type FieldAccessCtx, type Locale, type LocalizedColumns} from "first";

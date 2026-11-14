@@ -68,11 +68,13 @@ allowed, and an installed package's own relative imports are its business.
 
 ### Exports register by name
 
-First loads every `.ts` file under `first/`, except `app/`, `components/`,
-`wp-hooks/`, `content/`, `public/`, `_generated/` and `dist/`. Each exported
-`collection()`, `table()`, `userProjection()`, `global()`, `action()` and
-`job()` registers under its export name, so no file name is required and
-`defineConfig` needs no registry for them:
+First loads `first.config.ts` and every `.ts` file under `first/`, except
+`app/`, `components/`, `wp-hooks/`, `content/`, `public/`, `_generated/` and
+`dist/`. Each exported `collection()`, `table()`, `userProjection()`,
+`global()`, `files()`, `action()` and `job()` registers under its export name,
+so no file name is required. `defineConfig` doesn't list them: its
+`collections`, `tables`, `users`, `globals`, `files`, `actions`, `jobs` and
+`hooks` keys are refused at the key, with the export that replaces it.
 
 ```ts
 // first/schema.ts
@@ -84,14 +86,16 @@ export const like = action({ input: { id: integer() }, async handler({ id }) { /
 ```
 
 - Other exports are ignored, so helper modules need no special place.
-- Export names are unique across the app. Two exports named `like`, an
-  action named like an exported kind, or an export and a `defineConfig`
-  registry entry under one name fail with `F1221`, naming both places.
+- Export names are unique across the app. Two exports named `like`, or an
+  action named like a kind, fail with `F1221`, naming both places.
 - A kind, action or job must be a named export; `export default table(...)`
-  is refused. Files named `*.test.ts` or `*.spec.ts` are left to your test
-  runner.
-- A value both exported and listed in a `defineConfig` registry is one
-  registration.
+  is refused. `export { variants as productVariants }` registers
+  `productVariants`. Files named `*.test.ts` or `*.spec.ts` are left to your
+  test runner.
+- Every kind, global, bucket, action and job built in `first.config.ts` or a
+  module under `first/` must be exported (`F1222`), whether or not anything
+  uses it: one without an export would have no name. To share fields between
+  kinds, share the fields object, not a kind.
 - `import { notes } from "first:db"` gives a registered kind by name, from any
   module (including `first/wp-hooks/` files) and in any load order. It can't
   be re-exported, and plugin packages can't import it: a plugin takes the
@@ -311,17 +315,16 @@ import {
 } from "first";
 
 // Native WordPress content with an editor and the integer id every kind has.
-const posts = collection({ title: text() });
+export const posts = collection({ title: text() }).on({
+  beforeCreate(data) { data.title = data.title.trim(); },
+});
 // App data in SQL, with a reference to the content.
-const stock = table({
+export const stock = table({
   post: ref(posts).optional().onDelete("cascade"),
   quantity: integer().default(0),
 });
 
-export default defineConfig({
-  collections: { posts }, tables: { stock },
-  hooks: { posts: { beforeCreate(data) { data.title = data.title.trim(); } } },
-});
+export default defineConfig({});
 ```
 
 The generated client stays flat: `first.posts.create({ title: "Hello" })`,
@@ -422,29 +425,28 @@ Column keys are the SQL column names.
 `collection(fields, options?)` is editorial content: a WordPress custom post
 type with the native editor, draft status and revisions. `table(fields,
 options?)` is app/relational data in its own SQL table. Fields never choose
-storage. Register each definition in its matching namespace:
+storage. Each definition registers by its export:
 
 ```ts
-const posts = collection({ title: text() });
-const stock = table({ post: ref(posts).optional() });
-export default defineConfig({ collections: { posts }, tables: { stock } });
+export const posts = collection({ title: text() });
+export const stock = table({ post: ref(posts).optional() });
+export default defineConfig({});
 ```
 
-Definitions need no exports. Backend-only config is sufficient; `first build`
-emits `first/_generated/db.d.ts` to type `db.query` without importing authored definitions.
-Every kind's primary key is the integer `id`.
+`first build` emits `first/_generated/db.d.ts` to type `db.query`, `db.globals` and `jobs`
+without importing authored definitions. Every kind's primary key is the integer `id`.
 
-The registry key is the logical name, used verbatim by `db.query`, hooks,
+The export name is the logical name, used verbatim by `db.query`, hooks,
 relations and the flat generated client (`first.shoppingList`). Physical names
 and REST paths default to deterministic snake_case: `shoppingList` → `shopping_list`,
 `HTTPLogs` → `http_logs`. A table uses `wp_first_shopping_list`; a collection
-registers `first_shopping_list`. Duplicate logical or physical names across all
-registries are rejected before artifacts are emitted. A definition may be
-registered once.
+registers `first_shopping_list`. Duplicate logical or physical names are
+rejected before artifacts are emitted. A definition may be exported under one
+name only.
 
 | option | default | meaning |
 |---|---|---|
-| `storageName` | registry key in snake_case | explicit physical resource name without `wp_` / `first_` prefixes; retain existing storage on upgrade |
+| `storageName` | export name in snake_case | explicit physical resource name without `wp_` / `first_` prefixes; retain existing storage on upgrade |
 | `existingTable` | none | `table()` only; exact pre-existing SQL table name, with no added prefixes. The first migration checks columns and declared index/foreign-key names without creating or copying the table. |
 | `was` | none | `table()` only; the name this table was stored under. The deploy renames it and keeps its rows. See [Schema changes at deploy](#schema-changes-at-deploy). |
 | `label` | title-cased physical name | wp-admin menus, client docs |
@@ -510,8 +512,8 @@ stay in the table they are in. Bind the name as below and the change is a
 rename of the declaration: `first build` writes no migration, so nothing is
 moved or dropped.
 
-Replace named builders with unnamed `collection()` or `table()` and register
-under `collections` or `tables`. Keep the logical keys, existing physical storage
+Replace named builders with unnamed `collection()` or `table()`, exported under
+the old logical key. Keep the logical keys, existing physical storage
 and committed migration snapshots. The snapshot format and runtime storage
 model are unchanged: an authoring-only change must produce no migration.
 For a persisted name that differs from the derived snake_case name, set
@@ -520,8 +522,8 @@ old `collection("stockItems", fields, { editor: false, revisions: true })`
 becomes:
 
 ```ts
-const stockItems = table(fields, { storageName: "stockItems", revisions: true });
-export default defineConfig({ name: "my-app", tables: { stockItems } });
+export const stockItems = table(fields, { storageName: "stockItems", revisions: true });
+export default defineConfig({ name: "my-app" });
 ```
 
 Keep the app `name`, logical keys, fields, relations, access and storage options
@@ -536,7 +538,7 @@ revision ownership; relations and client properties still use logical keys.
 1. Keep the entire committed `first/_generated/migrations/` directory, including the v2
    `snapshot.json` and every numbered SQL file. Do not remove registrations as
    an intermediate step: that authors a destructive migration.
-2. Change the builders/registries and add the physical bindings, then run
+2. Change the builders to exports and add the physical bindings, then run
    `first build .`. This authoring-only transition must leave the snapshot and
    historical SQL unchanged and produce no new numbered SQL. Review with
    `git diff -- first/_generated/migrations` before deployment.
@@ -547,7 +549,7 @@ revision ownership; relations and client properties still use logical keys.
    through the new client/runtime before making schema changes.
 
 This also supports old logical aliases: use the original physical name as the
-binding even if the registry key is different. Changing a binding does not move
+binding even if the export name is different. Changing a binding does not move
 or rename data. Snapshots contain physical names without old logical aliases.
 A build that removes existing storage while adding new storage is refused as
 an ambiguous replacement, even when both names are snake_case. Declare `was`
@@ -964,7 +966,7 @@ existing-data cutover and the WordPress plugin boundary.
 
 ### Sign-in
 
-Register one `userProjection(fields, options?)` under `users: { members }`.
+Export one `userProjection(fields, options?)`: `export const members = userProjection({ ... })`.
 It projects existing WordPress users and usermeta, preserving their IDs and
 authentication; it creates no second user table or post type. It needs
 `email: email().unique()`, gets a write-only `password` and an
@@ -1178,8 +1180,10 @@ These are build errors with the same message the runtime returns.
 
 ## defineConfig
 
-`defineConfig({ name?, collections?, tables?, users?, globals?, hooks?, actions?,
-jobs?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend?, runtimeSchema? })`. `name` (a slug,
+`defineConfig({ name?, webhooks?, services?, media?, uploads?, locales?, plugins?, use?, admin?,
+publicAuthors?, sealed?, frontend?, output?, runtimeSchema? })`. None of its keys registers a named
+thing: kinds, globals, file buckets, actions and jobs register by their exports
+([Exports register by name](#exports-register-by-name)). `name` (a slug,
 default: the project directory) names the WordPress plugin `first-app-<name>`.
 Every build ships First Admin, the default admin at `/wp-admin/new/`, as a fourth
 plugin, `first-admin`; `admin: false` leaves it out and keeps only classic wp-admin
@@ -1352,7 +1356,7 @@ export default (options: { suffix: string }) =>
 ```ts
 // first.config.ts, after `npm install first-plugin-seo`
 import seo from "first-plugin-seo";
-export default defineConfig({ collections: { posts }, use: [seo({ suffix: " | Site" })] });
+export default defineConfig({ use: [seo({ suffix: " | Site" })] });
 ```
 
 - `use` lists plugins in order. `plugins` stays the WordPress.org pin map.
@@ -1431,8 +1435,7 @@ export const items = table({ name: text(), quantity: integer().default(1) }).on(
 `.on()` returns the kind, so calls chain, and several handlers for one event run in
 order. Each handler is typed by its own kind. `.on()` on a kind imported from another
 file is a build error; handler functions themselves may come from anywhere.
-`hooks.<kind>` in `defineConfig` still works until the registries go; its handlers run
-before the kind's `.on()` handlers.
+A plugin's `hooks` (keyed by the app's export names) run before the kind's own `.on()` handlers.
 
 `ctx` is `{ user: { id, name, role } | null }`.
 
@@ -1589,22 +1592,20 @@ imported; the types come from `@types/node`, which new projects install:
 ```ts
 import { action, defineConfig, HttpError, text } from "first";
 
-export default defineConfig({
-  actions: {
-    weather: action({
-      input: { city: text() },
-      access: "anyone",
-      async handler({ city }) {
-        const query = new URLSearchParams({ q: city });
-        const response = await fetch("https://api.example.com/v1/weather?" + query.toString(), {
-          headers: { authorization: "Bearer " + (process.env.WEATHER_KEY ?? "") },
-        });
-        if (!response.ok) throw new HttpError(502, "weather_unavailable", "Weather is unavailable.");
-        return (await response.json()) as { temperature: number };
-      },
-    }),
+export const weather = action({
+  input: { city: text() },
+  access: "anyone",
+  async handler({ city }) {
+    const query = new URLSearchParams({ q: city });
+    const response = await fetch("https://api.example.com/v1/weather?" + query.toString(), {
+      headers: { authorization: "Bearer " + (process.env.WEATHER_KEY ?? "") },
+    });
+    if (!response.ok) throw new HttpError(502, "weather_unavailable", "Weather is unavailable.");
+    return (await response.json()) as { temperature: number };
   },
 });
+
+export default defineConfig({});
 ```
 
 The compiler lowers each call to the WordPress HTTP API in PHP. What it
@@ -1680,19 +1681,17 @@ global `crypto`. Every call is synchronous:
 import { action, defineConfig, text } from "first";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export default defineConfig({
-  actions: {
-    verify: action({
-      input: { body: text(), signature: text() },
-      access: "anyone",
-      handler({ body, signature }) {
-        const expected = createHmac("sha256", process.env.WEBHOOK_SECRET!).update(body).digest("hex");
-        return Buffer.byteLength(expected) === Buffer.byteLength(signature)
-          && timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
-      },
-    }),
+export const verify = action({
+  input: { body: text(), signature: text() },
+  access: "anyone",
+  handler({ body, signature }) {
+    const expected = createHmac("sha256", process.env.WEBHOOK_SECRET!).update(body).digest("hex");
+    return Buffer.byteLength(expected) === Buffer.byteLength(signature)
+      && timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
   },
 });
+
+export default defineConfig({});
 ```
 
 | Form | Result |
@@ -1725,23 +1724,21 @@ job:
 ```ts
 import { action, defineConfig, email, mail, text } from "first";
 
-export default defineConfig({
-  actions: {
-    invite: action({
-      input: { to: email(), name: text().optional() },
-      access: "editor",
-      async handler({ to, name }) {
-        const queued = await mail.send({
-          to: { email: to, name: name ?? undefined },
-          subject: "You're invited",
-          text: "Open the link to join.",
-          html: "<p>Open the link to join.</p>",
-        });
-        return queued.id;
-      },
-    }),
+export const invite = action({
+  input: { to: email(), name: text().optional() },
+  access: "editor",
+  async handler({ to, name }) {
+    const queued = await mail.send({
+      to: { email: to, name: name ?? undefined },
+      subject: "You're invited",
+      text: "Open the link to join.",
+      html: "<p>Open the link to join.</p>",
+    });
+    return queued.id;
   },
 });
+
+export default defineConfig({});
 ```
 
 - The message has `to`, `subject` and `text` and/or `html`, plus optional
@@ -1773,18 +1770,16 @@ Jetpack, ...). Import `abilities` from `"php/wordpress"`:
 import { action, defineConfig, text } from "first";
 import { abilities } from "php/wordpress";
 
-export default defineConfig({
-  actions: {
-    count: action({
-      input: { text: text() },
-      access: "authenticated",
-      async handler(input) {
-        const result = await abilities.call("acme/word-count", { text: input.text });
-        return result.count;
-      },
-    }),
+export const count = action({
+  input: { text: text() },
+  access: "authenticated",
+  async handler(input) {
+    const result = await abilities.call("acme/word-count", { text: input.text });
+    return result.count;
   },
 });
+
+export default defineConfig({});
 ```
 
 - The name is a string literal. The input is checked against the ability's
@@ -1933,11 +1928,14 @@ export default function (postId: number, post: WP_Post, update: boolean) {
 ## Jobs and webhooks
 
 ```ts
-jobs: {
-  notifyEditors: job({ input: { commentId: integer() }, retries: 3, handler: async (input, ctx) => { ... } }),
-},
-webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated"] }],
+export const notifyEditors = job({ input: { commentId: integer() }, retries: 3, handler: async (input, ctx) => { ... } });
+
+export default defineConfig({
+  webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated"] }],
+});
 ```
+
+A job registers by its export name, like an action.
 
 `jobs.<name>.enqueue(input, { delay?, key? })` from a hook or action queues a
 job; it runs after the request commits, never inside it. `key` collapses

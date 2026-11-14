@@ -176,6 +176,58 @@ the earlier API becomes `.optional()`.
     dropped: reading the raw tree directly in the compile, which would be a second old-reading path
     beside the capture's. Delete with `src/zero_bundle.rs`.
 
+## Registries and user projections
+
+35. **Two PRs, registries first.**
+    - **The first PR** removes the `defineConfig` registry keys `collections`, `tables`, `users`, `globals`, `files`, `actions`, `jobs` and `hooks` (`relations` and `routes` are already refused). Everything registers by export, including the exports of `first.config.ts` itself (spec §1.1). `userProjection()` stays as a builder in this PR: an exported projection registers as the users kind under its export name.
+    - **The second PR** adds `wp.users.extend()` and deletes `userProjection` (ruling 40). It brings `wp.users` alone, not every built-in. `F1220` arrives per built-in name as each built-in lands, starting with `users`, because several examples still export a `posts` collection (ruling 14).
+    - **Why.** The `users` key and the `userProjection` builder are separable: the key needs nothing new, the builder's replacement needs a `wp` namespace that doesn't exist yet. Tying them together would hold about 250 config ports behind the built-ins work.
+
+    Cost: between the two PRs, `export const members = userProjection(...)` is a form in neither the old API nor the spec, and configs that use it are touched twice.
+
+36. **A removed key is a located error naming the export form.** The span is the key.
+
+    | Key | Message | Fix |
+    |---|---|---|
+    | `collections` | `collections` is gone: a kind registers by its export | `export const posts = collection({ ... })` in `first.config.ts` or any file under `first/`; the export name is its API name |
+    | `tables` | same, for `table()` | `export const likes = table({ ... })` |
+    | `users` | same, for the users kind | `export const members = userProjection({ ... })` (later `export const users = wp.users.extend({ ... })`) |
+    | `globals` | same, for `global()` | `export const settings = global({ ... })` |
+    | `files` | same, for `files()` | `export const decks = files({ ... })`; `file(decks)` takes the export (ruling 12) |
+    | `actions` | same, for `action()` | `export const like = action(...)`; the client call is `first.like()` |
+    | `jobs` | same, for `job()` | `export const digest = job(...)` |
+    | `hooks` | `hooks` is gone: hooks are declared on the kind | `export const posts = collection({ ... }).on({ beforeCreate(data) { ... } })` (ruling 18) |
+
+    - **When the key was not the binding name** (`productVariants: variants`), the fix names the key ("export it as `productVariants`"), so the API name and the stored name don't change.
+    - **Keys that stay:** `name`, `frontend`, `output`, `plugins`, `use`, `sealed`, `services`, `locales`, `media`, `uploads`, `webhooks`, `admin`, `publicAuthors`, `runtimeSchema`. None of them registers a named thing.
+    - **Types.** The keys leave `ConfigInput`, so TypeScript reports an excess property; the compiler's error carries the fix.
+
+    Cost: spec §6 writes the image-sizes key as `images` while the code and every example use `media`; it stays `media`, and renaming it is a separate decision.
+
+37. **A kind, global, bucket, action or job that is built but not exported is a build error.** Every `collection()`, `table()`, `userProjection()`, `global()`, `files()`, `action()` and `job()` value built while evaluating `first.config.ts` or a module under `first/` must be a named export of one of them. The error is located at the builder call, with its own code beside `F1221`: "`hidden` is a table but isn't exported, so it has no name; write `export const hidden = table(...)`". It applies whether or not anything refers to the value: under the old API that value was registered, so ignoring it would turn a missed `export` in a port into a dropped table on the next deploy. `export { a as b }` counts, the name is `b`. Values built inside a plugin package (ruling 38) and 0.3.0 captures (ruling 41) are not covered. One namespace: an action may no longer share a name with a kind (`F1221`, spec §1.1).
+
+    Cost: a kind can't be built as a private helper value, for example to share a field set; share the fields object instead.
+
+38. **Plugin packages keep `definePlugin({ name, hooks, actions, jobs })` for now.** A plugin is a value passed in `use`, not a module under `first/`, and its package's exports are not scanned. Its actions and jobs keep registering as `<plugin>_<name>`, and its `hooks` stay keyed by the app's kind names, which are now export names. The plugin lock and isolation rules (docs/decisions/2026-11-07-plugin-capabilities.md) are written against this shape; changing it is a plugin-API decision with its own compatibility question for published plugin packages.
+
+    Cost: `definePlugin` is the one place the object-of-handlers `hooks` shape and name-keyed `actions`/`jobs` survive; they need their own ruling before plugins are documented as stable.
+
+39. **The 0.8 converter emits the export form in the same PR.** Both emitters change: the content translation and the app transform. Generated bindings stay prefixed and are exported by specifier (`export { __z08_tasks as tasks }`), so a helper in the copied 0.8 source named like a table can't collide. Users: `export { __z08Members as members }` in the first PR; in the second, `export const users = wp.users.extend(..., { guests: true })`, because 0.8 gave every visitor a guest identity. What it can't express: a query, mutation or action named like a table, which 0.8 allowed and the registries kept. The table keeps its name (its storage and ledger follow it); the handler is exported as `<name>Query`, `<name>Mutation` or `<name>Action`, and the converted client calls that; if that name is also taken, the publish gets a located refusal and stays on 0.8. A handler named `default` is a located refusal.
+
+    Cost: a converted app with such a collision serves that action at a new path, and a caller outside the converted bundle breaks. Run the census for this collision before the PR merges; if a deployed converted Space has one, this point goes back to the owner.
+
+40. **`userProjection` becomes `wp.users.extend(fields, options)`, and the kind is named `users`.** Stored names do not change, byte for byte: a field is usermeta `first_<field>`, the ladder role is usermeta `first_role`, the profile field key is `field_first_member_<field>`, and `email` and `name` stay `user_email` and `display_name`. Nothing stored may be derived from the kind's name: the profile field group key, today `group_first_<kind name>`, becomes the constant `group_first_members`. `email` and `name` are built in; authoring them is ruling 4's "built in; delete this field" error. The API name changes for apps on the current format: `first.members` and `/__first/api/v1/members` become `first.users` and `/__first/api/v1/users`, webhook events become `users.created` and so on, Abilities become `<app>/users-list` and so on. There is no option that keeps another name: the runtime already answers `/__first/api/v1/users` for an app with a projection, so the new name is live before the old one goes, and an option would be an alias, which the cutover doesn't have. Options: `signIn`, `guests`, `roles`, `mfa` and `organizations` as in spec §2.2, plus `access` with ruling 5's keys; a port keeps its `access` rule and writes `guests: true`, because the runtime turns guests on for every projection today. The projection's entry leaves the migration snapshot (the accepted list below) and that removal emits no SQL. Without an export, the built-in `users` kind is core's users as the facade already serves them.
+
+    Costs: clients of a current-format app that call `members` change to `users` in the same deploy; a constraint authored on `name` or `email` (`max(80)`) is lost; removing a users field leaves its usermeta behind with no deploy warning. Open for the built-ins PR: the default `access` of `users`, and whether a row carries `role` or the spec's `roles`.
+
+41. **A 0.3.0 capture reads every removed form as before.** Under ruling 23's one switch, all the registry keys, `userProjection`, registry keys that differ from the binding name, kinds registered without an export, and per-registry names are read onto the same model. Its users kind keeps the registry key as its name: a deployed Space's `first.members`, `/__first/api/v1/members`, events, Abilities and snapshot entry are unchanged, and `users` keeps answering beside it. Ruling 37's error is off in this mode. The model therefore keeps the users kind's name as data, and only this reading can set it to anything but `users`. `tests/zero_bundle.rs` gains one refusal per removed key and one for `userProjection` in a current project, and its recompile test must still add no migration.
+
+    Cost: the internal registries stay as the model the 0.3.0 reading fills, until `src/zero_bundle.rs` is deleted.
+
+42. **What else changes in the same PRs.** Docs-site tour stops quote example source by text anchors and are updated in the PR that changes their example. The generated config reference's fallback descriptions for the removed keys are deleted with them. `create-first`'s template moves to an export and is released with the compiler; an older `create-first` against a newer compiler scaffolds a project that fails with ruling 36's error on first build, which is accepted. `first add db` already uses exports. `first init`'s text describing `first.config.ts` is rewritten. `docs/config-api.md`, the README, `docs/migrating-from-zero.md` and the MCP connect skill are rewritten for exports; dated design documents are left as they are. Every example's `_generated/db.d.ts` is regenerated in the second PR. In the second PR the schema's `auth.collection` becomes `users` for current-format apps; the host-contract lane confirms nothing on the host is keyed by that value, and the stored names in ruling 40 are the contract. The legacy users suite moves to an export, then to `wp.users.extend`, and must still pass against the same stored usermeta.
+
+    Cost: two releases in a row each change every example and the docs site.
+
 ## Stored-schema changes the cutover accepts
 
 The criterion "the authoring rewrite produces no data migration" holds except for exactly these:

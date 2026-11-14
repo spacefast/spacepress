@@ -93,8 +93,8 @@ fn section(project: &Value) -> String {
          (`.mcp.json`) answer from the documentation this compiler was built with.\n\
          - `first dev` runs the project on a local WordPress site; site commands such as `first find <storage name>` read it (the `API` column below gives each kind's).\n\n\
          ### Layout\n\n\
-         - `first.config.ts`: `export default defineConfig({ ... })`, the app's name and options. It may export kinds, actions and jobs too.\n\
-         - `first/`: kinds, actions and jobs, in any file. Each registers under its export name (`export const posts = collection({ ... })`); `defineConfig` doesn't list them, and a kind's hooks are `.on({ ... })` on its declaration.\n\
+         - `first.config.ts`: `export default defineConfig({{ ... }})`, the app's name and options. It may export kinds, actions and jobs too.\n\
+         - `first/`: kinds, actions and jobs, in any file. Each registers under its export name (`export const posts = collection({{ ... }})`); `defineConfig` doesn't list them, and a kind's hooks are `.on({{ ... }})` on its declaration.\n\
          - `first/app/`: pages (`page.tsx`, `layout.tsx`) and HTTP routes (`route.ts`), by folder.\n\
          - `first/_generated/`: migrations, types and the typed client. Written by `first build`.\n\
          - `first/dist/` and `.first/`: build output and the local dev site. Not committed.\n\n"

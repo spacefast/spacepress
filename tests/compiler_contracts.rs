@@ -953,7 +953,9 @@ fn binary_data_matches_node_through_generated_php() {
     assert!(names.len() >= 14, "{expected}");
     let actions: Vec<String> = names
         .iter()
-        .map(|name| format!("export const {name} = action({{ input: {{}}, handler: async () => await cases.{name}() }});"))
+        .map(|name| {
+            format!("export const {name} = action({{ input: {{}}, handler: async () => await cases.{name}() }});")
+        })
         .collect();
     std::fs::write(
         tmp.path().join("first.config.ts"),
@@ -1103,7 +1105,9 @@ fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let actions = cases
         .iter()
-        .map(|name| format!("export const {name} = action({{ input: {{}}, handler: async () => await cases.{name}() }});"))
+        .map(|name| {
+            format!("export const {name} = action({{ input: {{}}, handler: async () => await cases.{name}() }});")
+        })
         .collect::<Vec<_>>()
         .join("\n");
     std::fs::write(
@@ -2188,7 +2192,9 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
         } else {
             expression.to_string()
         };
-        actions.push(format!("export const {name} = action({{ input: {{}}, handler: () => ({body}) }});"));
+        actions.push(format!(
+            "export const {name} = action({{ input: {{}}, handler: () => ({body}) }});"
+        ));
         if v["fold"] == true {
             declarations.push_str(&format!("const folded_{name}_value = {expression};\n"));
             actions.push(format!(
@@ -3086,7 +3092,9 @@ fn parameter_default_scope_limits_are_located_refusals() {
                 .unwrap();
                 "import {probe} from './first/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});".to_string()
             } else {
-                format!("{source}const __probe = action({{handler:()=>0}}); export {{ __probe as probe }}; export default defineConfig({{}});")
+                format!(
+                    "{source}const __probe = action({{handler:()=>0}}); export {{ __probe as probe }}; export default defineConfig({{}});"
+                )
             };
             std::fs::write(
                 tmp.path().join("first.config.ts"),
@@ -3162,7 +3170,9 @@ fn undefined_bindings_are_located_refusals_in_all_runtime_binding_forms() {
                 .unwrap();
                 "import {probe} from './first/binding-probe.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});".to_string()
             } else {
-                format!("{source}const __probe = action({{handler:()=>0}}); export {{ __probe as probe }}; export default defineConfig({{}});")
+                format!(
+                    "{source}const __probe = action({{handler:()=>0}}); export {{ __probe as probe }}; export default defineConfig({{}});"
+                )
             };
             std::fs::write(
                 tmp.path().join("first.config.ts"),

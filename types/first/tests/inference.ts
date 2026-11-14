@@ -115,7 +115,7 @@ async function queries() {
   expectType<Equal<(typeof news)[number]["authorId"], Author | null>>();
   await db.update(posts).set({ status: "published", sections: [{ layout: "quote", text: "hi" }] }).where({ tags: { eq: [] } });
 
-  // db.globals is typed from the registered config.
+  // db.globals is typed from the registration first build writes (./register.ts).
   const s = await db.globals.settings.get();
   expectType<Equal<typeof s.postsPerPage, number>>();
   await db.globals.settings.update({ postsPerPage: 20 });
@@ -131,59 +131,57 @@ void (0 as unknown as PostAccess);
 declare const vctx: ValidateCtx;
 expectType<Equal<typeof vctx.user, User | null>>();
 
+export const sendWelcome = job({ input: { email: email(), name: text().default("world") }, handler: async (input, ctx) => { expectType<Equal<typeof input.name, string>>(); void [input.email, ctx.attempt, ctx.jobId]; } });
+
+// Hooks are declared on the kind (spec §2.8); each handler is typed by its own kind.
+posts.on({
+  // Hooks get a trailing ctx: who's writing, and where.
+  async beforeCreate(data, ctx) {
+    expectType<Equal<typeof ctx, BeforeHookCtx<typeof data>>>();
+    expectType<Equal<typeof ctx.data, typeof data>>();
+    if (data.authorId == null && ctx.user) {
+      const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
+      if (author) data.authorId = author.id;
+    }
+  },
+  afterUpdate(row, previous, ctx) {
+    expectType<Equal<[typeof row, typeof previous], [Post, Post]>>();
+    if (previous.status !== "published" && row.status === "published") void ctx.user;
+  },
+});
+items.on({
+  beforeCreate(data) {
+    expectType<Equal<typeof data, ItemInsert>>();
+    data.name = data.name.trim();
+  },
+  async beforeUpdate(patch, existing) {
+    expectType<Equal<typeof patch, Partial<ItemInsert>>>();
+    return { ...patch, name: existing.name };
+  },
+  afterUpdate(row, previous) {
+    expectType<Equal<typeof row | typeof previous, Item>>();
+  },
+});
+
+export const consume = action({
+  input: { itemId: integer(), amount: integer().default(1).optional(), note: text().optional() },
+  handler(input) {
+    expectType<Equal<typeof input, { itemId: number; amount: number | null; note?: string | null }>>();
+    return input.itemId;
+  },
+});
+export const whoami = action({
+  input: {},
+  access: (ctx) => ctx.user !== null,
+  handler(_input, ctx) {
+    expectType<Equal<typeof ctx, HookCtx>>();
+    return ctx.user?.name ?? "anonymous";
+  },
+});
+export const publish = action({ input: { id: integer() }, access: "editor", handler: ({ id }) => id });
+
 export default defineConfig({
-  jobs: { sendWelcome: job({ input: { email: email(), name: text().default("world") }, handler: async (input, ctx) => { expectType<Equal<typeof input.name, string>>(); void [input.email, ctx.attempt, ctx.jobId]; } }) },
   locales: { default: "en", all: ["en", "de"] },
   name: "fixture",
-  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
-  globals: { settings },
-  hooks: {
-    posts: {
-      // Hooks get a trailing ctx: who's writing, and where.
-      async beforeCreate(data, ctx) {
-        expectType<Equal<typeof ctx, BeforeHookCtx<typeof data>>>();
-        expectType<Equal<typeof ctx.data, typeof data>>();
-        if (data.authorId == null && ctx.user) {
-          const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
-          if (author) data.authorId = author.id;
-        }
-      },
-      afterUpdate(row, previous, ctx) {
-        expectType<Equal<[typeof row, typeof previous], [Post, Post]>>();
-        if (previous.status !== "published" && row.status === "published") void ctx.user;
-      },
-    },
-    items: {
-      beforeCreate(data) {
-        expectType<Equal<typeof data, ItemInsert>>();
-        data.name = data.name.trim();
-      },
-      async beforeUpdate(patch, existing) {
-        expectType<Equal<typeof patch, Partial<ItemInsert>>>();
-        return { ...patch, name: existing.name };
-      },
-      afterUpdate(row, previous) {
-        expectType<Equal<typeof row | typeof previous, Item>>();
-      },
-    },
-  },
-  actions: {
-    consume: action({
-      input: { itemId: integer(), amount: integer().default(1).optional(), note: text().optional() },
-      handler(input) {
-        expectType<Equal<typeof input, { itemId: number; amount: number | null; note?: string | null }>>();
-        return input.itemId;
-      },
-    }),
-    whoami: action({
-      input: {},
-      access: (ctx) => ctx.user !== null,
-      handler(_input, ctx) {
-        expectType<Equal<typeof ctx, HookCtx>>();
-        return ctx.user?.name ?? "anonymous";
-      },
-    }),
-    publish: action({ input: { id: integer() }, access: "editor", handler: ({ id }) => id }),
-  },
 });
 void queries;

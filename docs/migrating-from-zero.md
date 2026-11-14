@@ -552,8 +552,9 @@ command refuses to guess.
 
 If the original Space had sign-in, its app users are already WordPress users:
 the identity plugin's accounts, marked as members of the Space. To make them
-members of the new app, register a `userProjection()` in `users` (see
-`docs/config-api.md`), build and activate it, then run:
+members of the new app, export a `userProjection()`
+(`export const members = userProjection({ ... })`, see `docs/config-api.md`),
+build and activate it, then run:
 
 ```sh
 wp first migrate-legacy-users --space=<id> --dry-run
@@ -623,7 +624,7 @@ before activating an app.
 | --- | --- | --- |
 | Spacefast project root | Accepts `server/index.ts`, optional `sf.jsonc`, and `content/`; produces `first.config.ts` and migration metadata | Resolve every refusal and review entry before publication |
 | Application SQL tables | Adopts original physical tables with `existingTable`, preserving IDs and storage types | Requires the exact Space ID and expected columns, indexes, and foreign keys; IDs above JavaScript's safe integer range need a port |
-| Typed queries, mutations, and actions | Converts supported handlers, static DB/index calls and `paginate()` into named v2 actions; `ctx.env` and `ctx.log` map | Update clients to v2 input, response, error, and route contracts; dynamic builders and other context services are refused |
+| Typed queries, mutations, and actions | Converts supported handlers, static DB/index calls and `paginate()` into named v2 actions, each an export of the converted server module; `ctx.env` and `ctx.log` map. A handler named like a table becomes `<name>Query`, `<name>Mutation` or `<name>Action`, since v2 kinds and actions share one namespace, and the converted client calls that name | A caller outside the converted bundle of a renamed handler must change its URL; a handler named `default`, or one whose new name is taken too, is refused with `Z08_HANDLER_NAME`. Update clients to v2 input, response, error, and route contracts; dynamic builders and other context services are refused |
 | Native posts | A posts declaration adds a post-backed `posts` collection; scoped data copy preserves IDs, native body, authors, dates, and revisions | Custom native fields need a port; undeclared `content/posts/` (`Z08_OMITTED_POSTS`) and legacy sync declarations (`Z08_OMITTED_SYNC`) are refused |
 | Content collections | Imports supported field declarations; scoped data copy maps collection tags, typed metadata, and revision fields to candidate storage | Rich blocks, multiple references, unsupported fields, and incompatible data need a port |
 | Media | Copies attachment IDs, metadata, and parent links | File bytes must remain available through the host's media binding; the database command does not copy files |

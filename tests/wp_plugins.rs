@@ -462,9 +462,13 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
         "const plugins = {alpha:'1.0'}; plugins.alpha = '2.0';",
         "const plugins = Object.fromEntries([['alpha','1.0'],['alpha','2.0']]);",
     ] {
-        std::fs::write(p.root.join("first.config.ts"), format!(
-            "import {{defineConfig}} from 'first'; {declarations}  export default defineConfig({{ plugins }});"
-        )).unwrap();
+        std::fs::write(
+            p.root.join("first.config.ts"),
+            format!(
+                "import {{defineConfig}} from 'first'; {declarations}  export default defineConfig({{ plugins }});"
+            ),
+        )
+        .unwrap();
         p.rejects("check", "duplicate plugin declaration/property");
     }
     std::fs::write(p.root.join("first.config.ts"),

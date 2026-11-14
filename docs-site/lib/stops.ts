@@ -85,10 +85,10 @@ export const tours: Tour[] = [
         slug: "an-action",
         title: "An action is an endpoint",
         prose: [
-          "An action takes typed input and returns whatever its handler returns. It is served at `/__first/api/v1/actions/consume`, its input is validated against the declared columns, and `access` decides who may call it.",
+          "An action takes typed input and returns whatever its handler returns. Its export name is its name: it is served at `/__first/api/v1/actions/consume`, its input is validated against the declared columns, and `access` decides who may call it.",
           "The typed client gets an `Actions` entry for it, so `first.actions.consume({ itemId })` is checked in your editor.",
         ],
-        config: { file: "first.config.ts", lines: { from: "consume: action({", to: "    })," } },
+        config: { file: "first.config.ts", lines: { from: "export const consume = action({", toLine: "});" } },
         outputs: [
           { file: { artifact: "functions.php" }, lines: { from: "function action__consume", toLine: "}" } },
           { file: { artifact: "schema.php" }, lines: { from: "'consume' => [", to: "'access' => ['role' => 'editor']," } },
@@ -102,7 +102,7 @@ export const tours: Tour[] = [
           "`jobs.notifyLowStock.enqueue()` inside a hook queues work that runs after the request's write commits, on Action Scheduler. Retries and a key for deduplication are declared, not coded.",
           "The handler is compiled like a hook; the queue, retries and delivery are the runtime's.",
         ],
-        config: { file: "first.config.ts", lines: { from: "notifyLowStock: job({", to: "    })," } },
+        config: { file: "first.config.ts", lines: { from: "export const notifyLowStock = job({", toLine: "});" } },
         outputs: [
           { file: { artifact: "functions.php" }, lines: { from: "function job__notifyLowStock", toLine: "}" } },
           { file: { artifact: "schema.php" }, lines: { from: "'notifyLowStock' => ['input' => [", to: "'itemId' => ['type' => 'integer', 'notNull' => true]," } },

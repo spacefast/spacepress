@@ -120,48 +120,48 @@ fn replaced_field_forms_name_their_replacement() {
         (
             "reject-not-null",
             "`.notNull()` is gone: fields are required by default",
-            "first.config.ts:2:37",
+            "first.config.ts:2:44",
         ),
         (
             "reject-id-builder",
             "`id()` is gone: every kind already has an integer `id`",
-            "first.config.ts:2:27",
+            "first.config.ts:2:34",
         ),
         (
             "reject-authored-id",
             "`id` is built in: every kind has an integer `id`",
-            "first.config.ts:2:27",
+            "first.config.ts:2:34",
         ),
-        ("reject-real", "`real()` is now `number()`", "first.config.ts:2:30"),
+        ("reject-real", "`real()` is now `number()`", "first.config.ts:2:37"),
         (
             "reject-type-annotation",
             "`json().$type<T>()` is now `json<T>()`",
-            "first.config.ts:2:36",
+            "first.config.ts:2:43",
         ),
         (
             "reject-function-default",
             "`.default()` takes a literal value, not a function",
-            "first.config.ts:2:46",
+            "first.config.ts:2:53",
         ),
         (
             "reject-select-options",
             "select() takes its options as an array",
-            "first.config.ts:2:29",
+            "first.config.ts:2:36",
         ),
         (
             "reject-text-enum",
             "`text({ enum })` is now `select([...])`",
-            "first.config.ts:2:42",
+            "first.config.ts:2:49",
         ),
         (
             "reject-group-wrapper",
             "group() takes its fields directly, without the `{ fields }` wrapper",
-            "first.config.ts:2:28",
+            "first.config.ts:2:35",
         ),
         (
             "reject-many-text",
             "`.many()` isn't valid on a text column",
-            "first.config.ts:2:37",
+            "first.config.ts:2:44",
         ),
         (
             "reject-define-relations",
@@ -186,12 +186,12 @@ fn replaced_field_forms_name_their_replacement() {
         (
             "reject-relations-key",
             "`relations` is gone: a reference is a field",
-            "first.config.ts:3:66",
+            "first.config.ts:3:42",
         ),
         (
             "reject-references",
             "`.references()` is gone: a reference is a `ref()` field",
-            "first.config.ts:3:40",
+            "first.config.ts:3:47",
         ),
         (
             "reject-ref-set-null",
@@ -236,7 +236,7 @@ fn replaced_field_forms_name_their_replacement() {
         (
             "reject-ref-many-input",
             "`ref()` isn't allowed on an action input (`ids`)",
-            "first.config.ts:3:88",
+            "first.config.ts:3:43",
         ),
     ] {
         rejects(fixture, message, at);
@@ -422,7 +422,7 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-hook-typo",
         "there's no hook called `beforeCreat`",
-        "first.config.ts:3:",
+        "first.config.ts:2:",
     );
     // Ruling 18: `.on()` belongs to the declaration; `afterPublish` to collections.
     rejects(
@@ -439,54 +439,54 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-modifier-kind",
         "`.max()` isn't valid on a boolean column",
-        "first.config.ts:2:35",
+        "first.config.ts:2:42",
     );
     // §1.3: sub-fields hold plain values.
     rejects(
         "reject-subfield-unique",
         "`.unique()` isn't allowed inside a group, repeater, or blocks field (`code`)",
-        "first.config.ts:2:46",
+        "first.config.ts:2:53",
     );
     // §1.4: what an editor (post-backed) collection needs, and the names WordPress can't hold.
     rejects(
         "reject-editor-no-title",
         "editor collection \"notes\" has no title",
-        "first.config.ts:2:15",
+        "first.config.ts:2:22",
     );
     // Storage is chosen only by the builder: a collection can't ask for a table.
     rejects(
         "reject-collection-editor-false",
         "collection() has no option `editor`",
-        "first.config.ts:2:60",
+        "first.config.ts:2:67",
     );
     rejects(
         "reject-collection-editor-false",
         "help: storage follows the builder: collection() is always WordPress posts; use table() for a SQL table",
-        "first.config.ts:2:60",
+        "first.config.ts:2:67",
     );
     // On table() the same option gets its own builder's name and fix.
     rejects(
         "reject-table-editor-false",
         "table() has no option `editor`",
-        "first.config.ts:2:55",
+        "first.config.ts:2:62",
     );
     rejects(
         "reject-table-editor-false",
         "help: storage follows the builder: table() is always a SQL table; remove the option",
-        "first.config.ts:2:55",
+        "first.config.ts:2:62",
     );
-    rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:15");
-    rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:15");
+    rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:22");
+    rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:22");
     // The client declares `Query<T>`: a global of that name would declare a second `Query` type.
     rejects(
         "reject-global-client-query",
         "\"query\" is reserved by generated client types",
-        "first.config.ts:2:15",
+        "first.config.ts:2:22",
     );
     rejects(
         "reject-reserved-search",
         "\"search\" is reserved",
-        "first.config.ts:2:16",
+        "first.config.ts:2:23",
     );
     rejects(
         "reject-post-type-length",
@@ -496,18 +496,18 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-unique-length",
         "unique text columns are limited to 191 characters on MySQL (`code`); add `.max(191)`",
-        "first.config.ts:2:32",
+        "first.config.ts:2:39",
     );
     rejects(
         "reject-drafts-reserved",
         "`status` is reserved: drafts add these",
-        "first.config.ts:2:51",
+        "first.config.ts:2:58",
     );
     // §1.5
     rejects(
         "reject-global-required",
         "a global field is required unless it has a default (`title`)",
-        "first.config.ts:3:30",
+        "first.config.ts:3:37",
     );
     // Literal defaults follow the strict ISO timestamp codec, inside structured columns too.
     rejects(
@@ -661,45 +661,45 @@ fn rejects_hooks_that_would_misbehave_in_php() {
     rejects(
         "reject-filter-column",
         "\"a\" has no column or relation `nmae`",
-        "first.config.ts:5:",
+        "first.config.ts:2:",
     );
     rejects(
         "reject-ambiguous-plus",
         "`+` between number and unknown | null is ambiguous",
-        "first.config.ts:3:",
+        "first.config.ts:2:",
     );
     rejects(
         "reject-missing-await",
         "this database call never runs",
-        "first.config.ts:5:",
+        "first.config.ts:2:",
     );
     rejects(
         "reject-module-state",
         "hooks can't change `count`",
-        "first.config.ts:4:",
+        "first.config.ts:3:",
     );
     rejects(
         "reject-maybe-null",
         "can't read `length`: this might be null",
-        "first.config.ts:3:",
+        "first.config.ts:2:",
     );
     rejects(
         "reject-missing-insert-field",
         "missing required field `x`",
-        "first.config.ts:5:",
+        "first.config.ts:2:",
     );
     // §3.5: literal filters use the runtime's operator rules and its exact message.
     rejects(
         "reject-list-operator",
         "`in` isn't supported on list columns; use `has`",
-        "first.config.ts:5:",
+        "first.config.ts:2:",
     );
     // A structured field of a collection is spread over post meta and can't be compared. The fix
     // names table(), where the same filter compiles; storage is never an option of collection().
     rejects(
         "reject-collection-group-filter",
         "use isNull/isNotNull, or keep this data in a table()",
-        "first.config.ts:5:95",
+        "first.config.ts:2:188",
     );
     // db.globals is typed from the global's fields, like db.query from a collection's.
     rejects(
@@ -2062,9 +2062,10 @@ fn rejects_phase2_static_contracts() {
         ("reject-files-cover", "fit: cover requires height"),
         ("reject-files-size-name", "invalid media size name"),
         ("reject-files-size-count", "media supports at most 12 sizes"),
+        // An unexported bucket has no name, so it is refused where it is built (ruling 37).
         (
             "reject-files-bucket",
-            "file() refers to a files() bucket that isn't exported",
+            "`decks` is a file bucket but isn't exported, so it has no name",
         ),
         (
             "reject-files-global",

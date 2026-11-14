@@ -167,22 +167,20 @@ pub(super) fn config(input: Value, source: Source, report: &mut Vec<Entry>) -> R
             "const imported{i} = {builder}({{\n{fields}}}, {});\n\n",
             serde_json::to_string(&options).expect("options JSON")
         ));
-        (if editor { &mut content } else { &mut tables }).push(format!("{}: imported{i}", q(slug)));
+        (if editor { &mut content } else { &mut tables }).push(format!("imported{i} as {slug}"));
         report.push(entry(
             at,
             "mapped",
             format!("collection {slug}; new data requires a separate import and ID mapping"),
         ));
     }
-    code.push_str(&format!(
-        "const collections = {{ {} }};\nconst tables = {{ {} }};\n\n",
-        content.join(", "),
-        tables.join(", ")
-    ));
-    code.push_str(&format!(
-        "export default defineConfig({{\n  name: {},\n  collections,\n  tables,\n}});\n",
-        q(name)
-    ));
+    // Each kind registers by its export name (docs/spec/spec.md §1.1); the bindings stay prefixed,
+    // so no source name can collide with them.
+    let exported: Vec<String> = content.into_iter().chain(tables).collect();
+    if !exported.is_empty() {
+        code.push_str(&format!("export {{ {} }};\n\n", exported.join(", ")));
+    }
+    code.push_str(&format!("export default defineConfig({{\n  name: {},\n}});\n", q(name)));
     report.push(entry("", "review", "Config import only: documents, IDs, routes, clients, deployments and source runtime behavior are not migrated. Review access and WordPress storage before deployment."));
     Ok(code)
 }

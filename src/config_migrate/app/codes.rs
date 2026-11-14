@@ -664,6 +664,17 @@ pub static RULES: &[Rule] = &[
         example: ("/queries/q", "handler must be an inline function"),
     },
     Rule {
+        code: "Z08_HANDLER_NAME",
+        feature: "query, mutation or action named like a table, or named default",
+        v2: "one namespace for kinds and actions; a handler named like a table becomes <name>Query, <name>Mutation or <name>Action",
+        fix: "Rename the handler so it names no table and isn't default, or keep the Space on 0.8.",
+        test: |_, r| r.contains("has no v2 action name"),
+        example: (
+            "/queries/default",
+            "handler `default` has no v2 action name: an export can't be named default; rename the handler",
+        ),
+    },
+    Rule {
         code: "Z08_NAME",
         feature: "handler, table or field name",
         v2: "ASCII identifiers, unique across actions and routes",

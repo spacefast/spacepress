@@ -1,9 +1,9 @@
 // The registration `first build` generates into first/_generated/db.d.ts: the kinds, and the relations
-// each `ref()` field gives (the field itself, and the reverse list on its target). `config` types
-// globals and jobs.
+// each `ref()` field gives (the field itself, and the reverse list on its target), the globals and
+// the jobs.
 import type { Many, One, Relations } from "first";
-import type { entities } from "./schema";
-import type config from "./inference";
+import type { entities, settings } from "./schema";
+import type { sendWelcome } from "./inference";
 type Graph = {
   locations: { items: Many<"items"> };
   items: { locationId: One<"locations", true>; shoppingList: Many<"shoppingList"> };
@@ -13,4 +13,4 @@ type Graph = {
   comments: { postId: One<"posts", false> };
 };
 export type AppRelations = Relations<typeof entities, Graph>;
-declare module "first" { interface Register { relations: AppRelations; config: typeof config; locales: "en" | "de" } }
+declare module "first" { interface Register { relations: AppRelations; globals: { settings: typeof settings }; jobs: { sendWelcome: typeof sendWelcome }; locales: "en" | "de" } }

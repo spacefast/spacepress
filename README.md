@@ -67,36 +67,29 @@ export const posts = collection({
 }, {
   content: "body",
   access: { read: "anyone", create: "author", update: "author", delete: "editor" },
+}).on({
+  beforeCreate(data) {
+    data.title = data.title.trim();
+    if (data.title === "") throw new HttpError(422, "invalid_input", "A post needs a title");
+  },
 });
 
-export const collections = { authors, posts };
 export const stock = table({
   post: ref(posts).optional(),
   quantity: integer().default(0),
 });
-export const tables = { stock };
+
+export const publishedCount = action({
+  input: {},
+  access: "anyone",
+  async handler() {
+    const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
+    return { count: rows.length };
+  },
+});
 
 export default defineConfig({
   name: "journal",
-  collections, tables,
-  hooks: {
-    posts: {
-      beforeCreate(data) {
-        data.title = data.title.trim();
-        if (data.title === "") throw new HttpError(422, "invalid_input", "A post needs a title");
-      },
-    },
-  },
-  actions: {
-    publishedCount: action({
-      input: {},
-      access: "anyone",
-      async handler() {
-        const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
-        return { count: rows.length };
-      },
-    }),
-  },
 });
 ```
 
@@ -353,10 +346,10 @@ saved as a [staged version](docs/staged.md) that visitors don't see, then
 compared, previewed, promoted or discarded.
 Use `table(fields, options?)` for app data in its own SQL table. Both kinds
 support references and one/many relations to either kind, with typed client
-queries and target access rules. The registry key supplies the name once:
-`shoppingList` stays `first.shoppingList` in the client and stores in
-`wp_first_shopping_list`. `userProjection()` in `users` projects existing
-WordPress users for auth; it creates no second user table. Core `/wp/v2` routes and
+queries and target access rules. The export name supplies the name once:
+`export const shoppingList = table(...)` is `first.shoppingList` in the client and stores in
+`wp_first_shopping_list`, whichever file under `first/` (or `first.config.ts`) exports it.
+An exported `userProjection()` projects existing WordPress users for auth; it creates no second user table. Core `/wp/v2` routes and
 admin screens for First's post types follow First's access rules. Need other
 plugins at exact versions? [Declare them in the config](docs/wp-plugins.md)
 and the build pins and ships them too.

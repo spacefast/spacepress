@@ -13,9 +13,9 @@ function seo(options: { suffix: string }): Plugin {
   });
 }
 
-defineConfig({ collections: { posts }, use: [seo({ suffix: " | Site" })] });
+defineConfig({ use: [seo({ suffix: " | Site" })] });
 
 // @ts-expect-error `use` takes plugins, not package pins.
-defineConfig({ collections: { posts }, use: ["first-plugin-seo"] });
+defineConfig({ use: ["first-plugin-seo"] });
 // @ts-expect-error a plugin has no capability list; the lock grants it.
 definePlugin({ name: "x", capabilities: { http: ["a.example"] } });

@@ -1345,6 +1345,10 @@
       "feature": "query, mutation or action declaration"
     },
     {
+      "code": "Z08_HANDLER_NAME",
+      "feature": "query, mutation or action named like a table, or named default"
+    },
+    {
       "code": "Z08_NAME",
       "feature": "handler, table or field name"
     },

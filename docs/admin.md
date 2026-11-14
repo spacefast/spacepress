@@ -32,7 +32,7 @@ REST nonces, users, settings, plugins, themes, media and the block editor.
 | URL | What it serves |
 |---|---|
 | `/wp-admin/new/<route>` | First Admin. Apache rewrites it to `wp-admin/admin.php?page=first-admin`; the route stays in the path. |
-| `/wp-admin/admin.php?page=first-admin&p=<route>` | The same page on any server. A server that does not read `.htaccess` (nginx) redirects `/wp-admin/new/<route>` here. |
+| `/wp-admin/admin.php?page=first-admin&p=<route>` | The same page on any server. A server that does not read `.htaccess` (nginx, and WordPress Studio's server behind `first dev`) redirects `/wp-admin/new/<route>` here. |
 | `/wp-admin/` | Classic wp-admin, unchanged. Its `First` menu entry opens First Admin. |
 | `/first-admin/<route>` | The earlier address: a permanent redirect to `/wp-admin/new/<route>`. |
 

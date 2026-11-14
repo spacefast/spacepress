@@ -1,5 +1,10 @@
 # First Admin — design and provenance audit
 
+> Superseded in part (2026-11-13): First Admin now ships with every build, mounted at
+> `/wp-admin/new/` inside wp-admin; `admin: false` opts out and `/first-admin/` redirects. See
+> [decisions/2026-11-13-default-admin.md](decisions/2026-11-13-default-admin.md) and
+> [admin.md](admin.md). The mount, rewrite and harness sections below describe the earlier design.
+
 Status: approved for build (revision 12, 2026-10-31). Extends
 `design-phase2.md`; where this document is silent, phase 2 holds. The
 licensing and scope decisions in §1 and §9 govern the import PR (§8, PR 2).

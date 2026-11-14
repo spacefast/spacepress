@@ -1,7 +1,7 @@
 // Send only cookies whose server-declared scope matches the requested URL.
 // Chromium acceptance owns the complete browser contract; this HTTP seam must not bypass it.
 import assert from 'node:assert/strict';
-export async function loginCookie(site: string, role: 'admin' | 'editor' | 'subscriber', target = `${site}/first-admin/`): Promise<string> {
+export async function loginCookie(site: string, role: 'admin' | 'editor' | 'subscriber', target = `${site}/wp-admin/new/`): Promise<string> {
  const response = await fetch(`${site}/wp-login.php`, {
   method: 'POST', redirect: 'manual',
   headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: 'wordpress_test_cookie=WP%20Cookie%20check' },

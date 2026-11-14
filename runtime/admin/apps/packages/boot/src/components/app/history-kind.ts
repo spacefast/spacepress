@@ -1,7 +1,7 @@
 /**
- * Which history the router runs on. Under the mount path (`/blog/first-admin/media`)
- * the browser's own history carries the route; anywhere else (the wp-admin
- * redirect page) the route travels in a `p` query parameter.
+ * Which history the router runs on. Under the mount path (`/blog/wp-admin/new/media`)
+ * the browser's own history carries the route; anywhere else (`wp-admin/admin.php?page=first-admin`,
+ * which every server serves) the route travels in a `p` query parameter.
  */
 export function historyKind(
 	pathname: string,

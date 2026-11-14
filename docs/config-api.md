@@ -600,7 +600,7 @@ answers exactly what core answers under First's rules.
 | `POST /__first/api/v1/<kind>`, `PATCH …/<id>`, `DELETE …/<id>` | `POST`, `POST`, `DELETE` | `{ data: row }` (201 on create) |
 | `GET /__first/api/v1/me` | `GET /wp/v2/users/me` | `{ data: user }`, `null` when anonymous |
 | `POST /__first/api/v1/actions/<name>` (`GET` with `?input=<json>` when `readonly`) | the action's Ability | `{ data }` |
-| `GET /__first/api/v1/search?q=…[&kinds=a,b][&limit=n]` | | `{ data: { q, results: [{ kind, rows }] } }`: the same search on every kind, as the caller; a kind the caller may not read is left out |
+| `GET /__first/api/v1/search?q=…[&kinds=a,b][&limit=n]` | `GET /wp/v2/search?search=…` (kinds with a `url`, as subtypes of `post`) | `{ data: { q, results: [{ kind, rows }] } }`: the same search on every kind, as the caller; a kind the caller may not read is left out |
 | `GET /__first/api/v1` | | the app's kinds (with their core routes), fields, globals and actions |
 | `GET /__first/api/v1/openapi.json` | | the API as an OpenAPI 3.1 document; public |
 

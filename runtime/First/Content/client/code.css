@@ -4,7 +4,10 @@
 .first-code-block { margin: 1.5em 0; }
 .first-code { margin: 0; padding: 0.75em 0; overflow-x: auto; border-radius: 6px; font-size: 0.875em; line-height: 1.6; }
 .first-code code { display: block; background: none; padding: 0; }
-.first-code-line { display: block; padding: 0 1em; min-height: 1.6em; }
+/* Each line is a block, and the newline after it (kept so copied code has its line breaks) would be
+   a second, empty line inside <pre>: lines float in normal flow and the newline takes no room. */
+.first-code code { white-space: normal; }
+.first-code-line { display: block; padding: 0 1em; min-height: 1.6em; white-space: pre; }
 .first-code-title { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8125em; padding: 0.4em 1em; border-radius: 6px 6px 0 0; }
 .first-code-title + .first-code { border-top-left-radius: 0; border-top-right-radius: 0; }
 .first-code-group { margin: 1.5em 0; display: flex; flex-wrap: wrap; }

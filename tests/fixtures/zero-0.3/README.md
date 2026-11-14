@@ -27,6 +27,11 @@ Two apps:
   tests/php/wp.php on `zero compile-sources sources <dir> sources` (no previous output). The
   0.3.0 harness turns the theme off, so the home page is left out.
 
+- `raw-forms/`: `forms/app` without its plugin package (the `zero-plugin-seo` import and its `use`
+  entry removed): what the hosted MCP server 0.9.0 uploads raw, since a raw upload carries relative
+  modules only. Its `sources/` is the capture the 0.3.0 host made of that upload (`zero::host::sources`,
+  which refuses npm imports), and is byte-identical to `zero sources app --out sources`.
+
 In each:
 
 - `app/`: the project and its ledger after `zero build`.
@@ -37,7 +42,7 @@ In each:
   0.3.0 runtime served.
 
 Regenerate from a detached checkout of `61c22fc2`: `cargo build --bin zero`, then, from the app's
-directory (this one, `forms/` or `routes/`), `zero build app` followed by the two commands above, with that
+directory (this one, `forms/`, `routes/` or `raw-forms/`), `zero build app` followed by the two commands above, with that
 binary. Do not edit these files by hand.
 
 `pages/sources/` is `examples/full-site` of that checkout (TSX pages with their committed

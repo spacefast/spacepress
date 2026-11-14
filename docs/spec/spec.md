@@ -526,13 +526,14 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
 
 ## 7. Build output (`first/dist/`)
 
-`first build` prebuilds everything that doesn't depend on the request:
+`first build` prebuilds everything that doesn't depend on the request or the content (prebuilt
+pages need the content, so they are made where it is: see the third row):
 
 | Output | At request time |
 |---|---|
 | Compiled PHP for kinds, hooks, actions, jobs and pages | OPcache'd files in the build store; no parsing or reflection |
 | Route table, URL patterns, post types, taxonomies, field groups and roles as PHP arrays | Registered from arrays; no JSON or database reads. With `runtimeSchema`, the active version's additions come from one autoloaded option (§2.10) |
-| Pages with no request data, prerendered to HTML plus `.md` | Files served by the engine before WordPress boots |
+| Pages that export `prerender = true`, as HTML plus `.md` (not written by `first build`) | With `output: "server"`: written on the site after a deploy, after each write that changes them, and at least hourly; served before WordPress parses the request. With `output: "static"`: written only by `first export`, as a static site (rendering.md §6.1) |
 | Interactive component stores, CSS and assets, content-hashed | Immutable files, cached for a year |
 | `llms.txt` and the sitemap skeleton | Files |
 | `_generated/db.d.ts`, `routes.d.ts`, `openapi.json`, `spec.json` | Used by clients; the site also serves `openapi.json` (§3a) |

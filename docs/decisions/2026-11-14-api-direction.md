@@ -54,8 +54,22 @@ those three facts.
    only the `after*` hooks, and core's REST routes for First's kinds.
 
 4. **Hooks run as the caller.** A hook's reads and writes apply the caller's access rules, like every
-   other server function. `.system` is the only way to skip them. This changes the documented rule
-   that hooks are trusted.
+   other server function. `.system` is the only way to skip them.
+
+   Today the answer depends on the API a hook calls. `db.*` is trusted: it sees every status and
+   applies no access rules, in hooks and actions alike. The kind API (`posts.create`) runs as the
+   caller, as ruling 17 of the authoring-surface record says. So rewriting `db.insert(...)` as
+   `posts.create(...)` changes who the write runs as. The change that builds this ruling therefore,
+   in order:
+
+   1. lists every `db.*` call by where it runs: hook, action, page or job;
+   2. rewrites hook and action bodies to `kind.system.*`, unless the code plainly meant the
+      caller's rights;
+   3. tests each rewritten hook as a signed-out visitor and as a subscriber;
+   4. deletes `db.*` and the "trusted" wording together.
+
+   A 0.3.0 capture keeps `db.*` trusted under the old reading (ruling 23 of the authoring-surface
+   record), or a recompiled stored Space would change behaviour; `tests/zero_bundle.rs` proves it.
 
 ## Validation and errors
 
@@ -142,7 +156,7 @@ those three facts.
 |---|---|
 | `.on({ beforeCreate })`, ruling 18's same-file limit | ruling 1 |
 | `hooks` in `definePlugin` | `kind.on()` in the plugin |
-| Hooks are trusted | ruling 4 |
+| Hooks are trusted; `db.*` skips access rules | ruling 4, after `db.*` call sites move to `kind.system.*` |
 | `action({ input, handler })`, `action(options, handler)` | `query()` and `mutation()` |
 | Calling a job enqueues it, ruling 16 | `x.enqueue()` |
 | Spec decision 6, co-editing out of scope | ruling 18 |

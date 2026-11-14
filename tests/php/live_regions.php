@@ -150,6 +150,16 @@ wp_set_current_user(1);
 wp_delete_post((int) \First\db()->findFirst('notes', ['where' => ['slug' => 'locked']])['id'], true);
 $site->actAs(null);
 
+// A cached page's seed: its token is older than TRUST_SECONDS (a page cache served it later). The
+// counters may not answer for it: the region renders and compares, and answers unchanged.
+[$fresh] = post($url, [$page('/', 'notes')]);
+$claims = \First\Live\Token::open($fresh['token']);
+$claims['t'] -= \First\Live\Module::TRUST_SECONDS + 100;
+$old = \First\Live\Token::seal($claims);
+$was = $renders();
+[$aged] = post($url, [$page('/', 'notes', $old)]);
+$out['aged seed'] = [$shape($aged), 'rendered' => $renders() - $was];
+
 // A new build of the same page: the held token is a different question, so the region renders.
 $schemaFile = \First\Wp\Runtime::plugin()->dir . '/first/app/schema.php';
 [$held] = post($url, [$page('/', 'notes')]);

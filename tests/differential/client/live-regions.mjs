@@ -28,11 +28,20 @@ try {
     if (r.url().endsWith("/__first/api/v1/_live")) answers.push((await r.json().catch(() => ({}))).data?.results?.map((x) => (x.pending ? "pending" : x.changed ? "changed" : x.error ? "error" : "unchanged")));
   });
   const loaded = Date.now();
+  // Renders are counted around the first `/_live` request only: the page's own render seeds the
+  // region with one page read, which is the server render of the page, not the first poll.
+  let rendersAtFirstAsk = null;
+  page.on("request", (r) => {
+    if (r.url().endsWith("/__first/api/v1/_live") && rendersAtFirstAsk === null) rendersAtFirstAsk = fetch(`${url}/__first_test/renders`).then((x) => x.text()).then(Number);
+  });
   await page.goto(`${url}/board`, { waitUntil: "networkidle" });
   // The first request: one, carrying the region, answered unchanged. Waited for, not slept on.
   if (answers.length === 0) await page.waitForResponse((r) => r.url().endsWith("/__first/api/v1/_live"), { timeout: 15000 });
   await page.waitForFunction(() => true); // the response handler above has run
   out.first = { requests: live.length, regions: live[0]?.body.queries?.map((q) => q.args?.region) ?? null, answer: answers[0] ?? null, beforePoll: live.length > 0 && live[0].at - loaded < 2000 };
+  // A fresh page with nothing changed is answered by counter: no render ran for that first request.
+  const rendersAfterFresh = Number(await (await fetch(`${url}/__first_test/renders`)).text());
+  out.first.rendered = rendersAfterFresh - (await rendersAtFirstAsk);
 
   // State a visitor made: a click on the client component and text typed into the input.
   await page.click(".counter");
@@ -54,6 +63,20 @@ try {
     reloaded: await page.evaluate(() => performance.getEntriesByType("navigation").length),
   };
   out.answers = answers;
+
+  // A cached copy taken before the data changed (as an edge would serve it): the first request brings
+  // the region current, with no poll needed.
+  const cached = await (await fetch(`${url}/board`)).text();
+  await fetch(`${url}/__first/api/v1/signatures`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Ada" }) });
+  const stale = await browser.newPage();
+  await stale.route(`${url}/board`, (route) => route.fulfill({ status: 200, contentType: "text/html", body: cached }));
+  const staleRequests = [];
+  stale.on("request", (r) => { if (r.url().endsWith("/__first/api/v1/_live")) staleRequests.push(Date.now()); });
+  const staleAt = Date.now();
+  await stale.goto(`${url}/board`, { waitUntil: "domcontentloaded" });
+  out.stale = { cachedHasAda: cached.includes(">Ada<") };
+  await stale.waitForFunction(() => [...document.querySelectorAll(".signature")].some((li) => li.textContent === "Ada"), null, { timeout: 15000 });
+  out.stale = { ...out.stale, requests: staleRequests.length, ms: Date.now() - staleAt };
 
   // `<Live>` around `<Comments>`, with a realtime transport live (a fake one the page registers
   // before any module runs, as a host's would be): a comment approved on the server shows at once

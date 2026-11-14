@@ -1942,6 +1942,8 @@ fn live_regions_answer_page_reads() {
                 "without token, with cookie": ["changed", true],
                 "with token, without cookie": ["changed", false],
             },
+            // A seed older than the counters' trust window (a cached page): rendered and compared, unchanged.
+            "aged seed": { "0": "unchanged", "rendered": 1 },
             // Same data, new build: the region renders again.
             "new build": ["changed", true],
         })
@@ -1998,9 +2000,16 @@ fn live_regions_update_in_the_browser() {
     );
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    // One first request, before any poll, answered unchanged by counter: no render ran for it.
     assert_eq!(
         seen["first"],
-        serde_json::json!({ "requests": 1, "regions": ["board"], "answer": ["unchanged"], "beforePoll": true }),
+        serde_json::json!({ "requests": 1, "regions": ["board"], "answer": ["unchanged"], "beforePoll": true, "rendered": 0 }),
+        "{seen}"
+    );
+    // A cached copy taken before a write: its first request brings the region current, no poll.
+    assert_eq!(
+        (&seen["stale"]["cachedHasAda"], &seen["stale"]["requests"]),
+        (&serde_json::json!(false), &serde_json::json!(1)),
         "{seen}"
     );
     assert_eq!(

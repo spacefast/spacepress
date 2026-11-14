@@ -103,7 +103,13 @@ final class Islands
             foreach ($island['actions'] as $action) {
                 $actions[$action] = Wp\Facade::url('/actions/' . rawurlencode((string) $action));
             }
-            wp_interactivity_config($namespace, ['actions' => (object) $actions, 'nonce' => wp_create_nonce('wp_rest')]);
+            // A prebuilt page is the same file for days, past a nonce's lifetime, and only signed-out
+            // visitors get it: they need no nonce, and an expired one would refuse their calls.
+            $config = ['actions' => (object) $actions];
+            if (!\First\Render\Prebuilt::prerendering()) {
+                $config['nonce'] = wp_create_nonce('wp_rest');
+            }
+            wp_interactivity_config($namespace, $config);
         }
     }
 }

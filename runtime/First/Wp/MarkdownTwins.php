@@ -572,6 +572,11 @@ final class MarkdownTwins
     private static function headers(): array
     {
         $headers = ['Content-Type' => self::CONTENT_TYPE, 'X-Content-Type-Options' => 'nosniff'];
+        if (\First\Render\Prebuilt::prerendering()) {
+            // Rendered for the prebuild, which writes a twin file only from such an answer.
+            $headers['X-First-Prerendered'] = '1';
+            $headers['Cache-Control'] = 'private, no-store, max-age=0';
+        }
         $signal = self::contentSignal();
         if ($signal !== '') {
             $headers['Content-Signal'] = $signal;

@@ -36,9 +36,12 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --lib
-  # Two shards in parallel: the compiler suites and the npm comparison (about 26 minutes), and
-  # fmt, clippy and every other test target (about 20). Test targets come from cargo metadata,
-  # so a new one lands in `rest` without a workflow edit.
+  # Three shards in parallel: the compiler suites and the npm comparison (about 26 minutes); the
+  # three slowest test targets, `slow` (app_migrate, config_migrate and sync, about 14); and fmt,
+  # clippy, every other test target and the acceptance scripts, `rest` (about 20). Test targets
+  # come from cargo metadata, so a new one lands in `rest` without a workflow edit. With `slow`
+  # inside it, `rest` took 26 to 36 minutes, and four of nine full runs on 2026-11-13 hit the
+  # 40-minute limit.
   rust:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
@@ -46,7 +49,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [compiler, rest]
+        shard: [compiler, slow, rest]
     env:
       SHARD: ${{ matrix.shard }}
       FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
@@ -96,12 +99,15 @@ jobs:
       - name: cargo test (${{ matrix.shard }})
         run: |
           compiler=(compiler compiler_contracts)
+          slow=(app_migrate config_migrate sync)
           if [ "$SHARD" = compiler ]; then
             cargo test --locked "${compiler[@]/#/--test=}"
+          elif [ "$SHARD" = slow ]; then
+            cargo test --locked "${slow[@]/#/--test=}"
           else
             rest=()
             for name in $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].targets[] | select(.kind[] == "test") | .name'); do
-              [[ " ${compiler[*]} " == *" $name "* ]] || rest+=("--test=$name")
+              [[ " ${compiler[*]} ${slow[*]} " == *" $name "* ]] || rest+=("--test=$name")
             done
             cargo test --locked --lib --bins "${rest[@]}"
             cargo test --locked --doc

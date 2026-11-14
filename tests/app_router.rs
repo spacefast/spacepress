@@ -1775,6 +1775,13 @@ fn comments_follow_the_kind_policy_on_every_path() {
         serde_json::json!({ "guest facade": [201, "approved"], "guest core": [302, "approved"], "reply": 400, "closed": 403 }),
         "{seen}"
     );
+    // A guest without a name or a valid email is refused on every path, with the Discussion
+    // setting `require_name_email` off: the policy decides.
+    assert_eq!(
+        seen["guest identity"],
+        serde_json::json!({ "facade": 400, "core": 400, "form": [303, "Please fill the required fields (name, email)."], "saved": 0 }),
+        "{seen}"
+    );
     assert_eq!(seen["memo"], 403, "a kind without comments takes none: {seen}");
 }
 

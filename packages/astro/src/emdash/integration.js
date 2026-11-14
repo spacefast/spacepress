@@ -11,8 +11,8 @@ export function firstEmdash(options = {}) {
     name: "@first/astro/emdash",
     hooks: {
       "astro:config:setup": ({ config, updateConfig, addMiddleware, injectRoute }) => {
-        // The live search's endpoint, on a site with on-demand pages (a static build has no server).
-        if (config.output === "server") injectRoute({ pattern: "/api/search", entrypoint: here("./search-route.js"), prerender: false });
+        // The live search's endpoint, wherever the site has a server to answer it.
+        if (config.output === "server" || config.adapter) injectRoute({ pattern: "/api/search", entrypoint: here("./search-route.js"), prerender: false });
         updateConfig({
           vite: {
             define: { __FIRST_EMDASH_PAGES_AT__: JSON.stringify(options.pagesAt ?? "/pages/") },

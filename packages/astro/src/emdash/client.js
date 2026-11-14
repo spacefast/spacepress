@@ -5,6 +5,8 @@
 // The First app is expected to declare what the templates read: `posts` and `pages` collections
 // (title, body, excerpt, cover, seoTitle, seoDescription), `category`, `tag` and `credits`
 // taxonomies on posts, and a `widgets` global. Missing pieces read as empty.
+import { parseHTML } from "linkedom";
+
 import { connect } from "../index.js";
 import { requestContext } from "./context.js";
 
@@ -23,7 +25,9 @@ export function backendUrl() {
 }
 
 let connection;
-const site = () => (connection ??= connect({ site: backendUrl() }));
+// Always as an anonymous visitor: the pages this renders are public, whatever credentials the
+// server's environment holds for builds (FIRST_APP_PASSWORD would show drafts to everyone).
+const site = () => (connection ??= connect({ site: backendUrl(), anonymous: true }));
 const get = (path) => site().request("GET", `${API}${path}`).then((r) => r.data);
 const kinds = async () => (await site().describe()).kinds ?? {};
 const has = async (name) => Boolean((await kinds())[name]);
@@ -40,24 +44,27 @@ const query = (q) => {
 // ------------------------------------------------------------------------------------------------
 // Blocks and entries
 
-const decode = (html) =>
-  html.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&#0?39;|&#x27;|&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n))).replace(/\s+/g, " ").trim();
-
 /**
  * WordPress's rendered HTML as the Portable Text view the templates read: one block per top-level
- * element, its text for reading time and headings, and `_html` for <PortableText> to render as is.
+ * node (an element, or a run of text), its text for reading time and headings, and `_html` for
+ * <PortableText> to render as is. Parsed as HTML, so nesting, void elements and entities are
+ * WordPress's own.
  */
 export function blocksFromHtml(html) {
+  if (!html) return [];
+  const { document } = parseHTML(`<!doctype html><html><body>${html}</body></html>`);
   const blocks = [];
-  const re = /<(h[1-6]|p|ul|ol|blockquote|figure|pre|table|div|hr|img)\b[^>]*>[\s\S]*?(?:<\/\1>|$)|<(?:hr|img)\b[^>]*\/?>/gi;
   let i = 0;
-  for (const match of (html ?? "").matchAll(re)) {
-    const part = match[0].trim();
-    if (part === "") continue;
-    const tag = (match[1] ?? part.slice(1, 4)).toLowerCase();
-    blocks.push({ _type: "block", _key: String(i++), style: /^h[1-6]$/.test(tag) ? tag : tag === "blockquote" ? "blockquote" : "normal",
-      children: [{ _type: "span", text: decode(part) }], _html: part });
+  for (const node of [...document.body.childNodes]) {
+    if (node.nodeType === 3) {
+      const text = node.textContent.replace(/\s+/g, " ").trim();
+      if (text) blocks.push({ _type: "block", _key: String(i++), style: "normal", children: [{ _type: "span", text }], _html: node.toString() });
+      continue;
+    }
+    if (node.nodeType !== 1) continue;
+    const tag = node.tagName.toLowerCase();
+    const style = /^h[1-6]$/.test(tag) ? tag : tag === "blockquote" ? "blockquote" : "normal";
+    blocks.push({ _type: "block", _key: String(i++), style, children: [{ _type: "span", text: node.textContent.replace(/\s+/g, " ").trim() }], _html: node.outerHTML });
   }
   return blocks;
 }
@@ -137,7 +144,8 @@ const and = (...parts) => {
 
 export async function getEmDashCollection(collection, options = {}) {
   const limit = options.limit ?? 20;
-  const offset = options.cursor ? Number.parseInt(options.cursor, 10) : 0;
+  // The API takes offsets of at most nine digits; any other cursor is the first page.
+  const offset = /^\d{1,9}$/.test(String(options.cursor ?? "")) ? Number(options.cursor) : 0;
   const filters = [];
   for (const [taxonomy, slug] of Object.entries(options.where ?? {})) {
     if (!slug) continue;
@@ -146,10 +154,10 @@ export async function getEmDashCollection(collection, options = {}) {
   }
   const month = requestContext.getStore()?.month;
   const where = and(...filters, month ? monthRange(month) : null);
-  const page = await rows(collection, { where, orderBy: "-publishedAt,-id", limit: limit + 1, offset: Number.isSafeInteger(offset) && offset >= 0 ? offset : 0 });
+  const page = await rows(collection, { where, orderBy: "-publishedAt,-id", limit: limit + 1, offset });
   const more = page.rows.length > limit;
   const list = await entries(collection, page.rows.slice(0, limit));
-  return { entries: list, total: offset + page.rows.length, cacheHint: noCache, nextCursor: more ? String(offset + limit) : undefined };
+  return { entries: list, total: offset + list.length, cacheHint: noCache, nextCursor: more ? String(offset + limit) : undefined };
 }
 
 export async function getEmDashEntry(collection, slug) {
@@ -177,7 +185,8 @@ async function previewed(collection, slug, token) {
   const staged = await site().request("GET", `${API}/${collection}/${claim[1]}/staged?preview=${encodeURIComponent(token)}`).then((r) => r.data).catch(() => null);
   const field = await slugField(collection);
   if (!staged?.row || String((field ? staged.row[field] : staged.row.id) ?? "") !== slug) return null;
-  return { ...staged.row, __html: staged.html ?? staged.row.body ?? "" };
+  // A staged version isn't rendered by WordPress: its block markup is shown as saved.
+  return { ...staged.row, __html: staged.row.body ?? "" };
 }
 
 export async function getTermsForEntries(collection, ids, taxonomy) {
@@ -230,14 +239,12 @@ export async function getWidgetAreas() {
 }
 
 /**
- * The signed-in WordPress user, from the visitor's cookies (`GET /me`), or null. Today this is
- * always null: core accepts a cookie only with a REST nonce, which a page served elsewhere doesn't
- * have, and the API doesn't take a cookie alone (that would let any site read who a visitor is).
+ * The signed-in WordPress user: always null. Core accepts the login cookie only with a REST nonce,
+ * which a page served from another origin doesn't have, and taking the cookie alone would let any
+ * site learn who a visitor is. So the templates' signed-in extras (the admin link) don't show.
  */
-export async function getSession(cookie) {
-  if (!cookie) return { user: null };
-  const me = await site().request("GET", `${API}/me`, undefined, { cookie }).then((r) => r.data).catch(() => null);
-  return { user: me ? { id: me.id, name: me.name } : null };
+export async function getSession() {
+  return { user: null };
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -257,6 +264,18 @@ export async function search(q, options = {}) {
   return { items: results.flat().slice(0, limit).map((r) => ({ id: String(r.id), slug: String((slugs[r.__kind] ? r[slugs[r.__kind]] : null) ?? r.id), title: r.title ?? "", snippet: highlight(r.title ?? "", q) })) };
 }
 
+/**
+ * A comment as plain paragraphs of its text, escaped: comment HTML is filtered only when it was
+ * saved (not at all for users with unfiltered_html), so none of it is passed on.
+ */
+function commentHtml(rendered) {
+  const { document } = parseHTML(`<!doctype html><html><body>${rendered}</body></html>`);
+  const escape = (v) => v.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+  const paragraphs = [...document.body.querySelectorAll("p")].map((p) => p.textContent.trim()).filter(Boolean);
+  const parts = paragraphs.length ? paragraphs : [document.body.textContent.trim()].filter(Boolean);
+  return parts.map((p) => `<p>${escape(p)}</p>`).join("\n");
+}
+
 /** Approved comments of an item (`GET /comments?post=`), and whether it takes new ones. */
 export async function getComments(id) {
   const preview = requestContext.getStore()?.preview;
@@ -267,7 +286,7 @@ export async function getComments(id) {
   return {
     open: status?.comment_status === "open",
     items: list.filter((c) => c.status === "approved").sort((a, b) => a.id - b.id)
-      .map((c) => ({ id: String(c.id), parent: String(c.parent ?? 0), author: c.authorName ?? "", html: c.content ?? "" })),
+      .map((c) => ({ id: String(c.id), parent: String(c.parent ?? 0), author: c.authorName ?? "", html: commentHtml(c.content ?? "") })),
   };
 }
 

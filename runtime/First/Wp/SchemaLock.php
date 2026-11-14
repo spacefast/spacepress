@@ -22,13 +22,20 @@ use First\Schema;
  * - Changing a role First creates, or a capability of a First kind on any role ({@see roles()}), or
  *   one of First's own options from wp-admin's all-options screen ({@see option()}).
  *
+ * - Making or changing any Secure Custom Fields post type, taxonomy, field group, field or options
+ *   page on the site, First's or not ({@see editors()}): each one changes the site's schema, and on
+ *   a First site that goes through `first.config.ts` or the runtime schema's validated, numbered
+ *   versions. SCF's editor screens, its import tool and its menu are closed, and its abilities that
+ *   store an object are refused. Stored objects still work, can be read and exported, and can be
+ *   turned off or moved to the trash.
+ *
  * Objects already in the database (stored by WP-CLI, or while the app was inactive) are left as they
  * are and do nothing: SCF never loads one that is First's ({@see load()}), and a stored field group
  * never applies to a First kind ({@see matchRule()}).
  *
  * Names are compared the way WordPress stores them and MariaDB matches them: without accents, letter
- * case or the characters WordPress strips. Content, media, users, other plugins' settings and SCF
- * objects of the site's own stay open. WP-CLI is the operator's trusted channel, as it is for
+ * case or the characters WordPress strips. Content, media, users and other plugins' settings stay
+ * open. WP-CLI is the operator's trusted channel, as it is for
  * `wp first insert`, and is not refused. Like every other switch, these are hooks that exist while the
  * app is active; nothing is written.
  */
@@ -40,6 +47,8 @@ final class SchemaLock
     private const FIELD_PREFIX = 'field_first_';
     /** Roles First creates, as it creates them ({@see IdentityBridge::provision}). */
     private const ROLES = ['first_guest' => ['name' => 'Guest', 'capabilities' => ['read' => true]]];
+    /** The post types SCF keeps its objects in: each one is a piece of the site's schema. */
+    private const EDITORS = ['acf-field-group', 'acf-field', 'acf-post-type', 'acf-taxonomy', 'acf-ui-options-page'];
     /** SCF's own forms, each holding the object its edit screen saves. */
     private const FORMS = ['acf_field_group', 'acf_post_type', 'acf_taxonomy', 'acf_ui_options_page'];
 
@@ -83,6 +92,8 @@ final class SchemaLock
         });
         add_filter('wp_ability_execute_result', [self::class, 'abilityResult'], PHP_INT_MAX, 2);
         add_action('admin_init', [self::class, 'admin'], 0);
+        // SCF's own switch for its menu and Tools screen; the screens themselves are refused in admin().
+        add_filter('acf/settings/show_admin', '__return_false', PHP_INT_MAX);
         foreach (['field_groups', 'post_types', 'taxonomies', 'ui_options_pages'] as $plural) {
             add_filter("acf/load_$plural", [self::class, 'load'], 10);
         }
@@ -116,7 +127,7 @@ final class SchemaLock
             wp_unslash((string) ($post['post_name'] ?? '')),
             wp_unslash((string) ($post['post_content'] ?? '')),
             (int) ($post['post_parent'] ?? 0),
-        )) ?? self::forms();
+        )) ?? self::forms() ?? self::EDITED;
         if ($problem === null) {
             return $empty;
         }
@@ -163,6 +174,7 @@ final class SchemaLock
         if (self::trusted() || !current_user_can((string) (function_exists('acf_get_setting') ? acf_get_setting('capability') : 'manage_options'))) {
             return;
         }
+        self::editors();
         $file = $_FILES['acf_import_file']['tmp_name'] ?? null;
         if (($_GET['page'] ?? null) === 'acf-tools' && is_string($file) && is_uploaded_file($file) && wp_verify_nonce((string) ($_POST['_acf_nonce'] ?? ''), 'import')) {
             $json = json_decode((string) file_get_contents($file), true);
@@ -180,11 +192,36 @@ final class SchemaLock
         }
     }
 
+    /** What a refused change to a Secure Custom Fields object of the site's own is called in the message. */
+    private const EDITED = 'a post type, taxonomy or field group';
+
+    /**
+     * admin_init: SCF's screens that make or change an object. Its lists and its Tools screen go too,
+     * since on a First site there is nothing to do on them; a stored object is turned off or removed
+     * through SCF's abilities or WP-CLI. Other plugins' screens and SCF's own field forms on content
+     * (the boxes First's fields render in) are not these.
+     */
+    private static function editors(): void
+    {
+        global $pagenow;
+        $type = $_GET['post_type'] ?? $_POST['post_type'] ?? null;
+        if (!is_string($type) && isset($_GET['post']) && is_numeric($_GET['post'])) {
+            $type = get_post_type((int) $_GET['post']) ?: null;
+        }
+        $screen = in_array($pagenow, ['edit.php', 'post-new.php', 'post.php'], true) && is_string($type) && in_array(sanitize_key($type), self::EDITORS, true);
+        $ajax = wp_doing_ajax() && is_string($_REQUEST['action'] ?? null)
+            && preg_match('#^acf/(field_group/|create_options_page$|link_field_groups$|ajax/local_json_diff$)#', (string) $_REQUEST['action']) === 1;
+        if ($screen || $ajax) {
+            self::refuse(self::EDITED);
+        }
+    }
+
     /**
      * wp_pre_execute_ability: an SCF ability that would store something of First's gets the refusal as
      * its own error, before SCF writes anything. Judged: the input, and the stored object the input
-     * names by id or key (an update merges into it, a duplicate copies it). Reading, exporting, removing
-     * and turning off a stored object stay open.
+     * names by id or key (an update merges into it, a duplicate copies it). An ability that would store
+     * an object of the site's own is refused too ({@see editors()}). Reading, exporting, removing and
+     * moving a stored object to the trash stay open.
      */
     public static function ability(mixed $pre, mixed $name, mixed $input): mixed
     {
@@ -202,7 +239,8 @@ final class SchemaLock
             }
         }
 
-        return $problem === null ? $pre : self::error($problem);
+        // Every SCF ability that reaches here stores an object: reads, exports, trash and delete don't.
+        return self::error($problem ?? self::EDITED);
     }
 
     /** wp_ability_execute_result: an SCF ability whose save was refused answers with the refusal. */

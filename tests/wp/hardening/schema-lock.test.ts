@@ -1,7 +1,9 @@
 // spec.md §6, the schema lock: first.config.ts is the only way to change what First generates. Every
 // route that could store a replacement for one of First's field groups, post types, taxonomies or
 // options pages, or attach something to one of its kinds, is refused to the administrator too, with a
-// message naming first.config.ts; content and the site's own objects stay open.
+// message naming first.config.ts. So is making or changing any SCF post type, taxonomy, field group
+// or options page on the site, First's or not: that is a schema change, and it goes through
+// first.config.ts or the runtime schema. Content stays open.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { auth, core, harness, run, sql, wp, type Role } from "../env.ts";
@@ -112,56 +114,81 @@ test("an agent on the MCP server is refused the same way", async () => {
   assert.equal(stored(String(input.key)), 0);
 });
 
-test("wp-admin's field group screen and SCF's import tool are refused with a page naming first.config.ts", async () => {
+test("SCF's editor screens, its import tool and its menu are closed, with a page naming first.config.ts", async () => {
   const cookie = await loginCookie(site, "admin", `${site}/wp-admin/`);
-  const screen = async (path: string) => (await fetch(`${site}${path}`, { headers: { cookie } })).text();
-  const hidden = (html: string, name: string) => html.match(new RegExp(`name=['"]${name}['"] value=['"]([^'"]+)['"]`))?.[1] ?? assert.fail(`no ${name} on the screen`);
+  const at = (path: string, init: RequestInit = {}) => fetch(`${site}${path}`, { redirect: "manual", ...init, headers: { cookie, ...init.headers } });
+  // A nonce bound to this browser session, as the screen's own form would carry it: the screens are
+  // closed, so a stale tab or a script is what still holds one.
+  const logged = cookie.split("; ").find((c) => c.startsWith("wordpress_logged_in_")) ?? assert.fail("no session cookie");
+  const [cookieName, cookieValue] = [logged.slice(0, logged.indexOf("=")), decodeURIComponent(logged.slice(logged.indexOf("=") + 1))];
+  const nonce = (action: string) => wp("eval", `$_COOKIE['${cookieName}'] = base64_decode('${Buffer.from(cookieValue).toString("base64")}'); wp_set_current_user(${harness.users.admin.id}); echo wp_create_nonce('${action}');`);
+  const closed = async (res: Response, what: string) => {
+    assert.equal(res.status, 403, what);
+    assert.match(await res.text(), /Refused: .*first\.config\.ts/, what);
+  };
+
+  // Every screen that makes or changes one of SCF's objects, and the lists and the Tools screen.
+  for (const type of ["acf-field-group", "acf-post-type", "acf-taxonomy", "acf-ui-options-page"]) {
+    await closed(await at(`/wp-admin/post-new.php?post_type=${type}`), `the new ${type} screen`);
+    await closed(await at(`/wp-admin/edit.php?post_type=${type}`), `the ${type} list`);
+  }
+  await closed(await at("/wp-admin/edit.php?post_type=acf-field-group&page=acf-tools"), "SCF's Tools screen");
+  // A stored object's edit screen, and its quick actions.
+  const key = `group_cli_screen${run}`;
+  wp("eval", `acf_import_field_group(json_decode('${JSON.stringify(group(key))}', true));`);
+  const id = Number(sql(`SELECT ID FROM wp_posts WHERE post_name = '${key}'`)[0].ID);
+  await closed(await at(`/wp-admin/post.php?post=${id}&action=edit`), "a stored field group's edit screen");
+  await closed(await at(`/wp-admin/edit.php?post_type=acf-field-group&acfduplicate=${id}&_wpnonce=${nonce("bulk-posts")}`), "duplicate");
+  // SCF's menu is gone, and wp-admin itself still loads.
+  const dashboard = await at("/wp-admin/");
+  assert.equal(dashboard.status, 200);
+  assert.doesNotMatch(await dashboard.text(), /edit\.php\?post_type=acf-field-group/);
+
   /** Save a new field group from SCF's own form, as the screen posts it. */
-  const save = async (key: string, postType: string) => {
-    const html = await screen("/wp-admin/post-new.php?post_type=acf-field-group");
-    const id = hidden(html, "post_ID");
+  const save = async (groupKey: string, postType: string) => {
+    const draft = Number(wp("post", "create", "--post_type=acf-field-group", "--post_status=auto-draft", "--post_title=Auto Draft", "--porcelain"));
     const body = new URLSearchParams({
-      action: "editpost", post_ID: id, post_type: "acf-field-group", _wpnonce: hidden(html, "_wpnonce"), _acf_nonce: hidden(html, "_acf_nonce"), _acf_screen: "field_group", _acf_post_id: id,
-      post_title: "Drift", post_status: "publish", publish: "Save Changes", "acf_field_group[key]": key, "acf_field_group[active]": "1",
+      action: "editpost", post_ID: String(draft), post_type: "acf-field-group", _wpnonce: nonce(`update-post_${draft}`), _acf_nonce: nonce("field_group"), _acf_screen: "field_group", _acf_post_id: String(draft),
+      post_title: "Drift", post_status: "publish", publish: "Save Changes", "acf_field_group[key]": groupKey, "acf_field_group[active]": "1",
       "acf_field_group[location][group_0][rule_0][param]": "post_type", "acf_field_group[location][group_0][rule_0][operator]": "==", "acf_field_group[location][group_0][rule_0][value]": postType,
     });
-    const res = await fetch(`${site}/wp-admin/post.php`, { method: "POST", redirect: "manual", headers: { cookie, "content-type": "application/x-www-form-urlencoded" }, body });
-    return { status: res.status, text: await res.text() };
+    return at("/wp-admin/post.php", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body });
   };
-  for (const [key, postType] of [[`group_drift_g${run}`, "first_notes"], [`group_first_admin${run}`, "post"]]) {
-    const answer = await save(key, postType);
-    assert.equal(answer.status, 403, `${key} on ${postType}`);
-    assert.match(answer.text, /Refused: .*first\.config\.ts/);
-    assert.equal(stored(key), 0);
+  // On a First kind, under one of First's names, and one that is neither: all are schema changes.
+  for (const [groupKey, postType] of [[`group_drift_g${run}`, "first_notes"], [`group_first_admin${run}`, "post"], [`group_own_admin${run}`, "post"]]) {
+    await closed(await save(groupKey, postType), `${groupKey} on ${postType}`);
+    assert.equal(stored(groupKey), 0);
   }
-  const own = await save(`group_own_admin${run}`, "post");
-  assert.equal(own.status, 302, own.text.slice(0, 300));
-  assert.equal(stored(`group_own_admin${run}`), 1, "the site's own field group saves");
 
-  // The import tool: a JSON export uploaded on SCF's Tools screen.
-  const tools = await screen("/wp-admin/edit.php?post_type=acf-field-group&page=acf-tools");
-  const form = new FormData();
-  const importForm = [...tools.matchAll(/<form[^>]*>[\s\S]*?<\/form>/g)].map((m) => m[0]).find((f) => f.includes("acf_import_file")) ?? assert.fail("no import form");
-  form.set("_acf_nonce", hidden(importForm, "_acf_nonce"));
-  form.set("import_type", "json");
-  form.set("acf_import_file", new Blob([JSON.stringify([group(`group_drift_h${run}`, { location: onKind("first_notes") })])], { type: "application/json" }), "drift.json");
-  const imported = await fetch(`${site}/wp-admin/edit.php?post_type=acf-field-group&page=acf-tools`, { method: "POST", redirect: "manual", headers: { cookie }, body: form });
-  assert.equal(imported.status, 403, (await imported.clone().text()).slice(0, 300));
-  assert.match(await imported.text(), /Refused: .*first\.config\.ts/);
+  // The import tool: a JSON export posted to SCF's Tools screen.
+  const upload = async (objects: unknown[]) => {
+    const form = new FormData();
+    form.set("_acf_nonce", nonce("import"));
+    form.set("import_type", "json");
+    form.set("acf_import_file", new Blob([JSON.stringify(objects)], { type: "application/json" }), "drift.json");
+    return at("/wp-admin/edit.php?post_type=acf-field-group&page=acf-tools", { method: "POST", body: form });
+  };
+  await closed(await upload([group(`group_drift_h${run}`, { location: onKind("first_notes") })]), "an import onto a First kind");
   assert.equal(stored(`group_drift_h${run}`, `field_group_drift_h${run}`), 0, "neither the group nor its fields were stored");
   // A post type whose name WordPress stores as First's (`register_post_type` strips the dot and lowers
   // the case), through the same tool.
-  const hijack = new FormData();
-  hijack.set("_acf_nonce", hidden(importForm, "_acf_nonce"));
-  hijack.set("import_type", "json");
-  hijack.set("acf_import_file", new Blob([JSON.stringify([{ key: `post_type_drift_k${run}`, title: "Hijack", post_type: ".First_Notes", labels: { name: "Hijack" }, public: true }])], { type: "application/json" }), "drift.json");
-  const imported2 = await fetch(`${site}/wp-admin/edit.php?post_type=acf-field-group&page=acf-tools`, { method: "POST", redirect: "manual", headers: { cookie }, body: hijack });
-  assert.equal(imported2.status, 403);
+  await closed(await upload([{ key: `post_type_drift_k${run}`, title: "Hijack", post_type: ".First_Notes", labels: { name: "Hijack" }, public: true }]), "an import of a post type named as First's");
   assert.equal(stored(`post_type_drift_k${run}`), 0);
+  await closed(await upload([group(`group_own_import${run}`)]), "an import of the site's own");
+  assert.equal(stored(`group_own_import${run}`), 0);
   assert.equal(wp("eval", "echo get_post_type_object('first_notes')->labels->name;"), "Notes", "First's post type is registered as First registers it");
-  // A field of First's nested inside a repeater of the site's own group is found too.
+  // SCF's editor-only AJAX (the field settings a field group screen loads) is closed with them.
+  const ajax = await at("/wp-admin/admin-ajax.php", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ action: "acf/field_group/render_field_settings", nonce: nonce("acf_nonce") }) });
+  assert.equal(ajax.status, 403);
+  // A field of First's nested inside a repeater of the site's own group is named in the refusal.
   const nested = group(`group_drift_i${run}`, { fields: [{ ...field(`field_rep${run}`), type: "repeater", sub_fields: [field("field_first_notes_mood")] }] });
   refused(await ability("scf/create-field-group", nested), "a nested field with one of First's keys");
+  // The fields First renders on content still work: a note's edit screen loads with its field.
+  const note = Number(wp("post", "create", "--post_type=first_notes", "--post_title=Screen", "--post_status=publish", "--porcelain"));
+  const edit = await at(`/wp-admin/post.php?post=${note}&action=edit`);
+  assert.equal(edit.status, 200);
+  assert.match(await edit.text(), /field_first_notes_mood/);
+  wp("post", "delete", String(id), "--force");
 });
 
 test("a field group already in the database never applies to a First kind", async () => {
@@ -192,11 +219,11 @@ test("a field group already in the database never applies to a First kind", asyn
   const registered = await (await fetch(`${core}/types/first_notes?context=edit`, { headers: auth("admin") })).json();
   assert.equal(registered.name, "Notes", JSON.stringify(registered).slice(0, 200));
   wp("post", "delete", String(sql(`SELECT ID FROM wp_posts WHERE post_name = 'post_type_cli_${run}'`)[0].ID), "--force");
-  // The site can still take the stored group off the kind, or remove it.
-  const moved = await ability("scf/update-field-group", { ID: id, location: onKind("post") });
-  assert.equal(moved.status, 200, JSON.stringify(moved.body));
-  refused(await ability("scf/update-field-group", { ID: id, location: onKind("first_notes") }), "moving it back onto the kind");
-  wp("eval", `acf_import_field_group(json_decode('${JSON.stringify(group(key, { ID: id, location: onKind("first_notes") }))}', true));`);
+  // Changing it on the site is refused, whichever way it would point; removing it is not.
+  refused(await ability("scf/update-field-group", { ID: id, location: onKind("post") }), "taking it off the kind on the site");
+  refused(await ability("scf/update-field-group", { ID: id, location: onKind("first_notes") }), "an update that keeps it on the kind");
+  const read = await ability("scf/get-field-group", { identifier: id });
+  assert.equal(read.status, 200, JSON.stringify(read.body));
   const trashed = await ability("scf/trash-field-group", { identifier: id });
   assert.equal(trashed.status, 200, JSON.stringify(trashed.body));
   assert.equal(sql(`SELECT post_status FROM wp_posts WHERE ID = ${id}`)[0].post_status, "trash");
@@ -236,8 +263,8 @@ test("registered meta: a First field is written through First's validation or no
   assert.equal(wp("post", "meta", "get", String(note), "first_mood"), "calm");
   // A field of the site's own, located on core posts only, posted on the First note's edit form: SCF
   // saves every field the form names, wherever it applies. It writes nothing on the note.
-  const own = await ability("scf/import-field-group", group(`group_site_on_post${run}`, { fields: [{ ...field(`field_site_on_post${run}`), name: `stray_${run}` }] }));
-  assert.equal(own.status, 200, JSON.stringify(own.body));
+  // (Stored by the operator's WP-CLI: a field group can't be made on the site.)
+  wp("eval", `acf_import_field_group(json_decode('${JSON.stringify(group(`group_site_on_post${run}`, { fields: [{ ...field(`field_site_on_post${run}`), name: `stray_${run}` }] }))}', true));`);
   assert.equal(stored(`field_site_on_post${run}`), 1, "the site's field is stored");
   const form = await (await fetch(`${site}/wp-admin/post.php?post=${note}&action=edit`, { headers: { cookie } })).text();
   const hidden = (n: string) => form.match(new RegExp(`name=['"]${n}['"][^>]*value=['"]([^'"]*)['"]`))?.[1] ?? assert.fail(`no ${n}`);
@@ -280,15 +307,34 @@ test("roles: a role First creates and the capabilities of a First kind keep thei
   wp("eval", `get_role('subscriber')->remove_cap('drift_${run}');`);
 });
 
-test("what stays open: the site's own SCF objects, content, users, settings and plugin activation", async () => {
-  const ownGroup = await ability("scf/create-field-group", group(`group_own${run}`));
-  assert.equal(ownGroup.status, 200, JSON.stringify(ownGroup.body));
-  const retitled = await ability("scf/update-field-group", { ID: ownGroup.body.ID, title: "Renamed" });
-  assert.deepEqual([retitled.status, retitled.body.title], [200, "Renamed"]);
-  // The same group can't be moved onto a First kind afterwards.
-  refused(await ability("scf/update-field-group", { ID: ownGroup.body.ID, location: onKind("first_notes") }), "an update that attaches to a First kind");
-  const ownType = await ability("scf/create-post-type", { key: `post_type_own${run}`, title: "Books", post_type: `book${run}`.slice(0, 20) });
-  assert.equal(ownType.status, 200, JSON.stringify(ownType.body));
+test("making a post type, taxonomy or field group on the site is refused, First's or not; stored ones keep working", async () => {
+  // None of these names is First's: each is still a change to the site's schema.
+  const OWN: [what: string, name: string, input: Record<string, unknown>][] = [
+    ["a field group on core posts", "scf/create-field-group", group(`group_own${run}`)],
+    ["an imported field group", "scf/import-field-group", group(`group_own_b${run}`)],
+    ["a post type", "scf/create-post-type", { key: `post_type_own${run}`, title: "Books", post_type: `book${run}`.slice(0, 20) }],
+    ["a taxonomy", "scf/create-taxonomy", { key: `taxonomy_own${run}`, title: "Shelves", taxonomy: `shelf${run}`.slice(0, 20), object_type: ["post"] }],
+    ["an options page", "scf/create-ui-options-page", { key: `ui_options_page_own${run}`, title: "Own", page_title: "Own", menu_slug: `own-${run}` }],
+  ];
+  for (const [what, name, input] of OWN) {
+    refused(await ability(name, input), what);
+    assert.equal(stored(String(input.key)), 0, what);
+  }
+  // One the operator stored with WP-CLI is registered and works; the site reads and exports it, can't
+  // change or copy it, and can move it to the trash.
+  const type = `book${run}`.slice(0, 20);
+  wp("eval", `acf_import_post_type(['key' => 'post_type_cli_own${run}', 'title' => 'Books', 'post_type' => '${type}', 'labels' => ['name' => 'Books'], 'public' => true, 'show_in_rest' => true]);`);
+  const typeId = Number(sql(`SELECT ID FROM wp_posts WHERE post_name = 'post_type_cli_own${run}'`)[0].ID);
+  assert.equal((await fetch(`${core}/types/${type}`, { headers: auth("admin") })).status, 200, "the stored post type is registered");
+  assert.equal((await ability("scf/get-post-type", { identifier: typeId })).status, 200);
+  assert.equal((await ability("scf/export-post-type", { identifier: typeId })).status, 200);
+  refused(await ability("scf/update-post-type", { ID: typeId, title: "Renamed" }), "changing a stored post type");
+  refused(await ability("scf/duplicate-post-type", { identifier: typeId }), "copying a stored post type");
+  assert.equal((await ability("scf/trash-post-type", { identifier: typeId })).status, 200);
+  wp("post", "delete", String(typeId), "--force");
+});
+
+test("what stays open: content, users, settings and plugin activation", async () => {
 
   const json = (who: Role, body: unknown, method = "POST") => ({ method, headers: { "content-type": "application/json", ...auth(who) }, body: JSON.stringify(body) });
   const note = await fetch(`${site}/__first/api/v1/notes`, json("editor", { title: `Open ${run}` }));

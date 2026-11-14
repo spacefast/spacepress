@@ -701,6 +701,13 @@ export default async function Doc({ item }: PageProps<"docs/[[...path]]">) {
 The tree is the published items the visitor may read, siblings by order then title, four levels
 deep. `headings()` gives the ids the page renders its headings with.
 
+`first doctor --site <url> --links` reads the served site as a visitor does and reports every link
+and `#anchor` its pages make that doesn't resolve, with the page it is on. It starts at the home
+page, WordPress's sitemap and `/llms.txt`, and follows the site's own links, images, stylesheets and
+scripts. It never fetches other sites or WordPress's own paths (`/wp-admin`, `/wp-json`, feeds).
+Content edited in wp-admin, synced Markdown and TSX pages are checked the same way, so run it
+against `first dev` before a release and against the published site after one.
+
 ### Components in Markdown
 
 A component in `first/components/` can be used in synced Markdown as a block

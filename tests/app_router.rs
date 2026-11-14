@@ -1481,6 +1481,94 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
 
 /// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
 /// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
+/// `first doctor --site <url> --links` on a served First site: every link and `#anchor` the docs
+/// pages make, from Markdown content, TSX and WordPress, is followed; the broken ones are reported
+/// with the page they are on.
+#[test]
+fn doctor_finds_broken_links_and_anchors_on_a_site() {
+    let project = fixture("docs-kind", "links");
+    // A doc whose links are good, broken, or point at a heading that isn't there.
+    std::fs::write(
+        project.join("content/docs/links.md"),
+        "---\ntitle: Links\norder: 9\n---\n\n\
+         - [Install](/docs/guides/install), [its heading](/docs/introduction#small-print) and [this page's](#links-here).\n\
+         - [A page that isn't there](/docs/nowhere).\n\
+         - [A heading that isn't there](/docs/introduction#no-such-heading).\n\
+         - [Another site](https://example.invalid/gone) is not fetched.\n\n\
+         ## Links here\n\nText.\n",
+    )
+    .unwrap();
+    build(&project);
+    let work = tempfile::tempdir().unwrap();
+    let (sources, compiled) = (work.path().join("sources"), work.path().join("compiled"));
+    for args in [
+        vec![
+            "sources".as_ref(),
+            project.as_os_str(),
+            "--out".as_ref(),
+            sources.as_os_str(),
+        ],
+        vec![
+            "compile-sources".as_ref(),
+            sources.as_os_str(),
+            compiled.as_os_str(),
+            project.as_os_str(),
+        ],
+    ] {
+        let out = first().args(&args).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .arg(compiled.join("seed"))
+        .env("FIRST_WP_THEMES", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = first()
+        .args(["doctor", "--json", "--links", "--site"])
+        .arg(&url)
+        .arg(&project)
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(&project);
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| {
+        panic!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    let links = report["data"]["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "links")
+        .unwrap()
+        .clone();
+    assert_eq!(links["ok"], false, "{report}");
+    assert!(!out.status.success());
+    // Exactly the two broken links, each on the page that makes it, from the doc's Markdown.
+    assert_eq!(
+        report["data"]["links"],
+        serde_json::json!([
+            { "on": "/docs/links", "href": "/docs/introduction#no-such-heading", "problem": "/docs/introduction has no element with id \"no-such-heading\"" },
+            { "on": "/docs/links", "href": "/docs/nowhere", "problem": "answers 404" },
+        ]),
+        "{report}"
+    );
+}
+
 /// `nav`, `pager` and `headings` from "first/content", on WordPress over HTTP (tests/php/docs_kind.php).
 #[test]
 fn docs_kind_serves_a_folder_tree_with_navigation() {

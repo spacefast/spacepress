@@ -134,6 +134,16 @@ jobs:
           npm ci --prefix packages/astro --ignore-scripts --no-audit --no-fund
           tsc -p packages/astro
           node --test packages/astro/test/loader.test.mjs
+      # examples/garden and its Astro twin render the same pages (Chromium from the slow shard's setup).
+      - name: Astro twin example
+        if: matrix.shard == 'rest'
+        env:
+          FIRST_BIN: ${{ github.workspace }}/target/debug/first
+        run: |
+          npm ci --prefix examples/astro-garden --ignore-scripts --no-audit --no-fund
+          npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
+          npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
+          node --test examples/astro-garden/twins.test.mjs
       - name: Docker-free local development acceptance
         if: matrix.shard == 'rest'
         run: node --test scripts/dev/acceptance.test.mjs

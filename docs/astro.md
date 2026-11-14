@@ -6,6 +6,8 @@ site, and nothing in the First app changes for it. The package is `@first/astro`
 ([`packages/astro`](../packages/astro/README.md)); this page is how the pieces fit.
 
 To render pages with First itself instead, write them under `first/app/` ([pages](pages.md)).
+[`examples/garden`](../examples/garden/README.md) and [`examples/astro-garden`](../examples/astro-garden/README.md)
+are the same site both ways.
 
 ## The three parts
 

@@ -1509,25 +1509,50 @@ final class Db
     }
 
     /**
-     * Restore: the revision's user columns become an update patch (pk, system columns and onUpdate
-     * columns excluded), run through the full update pipeline.
+     * Restore: the whole revision as stored, as $viewer, in one update. Fields the viewer can read are
+     * its patch where the revision differs from the row, under every update and field rule. Fields
+     * that may be hidden from it are written from the stored revision as trusted values, after its
+     * rules pass: it sends nothing for them, so nothing about them can be probed, and a restore never
+     * leaves part of the row at a later state. The answer is masked like every read.
      */
     public function restoreRevision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
     {
-        $spec = $this->schema->collection($collection);
-        $this->requireRevisable($collection, $pk, $viewer);
-        $row = $this->revisionRow($collection, $pk, $revisionId);
-        $patch = [];
-        foreach ($spec['columns'] as $name => $col) {
-            // A revision taken where links aren't kept with the row (WordPress revisions) leaves them as they are.
-            if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !isset($col['onUpdate'])
-                && !($col['type'] === 'refList' && $row[$name] === null)) {
-                $patch[$name] = $row[$name];
+        return $this->current(function () use ($collection, $pk, $revisionId, $viewer): array {
+            $spec = $this->schema->collection($collection);
+            $this->requireRevisable($collection, $pk, $viewer);
+            $row = $this->revisionRow($collection, $pk, $revisionId);
+            $opts = ['where' => [$spec['primaryKey'] => $pk]];
+            $current = $this->selectDecoded($collection, $opts, '', null)[0] ?? throw HttpError::notFound("No $collection row $pk");
+            $patch = $hidden = [];
+            foreach ($spec['columns'] as $name => $col) {
+                // A revision taken where links aren't kept with the row (WordPress revisions) leaves a
+                // `refList` it holds as null as it is.
+                if ($name === $spec['primaryKey'] || ($col['system'] ?? false) || isset($col['onUpdate'])
+                    || ($col['type'] === 'refList' && $row[$name] === null)
+                    || Js::jsonStringify($row[$name] ?? null) === Js::jsonStringify($current[$name] ?? null)) {
+                    continue;
+                }
+                if ($viewer !== null && FieldAccess::mayHide($col, $viewer)) {
+                    $hidden[$name] = $row[$name];
+                } else {
+                    $patch[$name] = $row[$name];
+                }
             }
-        }
+            if ($hidden === []) {
+                return $this->update($collection, $patch, [$spec['primaryKey'] => $pk], true, $viewer)[0]
+                    ?? throw HttpError::notFound("No $collection row $pk");
+            }
 
-        return $this->update($collection, $patch, [$spec['primaryKey'] => $pk], true, $viewer)[0]
-            ?? throw HttpError::notFound("No $collection row $pk");
+            return $this->nested(function () use ($collection, $spec, $pk, $patch, $hidden, $viewer): array {
+                $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $patch);
+                $opts = ['where' => [$spec['primaryKey'] => $pk]];
+                $existing = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer)[0]
+                    ?? throw HttpError::notFound("No $collection row $pk");
+                $written = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $patch, $viewer, $hidden));
+
+                return $this->present([$written], $collection, $viewer)[0];
+            });
+        });
     }
 
     private function requireRevisable(string $collection, int|string $pk, ?Viewer $viewer): void

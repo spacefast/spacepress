@@ -1033,6 +1033,13 @@
       "guidance": "A .tsx file under first/components/ that starts with \"use client\" (after comments and other directives such as \"use strict\") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState, useLive (a list read the server seeds and the page keeps current), server action calls, keyed lists (`items.map((item) => <li key={item.id}>…</li>)`) and reactive `&&` and `?:` over elements compile; the browser re-renders lists and conditionals from `<template>`s."
     },
     {
+      "id": "jsx-form-action",
+      "status": "supported",
+      "evidence": "tests/app_router.rs",
+      "test": "forms_work_without_javascript",
+      "guidance": "`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from \"first/app\" reads the result or the error once. `method` and `encType` on such a form, and an action form inside a \"use client\" component, are build errors."
+    },
+    {
       "id": "jsx-use-client-npm",
       "status": "refused",
       "code": "F1003",

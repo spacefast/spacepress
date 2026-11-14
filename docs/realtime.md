@@ -63,6 +63,43 @@ When the transport goes from down to live, watched reads refresh once to catch u
 [Spacefast](spacefast-deploy.md#live-updates) registers its Cast transport
 automatically, so apps on Spacefast write no setup.
 
+## Server side: the subscription endpoint
+
+Polling without a transport does not repeat each read. One request, `POST /__first/api/v1/_live`,
+carries every read a page is subscribed to with the token of the answer it last got, and answers
+each with "not modified" or the fresh result, evaluated as the caller:
+
+```http
+POST /__first/api/v1/_live
+{ "queries": [{ "kind": "todos", "op": "list", "args": { "where": { "done": false } }, "token": "…" }] }
+
+{ "data": { "results": [{ "changed": false, "token": "…" }], "poll": { "minMs": 2000, "maxMs": 30000 } } }
+```
+
+`op` is `list`, `paginate`, `get` or `count`, with the arguments of that call on a kind. A result
+is `{ changed: true, token, data }`, `{ changed: false, token }`, `{ error }` (the read's problem
+document) or `{ pending: true }` (the request ran out of time; ask again). A request takes at most
+20 queries. Tokens are opaque: keep the latest one per query and send it back.
+
+First keeps a change counter per kind, written in the same transaction as every write through its
+write path, including wp-admin and core REST saves of your kinds. A read whose kinds the caller
+may read in full is answered from the counters without running. Any other read (a kind with a
+field hidden from the caller, a rule that gives them only some rows) runs on each poll and is
+compared with what the caller last got, so an answer never says that something changed which the
+caller may not read. A write made outside First's write path, such as another plugin's SQL, is
+seen within five minutes.
+
+PHP code can ask the same question without HTTP, for example to render a read and hand its token
+to the browser:
+
+```php
+$results = \First\Live\Module::evaluate($db, $viewer, [['kind' => 'todos', 'op' => 'list', 'args' => ['limit' => 20]]]);
+// [['changed' => true, 'token' => '…', 'data' => …, 'json' => '…']]
+```
+
+The design, its measured cost and what it is not are in
+[the decision record](decisions/2026-11-13-reactive-queries.md).
+
 ## Server side: the change hook
 
 After a transaction commits, the runtime fires one WordPress action for the

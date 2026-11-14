@@ -325,6 +325,18 @@ final class Db
         });
     }
 
+    /**
+     * The row filters $viewer's reads of $collection are confined to: the read rule's filter, draft
+     * visibility (`['status' => 'published']`) and the store's own guards. Empty when the viewer
+     * reads every row; a 401/403 when the rule refuses the viewer.
+     *
+     * @return list<array|SqlPredicate>
+     */
+    public function readScope(string $collection, Viewer $viewer): array
+    {
+        return $this->readGuards($collection, $viewer);
+    }
+
     /** The read rule (+ draft visibility) as filters; throws 401/403 when the rule is false. */
     private function readGuards(string $collection, Viewer $viewer): array
     {

@@ -3803,6 +3803,56 @@ fn the_openapi_document_describes_what_the_api_answers() {
     );
     assert_eq!(status, 405);
 
+    // Subscribed reads: one request answers each as the caller, and the token makes the next
+    // answer "not modified". `members` reads only the caller's own row: none for a visitor.
+    let queries = json!({ "queries": [
+        { "kind": "notes", "op": "list", "args": { "orderBy": { "id": "asc" }, "limit": 2 } },
+        { "kind": "notes", "op": "count" },
+        { "kind": "notes", "op": "paginate", "args": { "limit": 1 } },
+        { "kind": "notes", "op": "get", "id": id },
+        { "kind": "members", "op": "list" },
+    ] });
+    let first = check("POST", "/_live", None, &[], &json(queries.clone()), 200);
+    let results = first["data"]["results"].as_array().unwrap();
+    assert!(results.iter().all(|r| r["changed"] == true), "{first}");
+    assert_eq!(results[4]["data"], json!([]), "a visitor reads no member");
+    let mut again = queries.clone();
+    for (query, result) in again["queries"].as_array_mut().unwrap().iter_mut().zip(results) {
+        if let Some(token) = result.get("token") {
+            query["token"] = token.clone();
+        }
+    }
+    let second = check("POST", "/_live", None, &[], &json(again), 200);
+    assert_eq!(
+        second["data"]["results"][0],
+        json!({ "changed": false, "token": second["data"]["results"][0]["token"] })
+    );
+    check("POST", "/_live", None, &[], &json(json!({ "queries": [] })), 422);
+    check("POST", "/_live", None, &[], b"{", 400);
+    // The document's `maxItems` is the runtime's limit: that many are answered, one more is refused.
+    let max = document["paths"]["/_live"]["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+        ["queries"]["maxItems"]
+        .as_u64()
+        .unwrap() as usize;
+    let count = json!({ "kind": "notes", "op": "count" });
+    let at_max = check(
+        "POST",
+        "/_live",
+        None,
+        &[],
+        &json(json!({ "queries": vec![count.clone(); max] })),
+        200,
+    );
+    assert_eq!(at_max["data"]["results"].as_array().unwrap().len(), max);
+    check(
+        "POST",
+        "/_live",
+        None,
+        &[],
+        &json(json!({ "queries": vec![count; max + 1] })),
+        422,
+    );
+
     // Users: a member reads and changes their own row only.
     let me = check("GET", "/me", Some("subscriber"), &[], b"", 200);
     let subscriber = me["data"]["id"].as_i64().unwrap();

@@ -705,7 +705,9 @@ export default async function Doc({ item }: PageProps<"docs/[[...path]]">) {
 ```
 
 The tree is the published items the visitor may read, siblings by order then title, four levels
-deep. `headings()` gives the ids the page renders its headings with.
+deep. `headings()` gives the ids the page renders its headings with. An id follows GitHub's rule,
+as READMEs and most docs tools spell it: `## What's \`first/app/\`?` is `#whats-firstapp`, and a
+second `## Why` on the page is `#why-1`. A heading with its own id keeps it.
 
 ### Components in Markdown
 

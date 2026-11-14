@@ -81,10 +81,12 @@ ok "a managed boot before initialize installs nothing; inspecting runs none of t
 plan=$(inspect "$build" "['install']")
 python3 - "$plan" <<'PY' || fail "a fresh site's install plan: $plan"
 import json,sys
-steps=sorted((s['step'], s.get('route','')) for s in json.loads(sys.argv[1]))
-assert ('rewrite-rules','') in steps, steps
-assert ('search-shape','') in steps, steps
-assert [s for s in steps if s[0]=='page.create'].__len__()==2, steps
+plan=json.loads(sys.argv[1])
+# Every step: a kind, an id unique in the plan, and its state (pending until a deployment runs it).
+assert all(set(s) >= {'kind','id','state'} and s['state']=='pending' for s in plan), plan
+assert len({s['id'] for s in plan})==len(plan), plan
+kinds=sorted(s['kind'] for s in plan)
+assert kinds==['page.create','page.create','rewrite-rules','search-shape'], kinds
 PY
 [[ $fresh == "$(site)" ]] || fail "inspecting changed the site"
 ok "inspection plans the Pages and one rewrite rebuild, and writes nothing"
@@ -137,8 +139,11 @@ sed -i.bak 's#url: "/notes/:id"#url: "/memos/:id"#' "$work/installlane/first.con
 moved=$("$bin" compile-to-store "$work/sources-url" "$store" "$work/sources-url" "$build" | json build)
 before=$(site)
 steps=$(inspect "$moved" "['install']")
-[[ $steps == '[{"step":"rewrite-rules"}]' ]] || fail "a URL-pattern change plans one step: $steps"
+[[ $steps == '[{"kind":"rewrite-rules","id":"rewrite-rules","state":"pending"}]' ]] || fail "a URL-pattern change plans one step: $steps"
 [[ $(inspect "$build" "['install']") == '[]' ]] || fail "the initialized build plans no step"
+# The whole plan (system tables, identity, migrations and install steps together) says the same.
+[[ $(inspect "$moved" "['steps']") == '[{"kind":"rewrite-rules","id":"rewrite-rules","state":"pending"}]' ]] || fail "the URL-pattern candidate's whole plan is one step"
+[[ $(inspect "$build" "['steps']") == '[]' ]] || fail "the initialized build's whole plan is empty"
 [[ $before == "$(site)" ]] || fail "inspecting the candidates changed the site"
 ok "a candidate that changes only a URL pattern plans one step; the initialized build plans none"
 

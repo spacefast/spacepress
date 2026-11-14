@@ -3850,10 +3850,12 @@ fn language_constructs_match_node_through_generated_php() {
     for config in apps {
         let name = config.file_stem().unwrap().to_str().unwrap();
         let tmp = tempfile::tempdir().unwrap();
+        // The helper modules beside it, not the other cases: every module under first/ registers
+        // its exported actions (spec §1.1), so another case's file would add its actions here.
         let siblings: Vec<PathBuf> = std::fs::read_dir(&dir)
             .unwrap()
             .map(|entry| entry.unwrap().path())
-            .filter(|path| *path != config)
+            .filter(|path| *path != config && path.extension().is_none_or(|ext| ext != "ts"))
             .collect();
         project_from(
             tmp.path(),
@@ -3894,6 +3896,8 @@ fn language_constructs_match_node_through_generated_php() {
                 try { $out[$name] = ['data' => \First\Seam::toWire($fn(new \First\JsObject()))]; }
                 catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
             }
+            // Node lists a module's exports in name order (run-node.mjs reads them from the module).
+            ksort($out, SORT_STRING);
             echo \First\Js::jsonStringify(['schema' => 'first-differential', 'version' => 1, 'complete' => true, 'cases' => $out]);
         "#,
             )

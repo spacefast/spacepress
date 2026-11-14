@@ -294,19 +294,36 @@ const VIEWER_FUNCTIONS: &[&str] = &["is_user_logged_in", "current_user_can", "ge
 
 /// Refuses a prebuilt page whose modules ask WordPress who the visitor is, at the call. Reads through
 /// `db` are bound to the visitor and need no check: the build renders as a signed-out visitor.
-pub fn viewer_calls(program: &loader::Program, app: &crate::schema::App, uses: &[crate::compile::WordPressUse]) -> Result<(), Diag> {
+pub fn viewer_calls(
+    program: &loader::Program,
+    app: &crate::schema::App,
+    uses: &[crate::compile::WordPressUse],
+) -> Result<(), Diag> {
     let module_of = |file: &str| program.app_files.iter().find(|(p, _)| p == file).map(|(_, m)| *m);
     for route in app.routes.iter().filter(|r| r.prerender) {
         let mut seen = std::collections::BTreeSet::new();
-        let mut stack: Vec<usize> = route.layouts.iter().chain(route.page.as_ref()).filter_map(|f| module_of(f)).collect();
+        let mut stack: Vec<usize> = route
+            .layouts
+            .iter()
+            .chain(route.page.as_ref())
+            .filter_map(|f| module_of(f))
+            .collect();
         while let Some(m) = stack.pop() {
             if seen.insert(m) {
-                stack.extend(program.resolved.iter().filter(|((from, _), _)| *from == m).map(|(_, to)| *to));
+                stack.extend(
+                    program
+                        .resolved
+                        .iter()
+                        .filter(|((from, _), _)| *from == m)
+                        .map(|(_, to)| *to),
+                );
             }
         }
         let files: std::collections::BTreeSet<u32> = seen.iter().map(|m| program.modules[*m].file).collect();
         if let Some(call) = uses.iter().find(|u| {
-            u.kind == crate::compile::WordPressKind::Function && VIEWER_FUNCTIONS.contains(&u.name.as_str()) && files.contains(&u.span.file)
+            u.kind == crate::compile::WordPressKind::Function
+                && VIEWER_FUNCTIONS.contains(&u.name.as_str())
+                && files.contains(&u.span.file)
         }) {
             let page = route.page.as_deref().unwrap_or(&route.id);
             return Err(Diag::new(call.span, format!("{page} is prebuilt, and `{}` asks who the visitor is", call.name))

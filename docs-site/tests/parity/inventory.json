@@ -1177,9 +1177,9 @@
 			"stops": [],
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/language-support.mdx",
 			"toc": [
-				"compiles-50",
+				"compiles-52",
 				"compiles-and-differs-from-javascript-2",
-				"refused-93"
+				"refused-94"
 			],
 			"prev": "/reference/cli",
 			"next": "/reference/diagnostics",

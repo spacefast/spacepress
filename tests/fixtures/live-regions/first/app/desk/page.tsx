@@ -1,0 +1,6 @@
+import { notes } from "first:db";
+import { Live } from "first/app";
+
+export default async function DeskPage() {
+  return <Live id="count"><p className="count">{await notes.count()}</p></Live>;
+}

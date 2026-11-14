@@ -23,13 +23,48 @@ final class Plugin
     {
         return new \WP_Error($error->kind, $error->getMessage(), ["status" => $error->status]);
     }
+    /**
+     * Whether a build from the store mounted identity (`First\Loader\Loader::load`): then booting
+     * installs nothing, and {@see install()} runs when the host initializes the build.
+     */
+    public static function managed(): bool
+    {
+        return class_exists(\First\Loader\Loader::class, false) && \First\Loader\Loader::loaded() !== null;
+    }
+
+    /**
+     * Everything identity writes to be ready on this site: the stored-name upgrade from before the
+     * rename, the schema, the signing key, the password-check material and its inventory schedule.
+     * What a plugin-installed site does on activation and boot; a managed build runs it from
+     * `Loader::initialize`.
+     */
+    public static function install(): void
+    {
+        self::installStorage();
+        Keys::current();
+        Accounts::provisionPasswordHash();
+    }
+
+    private static function installStorage(): void
+    {
+        // A site that ran zero-identity (before the rename to First) keeps its accounts and sessions.
+        Legacy\ZeroNames::upgrade(self::$db);
+        if ((int) get_option("first_identity_schema_version", 0) < Schema::VERSION) {
+            Schema::migrate(self::$db);
+        }
+    }
+
     public static function boot(string $file): void
     {
         global $wpdb;
         self::$db = new DB($wpdb);
         self::$security = new Security(self::$db);
         self::$accounts = new Accounts(self::$db, self::$security);
-        add_action("plugins_loaded", [Accounts::class, "provisionPasswordHash"]);
+        // A site that installs First as plugins installs identity on boot; a build mounted from the
+        // store installs nothing until the host initializes it (install()).
+        if (!self::managed()) {
+            add_action("plugins_loaded", [Accounts::class, "provisionPasswordHash"]);
+        }
         add_filter('cron_schedules', static function (array $schedules): array {
             $schedules['first_identity_minute'] = ['interval' => 60, 'display' => 'Every minute'];
             return $schedules;
@@ -43,10 +78,8 @@ final class Plugin
             self::$security,
             new Mfa(self::$db, self::$security),
         );
-        // A site that ran zero-identity (before the rename to First) keeps its accounts and sessions.
-        Legacy\ZeroNames::upgrade(self::$db);
-        if ((int) get_option("first_identity_schema_version", 0) < Schema::VERSION) {
-            Schema::migrate(self::$db);
+        if (!self::managed()) {
+            self::installStorage();
         }
         add_action("rest_api_init", [self::$api, "register"]);
         add_filter(

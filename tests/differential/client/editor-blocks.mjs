@@ -23,8 +23,14 @@ try {
   page.on("response", (r) => { if (r.status() >= 400 && !r.url().endsWith("favicon.ico")) out.errors.push(`${r.status()} ${r.url()}`); });
 
   await page.goto(`${url}/wp-login.php`);
-  await page.fill("#user_login", "admin");
-  await page.fill("#user_pass", "first-test-admin");
+  // wp-login.php focuses and selects its username field 200 ms after it loads; a fill that lands on
+  // that moment types the password over the username. Fill until both fields hold their text.
+  for (let attempt = 0; ; attempt++) {
+    await page.fill("#user_login", "admin");
+    await page.fill("#user_pass", "first-test-admin");
+    if ((await page.inputValue("#user_login")) === "admin" && (await page.inputValue("#user_pass")) === "first-test-admin") break;
+    if (attempt === 20) throw new Error("the WordPress sign-in form would not keep its values");
+  }
   await Promise.all([page.waitForNavigation(), page.click("#wp-submit")]);
   await page.goto(`${url}/wp-admin/post-new.php?post_type=page`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.wp?.data?.select("core/editor")?.getCurrentPostId?.() && window.wp.blocks.getBlockTypes().length > 0, null, { timeout: 60000 });

@@ -1,0 +1,38 @@
+name: WordPress build
+description: Download a WordPress core ZIP into tests/wp/cache and report its version.
+inputs:
+  url:
+    description: The ZIP to download
+    required: true
+  name:
+    description: A short name for the build (nightly, next)
+    required: true
+outputs:
+  zip:
+    description: The ZIP's file name under tests/wp/cache
+    value: ${{ steps.get.outputs.zip }}
+  sha256:
+    description: Its SHA-256
+    value: ${{ steps.get.outputs.sha256 }}
+  version:
+    description: $wp_version from its wp-includes/version.php
+    value: ${{ steps.get.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - id: get
+      shell: bash
+      env:
+        URL: ${{ inputs.url }}
+        NAME: ${{ inputs.name }}
+      run: |
+        set -euo pipefail
+        mkdir -p tests/wp/cache
+        zip="wordpress-ahead-$NAME.zip"
+        curl -fsSL --retry 3 -o "tests/wp/cache/$zip" "$URL"
+        version=$(unzip -p "tests/wp/cache/$zip" wordpress/wp-includes/version.php | sed -n "s/^\$wp_version = '\(.*\)';/\1/p")
+        [ -n "$version" ] || { echo "$URL holds no wordpress/wp-includes/version.php" >&2; exit 1; }
+        echo "zip=$zip" >> "$GITHUB_OUTPUT"
+        echo "sha256=$(sha256sum "tests/wp/cache/$zip" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "WordPress $version ($NAME) from $URL"

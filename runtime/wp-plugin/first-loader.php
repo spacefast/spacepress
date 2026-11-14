@@ -344,6 +344,10 @@ final class Loader
         if (!class_exists(\First\Wp\Runtime::class, false) || !\First\Wp\Runtime::managed() || \First\Wp\Runtime::plugin() === null) {
             throw new \RuntimeException('The First build did not mount; WordPress must reach plugins_loaded first');
         }
+        // Identity's tables first: the app's migration provisions its guest role and client in them.
+        if (self::$loaded['identity']) {
+            \First\Identity\Plugin::install();
+        }
         $migrations = \First\Wp\Runtime::initialize();
         if (self::$loaded['identity'] && !wp_next_scheduled('first_identity_maintenance')) {
             $scheduled = wp_schedule_event(time() + 60, 'hourly', 'first_identity_maintenance', [], true);

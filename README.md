@@ -419,7 +419,8 @@ binary releases yet; you build the compiler from source.
 Every build ships First Admin, the default admin, at `/wp-admin/new/`; classic
 `/wp-admin/` stays complete beside it, and `defineConfig({ admin: false })`
 leaves First Admin out. Its source is under `runtime/admin/`; see
-[`docs/admin.md`](docs/admin.md).
+[`docs/admin.md`](docs/admin.md). A screen declared once
+([`docs/admin-screens.md`](docs/admin-screens.md)) shows in both admins.
 
 Pages are an optional TSX front end under `first/app/`: layouts, pages,
 `"use client"` components on the Interactivity API, stylesheets and HTTP

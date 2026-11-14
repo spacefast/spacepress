@@ -1048,6 +1048,13 @@
       "guidance": "`<Comments for={item} />` from \"first/app\" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props."
     },
     {
+      "id": "jsx-pagination",
+      "status": "supported",
+      "evidence": "tests/app_router.rs",
+      "test": "app_router_serves_pages_on_wordpress",
+      "guidance": "`<Pagination page={search.page} pages={n} />` from \"first/app\" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page."
+    },
+    {
       "id": "jsx-form-action",
       "status": "supported",
       "evidence": "tests/app_router.rs",

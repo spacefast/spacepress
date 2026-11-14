@@ -55,6 +55,7 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 - `notFound()` renders `not-found.tsx` with a 404. `redirect(url, status?)` redirects (302 by default).
 - `metadata` is an object or a function of the page's props: `title`, `description`, `canonical`, `robots: { index, follow }`. A layout's `title: { default, template }` wraps its pages' titles.
 - `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
+- `<Pagination page={search.page} pages={n} />` links to the other pages of a listing. Each link changes only `page` (or `param`) in this URL, page 1 drops it, and long runs collapse around the current page (`1 … 4 5 6 7 8 … 12`). Without JavaScript they are plain links.
 - `<Content value>` renders a post body through `the_content`. `<Html value>` places a literal as written and runs anything else through `wp_kses_post`.
 
 ### Forms that post to an action

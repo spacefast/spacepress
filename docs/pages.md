@@ -83,6 +83,12 @@ export async function POST(req: RouteRequest) {
   the login page; a signed-in one gets a 403.
 - `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router
   region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
+- `<Pagination page={search.page} pages={n} />` renders numbered links to the
+  other pages of a listing as a `<nav>`: each is this URL with only `page` (or
+  `param`) changed, page 1 drops it, the current page is `aria-current` and not
+  a link, and Previous and Next appear only where there is a page to go to.
+  Twelve pages show as `1 … 4 5 6 7 8 … 12`. The links are `<Link>`s: plain
+  links without JavaScript, router navigation with it.
 - `<Content value>` renders a post body through `the_content`. `<Html value>`
   places a literal as written and runs anything else through `wp_kses_post`.
 

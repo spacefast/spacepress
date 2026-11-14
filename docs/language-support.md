@@ -1104,6 +1104,14 @@ Status: **supported**.
 
 [Evidence](../tests/app_router.rs) (`comments_follow_the_kind_policy_on_every_path`)
 
+## jsx-pagination
+
+Status: **supported**.
+
+`<Pagination page={search.page} pages={n} />` from "first/app" renders numbered links to a listing's other pages as a `<nav>` that works without JavaScript: each link changes only `page` (or `param`) in the current URL, page 1 drops it, and long runs collapse around the current page.
+
+[Evidence](../tests/app_router.rs) (`app_router_serves_pages_on_wordpress`)
+
 ## jsx-form-action
 
 Status: **supported**.

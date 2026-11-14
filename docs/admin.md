@@ -107,7 +107,8 @@ SHA-256, its destination, and the adapter disposition. The input digest is:
 This digest covers the 1,094 distributable plugin source files; repository agent
 instruction files are excluded. It identifies the archive, not a Git commit.
 Upstream root configuration/bootstrap and PHP tests are retained under
-`upstream-metadata/` as reference material, outside the active plugin loader.
+`upstream-metadata/` as reference material, outside the active plugin loader; `first build` leaves
+that folder out of the plugin, as it leaves out the JS workspace `apps/`.
 For each adapted file, `upstream-metadata/adapter-originals/` retains its complete
 input after namespace and privacy normalization. `retainedSourcePath` and
 `normalizedSha256` identify that copy; unchanged inputs point to their active

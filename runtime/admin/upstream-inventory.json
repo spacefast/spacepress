@@ -1620,10 +1620,10 @@
       "source": "lib/site-preview.php",
       "sha256": "9699a20779b44d69ff8b9681bd7ffdfb59d8868232296ca30107cc5a669d86fd",
       "path": "lib/site-preview.php",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "16e06b432ae91476c724968eddc8a80a78b067d12732c915fda5911fb22af15b",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "af47df5483e108c26cf83af728ab48b5c4f7d698d7a796d808da20eec7aa78db",
       "normalizedSha256": "16e06b432ae91476c724968eddc8a80a78b067d12732c915fda5911fb22af15b",
-      "retainedSourcePath": "lib/site-preview.php"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/lib/site-preview.php"
     },
     {
       "source": "lib/taxonomies.php",

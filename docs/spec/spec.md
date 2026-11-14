@@ -497,6 +497,10 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
   - core auto-updates;
   - the Customizer;
   - comments on kinds without `comments`;
+  - listing the site's users to the public: core's user routes, author
+    archives, the users sitemap and oEmbed author fields, unless
+    `publicAuthors: true` or the users kind is readable by anyone (a users
+    kind whose read rule gives a visitor some users keeps those as authors);
   - changing the app's schema on the site: `first.config.ts` is the only way to
     change the field groups, post types, taxonomies, meta, roles and
     capabilities First generates (`docs/config-api.md`, "Schema lock");

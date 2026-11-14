@@ -163,6 +163,7 @@ isn't changed either. None of these switches can be turned off in
 | `autoUpdates` | no automatic core, plugin or theme updates |
 | `customizer` | `customize` is refused, so `customize.php` and its links are gone |
 | `comments` | comments closed on every post type except collections with `comments: true` |
+| `authors` | the site's users aren't listed to the public: core's user routes, author archives, `?author=N`, the users sitemap and oEmbed's author fields (see [Authors](#authors)) |
 | `schemaLock` | the app's schema is changed in `first.config.ts` and nowhere on the site (see [Schema lock](#schema-lock)) |
 | `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
 | `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
@@ -235,6 +236,49 @@ WP-CLI is not refused. It is the operator's trusted channel, as it is for
 that runs on the site (another plugin, a theme's `functions.php`) can register
 what it likes in code: the lock is about edits made on the site, not about code
 that is deployed to it.
+
+### Authors
+
+WordPress ships with several ways for a visitor to enumerate a site's users,
+each showing a login or the display name WordPress fills from it. While a First
+app is active they are closed to visitors who aren't signed in:
+
+| route | answer |
+|---|---|
+| `/wp/v2/users`, `/wp/v2/users/<id>`, the same through `?rest_route=`, `/batch/v1` or any letter case | 401 |
+| a post's REST `_embed=author` | the embed holds that 401, not the user |
+| `?author=<id>` (core redirects it to `/author/<login>/`), `?author_name=`, `/author/<login>/`, its feed and its `.md` twin | 404, no redirect |
+| the users sitemap (`/wp-sitemap-users-1.xml`), and its entry in `/wp-sitemap.xml` | gone (with a users kind: only the users below) |
+| a post's oEmbed `author_name` and `author_url` | the site's name and address, as core answers for a post with no author |
+| `/__first/api/v1/users` | follows the core route (401) |
+| the app's own users kind on First's API (`GET /__first/api/v1/<kind>`) | its read rule decides, as for every viewer: a rule that needs a signed-in user (`self`, a role) answers the list with First's 401, a rule that filters answers with the rows it gives a signed-out visitor (often none), and one user is a 401 unless the rule gives that row to anyone, whether or not the id exists |
+
+With a users kind, its read rule also says who is a public author, user by
+user: a user whose row the rule gives a signed-out visitor keeps their author
+archive, `?author=<id>`, sitemap entry and oEmbed author fields, as WordPress
+ships them. Every other user's stay closed, with the same 404 a login nobody
+has gets, and a kind whose rule gives a visitor no user has no public author
+and no users sitemap file. Core's `/wp/v2/users` stays closed either way; the
+kind's own route on First's API is where an app reads its users.
+
+Signed-in users and credentials keep core's answers (the block editor's author
+picker), and the users kind's read rule decides what First's API shows. A
+scoped agent credential without `personal` sees what core shows anyone
+([agents](agents.md)).
+
+Authors are public, as WordPress ships them, when the app says so: either set
+
+```ts
+export default defineConfig({ publicAuthors: true });
+```
+
+or give the users kind a read rule that lets anyone read every user
+(`access: { read: "anyone" }`). `GET /__first/api/v1` reports which applies under
+`runtime.wp.publicAuthors`.
+
+A post's byline and its feed's `<dc:creator>` still show the author's display
+name, which is what a site publishes on purpose. Set a display name that isn't
+the login (WordPress's default) for users whose login should stay private.
 
 ## Mixed content and app data
 
@@ -1005,7 +1049,7 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
 | `addGlobalField` | `global`, `field`, `definition` | a field on a global |
 | `addCollection` | `kind`, `definition` | a new collection: `{ label?, access?, fields }`, with `title` a required text field and `content`, when present, the rich text body |
 | `addGlobal` | `global`, `definition` | a new global: `{ label?, access?, fields }` |
-| `setLabel` | `kind` or `global`, `label` | the label shown for a kind; `null` takes the runtime label off |
+| `setLabel` | `kind` or `global`, `label` | the label shown for a collection or global; `null` takes the runtime label off. A `table()` is build-only, its label included |
 | `setFieldUi` | `kind` or `global`, `field`, `ui` | a field's `label`, `help`, `placeholder` and `width`; `null` takes it off |
 | `removeField` | `kind` or `global`, `field` | hides a field a runtime change added |
 | `removeCollection`, `removeGlobal` | `kind` / `global` | hides a kind a runtime change added |
@@ -1041,6 +1085,15 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   form, and a hash chained to the parent's. Rows are never updated or deleted. A change names the
   version it was made against; when another was applied first it is refused with 409
   `schema_conflict`.
+- **What the site trusts.** The version table is the record. Each row's hash covers it and its
+  parent's hash, and every read of the versions checks the chain; a row changed outside First
+  refuses further changes (409 `schema_chain_broken`) and `first pull`, the site keeps serving the
+  last state that checked out, and `GET /__first/api/v1` and `first doctor` report the problem.
+  The option is sealed by apply; an option written any other way is not served until a read of
+  the versions rebuilds it. When it is served, it is read as the operations a change can make: an
+  added kind is rebuilt from its stored definition, and a field, label or presentation is served
+  only in the form the rules accept, so the option can't give a kind access rules, hooks or
+  functions.
 - **Loading.** The active version's additions are in one autoloaded option,
   `first_<app>_runtime_schema`. A request adds them to the compiled schema and does nothing else.
   A kind, field or relation the build declares itself is never replaced; only a label and a
@@ -1090,7 +1143,9 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   "application-password" }` for all of that user's passwords, present and future, or `{ "user":
   <id>, "credential": "bearer" }` for every First Identity access token they are issued. A wp-admin
   session is not denied this way; take the capability instead. Each version records the user and,
-  when one signed the request, the application password's UUID and name (never the secret).
+  when one signed the request, the application password's UUID and name (never the secret). A
+  credential scoped without personal data reads the versions without the login and the password's
+  name.
 - **Commands.** `first schema list | diff <version> | apply <file|-> [--parent=<n>] | rollback
   <version> [--parent=<n>]` (`wp first schema …` on a server). `apply` takes a JSON list of changes
   (or a whole change set) and applies it on the newest version unless `--parent` says otherwise.

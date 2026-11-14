@@ -133,6 +133,12 @@ any `update_option` call rewrites, so a concurrent write of another plugin's opt
 older copy of this one back, as it can for any autoloaded option; requests then serve the older
 version until the next apply rewrites it.
 
+**Trust.** The table's hash chain is checked whenever the versions are read; a broken chain stops
+further changes and leaves the site serving the last state that checked out. Apply seals the option
+it writes, and the loader serves a sealed option only, and only as the operations a change can make:
+added kinds are rebuilt from their stored definitions and fields are re-checked, so whoever can
+write options can't give a kind access rules or code. A table() is build-only, label included.
+
 **Rollback** is a new version whose change set reverses an earlier one. **Removing** a field or kind
 hides it: it leaves the active schema, and its posts, post meta and options stay where they are. A
 hidden name can be added again only with the same stored type, so old values always decode, and a

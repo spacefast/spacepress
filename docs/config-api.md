@@ -1004,7 +1004,7 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
 | `addGlobalField` | `global`, `field`, `definition` | a field on a global |
 | `addCollection` | `kind`, `definition` | a new collection: `{ label?, access?, fields }`, with `title` a required text field and `content`, when present, the rich text body |
 | `addGlobal` | `global`, `definition` | a new global: `{ label?, access?, fields }` |
-| `setLabel` | `kind` or `global`, `label` | the label shown for a kind; `null` takes the runtime label off |
+| `setLabel` | `kind` or `global`, `label` | the label shown for a collection or global; `null` takes the runtime label off. A `table()` is build-only, its label included |
 | `setFieldUi` | `kind` or `global`, `field`, `ui` | a field's `label`, `help`, `placeholder` and `width`; `null` takes it off |
 | `removeField` | `kind` or `global`, `field` | hides a field a runtime change added |
 | `removeCollection`, `removeGlobal` | `kind` / `global` | hides a kind a runtime change added |
@@ -1040,6 +1040,15 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   form, and a hash chained to the parent's. Rows are never updated or deleted. A change names the
   version it was made against; when another was applied first it is refused with 409
   `schema_conflict`.
+- **What the site trusts.** The version table is the record. Each row's hash covers it and its
+  parent's hash, and every read of the versions checks the chain; a row changed outside First
+  refuses further changes (409 `schema_chain_broken`) and `first pull`, the site keeps serving the
+  last state that checked out, and `GET /__first/api/v1` and `first doctor` report the problem.
+  The option is sealed by apply; an option written any other way is not served until a read of
+  the versions rebuilds it. When it is served, it is read as the operations a change can make: an
+  added kind is rebuilt from its stored definition, and a field, label or presentation is served
+  only in the form the rules accept, so the option can't give a kind access rules, hooks or
+  functions.
 - **Loading.** The active version's additions are in one autoloaded option,
   `first_<app>_runtime_schema`. A request adds them to the compiled schema and does nothing else.
   A kind, field or relation the build declares itself is never replaced; only a label and a
@@ -1089,7 +1098,9 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   "application-password" }` for all of that user's passwords, present and future, or `{ "user":
   <id>, "credential": "bearer" }` for every First Identity access token they are issued. A wp-admin
   session is not denied this way; take the capability instead. Each version records the user and,
-  when one signed the request, the application password's UUID and name (never the secret).
+  when one signed the request, the application password's UUID and name (never the secret). A
+  credential scoped without personal data reads the versions without the login and the password's
+  name.
 - **Commands.** `first schema list | diff <version> | apply <file|-> [--parent=<n>] | rollback
   <version> [--parent=<n>]` (`wp first schema …` on a server). `apply` takes a JSON list of changes
   (or a whole change set) and applies it on the newest version unless `--parent` says otherwise.

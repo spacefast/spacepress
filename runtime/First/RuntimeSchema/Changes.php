@@ -233,11 +233,19 @@ final class Changes
         }
     }
 
-    /** The compiled-plus-runtime kind, or the compiler's refusal for a name that isn't one. */
+    /**
+     * The compiled-plus-runtime kind, or the compiler's refusal for a name that isn't one. A table()
+     * kind is build-only, its label and presentation included (the decision record's scope).
+     */
     private static function declared(array $schema, bool $global, string $kind, string $pointer): array
     {
-        return $schema[$global ? 'globals' : 'collections'][$kind]
+        $spec = $schema[$global ? 'globals' : 'collections'][$kind]
             ?? throw new Refused('schema_invalid', "$kind: this app declares no " . ($global ? 'global' : 'collection') . ' with that name', 'F3001', $pointer . ($global ? '/global' : '/kind'));
+        if (!$global && !isset($spec['wp']['postType'])) {
+            throw new Refused('schema_build_only', "$kind: `$kind` is a table(), and tables change only in the project's schema file: edit it there, then build and deploy", null, "$pointer/kind");
+        }
+
+        return $spec;
     }
 
     /** The running site's own rules for a field joining a kind that exists. */

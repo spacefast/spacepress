@@ -4,7 +4,7 @@
 npm run dev
 ```
 
-Open `/wp-content/plugins/first-app-__ZERO_APP_NAME__/public/index.html` on the WordPress URL printed by First. “Write a note” opens the native WordPress editor; use the local credentials printed in the terminal. Notes are public, and only WordPress editors can change them. Local credentials are for development only. WordPress's existing theme still owns its homepage.
+Open `/index.html` on the WordPress URL printed by First: the project's `public/` folder is served at the site root. “Write a note” opens the native WordPress editor; use the local credentials printed in the terminal. Notes are public, and only WordPress editors can change them. Local credentials are for development only. WordPress's existing theme still owns its homepage.
 
 Edit `first.config.ts` for your backend and `public/` for your frontend. First rebuilds on save; refresh your browser to see updates. WordPress serves the frontend, API, login and admin at one origin. No separate frontend server is needed. An external frontend framework is optional; this starter has none. Ordinary page templates can be added when supported by your compiler version.
 

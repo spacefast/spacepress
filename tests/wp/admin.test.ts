@@ -94,18 +94,21 @@ test("signing in lands on First Admin unless the visitor asked for another page"
   const signIn = (redirect?: string) => fetch(`${site}/wp-login.php`, {
     method: "POST", redirect: "manual",
     headers: { "content-type": "application/x-www-form-urlencoded", cookie: "wordpress_test_cookie=WP%20Cookie%20check" },
-    body: new URLSearchParams({ log: "editor", pwd: "first-test-editor", testcookie: "1", ...(redirect === undefined ? {} : { redirect_to: redirect }) }),
+    body: new URLSearchParams({ log: "subscriber", pwd: "first-test-subscriber", testcookie: "1", ...(redirect === undefined ? {} : { redirect_to: redirect }) }),
   });
-  // No redirect_to: WordPress's own default destination, which is now First Admin.
-  const plain = await signIn();
-  assert.equal(plain.status, 302);
-  assert.equal(plain.headers.get("location"), `${site}/wp-admin/new/`);
-  // Asked-for pages are kept, the classic dashboard included (auth_redirect sends that one).
-  for (const redirect of [`${site}/wp-admin/`, `${site}/wp-admin/edit.php`, `${site}/`]) {
+  // WordPress's login form posts its default, `/wp-admin/`, as redirect_to even when nothing was
+  // asked for: both that and no redirect_to land on First Admin (for a subscriber too, whom core
+  // would send to profile.php).
+  const form = await (await fetch(`${site}/wp-login.php`)).text();
+  assert.match(form, new RegExp(`name="redirect_to" value="${site}/wp-admin/"`));
+  for (const redirect of [undefined, `${site}/wp-admin/`]) {
+    const response = await signIn(redirect);
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), `${site}/wp-admin/new/`, `redirect_to ${redirect ?? "absent"}`);
+  }
+  for (const redirect of [`${site}/wp-admin/edit.php`, `${site}/`]) {
     assert.equal((await signIn(redirect)).headers.get("location"), redirect, "an asked-for page is kept");
   }
-  const classic = await fetch(`${site}/wp-admin/`, { redirect: "manual" });
-  assert.equal(new URL(classic.headers.get("location")!).searchParams.get("redirect_to"), `${site}/wp-admin/`);
 });
 
 test("on a server that ignores .htaccess, /wp-admin/new/ redirects to the query form and keeps the query", async () => {

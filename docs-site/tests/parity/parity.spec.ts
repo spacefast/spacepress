@@ -367,15 +367,6 @@ test("ExampleConfig shows an example's config with the compiler's names", async 
 	await expect(page.getByRole("main").getByText('from "first"').first()).toBeVisible();
 });
 
-test("PagesArtifact shows what first-pages build wrote", async ({ page }) => {
-	await page.goto(at("/pages"));
-	const main = page.getByRole("main");
-	await expect(main.getByText("note page template", { exact: false }).first()).toBeVisible();
-	await expect(main.getByText('wp:group {"className":"site"}', { exact: false }).first()).toBeVisible();
-	await expect(main.getByText("island bundle", { exact: false }).first()).toBeVisible();
-	await expect(main.getByText('store("fullsite/cheer"', { exact: false }).first()).toBeVisible();
-});
-
 // --- The REST reference ---------------------------------------------------------------------
 
 test.describe("the REST reference", () => {

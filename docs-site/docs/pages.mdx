@@ -79,7 +79,7 @@ Many Markdown pages are a kind, synced from a folder tree and rendered by one ca
 
 - `hierarchical: true` adds `parent` and `order`, stored as WordPress stores a Page's parent and menu order, so the block editor's page attributes edit them.
 - `sync: "content/docs/**/*.md"` reads the folder tree. A file's name is its slug and its folder its parent; a folder's `index.md` is the page the folder stands for. Put `order` in front matter; siblings with the same order sort by title.
-- `first sync` carries it both ways: a page moved in wp-admin moves its file.
+- `first sync` carries it both ways: a page moved in wp-admin moves its file. [Content in git](/publishing/content-in-git) runs it from a scheduler, so edits made in wp-admin come back to the repository as a pull request.
 
 <RepoFile path="tests/fixtures/docs-kind/first/app/docs/[[...path]]/page.tsx" />
 

@@ -1712,7 +1712,7 @@ bottom is green), keeping the stack's base links updated (`gh stack sync`).
 | `rust` | ubuntu-24.04 | `rustup` from `rust-toolchain`, `php8.3-cli php8.3-sqlite3 php8.3-mbstring php8.3-gd`, `node 22`, `cargo test` (includes pantry over HTTP + differential) | no |
 | `php` | ubuntu-24.04 | `tests/php/run.sh` (includes `vendor_drift`) | no |
 | `vendor` | ubuntu-24.04, `php:8.2-cli` container | `composer` + the pinned Strauss PHAR; `scripts/vendor.sh all`; `git diff --exit-code -- '**/vendor-prefixed/**'` — proves the committed trees are what the locks produce (§3.3) | no |
-| `types` | ubuntu-24.04 | `tsc -p types/first/tests`, `tsc -p examples/blog/client-tests`, `node --test runtime/client/index.test.ts` | no |
+| `types` | ubuntu-24.04 | `tsc -p types/first/tests`, `tsc -p examples/blog/client-tests`, `node --test runtime/client/index.test.ts runtime/client/committed.test.ts` (the second: every committed client matches `runtime/client/`) | no |
 | `wp` | ubuntu-24.04 (docker preinstalled) | `tests/wp/run.sh`; required-plugin zips (SCF, Action Scheduler, MCP Adapter, Polylang) restored from `actions/cache` keyed by `tests/wp/cache/*.sha256`, downloaded on miss, hash-verified by `harness.sh` | yes |
 | `identity` | ubuntu-24.04 | `tests/identity/run.sh` (identity compose, PHP 8.2 + 8.5 images as in the source repo's workflow) | yes (E1 adds the job; A4 ships it as `if: hashFiles('tests/identity/run.sh') != ''`) |
 

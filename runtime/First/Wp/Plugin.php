@@ -398,6 +398,39 @@ final class Plugin
         return $this->migrateLocked();
     }
 
+    /**
+     * What {@see initialize()} would do to this site's storage for this build, computed without
+     * changing anything: the app's pending migrations after the deploy-time schema check with
+     * `$drops`, and the runtime-schema comparison (read through {@see SchemaVersions::verify()}, which
+     * never repairs the option). Refusals are returned, all of them at once, not thrown.
+     *
+     * @param array<string, int> $drops
+     * @return array{migrations: list<array{id: string, sql: string, statements: list<int>}>, runtimeSchema: ?array, refusals: list<array>}
+     */
+    public function inspect(array $drops = []): array
+    {
+        $refusals = [];
+        $runtime = null;
+        try {
+            $runtime = SchemaVersions::of($this)?->verify();
+            $refusals = $runtime['refusals'] ?? [];
+        } catch (\First\HttpError $e) {
+            $refusals[] = ['code' => $e->errorCode, 'message' => $e->getMessage()];
+        }
+        $migrations = [];
+        $bad = $this->storageProblems();
+        if ($bad !== []) {
+            $refusals[] = ['code' => 'incompatible_tables', 'message' => 'First requires InnoDB and utf8mb4: ' . implode(', ', $bad)];
+        }
+        try {
+            $migrations = (new Migrator($this->connection(), $this->dir . '/first/app/migrations', $this->schema, SchemaCheck::drops($drops)))->plan();
+        } catch (SchemaRefused $refused) {
+            array_push($refusals, ...$refused->refusals);
+        }
+
+        return ['migrations' => $migrations, 'runtimeSchema' => $runtime === null ? null : array_diff_key($runtime, ['refusals' => true]), 'refusals' => $refusals];
+    }
+
     /** `wp first migrate` and activation: the same locked path as the first request. */
     private function migrateLocked(): array
     {

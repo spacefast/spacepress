@@ -1222,6 +1222,9 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     assert_eq!(seen["purge all, no files"], true);
     // A render that began before a write named its path is not written.
     assert_eq!(seen["race"], json!([true, false, false]));
+    // `Accept: text/markdown` on the HTML URL is never answered with the HTML file: the file lane
+    // steps aside for the Markdown negotiation, which a host's engine runs.
+    assert_eq!(seen["accept markdown"], json!([false, true]));
 }
 
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.
@@ -3161,27 +3164,461 @@ fn docs_example_reads_in_the_browser() {
         .as_str()
         .unwrap()
         .to_string();
-    let out = Command::new("node")
-        .arg(root().join("tests/differential/client/docs.mjs"))
-        .arg(&url)
-        .output()
-        .unwrap();
+    let seen = read_docs(&url);
     let _ = Command::new("kill").arg(server.id().to_string()).output();
     let _ = server.wait();
+    docs_read_as_published(&seen, &url, &url);
+}
+
+/// `first export` (docs/decisions/2026-11-13-static-output.md): examples/docs (`output: "static"`),
+/// its content from content/docs/, rendered by a throwaway WordPress on SQLite, written as files and
+/// read in Chromium from a plain static server: the same pages a visitor reads on WordPress, with no
+/// WordPress at all. The draft is in no file, Markdown twins sit beside their pages, and llms.txt,
+/// the sitemap and robots.txt name the address given.
+#[test]
+fn docs_example_exports_to_a_static_site() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path().join("docs");
+    copy(&root().join("examples/docs"), &project);
+    let out = first()
+        .args([
+            "export".as_ref(),
+            project.as_os_str(),
+            "--site-url".as_ref(),
+            "https://docs.example.test".as_ref(),
+        ])
+        .output()
+        .unwrap();
     assert!(
         out.status.success(),
         "{}{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let dist = project.join("first/dist/static");
+    let mut files: Vec<String> = Vec::new();
+    fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, root, out);
+            } else {
+                out.push(path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    walk(&dist, &dist, &mut files);
+    files.sort();
+    let pages: Vec<&str> = files
+        .iter()
+        .map(String::as_str)
+        .filter(|f| !f.starts_with("wp-"))
+        .collect();
+    // `.first-export` marks the folder as an export, the only kind of folder a later export replaces.
+    assert_eq!(
+        pages,
+        [
+            ".first-export",
+            "404.html",
+            "about.html",
+            "about.md",
+            "docs/guides.html",
+            "docs/guides.md",
+            "docs/guides/deploy.html",
+            "docs/guides/deploy.md",
+            "docs/guides/deploy/space.html",
+            "docs/guides/deploy/space.md",
+            "docs/guides/install.html",
+            "docs/guides/install.md",
+            "docs/introduction.html",
+            "docs/introduction.md",
+            "index.html",
+            "index.md",
+            "llms.txt",
+            "robots.txt",
+            "sitemap.xml"
+        ]
+    );
+    // The Interactivity API runtime and the router are files of the export, not WordPress's.
+    for module in [
+        "wp-includes/js/dist/script-modules/interactivity/index.min.js",
+        "wp-includes/js/dist/script-modules/interactivity-router/index.min.js",
+        "wp-content/plugins/first-runtime/first/Render/client/router.js",
+    ] {
+        assert!(files.iter().any(|f| f == module), "{module} in {files:?}");
+    }
+    let read = |f: &str| std::fs::read_to_string(dist.join(f)).unwrap();
+    let sitemap = read("sitemap.xml");
+    assert!(
+        sitemap.contains("<loc>https://docs.example.test/docs/guides/install</loc>"),
+        "{sitemap}"
+    );
+    assert!(!sitemap.contains("roadmap") && !sitemap.contains("404"), "{sitemap}");
+    assert_eq!(
+        read("robots.txt"),
+        "User-agent: *\nAllow: /\n\nSitemap: https://docs.example.test/sitemap.xml\n"
+    );
+    let intro = read("docs/introduction.html");
+    assert!(
+        intro.contains(r#"<link rel="canonical" href="https://docs.example.test/docs/introduction">"#),
+        "{intro}"
+    );
+    // Nothing points back at the WordPress that rendered it: no host, no feed, no REST link, in any
+    // file (the export refuses to finish otherwise, so this checks every page and asset).
+    for file in files
+        .iter()
+        .filter(|f| f.ends_with(".html") || f.ends_with(".md") || f.ends_with(".css"))
+    {
+        let text = read(file);
+        assert!(!text.contains("localhost:") && !text.contains("127.0.0.1"), "{file}");
+    }
+    for page in ["index.html", "docs/introduction.html", "404.html"] {
+        let html = read(page);
+        assert!(!html.contains("/feed") && !html.contains("wp-json"), "{page}");
+    }
+    // JSON in a script element can never close it: `<` stays escaped as WordPress wrote it.
+    for page in ["index.html", "docs/introduction.html"] {
+        let html = read(page);
+        for block in html.split("type=\"application/json\">").skip(1) {
+            let json = block.split("</script>").next().unwrap();
+            assert!(!json.contains('<'), "{page}: {json}");
+        }
+    }
+    let mut server = Command::new("node")
+        .arg(root().join("tests/differential/client/serve-static.mjs"))
+        .arg(&dist)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap()["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let seen = read_docs(&url);
+    let _ = server.kill();
+    let _ = server.wait();
+    docs_read_as_published(&seen, &url, "https://docs.example.test");
+    // Below a path, as a GitHub Pages project site serves it: every same-site URL starts with it.
+    let base = work.path().join("base");
+    let out = first()
+        .args([
+            "export".as_ref(),
+            project.as_os_str(),
+            "--base".as_ref(),
+            "/docs-site".as_ref(),
+            "--out".as_ref(),
+            base.as_os_str(),
+        ])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let intro = std::fs::read_to_string(base.join("docs/introduction.html")).unwrap();
+    assert!(intro.contains(r#"href="/docs-site/docs/guides""#), "{intro}");
+    assert!(
+        intro.contains(r#""@wordpress/interactivity":"/docs-site/wp-includes/"#),
+        "{intro}"
+    );
+    assert!(!intro.contains(r#"href="/docs/"#), "a link without the base: {intro}");
+    // A second export replaces the first (it carries the export marker).
+    let again = first()
+        .args([
+            "export".as_ref(),
+            project.as_os_str(),
+            "--base".as_ref(),
+            "/docs-site".as_ref(),
+            "--out".as_ref(),
+            base.as_os_str(),
+        ])
+        .output()
+        .unwrap();
+    assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
+}
+
+/// `first export --site` (docs/decisions/2026-11-13-static-output.md): WordPress as the CMS somewhere
+/// else. The hosted site (WordPress on SQLite, `tests/php/wp.php serve`) has a published and a draft
+/// note; the export renders its published content with an editor's application password, and the
+/// static page's client component calls the hosted site's public action across origins. The sign-in
+/// link points at the hosted site. A site running another build of the app is refused.
+#[test]
+fn static_export_from_a_hosted_site() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let project = fixture("app-export-site", "site");
+    build(&project);
+    let mut cms = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("serve")
+        .arg(project.join("first/dist/wp-content"))
+        .arg("chief=editor")
+        .env("FIRST_WP_THEMES", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(cms.stdout.take().unwrap()), &mut line).unwrap();
+    let served: serde_json::Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("serve: {line}"));
+    let site = served["url"].as_str().unwrap().to_string();
+    let editor = served["users"]["chief"]["appPassword"].as_str().unwrap().to_string();
+    let call = |method: &str, path: &str, body: serde_json::Value| {
+        let out = Command::new("curl")
+            .args([
+                "-s",
+                "-X",
+                method,
+                "-u",
+                &editor,
+                "-H",
+                "content-type: application/json",
+                "-d",
+            ])
+            .arg(body.to_string())
+            .arg(format!("{site}/__first/api/v1{path}"))
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    call(
+        "POST",
+        "/notes",
+        serde_json::json!({ "title": "Hello", "status": "published" }),
+    );
+    call(
+        "POST",
+        "/notes",
+        serde_json::json!({ "title": "Secret", "status": "draft" }),
+    );
+    let export = |site_arg: &str| {
+        first()
+            .arg("export")
+            .arg(&project)
+            .args(["--site", site_arg])
+            .env("FIRST_APP_PASSWORD", &editor)
+            .output()
+            .unwrap()
+    };
+    let out = export(&site);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let dist = project.join("first/dist/static");
+    assert!(dist.join("notes/hello.html").is_file());
+    assert!(!dist.join("notes/secret.html").exists(), "the draft is never exported");
+    let mut server = Command::new("node")
+        .arg(root().join("tests/differential/client/serve-static.mjs"))
+        .arg(&dist)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap()["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let browsed = Command::new("node")
+        .arg(root().join("tests/differential/client/export-site.mjs"))
+        .arg(&url)
+        .output()
+        .unwrap();
+    let _ = server.kill();
+    let _ = server.wait();
+    // The count is stored on the hosted site.
+    let counted = call("GET", "/cheers", serde_json::json!({}));
+    // A checkout that differs from what the site runs is refused before anything is written, even
+    // when only markup changed (the schema is the same; the compiled page is not).
+    let page = std::fs::read_to_string(project.join("first/app/page.tsx")).unwrap();
+    std::fs::write(
+        project.join("first/app/page.tsx"),
+        page.replace("className=\"notes\"", "className=\"notes changed\""),
+    )
+    .unwrap();
+    let stale = export(&site);
+    let _ = Command::new("kill").arg(cms.id().to_string()).output();
+    let _ = cms.wait();
+    assert!(
+        browsed.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&browsed.stdout),
+        String::from_utf8_lossy(&browsed.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&browsed.stdout).unwrap();
+    assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    assert_eq!(seen["home"], serde_json::json!([["Hello", "/notes/hello"]]));
+    assert_eq!(seen["signIn"], format!("{site}/wp-login.php"));
+    assert_eq!(seen["note"], serde_json::json!(["/notes/hello", "Hello", "0 cheers"]));
+    assert_eq!(seen["cheered"], "2 cheers");
+    assert_eq!(
+        seen["actions"],
+        serde_json::json!([["POST", site, 200], ["POST", site, 200]])
+    );
+    assert!(counted.contains("\"count\":2"), "{counted}");
+    assert_eq!(stale.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&stale.stderr).contains("runs another build of this app"),
+        "{}",
+        String::from_utf8_lossy(&stale.stderr)
+    );
+}
+
+/// A static site has no server: an action call from a client component, a page that asks who the
+/// visitor is, and a link to a page the export doesn't contain are each refused with the fix.
+#[test]
+fn static_export_refuses_what_needs_a_server() {
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path();
+    let write = |path: &str, source: &str| {
+        let path = project.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    };
+    write(
+        "first.config.ts",
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"refused\", output: \"static\" });\n",
+    );
+    write(
+        "first/actions.ts",
+        "import { action } from \"first\";\nexport const ping = action({ input: {}, access: \"anyone\", async handler() { return 1; } });\n",
+    );
+    write(
+        "first/components/Ping.tsx",
+        "\"use client\";\nimport { useState } from \"first/client\";\nimport { ping } from \"../actions\";\nexport function Ping() { const [n, setN] = useState(0); return <button type=\"button\" onClick={async () => setN(await ping({}))}>{n}</button>; }\n",
+    );
+    write(
+        "first/app/page.tsx",
+        "import { Ping } from \"../components/Ping\";\nexport default function Home() { return <main><Ping /></main>; }\n",
+    );
+    let out = first().arg("export").arg(project).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("/: the client component refused/Ping calls the action `ping`, and a static site has no server to run it. Export with --site <url> to call it on the hosted site, or remove the call"),
+        "{stderr}"
+    );
+    assert!(
+        !project.join("first/dist/static").exists(),
+        "a refused export writes nothing"
+    );
+    // A link to a page the export doesn't contain.
+    write(
+        "first/app/page.tsx",
+        "import { Link } from \"first/app\";\nexport default function Home() { return <main><Link href=\"/elsewhere\">x</Link></main>; }\n",
+    );
+    let out = first().arg("export").arg(project).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("/: it links to /elsewhere, which isn't in the export"),
+        "{stderr}"
+    );
+    // A page that asks WordPress who the visitor is: refused at build, at the call.
+    write(
+        "first/app/page.tsx",
+        "import { is_user_logged_in } from \"php/wordpress\";\nexport default function Home() { return <main>{is_user_logged_in() ? \"you\" : \"guest\"}</main>; }\n",
+    );
+    let out = first().arg("export").arg(project).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("`is_user_logged_in` asks who the visitor is"),
+        "{stderr}"
+    );
+    // A page that redirects.
+    write(
+        "first/app/page.tsx",
+        "import { redirect } from \"first/app\";\nexport default function Home() { redirect(\"/elsewhere\"); }\n",
+    );
+    let out = first().arg("export").arg(project).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("/ (app//) redirects to"), "{stderr}");
+    // --out never replaces the project, its sources, or a folder that isn't an export.
+    for (out_dir, message) in [
+        (project.to_path_buf(), "holds the project"),
+        (project.join("first"), "is inside the project"),
+        (project.join("first/dist"), "is where `first build` writes"),
+    ] {
+        let out = first()
+            .arg("export")
+            .arg(project)
+            .arg("--out")
+            .arg(&out_dir)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{stderr}");
+        assert!(stderr.contains(message), "{message}: {stderr}");
+    }
+    let elsewhere = tempfile::tempdir().unwrap();
+    std::fs::write(elsewhere.path().join("notes.txt"), "mine").unwrap();
+    let out = first()
+        .arg("export")
+        .arg(project)
+        .arg("--out")
+        .arg(elsewhere.path())
+        .output()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&out.stderr).contains("already holds files that aren't an export"));
+    assert_eq!(
+        std::fs::read_to_string(elsewhere.path().join("notes.txt")).unwrap(),
+        "mine"
+    );
+    assert!(project.join("first.config.ts").is_file() && project.join("first/app").is_dir());
+    // `output: "server"` is told what export is for.
+    write(
+        "first.config.ts",
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"refused\" });\n",
+    );
+    let out = first().arg("export").arg(project).output().unwrap();
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("set `output: \"static\"` in first.config.ts"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// examples/docs in Chromium as an anonymous visitor (tests/differential/client/docs.mjs).
+fn read_docs(url: &str) -> serde_json::Value {
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/docs.mjs"))
+        .arg(url)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+/// What a visitor reads in examples/docs, wherever it is served: the same on WordPress and in its
+/// static export.
+/// `url` is where the browser read the site, `canonical` the address the pages name as their own.
+fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str) {
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
     // Home → the docs, by the reader's click; the doc has its title and the published tree.
     assert_eq!(seen["home"], "First docs");
     // The router region is processed as core processes a block theme's: core/router's state.url
     // comes from the server, follows a <Link> click that swapped the region in the same document,
     // and core's loading bar is in the footer with its styles.
-    assert_eq!(seen["serverUrl"], format!("{url}/"), "{seen}");
+    assert_eq!(seen["serverUrl"], format!("{canonical}/"), "{seen}");
     assert_eq!(
         seen["navigation"],
         serde_json::json!({

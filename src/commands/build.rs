@@ -119,7 +119,7 @@ pub(super) fn refresh(project: &Path) -> Result<(), String> {
 
 /// Writes `first/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks, the typed
 /// client and `openapi.json`.
-fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
+pub(super) fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let migrations = migrations_dir(project);
     for (name, sql) in &built.migrations {
         write_new(&migrations.join(name), sql)?;
@@ -183,7 +183,7 @@ fn zip_plugin(directory: &Path) -> std::io::Result<()> {
 }
 
 /// Stage the complete artifact, publish it, then persist the sole dependency lock.
-fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Result<PathBuf> {
+pub(super) fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Result<PathBuf> {
     let empty = wp_plugins::Config { plugins: Vec::new() };
     let config = built.plugins.as_ref().unwrap_or(&empty);
     let plan = wp_plugins::resolve(config, &platform::plugins(built.schema.locales.is_some()))?;

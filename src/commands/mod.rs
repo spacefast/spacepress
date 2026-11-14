@@ -5,6 +5,7 @@ pub(crate) mod deploy;
 mod describe;
 mod dev;
 mod doctor;
+pub(crate) mod export;
 pub(crate) mod init;
 mod init_github;
 pub(crate) mod mcp;

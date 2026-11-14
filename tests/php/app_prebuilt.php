@@ -66,7 +66,7 @@ $written();
 $out = [];
 // What to build, as an editor lists it (first export uses the same answer).
 [$status, $list] = $site->call('GET', '/prerender', as: 'chief');
-$out['list'] = [$status, array_column($list['data']['urls'] ?? [], 'path')];
+$out['list'] = [$status, array_column($list['urls'] ?? [], 'path')];
 $out['list anonymous'] = $site->call('GET', '/prerender')[0];
 $out['list subscriber'] = $site->call('GET', '/prerender', as: 'subscriber')[0];
 

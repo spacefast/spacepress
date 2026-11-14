@@ -43,6 +43,14 @@ fn command(project: &Path, mode: &str) -> Result<Command, String> {
     Ok(command)
 }
 
+/// `first export`'s throwaway WordPress (scripts/dev/studio.mjs `export`): its arguments follow.
+pub(super) fn export_command() -> Result<Command, String> {
+    let mut command = Command::new(if cfg!(windows) { "npx.cmd" } else { "npx" });
+    command.args(["--yes", "--package", STUDIO, "--", "node"]);
+    command.arg(runner()?).arg("export");
+    Ok(command)
+}
+
 /// WP-CLI on the project's dev site (`first wp`, and the site commands without `--site`).
 pub(super) fn wp_command(project: &Path) -> Result<Command, String> {
     command(project, "wp")

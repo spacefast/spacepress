@@ -4,6 +4,7 @@
     { "name": "dev stop", "args": "[dir]", "summary": "stop the local site, keeping its data" },
     { "name": "dev status", "args": "[dir] [--json]", "summary": "report the local site" },
     { "name": "build", "args": "[dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]", "summary": "write the WordPress plugins to first/dist/wp-content" },
+    { "name": "export", "args": "[dir] [--out dir] [--site url] [--base /path] [--site-url https://example.com]", "summary": "write first/app/ as a static site to first/dist/static (output: \"static\"); --site renders a hosted site's content (FIRST_APP_PASSWORD or FIRST_TOKEN)" },
     { "name": "check", "args": "[dir] [--json] [--frozen]", "summary": "compile and report problems; write nothing" },
     { "name": "add", "args": "<module> [dir]", "summary": "add a module to the project as files you own; never overwrites one. Modules: db (SQL tables)" },
     { "name": "doctor", "args": "[dir] [--out dir] [--site url] [--json]", "summary": "check a build, and a running site (FIRST_TOKEN)" },

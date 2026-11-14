@@ -19,6 +19,12 @@ require __DIR__ . '/wp.php';
 $site = wpSite('comments', ['wpContent' => $argv[1], 'users' => ['ann' => 'subscriber', 'bo' => 'subscriber'], 'muPlugins' => ['no-flood' => <<<'PHP'
     <?php
     add_filter('wp_is_comment_flood', '__return_false', PHP_INT_MAX);
+    PHP, 'host' => <<<'PHP'
+    <?php
+    // A host that keeps cached pages, recording each purge it is asked for.
+    add_action('first_purge_urls', static function (array $paths): void {
+        update_option('test_purges', [...get_option('test_purges', []), ...$paths], false);
+    });
     PHP]]);
 wp_set_current_user(1);
 \First\db()->insert('notes', ['title' => 'Open note', 'slug' => 'open-note', 'status' => 'published']);
@@ -215,6 +221,68 @@ $out['draft'] = [
 // A kind without comments refuses every path.
 $memoPost = fetch("$url/__first/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $memo, 'content' => 'on a memo']));
 $out['memo'] = $memoPost['status'];
+
+// The page cache: what changes the approved thread purges the item's URL; what doesn't, doesn't.
+// (A held comment, a spam one, approving one, unapproving it, editing an approved one, deleting it.)
+global $wpdb;
+$purged = static function (callable $event) use ($wpdb): array {
+    // Each event on its own: what earlier steps of this long-lived process queued goes out first.
+    \First\Wp\Purges::flush();
+    $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'test_purges'");
+    wp_cache_delete('test_purges', 'options');
+    wp_set_current_user(1);
+    $event();
+    \First\Wp\Purges::flush();
+    wp_set_current_user(0);
+    wp_cache_delete('test_purges', 'options');
+    return array_values(array_filter((array) get_option('test_purges', []), static fn (string $p): bool => str_starts_with($p, '/notes/open-note')));
+};
+// A page at another address that rendered the note and its thread, cached for anonymous visitors:
+// approving a comment purges it too. A page that only listed notes keeps its copy.
+$featured = fetch("$url/featured");
+$out['featured cache'] = $featured['headers']['cache-control'][0] ?? null;
+$out['featured purged'] = (static function () use ($wpdb, $note, $url): array {
+    \First\Wp\Purges::flush();
+    $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'test_purges'");
+    wp_cache_delete('test_purges', 'options');
+    wp_set_current_user(1);
+    $id = (int) wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Seen on featured', 'comment_author' => 'x', 'comment_approved' => 0]);
+    wp_set_comment_status($id, 'approve');
+    \First\Wp\Purges::flush();
+    wp_set_current_user(0);
+    wp_cache_delete('test_purges', 'options');
+    $all = (array) get_option('test_purges', []);
+    return [in_array('/featured', $all, true), in_array('/notes/open-note/', $all, true)];
+})();
+$out['purges'] = [
+    'held' => $purged(static function () use ($note, &$held): void {
+        $held = (int) wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Held one', 'comment_author' => 'x', 'comment_approved' => 0]);
+    }),
+    'spam' => $purged(static fn () => wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Spam one', 'comment_author' => 'x', 'comment_approved' => 'spam'])),
+    'approved' => $purged(static fn () => wp_set_comment_status($held, 'approve')),
+    'edited' => $purged(static fn () => wp_update_comment(['comment_ID' => $held, 'comment_content' => 'Held one, edited'])),
+    'unapproved' => $purged(static fn () => wp_set_comment_status($held, 'hold')),
+    'edited while held' => $purged(static fn () => wp_update_comment(['comment_ID' => $held, 'comment_content' => 'Held again'])),
+    'approved again' => $purged(static fn () => wp_set_comment_status($held, 'approve')),
+    'deleted' => $purged(static fn () => wp_delete_comment($held, true)),
+    'approved then spammed' => (static function () use ($purged, $note): array {
+        $id = (int) wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Will be spam', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1]);
+        \First\Wp\Purges::flush();
+        return $purged(static fn () => wp_spam_comment($id));
+    })(),
+    'approved then trashed' => (static function () use ($purged, $note): array {
+        $id = (int) wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Will be trashed', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1]);
+        \First\Wp\Purges::flush();
+        return $purged(static fn () => wp_trash_comment($id));
+    })(),
+    'edited and approved at once' => (static function () use ($purged, $note): array {
+        $id = (int) wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Held, then both', 'comment_author' => 'x', 'comment_approved' => 0]);
+        \First\Wp\Purges::flush();
+        return $purged(static fn () => wp_update_comment(['comment_ID' => $id, 'comment_content' => 'Edited and approved', 'comment_approved' => 1]));
+    })(),
+    'control: a note edit' => $purged(static fn () => wp_update_post(['ID' => $note, 'post_title' => 'Open note'])),
+    'approved on insert' => $purged(static fn () => wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Straight in', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1])),
+];
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

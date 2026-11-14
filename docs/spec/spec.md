@@ -501,6 +501,8 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
     archives, the users sitemap and oEmbed author fields, unless
     `publicAuthors: true` or the users kind is readable by anyone (a users
     kind whose read rule gives a visitor some users keeps those as authors);
+  - telling a visitor which accounts exist when they sign in or reset a
+    password: one error for an unknown account and a wrong password;
   - changing the app's schema on the site: `first.config.ts` is the only way to
     change the field groups, post types, taxonomies, meta, roles and
     capabilities First generates (`docs/config-api.md`, "Schema lock");

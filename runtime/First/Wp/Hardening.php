@@ -24,7 +24,12 @@ final class Hardening
     private const RULES = 'first_rewrite_rules';
 
     /** In the order spec.md §6 lists them. */
-    public const SWITCHES = ['xmlrpc', 'pings', 'emoji', 'fileEditors', 'pluginAndThemeInstalls', 'autoUpdates', 'customizer', 'comments', 'schemaLock', 'authors', 'permalinks', 'timezone', 'blockTheme'];
+    public const SWITCHES = ['xmlrpc', 'pings', 'emoji', 'fileEditors', 'pluginAndThemeInstalls', 'autoUpdates', 'customizer', 'comments', 'schemaLock', 'authors', 'loginErrors', 'permalinks', 'timezone', 'blockTheme'];
+
+    /** Error codes that differ between an account that exists and one that doesn't. */
+    private const ACCOUNT_CODES = ['invalid_username', 'invalid_email', 'incorrect_password', 'invalidcombo'];
+    /** Lost-password errors that only an unknown account, or only a known one, produces. */
+    private const RESET_CODES = ['invalid_email', 'invalidcombo', 'no_password_reset', 'retrieve_password_email_failure'];
 
     private static bool $applied = false;
 
@@ -181,6 +186,77 @@ final class Hardening
     private static function authors(\First\Schema $schema): void
     {
         Authors::apply($schema);
+    }
+
+    /*
+     * loginErrors is adapted from Automattic/vip-go-mu-plugins, security/login-error.php
+     * (revision 4e65ee711017637ac54a9c74657117c985ccd115), GPL-2.0-or-later: the ambiguous
+     * wp-login.php error, the lost-password redirect and the "check your email" wording. The
+     * timing and application-password parts are First's.
+     */
+
+    /**
+     * Signing in doesn't tell a visitor which accounts exist. wp-login.php shows one message for an
+     * unknown username or email and for a wrong password; lost-password answers "check your email"
+     * whether or not the account exists; an unknown user costs one password hash, as a known one does;
+     * and a REST request with an application password for an unknown user gets the wrong-password error.
+     */
+    private static function loginErrors(): void
+    {
+        add_filter('login_errors', static function (mixed $message): string {
+            $errors = $GLOBALS['errors'] ?? null; // wp-login.php's own
+            return $errors instanceof \WP_Error && array_intersect($errors->get_error_codes(), self::ACCOUNT_CODES) !== []
+                // Core's own wording (wp_authenticate()), which its translations already carry.
+                ? __('<strong>Error:</strong> Invalid username, email address or incorrect password.')
+                : (string) $message;
+        }, 99);
+        // Before wp-login.php renders the form: answer as a request for a known account would.
+        add_action('lost_password', static function (mixed $errors): void {
+            if (!$errors instanceof \WP_Error || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+                return;
+            }
+            $leaks = array_intersect($errors->get_error_codes(), self::RESET_CODES);
+            foreach ($leaks as $code) {
+                $errors->remove($code);
+            }
+            // Other errors (an empty field, a plugin's captcha) don't depend on the account and still
+            // show. wp-login.php adds `?error=` link errors after the request; a known account never sees them.
+            if ($leaks === [] || array_diff($errors->get_error_codes(), ['invalidkey', 'expiredkey']) !== [] || headers_sent()) {
+                return;
+            }
+            $redirect = $_REQUEST['redirect_to'] ?? '';
+            wp_safe_redirect(is_string($redirect) && $redirect !== '' ? $redirect : 'wp-login.php?checkemail=confirm');
+            exit;
+        }, 0);
+        add_filter('wp_login_errors', static function (mixed $errors): mixed {
+            if ($errors instanceof \WP_Error && ($_GET['checkemail'] ?? null) === 'confirm' && $errors->get_error_messages('confirm') !== []) {
+                $errors->remove('confirm');
+                $errors->add('confirm', esc_html__('If there is an account associated with the username/email address, you will receive an email with a link to reset your password.'), 'message');
+            }
+            return $errors;
+        }, 99);
+        // Core answers an unknown user without hashing anything, so it answers sooner than a wrong
+        // password: hash this one once, with the site's algorithm and cost.
+        add_filter('authenticate', static function (mixed $user, mixed $login, mixed $password): mixed {
+            if ($user instanceof \WP_Error && is_string($password) && $password !== ''
+                && array_intersect($user->get_error_codes(), ['invalid_username', 'invalid_email']) !== []) {
+                wp_hash_password($password);
+            }
+            return $user;
+        }, PHP_INT_MAX, 3);
+        // REST answers an application password's error code as is (rest_application_password_check_errors).
+        add_action('application_password_failed_authentication', static function (mixed $error): void {
+            if (!$error instanceof \WP_Error) {
+                return;
+            }
+            $unknown = array_intersect($error->get_error_codes(), ['invalid_username', 'invalid_email']);
+            foreach ($unknown as $code) {
+                $error->remove($code);
+            }
+            if ($unknown !== []) {
+                $error->add('incorrect_password', __('The provided password is an invalid application password.'));
+            }
+        }, 0);
     }
 
     // ================================================================ always configured

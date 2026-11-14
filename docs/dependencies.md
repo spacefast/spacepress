@@ -97,6 +97,12 @@ The bundled Markdown code runs on WordPress's HTML API and calls core
 functions (`parse_blocks`, `serialize_block`, `esc_*`, `__`); First has no
 target without WordPress loaded.
 
+## Copied WordPress plugin code
+
+| file | source | licence |
+|---|---|---|
+| `runtime/First/Wp/Hardening.php` (`loginErrors`) | Automattic/vip-go-mu-plugins `security/login-error.php` at `4e65ee711017637ac54a9c74657117c985ccd115` | GPL-2.0-or-later |
+
 ## URI helper provenance
 
 `First\Js::encodeURI` adapts ts2php's MIT reserved-character restoration table

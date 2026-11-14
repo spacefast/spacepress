@@ -628,6 +628,8 @@ content/docs/
 - `first sync` moves a file when its page moves on the site, and turns a page that gains children
   into its folder's `index.md`; an `index.md` you wrote stays one, and moving a folder moves its
   pages.
+- Pages edited in wp-admin can come back to the repository as a pull request, and Markdown merged
+  in git can go to the site, on a schedule: [Content in git](../docs-site/docs/publishing/content-in-git.mdx).
 
 A page reads the navigation from `"first/content"`, as the visitor:
 
@@ -719,6 +721,12 @@ both (`first sync resolve <uid>` applies your edit of it).
 matches records and deletes nothing. It commits the files it wrote unless
 `--no-commit`. `first build` adds `.first/*` and `!.first/sync-base.json` to
 `.gitignore`, because the sync base is committed.
+
+`first sync --pr [--repo owner/name] [--base branch]`, with `GITHUB_TOKEN` as well, runs the sync on
+a temporary worktree of the default branch instead of the checkout, and opens one pull request (or
+updates the open one) with the site's changes; conflict files go in it, listed in a comment. It
+needs no `gh`. [Content in git](../docs-site/docs/publishing/content-in-git.mdx) describes the loop,
+the permissions it needs and the conflicts.
 
 What sync leaves out: `$onUpdate` columns, derived and hidden system columns,
 and fields the viewer's field access hides. References to a `uid` collection are written as that
@@ -1019,7 +1027,7 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
 | `addGlobalField` | `global`, `field`, `definition` | a field on a global |
 | `addCollection` | `kind`, `definition` | a new collection: `{ label?, access?, fields }`, with `title` a required text field and `content`, when present, the rich text body |
 | `addGlobal` | `global`, `definition` | a new global: `{ label?, access?, fields }` |
-| `setLabel` | `kind` or `global`, `label` | the label shown for a kind; `null` takes the runtime label off |
+| `setLabel` | `kind` or `global`, `label` | the label shown for a collection or global; `null` takes the runtime label off. A `table()` is build-only, its label included |
 | `setFieldUi` | `kind` or `global`, `field`, `ui` | a field's `label`, `help`, `placeholder` and `width`; `null` takes it off |
 | `removeField` | `kind` or `global`, `field` | hides a field a runtime change added |
 | `removeCollection`, `removeGlobal` | `kind` / `global` | hides a kind a runtime change added |
@@ -1036,7 +1044,11 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   has a default (`schema_required`); a name every kind or site has is not available
   (`schema_reserved`); a removed name comes back only with the stored type it had, and a name
   that any build which ran on the site stores as another type keeps that type (`schema_retype`), so
-  two builds the host serves at once never read one value two ways; something a build declares is not removed at runtime (`schema_in_use`, or
+  two builds the host serves at once never read one value two ways; a field stores its values under
+  keys no other field of its storage uses, sub-fields and repeater rows included (`seo_title` is
+  refused next to a group `seo` with a `title`, and so is a global `site_meta` with a field `title`
+  next to a global `site` with a field `meta_title`: both would be `first_global_site_meta_title`);
+  something a build declares is not removed at runtime (`schema_in_use`, or
   `schema_build_only` when no runtime change added it). Every other operation (renaming, retyping,
   tables, hooks, actions, jobs, pages, taxonomies) is `schema_build_only`, with the source edit to
   make. Fields of a translated or synced collection are build-only for now.
@@ -1051,6 +1063,15 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   form, and a hash chained to the parent's. Rows are never updated or deleted. A change names the
   version it was made against; when another was applied first it is refused with 409
   `schema_conflict`.
+- **What the site trusts.** The version table is the record. Each row's hash covers it and its
+  parent's hash, and every read of the versions checks the chain; a row changed outside First
+  refuses further changes (409 `schema_chain_broken`) and `first pull`, the site keeps serving the
+  last state that checked out, and `GET /__first/api/v1` and `first doctor` report the problem.
+  The option is sealed by apply; an option written any other way is not served until a read of
+  the versions rebuilds it. When it is served, it is read as the operations a change can make: an
+  added kind is rebuilt from its stored definition, and a field, label or presentation is served
+  only in the form the rules accept, so the option can't give a kind access rules, hooks or
+  functions.
 - **Loading.** The active version's additions are in one autoloaded option,
   `first_<app>_runtime_schema`. A request adds them to the compiled schema and does nothing else.
   A kind, field or relation the build declares itself is never replaced; only a label and a
@@ -1074,8 +1095,16 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   `schema_in_use`. To remove it, delete it from your code and from the lock, build and deploy.
 - **Deploying.** A build that lacks the site's changes does not drop them: they stay active, with
   their data, and `wp first migrate` lists them under `runtimeSchema.kept`. A build that declares
-  a runtime name, or a removed one, with another stored type is refused before any table changes,
-  with the fix (usually: `first pull`, then build).
+  a runtime name, or a removed one, in a way that reads its stored values differently (another type,
+  other options, other sub-fields or layouts, or a `table()` named like a runtime collection) is
+  refused before any table changes, with the fix (usually: `first pull`, then build). A build that
+  only changes a runtime field's rules or presentation is listed under `runtimeSchema.changed`; its
+  declaration is used. Applying a change takes the same lock a deploy holds, so the two never
+  interleave; a change that waited for a deploy is refused with 409 `schema_build_changed` and is
+  proposed again on the new build.
+- **Moving a change into source.** Declare the field or kind there as the site stores it (the lock
+  shows it). A kind the site added keeps building after you declare it: its title and body are the
+  ones source declares.
 
 - **Agents (Abilities and MCP).** `<app>/schema-read` returns the active version, every stored
   version with its changes, and what a deploy of the running build would keep.
@@ -1083,11 +1112,18 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   stored data; it writes nothing. `<app>/schema-apply` takes `{ parent, changes }` and stores the
   next version. Read and propose run over GET, so `changes` may also be one JSON string there. All
   three are tools on the app's MCP server. Reading and proposing need `manage_options`. Applying
-  needs `first_apply_schema`, which administrators hold by default: take it from a role or user
-  (`wp cap remove administrator first_apply_schema`) to stop them applying, or deny one
-  application password by listing its UUID in the option `first_<app>_schema_apply_denied`. Each
-  version records the user and, when one signed the request, the application password's UUID and
-  name (never the secret).
+  needs `first_apply_schema`. The administrator role is given it once, the first time the app runs
+  with `runtimeSchema`, and from then on it is an ordinary capability: `wp cap remove administrator
+  first_apply_schema` or `wp user remove-cap <user> first_apply_schema` takes it away for good. To
+  stop one way of signing in without touching the user, list it in the option
+  `first_<app>_schema_apply_denied`: `{ "user": <id>, "password": "<uuid>" }` for one application
+  password (a password it creates later is denied too), `{ "user": <id>, "credential":
+  "application-password" }` for all of that user's passwords, present and future, or `{ "user":
+  <id>, "credential": "bearer" }` for every First Identity access token they are issued. A wp-admin
+  session is not denied this way; take the capability instead. Each version records the user and,
+  when one signed the request, the application password's UUID and name (never the secret). A
+  credential scoped without personal data reads the versions without the login and the password's
+  name.
 - **Commands.** `first schema list | diff <version> | apply <file|-> [--parent=<n>] | rollback
   <version> [--parent=<n>]` (`wp first schema …` on a server). `apply` takes a JSON list of changes
   (or a whole change set) and applies it on the newest version unless `--parent` says otherwise.

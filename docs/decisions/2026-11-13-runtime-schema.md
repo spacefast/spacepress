@@ -121,8 +121,10 @@ login, and for an application password its UUID and name, never the secret), tim
 and a hash that chains each version to its parent. Rows are never updated or deleted. The primary
 key is (app, version).
 
-**Concurrency.** Apply names the version it was validated against. Under the same named lock
-migrations use, it checks that this is still the newest version and, in one transaction, inserts
+**Concurrency.** Apply names the version it was validated against. Under the named lock a deploy
+holds while it migrates (`first_<app>_schema`), it checks that the build its request loaded is still
+the one on disk (otherwise 409 `schema_build_changed`), that its parent is still the newest version,
+and, in one transaction, inserts
 version + 1 and writes the option. A second apply on the same parent gets 409 `schema_conflict` and
 must propose again. The primary key refuses a duplicate even if the lock is lost. The table is the
 record: when the option is missing, behind, or in another format, apply rebuilds it from the rows
@@ -130,6 +132,12 @@ first. Under a persistent object cache WordPress keeps autoloaded options in one
 any `update_option` call rewrites, so a concurrent write of another plugin's option can put an
 older copy of this one back, as it can for any autoloaded option; requests then serve the older
 version until the next apply rewrites it.
+
+**Trust.** The table's hash chain is checked whenever the versions are read; a broken chain stops
+further changes and leaves the site serving the last state that checked out. Apply seals the option
+it writes, and the loader serves a sealed option only, and only as the operations a change can make:
+added kinds are rebuilt from their stored definitions and fields are re-checked, so whoever can
+write options can't give a kind access rules or code. A table() is build-only, label included.
 
 **Rollback** is a new version whose change set reverses an earlier one. **Removing** a field or kind
 hides it: it leaves the active schema, and its posts, post meta and options stay where they are. A
@@ -241,10 +249,12 @@ both types and the fix.
 
 - Abilities `<app>/schema-read`, `<app>/schema-propose` (validates, returns the diff and effects,
   writes nothing) and `<app>/schema-apply`. Reading and proposing need `manage_options`. Apply needs
-  its own capability, `first_apply_schema`, which administrators hold unless a role or user record
-  takes it away; an application password is denied by listing its UUID in the option
-  `first_<app>_schema_apply_denied`. A user without the capability, or with a denied password, can
-  read and propose but not apply.
+  its own capability, `first_apply_schema`. The administrator role is given it once (an option
+  records that it was), so removing it with `wp cap remove` holds. The option
+  `first_<app>_schema_apply_denied` denies a user one application password (and any password it
+  creates), all of their application passwords, or every First Identity access token they are
+  issued (`bearer`): an access token has no id of its own to name, so it is denied by kind. A user
+  without the capability, or signed in a denied way, can read and propose but not apply.
 - Site command `first schema list | diff | apply | rollback`: one row in `commands.json`.
 - `GET /__first/api/v1` describes the active schema and its version; `first pull` regenerates the
   typed client's types from it.

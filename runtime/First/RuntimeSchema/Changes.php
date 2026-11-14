@@ -165,6 +165,7 @@ final class Changes
                 foreach ($stored['fields'] as $field => $definition) {
                     self::named($kind, (string) $field, $global ? [] : ['id', 'title', 'content'], "$pointer/definition/fields/$field");
                 }
+                self::storable($schema, $global, $kind, $global ? $stored['fields'] : array_diff_key($stored['fields'], ['title' => 1, 'content' => 1]), "$pointer/definition/fields");
 
                 return ['op' => $change['op'], $key => $kind, 'definition' => $stored];
 
@@ -232,11 +233,19 @@ final class Changes
         }
     }
 
-    /** The compiled-plus-runtime kind, or the compiler's refusal for a name that isn't one. */
+    /**
+     * The compiled-plus-runtime kind, or the compiler's refusal for a name that isn't one. A table()
+     * kind is build-only, its label and presentation included (the decision record's scope).
+     */
     private static function declared(array $schema, bool $global, string $kind, string $pointer): array
     {
-        return $schema[$global ? 'globals' : 'collections'][$kind]
+        $spec = $schema[$global ? 'globals' : 'collections'][$kind]
             ?? throw new Refused('schema_invalid', "$kind: this app declares no " . ($global ? 'global' : 'collection') . ' with that name', 'F3001', $pointer . ($global ? '/global' : '/kind'));
+        if (!$global && !isset($spec['wp']['postType'])) {
+            throw new Refused('schema_build_only', "$kind: `$kind` is a table(), and tables change only in the project's schema file: edit it there, then build and deploy", null, "$pointer/kind");
+        }
+
+        return $spec;
     }
 
     /** The running site's own rules for a field joining a kind that exists. */
@@ -260,6 +269,7 @@ final class Changes
             }
         }
         self::named($kind, $field, [], "$pointer/field");
+        self::storable($schema, $global, $kind, [$field => $stored], "$pointer/field");
         $was = $state['removed'][$section][$kind]['fields'][$field] ?? null;
         if ($was !== null && $was !== $stored['type']) {
             throw new Refused('schema_retype', "$kind.$field: `$field` was removed as a $was field and its values are still stored. Add it as $was again, or use another name", null, "$pointer/definition/type");
@@ -273,6 +283,57 @@ final class Changes
         if (!$global && ($stored['notNull'] ?? false) && !isset($stored['default'])) {
             throw new Refused('schema_required', "$kind.$field: a field added at runtime is optional or has a default, because existing items have no value for it. Leave out `notNull`, or add `default`", null, "$pointer/definition/notNull");
         }
+    }
+
+    /**
+     * New fields store under keys no other field uses (the compiler's rule, `storage_collision` in
+     * src/runtime_schema.rs): a collection's fields share its posts' meta, and every global's options
+     * share one name space, `first_global_<global>_<field>`. Checked against the kind as the build and
+     * the state declare it, and among the new fields themselves.
+     *
+     * @param array<string, array> $fields the new fields, by name
+     */
+    private static function storable(array $schema, bool $global, string $kind, array $fields, string $pointer): void
+    {
+        $existing = [];
+        if ($global) {
+            foreach ($schema['globals'] ?? [] as $name => $spec) {
+                foreach ($spec['fields'] as $field => $definition) {
+                    $existing["$name.$field"] = self::prefixed("{$name}_", StorageKeys::of((string) $field, $definition));
+                }
+            }
+        } else {
+            $spec = $schema['collections'][$kind] ?? ['columns' => []];
+            foreach ($spec['columns'] as $field => $definition) {
+                if (self::meta($spec, (string) $field, $definition)) {
+                    $existing["$kind.$field"] = StorageKeys::of((string) $field, $definition);
+                }
+            }
+        }
+        foreach ($fields as $field => $definition) {
+            $keys = StorageKeys::of((string) $field, $definition);
+            $keys = $global ? self::prefixed("{$kind}_", $keys) : $keys;
+            foreach ($existing as $other => $otherKeys) {
+                $key = StorageKeys::shared($keys, $otherKeys);
+                if ($key !== null) {
+                    $where = $global ? "the option first_global_$key" : "the post meta key {$schema['collections'][$kind]['wp']['metaPrefix']}$key";
+                    throw new Refused('schema_invalid', "$kind.$field: `$field` would store values under $where, which $other already uses; give the field another name", 'F3001', $pointer);
+                }
+            }
+            $existing["$kind.$field"] = $keys;
+        }
+    }
+
+    /** @param list<list<?string>> $keys */
+    private static function prefixed(string $prefix, array $keys): array
+    {
+        return array_map(static fn (array $key): array => is_string($key[0]) ? [$prefix . $key[0], ...array_slice($key, 1)] : [$prefix, ...$key], $keys);
+    }
+
+    /** Whether a collection column is stored as post meta (PostMeta::fields' rule). */
+    private static function meta(array $spec, string $field, array $definition): bool
+    {
+        return !in_array($field, [$spec['primaryKey'] ?? 'id', $spec['title'] ?? null, $spec['content'] ?? null, $spec['slug'] ?? null], true) && !($definition['system'] ?? false);
     }
 
     /** A field name the site can store and that no kind will get from a build. `$allowed`: built-in names this place may use. */

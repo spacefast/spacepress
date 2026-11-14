@@ -87,12 +87,22 @@ function prose(markdown: string, from: string): string {
 	return toFirst(held).replace(/\u0000(\d+)\u0000/g, (_, i: string) => urls[Number(i)]!);
 }
 
-/** Relative links in a README point into the repository on GitHub. */
+/**
+ * Relative links in a README point into the repository on GitHub. Code is left as written:
+ * `obj[sym](x)` in a code span or fence is a call, not a link.
+ */
 function repoLinks(markdown: string, from: string): string {
-	return markdown.replace(/\]\((?!https?:|#|mailto:)([^)\s]+)\)/g, (_, target: string) => {
-		const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(from), target));
-		return `](${resolved.endsWith("/") || !path.extname(resolved) ? tree : github}/${resolved.replace(/\/$/, "")})`;
-	});
+	return markdown
+		.split(/(```[\s\S]*?```|`[^`\n]*`)/)
+		.map((part, i) =>
+			i % 2 === 1
+				? part
+				: part.replace(/\]\((?!https?:|#|mailto:)([^)\s]+)\)/g, (_, target: string) => {
+						const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(from), target));
+						return `](${resolved.endsWith("/") || !path.extname(resolved) ? tree : github}/${resolved.replace(/\/$/, "")})`;
+					}),
+		)
+		.join("");
 }
 
 function compileSummary(name: string, dir: string): { ok: boolean; text: string; counts?: Record<string, number> } {

@@ -223,4 +223,13 @@ fn a_sealed_build_lists_the_plugins_a_host_lets_load() {
             ["akismet/akismet.php", "two-factor/two-factor.php"]
         ])
     );
+    // A plugin a sealed site never runs doesn't load even when the list a host holds names it.
+    let denied = php(
+        "define('ABSPATH', '/'); require $argv[1];
+         echo json_encode(First\\Loader\\Loader::allowedPlugins(['vip-block-data-api/vip-block-data-api.php', 'vip-decoupled-bundle/vip-decoupled.php', 'two-factor/two-factor.php'], ['vip-block-data-api', 'vip-decoupled-bundle', 'two-factor']));",
+    );
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&denied).unwrap(),
+        serde_json::json!(["two-factor/two-factor.php"])
+    );
 }

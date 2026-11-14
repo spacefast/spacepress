@@ -51,7 +51,7 @@ if (preg_match('#^/(wp-login\.php|wp-admin/(?:[a-z0-9-]+\.php)?)$#', $path, $m) 
     $root = wpCliRoot($dir);
     $file = $m[1] === 'wp-admin/' ? 'wp-admin/index.php' : $m[1];
     define('ABSPATH', "$root/");
-    // Each script and stylesheet on its own URL: load-scripts.php would define ABSPATH itself.
+    // Each script and stylesheet on its own URL, so a browser test's failed request names the file.
     define('CONCATENATE_SCRIPTS', false);
     $_SERVER['SCRIPT_NAME'] = $_SERVER['PHP_SELF'] = "/$file";
     $_SERVER['SCRIPT_FILENAME'] = "$root/$file";

@@ -2664,6 +2664,23 @@ export default defineConfig({ name: "kindurls", sealed: true, admin: true, local
         built["sealed"],
         serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor"]})
     );
+    // A sealed site can't declare a plugin that hands content out around First's read rules.
+    for slug in ["vip-block-data-api", "vip-decoupled-bundle"] {
+        let denied = tmp.path().join(format!("app-sealed-denied-{slug}"));
+        std::fs::create_dir_all(&denied).unwrap();
+        std::fs::write(
+            denied.join("first.config.ts"),
+            format!("import {{ defineConfig }} from \"first\";\nexport default defineConfig({{ name: \"kindurls\", sealed: true, plugins: {{ \"{slug}\": {{ version: \"1.0.0\", pluginData: {{ resource: \"url\", url: \"https://example.test/{slug}.zip\" }}, sha256: \"{}\" }} }} }});\n", "0".repeat(64)),
+        )
+        .unwrap();
+        let out = first().args(["build", "--quiet"]).arg(&denied).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success(), "{slug}: {stderr}");
+        assert!(
+            stderr.contains(&format!("a sealed site can't run {slug}")) && stderr.contains("around First's read rules"),
+            "{slug}: {stderr}"
+        );
+    }
     let refused = tmp.path().join("app-sealed-refused");
     std::fs::create_dir_all(&refused).unwrap();
     std::fs::write(

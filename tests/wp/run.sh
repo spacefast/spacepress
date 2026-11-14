@@ -48,6 +48,10 @@ if [[ ${FIRST_WP_S3:-0} == 1 ]]; then
   node --test "$here/media.test.ts"
   exit
 fi
+# The React hooks test bundles a React app with the generated client and runs it in Chromium.
+if [[ ${FIRST_WP_SKIP_BROWSER:-0} != 1 && ! -d "$here/hooks/node_modules" ]]; then
+  npm ci --prefix "$here/hooks" --ignore-scripts --no-audit --no-fund --silent
+fi
 node --test --test-concurrency=1 "$here"/*.test.ts
 "$here/admin/browser-run.sh"
 # Lane A: the admin plugin on a WordPress installed below the origin root.

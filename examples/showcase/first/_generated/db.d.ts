@@ -49,21 +49,21 @@ type Entities = {
 type Graph = {
   'stories': {
     'tasks': Many<'tasks'>;
-    'pantryItems': Many<'items'>;
+    'items': Many<'items'>;
   };
   'tasks': {
-    'story': One<'stories', true>;
+    'storyId': One<'stories', true>;
   };
   'locations': {
     'items': Many<'items'>;
   };
   'items': {
-    'story': One<'stories', true>;
-    'location': One<'locations', true>;
-    'shoppingEntry': One<'shoppingList', true>;
+    'storyId': One<'stories', true>;
+    'locationId': One<'locations', true>;
+    'shoppingList': Many<'shoppingList'>;
   };
   'shoppingList': {
-    'item': One<'items', true>;
+    'itemId': One<'items', false>;
   };
 };
 declare module "first" { interface Register { relations: Relations<Entities, Graph>; config: typeof config } }

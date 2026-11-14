@@ -1709,7 +1709,7 @@ bottom is green), keeping the stack's base links updated (`gh stack sync`).
 
 | Job | Runner | Steps | Needs docker |
 |---|---|---|---|
-| `rust` | ubuntu-24.04 | `rustup` from `rust-toolchain`, `php8.3-cli php8.3-sqlite3 php8.3-mbstring php8.3-gd`, `node 22`, `cargo test` (includes pantry over HTTP + differential); the `rest` shard also runs `scripts/check-generated.sh`, which rebuilds each example that commits `first/_generated/` and fails on any difference | no |
+| `rust` | ubuntu-24.04 | `rustup` from `rust-toolchain`, `php8.3-cli php8.3-sqlite3 php8.3-mbstring php8.3-gd`, `node 22`, `cargo test` (includes pantry over HTTP + differential); the `rest` shard also runs `scripts/check-generated.sh`, which rebuilds each example under `examples/` that commits files under `first/_generated/` and fails on any changed, missing or obsolete output (existing migrations are inputs and aren't compared) | no |
 | `php` | ubuntu-24.04 | `tests/php/run.sh` (includes `vendor_drift`) | no |
 | `vendor` | ubuntu-24.04, `php:8.2-cli` container | `composer` + the pinned Strauss PHAR; `scripts/vendor.sh all`; `git diff --exit-code -- '**/vendor-prefixed/**'` — proves the committed trees are what the locks produce (§3.3) | no |
 | `types` | ubuntu-24.04 | `tsc -p types/first/tests`, `tsc -p examples/blog/client-tests`, `node --test runtime/client/index.test.ts runtime/client/committed.test.ts` (the second: every committed client matches `runtime/client/`) | no |

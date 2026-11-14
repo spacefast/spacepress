@@ -1,23 +1,28 @@
 #!/usr/bin/env bash
-# Every example that commits its generated client commits what this compiler builds: `first build`
-# on each one, then no change (or new file) under its first/_generated/. That covers the whole
-# client (the copied runtime files, client.js, client.d.ts, schema.ts, types.ts), and the
-# migrations, openapi.json and declarations committed beside it.
-# runtime/client/committed.test.ts checks only the copied files, without building, on every PR.
+# Every example under examples/ that commits files under first/_generated/ commits what this
+# compiler builds. Each one is built again (`first build`, its wp-content into a temporary --out),
+# after its committed outputs are deleted, and git must then see no change, deletion or new file
+# under its first/_generated/. That covers the whole client (the copied runtime files, client.js,
+# client.d.ts, schema.ts, types.ts), db.d.ts, routes.d.ts and openapi.json, a migration the
+# compiler would add, and an output it no longer writes. Committed migrations and plugin locks are
+# inputs the build reads, so they are kept: an edit to an existing migration is not caught.
+# runtime/client/committed.test.ts checks only the copied client files, without building, on PRs.
 #
 #   scripts/check-generated.sh [path/to/first]
 set -euo pipefail
-first=$(realpath "${1:-target/debug/first}")
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
+first=$(realpath -- "${1:-target/debug/first}")
+[[ -x $first ]] || { echo "no first binary at $first" >&2; exit 2; }
 out=$(mktemp -d)
 trap 'rm -rf -- "$out"' EXIT
 
 projects=()
-while IFS= read -r client; do
-	projects+=("${client%/first/_generated/client/index.ts}")
-done < <(git ls-files -- ':(glob)**/first/_generated/client/index.ts')
-((${#projects[@]})) || { echo "no committed first/_generated/client/ found" >&2; exit 1; }
+while IFS= read -r config; do
+	dir=$(dirname "$config")
+	[[ -n $(git ls-files -- "$dir/first/_generated") ]] && projects+=("$dir")
+done < <(git ls-files -- 'examples/**/first.config.ts' 'examples/*/first.config.ts' | sort -u)
+((${#projects[@]})) || { echo "no example commits first/_generated/" >&2; exit 2; }
 
 failed=()
 for dir in "${projects[@]}"; do
@@ -27,11 +32,18 @@ for dir in "${projects[@]}"; do
 			npm ci --prefix "$lockdir" --ignore-scripts --no-audit --no-fund --silent
 		fi
 	done
+	# Outputs only: what the build doesn't write again shows as deleted.
+	git ls-files -- "$dir/first/_generated" | { grep -v -e '/migrations/' -e 'lock\.json$' || true; } | while IFS= read -r file; do rm -f -- "$file"; done
 	if ! log=$("$first" build "$dir" --out "$out/$dir" --quiet 2>&1); then
 		echo "FAIL  $dir: first build failed"
 		echo "$log" | sed 's/^/      /'
 		failed+=("$dir")
-	elif changes=$(git status --porcelain -- "$dir/first/_generated") && [[ -n $changes ]]; then
+		rm -rf -- "${out:?}/$dir"
+		continue
+	fi
+	rm -rf -- "${out:?}/$dir"
+	changes=$(git status --porcelain -- "$dir/first/_generated")
+	if [[ -n $changes ]]; then
 		echo "STALE $dir"
 		echo "$changes" | sed 's/^/      /'
 		failed+=("$dir")

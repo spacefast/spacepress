@@ -291,10 +291,9 @@ final class Guard
             return false;
         }
         // The digest is over the 0.8 table's own name, case included. A stored name (`api_keys`, from
-        // a snapshot written before `adoptedAs`) and the physical name's own part (`mytasks`) have
-        // lost the key's case (`APIKeys`, `myTasks`), so each casing of their letters is tried, each
-        // `_` kept or dropped. Every spelling still needs the digest of this Space's id, so only
-        // this Space's own 0.8 tables match; the names matter for ones the converter cut.
+        // a snapshot written before `adoptedAs`) has lost the key's case (`APIKeys`), so the keys it
+        // could have been made from are tried (`casings`). Every spelling still needs the digest of
+        // this Space's id, so only this Space's own 0.8 tables match.
         $rest = substr($lower, strlen($head), -11);
         foreach (array_unique(array_filter([...$names, $rest], static fn ($t) => $t !== '')) as $table) {
             foreach (self::casings($table) as $spelling) {
@@ -309,43 +308,58 @@ final class Guard
     }
 
     /**
-     * `$name` itself and, when it is all lowercase (a stored name), the converter-legal names it
-     * may have been made from: each letter in either case, with each `_` kept or dropped
-     * (`api_keys` → `APIKeys`, `apiKeys`, `ApiKeys`, ...). Only names of up to 14 letters and 3
-     * underscores are expanded (at most 2^17 digests), which covers registry keys; longer stored
-     * names have their `adoptedAs` written by any build since it.
+     * `$name` itself and, when it is a stored name (lowercase, as the compiler's `physical_name`
+     * writes a key), every key that name could have been made from: each `_`-separated part in
+     * lowercase, Capitalized or UPPER, each `_` kept or dropped, kept when it maps back to `$name`
+     * (`api_keys` → `apiKeys`, `APIKeys`, `api_keys`, ...). A name of up to 8 parts is expanded,
+     * a few hundred names at most; a longer one gets its `adoptedAs` from any build since it.
      *
      * @return iterable<string>
      */
     private static function casings(string $name): iterable
     {
         yield $name;
-        $letters = preg_match_all('/[a-z]/', $name);
-        $underscores = substr_count($name, '_');
-        if ($name !== strtolower($name) || $letters > 14 || $underscores > 3 || preg_match('/\A[a-z][a-z0-9_]*\z/', $name) !== 1) {
+        $parts = explode('_', $name);
+        if (count($parts) > 8 || in_array('', $parts, true) || preg_match('/\A[a-z][a-z0-9_]*\z/', $name) !== 1) {
             return;
         }
-        $spellings = [''];
-        foreach (str_split($name) as $i => $c) {
+        $keys = [''];
+        foreach ($parts as $i => $part) {
             $next = [];
-            foreach ($spellings as $s) {
-                if (ctype_lower($c)) {
-                    $next[] = $s . $c;
-                    $next[] = $s . strtoupper($c);
-                } elseif ($c === '_' && $i > 0) {
-                    $next[] = $s . '_';
-                    $next[] = $s;
-                } else {
-                    $next[] = $s . $c;
+            foreach ($keys as $key) {
+                foreach (array_unique([$part, ucfirst($part), strtoupper($part)]) as $form) {
+                    if ($i === 0) {
+                        $next[] = $form;
+                    } else {
+                        $next[] = $key . '_' . $form;
+                        $next[] = $key . $form;
+                    }
                 }
             }
-            $spellings = $next;
+            $keys = $next;
         }
-        foreach ($spellings as $s) {
-            if ($s !== $name && preg_match('/\A[A-Za-z][A-Za-z0-9_]*\z/', $s) === 1) {
-                yield $s;
+        foreach (array_unique($keys) as $key) {
+            if ($key !== $name && self::physicalName($key) === $name) {
+                yield $key;
             }
         }
+    }
+
+    /** src/schema.rs `physical_name`: a registry key's stored name (`APIKeys` → `api_keys`). */
+    private static function physicalName(string $key): string
+    {
+        $out = '';
+        $n = strlen($key);
+        for ($i = 0; $i < $n; $i++) {
+            $c = $key[$i];
+            if (ctype_upper($c) && $i > 0 && $key[$i - 1] !== '_'
+                && (ctype_lower($key[$i - 1]) || ctype_digit($key[$i - 1]) || ($i + 1 < $n && ctype_lower($key[$i + 1])))) {
+                $out .= '_';
+            }
+            $out .= strtolower($c);
+        }
+
+        return $out;
     }
 
     /** A name as an error message shows it: printable, bounded. */

@@ -180,9 +180,12 @@ $adopts('a long table name the converter cut adopts through the collection named
 $GLOBALS['GUARD_SPACE'] = 'spc_mine';
 $myTasks = $legacyOf('spc_mine', 'myTasks');
 $spec = ['key' => 'items', 'existingTable' => $myTasks];
-// The physical name holds the 0.8 name lowercased (`mytasks`); its casings find `myTasks` even
-// with no adopted name. The digest is over this Space's id, so that admits only its own tables.
-$adopts('a renamed collection binds its uncut 0.8 table through the physical name', $myTasks, $mine, Guard::names('items', $spec));
+try {
+    Guard::table($myTasks, $mine, Guard::names('items', $spec));
+    check('a renamed collection without its adopted name does not match the digest', false, 'accepted');
+} catch (\First\HttpError $e) {
+    check('a renamed collection without its adopted name does not match the digest', $e->errorCode === 'existing_table_refused');
+}
 $adopts('a collection renamed with was still binds its 0.8 table', $myTasks, $mine, Guard::names('items', $spec + ['adoptedAs' => 'myTasks']));
 $adopts("a snapshot from before adoptedAs names the stored table (my_tasks), whose key's digest still matches", $myTasks, $mine, Guard::names('items', $spec + ['adoptedAs' => 'my_tasks']));
 // The stored name has lost the key's case however it was written: APIKeys is stored as api_keys.
@@ -192,6 +195,11 @@ $adopts('a stored name stands for its key in any casing (APIKeys as api_keys)', 
 $GLOBALS['GUARD_SPACE'] = $longSpace = 'spc_' . str_repeat('l', 44);
 $adopts('and when the converter cut the 0.8 name', $legacyOf($longSpace, 'APIKeys'), $sfz($longSpace), Guard::names('items', ['key' => 'items', 'adoptedAs' => 'api_keys']));
 $GLOBALS['GUARD_SPACE'] = 'spc_mine';
+// However long the key: customerPaymentMethods is stored as customer_payment_methods.
+$adopts('a long key is found from its stored name', $legacyOf('spc_mine', 'customerPaymentMethods'), $mine,
+    Guard::names('items', ['key' => 'items', 'adoptedAs' => 'customer_payment_methods']));
+$adopts('and an acronym-heavy one', $legacyOf('spc_mine', 'HTTPServerLogEntriesV2'), $mine,
+    Guard::names('items', ['key' => 'items', 'adoptedAs' => 'http_server_log_entries_v2']));
 $refused("another Space's APIKeys, whatever casing is tried", $legacyOf('spc_other', 'APIKeys'), $mine);
 $adopts('a renamed collection over a cut 0.8 name', $legacyOf('spc_mine', 'aVeryLongTableNameThatTheConverterCutsDownToSize'), $mine,
     Guard::names('short', ['key' => 'short', 'adoptedAs' => 'aVeryLongTableNameThatTheConverterCutsDownToSize']));

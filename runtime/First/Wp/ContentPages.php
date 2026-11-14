@@ -56,8 +56,11 @@ final class ContentPages
             return;
         }
         $self = self::$instance = new self($plugin, $pages);
-        // After the app's post types (0) and its migrations (1).
-        add_action('init', [$self, 'store'], 2);
+        // After the app's post types (0) and its migrations (1). A managed build stores them from
+        // initialize ({@see install()}): booting it writes nothing.
+        if (!Runtime::managed()) {
+            add_action('init', [$self, 'store'], 2);
+        }
         add_filter('page_link', [$self, 'link'], 10, 2);
         add_filter('first_post_purge_urls', [$self, 'purge'], 10, 2);
         add_action('template_redirect', [$self, 'canonical'], 0);
@@ -87,6 +90,50 @@ final class ContentPages
     private function build(): string
     {
         return substr(hash('sha256', (string) wp_json_encode($this->pages)), 0, 16);
+    }
+
+    /** Stores this build's file versions now, for a managed build's initialize; nothing without content pages. */
+    public static function install(): void
+    {
+        self::$instance?->store();
+    }
+
+    /**
+     * What {@see install()} would write, read without writing: one step per Page it would create,
+     * change, adopt or hide, as {@see apply()} decides them. Empty when this build's versions are
+     * stored. A file this build hasn't stored yet that changes no Page (the site edited it) records
+     * only the history option, which is not a step.
+     *
+     * @return list<array{step: string, route: string, post?: int}>
+     */
+    public static function plan(): array
+    {
+        $self = self::$instance;
+        if ($self === null || in_array($self->build(), $self->state(true)['builds'], true)) {
+            return [];
+        }
+        $state = $self->state(true);
+        $steps = [];
+        foreach ($self->pages as $route => $page) {
+            $entry = $state['pages'][$route] ?? null;
+            if (in_array($page['digest'], $entry['applied'] ?? [], true)) {
+                continue;
+            }
+            $was = $entry['status'] ?? 'publish';
+            $post = $entry !== null ? get_post($entry['post']) : $self->lost($route);
+            $hides = $post instanceof \WP_Post && $was === 'publish' && $page['status'] !== 'publish' && $post->post_status === 'publish';
+            if ($entry === null && $post instanceof \WP_Post) {
+                $steps[] = ['step' => $hides ? 'page.adopt-hide' : 'page.adopt', 'route' => (string) $route, 'post' => $post->ID];
+            } elseif ($entry !== null && (!$post instanceof \WP_Post || self::fingerprint($post) !== $entry['stored'])) {
+                if ($hides) {
+                    $steps[] = ['step' => 'page.hide', 'route' => (string) $route, 'post' => $post->ID];
+                }
+            } else {
+                $steps[] = $post instanceof \WP_Post ? ['step' => 'page.update', 'route' => (string) $route, 'post' => $post->ID] : ['step' => 'page.create', 'route' => (string) $route];
+            }
+        }
+
+        return $steps;
     }
 
     /** init: stores this build's file versions, once, whichever request comes first. */

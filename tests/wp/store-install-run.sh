@@ -18,7 +18,7 @@ bin="$target/debug/first"
 export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-first-wp-store-install}"
 export FIRST_WP_PORT="${FIRST_WP_PORT:-8903}"
 work="$(mktemp -d)"
-cleanup() { "$here/harness.sh" down; rm -rf "$work"; }
+cleanup() { [[ ${FIRST_WP_KEEP:-0} == 1 ]] || "$here/harness.sh" down; rm -rf "$work"; }
 trap cleanup EXIT
 fail() { echo "not ok: $*" >&2; exit 1; }
 ok() { echo "ok: $*"; }
@@ -66,8 +66,31 @@ booted=$(site)
 [[ $fresh == "$booted" ]] || { diff <(echo "$fresh") <(echo "$booted") >&2; fail "a managed boot before initialize changed the site"; }
 ok "a managed boot before initialize installs nothing"
 
+plan=$(host "echo json_encode(First\\Loader\\Loader::inspect('$root', '$build')['install']);")
+python3 - "$plan" <<'PY' || fail "a fresh site's install plan: $plan"
+import json,sys
+steps=sorted((s['step'], s.get('route','')) for s in json.loads(sys.argv[1]))
+assert ('rewrite-rules','') in steps, steps
+assert [s for s in steps if s[0]=='page.create'].__len__()==2, steps
+PY
+[[ $fresh == "$(site)" ]] || fail "inspecting changed the site"
+ok "inspection plans the Pages and one rewrite rebuild, and writes nothing"
+
 receipt=$(host "echo json_encode(First\\Loader\\Loader::initialize('$root', '$build'));")
 [[ $(json migrations.0 <<< "$receipt") == 0001_init ]] || fail "initialize applies the init migration: $receipt"
+initialized=$(site)
+[[ $(host "echo json_encode(First\\Loader\\Loader::inspect('$root', '$build')['install']);") == '[]' ]] || fail "after initialize nothing is left to install"
+# Initialize ran from WP-CLI and no web request has reached the build yet: the first request to
+# First Admin's mount and to a kind URL already answer. Apache serves /wp-admin/new/ from the rule
+# initialize wrote into .htaccess.
+"$here/harness.sh" compose exec -T wordpress sh -c 'grep -q "wp-admin/new" /var/www/html/.htaccess' || fail "initialize wrote First Admin's rule into .htaccess"
+note=$(wp --exec="define('FIRST_TEST_BUILD', '$build');" first insert notes '{"title":"Hello"}')
+id=$(python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]; print((d[0] if isinstance(d,list) else d)["id"])' <<< "$note")
+status=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -H "X-First-Build: $build" "$url/wp-admin/new/")
+[[ $status == "302 $url/wp-login.php?"* ]] || fail "the first request to /wp-admin/new/ asks to sign in: $status"
+status=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -H "X-First-Build: $build" "$url/notes/$id/")
+[[ $status == 200* ]] || fail "the first request to a kind URL answers: $status"
+ok "after initialize from WP-CLI, the first requests to /wp-admin/new/ and a kind URL answer"
 initialized=$(site)
 # Requests to the initialized build (a page, wp-admin, sign-in, the API, WP-CLI) install nothing more:
 # initialize installed it all.
@@ -79,6 +102,28 @@ served=$(site)
 [[ $initialized == "$served" ]] || { diff <(echo "$initialized") <(echo "$served") >&2; fail "requests after initialize installed more"; }
 ok "requests to an initialized managed build install nothing more"
 echo "$initialized" > "$work/managed.txt"
+
+# WordPress rebuilding its rules itself (permalink settings saved, another plugin flushing) is serving:
+# it rebuilds them on that request with the build's rules, so every kind URL and the admin still answer.
+wp --exec="define('FIRST_TEST_BUILD', '$build');" rewrite flush --hard >/dev/null 2>&1 || true
+host "delete_option('rewrite_rules');" >/dev/null
+for path in "/notes/$id/" /wp-admin/new/; do
+  status=$(curl -s -o /dev/null -w '%{http_code}' -H "X-First-Build: $build" "$url$path")
+  [[ $status == 200 || $status == 302 ]] || fail "$path answers after WordPress rebuilt its rules: $status"
+done
+[[ $(host "echo json_encode(\\First\\Wp\\Hardening::rulesCurrent());") == true ]] || fail "the rebuilt rules carry First's fingerprint"
+ok "rules WordPress rebuilds itself keep every kind URL and /wp-admin/new/ working"
+
+# Inspecting a candidate that changes only a URL pattern plans exactly one step; the same build plans none.
+sed -i.bak 's#url: "/notes/:id"#url: "/memos/:id"#' "$work/installlane/first.config.ts" && rm "$work/installlane/first.config.ts.bak"
+"$bin" sources "$work/installlane" --out "$work/sources-url"
+moved=$("$bin" compile-to-store "$work/sources-url" "$store" "$work/sources-url" "$build" | json build)
+before=$(site)
+steps=$(wp --exec="define('FIRST_TEST_BUILD', '$moved');" eval "echo json_encode(First\\Loader\\Loader::inspect('$root', '$moved')['install']);")
+[[ $steps == '[{"step":"rewrite-rules"}]' ]] || fail "a URL-pattern change plans one step: $steps"
+[[ $(host "echo json_encode(First\\Loader\\Loader::inspect('$root', '$build')['install']);") == '[]' ]] || fail "the initialized build plans no step"
+[[ $before == "$(site)" ]] || fail "inspecting the candidates changed the site"
+ok "a candidate that changes only a URL pattern plans one step; the initialized build plans none"
 
 # The same app installed as plugins on a fresh site, after its first requests: what initialize
 # installed is what a plugin-installed site installs on boot.

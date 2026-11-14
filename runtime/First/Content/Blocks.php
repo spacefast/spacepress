@@ -50,14 +50,20 @@ final class Blocks
         return null;
     }
 
-    /** init: each component block is a dynamic block, rendered by its component. */
+    /**
+     * init: each component block is a dynamic block, rendered by its component. One without
+     * `children` is all props: core's `autoRegister` support (WordPress 7.0+) registers it in the
+     * editor with a server-rendered preview and a sidebar field per prop. One with `children` holds
+     * inner blocks, which `autoRegister` can't edit, so client/blocks.js registers it.
+     */
     public static function register(): void
     {
         $blocks = self::all();
-        if ($blocks !== []) {
-            add_action('enqueue_block_editor_assets', static function () use ($blocks): void {
-                wp_enqueue_script('first-content-blocks', plugins_url('first/Content/client/blocks.js', \First\Wp\Runtime::file()), ['wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element', 'wp-server-side-render'], null, true);
-                wp_add_inline_script('first-content-blocks', 'window.firstContentBlocks = ' . wp_json_encode($blocks) . ';', 'before');
+        $nested = array_filter($blocks, static fn (array $spec): bool => !empty($spec['children']));
+        if ($nested !== []) {
+            add_action('enqueue_block_editor_assets', static function () use ($nested): void {
+                wp_enqueue_script('first-content-blocks', plugins_url('first/Content/client/blocks.js', \First\Wp\Runtime::file()), ['wp-blocks', 'wp-block-editor', 'wp-components', 'wp-element'], null, true);
+                wp_add_inline_script('first-content-blocks', 'window.firstContentBlocks = ' . wp_json_encode($nested) . ';', 'before');
             });
         }
         foreach ($blocks as $name => $spec) {
@@ -68,7 +74,7 @@ final class Blocks
                 'title' => $spec['tag'],
                 'category' => 'design',
                 'attributes' => $spec['attributes'],
-                'supports' => ['html' => false],
+                'supports' => ['html' => false] + (empty($spec['children']) ? ['autoRegister' => true] : []),
                 'render_callback' => static fn (array $attrs, string $content): string => self::render($spec, $attrs, $content),
             ]);
         }

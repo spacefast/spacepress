@@ -76,7 +76,7 @@ fn app_router_serves_pages_on_wordpress() {
     // An anonymous visitor's page is cacheable (rendering.md §6.1; app_pages_cache_and_purge_by_what_they_read).
     assert_eq!(
         seen["home cache"][0],
-        "public, s-maxage=300, max-age=0, must-revalidate"
+        "public, max-age=0, s-maxage=300, must-revalidate"
     );
     // `<Link>` to a path on the site is the router region's navigation, loaded on the page.
     assert!(body.contains(r#"/notes" data-wp-interactive="first/router" data-wp-on--click="actions.navigate" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
@@ -326,7 +326,7 @@ fn page_md_is_a_wordpress_page() {
     let seen: serde_json::Value =
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
     let text = |v: &serde_json::Value| v.as_str().unwrap_or_default().to_string();
-    let shared = "public, s-maxage=300, max-age=0, must-revalidate";
+    let shared = "public, max-age=0, s-maxage=300, must-revalidate";
     let private = "private, no-store, max-age=0";
 
     // The file's Markdown is stored as blocks in a Page, and the route renders that Page inside
@@ -1112,7 +1112,7 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
         json!([
             200,
             true,
-            "public, s-maxage=300, max-age=0, must-revalidate",
+            "public, max-age=0, s-maxage=300, must-revalidate",
             true,
             true
         ])
@@ -1576,14 +1576,46 @@ fn refuses_client_code_outside_the_subset() {
         "returns its element",
         "first/components/A.tsx:3:",
     );
+    // Reactive lists and conditionals: the item is one keyed element, and each branch is one element.
+    let shelf = |markup: &str| {
+        component(&format!(
+            "export function A() {{ const [xs, setXs] = useState([{{ id: 1, t: \"a\" }}]); return <ul onClick={{() => setXs([])}}>{markup}</ul>; }}"
+        ))
+    };
+    for (markup, refusal) in [
+        (
+            "{xs.map((x) => <li>{x.t}</li>)}",
+            "each item of a reactive list needs a `key`",
+        ),
+        (
+            "{xs.map((x) => <><li key={x.id}/><li/></>)}",
+            "each item of a reactive list is one element",
+        ),
+        (
+            "{xs.map((x, i) => <li key={i}/>)}",
+            "a reactive list's callback takes one item",
+        ),
+        (
+            "{xs.length > 0 && <><li/><li/></>}",
+            "a reactive `&&` renders one element",
+        ),
+    ] {
+        rejects(
+            &dir,
+            &[("first/components/A.tsx", &shelf(markup))],
+            refusal,
+            "first/components/A.tsx:3:",
+        );
+    }
     let _ = std::fs::remove_dir_all(dir);
 }
 
 /// The record's browser check: compiled client components on a real WordPress page, in Chromium
 /// with `SCRIPT_DEBUG` (the Interactivity runtime's development build, the one that warns).
 /// Hydration changes nothing in the server HTML, the runtime logs no warnings, a click calls the
-/// server action and updates the label, effects and shared state follow state changes, and a CSS
-/// module's class switches with state and styles the element.
+/// server action and updates the label, effects and shared state follow state changes, a CSS
+/// module's class switches with state and styles the element, and a reactive list and
+/// conditionals re-render from their templates, keeping the server's elements.
 #[test]
 fn client_components_hydrate_in_the_browser() {
     assert!(
@@ -1647,6 +1679,23 @@ fn client_components_hydrate_in_the_browser() {
         ),
         "{seen}"
     );
+    // A reactive list adds and drops items by key, and `&&` and `?:` switch their elements.
+    let step = |books: &[&str], open: u64, count: Option<&str>, empty: u64| serde_json::json!({ "books": books, "open": open, "count": count, "empty": empty });
+    assert_eq!(
+        seen["shelfSteps"],
+        serde_json::json!([
+            step(&["1:Dune", "2:Emma"], 1, Some("2"), 0),
+            step(&["1:Dune", "2:Emma", "3:Book 3"], 1, Some("3"), 0),
+            step(&["1:Dune", "2:Emma", "3:Book 3"], 0, Some("3"), 0),
+            step(&[], 0, None, 1),
+            step(&["1:Book 1"], 1, Some("1"), 0),
+        ]),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["kept"], true,
+        "the server-rendered item is kept, not re-created: {seen}"
+    );
 }
 
 /// rendering.md §6.1 and §6.2 for `first/app/` pages, on WordPress with a stand-in host listening
@@ -1672,7 +1721,24 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         String::from_utf8_lossy(&out.stderr)
     );
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let shared = "public, s-maxage=300, max-age=0, must-revalidate";
+    // Batcache's own regex over every policy: a shareable page is kept for its window, the
+    // filtered one too, and a private answer for none (max-age=0 means Batcache skips it).
+    assert_eq!(
+        seen["batcache"],
+        serde_json::json!([
+            [200, true, false, true, 300],
+            [200, false, false, false, 0],
+            [200, true, true, false, 0],
+            [404, true, false, false, 0],
+            [500, true, false, false, 0],
+            ["window 60", 60]
+        ])
+    );
+    assert_eq!(
+        seen["batcache served"],
+        serde_json::json!({ "home": 300, "as editor": 0, "missing": 0 })
+    );
+    let shared = "public, max-age=0, s-maxage=300, must-revalidate";
     let private = "private, no-store, max-age=0";
     for key in ["home", "note", "other note", "about"] {
         assert_eq!(
@@ -1702,6 +1768,24 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         seen["purged"],
         serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])
     );
+    // The runtime's own listener cleared those paths in Batcache (keyed as `http://`, no query),
+    // the VIP edge and Jetpack Boost; `/*` reaches Boost's clear-all.
+    let mut cleared: Vec<String> = seen["cleared"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    cleared.sort();
+    let mut want = Vec::new();
+    for cache in ["batcache", "boost", "vip"] {
+        for path in ["/", "/index.md", "/notes/hello", "/notes/hello.md"] {
+            want.push(format!("{cache} {path}"));
+        }
+    }
+    want.sort();
+    assert_eq!(cleared, want);
+    assert_eq!(seen["cleared all"], serde_json::json!(["boost *"]));
 }
 
 /// Stylesheets and SVGs that pages, layouts and components import (docs/spec/tsx-to-php.md,
@@ -1934,7 +2018,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     assert_eq!(seen["introduction"]["title"], "Introduction · Docs");
     assert_eq!(
         seen["introduction"]["cache"],
-        "public, s-maxage=300, max-age=0, must-revalidate"
+        "public, max-age=0, s-maxage=300, must-revalidate"
     );
     // The draft: a 404 and no twin for visitors; in nobody's tree or pager, an editor's included.
     assert_eq!(seen["roadmap"], 404);
@@ -2252,6 +2336,79 @@ fn content_blocks_refuse_props_a_tag_cannot_write() {
         assert!(stderr.contains("--> first/components/Card.tsx"), "{stderr}");
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Components in Markdown in the block editor, in Chromium: a component without `children` is
+/// registered by core's `autoRegister` support (a server-rendered preview, a sidebar field per
+/// prop), one with `children` by the runtime's script (inner blocks edited in place, props in the
+/// sidebar); both save as the app's blocks and render through their components
+/// (tests/differential/client/editor-blocks.mjs).
+#[test]
+fn component_blocks_edit_in_the_block_editor() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let project = fixture("docs-kind", "editor");
+    build(&project);
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/editor-blocks.mjs"))
+        .arg(&url)
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    // Core marks the Badge's props for its own fields; the Callout's are the runtime's.
+    assert_eq!(
+        seen["types"],
+        serde_json::json!({ "docskind/badge": ["count", "label"], "docskind/callout": [] }),
+        "{seen}"
+    );
+    assert_eq!(seen["badgePreview"], "<span class=\"badge\">New<b> 3</b></span>");
+    assert_eq!(seen["badgeFields"], serde_json::json!([1, 1]), "{seen}");
+    assert_eq!(seen["badgeEdited"], "<span class=\"badge\">Fresh<b> 3</b></span>");
+    assert_eq!(seen["calloutInner"], "Mind the gap.");
+    assert_eq!(seen["calloutFields"], serde_json::json!([1, 1]), "{seen}");
+    let saved = seen["saved"].as_str().unwrap();
+    assert!(
+        saved.contains("<!-- wp:docskind/badge {\"label\":\"Fresh\",\"count\":3} /-->")
+            && saved.contains("<!-- wp:docskind/callout {\"type\":\"warning\"} -->")
+            && saved.contains("<p>Mind the gap.</p>"),
+        "{saved}"
+    );
+    assert_eq!(
+        seen["rendered"],
+        serde_json::json!([
+            "<span class=\"badge\">Fresh<b> 3</b></span>",
+            "<aside class=\"callout callout-warning\" role=\"note\"><div class=\"callout-body\"> <p class=\"wp-block-paragraph\">Mind the gap.</p> </div></aside>"
+        ]),
+        "{seen}"
+    );
 }
 
 /// The docs example (examples/docs), every content feature at once, read in Chromium as an
@@ -2793,7 +2950,7 @@ fn page_reads_run_as_the_visitor() {
     // Only the anonymous render is shared; an editor's is private, and doesn't replace it.
     assert_eq!(
         seen["anonymous"]["page cache"],
-        "public, s-maxage=300, max-age=0, must-revalidate"
+        "public, max-age=0, s-maxage=300, must-revalidate"
     );
     assert_eq!(seen["editor"]["page cache"], "private, no-store, max-age=0");
     assert_eq!(seen["anonymous after editor"], public);

@@ -590,6 +590,71 @@ final class AppRouter
         return [200, rtrim($doc) . "\n"];
     }
 
+    /**
+     * One `<Live>` region of a `first/app/` page as $viewer sees it, for the subscription endpoint
+     * (`Live\Module`, op `page`): the render a GET of $url gets, without its writes. A guard that
+     * refuses the viewer, `notFound()`, a redirect, a missing item or a page with no region `$region`
+     * is an `HttpError`, never HTML; nothing is recorded for the page cache, no cookie is set, and
+     * no form or action runs.
+     *
+     * @return array{html: string, reads: array, unseen: bool}
+     */
+    public function liveRegion(string $url, string $region, Viewer $viewer): array
+    {
+        $path = (string) (wp_parse_url($url, PHP_URL_PATH) ?? '/');
+        $query = (string) (wp_parse_url($url, PHP_URL_QUERY) ?? '');
+        $match = $this->reserved($path) ? null : self::match($this->app['routes'], $path);
+        if ($match === null || ($match['route']['page'] ?? null) === null) {
+            throw new \First\HttpError(404, 'not_found', 'No page at ' . $path);
+        }
+        $route = $match['route'];
+        $this->plugin->app();
+        $page = $this->file($route['page']);
+        $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
+        foreach ($layouts as $layout) {
+            if (($layout['guard'] ?? null) !== null && !$this->allowed($layout['guard'], $viewer)) {
+                throw $viewer->user === null
+                    ? new \First\HttpError(401, 'unauthenticated', 'Sign in to see this page')
+                    : new \First\HttpError(403, 'forbidden', 'You do not have access to this page');
+            }
+        }
+        // The page's typed search reads the query string, as on a GET of $url.
+        $saved = $_SERVER['QUERY_STRING'] ?? null;
+        $_SERVER['QUERY_STRING'] = $query;
+        try {
+            $captured = \First\Render\Live::capture($region, function () use ($page, $layouts, $route, $match, $viewer): void {
+                $props = new JsObject([
+                    'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \First\JsArray($v) : $v, $match['params'])),
+                ]);
+                if (($page['search'] ?? null) !== null) {
+                    $props->p['search'] = $this->search($page['search']);
+                }
+                if (($route['kind'] ?? null) !== null) {
+                    $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $match['params']));
+                    if ($item === null) {
+                        throw Halt::notFoundSignal();
+                    }
+                    $props->p['item'] = $item;
+                }
+                Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props));
+            });
+        } catch (Halt) {
+            throw new \First\HttpError(404, 'not_found', 'Nothing is shown at ' . $path);
+        } finally {
+            if ($saved === null) {
+                unset($_SERVER['QUERY_STRING']);
+            } else {
+                $_SERVER['QUERY_STRING'] = $saved;
+            }
+        }
+        do_action('first_app_live_rendered', (string) $route['id'], $region);
+        if (!$captured['found'] || $captured['html'] === null) {
+            throw new \First\HttpError(404, 'not_found', "The page at $path has no live region '$region'");
+        }
+
+        return ['html' => $captured['html'], 'reads' => $captured['reads'], 'unseen' => $captured['unseen']];
+    }
+
     /** A render error: logged, and the nearest `error.tsx` (or a plain message) with a 500. */
     private function failed(array $route, \Throwable $error, Viewer $viewer): never
     {

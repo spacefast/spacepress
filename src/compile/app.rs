@@ -185,6 +185,7 @@ impl Compiler<'_, '_> {
         }
         let allowed: &[&str] = match name {
             "Content" | "Html" => &["value"],
+            "Live" => &["id", "children"],
             "Link" => &[
                 "href",
                 "children",
@@ -209,6 +210,49 @@ impl Compiler<'_, '_> {
         }
         let get = |k: &str| named.iter().find(|(n, _)| *n == k).map(|(_, v)| *v);
         match name {
+            "Live" => {
+                // The id names the region to the subscription endpoint, so it is written in the
+                // source: stable across renders and builds, whatever else in the file moves.
+                let help = "write `<Live id=\"comments\">…</Live>` with an id of lowercase letters, digits and dashes";
+                let id = match get("id") {
+                    Some(Expr {
+                        kind: ExprKind::Str(id),
+                        ..
+                    }) if !id.is_empty()
+                        && id.len() <= 64
+                        && id.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit())
+                        && id
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') =>
+                    {
+                        id.clone()
+                    }
+                    Some(other) => return err_help(other.span, "`<Live id>` is a literal id", help),
+                    None => return err_help(span, "`<Live>` needs an `id`", help),
+                };
+                if self.client.is_some() {
+                    return err_help(
+                        span,
+                        "`<Live>` is for server components",
+                        "in a \"use client\" component, keep a read current with `useLive`",
+                    );
+                }
+                let children = match get("children") {
+                    Some(c) => {
+                        let v = self.expr(c)?;
+                        let v = self.finish_value(v, c.span)?;
+                        self.jsx_child_type(&v.ty, c.span)?;
+                        v.php
+                    }
+                    None => "null".into(),
+                };
+                // The children render inside the region's closure, so the endpoint can render the
+                // region alone and record only its reads.
+                Ok(Out::atom(
+                    format!("\\First\\Render\\Live::region({}, fn () => {children})", php_str(&id)),
+                    Ty::Html,
+                ))
+            }
             "Content" | "Html" => {
                 let Some(value) = get("value") else {
                     return err_help(

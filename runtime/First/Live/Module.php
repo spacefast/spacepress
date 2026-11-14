@@ -61,8 +61,15 @@ final class Module
     /** What clients are told to poll at: the shortest and longest gap between two requests. */
     public const POLL = ['minMs' => 2000, 'maxMs' => 30000];
 
-    private const OPS = ['list', 'paginate', 'get', 'count'];
+    private const OPS = ['list', 'paginate', 'get', 'count', 'page'];
+    /**
+     * `page` reads one request may carry. A page read that runs is a page render (far heavier than
+     * a kind read): four covers a page with a few live regions and keeps one batch from asking for
+     * more renders than the visitor's own page loads would cost.
+     */
+    public const MAX_PAGES = 4;
     private const ARGS = [
+        'page' => ['url', 'region'],
         'list' => ['where', 'orderBy', 'limit', 'offset', 'with', 'search', 'locale'],
         'paginate' => ['where', 'orderBy', 'limit', 'cursor', 'with', 'search', 'locale'],
         'get' => ['with', 'locale'],
@@ -150,13 +157,26 @@ final class Module
                     $plans[$i] = ['error' => App::problem($e)];
                     continue;
                 }
-                $plan['q'] = base64_encode(hash('sha256', (string) json_encode([$who, $plan['kind'], $plan['op'], $plan['id'], Js::jsonStringify($plan['args'])]), true));
+                // A page read is also bound to the build: a deploy that changes the page's code is a
+                // new question, never "not modified" by counter.
+                $plan['q'] = base64_encode(hash('sha256', (string) json_encode([$who, $plan['kind'], $plan['op'], $plan['id'], Js::jsonStringify($plan['args']), ...($plan['op'] === 'page' ? [self::build()] : [])]), true));
                 $claims = Token::open($plan['token']);
                 $plan['held'] = is_array($claims) && ($claims['q'] ?? null) === $plan['q'] ? $claims : null;
-                foreach ($plan['scopes'] ?? [] as $kind => $scope) {
+                if ($plan['op'] === 'page') {
+                    // What the region read last time decides which counters may answer for it now.
+                    $plan['scopes'] = self::pageScopes($plan['held']['k'] ?? null, $plan['prefetch']);
+                }
+                foreach ([...($plan['scopes'] ?? []), ...($plan['prefetch'] ?? [])] as $kind => $scope) {
                     $pairs["$kind\0$scope"] = [(string) $kind, $scope];
                 }
                 $plans[$i] = $plan;
+            }
+            // At most MAX_PAGES page reads: the rest answer with the same refusal as an oversize batch.
+            $pages = 0;
+            foreach ($plans as $i => $plan) {
+                if (($plan['op'] ?? null) === 'page' && ++$pages > self::MAX_PAGES) {
+                    $plans[$i] = ['error' => App::problem(HttpError::invalidInput('At most ' . self::MAX_PAGES . ' page reads per request', "/queries/$i"))];
+                }
             }
             // Every counter this request may look at, in one read, before any query runs: a write
             // that commits meanwhile leaves the token behind, never ahead.
@@ -198,12 +218,33 @@ final class Module
                 } finally {
                     $spent += (hrtime(true) - $started) / 1e6;
                 }
+                $kinds = null;
+                if ($plan['op'] === 'page') {
+                    // A page's dependencies are known once it has rendered: its counters are the ones
+                    // read before the render for the kinds it read (null when any of them has no
+                    // scope, it read nothing, or it read something First can't count).
+                    $kinds = $data['unseen'] ? null : array_keys($data['reads']);
+                    $scopes = self::pageScopes($kinds, $plan['prefetch']);
+                    $counters = null;
+                    if ($scopes !== null) {
+                        $counters = [];
+                        foreach ($scopes as $kind => $scope) {
+                            $counters[] = [(string) $kind, $scope, $versions["$kind\0$scope"]];
+                        }
+                    }
+                    $data = ['html' => $data['html']];
+                }
                 $json = Js::jsonStringify($data) ?? 'null';
                 // A private file's signed link carries its expiry: two reads a second apart differ
                 // there alone. The hash leaves the signature out, so an unchanged row stays unchanged;
-                // a changed answer still sends the fresh links.
-                $hash = base64_encode(hash('sha256', preg_replace('#(/download[^"]*?[?&]exp=)\d+&sig=[0-9a-f]{64}#', '$1', $json) ?? $json, true));
-                $token = Token::seal(['q' => $plan['q'], 'c' => $counters, 'h' => $hash, 't' => $now]);
+                // a changed answer still sends the fresh links. A page also carries per-render values
+                // that aren't content (form nonces, sealed read tokens), left out the same way.
+                $hashed = preg_replace('#(/download[^"]*?[?&]exp=)\d+&sig=[0-9a-f]{64}#', '$1', $json) ?? $json;
+                if ($plan['op'] === 'page') {
+                    $hashed = self::stable($hashed);
+                }
+                $hash = base64_encode(hash('sha256', $hashed, true));
+                $token = Token::seal(['q' => $plan['q'], 'c' => $counters, 'h' => $hash, 't' => $now] + ($kinds === null ? [] : ['k' => $kinds]));
                 $results[] = $held !== null && ($held['h'] ?? null) === $hash
                     ? ['changed' => false, 'token' => $token]
                     : ['changed' => true, 'token' => $token, 'data' => $data, 'json' => $json];
@@ -229,6 +270,9 @@ final class Module
             if (!in_array($key, ['kind', 'op', 'args', 'id', 'token'], true)) {
                 throw HttpError::invalidInput("Unknown query key '$key'", $ptr . HttpError::seg((string) $key));
             }
+        }
+        if (($query['op'] ?? null) === 'page') {
+            return self::planPage($db, $viewer, $query, $ptr);
         }
         $kind = $query['kind'] ?? null;
         $collection = is_string($kind) ? self::collection($db, $kind) : null;
@@ -291,6 +335,92 @@ final class Module
         }
 
         return ['kind' => (string) $kind, 'collection' => $collection, 'op' => $op, 'args' => $args, 'id' => $id, 'token' => $query['token'] ?? null, 'scopes' => $scopes];
+    }
+
+    /**
+     * A `page` read (docs/decisions/2026-11-14-live-regions.md): `{ op: "page", args: { url, region } }`.
+     * `url` is a path and query on this site; the router must resolve it to a page route (checked
+     * when it renders). Its counters are known only after a render, so `scopes` starts from what the
+     * held token says the region read, and `prefetch` lists every kind's counter this visitor could
+     * be answered by, read with the others before anything renders.
+     */
+    private static function planPage(Db $db, Viewer $viewer, array $query, string $ptr): array
+    {
+        $args = Seam::container($query['args'] ?? null);
+        if (!is_array($args) || array_is_list($args)) {
+            throw HttpError::invalidQuery('args must be an object: { url, region }', "$ptr/args");
+        }
+        foreach ($args as $key => $_) {
+            if (!in_array($key, self::ARGS['page'], true)) {
+                throw HttpError::invalidQuery("Unknown query option '$key'", "$ptr/args" . HttpError::seg((string) $key));
+            }
+        }
+        $url = $args['url'] ?? null;
+        // A path and query on this site: one leading slash, no scheme, host, fragment or control characters.
+        if (!is_string($url) || strlen($url) > 2048 || preg_match('~\A/(?![/\\\\])[^\x00-\x20\x7f#]*\z~', $url) !== 1) {
+            throw HttpError::invalidInput('url is a path on this site, like "/notes?page=2"', "$ptr/args/url");
+        }
+        $region = $args['region'] ?? null;
+        if (!is_string($region) || preg_match('/\A[a-z0-9][a-z0-9-]{0,63}\z/', $region) !== 1) {
+            throw HttpError::invalidInput('region is a live region id', "$ptr/args/region");
+        }
+        if (isset($query['id']) || isset($query['kind'])) {
+            throw HttpError::invalidInput('A page read names no kind and no id', $ptr);
+        }
+        $prefetch = [];
+        foreach ($db->schema()->collections() as $name => $_) {
+            try {
+                $scope = self::scope($db, $viewer, (string) $name);
+            } catch (HttpError | \First\JsError | \LogicException) {
+                $scope = null;
+            }
+            if ($scope !== null) {
+                $prefetch[(string) $name] = $scope;
+            }
+        }
+
+        return ['kind' => '', 'collection' => '', 'op' => 'page', 'args' => ['url' => $url, 'region' => $region], 'id' => null, 'token' => $query['token'] ?? null, 'scopes' => null, 'prefetch' => $prefetch];
+    }
+
+    /**
+     * The counters that may answer for a page read whose region read $kinds: null unless it read at
+     * least one kind and every one of them has a scope this visitor can account for.
+     *
+     * @param ?list<string> $kinds
+     * @param array<string, string> $prefetch
+     * @return ?array<string, string>
+     */
+    private static function pageScopes(mixed $kinds, array $prefetch): ?array
+    {
+        if (!is_array($kinds) || $kinds === []) {
+            return null;
+        }
+        $scopes = [];
+        foreach ($kinds as $kind) {
+            if (!is_string($kind) || !isset($prefetch[$kind])) {
+                return null;
+            }
+            $scopes[$kind] = $prefetch[$kind];
+        }
+        ksort($scopes);
+
+        return $scopes;
+    }
+
+    /** A page's answer with what varies per render and isn't content left out, for its hash. */
+    private static function stable(string $json): string
+    {
+        return preg_replace([
+            '#(name=\\"_wpnonce\\" value=\\")[0-9a-f]+#',   // a signed-in form's REST nonce
+            '#(&quot;token&quot;:&quot;)[A-Za-z0-9_-]+#',          // a seeded live read's sealed token
+            '#([?&]_flash=)[0-9a-f]+#',                           // a form's flash marker
+        ], '$1', $json) ?? $json;
+    }
+
+    /** The compiled build this site runs: its schema's hash. */
+    private static function build(): string
+    {
+        return Plugin::instance()?->buildHash() ?? '';
     }
 
     /** How many levels of relations a `with` loads. */
@@ -418,6 +548,12 @@ final class Module
     /** The read, through the kind query API as the visitor (Seam::kindList and its siblings). */
     private static function run(Db $db, Viewer $viewer, array $plan): mixed
     {
+        if ($plan['op'] === 'page') {
+            // One `<Live>` region of the page, rendered as the visitor, with the reads it made.
+            $router = \First\Wp\AppRouter::instance() ?? throw new HttpError(404, 'not_found', 'This app has no pages');
+
+            return $db->transaction(static fn (): array => $router->liveRegion($plan['args']['url'], $plan['args']['region'], $viewer));
+        }
         $collection = $plan['collection'];
         $args = $plan['args'];
 

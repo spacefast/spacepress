@@ -137,3 +137,21 @@ test("the request is bounded and never cached", async () => {
   const get = await http("GET", `${api}/_live`);
   assert.deepEqual([get.status, get.json.code], [405, "method_not_allowed"]);
 });
+
+test("a page read names a path on this site and a live region; this app has neither, so each is refused, and the other reads are unchanged", async () => {
+  // tests/app_router.rs `live_regions_answer_page_reads` covers page reads on an app with `<Live>`
+  // regions; here, the refusals on real WordPress + MariaDB, batched with an ordinary read.
+  const page = (url: string, region = "notes") => ({ op: "page", args: { url, region } }) as unknown as Query;
+  const results = await live(undefined, [
+    page("https://evil.example/"),
+    page("//evil.example/"),
+    page("/", "Not An Id"),
+    page("/"),
+    { kind: "guestNotes", op: "count" },
+  ]);
+  assert.deepEqual(results.slice(0, 4).map((r) => [r.error?.status, r.error?.code]), [[422, "invalid_input"], [422, "invalid_input"], [422, "invalid_input"], [404, "not_found"]]);
+  assert.equal(typeof results[4]!.data, "number");
+  // At most four page reads per request; the fifth is refused, the others answer.
+  const five = await live(undefined, Array.from({ length: 5 }, () => page("/")));
+  assert.deepEqual(five.map((r) => r.error?.code), ["not_found", "not_found", "not_found", "not_found", "invalid_input"]);
+});

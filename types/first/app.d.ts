@@ -80,6 +80,12 @@ export interface FormState<TResult> {
   values: Record<string, string | undefined>;
 }
 
+/**
+ * Part of a server page the browser keeps current: `<Live id="notes">{rows.map(…)}</Live>`. When
+ * anything the page read for it changes, the region is rendered again as the visitor and swapped in
+ * place. `id` is a literal, unique on the page; it names the region to the server.
+ */
+export declare function Live(props: { id: string; children?: JSX.Children }): JSX.Element;
 /** A post body (block markup) rendered through `the_content`. */
 export declare function Content(props: { value: string | null | undefined }): JSX.Element;
 /** Trusted markup: a literal is placed as written; any other value goes through `wp_kses_post`. */

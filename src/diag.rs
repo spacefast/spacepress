@@ -371,3 +371,15 @@ fn edit_distance(a: &str, b: &str) -> usize {
     }
     prev[b.len()]
 }
+
+/// The text of every source file registered in this run whose path satisfies `keep`.
+pub fn sources(keep: impl Fn(&Path) -> bool) -> Vec<String> {
+    FILES.with(|files| {
+        files
+            .borrow()
+            .iter()
+            .filter(|(path, _)| keep(path))
+            .map(|(_, source)| source.clone())
+            .collect()
+    })
+}

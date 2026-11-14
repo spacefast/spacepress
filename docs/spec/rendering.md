@@ -55,6 +55,10 @@ first/app/
 - `export const guard = "subscriber" | (ctx) => true | redirect("/login")` on a
   layout protects everything below it.
 - Static pages (no request data, no guard) are prerendered at build time (§6).
+- `page.md` (built, [decision](../decisions/2026-11-13-content-pages.md)): the file is the first
+  version of a WordPress Page. The site stores it once per file version and never overwrites a
+  Page someone edited; the route renders the stored Page inside its layouts. Front matter is
+  `title`, `description`, `status`, `canonical` and `robots`; typed fields belong to a kind.
 
 ## 3. A page
 
@@ -310,7 +314,8 @@ route's policy and the reason.
 ### 6.3 Inside PHP
 
 - Query results are memoized per request.
-- The route table, kinds, fields and roles are compiled arrays.
+- The route table, kinds, fields and roles are compiled arrays. With `runtimeSchema`
+  (spec.md §2.10), one autoloaded option adds the site's own changes to them.
 - OPcache holds the compiled pages.
 - No JSON parsing or reflection happens at request time.
 

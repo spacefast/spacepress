@@ -22,8 +22,8 @@ export interface Manifest {
   wordpressPlugins: { slug: string; version: string }[];
   /** The synced collections' content rows the blueprint seeds (scripts/build-showcase.ts `syncRecords`). */
   syncSeed: Record<string, unknown>;
-  /** The TSX pages plugin, when the example has `pages/`: its slug and its path below the site. */
-  pages?: { slug: string; path: string };
+  /** The example has `first/app/` pages, which route on the path and need pretty permalinks. */
+  appPages: boolean;
 }
 
 // Not app sources: the README is the page's own text, tsconfig.json is editor setup, and the
@@ -103,7 +103,7 @@ export async function exampleRun(name: (typeof siteExamples)[number]["name"]): P
     landing,
     seed,
     syncSeed: built.syncSeed,
-    pages: built.pages,
+    appPages: built.appPages,
     schemaPhp: (await example(name)).output.schemaPhp,
     ledger: ledger(path.join(repo, "examples", name)),
   };

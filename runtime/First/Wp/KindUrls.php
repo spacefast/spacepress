@@ -91,7 +91,9 @@ final class KindUrls
             $vars = ['post_type=' . $kind['type'], 'first_kind=' . $name];
             foreach ($query as $field => $match) {
                 $vars[] = match ($field) {
-                    'slug', 'path' => 'name=' . $match,
+                    'slug' => 'name=' . $match,
+                    // A hierarchical kind: core resolves the whole parent chain (`get_page_by_path`).
+                    'path' => 'pagename=' . $match,
                     'id' => 'p=' . $match,
                     'year' => 'year=' . $match,
                     'month' => 'monthnum=' . $match,
@@ -126,6 +128,18 @@ final class KindUrls
         }
         unset($vars['first_kind']);
         $vars['post_type'] = $this->kinds[$name]['type'];
+        if (isset($vars['pagename']) && in_array(':path', $this->kinds[$name]['segments'], true)) {
+            // Core resolves `pagename` as a Page first (WP_Query::parse_query), so a Page at the same
+            // path became the queried object and the URL redirected to itself. Resolve the path in
+            // this kind only, the whole parent chain, and query that item by id.
+            $post = get_page_by_path((string) $vars['pagename'], OBJECT, $this->kinds[$name]['type']);
+            unset($vars['pagename']);
+            if ($post instanceof \WP_Post) {
+                $vars['p'] = $post->ID;
+            } else {
+                $vars['error'] = '404';
+            }
+        }
         // Fields other than slug/id/date are checked once the item is known (oldSlug runs then).
         return $vars;
     }

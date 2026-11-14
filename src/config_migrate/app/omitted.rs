@@ -19,6 +19,7 @@ pub(super) const PAGES: &str = "the 0.8 page is not carried over";
 pub(super) const STATIC: &str = "the static file is not carried over";
 pub(super) const REDIRECTS: &str = "the redirect and header rule files are not carried over";
 pub(super) const SERVE: &str = "the serving settings are not carried over";
+/// A capsule role the Space config can't declare as it is (`app::connector_config`).
 pub(super) const CONNECTORS: &str = "the connector role is not carried over";
 pub(super) const SYNC: &str = "content sync is not carried over";
 pub(super) const POSTS: &str = "the posts content is not carried over";
@@ -144,6 +145,10 @@ const NO_OP_KEYS: &[&str] = &["$schema", "runtime", "name", "space"];
 /// path with GET (the Spacefast host calls a cron's path with GET): a converted GET endpoint, or a
 /// carried static file. The host keeps scheduling it and adds its `x-spacefast-cron` and
 /// `Authorization: Bearer <CRON_SECRET>` headers, which a v2 route reads from `req.headers`.
+///
+/// `connectors`: finalize freezes the config's roles for every version whatever its runtime, and
+/// the engine answers `/__spacefast/connectors/*` before WordPress runs, so pages keep calling
+/// them. When the file declares roles, Spacefast served those instead of the capsule's.
 pub(super) const PLATFORM_KEYS: &[&str] = &[
     "redirects",
     "cleanUrls",
@@ -154,6 +159,7 @@ pub(super) const PLATFORM_KEYS: &[&str] = &[
     "system",
     "access",
     "crons",
+    "connectors",
 ];
 
 /// Where a cron the candidate carries can point: the GET routes it serves at their 0.8 paths, and

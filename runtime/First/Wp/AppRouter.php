@@ -212,7 +212,9 @@ final class AppRouter
             return $parse;
         }
         if (!isset($methods[$lookup])) {
-            if ($page && $method !== 'POST') {
+            // A page at the site root's catch-all serves its kind's items only; a form posting
+            // back to a WordPress Page there is WordPress's.
+            if ($page && ($method !== 'POST' || $this->rootKind($route))) {
                 return $parse;
             }
             $this->emit(405, ['Content-Type' => 'application/problem+json', 'Allow' => implode(', ', array_keys($methods + ($page ? ['GET' => true] : [])))], (string) Js::jsonStringify([
@@ -290,7 +292,7 @@ final class AppRouter
         // A page serving a kind at the site root (`url: "/:path"`) takes a path only when it names
         // one of that kind's items: any other path is WordPress's (a Page, a post, an archive),
         // or the app's 404 when WordPress has nothing there either.
-        if ($this->rootKind($match['route']) && !(is_singular() && get_queried_object() instanceof \WP_Post && get_queried_object()->post_type === $this->kindType($match['route']))) {
+        if ($this->rootKind($match['route']) && !$this->rootItemQueried($match['route'])) {
             if (is_404()) {
                 $this->notFound();
             }
@@ -318,6 +320,13 @@ final class AppRouter
     {
         $name = $route['kind']['name'] ?? null;
         return is_string($name) && ($this->plugin->schema->collection($name)['url'] ?? null) === '/:path';
+    }
+
+    /** @param array<string, mixed> $route whether WordPress resolved this request to an item of the root kind the route serves */
+    private function rootItemQueried(array $route): bool
+    {
+        $post = get_queried_object();
+        return is_singular() && $post instanceof \WP_Post && $post->post_type === $this->kindType($route);
     }
 
     /** @param array<string, mixed> $route the post type of the kind the route serves */
@@ -478,7 +487,8 @@ final class AppRouter
         $urls = KindUrls::instance();
         if ($post instanceof \WP_Post && $urls !== null) {
             $want = $urls->path($name, $post);
-            $have = '/' . trim((string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH), '/');
+            // The path below the home URL, as the pattern builds it (a site in a subdirectory too).
+            $have = '/' . trim((string) ($this->path() ?? ''), '/');
             if ($want !== null && rawurldecode($have) !== rawurldecode($want)) {
                 return null;
             }
@@ -594,8 +604,10 @@ final class AppRouter
             if (($route['kind'] ?? null) !== null) {
                 $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $match['params']));
                 if ($item === null) {
-                    // A kind at the site root has only its own items: WordPress's twin answers the rest.
-                    return $this->rootKind($route) ? null : [404, "# Not found\n\nNothing is published at this address.\n"];
+                    // A kind at the site root has only its own items: WordPress's twin answers the
+                    // rest. When WordPress resolved the path to an item of this kind the visitor
+                    // may not read, the twin is a 404 like the page.
+                    return $this->rootKind($route) && !$this->rootItemQueried($route) ? null : [404, "# Not found\n\nNothing is published at this address.\n"];
                 }
                 $props->p['item'] = $item;
             }

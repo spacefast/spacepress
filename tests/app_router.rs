@@ -1479,8 +1479,6 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
 }
 
-/// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
-/// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
 /// A hierarchical kind at the site root (`url: "/:path"`), rendered by `first/app/[...path]` beside the
 /// app's own pages, on WordPress over HTTP (tests/php/docs_root.php).
 #[test]
@@ -1552,8 +1550,26 @@ fn docs_at_the_site_root() {
         seen["wordpress pages"],
         serde_json::json!({ "/about/": [200, true], "/news/": [200, true], "/about.md": [200, true], "/news.md": [200, true] })
     );
+    // Nothing a signed-out visitor may not read reaches them: an item the read rule hides, an item
+    // under a draft, a draft, or any of them with its `/` written as %2F, as a page or a twin.
+    for (path, answer) in seen["hidden"].as_object().unwrap() {
+        assert_eq!(answer, &serde_json::json!([404, false]), "{path}");
+    }
+    assert_eq!(seen["hidden"].as_object().unwrap().len(), 10);
+    // An item under a first segment WordPress or First owns (`/auth`) has no URL of its own.
+    assert!(
+        seen["reserved permalink"].as_str().unwrap().contains("?post_type="),
+        "{seen}"
+    );
+    // A WordPress Page at an item's path keeps it; a form posting to a Page isn't refused.
+    assert_eq!(seen["page wins"], serde_json::json!([200, true, false]));
+    assert_eq!(seen["post to a page"], 200);
+    // Another case of the path redirects to the item's own.
+    assert_eq!(seen["case"], serde_json::json!([301, "/reference/config/"]));
 }
 
+/// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
+/// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
 /// `nav`, `pager` and `headings` from "first/content", on WordPress over HTTP (tests/php/docs_kind.php).
 #[test]
 fn docs_kind_serves_a_folder_tree_with_navigation() {

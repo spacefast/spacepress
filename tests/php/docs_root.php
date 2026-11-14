@@ -18,10 +18,10 @@ $out['seed'] = \First\Sync\Seed::run(\First\Wp\Runtime::plugin(), $argv[2]);
 $site->startServer();
 $url = $site->url();
 
-function get(string $url): array
+function get(string $url, string $method = 'GET'): array
 {
     $ch = curl_init($url);
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_HEADER => true]);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_HEADER => true, CURLOPT_CUSTOMREQUEST => $method]);
     $raw = (string) curl_exec($ch);
     $size = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
     $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
@@ -62,5 +62,22 @@ foreach (['/about/', '/news/', '/about.md', '/news.md'] as $path) {
 preg_match_all('#<loc>([^<]+)</loc>#', get("$url/wp-sitemap-first-docs-1.xml")['body'], $locs);
 $out['sitemap'] = array_map(static fn (string $u): ?string => parse_url($u, PHP_URL_PATH), $locs[1]);
 
+// What a visitor may not read stays unread, as a page, a twin, through %2F or in the sitemap: a
+// members-only item, a published item under a draft, and either with its `/` written as %2F.
+foreach (['/members', '/members.md', '/drafts/child', '/drafts/child.md', '/drafts/index.md', '/drafts.md', '/roadmap.md', '/reference%2Fconfig', '/reference%2Fconfig.md', '/drafts%2Fchild.md'] as $path) {
+    $r = get("$url$path");
+    $out['hidden'][$path] = [$r['status'], str_contains($r['body'], 'members-only text') || str_contains($r['body'], 'under a draft') || str_contains($r['body'], 'Every option')];
+}
+// An item under a segment WordPress or First owns has no URL.
+$auth = get_page_by_path('auth', OBJECT, \First\Wp\Runtime::plugin()->schema->collection('docs')['wp']['postType']);
+$out['reserved permalink'] = $auth instanceof WP_Post ? get_permalink($auth) : 'missing';
+// The same path as a Page: WordPress keeps its Page; the item at that path is not reached there.
+wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Getting started page', 'post_name' => 'getting-started', 'post_content' => 'The Page wins.']);
+$r = get("$url/getting-started/");
+$out['page wins'] = [$r['status'], str_contains($r['body'], 'The Page wins.'), str_contains($r['body'], 'Install it.')];
+// A form posting back to a WordPress Page isn't refused by the app's catch-all.
+$out['post to a page'] = get("$url/about/", 'POST')['status'];
+// Another case of a path redirects to the item's own.
+$out['case'] = [get("$url/Reference/Config")['status'], get("$url/Reference/Config")['location']];
 $site->destroy();
 echo json_encode($out, JSON_UNESCAPED_SLASHES), "\n";

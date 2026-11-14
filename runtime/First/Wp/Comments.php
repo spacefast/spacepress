@@ -14,10 +14,11 @@ namespace First\Wp;
  * notifications behave as on any WordPress site.
  *
  * The policy is the app's, never the Discussion settings: a site admin changing those changes
- * nothing an app declared. Until a kind's `comments` takes the spec's options object, every kind
- * with comments on has the spec's defaults ({@see policy()}):
- * - signed-in users only (`rest_allow_anonymous_comments` stays core's `false`, and a signed-out
- *   submission is refused before it is saved);
+ * nothing an app declared. Each kind's policy is its `comments` option ({@see policy()}); `true`
+ * is the spec's defaults:
+ * - signed-in users only unless `guests: true` (`rest_allow_anonymous_comments` follows `guests`,
+ *   and a signed-out submission to a kind without guests is refused before it is saved); a guest
+ *   gives a name and a valid email whatever `require_name_email` says;
  * - first-time moderation: a commenter's comment is approved when they already have an approved
  *   comment on the site, and held otherwise; users who may moderate are approved, as core does;
  * - threaded to depth 3: a reply below that is refused, not flattened, so a reply never shows
@@ -34,11 +35,15 @@ final class Comments
     /** @var array<string, string> post type => collection, for kinds with comments on */
     private static array $types = [];
 
+    /** @var array<string, array{guests: bool, moderation: string, threaded: int, closeAfterDays: ?int, types: list<string>}> collection => policy */
+    private static array $policies = [];
+
     public static function register(Plugin $plugin): void
     {
         foreach ($plugin->schema->collections() as $name => $collection) {
             if (($collection['comments'] ?? false) === true && isset($collection['wp']['postType'])) {
                 self::$types[(string) $collection['wp']['postType']] = (string) $name;
+                self::$policies[(string) $name] = $plugin->schema->commentPolicy((string) $name);
             }
         }
         if (self::$types === []) {
@@ -71,14 +76,14 @@ final class Comments
         }, 10, 2);
         // wp-comments-post.php: refused before core reads the submission any further.
         add_action('pre_comment_on_post', static function (int $postId): void {
-            $error = self::refusal($postId, (int) ($_POST['comment_parent'] ?? 0));
+            $error = self::refusal($postId, (int) ($_POST['comment_parent'] ?? 0), 0, (string) ($_POST['author'] ?? ''), (string) ($_POST['email'] ?? ''));
             if ($error !== null) {
                 wp_die('<p>' . esc_html($error->get_error_message()) . '</p>', esc_html__('Comment Submission Failure'), ['response' => (int) ($error->get_error_data()['status'] ?? 403), 'back_link' => true]);
             }
         }, PHP_INT_MAX);
         // Every path into wp_new_comment (core's form handler, other plugins calling it).
         add_filter('preprocess_comment', static function (array $data): array {
-            $error = self::refusal((int) ($data['comment_post_ID'] ?? 0), (int) ($data['comment_parent'] ?? 0), (int) ($data['user_id'] ?? 0));
+            $error = self::refusal((int) ($data['comment_post_ID'] ?? 0), (int) ($data['comment_parent'] ?? 0), (int) ($data['user_id'] ?? 0), (string) ($data['comment_author'] ?? ''), (string) ($data['comment_author_email'] ?? ''));
             if ($error !== null) {
                 wp_die(esc_html($error->get_error_message()), esc_html__('Comment Submission Failure'), ['response' => (int) ($error->get_error_data()['status'] ?? 403)]);
             }
@@ -89,7 +94,12 @@ final class Comments
             if (!is_array($prepared) || ($prepared['comment_type'] ?? 'comment') === 'note') {
                 return $prepared;
             }
-            return self::refusal((int) ($prepared['comment_post_ID'] ?? 0), (int) ($prepared['comment_parent'] ?? 0), (int) ($prepared['user_id'] ?? 0)) ?? $prepared;
+            return self::refusal((int) ($prepared['comment_post_ID'] ?? 0), (int) ($prepared['comment_parent'] ?? 0), (int) ($prepared['user_id'] ?? 0), (string) ($prepared['comment_author'] ?? ''), (string) ($prepared['comment_author_email'] ?? '')) ?? $prepared;
+        }, PHP_INT_MAX, 2);
+        // `guests: true`: core's REST controller lets an anonymous visitor comment on that kind's items.
+        add_filter('rest_allow_anonymous_comments', static function (mixed $allow, \WP_REST_Request $request): mixed {
+            $collection = self::collection((int) $request->get_param('post'));
+            return $collection === null ? $allow : self::policy($collection)['guests'];
         }, PHP_INT_MAX, 2);
         // Moderation, after core's own checks (the disallowed list still sends a comment to spam).
         add_filter('pre_comment_approved', static function (mixed $approved, array $data): mixed {
@@ -147,26 +157,35 @@ final class Comments
     }
 
     /**
-     * A kind's comment policy. Until `comments` takes the options object (spec §2.3), the spec's
-     * defaults for every kind that turns comments on.
+     * A kind's comment policy: its `comments` option (spec §2.3), defaults filled
+     * ({@see \First\Schema::commentPolicy()}).
      *
-     * @return array{guests: bool, moderation: string, threaded: int, closeAfterDays: ?int}
+     * @return array{guests: bool, moderation: string, threaded: int, closeAfterDays: ?int, types: list<string>}
      */
     public static function policy(string $collection): array
     {
-        return ['guests' => false, 'moderation' => 'first-time', 'threaded' => 3, 'closeAfterDays' => null];
+        return self::$policies[$collection]
+            ?? ['guests' => false, 'moderation' => 'first-time', 'threaded' => 3, 'closeAfterDays' => null, 'types' => []];
     }
 
-    /** Why a comment on $postId (as a reply to $parent) is refused, or null when the policy allows it. */
-    private static function refusal(int $postId, int $parent, int $userId = 0): ?\WP_Error
+    /**
+     * Why a comment on $postId (as a reply to $parent) is refused, or null when the policy allows it.
+     * An anonymous comment on a `guests` kind needs a name and a valid email: the policy decides
+     * that, never the Discussion setting `require_name_email`.
+     */
+    private static function refusal(int $postId, int $parent, int $userId = 0, string $name = '', string $email = ''): ?\WP_Error
     {
         $collection = self::collection($postId);
         if ($collection === null) {
             return null; // not a kind of the app's: Hardening's comments_open decides
         }
         $policy = self::policy($collection);
-        if (!$policy['guests'] && max($userId, get_current_user_id()) === 0) {
+        $anonymous = max($userId, get_current_user_id()) === 0;
+        if (!$policy['guests'] && $anonymous) {
             return new \WP_Error('first_comment_sign_in', __('Sign in to comment.'), ['status' => 401]);
+        }
+        if ($anonymous && (trim($name) === '' || !is_email(trim($email)))) {
+            return new \WP_Error('first_comment_name_email', __('Please fill the required fields (name, email).'), ['status' => 400]);
         }
         if ($parent > 0) {
             $depth = 1;

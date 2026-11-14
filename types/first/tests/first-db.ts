@@ -41,3 +41,11 @@ export async function queries(id: number) {
   // @ts-expect-error: a kind has no findMany; that is db.query's
   await items.findMany();
 }
+
+// `.index(fields, { unique? })` declares a compound index on the kind's own fields.
+import { table, integer } from "first";
+export const pairs = table({ a: integer(), b: integer() }).index(["a", "b"], { unique: true });
+// @ts-expect-error: not a field of this kind
+export const wrongPair = table({ a: integer() }).index(["nope"]);
+// @ts-expect-error: at least one field
+export const emptyPair = table({ a: integer() }).index([]);

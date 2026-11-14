@@ -54,7 +54,10 @@ contract. The compiled app tree's `manifest.json` (under `app/<hash>/`) is the m
    pending migrations forward only, schedules identity maintenance, seeds content, and writes the ready
    marker. A ready build returns its receipt and changes nothing.
 3. Rollback is selecting an older ready build: no migration runs, and the older build reads the newer
-   schema's data.
+   schema's data. Interim limit: a request never installs anything, and `Loader::initialize` on a ready
+   build changes nothing, so the stored rewrite rules and the app's Pages stay those of the build
+   initialized last until a new build initializes; builds selected per request must share URL patterns
+   and page records with the build initialized last.
 4. Run `wp first jobs tick` on a schedule. It does one bounded pass of the site's background work and
    prints `{processed, failures, outboxDispatched, requeued, receiptsExpired, remaining}`
    (`outboxDispatched` is always 0: jobs reach Action Scheduler in the transaction that queues them;
@@ -95,6 +98,7 @@ The app API is `/__first/api/v1`; actions are `POST /__first/api/v1/actions/<nam
 | `first_mail_transport` | filter | delivers `mail.send` messages; without it, the app's mail is refused |
 | `first_purge_urls` | action | the root-relative URLs a committed content write changed, for a host's page cache |
 | `first_private_probe_url` | filter | the URL the private-files probe fetches, when the public URL is not reachable from the server |
+| `first_prebuild_url` | filter | the URL a prebuilt page is rendered from, when the site cannot reach its own address (`output: "server"` with `prerender`) |
 | `first_identity_providers` | filter | OpenID Connect sign-in providers First Identity offers |
 | `first_identity_rest_cookie_auth` | filter | lets the identity session cookie authenticate the app's REST API (a host serving its own frontend) |
 | `first_identity_session_cookie_aliases` | filter | other cookie names whose session a migrated site keeps |
@@ -144,6 +148,7 @@ First puts every table under WordPress's `$wpdb->prefix` and never changes it. A
     "first_mail_transport",
     "first_purge_urls",
     "first_private_probe_url",
+    "first_prebuild_url",
     "first_identity_providers",
     "first_identity_rest_cookie_auth",
     "first_identity_session_cookie_aliases",

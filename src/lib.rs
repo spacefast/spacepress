@@ -8,6 +8,7 @@
 pub mod app;
 mod app_plugin;
 pub mod assets;
+pub mod astro_content;
 pub mod builtins;
 pub mod client;
 pub mod client_component;
@@ -35,6 +36,7 @@ pub mod schema;
 pub mod schema_php;
 pub mod services_config;
 pub mod sort;
+pub mod storage;
 pub mod types;
 pub mod uri;
 pub mod value;

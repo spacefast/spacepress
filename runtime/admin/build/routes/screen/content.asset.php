@@ -1,0 +1,1 @@
+<?php return array('name' => 'screen', 'dependencies' => array('react'), 'moduleDependencies' => array('@first-admin/admin-toolkit', '@first-admin/screens', '@wordpress/route'), 'version' => '35979d862f0da789b9aa');

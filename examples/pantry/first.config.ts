@@ -1,7 +1,6 @@
 import {
   text, integer, boolean, date, timestamp, json,
   defineConfig, action, job, jobs, db, HttpError,
-  type InferSelectModel,
   table, select, ref,
 } from "first";
 import { UNITS, LOW_STOCK, timestamps, slugify } from "./first/lib/fields";
@@ -23,7 +22,17 @@ export const items = table(named({
   locationId: ref(locations).optional(),
   tags: json<string[]>().$default(() => []),
   ...timestamps,
-}));
+})).on({
+  // Hooks compile to PHP and run inside the write; a throw rolls it back.
+  beforeCreate(data) {
+    data.name = data.name.trim();
+    if (data.name === "") throw new HttpError(422, "invalid_input", "name can't be empty");
+    data.slug = slugify(data.name);
+    data.tags = (data.tags ?? []).map((t) => t.toLowerCase());
+  },
+  async afterCreate(row) { await restock(row.id, row.name, row.quantity, row.lowStockAt); },
+  async afterUpdate(row) { await restock(row.id, row.name, row.quantity, row.lowStockAt); },
+});
 
 export const shoppingList = table({
   itemId: ref(items).unique().optional().onDelete("cascade"),
@@ -36,15 +45,14 @@ export const shoppingList = table({
 export const tables = { locations, items, shoppingList };
 export const entities = { ...tables };
 
-type Item = InferSelectModel<typeof items>;
-
-async function restock(item: Item) {
-  if (item.quantity > item.lowStockAt) return;
-  const existing = await db.query.shoppingList.findFirst({ where: { itemId: item.id } });
+// An item at or below its low-stock mark gets one shopping-list entry.
+async function restock(itemId: number, name: string, quantity: number, lowStockAt: number) {
+  if (quantity > lowStockAt) return;
+  const existing = await db.query.shoppingList.findFirst({ where: { itemId } });
   if (!existing) {
-    await db.insert(shoppingList).values({ itemId: item.id, name: item.name });
+    await db.insert(shoppingList).values({ itemId, name });
     // Off the request: runs after this write commits (Action Scheduler delivers it).
-    await jobs.notifyLowStock.enqueue({ itemId: item.id }, { key: `low-${item.id}` });
+    await jobs.notifyLowStock.enqueue({ itemId }, { key: `low-${itemId}` });
   }
 }
 
@@ -59,18 +67,6 @@ export default defineConfig({
         await db.update(shoppingList).set({ notifiedAt: new Date().toISOString() }).where({ itemId });
       },
     }),
-  },
-  hooks: {
-    items: {
-      beforeCreate(data) {
-        data.name = data.name.trim();
-        if (data.name === "") throw new HttpError(422, "invalid_input", "name can't be empty");
-        data.slug = slugify(data.name);
-        data.tags = (data.tags ?? []).map((t) => t.toLowerCase());
-      },
-      afterCreate: restock,
-      afterUpdate: restock,
-    },
   },
   actions: {
     consume: action({

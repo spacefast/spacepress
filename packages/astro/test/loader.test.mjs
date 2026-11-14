@@ -186,10 +186,12 @@ test("a build-time collection holds the published rows, with media rows, rendere
   assert.match(one.data.cover.url, /^http:\/\/127\.0\.0\.1:\d+\/wp-content\/uploads\/.+\.png$/);
   assert.equal("memo" in one.data, false, "an anonymous build never sees an editor-only field");
   assert.match(one.rendered.html, /<p[^>]*>Body of note <strong>1<\/strong><\/p>/);
-  // Three pages of at most three rows, each one subscribed read.
+  // Key ranges of at most three rows that cover every key once.
   const pages = JSON.parse(ctx.state.meta.get("first:pages")).pages;
-  assert.equal(pages.length, 3);
-  assert.deepEqual(rec.calls.filter((c) => c.path.endsWith("/_live")).flatMap((c) => c.changed), [true, true, true]);
+  assert.equal(pages[0].lo, null);
+  assert.equal(pages.at(-1).hi, null);
+  assert.ok(pages.every((p, i) => i === 0 || p.lo === pages[i - 1].hi), JSON.stringify(pages));
+  assert.deepEqual(pages.map((p) => p.ids.length), [3, 3, 1]);
 });
 
 test("the next build pulls only the pages that changed, and only their changed entries are written", async () => {
@@ -228,13 +230,14 @@ test("the next build pulls only the pages that changed, and only their changed e
   assert.deepEqual(changed.writes, ["note-8"]);
   assert.match(changed.logs.at(-1), /1 changed, 2 removed, 6 entries/);
 
-  // A page that fills splits: twelve more notes, read in pages of three again.
+  // Pages that fill split: twelve more notes, read in pages of three again.
   for (let i = 9; i <= 20; i++) await api("POST", "/notes", { title: `Note ${i}`, rank: i });
   const grown = context("notes", state);
   await loader.load(grown);
   assert.equal(state.entries.size, 18);
   const pages = JSON.parse(state.meta.get("first:pages")).pages;
-  assert.ok(pages.at(-1).ids.length < 3, "the last page is never full");
+  assert.ok(pages.every((p, i) => i === 0 || p.lo === pages[i - 1].hi), JSON.stringify(pages));
+  assert.ok(pages.every((p) => p.ids.length <= 3), JSON.stringify(pages));
   rec.calls.length = 0;
   const again = context("notes", state);
   await loader.load(again);
@@ -267,13 +270,36 @@ test("the schema comes from the site's description", async () => {
   assert.match(types, /status: "draft" \| "published" \| "scheduled";/);
   assert.match(types, /memo\?: string \| null;/);
   assert.match(types, /cover: \{ id: number; url: string;/);
-  await assert.rejects(firstLoader("nope", { site: site.url }).createSchema(), /has no kind 'nope' \(it has notes, /);
+  await assert.rejects(firstLoader("nope", { site: site.url }).createSchema(), /has no kind 'nope' \(it has notes, fieldNotes, /);
 });
 
-test("WordPress's own kinds load through the list API", async () => {
+test("WordPress's own kinds load through the list API, filtered with core's parameters", async () => {
   const ctx = context("posts");
   await firstLoader("posts", { site: site.url }).load(ctx);
   assert.equal(ctx.state.entries.get("hello-world")?.data.title, "Hello world!");
+  await assert.rejects(firstLoader("posts", { site: site.url, where: { slug: "x" } }).load(context("posts")), /WordPress's own kind; its reads take core's filters/);
+  const live = firstLiveLoader("posts", { site: site.url });
+  assert.equal((await live.loadEntry({ filter: { id: "hello-world" } })).data.title, "Hello world!");
+  assert.equal(await live.loadEntry({ filter: { id: "no-such-post" } }), undefined, "a missing slug is no entry, not the newest post");
+  assert.match((await live.loadEntry({ filter: { where: { slug: "hello-world" } } })).error.message, /core's filters/);
+  const searched = await live.loadCollection({ filter: { query: { search: "Hello" } } });
+  assert.deepEqual(searched.entries.map((e) => e.id), ["hello-world"]);
+});
+
+test("a kind is named by its client key or its storage name; tags and events use the storage name", async () => {
+  for (const site_ of ["a", "a", "b"]) await api("POST", "/field_notes", { title: `From ${site_} ${Math.random()}`, site: site_ });
+  for (const name of ["fieldNotes", "field_notes"]) {
+    const ctx = context(name);
+    await firstLoader(name, { site: site.url }).load(ctx);
+    assert.equal(ctx.state.entries.size, 3, name);
+  }
+  const live = firstLiveLoader("fieldNotes", { site: site.url, where: { site: "a" } });
+  const list = await live.loadCollection({ filter: {} });
+  assert.equal(list.entries.length, 2);
+  assert.equal(list.cacheHint.tags[0], "field_notes");
+  const other = (await firstLiveLoader("fieldNotes", { site: site.url }).loadCollection({ filter: { where: { site: "b" } } })).entries[0];
+  assert.equal(await live.loadEntry({ filter: { id: other.id } }), undefined, "the loader's where holds for an entry too");
+  assert.equal((await live.loadEntry({ filter: { id: list.entries[0].id, site: "a" } })).id, list.entries[0].id, "id and fields together");
 });
 
 test("a live collection reads at request time and tags entries for the cache", async () => {

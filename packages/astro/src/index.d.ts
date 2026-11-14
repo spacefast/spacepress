@@ -24,6 +24,8 @@ export interface FirstQueryOptions extends FirstOptions {
   media?: boolean;
   /** Include drafts (needs a reader who may see them). Default: published rows only. */
   drafts?: boolean;
+  /** WordPress's own kinds (posts, pages, ...) only: core's list parameters, e.g. `{ categories: 3, search: "x" }`. */
+  query?: Record<string, string | number | (string | number)[]>;
   /** The entry id: a field name, or a function of the row. Default: the kind's slug, else its primary key. */
   id?: string | ((row: Record<string, unknown>) => string | number);
 }
@@ -54,6 +56,8 @@ export type FirstCollectionFilter = {
   locale?: string;
   /** Attach rendered HTML to each entry of the list. */
   rendered?: boolean;
+  /** WordPress's own kinds only: core's list parameters. */
+  query?: Record<string, string | number | (string | number)[]>;
 };
 
 /** A live collection; entries carry `cacheHint.tags` (`<kind>`, `<kind>:<id>`) for `Astro.cache.set`. */

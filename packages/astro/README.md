@@ -45,13 +45,18 @@ const { Content } = await render(post);
   embeds as the site renders them.
 - **The schema** comes from the site (`GET /__first/api/v1`), so `entry.data` is typed in the editor
   with no schema written in the Astro project. A `schema` you pass to `defineCollection` wins.
-- **Each build pulls only what changed.** The collection is read in pages of up to 100 rows by primary
-  key, through the site's subscription endpoint (`POST /__first/api/v1/_live`). Each page keeps the
+- **Each build pulls only what changed.** The collection is read as primary-key ranges of up to 100
+  rows through the site's subscription endpoint (`POST /__first/api/v1/_live`). Each range keeps the
   token of its last answer in the content layer's `meta` store; the next build sends the tokens back,
-  and a page nobody wrote to answers "not modified" without its rows. A changed page returns its rows,
-  and Astro's digest skips the ones that didn't change. Deleted and unpublished rows leave the
+  and a range nobody wrote to answers "not modified" without its rows. A changed range returns its
+  rows, and Astro's digest skips the ones that didn't change. Deleted and unpublished rows leave the
   collection. The build log says what happened: `posts: 1 changed, 0 removed, 230 entries, 2 of 3
-  pages not modified`.
+  pages not modified`. "Not modified" saves the transfer and the rendering; whether the site also
+  skips the read depends on what the reader may see (a kind with media fields, or fields hidden from
+  some readers, is read on the server every time; see the reactive queries decision).
+- **Rendered HTML** is fetched for changed entries only. HTML that depends on other content (a
+  reusable block, an embed) changes when that entry is next saved, or on a build with
+  `astro build --force`.
 
 Options (all of them also on `firstLiveLoader`):
 
@@ -63,7 +68,8 @@ Options (all of them also on `firstLiveLoader`):
 | `where` | | a filter, as the typed client takes it |
 | `with` | media fields | relations to load into each row: `{ author: true }` |
 | `drafts` | `false` | include drafts (the reader must be allowed to see them) |
-| `id` | slug, else primary key | the entry id: a field name or `(row) => string` |
+| `id` | slug, else primary key | the entry id: a field name or `(row) => string`; two rows with one id are a build error |
+| `query` | | WordPress's own kinds (`posts`, `pages`, ...): core's list parameters, `{ categories: 3 }`. They don't take `where`, `orderBy` or `with` |
 | `pageSize` | 100 | rows per request (build-time only) |
 
 Read as a user only when you mean to publish what that user sees: a build with an editor's password
@@ -95,10 +101,12 @@ const { Content } = await render(entry);
 ```
 
 - `getLiveEntry("posts", "hello")` finds the row whose slug (or `id` option field) is `hello`;
-  `getLiveEntry("posts", { rank: 3 })` matches fields; `{ where: {...} }` takes any filter.
+  `getLiveEntry("posts", { rank: 3 })` matches fields; `{ where: {...} }` takes any filter. The
+  loader's own `where` holds for every read.
 - `getLiveCollection("posts", { where, orderBy, limit, offset, search, locale, with })` lists.
 - Every entry's `cacheHint.tags` are `<kind>:<id>` for the row and for each related row and media
-  item it loaded; a collection's hint adds `<kind>`. These are the tags First's webhooks name.
+  item it loaded; a collection's hint adds `<kind>`. The kind is its storage name (`field_notes`),
+  as in webhook events; the loaders take either that or the typed client's name (`fieldNotes`).
 - `firstLiveLoader()` without a kind serves every kind; the filter names it:
   `getLiveEntry("first", { kind: "posts", id: "hello" })`.
 
@@ -122,7 +130,9 @@ export const POST = firstWebhook(); // FIRST_WEBHOOK_SECRET holds the same secre
 The endpoint checks the `First-Signature` header (HMAC-SHA256 over `"<t>.<body>"`, five minutes'
 tolerance) and answers 401 otherwise. It then invalidates the tags `<kind>` and `<kind>:<id>` in
 Astro's route cache when one is configured, and calls `onEvent({ tags, event, context })`, where a
-static site starts a rebuild instead. Deliveries are First jobs, retried with backoff.
+static site starts a rebuild instead. Deliveries are First jobs, retried with backoff. Webhooks fire
+for the app's own kinds, so a `media:<id>` tag is not purged by a media edit; it purges with the row
+that shows it.
 
 ## Hosting
 
@@ -132,7 +142,7 @@ two Spaces: see [docs/astro.md](../../docs/astro.md) in the First repository.
 
 ## Tests
 
-`node --test packages/astro/test/loader.test.mjs` builds `test/fixture` with `first build`, serves it
+`node --test packages/astro/test/paging.test.mjs` checks the paging against a stand-in for the subscription endpoint through thousands of random writes. `node --test packages/astro/test/loader.test.mjs` builds `test/fixture` with `first build`, serves it
 on WordPress-on-SQLite, and runs both loaders, the webhook endpoint and a real `astro build` against
 it. It needs PHP 8.2+ with `pdo_sqlite`, `target/debug/first` (or `FIRST_BIN`) and `npm ci` here.
 

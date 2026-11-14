@@ -133,7 +133,7 @@ jobs:
         run: |
           npm ci --prefix packages/astro --ignore-scripts --no-audit --no-fund
           tsc -p packages/astro
-          node --test packages/astro/test/loader.test.mjs
+          node --test packages/astro/test/loader.test.mjs packages/astro/test/paging.test.mjs
       # examples/garden and its Astro twin render the same pages (Chromium from the slow shard's setup).
       - name: Astro twin example
         if: matrix.shard == 'rest'

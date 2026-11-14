@@ -5,11 +5,8 @@
 // PHP; the JSON results must be byte-identical. Typed TypeScript refuses crypto.subtle
 // (tests/fixtures/reject-crypto-subtle).
 import { action, defineConfig } from "first";
-import { digests } from "./subtle-digest-helpers.mjs";
+import { digests as digestsImpl } from "./subtle-digest-helpers.mjs";
 
-export default defineConfig({
-  name: "language-subtle-digest",
-  actions: {
-    digests: action({ input: {}, handler: async () => await digests() }),
-  },
-});
+export const digests = action({ input: {}, handler: async () => await digestsImpl() });
+
+export default defineConfig({ name: "language-subtle-digest" });

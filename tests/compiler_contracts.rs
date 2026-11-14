@@ -1173,7 +1173,7 @@ echo json_encode($result);
         errors,
         json!([
             "lost",
-            "This promise can never settle: nothing left to run (awaited at first.config.ts:5:51)"
+            "This promise can never settle: nothing left to run (awaited at first.config.ts:4:63)"
         ])
     );
 }
@@ -4519,8 +4519,8 @@ fn language_refusals_carry_a_location_and_a_fix() {
         ),
         (
             "handler reading this",
-            "",
-            "{ return 1; } }), other: action({ input: {}, handler: function () { return typeof this; }",
+            "export const other = action({ input: {}, handler: function () { return typeof this; } });",
+            "1",
             "without a receiver, so `this` is undefined",
             "",
         ),

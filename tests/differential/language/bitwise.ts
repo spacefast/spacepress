@@ -83,15 +83,6 @@ function bitwiseCoercionImpl(): string[] {
 
 const BUILD_TIME_BITWISE = { table: bitwiseTableImpl(), hashes: hashes([90, 101, 114, 111, 8594, 0xd83d, 0xde00]), assignments: bitwiseAssignmentsImpl() };
 
-const bitwise = {
-  bitwiseTable: run(() => bitwiseTableImpl()),
-  bitwiseHashes: run(() => [hashes([]), hashes([104, 101, 108, 108, 111]), hashes([196, 114, 116, 0xffff, 0x10000, -1, 2.5])]),
-  bitwiseAssignments: run(() => bitwiseAssignmentsImpl()),
-  bitwiseCoercion: run(() => bitwiseCoercionImpl()),
-  bitwiseBuildTime: run(() => BUILD_TIME_BITWISE),
-  bitwiseUntyped: run(() => untypedBitwise(EDGE, COUNTS)),
-};
-
 export const bitwiseTable = run(() => bitwiseTableImpl());
 
 export const bitwiseHashes = run(() => [hashes([]), hashes([104, 101, 108, 108, 111]), hashes([196, 114, 116, 0xffff, 0x10000, -1, 2.5])]);

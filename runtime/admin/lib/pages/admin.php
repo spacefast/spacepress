@@ -226,14 +226,8 @@ wp_enqueue_script_module( 'first-admin-boot' );
 <head>
 	<meta charset="<?php bloginfo( 'charset' ); ?>">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>First</title>
+	<title>First Admin</title>
 	<style>
-		@media (prefers-reduced-motion: no-preference) {
-			@view-transition {
-				navigation: auto;
-			}
-		}
-
 		html {
 			background: #f1f1f1;
 			color: #444;

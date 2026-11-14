@@ -21,6 +21,8 @@ namespace First\Wp;
 final class Connection
 {
     private int $depth = 0;
+    /** The database handle the outermost transaction began on: a reconnect replaces it and ends the transaction. */
+    private mixed $handle = null;
     private bool $rollbackOnly = false;
     /** Core writes in flight: editor-save hooks ignore posts First itself is writing (§4.9). */
     private int $busy = 0;
@@ -85,6 +87,12 @@ final class Connection
      */
     public function run(string $sql, array $params = []): array
     {
+        if ($this->depth > 0 && $this->handle !== null && $this->wpdb->dbh !== $this->handle) {
+            // A reconnect (wpdb retries after a lost connection) ended this transaction on the server:
+            // what follows would commit on its own. Refuse it, and the commit.
+            $this->rollbackOnly = true;
+            throw new DbError('the database connection was lost and replaced during the transaction', 2006);
+        }
         $values = array_map(static fn ($v) => is_float($v) ? \First\Js::numStr($v) : $v, array_values($params));
         $dbh = $this->wpdb->dbh;
         if ($dbh instanceof \PDO) {
@@ -498,6 +506,7 @@ final class Connection
             throw new \LogicException('A transaction is already open');
         }
         $this->query('START TRANSACTION');
+        $this->handle = $this->wpdb->dbh;
         $this->depth = 1;
     }
 
@@ -516,7 +525,17 @@ final class Connection
             if ($this->rollbackOnly) {
                 throw new \RuntimeException('Cannot commit: a joined transaction failed');
             }
+            // wpdb reconnects and retries a query after a lost connection: the server rolled the transaction
+            // back, and what ran after it (Action Scheduler's writes) committed on its own. Don't commit the rest.
+            if ($this->wpdb->dbh !== $this->handle) {
+                throw new \RuntimeException('Cannot commit: the database connection was lost and replaced during the transaction');
+            }
             $this->query('COMMIT');
+            // wpdb may have reconnected for the COMMIT itself: the server rolled the transaction back and
+            // the new connection committed nothing. Report it as the failure it is.
+            if ($this->wpdb->dbh !== $this->handle) {
+                throw new \RuntimeException('Commit failed: the database connection was lost and replaced while committing');
+            }
         } catch (\Throwable $e) {
             $this->rollback();
             throw $e;
@@ -625,6 +644,7 @@ final class Connection
     private function reset(): void
     {
         $this->rollbackOnly = false;
+        $this->handle = null;
         $this->touchedPosts = $this->touchedOptions = [];
         $this->beforeCommit = $this->afterCommit = $this->onRollback = [];
     }

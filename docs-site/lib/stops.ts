@@ -167,7 +167,7 @@ export const tours: Tour[] = [
         slug: "media-and-files",
         title: "Images with sizes, files behind a signed link",
         prose: [
-          "`media()` columns reference the WordPress media library; `media.sizes` declares the crops the runtime generates. `file({ bucket })` columns point at private files that are downloaded through a signed link, with their own access rules.",
+          "`media()` columns reference the WordPress media library; `media.sizes` declares the crops the runtime generates. `file(bucket)` columns point at private files that are downloaded through a signed link, with their own access rules.",
         ],
         config: { file: "first.config.ts", lines: { from: "media: { sizes:", to: "media: { sizes:" } },
         outputs: [

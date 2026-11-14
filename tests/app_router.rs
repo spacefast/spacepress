@@ -1640,6 +1640,44 @@ fn refuses_client_code_outside_the_subset() {
             "first/components/A.tsx:3:",
         );
     }
+    // `useLive`: a query the server and the browser both have (props and literals), and no `seed`.
+    let live = |body: &str| {
+        component(&format!(
+            "import {{ useLive }} from \"first/client\";\nexport function A({{ n }}: {{ n: number }}) {{ {body} }}"
+        ))
+    };
+    rejects(
+        &dir,
+        &[
+            (
+                "first/schema.ts",
+                "import { table, text } from \"first\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+            ),
+            (
+                "first/components/A.tsx",
+                &live(
+                    "const [k, setK] = useState(5); const xs = useLive(\"notes\", { limit: k }); return <b onClick={() => setK(1)}>{xs.loading ? 1 : 0}</b>;",
+                ),
+            ),
+        ],
+        "a `useLive` query reads props and literals only",
+        "first/components/A.tsx:4:",
+    );
+    rejects(
+        &dir,
+        &[
+            (
+                "first/schema.ts",
+                "import { table, text } from \"first\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+            ),
+            (
+                "first/components/A.tsx",
+                &live("const xs = useLive(\"notes\", { limit: n }, { seed: 1 }); return <b>{xs.loading ? 1 : 0}</b>;"),
+            ),
+        ],
+        "`useLive` options are `{ enabled }`",
+        "first/components/A.tsx:4:",
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -2186,6 +2224,13 @@ fn client_components_hydrate_in_the_browser() {
     assert_eq!(
         seen["kept"], true,
         "the server-rendered item is kept, not re-created: {seen}"
+    );
+    // `useLive`: the server's answer is in the first render (not loading), and another visitor's
+    // write reaches the page by the typed client's poll, with no reload.
+    assert_eq!(
+        seen["live"],
+        serde_json::json!({ "before": ["Ada"], "loading": "no", "write": 201, "after": ["Ada", "Grace"], "polled": true }),
+        "{seen}"
     );
     // The typed client is served from the app plugin as a module the browser imports as is.
     assert_eq!(

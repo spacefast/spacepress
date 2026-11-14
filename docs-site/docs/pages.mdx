@@ -142,6 +142,9 @@ A component file under `first/components/` that starts with `"use client"` runs 
 - `onClick` and other event props become `data-wp-on--*` actions. An `await` in a handler is fine.
 - Calling an `action()` the file imports posts to that action's endpoint with the REST nonce, so the caller is the visitor.
 - `useEffect`, `useMount`, `useEvent` and `useRef` come from `"first/client"`, and `sharedState()` gives state every instance shares.
+- `useLive("guestbook", { orderBy: { id: "asc" }, limit })` is a list read the page keeps current: `{ data, error, loading }`. The server answers it in the first render, as the visitor; the page then subscribes through the app's typed client, so another visitor's write shows without a reload (within the client's poll, 2 to 30 seconds without a push transport). The query reads props and literals; `{ enabled: false }` reads nothing.
+
+<RepoFile path="tests/fixtures/client-components/first/components/Guestbook.tsx" />
 - A list over state or props, `items.map((item) => <li key={item.id}>…</li>)`, and a conditional, `{open && <p>…</p>}` or `{empty ? <em>…</em> : <b>…</b>}`, re-render in the browser. Each item and each branch is one element, and each item has a `key`. A list or conditional over values that never change renders once, on the server.
 - npm imports, module-level helpers the browser doesn't have, and assigning state directly are build errors at the line, with the alternative.
 

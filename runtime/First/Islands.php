@@ -102,6 +102,55 @@ final class Islands
         return true;
     }
 
+    /** The script module id of the glue `useLive` stores import (`Render/client/live.js`). */
+    public const LIVE = '@first/live';
+
+    /** Registers `@first/live` (and the typed client it imports) once; false when the app has no client. */
+    private static function registerLive(): bool
+    {
+        static $done = null;
+        if ($done !== null) {
+            return $done;
+        }
+        if (!self::registerClient()) {
+            return $done = false;
+        }
+        wp_register_script_module(self::LIVE, plugins_url('first/Render/client/live.js', Wp\Runtime::file()), [self::CLIENT, '@wordpress/interactivity'], null);
+        // The live reads go as the visitor: a signed-in visitor's cookie needs the REST nonce.
+        wp_interactivity_config('first/live', ['nonce' => is_user_logged_in() ? wp_create_nonce('wp_rest') : '']);
+
+        return $done = true;
+    }
+
+    /**
+     * A `useLive(kind, args)` field's first value: the read answered now, as the visitor, by the
+     * subscription endpoint's own evaluation (`Live\Module::evaluate`). The browser starts from it
+     * and subscribes with its descriptor and token, so its first poll is answered "not modified"
+     * unless something changed since the render. `{ data, error, loading }` with the read beside it
+     * (`$live`), as context the store reads.
+     */
+    public static function live(string $kind, mixed $args, bool $enabled): JsObject
+    {
+        $wire = Seam::toWire($args);
+        $descriptor = ['kind' => $kind, 'op' => 'list', 'args' => is_array($wire) ? $wire : (array) $wire];
+        if (!$enabled) {
+            return new JsObject(['data' => JsUndefined::Value, 'error' => JsUndefined::Value, 'loading' => false, '$live' => null]);
+        }
+        $plugin = Wp\Runtime::plugin();
+        $viewer = Wp\CoreAccess::viewer();
+        $result = $plugin === null || $viewer === null
+            ? ['error' => ['code' => 'unavailable', 'detail' => 'No app']]
+            : Live\Module::evaluate($plugin->app()->db, $viewer, [$descriptor])[0];
+        // The browser asks for the same read through the typed client (`first.<kind>.list(query)`),
+        // which builds the same descriptor from the same query, so the token answers it.
+        $live = new JsObject(['kind' => $kind, 'query' => $args, 'token' => $result['token'] ?? null]);
+        if (isset($result['error'])) {
+            return new JsObject(['data' => JsUndefined::Value, 'error' => new JsObject(['code' => (string) ($result['error']['code'] ?? 'error'), 'message' => (string) ($result['error']['detail'] ?? '')]), 'loading' => false, '$live' => $live]);
+        }
+
+        return new JsObject(['data' => Js::decodeJson((string) ($result['json'] ?? 'null')), 'error' => JsUndefined::Value, 'loading' => false, '$live' => $live]);
+    }
+
     /** Registers and enqueues each rendered component's store, with its action endpoints and a REST nonce. */
     public static function enqueue(): void
     {
@@ -116,7 +165,11 @@ final class Islands
                 continue;
             }
             $handle = 'first-island-' . sanitize_key(str_replace('/', '-', $namespace));
-            wp_register_script_module($handle, $plugin->url('first/app/client/' . $island['file']), ['@wordpress/interactivity'], null);
+            $deps = ['@wordpress/interactivity'];
+            if (($island['live'] ?? false) === true && self::registerLive()) {
+                $deps[] = self::LIVE;
+            }
+            wp_register_script_module($handle, $plugin->url('first/app/client/' . $island['file']), $deps, null);
             wp_enqueue_script_module($handle);
             $actions = [];
             foreach ($island['actions'] as $action) {

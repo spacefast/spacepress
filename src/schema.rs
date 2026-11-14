@@ -737,4 +737,6 @@ pub struct Island {
     pub file: String,
     pub source: String,
     pub actions: Vec<String>,
+    /// The store keeps `useLive` reads current: the page also loads `@first/live`.
+    pub live: bool,
 }

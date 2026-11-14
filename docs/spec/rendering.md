@@ -217,7 +217,10 @@ This spec adds:
 
 - `<Live>{…}</Live>` around part of a server page. On a notice for any kind the
   region read, it calls the router to re-fetch the page and swap only that
-  region. No client data code is needed.
+  region. No client data code is needed. As built: a `page` read on the
+  subscription endpoint (`{ op: "page", args: { url, region } }`, decision
+  [2026-11-14](../decisions/2026-11-14-live-regions.md)); the server half lands
+  first, the browser half with the component's browser swap.
 - `useLive(kind, query)` inside client components: the result lives in
   context, and directives update when it changes. As built: a list read,
   seeded by `Live\Module::evaluate` in the first render and subscribed through

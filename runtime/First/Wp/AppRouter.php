@@ -833,6 +833,7 @@ final class AppRouter
             });
         }
         \First\Assets::enqueue($this->styles);
+        \First\Render\Live::enqueue();
         Navigation::enqueue(plugins_url('first/Render/client/router.js', Runtime::file()));
         \First\Islands::registerClient();
         \First\Islands::enqueue();

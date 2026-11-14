@@ -90,6 +90,27 @@ final class Live
     }
 
     /**
+     * On a page with a `<Live>` region: the browser module, which imports the app's typed client
+     * (`@first/client`) and loads the Interactivity router when an answer changed. A signed-in
+     * visitor's reads carry the REST nonce; a signed-out page carries none and stays cacheable.
+     */
+    public static function enqueue(): void
+    {
+        if (self::$rendered === [] || !function_exists('wp_register_script_module') || !\First\Islands::registerClient()) {
+            return;
+        }
+        wp_register_script_module('first-live-region', plugins_url('first/Render/client/live-region.js', \First\Wp\Runtime::file()), [
+            ['id' => \First\Islands::CLIENT, 'import' => 'static'],
+            ['id' => '@wordpress/interactivity', 'import' => 'static'],
+            ['id' => '@wordpress/interactivity-router', 'import' => 'dynamic'],
+        ], null);
+        wp_enqueue_script_module('first-live-region');
+        wp_interactivity_config('first/live', ['nonce' => is_user_logged_in() ? wp_create_nonce('wp_rest') : '']);
+        // The region the router swaps: the page's main region, processed as Navigation does.
+        Navigation::used();
+    }
+
+    /**
      * Marks the page being rendered for a region as depending on something the counters can't see
      * (the clock, WordPress options, core queries): it is rendered and compared on every poll.
      */

@@ -320,8 +320,8 @@ boot on a site that misses any of them and names each one;
 - **Access rules** per collection, per action and per field, as roles or
   functions; a collection's read, update and delete rules can return a filter
   instead of a boolean. `showIf` drives conditional fields in the editor.
-- **Jobs, webhooks and an outbox**: enqueue from a hook, run after the request
-  commits through Action Scheduler, retry with backoff.
+- **Jobs and webhooks**: enqueue from a hook, queued in the request's
+  transaction, run after it commits through Action Scheduler, retry with backoff.
 - **WordPress Abilities and MCP**: your collections' reads and writes, actions
   and globals are registered as Abilities and exposed on a named MCP server,
   so agents can use them. Jobs join with `agents: true`; `agents: false` opts
@@ -419,7 +419,8 @@ binary releases yet; you build the compiler from source.
 Every build ships First Admin, the default admin, at `/wp-admin/new/`; classic
 `/wp-admin/` stays complete beside it, and `defineConfig({ admin: false })`
 leaves First Admin out. Its source is under `runtime/admin/`; see
-[`docs/admin.md`](docs/admin.md).
+[`docs/admin.md`](docs/admin.md). A screen declared once
+([`docs/admin-screens.md`](docs/admin-screens.md)) shows in both admins.
 
 Pages are an optional TSX front end under `first/app/`: layouts, pages,
 `"use client"` components on the Interactivity API, stylesheets and HTTP

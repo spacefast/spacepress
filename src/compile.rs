@@ -416,6 +416,8 @@ pub struct Compiler<'a, 'p> {
     pub abilities: crate::wordpress::abilities::Catalog,
     /// What the compiled code uses from WordPress, in source order (see [`Compiler::use_wordpress`]).
     pub wordpress_uses: Vec<WordPressUse>,
+    /// `(table, column)` pairs a compiled `where` or `orderBy` names: candidates for an index (spec §2.9).
+    pub queried: std::collections::BTreeSet<(String, String)>,
     /// The plugin whose root is compiling, and its name; `None` for the app's own code.
     plugin: Option<(usize, String)>,
     /// The PHP function compiling right now, for the read→send report.
@@ -506,6 +508,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             plugin_names: ext.uses.iter().map(|p| p.name.clone()).collect(),
             abilities: crate::wordpress::abilities::Catalog::default(),
             wordpress_uses: Vec::new(),
+            queried: std::collections::BTreeSet::new(),
             client: None,
             islands: Vec::new(),
         }
@@ -10197,6 +10200,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if c.ty.is_list_kind() {
                 return err(dir.span, "`orderBy` isn't supported on list columns");
             }
+            self.queried.insert((table.to_string(), col.to_string()));
             let coll = &self.schema.collections[table];
             if coll.editor && coll.content.as_deref() == Some(col.as_str()) {
                 return err(
@@ -10277,6 +10281,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     if let Some(col) = c.columns.get(name).filter(|_| !through) {
                         let col = col.clone();
                         let editor = c.editor;
+                        self.queried.insert((table.to_string(), name.to_string()));
                         self.field_filter(&col, v, editor)?
                     } else if c.relations.contains_key(name) {
                         if !allow_relations {

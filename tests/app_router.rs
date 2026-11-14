@@ -1805,6 +1805,21 @@ fn comments_follow_the_kind_policy_on_every_path() {
         serde_json::json!({ "page": 404, "page shows": false, "list": 403, "post": 403 }),
         "{seen}"
     );
+    // An authored policy (`comments: { guests: true, moderation: "none", threaded: false,
+    // closeAfterDays: 30 }`): a signed-out visitor comments through the facade and core's handler,
+    // approved at once; a reply on a flat thread is refused; an item published 40 days ago is closed.
+    assert_eq!(
+        seen["authored policy"],
+        serde_json::json!({ "guest facade": [201, "approved"], "guest core": [302, "approved"], "reply": 400, "closed": 403 }),
+        "{seen}"
+    );
+    // A guest without a name or a valid email is refused on every path, with the Discussion
+    // setting `require_name_email` off: the policy decides.
+    assert_eq!(
+        seen["guest identity"],
+        serde_json::json!({ "facade": 400, "core": 400, "form": [303, "Please fill the required fields (name, email)."], "saved": 0 }),
+        "{seen}"
+    );
     assert_eq!(seen["memo"], 403, "a kind without comments takes none: {seen}");
 }
 
@@ -2074,6 +2089,14 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     }
     want.sort();
     assert_eq!(cleared, want);
+    // A twin fetched before its page was ever rendered records what it read under its own URL, so
+    // a write to the row it shows purges it (and `/`, which lists notes, with its twin).
+    assert_eq!(seen["twin only"]["status"], 200, "{}", seen["twin only"]);
+    assert_eq!(seen["twin index"], serde_json::json!(["notes third /notes/third.md"]));
+    assert_eq!(
+        seen["twin purged"],
+        serde_json::json!([["/", "/index.md", "/notes/third.md"]])
+    );
     assert_eq!(seen["cleared all"], serde_json::json!(["vip *", "boost *"]));
     // Over VIP's 100 URLs a request: one site ban, and every path still for Batcache.
     assert_eq!(seen["cleared many"], serde_json::json!([1, true, 101]));

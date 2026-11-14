@@ -581,12 +581,15 @@ final class AppRouter
      * A `first/app/` page's Markdown twin (rendering.md §5: "code pages render from their compiled
      * output"): the page rendered as an anonymous visitor, its title as the heading, the page's own
      * HTML (not its layouts' navigation) converted to Markdown. Null when the URL is not an app
-     * page, so the WordPress twin answers. A missing item or `notFound()` is a 404 twin.
+     * page, so the WordPress twin answers. A missing item or `notFound()` is a 404 twin. `$reads`
+     * gets what the render read, for the caller that serves the twin to record (rendering.md §6.2).
      *
+     * @param-out array<string, array{ids: list<int|string>, listed: bool}> $reads
      * @return ?array{int, string}
      */
-    public function twin(string $url): ?array
+    public function twin(string $url, ?array &$reads = null): ?array
     {
+        $reads = [];
         $match = $this->twinRoute($url);
         if ($match === null) {
             return null;
@@ -597,24 +600,34 @@ final class AppRouter
         $page = $this->file($route['page']);
         $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
         try {
-            $props = new JsObject([
-                'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \First\JsArray($v) : $v, $match['params'])),
-            ]);
-            if (($page['search'] ?? null) !== null) {
-                $props->p['search'] = $this->search($page['search']);
-            }
-            if (($route['kind'] ?? null) !== null) {
-                $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $match['params']));
-                if ($item === null) {
-                    // A kind at the site root has only its own items: WordPress's twin answers the
-                    // rest. When WordPress resolved the path to an item of this kind the visitor
-                    // may not read, the twin is a 404 like the page.
-                    return $this->rootKind($route) && !$this->rootItemQueried($route) ? null : [404, "# Not found\n\nNothing is published at this address.\n"];
+            $rendered = Reads::during(function () use ($match, $route, $page, $layouts, $viewer): ?array {
+                $props = new JsObject([
+                    'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \First\JsArray($v) : $v, $match['params'])),
+                ]);
+                if (($page['search'] ?? null) !== null) {
+                    $props->p['search'] = $this->search($page['search']);
                 }
-                $props->p['item'] = $item;
+                if (($route['kind'] ?? null) !== null) {
+                    $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $match['params']));
+                    if ($item === null) {
+                        // A kind at the site root has only its own items: WordPress's twin answers
+                        // the rest. When WordPress resolved the path to an item of this kind the
+                        // visitor may not read, the twin is a 404 like the page.
+                        return $this->rootKind($route) && !$this->rootItemQueried($route) ? ['wordpress' => true] : null;
+                    }
+                    $props->p['item'] = $item;
+                }
+                // The page alone: its layouts add navigation and chrome, which a twin leaves out.
+                return Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props, false));
+            }, $reads);
+            if ($rendered === null) {
+                return [404, "# Not found\n\nNothing is published at this address.\n"];
             }
-            // The page alone: its layouts add navigation and chrome, which a twin leaves out.
-            [$head, $body] = Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props, false));
+            if (isset($rendered['wordpress'])) {
+                $reads = [];
+                return null;
+            }
+            [$head, $body] = $rendered;
         } catch (Halt $halt) {
             return $halt->location === null ? [404, "# Not found\n\nNothing is published at this address.\n"] : null;
         } catch (\Throwable $error) {

@@ -583,8 +583,11 @@ export function createClient(options: ClientOptions = {}): Client {
   function switchTo(next: Held | null, from: string): boolean {
     if (currentSid() !== from) return false;
     store({ ...(next ?? {}), sid: randomString(12) });
+    identityChanged?.();
     return true;
   }
+  /** Set once subscriptions exist: a sign-in or sign-out asks every one of them again, as the new visitor. */
+  let identityChanged: (() => void) | null = null;
   /** Keep the same identity (refresh): replace the tokens, keep the sid. */
   function hold(next: Held, sid: string): void {
     store({ ...next, sid });
@@ -962,8 +965,13 @@ export function createClient(options: ClientOptions = {}): Client {
     error?: FirstError;
     due: boolean;
     subscribers: Set<Subscriber>;
-    /** Optimistic updates, oldest first. `after`: the last request sent before the write was known to be committed (null: not settled). */
+    /** Optimistic updates, oldest first. `after`: the last request for this read sent before the write was known to be committed (null: not settled). */
     overlays: { apply: (current: unknown) => unknown; after: number | null }[];
+    /** Requests that carried this read: the last one sent, and the last one answered. */
+    sent: number;
+    answered: number;
+    /** `sent` when the last write through this client returned. */
+    sentAtWrite: number;
   }
   const subscriptions = new Map<string, Subscription>();
   let serverWindow = { min: 2_000, max: 30_000 };
@@ -974,11 +982,10 @@ export function createClient(options: ClientOptions = {}): Client {
   let asking = false;
   let askAgain = false;
   let kicked = false;
-  // Requests are numbered as they are sent. An answer to a request sent after a write committed holds that write.
+  // Requests are numbered as they are sent. An answer to a request for a read sent after a write
+  // committed holds that write; each read keeps the numbers of its own requests.
   let sent = 0;
-  let answered = 0;
   let writes = 0;
-  let sentAtLastWrite = 0;
   let stopNotices: (() => void) | null = null;
   const page = () => (globalThis as { document?: { visibilityState?: string; addEventListener?(type: string, fn: () => void): void; removeEventListener?(type: string, fn: () => void): void } }).document;
   const hidden = () => page()?.visibilityState === "hidden";
@@ -993,19 +1000,35 @@ export function createClient(options: ClientOptions = {}): Client {
     to.onData(s.overlays.reduce((data, overlay) => overlay.apply(data), s.data));
   };
   const emit = (s: Subscription) => {
-    for (const to of [...s.subscribers]) deliver(s, to);
+    for (const to of [...s.subscribers]) {
+      try {
+        deliver(s, to);
+      } catch (e) {
+        // A subscriber's own failure (its render threw) is its own: the others, and the answer,
+        // stand. It is reported as the page reports an uncaught error.
+        const report = (globalThis as { reportError?: (e: unknown) => void }).reportError;
+        if (typeof report === "function") report(e);
+        else console.error(e);
+      }
+    }
   };
-  const reschedule = () => {
+  /**
+   * Arms the interval poll. It asks for every subscription, so other requests (a notice, a write,
+   * a new subscriber) don't restart it: `restart` is only for a changed interval or state.
+   */
+  const reschedule = (restart = false) => {
+    const every = live ? livePollMs : pollOpt === false ? false : gap;
+    const off = subscriptions.size === 0 || every === false || hidden();
+    if (liveTimer !== null && !restart && !off) return;
     if (liveTimer !== null) clearTimeout(liveTimer);
     liveTimer = null;
-    const every = live ? livePollMs : pollOpt === false ? false : gap;
-    if (subscriptions.size === 0 || every === false || hidden()) return;
+    if (off) return;
     // Jittered, so the tabs of a busy page don't all ask at once. A fixed interval is taken as given.
     const jitter = !live && typeof pollOpt === "number" ? 1 : 0.8 + Math.random() * 0.4;
     liveTimer = setTimeout(() => {
       liveTimer = null;
       markDue(() => true);
-      void ask();
+      void ask(true);
     }, Math.round(every * jitter));
   };
   /** One answer applied to its subscription; true when the result changed. */
@@ -1014,11 +1037,13 @@ export function createClient(options: ClientOptions = {}): Client {
     s.overlays = s.overlays.filter((o) => o.after === null || request <= o.after);
     const dropped = s.overlays.length !== overlays;
     if (!isObject(result)) {
+      if (dropped) emit(s);
       for (const to of [...s.subscribers]) to.onError?.(networkError("POST /_live: the answer has no result for this read"));
       return false;
     }
     if (result.pending === true) {
       s.due = askAgain = true; // the server ran out of time for this request; ask again at once
+      if (dropped) emit(s);
       return false;
     }
     if (isObject(result.error)) {
@@ -1027,7 +1052,7 @@ export function createClient(options: ClientOptions = {}): Client {
       // A read that stays refused reports it once, not on every poll.
       const same = s.error !== undefined && s.error.status === error.status && s.error.code === error.code && s.error.detail === error.detail;
       s.error = error;
-      if (!same) emit(s);
+      if (!same || dropped) emit(s);
       return false;
     }
     if (typeof result.token === "string") s.token = result.token;
@@ -1041,12 +1066,13 @@ export function createClient(options: ClientOptions = {}): Client {
     if (changed || dropped || recovered) emit(s);
     return changed;
   };
-  async function ask(): Promise<void> {
+  async function ask(fromTimer = false): Promise<void> {
     if (asking) {
       askAgain = true;
       return;
     }
     asking = true;
+    let changedAny = false;
     try {
       do {
         askAgain = false;
@@ -1054,10 +1080,12 @@ export function createClient(options: ClientOptions = {}): Client {
         if (due.length === 0) break;
         let changed = false;
         let failed = false;
-        for (let i = 0; i < due.length; i += 20) {
-          const batch = due.slice(i, i + 20);
-          for (const [, s] of batch) s.due = false;
+        for (const batch of batches(due)) {
           const number = ++sent;
+          for (const [, s] of batch) {
+            s.due = false;
+            s.sent = number;
+          }
           try {
             const out = await request<{ results?: unknown[]; poll?: { minMs?: unknown; maxMs?: unknown } }>("POST", "/_live", {
               json: { queries: batch.map(([, s]) => (s.token === undefined ? s.descriptor : { ...s.descriptor, token: s.token })) },
@@ -1065,9 +1093,10 @@ export function createClient(options: ClientOptions = {}): Client {
             const { minMs, maxMs } = out.poll ?? {};
             if (typeof minMs === "number" && typeof maxMs === "number" && minMs > 0 && maxMs >= minMs) serverWindow = { min: minMs, max: maxMs };
             // A subscription ended, or ended and started again, while the request was out has no use for its answer.
-            answered = Math.max(answered, number);
             batch.forEach(([key, s], j) => {
-              if (subscriptions.get(key) === s) changed = settle(s, out.results?.[j], number) || changed;
+              if (subscriptions.get(key) !== s) return;
+              s.answered = Math.max(s.answered, number);
+              changed = settle(s, out.results?.[j], number) || changed;
             });
           } catch (e) {
             failed = true;
@@ -1076,14 +1105,38 @@ export function createClient(options: ClientOptions = {}): Client {
           }
         }
         // Back off while nothing changes, further while the server fails; start over after a change.
+        changedAny ||= changed || failed;
         const { min, max } = bounds();
         gap = failed ? Math.min(300_000, Math.max(gap, min) * 2) : changed ? min : Math.min(max, Math.max(gap, min) * 1.5);
       } while (askAgain);
     } finally {
       asking = false;
-      reschedule();
+      // The interval's own poll arms the next one; a change shortens a wait already armed.
+      reschedule(fromTimer || changedAny);
     }
   }
+  /**
+   * Requests of at most 20 reads and 30,000 bytes, under the endpoint's 20 and 32 KiB. A read too
+   * large alone still goes alone, and the server answers it with its 413.
+   */
+  const batches = <T extends [string, Subscription]>(due: T[]): T[][] => {
+    const out: T[][] = [];
+    let batch: T[] = [];
+    let size = 0;
+    for (const entry of due) {
+      const s = entry[1];
+      const bytes = JSON.stringify(s.token === undefined ? s.descriptor : { ...s.descriptor, token: s.token }).length + 1;
+      if (batch.length > 0 && (batch.length === 20 || size + bytes > 30_000)) {
+        out.push(batch);
+        batch = [];
+        size = 0;
+      }
+      batch.push(entry);
+      size += bytes;
+    }
+    if (batch.length > 0) out.push(batch);
+    return out;
+  };
   /** Ask soon: every subscription marked due in this turn travels in one request. */
   const kick = () => {
     if (kicked) return;
@@ -1097,15 +1150,24 @@ export function createClient(options: ClientOptions = {}): Client {
   const wrote = <T>(written: Promise<T>, collection?: string): Promise<T> =>
     written.then((result) => {
       writes++;
-      sentAtLastWrite = sent;
+      for (const s of subscriptions.values()) s.sentAtWrite = s.sent;
       if (subscriptions.size > 0) {
         markDue((s) => collection === undefined || s.deps.has(collection));
         kick();
       }
       return result;
     });
+  identityChanged = () => {
+    if (subscriptions.size === 0) return;
+    for (const s of subscriptions.values()) {
+      s.due = true;
+      s.token = undefined; // a token is for the visitor it was issued to
+    }
+    gap = bounds().min;
+    if (!hidden()) kick();
+  };
   const shown = () => {
-    if (hidden()) return reschedule(); // stops the interval
+    if (hidden()) return reschedule(true); // stops the interval
     gap = bounds().min;
     markDue(() => true);
     kick();
@@ -1113,13 +1175,15 @@ export function createClient(options: ClientOptions = {}): Client {
   function subscribe(key: string, descriptor: ReadCall, deps: readonly string[], to: Subscriber, seed?: { token: string; data: unknown }): () => void {
     let s = subscriptions.get(key);
     if (!s) {
-      s = { descriptor, deps: new Set(deps), has: seed !== undefined, data: seed?.data, token: seed?.token, due: true, subscribers: new Set(), overlays: [] };
+      s = { descriptor, deps: new Set(deps), has: seed !== undefined, data: seed?.data, token: seed?.token, due: true, subscribers: new Set(), overlays: [], sent: 0, answered: 0, sentAtWrite: 0 };
       subscriptions.set(key, s);
       if (subscriptions.size === 1) {
         page()?.addEventListener?.("visibilitychange", shown);
         const onStatus = () => {
-          if (live) markDue(() => true), kick(); // catch up on what changed while the transport was down
-          else reschedule();
+          // Catch up on what changed while the transport was down; a hidden tab does so when shown.
+          if (live) markDue(() => true);
+          if (live && !hidden()) kick();
+          reschedule(true);
         };
         statusListeners.add(onStatus);
         const stop = realtime.subscribe(null, (notice) => {
@@ -1146,14 +1210,15 @@ export function createClient(options: ClientOptions = {}): Client {
       stopNotices?.();
       stopNotices = null;
       gap = bounds().min;
-      reschedule();
+      reschedule(true);
     };
   }
   function optimistic(key: string, update: (current: unknown) => unknown): { settle(): void; rollback(): void } {
     const s = subscriptions.get(key);
     const overlay = { apply: update, after: null as number | null };
     const since = writes;
-    if (s?.has) {
+    // Kept even before the first answer: it applies to that answer when it arrives.
+    if (s) {
       s.overlays.push(overlay);
       emit(s);
     }
@@ -1167,9 +1232,9 @@ export function createClient(options: ClientOptions = {}): Client {
         if (!s || !s.overlays.includes(overlay)) return;
         // Kept until an answer that holds the write arrives: one to a request sent after the write
         // returned (a write through this client), or else to one sent from now on.
-        overlay.after = writes > since ? sentAtLastWrite : sent;
-        if (answered > overlay.after) return drop(); // that answer is already shown
-        if (sent > overlay.after || subscriptions.get(key) !== s) return; // it is on its way
+        overlay.after = writes > since ? s.sentAtWrite : s.sent;
+        if (s.answered > overlay.after) return drop(); // that answer is already shown
+        if (s.sent > overlay.after || subscriptions.get(key) !== s) return; // it is on its way
         s.due = true;
         kick();
       },
@@ -1205,10 +1270,11 @@ export function createClient(options: ClientOptions = {}): Client {
     const desc: { path: string } = SCHEMA.collections[key];
     const path = `/${seg(desc.path)}`;
     const one = (id: string | number) => `${path}/${seg(id)}`;
-    const reads = (q: Json | undefined) => dependencies(key, q?.with);
+    const reads = (q: Json | undefined) => dependencies(key, q?.with, q?.where);
     const list = (q?: Json) => query({ kind: key, op: "list", args: liveArgs(q) }, reads(q), () => request("GET", path, { query: listParams(q) }));
     const paginate = (q?: Json) =>
-      query({ kind: key, op: "paginate", args: liveArgs(q) }, reads(q), () => {
+      // A page is reached by `cursor`; the server's paginate takes no `offset`.
+      query({ kind: key, op: "paginate", args: liveArgs(q && { ...q, offset: undefined }) }, reads(q), () => {
         const params = listParams(q);
         if (typeof q?.cursor === "string") params.set("cursor", q.cursor);
         return request("GET", path, { query: params, envelope: true });
@@ -1223,7 +1289,7 @@ export function createClient(options: ClientOptions = {}): Client {
         ),
       count: (q?: Json) => {
         const descriptor: ReadCall = { kind: key, op: "count", args: liveArgs(q ? { where: q.where, status: q.status, locale: q.locale } : undefined) };
-        return query<number>(descriptor, [key], () => once(descriptor));
+        return query<number>(descriptor, dependencies(key, undefined, q?.where), () => once(descriptor));
       },
       create: (data: unknown) => wrote(request("POST", path, { json: data }), key),
       update: (id: string | number, patch: unknown) => wrote(request("PATCH", one(id), { json: patch }), key),
@@ -1358,16 +1424,26 @@ function watchWith<T>(hub: Hub, collections: readonly string[], read: () => Prom
 }
 
 /** The collection and every collection its `with` loads: a change to any of them refreshes the read. */
-function dependencies(key: string, w: unknown, seen = new Set<string>()): string[] {
+function dependencies(key: string, w: unknown, where?: unknown, seen = new Set<string>()): string[] {
   seen.add(key);
   const relations: Record<string, { collection?: string }> = (SCHEMA.collections as Record<string, { relations?: Record<string, { collection?: string }> }>)[key]?.relations ?? {};
   if (isObject(w)) {
     for (const [name, v] of Object.entries(w)) {
       const target = relations[name]?.collection;
-      if (!v || typeof target !== "string" || seen.has(target)) continue;
-      dependencies(target, isObject(v) ? v.with : undefined, seen);
+      if (!v || typeof target !== "string") continue;
+      dependencies(target, isObject(v) ? v.with : undefined, isObject(v) ? v.where : undefined, seen);
     }
   }
+  // A filter through a relation (`{ author: { name: "x" } }`, under AND, OR or NOT too) reads that kind.
+  const filter = (f: unknown) => {
+    if (Array.isArray(f)) return f.forEach(filter);
+    if (!isObject(f)) return;
+    for (const [name, v] of Object.entries(f)) {
+      if (name === "AND" || name === "OR" || name === "NOT") filter(v);
+      else if (typeof relations[name]?.collection === "string" && isObject(v)) dependencies(relations[name]!.collection!, undefined, v, seen);
+    }
+  };
+  filter(where);
   return [...seen];
 }
 

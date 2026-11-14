@@ -560,6 +560,10 @@ fn components(
 ) -> Result<Vec<(String, Span)>, Diag> {
     use crate::value::Value;
     let mut blocks = Vec::new();
+    // `"use client"` components compile first: a server component that renders one, in a file
+    // that sorts before it, then calls its compiled body instead of compiling it as a plain helper.
+    let mut client_roots = Vec::new();
+    let mut server_roots = Vec::new();
     for (path, module) in &program.components {
         let exports = ev.run_module(*module)?;
         let span = Span {
@@ -603,7 +607,12 @@ fn components(
                 continue;
             }
             let stem = path.trim_end_matches(".tsx");
-            ext.roots.push(extract::Root {
+            let roots = if program.modules[*module].use_client {
+                &mut client_roots
+            } else {
+                &mut server_roots
+            };
+            roots.push(extract::Root {
                 closure: closure.clone(),
                 slot: Slot::Component {
                     name: format!("{path}#{export}"),
@@ -613,6 +622,8 @@ fn components(
             });
         }
     }
+    ext.roots.extend(client_roots);
+    ext.roots.extend(server_roots);
     Ok(blocks)
 }
 

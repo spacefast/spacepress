@@ -97,7 +97,8 @@ export declare class FirstError extends Error {
 
 export interface FirstConnection {
   readonly site: string;
-  request(method: string, path: string, body?: unknown): Promise<any>;
+  /** `extra`: headers for this one request, such as a visitor's `cookie`. */
+  request(method: string, path: string, body?: unknown, extra?: Record<string, string>): Promise<any>;
   describe(): Promise<Record<string, any>>;
 }
 

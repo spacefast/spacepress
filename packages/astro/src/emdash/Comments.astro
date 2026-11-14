@@ -1,0 +1,7 @@
+---
+import { getComments } from './client.js';
+import CommentThread from './CommentThread.astro';
+interface Props { collection: string; contentId: string; threaded?: boolean }
+const { items } = await getComments(Astro.props.contentId);
+---
+<section class="ec-comments" id="comments" aria-label="Comments"><h2 class="ec-comments-heading">Comments</h2><CommentThread items={items} parent="0" /></section>

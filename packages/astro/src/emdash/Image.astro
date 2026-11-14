@@ -1,0 +1,5 @@
+---
+interface Props { image: { src: string; alt?: string } | null; class?: string; loading?: 'eager' | 'lazy'; sizes?: string; priority?: boolean; [key: string]: unknown }
+const { image, class: className, loading, priority, sizes } = Astro.props;
+---
+{image && <div class={className}><img src={image.src} alt={image.alt ?? ''} loading={priority ? 'eager' : (loading ?? 'lazy')} sizes={sizes} /></div>}

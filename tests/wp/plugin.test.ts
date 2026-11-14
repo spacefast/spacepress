@@ -383,7 +383,7 @@ describe("while an app update has failed half way", () => {
 
 
   test("a queued job's delivery that falls due is deferred, not run against the old schema", () => {
-    // A job queued before the failure (its row and delivery inserted the way the outbox leaves them).
+    // A job queued before the failure (its row and its delivery, as enqueue writes them).
     const id = `defer-${run}`;
     sql(`INSERT INTO wp_first__jobs (id, job, input, \`key\`, dedupe, state, attempts, runAt, createdAt) VALUES ('${id}', 'stamp', '{"noteId":0,"fail":false}', NULL, NULL, 'pending', 0, '2000-01-01T00:00:00.000Z', '2000-01-01T00:00:00.000Z')`);
     wp("eval", `as_schedule_single_action(time() - 1, 'first_job', ['id' => '${id}'], 'first-blog');`);
@@ -398,7 +398,7 @@ describe("while an app update has failed half way", () => {
     }
   });
 
-  test("job maintenance skips while storage is behind, leaving jobs and the outbox as they are", () => {
+  test("job maintenance skips while storage is behind, leaving jobs as they are", () => {
     const id = `stuck-${run}`;
     sql(`INSERT INTO wp_first__jobs (id, job, input, state, attempts, runAt, lockedAt, createdAt) VALUES ('${id}', 'stamp', '{}', 'running', 1, '2000-01-01T00:00:00.000Z', '2000-01-01T00:00:00.000Z', '2000-01-01T00:00:00.000Z')`);
     try {

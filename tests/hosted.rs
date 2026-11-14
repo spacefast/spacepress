@@ -15,7 +15,7 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     write(
         &project,
         "first.config.ts",
-        "import { defineConfig, action, global, text } from 'first'; import { message } from './first/message'; import { suffix } from 'shared'; export default defineConfig({ globals: { settings: global('settings', { label: text().default('Ready') }) }, actions: { version: action({ access: 'anyone', handler() { return message + suffix; } }) } });",
+        "import { defineConfig, action, global, text } from 'first'; import { message } from './first/message'; import { suffix } from 'shared'; export default defineConfig({ globals: { settings: global({ label: text().default('Ready') }) }, actions: { version: action({ access: 'anyone', handler() { return message + suffix; } }) } });",
     );
     write(&project, "first/message.ts", "export const message = 'v1';");
     write(

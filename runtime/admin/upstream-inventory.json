@@ -1504,7 +1504,7 @@
       "sha256": "8a781c03a3f83c87ffb87ac714e77df6a44ab75b57eca45558b3b838ada2b8dd",
       "path": "lib/load-libs.php",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "c51c89f71c915280c9d93ebec8f2ac533f6c8218e4e080a0362af71efa6941c7",
+      "adaptedSha256": "42fcf478b2d686f14a22d2165b75792cbff4a308ce74b2211d49b008b01987a6",
       "normalizedSha256": "3ad86290c58390db19e9af3b4adf7c2f9c9bfb9c3767d044c9adf6c817a37029",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/load-libs.php"
     },

@@ -39,9 +39,10 @@ final class UserMeta
     }
 
     /**
-     * rest_endpoints: on the API's own dispatches, reading a user is First's read rule's question (a
-     * member outside it is a 404, so existence never leaks, §1.6), not core's list_users capability,
-     * which answers 403. Core's own clients keep core's check.
+     * rest_endpoints: reading a user runs core's check first (one's own row, `list_users`, or an author
+     * of published posts), then First's read rule, which only narrows. On the API's own dispatches a
+     * refusal is a 404, so a member's existence never leaks (§1.6); core's own clients keep core's
+     * answers.
      */
     public static function endpoints(array $endpoints): array
     {
@@ -55,9 +56,16 @@ final class UserMeta
             }
             $core = $handler['permission_callback'];
             $endpoints['/wp/v2/users/(?P<id>[\d]+)'][$i]['permission_callback'] = static function (\WP_REST_Request $request) use ($core): mixed {
+                $allowed = call_user_func($core, $request);
                 $collection = self::collection();
-                if (!Facade::dispatching() || $collection === null || $request['context'] === 'edit') {
-                    return call_user_func($core, $request);
+                if (!Facade::dispatching() || $collection === null) {
+                    return $allowed;
+                }
+                $missing = new \WP_Error('rest_user_invalid_id', __('Invalid user ID.'), ['status' => 404]);
+                if ($allowed !== true) {
+                    // Signed out, the caller is asked to sign in (401), as First's read rule answers
+                    // an anonymous viewer; signed in, a user it may not read is a missing one.
+                    return get_current_user_id() === 0 || (is_wp_error($allowed) && $allowed->get_error_code() === 'rest_forbidden_context') ? $allowed : $missing;
                 }
                 $viewer = CoreAccess::viewer();
                 try {
@@ -66,7 +74,7 @@ final class UserMeta
                     return CoreAccess::error($e);
                 }
 
-                return $row !== null ? true : new \WP_Error('rest_user_invalid_id', __('Invalid user ID.'), ['status' => 404]);
+                return $row !== null ? true : $missing;
             };
         }
 
@@ -134,7 +142,7 @@ final class UserMeta
         return $response;
     }
 
-    /** @var array{\WP_REST_Request, list<int>, bool}|null the ids First selected for a users list */
+    /** @var array{\WP_REST_Request, list<int>, bool, bool}|null the ids First selected for a users list: request, ids, ordered, searched */
     private static ?array $selected = null;
 
     /** `where`/`orderBy` on the users list: First selects the ids, core keeps its pagination. */
@@ -143,27 +151,33 @@ final class UserMeta
         if (!is_array($args) || self::$selected === null || self::$selected[0] !== $request) {
             return $args;
         }
-        [, $keys, $ordered] = self::$selected;
+        [, $keys, $ordered, $searched] = self::$selected;
         $include = empty($args['include']) ? $keys : array_values(array_intersect($keys, array_map('intval', (array) $args['include'])));
-        if (Facade::dispatching()) {
-            // The facade's rows are First's (its read rule chose them; UserMeta::prepare gives First's row):
-            // core's "authors only" default must not drop a member's own row. Core's own clients keep it.
-            unset($args['has_published_posts']);
+        if ($searched) {
+            // First's search picked the users, as this viewer reads them; core's own search over
+            // login, email and name would match fields the viewer can't read.
+            unset($args['search'], $args['search_columns']);
         }
+        // One named elevation: core limits a list to authors of published posts for a viewer without
+        // `list_users`, which drops a member's own row. When the ids come from First's read rule
+        // (`self`, a filter), each one is a user this viewer may read on core's own item route
+        // (one's own row) or by First's rule, so core's authors-only default is replaced by them.
+        // Without a `where`/`orderBy`/read rule selection, core's default stays.
+        unset($args['has_published_posts']);
 
         return ['include' => $include === [] ? [0] : $include] + ($ordered ? ['orderby' => 'include'] : []) + $args;
     }
 
-    /** A users list with `where`/`orderBy`: run it through First as the viewer before core's query. */
+    /** A users list with `where`/`orderBy`/`search`: run it through First as the viewer before core's query. */
     private static function select(\WP_REST_Request $request): ?\WP_Error
     {
         $collection = self::collection() ?? throw new \LogicException('No users kind');
         try {
-            $keys = FirstQuery::keys($collection, $request, CoreAccess::viewer() ?? new Viewer(null), search: false);
+            $keys = FirstQuery::keys($collection, $request, CoreAccess::viewer() ?? new Viewer(null), searched: $searched);
         } catch (HttpError $e) {
             return CoreAccess::error($e);
         }
-        self::$selected = $keys === null ? null : [$request, $keys, $request['orderBy'] !== null];
+        self::$selected = $keys === null ? null : [$request, $keys, $request['orderBy'] !== null, $searched];
 
         return null;
     }

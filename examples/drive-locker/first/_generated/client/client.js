@@ -10,7 +10,7 @@ export const SCHEMA = {
 			"revisions": false,
 			"localized": false,
 			"relations": {
-				"place": {
+				"placeId": {
 					"kind": "one",
 					"collection": "places",
 					"optional": true
@@ -51,10 +51,10 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": { "drive": {
+			"relations": { "driveId": {
 				"kind": "one",
 				"collection": "drives",
-				"optional": true
+				"optional": false
 			} },
 			"media": [],
 			"mediaList": [],
@@ -66,10 +66,10 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": { "drive": {
+			"relations": { "driveId": {
 				"kind": "one",
 				"collection": "drives",
-				"optional": true
+				"optional": false
 			} },
 			"media": [],
 			"mediaList": [],
@@ -666,7 +666,13 @@ export function createClient(options = {}) {
 				list: (id) => request("GET", `${one(id)}/revisions`),
 				get: (id, rid) => request("GET", `${one(id)}/revisions/${seg(rid)}`),
 				restore: (id, rid) => request("POST", `${one(id)}/revisions/${seg(rid)}/restore`)
-			}
+			},
+			stage: (id, patch) => request("PATCH", `${one(id)}/staged`, { json: patch }),
+			staged: (id) => request("GET", `${one(id)}/staged`),
+			compare: (id) => request("GET", `${one(id)}/staged/compare`),
+			promote: (id, options) => request("POST", `${one(id)}/staged/promote`, { json: options ?? {} }),
+			discard: (id) => request("DELETE", `${one(id)}/staged`),
+			previewLink: (id, options) => request("POST", `${one(id)}/staged/preview`, { json: options ?? {} })
 		};
 	}
 	const client = {

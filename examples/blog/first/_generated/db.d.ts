@@ -56,11 +56,11 @@ type Graph = {
     'posts': Many<'posts'>;
   };
   'posts': {
-    'author': One<'authors', true>;
+    'authorId': One<'authors', true>;
     'comments': Many<'comments'>;
   };
   'comments': {
-    'post': One<'posts', false>;
+    'postId': One<'posts', false>;
   };
   'members': {
   };

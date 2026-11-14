@@ -76,20 +76,20 @@ eq('existing WordPress users became members with the collection\'s defaults when
 // ================================================================ hidden columns never leave the runtime
 
 [$s, $note] = $call('POST', '/notes', ['body' => 'hi', 'memberId' => $anaId], $anaId);
-[$s, $with] = $call('GET', '/notes', null, $anaId, ['with' => 'member']);
-check('with: a related member never exposes hidden columns', $s === 200 && ($with['data'][0]['member']['email'] ?? null) === 'ana@example.test' && !$leaks($with), $with);
+[$s, $with] = $call('GET', '/notes', null, $anaId, ['with' => 'memberId']);
+check('with: a related member never exposes hidden columns', $s === 200 && ($with['data'][0]['memberId']['email'] ?? null) === 'ana@example.test' && !$leaks($with), $with);
 [$s, $revs] = $call('PATCH', '/notes/' . $note['data']['id'], ['body' => 'edited'], $anaId);
 check('write results never expose hidden columns', $s === 200 && !$leaks($revs), $revs);
 $probe = static fn (array $query, string|int|null $as = null): array => $call('GET', str_contains(json_encode($query), 'member') && !isset($query['orderBy']) ? '/notes' : '/members', null, $as, $query);
 eq('filtering on a hidden column is refused (403, §4.3)', array_intersect_key($probe(['where' => json_encode(['passwordHash' => ['like' => '$2y%']])], $anaId)[1], ['status' => 1, 'code' => 1, 'pointer' => 1]),
     ['status' => 403, 'code' => 'forbidden', 'pointer' => '/where/passwordHash']);
-eq('filtering through a relation onto a hidden column is refused', $probe(['where' => json_encode(['member' => ['passwordHash' => ['isNotNull' => true]]])])[1]['pointer'] ?? null, '/where/member/passwordHash');
+eq('filtering through a relation onto a hidden column is refused', $probe(['where' => json_encode(['memberId' => ['passwordHash' => ['isNotNull' => true]]])])[1]['pointer'] ?? null, '/where/memberId/passwordHash');
 eq('nested OR/NOT filters are checked too', $probe(['where' => json_encode(['OR' => [['NOT' => ['suspendedAt' => null]]]])], $anaId)[1]['pointer'] ?? null, '/where/OR/0/NOT/suspendedAt');
 eq('ordering on a hidden column is refused', $probe(['orderBy' => 'guest'], $anaId)[1]['pointer'] ?? null, '/orderBy/guest');
 problem('selecting a hidden column is refused (403, §4.3)', fn () => $db->findMany('members', ['columns' => ['passwordHash' => true]], new Viewer($wp->user('admin'))), 403, 'forbidden', '/columns/passwordHash');
 eq('hidden columns are unknown to direct writes', $call('PATCH', "/members/$anaId", ['passwordHash' => 'x'], $anaId)[1]['pointer'] ?? null, '/passwordHash');
 problem('a mutation filtered on a hidden column is refused too', fn () => $db->update('members', ['name' => 'x'], ['passwordHash' => ['isNotNull' => true]], true, new Viewer($wp->user('admin'))), 403, 'forbidden', '/where/passwordHash');
-problem('… also through a relation', fn () => $db->delete('notes', ['member' => ['passwordHash' => ['isNotNull' => true]]], true, new Viewer($wp->user('admin'))), 403, 'forbidden', '/where/member/passwordHash');
+problem('… also through a relation', fn () => $db->delete('notes', ['memberId' => ['passwordHash' => ['isNotNull' => true]]], true, new Viewer($wp->user('admin'))), 403, 'forbidden', '/where/memberId/passwordHash');
 $trusted = $db->findMany('members');
 check('trusted reads (hooks, CLI) never carry the auth secrets either', !$leaks($trusted) && count($trusted) >= 2, $trusted);
 $revisionList = $call('GET', '/notes/' . $note['data']['id'] . '/revisions', null, $anaId)[1]['data'] ?? [];
@@ -125,6 +125,46 @@ eq('a rolled-back member update leaves no usermeta in WordPress\'s cache', [get_
 $gone = $db->insert('members', ['email' => 'gone@example.test', 'name' => 'Gone', 'password' => 'gone password 1'], true)[0];
 $db->delete('members', ['id' => $gone['id']]);
 eq('deleting a member deletes the WordPress user', [get_userdata((int) $gone['id']), $db->findFirst('members', ['where' => ['id' => $gone['id']]])], [false, null]);
+
+// ================================================================ search over members
+
+$prefix = $wp->connection()->prefix();
+$entries = static fn (int $id): array => array_column($wp->sql("SELECT `field`, `body` FROM `{$prefix}first__search` WHERE `kind` = ? AND `item` = ?", [new \First\Wp\Bytes('members'), new \First\Wp\Bytes((string) $id)]), 'body', 'field');
+/** @return array{list<int>|int, string} the ids core's users route returns for a search and its X-WP-Total, or the error's status and code */
+$coreUsers = static function (array $params, string|int $as) use ($wp): array {
+    $wp->actAs($as);
+    try {
+        $request = new WP_REST_Request('GET', '/wp/v2/users');
+        $request->set_query_params($params);
+        $response = rest_do_request($request);
+    } finally {
+        wp_set_current_user(0);
+    }
+    if ($response->is_error()) {
+        return [$response->get_status(), (string) ($response->as_error()->get_error_code())];
+    }
+    $ids = array_map(static fn (array $u): int => (int) $u['id'], (array) $response->get_data());
+    sort($ids);
+
+    return [$ids, (string) ($response->get_headers()['X-WP-Total'] ?? '')];
+};
+// A user changed by WordPress itself (wp-admin's user screen, another plugin) is re-indexed: core's
+// user hooks report it, as First's own writes do.
+wp_update_user(['ID' => $boId, 'display_name' => 'Bo Zephyr']);
+eq('a core user update re-indexes the member', $entries($boId)['name'] ?? null, 'Bo Zephyr');
+eq('the member finds themself by the new name', array_column($call('GET', '/members', null, $boId, ['search' => 'zephyr'])[1]['data'] ?? [], 'id'), [$boId]);
+// Core's users route searches through First as the reader: the read rule ("self") decides, not core's
+// `list_users`, and core's own search over login and email (fields no reader is matched on) is off.
+eq('core /wp/v2/users?search= finds the reader\'s own row', $coreUsers(['search' => 'zephyr'], $boId), [[$boId], '1']);
+eq('an administrator, whom "self" limits too, finds nobody else and counts nobody', $coreUsers(['search' => 'zephyr'], 'admin'), [[], '0']);
+eq('nor by email, which is not a searchable field', $coreUsers(['search' => 'bo@example.test'], 'admin'), [[], '0']);
+eq('search_columns=name searches the name', $coreUsers(['search' => 'zephyr', 'search_columns' => ['name']], $boId), [[$boId], '1']);
+eq('search_columns=email matches nothing: email is not a searchable field', $coreUsers(['search' => 'bo', 'search_columns' => ['email']], $boId), [[], '0']);
+$late = wp_insert_user(['user_login' => 'late', 'user_email' => 'late@example.test', 'user_pass' => 'late password 1', 'display_name' => 'Late Quokka']);
+eq('a user created by WordPress is indexed', $entries($late)['name'] ?? null, 'Late Quokka');
+require_once ABSPATH . 'wp-admin/includes/user.php';
+wp_delete_user($late);
+eq('a user deleted by WordPress leaves no entries', $entries($late), []);
 
 require dirname(__DIR__) . '/identity/native-auth-storage.php';
 finish('auth_test');

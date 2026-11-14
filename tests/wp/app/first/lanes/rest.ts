@@ -3,7 +3,7 @@
 //
 // Lane R (core `/wp/v2` under First's rules): an admin-only collection, one whose read rule is a
 // per-owner filter, and one with an admin-only field.
-import { action, blocks, collection, db, group, HttpError, integer, json, repeater, richText, slug, text, table } from "first";
+import { action, blocks, collection, db, group, HttpError, integer, json, repeater, richText, slug, text, table, ref } from "first";
 import { jottings, vault as vaultKind } from "first:db";
 
 export const vault = collection({ title: text(), code: text().optional() },
@@ -34,7 +34,7 @@ export const payroll = collection({
   badge: integer().unique().access({ read: "admin", update: "editor" }).optional(),
   writeOnly: text().access({ read: "admin", update: "editor" }).optional(),
   // An admin-only reference: SCF links (and can embed) the post it names.
-  managerId: integer().references(() => ledger.id).access({ read: "admin" }).optional(),
+  managerId: ref(ledger).access({ read: "admin" }).optional().onDelete("restrict"),
 }, { revisions: true, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
 // Designated content and slug hidden below admin: core's own columns, not SCF fields. Editors may
@@ -106,12 +106,12 @@ export const oracleRows = collection({
 } });
 export const oracleRefs = collection({
   title: text(),
-  rowId: integer().references(() => oracleRows.id).optional(),
-  alias: integer().references(() => payroll.badge).optional(),
+  rowId: ref(oracleRows).optional().onDelete("restrict"),
+  alias: integer().optional(),
 }, { access: { read: "admin", create: "editor", update: "editor", delete: "admin" } });
 
 export const oracleSync = collection({
-  title: text(), rowId: integer().references(() => oracleRows.id).optional(), badgeId: integer().references(() => oracleRows.badge).min(889002).optional(), publicBadgeId: integer().references(() => oracleRows.publicBadge).optional(),
+  title: text(), rowId: ref(oracleRows).optional().onDelete("restrict"), badgeId: integer().min(889002).optional(), publicBadgeId: integer().optional(),
 }, { sync: "content/oracle-sync/*.json", access: { read: "admin", create: "editor", update: "editor", delete: "admin" } });
 export const oraclePeers = collection({
   title: text().localized(), ownerId: integer().optional(),
@@ -122,10 +122,10 @@ export const oraclePeers = collection({
 export const oracleParents = collection({ title: text() },
   { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 export const oracleKids = collection({
-  title: text(), parentId: integer().references(() => oracleParents.id, { onDelete: "cascade" }).optional(),
+  title: text(), parentId: ref(oracleParents).optional().onDelete("cascade"),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 export const oracleGrandchildren = collection({
-  title: text(), childId: integer().references(() => oracleKids.id).optional(),
+  title: text(), childId: ref(oracleKids).optional().onDelete("restrict"),
 }, { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
 export const oracleDefault = collection({
   title: text(),
@@ -136,25 +136,25 @@ export const oracleDefault = collection({
 export const nullParents = collection({ title: text() },
   { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 export const nullChildren = collection({
-  title: text(), parentId: integer().references(() => nullParents.id, { onDelete: "set null" }).optional(),
+  title: text(), parentId: ref(nullParents).optional(),
   code: text().max(191).unique().$onUpdate(() => "null-reserved").access({ read: "admin" }).optional(),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
 export const hookParents = collection({ title: text() },
   { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 export const hookChildren = collection({
-  title: text(), parentId: integer().references(() => hookParents.id, { onDelete: "set null" }).optional(),
+  title: text(), parentId: ref(hookParents).optional(),
   code: text().max(191).unique().access({ read: "admin" }).optional(),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 export const secretParents = collection({
   title: text(), secret: integer().unique().access({ read: "admin" }).optional(),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 export const secretLinks = collection({
-  title: text(), secret: integer().references(() => secretParents.secret).optional(),
+  title: text(), secret: integer().optional(),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
 export const refDefaults = collection({
-  title: text(), targetId: integer().references(() => oracleRows.id).default(444444444).optional(),
+  title: text(), targetId: ref(oracleRows).default(444444444).optional().onDelete("restrict"),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "admin" } });
 
 export const defaultOnly = collection({
@@ -163,7 +163,7 @@ export const defaultOnly = collection({
 
 export const derivedRefs = collection({
   title: text(),
-  badgeId: integer().references(() => oracleRows.badge).min(100).$default(async () => {
+  badgeId: integer().min(100).$default(async () => {
     const row = await db.query.oracleRows.findFirst({ where: { title: "Generated source" } });
     return row?.badge ?? null;
   }).optional(),
@@ -175,8 +175,8 @@ export const derivedRefs = collection({
 export const deepRoots = collection({ title: text() },
   { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 export const deepNodes = collection({
-  title: text(), rootId: integer().references(() => deepRoots.id, { onDelete: "cascade" }).optional(),
-  parentId: integer().references(() => deepNodes.id, { onDelete: "cascade" }).optional(),
+  title: text(), rootId: ref(deepRoots).optional().onDelete("cascade"),
+  parentId: ref(() => deepNodes).optional().onDelete("cascade"),
 }, { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
 
 export const roundTrips = collection({
@@ -187,17 +187,11 @@ export const roundTrips = collection({
   create: "admin", update: "editor", delete: "admin",
 } });
 
-export const keyRoots = table({ code: integer().unique().optional() },
-  { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
-export const keyLinks = table({ rootCode: integer().references(() => keyRoots.code).optional() },
-  { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
 
 export const collections = { jottings, vault, ledger, payroll, gated, dossier, claims, fuses, oracleRows, oracleRefs, oracleSync, oraclePeers, oracleParents, oracleKids, oracleGrand: oracleGrandchildren, oracleDefault, nullParents, nullChildren, hookParents, hookChildren, secretParents, secretLinks, refDefaults, defaultOnly, deepRoots, deepNodes, derivedRefs, roundTrips };
-export const tables = { fuseLog, keyRoots, keyLinks };
+export const tables = { fuseLog };
 export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
-/** Extra relations for this lane's collections: `(r) => ({ myCollection: { ... } })`. */
-export const relations = (r: unknown) => ({});
 export const actions = {
   jotQuery: action({
     input: { tag: text() },

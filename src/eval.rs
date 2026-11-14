@@ -269,7 +269,7 @@ pub const FIRST_EXPORTS: &[&str] = &[
     "repeater",
     "blocks",
     "global",
-    "defineRelations",
+    "ref",
     "defineConfig",
     "action",
     "db",
@@ -555,7 +555,7 @@ pub struct Evaluator<'p> {
     /// module. `this.<key>` is typed `T`, as TypeScript types the literal.
     pub method_home_fields: HashMap<(usize, String), (TyAnn, usize)>,
     /// The 0.3.0 field reading for pre-rename captures (`Fs::legacy_fields`).
-    legacy: bool,
+    pub(crate) legacy: bool,
 }
 
 pub fn ptr_of(v: &Value) -> Option<usize> {
@@ -610,6 +610,11 @@ impl<'p> Evaluator<'p> {
         self.program
     }
 
+    /// Whether these sources are read as a 0.3.0 capture (`Fs::legacy_fields`, ruling 21).
+    pub fn legacy(&self) -> bool {
+        self.legacy
+    }
+
     /// Fills every `"first:db"` binding from `kinds` (registered name → kind), once registration has
     /// run. An unknown name is refused at its import, with the closest registered name.
     pub fn bind_db(&mut self, kinds: &IndexMap<String, Value>) -> Result<(), Diag> {
@@ -646,6 +651,38 @@ impl<'p> Evaluator<'p> {
 
     pub fn call_closure_public(&mut self, f: &Rc<Closure>, args: Vec<Value>, span: Span) -> Result<Value, Diag> {
         self.call_closure(f, args, span).map_err(uncaught)
+    }
+
+    /// A field builder call and its modifier chain made from data (the runtime schema lock), under
+    /// the rules an authored `text().max(80)` gets.
+    pub fn field_from_data(
+        &self,
+        builder: &'static str,
+        args: &[Value],
+        modifiers: &[(&str, Vec<Value>)],
+        span: Span,
+    ) -> Result<Rc<ColBuilder>, Diag> {
+        let mut value = self.make_column(builder, args, span).map_err(uncaught)?;
+        for (name, args) in modifiers {
+            let Value::Column(column) = &value else {
+                unreachable!("a field builder returns a column")
+            };
+            value = column_method(column, name, args, span).map_err(uncaught)?;
+        }
+        match value {
+            Value::Column(column) => Ok(column),
+            _ => unreachable!("a field modifier returns a column"),
+        }
+    }
+
+    /// A `collection()` or `global()` call made from data (the runtime schema lock).
+    pub fn kind_from_data(&mut self, global: bool, args: Vec<Value>) -> Result<Value, Diag> {
+        let builtin = if global {
+            Builtin::DefineGlobal
+        } else {
+            Builtin::Collection(StorageKind::Collection)
+        };
+        self.call_builtin(&builtin, args, Span::NONE).map_err(uncaught)
     }
 
     pub fn key_span(&self, obj: &Value, key: &str) -> Option<Span> {
@@ -763,6 +800,21 @@ impl<'p> Evaluator<'p> {
         let module = self.program.modules[id].clone();
         let scope = Scope::new(None, id);
         self.module_scopes[id] = Some(scope.clone());
+        // A stylesheet or image import (`crate::assets`): no code. A CSS module's default export is
+        // its class map, an image's is its URL, and a plain stylesheet exports nothing.
+        if let Some(asset) = self.program.assets.get(&id) {
+            let default = match asset.kind {
+                crate::assets::Kind::CssModule => Some(Value::object(
+                    asset.classes.iter().map(|(k, v)| (k.clone(), Value::str(v))).collect(),
+                )),
+                crate::assets::Kind::Image => Some(Value::Asset(Rc::from(asset.file.as_str()))),
+                crate::assets::Kind::Css => None,
+            };
+            if let Some(default) = default {
+                self.exports[id].insert("default".into(), default);
+            }
+            return Ok(());
+        }
         self.evaluating[id] = true;
         // The CommonJS wrapper: `exports` starts as `module.exports`, and `require` runs its
         // target when called, as Node does.
@@ -951,7 +1003,7 @@ impl<'p> Evaluator<'p> {
 
     fn import_value(&mut self, from: usize, source: &str, name: &str, span: Span) -> R<Value> {
         if source == FIRST_MODULE {
-            return first_export(name, span);
+            return first_export(name, self.legacy, span);
         }
         if let Some(module) = crate::builtins::module(source) {
             return node_crypto_export(module, source, name, span);
@@ -967,6 +1019,26 @@ impl<'p> Evaluator<'p> {
                 .ok_or_else(|| {
                     let mut d = Diag::new(span, format!("\"first/client\" has no export named `{name}`"));
                     if let Some(s) = suggest(name, crate::client_component::HOOKS.iter().copied()) {
+                        d = d.help(format!("did you mean `{s}`?"));
+                    }
+                    Ctl::Err(d)
+                });
+        }
+        if source == crate::loader::CONTENT_MODULE {
+            return crate::compile::CONTENT_EXPORTS
+                .iter()
+                .find(|e| **e == name)
+                .map(|e| Value::Builtin(Builtin::Content(e)))
+                .or_else(|| crate::compile::CONTENT_TYPES.contains(&name).then_some(Value::Undef))
+                .ok_or_else(|| {
+                    let mut d = Diag::new(span, format!("\"first/content\" has no export named `{name}`"));
+                    if let Some(s) = suggest(
+                        name,
+                        crate::compile::CONTENT_EXPORTS
+                            .iter()
+                            .chain(crate::compile::CONTENT_TYPES)
+                            .copied(),
+                    ) {
                         d = d.help(format!("did you mean `{s}`?"));
                     }
                     Ctl::Err(d)
@@ -1071,8 +1143,9 @@ impl<'p> Evaluator<'p> {
                     }
                     if source == FIRST_MODULE {
                         let mut map = IndexMap::new();
-                        for n in FIRST_EXPORTS {
-                            map.insert(n.to_string(), first_export(n, span)?);
+                        let extra: &[&str] = if self.legacy { legacy::EXPORTS } else { &[] };
+                        for n in FIRST_EXPORTS.iter().chain(extra) {
+                            map.insert(n.to_string(), first_export(n, self.legacy, span)?);
                         }
                         Value::object(map)
                     } else {
@@ -2650,11 +2723,13 @@ impl<'p> Evaluator<'p> {
             Builtin::Id => Some("id"),
             Builtin::DefineGlobal => Some("global"),
             Builtin::DefineRelations => Some("defineRelations"),
+            Builtin::Ref => Some("ref"),
             Builtin::DefineConfig => Some("defineConfig"),
             Builtin::Env => Some("env"),
             Builtin::Files => Some("files"),
             Builtin::Action => Some("action"),
             Builtin::Job => Some("job"),
+            Builtin::Route => Some("route"),
             Builtin::RelFn(..) => Some("relation"),
             _ => None,
         };
@@ -2694,7 +2769,10 @@ impl<'p> Evaluator<'p> {
                         "delete this field; for a text key, declare `code: text().unique().max(191)`",
                     );
                 }
-                if !columns.contains_key("id") {
+                // 0.3.0 gave a table that declared its own primary key (`code: text().primaryKey()`)
+                // no `id`; its stored table has none.
+                let own_key = self.legacy && columns.values().any(|c| c.primary_key);
+                if !columns.contains_key("id") && !own_key {
                     columns.shift_insert(0, "id".into(), Rc::new(legacy::id(span)));
                 }
                 let options = match arg(1) {
@@ -2750,6 +2828,27 @@ impl<'p> Evaluator<'p> {
                 "`id()` is gone: every kind already has an integer `id`",
                 "delete `id: id()`; for a text key, declare `code: text().unique().max(191)` and read it with `get({ code })`",
             ),
+            Builtin::Ref => {
+                let target = match arg(0) {
+                    k @ Value::Collection(_) => RefTarget::Kind(k),
+                    Value::Closure(f) => RefTarget::Thunk(f),
+                    other => {
+                        return err_help(
+                            span,
+                            format!("ref() takes a kind, not {}", other.describe()),
+                            "write `ref(authors)`, or `ref(() => authors)` for a kind declared later or the kind itself",
+                        );
+                    }
+                };
+                let mut c = ColBuilder::new(ColType::Integer, span);
+                c.references = Some((target, None, None, span));
+                Ok(Value::Column(Rc::new(c)))
+            }
+            Builtin::DefineRelations if !self.legacy => err_help(
+                span,
+                "`defineRelations()` is gone: a reference is a field",
+                "declare `location: ref(locations)` on the referencing kind; `with: { location: true }` loads the row, and the target gets the reverse list named after the referencing kind",
+            ),
             Builtin::DefineRelations => {
                 let Value::Object(schema) = arg(0) else {
                     return err(
@@ -2795,7 +2894,7 @@ impl<'p> Evaluator<'p> {
                 config @ Value::Object(_) => Ok(Value::Plugin(Rc::new(ActionVal { config, span }))),
                 _ => err_help(
                     span,
-                    "definePlugin() needs `{ name, hooks?, actions?, jobs?, routes? }`",
+                    "definePlugin() needs `{ name, hooks?, actions?, jobs? }`",
                     "pass the plugin definition as an object literal",
                 ),
             },
@@ -2833,14 +2932,22 @@ impl<'p> Evaluator<'p> {
                 "once(), jobs, mail, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
                 "move the call into a handler",
             ),
-            Builtin::Action | Builtin::Job => {
+            Builtin::Action | Builtin::Job | Builtin::Route => {
                 let cfg = arg(0);
                 if !matches!(cfg, Value::Object(_)) {
-                    return err(span, "action() needs `{ input, handler }`");
+                    return err(
+                        span,
+                        if *b == Builtin::Route {
+                            "route() needs `{ method, path, handler }`"
+                        } else {
+                            "action() needs `{ input, handler }`"
+                        },
+                    );
                 }
                 let value = Rc::new(ActionVal { config: cfg, span });
                 Ok(match b {
                     Builtin::Job => Value::Job(value),
+                    Builtin::Route => Value::Route(value),
                     _ => Value::Action(value),
                 })
             }
@@ -2878,6 +2985,11 @@ impl<'p> Evaluator<'p> {
                 span,
                 format!("`{name}` runs only inside a \"use client\" component"),
                 "call it in the component's body",
+            ),
+            Builtin::Content(name) => err_help(
+                span,
+                format!("`{name}` from \"first/content\" can't run while the config is built"),
+                "call it in a page, layout or component",
             ),
             Builtin::App(name) => err_help(
                 span,
@@ -3830,8 +3942,9 @@ pub fn uncaught(c: Ctl) -> Diag {
     }
 }
 
-fn first_export(name: &str, span: Span) -> R<Value> {
+fn first_export(name: &str, legacy: bool, span: Span) -> R<Value> {
     Ok(Value::Builtin(match name {
+        "route" if legacy => Builtin::Route,
         "collection" => Builtin::Collection(StorageKind::Collection),
         "table" => Builtin::Collection(StorageKind::Table),
         "userProjection" => Builtin::Collection(StorageKind::UserProjection),
@@ -3863,6 +3976,7 @@ fn first_export(name: &str, span: Span) -> R<Value> {
         "blocks" => Builtin::Field("blocks"),
         "global" => Builtin::DefineGlobal,
         "defineRelations" => Builtin::DefineRelations,
+        "ref" => Builtin::Ref,
         "defineConfig" => Builtin::DefineConfig,
         "definePlugin" => Builtin::DefinePlugin,
         "action" => Builtin::Action,
@@ -4379,46 +4493,55 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
         }
         "$default" | "$defaultFn" => c.default = Some(now_or_fn(closure_arg()?, c.ty)),
         "$onUpdate" | "$onUpdateFn" => c.on_update = Some(now_or_fn(closure_arg()?, c.ty)),
-        "references" => {
-            let f = closure_arg()?;
-            let (mut on_delete, mut on_update) = (None, None);
-            match arg(1) {
-                Value::Undef => {}
-                Value::Object(o) => {
-                    for (k, v) in o.borrow().iter() {
-                        let action = match v {
-                            Value::Str(s) => match &**s {
-                                "cascade" => RefAction::Cascade,
-                                "restrict" => RefAction::Restrict,
-                                "set null" => RefAction::SetNull,
-                                "no action" => RefAction::NoAction,
-                                other => {
-                                    return err_help(
-                                        span,
-                                        format!("unknown reference action \"{other}\""),
-                                        "use \"cascade\", \"restrict\", \"set null\", or \"no action\"",
-                                    );
-                                }
-                            },
-                            other => {
-                                return err(span, format!("reference actions are strings, not {}", other.describe()));
-                            }
-                        };
-                        match k.as_str() {
-                            "onDelete" => on_delete = Some(action),
-                            "onUpdate" => on_update = Some(action),
-                            other => return err(span, format!("references() has no option `{other}`")),
-                        }
+        "onDelete" => {
+            let Some(r) = c.references.as_mut() else {
+                return err_help(
+                    span,
+                    "`.onDelete()` is for a `ref()` field",
+                    "write `location: ref(locations).onDelete(\"cascade\")`",
+                );
+            };
+            r.1 = Some(match arg(0) {
+                Value::Str(s) => match &*s {
+                    "cascade" => RefAction::Cascade,
+                    "restrict" => RefAction::Restrict,
+                    "setNull" => RefAction::SetNull,
+                    other => {
+                        return err_help(
+                            span,
+                            format!("unknown delete action \"{other}\""),
+                            "use \"cascade\", \"restrict\" or \"setNull\"",
+                        );
                     }
-                }
+                },
                 other => {
                     return err(
                         span,
-                        format!("references() options must be an object, not {}", other.describe()),
+                        format!(
+                            "`.onDelete()` takes \"cascade\", \"restrict\" or \"setNull\", not {}",
+                            other.describe()
+                        ),
+                    );
+                }
+            });
+        }
+        "reverse" => {
+            if c.references.is_none() {
+                return err_help(
+                    span,
+                    "`.reverse()` is for a `ref()` field",
+                    "write `home: ref(locations).reverse(\"homeItems\")`",
+                );
+            }
+            match arg(0) {
+                Value::Str(name) => c.reverse = Some(name.to_string()),
+                other => {
+                    return err(
+                        span,
+                        format!("`.reverse()` takes the reverse list's name, not {}", other.describe()),
                     );
                 }
             }
-            c.references = Some((f, on_delete, on_update, span));
         }
         _ => {
             let mut d = Diag::new(span, format!("columns have no method `{m}`"));
@@ -4441,7 +4564,8 @@ const MODIFIERS: &[&str] = &[
     "$defaultFn",
     "$onUpdate",
     "$onUpdateFn",
-    "references",
+    "onDelete",
+    "reverse",
     "min",
     "max",
     "pattern",
@@ -4456,6 +4580,10 @@ const MODIFIERS: &[&str] = &[
 /// A modifier the authoring surface deleted: (message, fix).
 fn removed_modifier(m: &str) -> Option<(&'static str, &'static str)> {
     Some(match m {
+        "references" => (
+            "`.references()` is gone: a reference is a `ref()` field, which refers to the target's `id`",
+            "write `locationId: ref(locations)`, with `.onDelete(\"cascade\" | \"restrict\" | \"setNull\")` for the delete action; a reference to another column isn't supported, so keep that value as a plain field",
+        ),
         "notNull" => (
             "`.notNull()` is gone: fields are required by default",
             "delete `.notNull()`; add `.optional()` to a field that may be empty",
@@ -4535,6 +4663,7 @@ impl ColBuilder {
             default: None,
             on_update: None,
             references: None,
+            reverse: None,
             ts_type: None,
             access: None,
             show_if: None,
@@ -5539,7 +5668,10 @@ mod legacy {
     use super::*;
 
     /// Modifiers this reading accepts besides the current ones.
-    pub const MODIFIERS: &[&str] = &["notNull", "primaryKey", "$type"];
+    pub const MODIFIERS: &[&str] = &["notNull", "primaryKey", "$type", "references"];
+
+    /// `"zero"` exports this reading accepts besides the current ones (for `import * as z`).
+    pub const EXPORTS: &[&str] = &["id", "real", "route", "defineRelations"];
 
     /// The integer primary key: the implicit `id`, or `id()`.
     pub fn id(span: Span) -> ColBuilder {
@@ -5550,12 +5682,13 @@ mod legacy {
     }
 
     pub fn modifier(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<Value> {
-        if !args.is_empty() {
+        if !args.is_empty() && m != "references" {
             return err(span, format!("`.{m}()` takes no arguments"));
         }
         let mut c = (**c).clone();
         match m {
             "notNull" => c.optional = false,
+            "references" => return references(&Rc::new(c), args, span),
             "primaryKey" => {
                 c.primary_key = true;
                 c.optional = false;
@@ -5564,6 +5697,57 @@ mod legacy {
             // `$type<T>()` is a call with a type argument, handled where calls are evaluated.
             _ => return err(span, format!("`.{m}()` isn't valid here")),
         }
+        Ok(Value::Column(Rc::new(c)))
+    }
+
+    pub fn references(c: &Rc<ColBuilder>, args: &[Value], span: Span) -> R<Value> {
+        let mut c = (**c).clone();
+        let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
+        let Value::Closure(f) = arg(0) else {
+            return err(
+                span,
+                format!("`references` needs a function, not {}", arg(0).describe()),
+            );
+        };
+        let (mut on_delete, mut on_update) = (None, None);
+        match arg(1) {
+            Value::Undef => {}
+            Value::Object(o) => {
+                for (k, v) in o.borrow().iter() {
+                    let action = match v {
+                        Value::Str(s) => match &**s {
+                            "cascade" => RefAction::Cascade,
+                            "restrict" => RefAction::Restrict,
+                            "set null" => RefAction::SetNull,
+                            "no action" => RefAction::NoAction,
+                            other => {
+                                return err_help(
+                                    span,
+                                    format!("unknown reference action \"{other}\""),
+                                    "use \"cascade\", \"restrict\", \"set null\", or \"no action\"",
+                                );
+                            }
+                        },
+                        other => {
+                            return err(span, format!("reference actions are strings, not {}", other.describe()));
+                        }
+                    };
+                    match k.as_str() {
+                        "onDelete" => on_delete = Some(action),
+                        "onUpdate" => on_update = Some(action),
+                        other => return err(span, format!("references() has no option `{other}`")),
+                    }
+                }
+            }
+            other => {
+                return err(
+                    span,
+                    format!("references() options must be an object, not {}", other.describe()),
+                );
+            }
+        }
+        c.references = Some((RefTarget::Column(f), on_delete, on_update, span));
+        c.mods.push(("references", span));
         Ok(Value::Column(Rc::new(c)))
     }
 

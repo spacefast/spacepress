@@ -91,6 +91,13 @@ export interface SystemWith {
 		offset?: number;
 		with?: TaskWith;
 	};
+	doneLogs?: true | {
+		where?: DoneLogFilter;
+		orderBy?: DoneLogOrder;
+		limit?: number;
+		offset?: number;
+		with?: DoneLogWith;
+	};
 	manual?: true;
 }
 export interface SystemFilter {
@@ -251,6 +258,7 @@ export interface SystemFilter {
 		isNotNull?: true;
 	};
 	tasks?: true | TaskFilter;
+	doneLogs?: true | DoneLogFilter;
 	AND?: SystemFilter[];
 	OR?: SystemFilter[];
 	NOT?: SystemFilter;
@@ -294,7 +302,7 @@ export interface TaskPatch {
 	publishedAt?: string | null;
 }
 export interface TaskWith {
-	system?: true | {
+	systemId?: true | {
 		where?: SystemFilter;
 		orderBy?: SystemOrder;
 		limit?: number;
@@ -361,7 +369,7 @@ export interface TaskFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | SystemFilter;
 	everyDays?: number | null | {
 		eq?: number | null;
 		ne?: number | null;
@@ -454,7 +462,6 @@ export interface TaskFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	system?: true | SystemFilter;
 	doneLogs?: true | DoneLogFilter;
 	AND?: TaskFilter[];
 	OR?: TaskFilter[];
@@ -499,12 +506,19 @@ export interface DoneLogPatch {
 	publishedAt?: string | null;
 }
 export interface DoneLogWith {
-	task?: true | {
+	taskId?: true | {
 		where?: TaskFilter;
 		orderBy?: TaskOrder;
 		limit?: number;
 		offset?: number;
 		with?: TaskWith;
+	};
+	systemId?: true | {
+		where?: SystemFilter;
+		orderBy?: SystemOrder;
+		limit?: number;
+		offset?: number;
+		with?: SystemWith;
 	};
 	photo?: true;
 }
@@ -560,7 +574,7 @@ export interface DoneLogFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | TaskFilter;
 	systemId?: number | null | {
 		eq?: number | null;
 		ne?: number | null;
@@ -572,7 +586,7 @@ export interface DoneLogFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | SystemFilter;
 	doneOn?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -653,7 +667,6 @@ export interface DoneLogFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	task?: true | TaskFilter;
 	AND?: DoneLogFilter[];
 	OR?: DoneLogFilter[];
 	NOT?: DoneLogFilter;
@@ -743,6 +756,11 @@ export declare const SCHEMA: {
 					readonly collection: "tasks";
 					readonly optional: false;
 				};
+				readonly doneLogs: {
+					readonly kind: "many";
+					readonly collection: "doneLogs";
+					readonly optional: false;
+				};
 			};
 			readonly media: readonly [];
 			readonly mediaList: readonly [];
@@ -755,10 +773,10 @@ export declare const SCHEMA: {
 			readonly revisions: true;
 			readonly localized: false;
 			readonly relations: {
-				readonly system: {
+				readonly systemId: {
 					readonly kind: "one";
 					readonly collection: "systems";
-					readonly optional: true;
+					readonly optional: false;
 				};
 				readonly doneLogs: {
 					readonly kind: "many";
@@ -777,10 +795,15 @@ export declare const SCHEMA: {
 			readonly revisions: true;
 			readonly localized: false;
 			readonly relations: {
-				readonly task: {
+				readonly taskId: {
 					readonly kind: "one";
 					readonly collection: "tasks";
-					readonly optional: true;
+					readonly optional: false;
+				};
+				readonly systemId: {
+					readonly kind: "one";
+					readonly collection: "systems";
+					readonly optional: false;
 				};
 			};
 			readonly media: readonly ["photo"];
@@ -882,6 +905,68 @@ export interface CollectionClient<K extends CollectionKey> {
 		/** Runs the update pipeline with the revision as the patch; returns the updated row. */
 		restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
 	};
+	/**
+	* Save `patch` as the item's staged version: the live row stays as it is until `promote`. One
+	* staged version per item, shared by everyone who may update it; each call adds to it. Post
+	* kinds only. Every staged call needs `update` access on the row, and answers 404 without it.
+	*/
+	stage(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<StagedVersion<K>>;
+	/** The staged version: the row as it would be once promoted. 404 when nothing is staged. */
+	staged(id: IdOf<K>): Promise<StagedVersion<K>>;
+	/** The staged fields whose value differs from the live row, with both values. */
+	compare(id: IdOf<K>): Promise<StagedComparison<K>>;
+	/**
+	* Make the staged version live, as an update of the row by the caller. With `at` (a future ISO
+	* time) the promote is scheduled instead, and `at: null` cancels a scheduled one; both return
+	* the staged version.
+	*/
+	promote(id: IdOf<K>): Promise<Row<K>>;
+	promote(id: IdOf<K>, options: {
+		at: string | null;
+	}): Promise<StagedVersion<K>>;
+	/** End the staged version. It stays in the row's revisions, as `revision`. */
+	discard(id: IdOf<K>): Promise<{
+		revision: number;
+	}>;
+	/** A signed link to the staged version that works without signing in for `ttl` seconds (an hour by default). */
+	previewLink(id: IdOf<K>, options?: {
+		ttl?: number;
+	}): Promise<StagedPreview>;
+}
+/** A staged version: the row once promoted, the fields that are staged, who staged last. */
+export interface StagedVersion<K extends CollectionKey> {
+	/** The revision holding it. */
+	id: number;
+	row: Row<K>;
+	fields: (keyof Row<K> & string)[];
+	by: {
+		id: number;
+		name: string;
+	} | null;
+	at: string;
+	/** When a scheduled promote runs, or null. */
+	promoteAt: string | null;
+	/** Why the last scheduled promote did not run. */
+	error?: {
+		code: string;
+		detail: string;
+		at: string;
+	};
+}
+export interface StagedComparison<K extends CollectionKey> extends Omit<StagedVersion<K>, "row" | "fields"> {
+	changes: { [F in keyof Row<K> & string]: {
+		field: F;
+		live: Row<K>[F];
+		staged: Row<K>[F];
+	} }[keyof Row<K> & string][];
+}
+export interface StagedPreview {
+	token: string;
+	expiresAt: string;
+	/** Reads the staged version without signing in. */
+	api: string;
+	/** The item's own page showing the staged version, when the kind has a public URL. */
+	url: string | null;
 }
 export interface MediaQuery {
 	where?: Record<string, unknown>;

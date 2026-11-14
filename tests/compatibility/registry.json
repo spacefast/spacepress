@@ -1116,7 +1116,7 @@
     },
     {
       "code": "Z08_OMITTED_CONNECTORS",
-      "feature": "connector role and its credentials"
+      "feature": "connector role the Space config can't declare as it is"
     },
     {
       "code": "Z08_OMITTED_SYMLINK",
@@ -1285,6 +1285,10 @@
     {
       "code": "Z08_CTX_DB",
       "feature": "ctx.db handle use"
+    },
+    {
+      "code": "Z08_CTX_CONNECTORS",
+      "feature": "ctx.connectors in a server handler"
     },
     {
       "code": "Z08_CTX_SERVICE",

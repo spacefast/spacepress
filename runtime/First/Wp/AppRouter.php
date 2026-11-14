@@ -56,12 +56,19 @@ final class AppRouter
         }
         self::$instance = new self($plugin, $app);
         add_filter('do_parse_request', [self::$instance, 'handlers'], 0);
+        // A 0.3.0 capture's `routes` config, read onto this table (`legacyRoutes`), never owned the
+        // front end: the theme keeps rendering everything its routes don't serve.
+        if ($app['legacyRoutes'] ?? false) {
+            return;
+        }
         // After the frontend-mode gate (-1) and a kind URL's old-slug redirect (0).
         add_action('template_redirect', [self::$instance, 'claim'], 1);
         add_filter('redirect_canonical', static fn (string|false $redirect): string|false => self::$instance?->serving ? false : $redirect, 10, 1);
     }
 
     private bool $serving = false;
+    /** @var list<string> the stylesheets of the route being rendered, linked by document() */
+    private array $styles = [];
     /** This response's `Cache-Control`: private unless serve() found it shareable. */
     private string $cacheControl = 'private, no-store, max-age=0';
 
@@ -133,6 +140,18 @@ final class AppRouter
         return null;
     }
 
+    /**
+     * A 0.3.0 `routes` table's routes for one request method (HEAD as GET), in table order: 0.3.0
+     * matched a path only among the routes of its method, so `GET /a/b` and `POST /a/:id` both serve.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function legacyRoutes(string $method): array
+    {
+        $method = $method === 'HEAD' ? 'GET' : $method;
+        return array_values(array_filter($this->app['routes'], fn (array $route): bool => isset($this->file($route['handler'] ?? null)['methods'][$method])));
+    }
+
     /** WordPress's and First's own entry points (the compiler's list): never a page, never the app's 404 (spec §5). */
     private function reserved(string $path): bool
     {
@@ -167,12 +186,21 @@ final class AppRouter
             return $parse;
         }
         $path = $this->path();
-        if ($path === null) {
+        // A root catch-all never answers WordPress's, First's or the host's own paths (the host's
+        // `/__spacefast/connectors/*` and `/__spacefast/client.js` among them), as `claim()` doesn't.
+        if ($path === null || $this->reserved($path)) {
             return $parse;
         }
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
-        $match = self::match($this->app['routes'], $path);
+        $legacy = $this->app['legacyRoutes'] ?? false;
+        $match = self::match($legacy ? $this->legacyRoutes($method) : $this->app['routes'], $path);
         if ($match === null) {
+            // 0.3.0 answered a path its routes serve with another method with a 405.
+            if ($legacy && self::match($this->app['routes'], $path) !== null) {
+                $this->emit(405, ['Content-Type' => 'application/problem+json'], (string) Js::jsonStringify([
+                    'type' => 'about:blank', 'title' => 'Method not allowed', 'status' => 405, 'code' => 'method_not_allowed', 'detail' => "$method is not allowed on $path",
+                ]));
+            }
             return $parse;
         }
         $route = $match['route'];
@@ -220,8 +248,9 @@ final class AppRouter
         $query = RouteRequest::query((string) ($_SERVER['QUERY_STRING'] ?? (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_QUERY) ?? '')));
         $url = RouteRequest::url((string) ($_SERVER['HTTP_HOST'] ?? (wp_parse_url(home_url('/'), PHP_URL_HOST) ?? '')), (string) ($_SERVER['REQUEST_URI'] ?? '/'));
         // An unsigned handler reads as its caller, like a page; a signed webhook runs as the
-        // system (spec §3), so its reads are trusted.
-        $viewer = $spec['signature'] !== null ? null : new Viewer($user);
+        // system (spec §3), so its reads are trusted. A 0.3.0 `routes` handler's reads were
+        // trusted (`db` in hooks, actions and routes), and still are.
+        $viewer = $spec['signature'] !== null || $legacy ? null : new Viewer($user);
         [$status, $out, $body] = Seam::asViewer($viewer, fn (): array => $this->plugin->app()->serveRoute(
             ['name' => (string) $route['id'], 'route' => $spec, 'params' => $params],
             $method, $path, $query, (string) file_get_contents('php://input'), $headers, $user, $url,
@@ -285,6 +314,7 @@ final class AppRouter
     private function serve(array $route, array $params, Viewer $viewer, int $status): never
     {
         $this->plugin->app(); // the compiled page functions live in the app's functions.php
+        $this->styles = $route['styles'] ?? [];
         $page = $this->file($route['page']);
         $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
         try {
@@ -359,6 +389,20 @@ final class AppRouter
         foreach ($kind['params'] as $field => $param) {
             if ($field === 'id' && ctype_digit($value($param))) {
                 $where = [$spec['primaryKey'] => (int) $value($param)];
+            } elseif ($field === 'path' && ($spec['hierarchical'] ?? false)) {
+                // The whole path, parent by parent: a slug is unique among its siblings only.
+                $post = get_page_by_path($value($param), OBJECT, (string) $spec['wp']['postType']);
+                if (!$post instanceof \WP_Post) {
+                    return null;
+                }
+                // Under an unpublished page, a page is as unreachable as in the tree: its path
+                // would name the draft. Editors preview a draft's children in wp-admin.
+                foreach (get_post_ancestors($post) as $ancestor) {
+                    if (get_post_status($ancestor) !== 'publish') {
+                        return null;
+                    }
+                }
+                $where = [$spec['primaryKey'] => $post->ID];
             } elseif (($field === 'slug' || $field === 'path') && ($spec['slug'] ?? null) !== null) {
                 $parts = explode('/', $value($param));
                 $where = [$spec['slug'] => (string) end($parts)];
@@ -423,6 +467,25 @@ final class AppRouter
     {
         $route = $this->twinRoute($url);
         return $route !== null;
+    }
+
+    /**
+     * Whether a `first/app/` page under a layout `guard` serves this path (below the home URL): a
+     * signed-out visitor is sent to sign in there, so the address is not public.
+     */
+    public function guarded(string $path): bool
+    {
+        $match = $this->reserved($path) ? null : self::match($this->app['routes'], $path);
+        if ($match === null || ($match['route']['page'] ?? null) === null) {
+            return false;
+        }
+        foreach ($match['route']['layouts'] as $layout) {
+            if (($this->file($layout)['guard'] ?? null) !== null) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return ?array{route: array, params: array} */
@@ -656,6 +719,7 @@ final class AppRouter
                 return $r;
             });
         }
+        \First\Assets::enqueue($this->styles);
         Navigation::enqueue(plugins_url('first/Render/client/router.js', Runtime::file()));
         \First\Islands::enqueue();
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'HEAD') {

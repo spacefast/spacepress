@@ -35,6 +35,26 @@ final class FieldAccess
 {
     private const STRUCTURED = ['group', 'repeater', 'blocks'];
 
+    /** @var ?\Closure(array): bool */
+    private static ?\Closure $withheld = null;
+
+    /**
+     * Fields this request's credential is not shown, whatever their rules say (a scoped application
+     * password, Wp\AgentScope). Such a field is hidden from the viewer everywhere a hidden field is:
+     * rows, filters, sorts, searches, relations and uniqueness checks.
+     *
+     * @param callable(array $def): bool $fn
+     */
+    public static function withhold(callable $fn): void
+    {
+        self::$withheld = $fn(...);
+    }
+
+    private static function withheld(array $def): bool
+    {
+        return self::$withheld !== null && (self::$withheld)($def);
+    }
+
     public static function register(): void
     {
         Extensions::beforeRead(self::checkQuery(...), constraintSafe: true);
@@ -84,6 +104,9 @@ final class FieldAccess
 
     private static function readable(array $def, array $enclosing, Viewer $viewer, array &$page, array $shape): bool
     {
+        if (self::withheld($def)) {
+            return false;
+        }
         $rule = $def['access']['read'] ?? null;
         if ($rule === null) {
             return true;
@@ -151,13 +174,13 @@ final class FieldAccess
                 }
             } elseif ($key === 'NOT') {
                 self::checkFilter($collection, $value, $viewer, $kptr);
+            } elseif (\First\Schema::filtersRelation($spec, $key, $value)) {
+                self::checkLink($collection, $spec['relations'][$key], $viewer, $kptr);
+                self::checkFilter($spec['relations'][$key]['collection'], $value, $viewer, $kptr);
             } elseif (isset($spec['columns'][$key])) {
                 if (self::mayHide($spec['columns'][$key], $viewer)) {
                     throw self::hidden($key, $kptr);
                 }
-            } elseif (isset($spec['relations'][$key])) {
-                self::checkLink($collection, $spec['relations'][$key], $viewer, $kptr);
-                self::checkFilter($spec['relations'][$key]['collection'], $value, $viewer, $kptr);
             }
         }
     }
@@ -176,6 +199,9 @@ final class FieldAccess
     /** True when some row could hide this column itself from $viewer (sub-fields not counted). */
     private static function mayHideSelf(array $def, Viewer $viewer): bool
     {
+        if (self::withheld($def)) {
+            return true;
+        }
         $rule = $def['access']['read'] ?? null;
 
         return $rule !== null && (!Access::isShorthand($rule) || !self::allows($rule, $viewer, 'read', null));
@@ -184,6 +210,9 @@ final class FieldAccess
     /** True when some row could hide this column (or a sub-field inside it) from $viewer. */
     public static function mayHide(array $def, Viewer $viewer): bool
     {
+        if (self::withheld($def)) {
+            return true;
+        }
         $rule = $def['access']['read'] ?? null;
         if ($rule !== null && (!Access::isShorthand($rule) || !self::allows($rule, $viewer, 'read', null))) {
             return true;
@@ -542,7 +571,7 @@ final class FieldAccess
     private static function hasRule(array $fields, string $op): bool
     {
         foreach ($fields as $def) {
-            if (isset($def['access'][$op])
+            if (isset($def['access'][$op]) || ($op === 'read' && self::withheld($def))
                 || (in_array($def['type'] ?? '', self::STRUCTURED, true) && self::hasRule(self::nested($def), $op))) {
                 return true;
             }

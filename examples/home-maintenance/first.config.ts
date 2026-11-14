@@ -1,7 +1,7 @@
 import {
-  action, collection, date, db, defineConfig, defineRelations, file, files,
+  action, collection, date, db, defineConfig, file, files,
   HttpError, integer, job, jobs, media, richText, text, timestamp,
-  type InferSelectModel, select,
+  type InferSelectModel, select, ref,
 } from "first";
 import { addDays, overdueDelay, today } from "./first/lib/dates";
 
@@ -26,7 +26,7 @@ export const systems = collection({
 export const tasks = collection({
   title: text().min(1).max(160),
   ownerId: owner,
-  systemId: integer().references(() => systems.id, { onDelete: "restrict" }),
+  systemId: ref(systems),
   everyDays: integer().min(1).max(36500).default(90).ui({ label: "Repeat every days", help: "The next date is calculated in UTC when you mark this task done." }),
   lastDoneOn: date().optional(),
   nextDueOn: date().defaultNow(),
@@ -40,8 +40,8 @@ export const tasks = collection({
 export const doneLogs = collection({
   title: text().default("Maintenance completed"),
   ownerId: owner,
-  taskId: integer().references(() => tasks.id, { onDelete: "restrict" }),
-  systemId: integer().references(() => systems.id, { onDelete: "restrict" }).access({ create: false, update: false }).ui({ help: "The system maintained when this work was logged, preserved for yearly costs." }),
+  taskId: ref(tasks),
+  systemId: ref(systems).access({ create: false, update: false }).ui({ help: "The system maintained when this work was logged, preserved for yearly costs." }),
   doneOn: date().defaultNow(),
   notes: text({ multiline: true }).max(10000).optional(),
   costCents: integer().min(0).max(100000000).default(0),
@@ -52,14 +52,6 @@ export const doneLogs = collection({
 } });
 
 const collections = { systems, tasks, doneLogs };
-const relations = defineRelations(collections, (r) => ({
-  systems: { tasks: r.many.tasks() },
-  tasks: {
-    system: r.one.systems({ from: r.tasks.systemId, to: r.systems.id }),
-    doneLogs: r.many.doneLogs(),
-  },
-  doneLogs: { task: r.one.tasks({ from: r.doneLogs.taskId, to: r.tasks.id }) },
-}));
 
 async function requireSystem(systemId: number, userId: number) {
   const system = await db.query.systems.findFirst({ where: { id: systemId, ownerId: userId } });
@@ -83,7 +75,6 @@ export default defineConfig({
   name: "home-maintenance",
   admin: true,
   collections,
-  relations,
   files: {
     manuals: files("manuals", {
       accept: ["application/pdf"], maxBytes: 20_000_000,

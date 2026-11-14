@@ -3126,6 +3126,533 @@
     }
   },
   {
+    "name": "blog/authors-stage",
+    "label": "Stage a change to authors",
+    "description": "Save changes to one authors row of the Blog app as its staged version: the given fields of `patch` are staged, and the live row stays as it is until the staged version is promoted.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "patch": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "email": {
+              "type": "string",
+              "maxLength": 191
+            },
+            "bio": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 500
+            },
+            "avatar": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "userId": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "scheduled"
+              ]
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "integer",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "id",
+        "patch"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "row",
+        "fields"
+      ],
+      "properties": {
+        "row": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "email": {
+              "type": "string",
+              "maxLength": 191
+            },
+            "bio": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 500
+            },
+            "avatar": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ]
+            },
+            "userId": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "scheduled"
+              ]
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "type": "integer"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "promoteAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "by": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "first": {
+        "collection": "authors",
+        "op": "stage"
+      }
+    }
+  },
+  {
+    "name": "blog/authors-staged-get",
+    "label": "Staged version of authors",
+    "description": "Read the staged version of one authors row of the Blog app: the row as it would be once promoted, and the fields that are staged.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "row",
+        "fields"
+      ],
+      "properties": {
+        "row": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "email": {
+              "type": "string",
+              "maxLength": 191
+            },
+            "bio": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 500
+            },
+            "avatar": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ]
+            },
+            "userId": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "scheduled"
+              ]
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "type": "integer"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "promoteAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "by": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "first": {
+        "collection": "authors",
+        "op": "staged-get"
+      }
+    }
+  },
+  {
+    "name": "blog/authors-staged-compare",
+    "label": "Compare staged and live authors",
+    "description": "List the staged fields of one authors row of the Blog app whose value differs from the live row, with both values.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "changes"
+      ],
+      "properties": {
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "field"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "id": {
+          "type": "integer"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "promoteAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "by": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "first": {
+        "collection": "authors",
+        "op": "staged-compare"
+      }
+    }
+  },
+  {
+    "name": "blog/authors-staged-promote",
+    "label": "Promote staged authors",
+    "description": "Make the staged version of one authors row of the Blog app live, as an update of the row. With `at` (a future time) the promote is scheduled instead; `at: null` cancels a scheduled promote.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": [],
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "first": {
+        "collection": "authors",
+        "op": "staged-promote"
+      }
+    }
+  },
+  {
+    "name": "blog/authors-staged-discard",
+    "label": "Discard staged authors",
+    "description": "Discard the staged version of one authors row of the Blog app. The live row is untouched and the discarded version stays in the row's revisions.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "revision"
+      ],
+      "properties": {
+        "revision": {
+          "type": "integer"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "idempotent": false
+      },
+      "first": {
+        "collection": "authors",
+        "op": "staged-discard"
+      }
+    }
+  },
+  {
+    "name": "blog/authors-staged-preview",
+    "label": "Preview link for staged authors",
+    "description": "Create a signed link to the staged version of one authors row of the Blog app. It works without signing in until it expires (`ttl` seconds, an hour by default) or the staged version is promoted or discarded.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "ttl": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 86400
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "token",
+        "expiresAt",
+        "api"
+      ],
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "api": {
+          "type": "string"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "first": {
+        "collection": "authors",
+        "op": "staged-preview"
+      }
+    }
+  },
+  {
     "name": "blog/posts-list",
     "label": "List posts",
     "description": "List posts of the Blog app, filtered, ordered and paged like GET /posts.",
@@ -4016,13 +4543,16 @@
                 }
               }
             },
-            "author": {
+            "events": {
               "type": "object"
             },
-            "signups": {
+            "fieldStaff": {
               "type": "object"
             },
             "comments": {
+              "type": "object"
+            },
+            "signups": {
               "type": "object"
             },
             "AND": {
@@ -4906,13 +5436,16 @@
                       }
                     }
                   },
-                  "author": {
+                  "events": {
                     "type": "object"
                   },
-                  "signups": {
+                  "fieldStaff": {
                     "type": "object"
                   },
                   "comments": {
+                    "type": "object"
+                  },
+                  "signups": {
                     "type": "object"
                   },
                   "AND": {
@@ -5814,13 +6347,16 @@
                       }
                     }
                   },
-                  "author": {
+                  "events": {
                     "type": "object"
                   },
-                  "signups": {
+                  "fieldStaff": {
                     "type": "object"
                   },
                   "comments": {
+                    "type": "object"
+                  },
+                  "signups": {
                     "type": "object"
                   },
                   "AND": {
@@ -6720,13 +7256,16 @@
                     }
                   }
                 },
-                "author": {
+                "events": {
                   "type": "object"
                 },
-                "signups": {
+                "fieldStaff": {
                   "type": "object"
                 },
                 "comments": {
+                  "type": "object"
+                },
+                "signups": {
                   "type": "object"
                 },
                 "AND": {
@@ -6875,19 +7414,31 @@
             "string"
           ],
           "properties": {
-            "author": {
+            "authorId": {
               "type": [
                 "boolean",
                 "object"
               ]
             },
-            "signups": {
+            "events": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "fieldStaff": {
               "type": [
                 "boolean",
                 "object"
               ]
             },
             "comments": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "signups": {
               "type": [
                 "boolean",
                 "object"
@@ -7140,19 +7691,31 @@
             "string"
           ],
           "properties": {
-            "author": {
+            "authorId": {
               "type": [
                 "boolean",
                 "object"
               ]
             },
-            "signups": {
+            "events": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "fieldStaff": {
               "type": [
                 "boolean",
                 "object"
               ]
             },
             "comments": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "signups": {
               "type": [
                 "boolean",
                 "object"
@@ -8497,6 +9060,961 @@
     }
   },
   {
+    "name": "blog/posts-stage",
+    "label": "Stage a change to posts",
+    "description": "Save changes to one posts row of the Blog app as its staged version: the given fields of `patch` are staged, and the live row stays as it is until the staged version is promoted.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "patch": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "slug": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "maxLength": 200
+            },
+            "body": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "excerpt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 300
+            },
+            "cover": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "news",
+                  "guide",
+                  "release"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "authorId": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "seo": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "metaTitle": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 70
+                },
+                "metaDescription": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 160
+                },
+                "noindex": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "gallery": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "object",
+                "properties": {
+                  "image": {
+                    "type": "integer"
+                  },
+                  "caption": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "image"
+                ]
+              },
+              "maxItems": 12
+            },
+            "sections": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "object",
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "layout": {
+                        "type": "string",
+                        "enum": [
+                          "hero"
+                        ]
+                      },
+                      "heading": {
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      "image": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "layout",
+                      "heading"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "layout": {
+                        "type": "string",
+                        "enum": [
+                          "quote"
+                        ]
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "cite": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 80
+                      }
+                    },
+                    "required": [
+                      "layout",
+                      "text"
+                    ]
+                  }
+                ]
+              }
+            },
+            "createdAt": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            },
+            "updatedAt": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "scheduled"
+              ]
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "integer",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "id",
+        "patch"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "row",
+        "fields"
+      ],
+      "properties": {
+        "row": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "slug": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "maxLength": 200
+            },
+            "body": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "excerpt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 300
+            },
+            "cover": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ]
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "news",
+                  "guide",
+                  "release"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "authorId": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "seo": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "metaTitle": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 70
+                },
+                "metaDescription": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 160
+                },
+                "noindex": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "gallery": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "object",
+                "properties": {
+                  "image": {
+                    "type": [
+                      "integer",
+                      "object"
+                    ]
+                  },
+                  "caption": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 120
+                  }
+                }
+              },
+              "maxItems": 12
+            },
+            "sections": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "object",
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "layout": {
+                        "type": "string",
+                        "enum": [
+                          "hero"
+                        ]
+                      },
+                      "heading": {
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      "image": {
+                        "type": [
+                          "integer",
+                          "object",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "layout"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "layout": {
+                        "type": "string",
+                        "enum": [
+                          "quote"
+                        ]
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "cite": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 80
+                      }
+                    },
+                    "required": [
+                      "layout"
+                    ]
+                  }
+                ]
+              }
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "scheduled"
+              ]
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "type": "integer"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "promoteAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "by": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "first": {
+        "collection": "posts",
+        "op": "stage"
+      }
+    }
+  },
+  {
+    "name": "blog/posts-staged-get",
+    "label": "Staged version of posts",
+    "description": "Read the staged version of one posts row of the Blog app: the row as it would be once promoted, and the fields that are staged.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "row",
+        "fields"
+      ],
+      "properties": {
+        "row": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "slug": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "maxLength": 200
+            },
+            "body": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "excerpt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 300
+            },
+            "cover": {
+              "type": [
+                "integer",
+                "object",
+                "null"
+              ]
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "news",
+                  "guide",
+                  "release"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "authorId": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "seo": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "metaTitle": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 70
+                },
+                "metaDescription": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 160
+                },
+                "noindex": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "gallery": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "object",
+                "properties": {
+                  "image": {
+                    "type": [
+                      "integer",
+                      "object"
+                    ]
+                  },
+                  "caption": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 120
+                  }
+                }
+              },
+              "maxItems": 12
+            },
+            "sections": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "object",
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "layout": {
+                        "type": "string",
+                        "enum": [
+                          "hero"
+                        ]
+                      },
+                      "heading": {
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      "image": {
+                        "type": [
+                          "integer",
+                          "object",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "layout"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "layout": {
+                        "type": "string",
+                        "enum": [
+                          "quote"
+                        ]
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "cite": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 80
+                      }
+                    },
+                    "required": [
+                      "layout"
+                    ]
+                  }
+                ]
+              }
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "scheduled"
+              ]
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "type": "integer"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "promoteAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "by": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "first": {
+        "collection": "posts",
+        "op": "staged-get"
+      }
+    }
+  },
+  {
+    "name": "blog/posts-staged-compare",
+    "label": "Compare staged and live posts",
+    "description": "List the staged fields of one posts row of the Blog app whose value differs from the live row, with both values.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "changes"
+      ],
+      "properties": {
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "field"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "id": {
+          "type": "integer"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "promoteAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "by": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "first": {
+        "collection": "posts",
+        "op": "staged-compare"
+      }
+    }
+  },
+  {
+    "name": "blog/posts-staged-promote",
+    "label": "Promote staged posts",
+    "description": "Make the staged version of one posts row of the Blog app live, as an update of the row. With `at` (a future time) the promote is scheduled instead; `at: null` cancels a scheduled promote.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": [],
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "first": {
+        "collection": "posts",
+        "op": "staged-promote"
+      }
+    }
+  },
+  {
+    "name": "blog/posts-staged-discard",
+    "label": "Discard staged posts",
+    "description": "Discard the staged version of one posts row of the Blog app. The live row is untouched and the discarded version stays in the row's revisions.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "revision"
+      ],
+      "properties": {
+        "revision": {
+          "type": "integer"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "idempotent": false
+      },
+      "first": {
+        "collection": "posts",
+        "op": "staged-discard"
+      }
+    }
+  },
+  {
+    "name": "blog/posts-staged-preview",
+    "label": "Preview link for staged posts",
+    "description": "Create a signed link to the staged version of one posts row of the Blog app. It works without signing in until it expires (`ttl` seconds, an hour by default) or the staged version is promoted or discarded.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "ttl": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 86400
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "token",
+        "expiresAt",
+        "api"
+      ],
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "api": {
+          "type": "string"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "first": {
+        "collection": "posts",
+        "op": "staged-preview"
+      }
+    }
+  },
+  {
     "name": "blog/events-list",
     "label": "List events",
     "description": "List events of the Blog app, filtered, ordered and paged like GET /events.",
@@ -9261,9 +10779,6 @@
                 }
               }
             },
-            "post": {
-              "type": "object"
-            },
             "AND": {
               "type": "array",
               "items": {
@@ -10018,9 +11533,6 @@
                         "type": "string"
                       }
                     }
-                  },
-                  "post": {
-                    "type": "object"
                   },
                   "AND": {
                     "type": "array",
@@ -10794,9 +12306,6 @@
                         "type": "string"
                       }
                     }
-                  },
-                  "post": {
-                    "type": "object"
                   },
                   "AND": {
                     "type": "array",
@@ -11569,9 +13078,6 @@
                     }
                   }
                 },
-                "post": {
-                  "type": "object"
-                },
                 "AND": {
                   "type": "array",
                   "items": {
@@ -11697,7 +13203,7 @@
             "string"
           ],
           "properties": {
-            "post": {
+            "postId": {
               "type": [
                 "boolean",
                 "object"
@@ -11836,7 +13342,7 @@
             "string"
           ],
           "properties": {
-            "post": {
+            "postId": {
               "type": [
                 "boolean",
                 "object"
@@ -12517,6 +14023,632 @@
     }
   },
   {
+    "name": "blog/events-stage",
+    "label": "Stage a change to events",
+    "description": "Save changes to one events row of the Blog app as its staged version: the given fields of `patch` are staged, and the live row stays as it is until the staged version is promoted.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "patch": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "seats": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "price": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "open": {
+              "type": "boolean"
+            },
+            "day": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "startsAt": {
+              "type": [
+                "string",
+                "integer",
+                "null"
+              ]
+            },
+            "kinds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "talk",
+                  "workshop",
+                  "social"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "postId": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "extra": {
+              "type": [
+                "object",
+                "array",
+                "string",
+                "number",
+                "integer",
+                "boolean",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "scheduled"
+              ]
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "integer",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "id",
+        "patch"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "row",
+        "fields"
+      ],
+      "properties": {
+        "row": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            },
+            "seats": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "price": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "open": {
+              "type": "boolean"
+            },
+            "day": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date"
+            },
+            "startsAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            },
+            "kinds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "talk",
+                  "workshop",
+                  "social"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "postId": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "extra": {
+              "type": [
+                "object",
+                "array",
+                "string",
+                "number",
+                "integer",
+                "boolean",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "scheduled"
+              ]
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "type": "integer"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "promoteAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "by": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "first": {
+        "collection": "events",
+        "op": "stage"
+      }
+    }
+  },
+  {
+    "name": "blog/events-staged-get",
+    "label": "Staged version of events",
+    "description": "Read the staged version of one events row of the Blog app: the row as it would be once promoted, and the fields that are staged.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "row",
+        "fields"
+      ],
+      "properties": {
+        "row": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            },
+            "seats": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "price": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "open": {
+              "type": "boolean"
+            },
+            "day": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date"
+            },
+            "startsAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            },
+            "kinds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "talk",
+                  "workshop",
+                  "social"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "postId": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "extra": {
+              "type": [
+                "object",
+                "array",
+                "string",
+                "number",
+                "integer",
+                "boolean",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "scheduled"
+              ]
+            },
+            "publishedAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "id": {
+          "type": "integer"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "promoteAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "by": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "first": {
+        "collection": "events",
+        "op": "staged-get"
+      }
+    }
+  },
+  {
+    "name": "blog/events-staged-compare",
+    "label": "Compare staged and live events",
+    "description": "List the staged fields of one events row of the Blog app whose value differs from the live row, with both values.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "id",
+        "changes"
+      ],
+      "properties": {
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "field"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "id": {
+          "type": "integer"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "promoteAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "by": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "readonly": true,
+        "idempotent": true
+      },
+      "first": {
+        "collection": "events",
+        "op": "staged-compare"
+      }
+    }
+  },
+  {
+    "name": "blog/events-staged-promote",
+    "label": "Promote staged events",
+    "description": "Make the staged version of one events row of the Blog app live, as an update of the row. With `at` (a future time) the promote is scheduled instead; `at: null` cancels a scheduled promote.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": [],
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "first": {
+        "collection": "events",
+        "op": "staged-promote"
+      }
+    }
+  },
+  {
+    "name": "blog/events-staged-discard",
+    "label": "Discard staged events",
+    "description": "Discard the staged version of one events row of the Blog app. The live row is untouched and the discarded version stays in the row's revisions.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "revision"
+      ],
+      "properties": {
+        "revision": {
+          "type": "integer"
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": {
+        "idempotent": false
+      },
+      "first": {
+        "collection": "events",
+        "op": "staged-discard"
+      }
+    }
+  },
+  {
+    "name": "blog/events-staged-preview",
+    "label": "Preview link for staged events",
+    "description": "Create a signed link to the staged version of one events row of the Blog app. It works without signing in until it expires (`ttl` seconds, an hour by default) or the staged version is promoted or discarded.",
+    "category": "blog",
+    "input_schema": {
+      "type": "object",
+      "default": [],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "ttl": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 86400
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "required": [
+        "token",
+        "expiresAt",
+        "api"
+      ],
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "api": {
+          "type": "string"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "meta": {
+      "public": true,
+      "show_in_rest": true,
+      "mcp": {
+        "public": true
+      },
+      "annotations": [],
+      "first": {
+        "collection": "events",
+        "op": "staged-preview"
+      }
+    }
+  },
+  {
     "name": "blog/comments-list",
     "label": "List comments",
     "description": "List comments of the Blog app, filtered, ordered and paged like GET /comments.",
@@ -12939,9 +15071,6 @@
                 }
               }
             },
-            "post": {
-              "type": "object"
-            },
             "AND": {
               "type": "array",
               "items": {
@@ -13354,9 +15483,6 @@
                         "type": "string"
                       }
                     }
-                  },
-                  "post": {
-                    "type": "object"
                   },
                   "AND": {
                     "type": "array",
@@ -13789,9 +15915,6 @@
                       }
                     }
                   },
-                  "post": {
-                    "type": "object"
-                  },
                   "AND": {
                     "type": "array",
                     "items": {
@@ -14221,9 +16344,6 @@
                     }
                   }
                 },
-                "post": {
-                  "type": "object"
-                },
                 "AND": {
                   "type": "array",
                   "items": {
@@ -14307,7 +16427,7 @@
             "string"
           ],
           "properties": {
-            "post": {
+            "postId": {
               "type": [
                 "boolean",
                 "object"
@@ -14389,7 +16509,7 @@
             "string"
           ],
           "properties": {
-            "post": {
+            "postId": {
               "type": [
                 "boolean",
                 "object"
@@ -14956,9 +17076,6 @@
                 }
               }
             },
-            "team": {
-              "type": "object"
-            },
             "AND": {
               "type": "array",
               "items": {
@@ -15239,9 +17356,6 @@
                         }
                       }
                     }
-                  },
-                  "team": {
-                    "type": "object"
                   },
                   "AND": {
                     "type": "array",
@@ -15542,9 +17656,6 @@
                       }
                     }
                   },
-                  "team": {
-                    "type": "object"
-                  },
                   "AND": {
                     "type": "array",
                     "items": {
@@ -15842,9 +17953,6 @@
                     }
                   }
                 },
-                "team": {
-                  "type": "object"
-                },
                 "AND": {
                   "type": "array",
                   "items": {
@@ -15914,7 +18022,13 @@
             "string"
           ],
           "properties": {
-            "team": {
+            "postId": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "teamId": {
               "type": [
                 "boolean",
                 "object"
@@ -15993,7 +18107,13 @@
             "string"
           ],
           "properties": {
-            "team": {
+            "postId": {
+              "type": [
+                "boolean",
+                "object"
+              ]
+            },
+            "teamId": {
               "type": [
                 "boolean",
                 "object"

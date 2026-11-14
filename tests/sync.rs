@@ -11,7 +11,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 
-const CONFIG: &str = r#"import { collection, integer, richText, select, slug, text, defineConfig , table} from "first";
+const CONFIG: &str = r#"import { collection, integer, richText, select, slug, text, defineConfig , table, ref } from "first";
 
 const people = table({
   name: text(),
@@ -22,7 +22,7 @@ const notes = table({
   slug: slug({ source: "title" }).optional(),
   body: richText().optional(),
   level: select(["intro", "advanced"]).optional(),
-  authorId: integer().references(() => people.id, { onDelete: "set null" }).optional(),
+  authorId: ref(people).optional(),
 }, { title: "title", content: "body", sync: "content/notes/*.md", access: { read: "anyone" } });
 
 // A JSON collection without a content column: `body` is an ordinary field.
@@ -35,20 +35,20 @@ const snippets = table({
 // Two collections that reference each other.
 const teams = table({
   name: text(),
-  leadId: integer().references((): any => players.id, { onDelete: "set null" }).optional(),
-  ownerId: integer().references(() => people.id),
+  leadId: ref(() => players).optional(),
+  ownerId: ref(people),
 }, { sync: "content/teams/*.json", access: { read: "anyone" } });
 const players = table({
   name: text(),
-  teamId: integer().references(() => teams.id, { onDelete: "set null" }).optional(),
+  teamId: ref(teams).optional(),
 }, { sync: "content/players/*.json", access: { read: "anyone" } });
 
 // A chain of required references inside one collection, and a required cycle between two.
 const steps = table({
   name: text(),
   // Required: a step can't be created before the one it follows, so a chain needs a pass per link.
-  prevId: integer().references(() => people.id),
-  afterId: integer().references((): any => steps.id).optional(),
+  prevId: ref(people),
+  afterId: ref(() => steps).optional().onDelete("restrict"),
 }, { sync: "content/steps/*.json", access: { read: "anyone" } });
 // A chain of required references across records of one collection.
 // A chain across three collections that must be created in order. Each requires (NOT NULL) a record
@@ -56,32 +56,32 @@ const steps = table({
 // reference makes one wait for another: the references go "backwards", against that order), so the
 // run meets the chain from its far end and needs a pass per link.
 const tops = table({
-  midId: integer().references((): any => mids.id),
-  loopId: integer().references((): any => bottoms.id).optional(),
+  midId: ref(() => mids),
+  loopId: ref(() => bottoms).optional().onDelete("restrict"),
 }, { sync: "content/tops/*.json", access: { read: "anyone" } });
 const mids = table({
-  bottomId: integer().references((): any => bottoms.id),
-  loopId: integer().references(() => tops.id).optional(),
+  bottomId: ref(() => bottoms),
+  loopId: ref(tops).optional().onDelete("restrict"),
 }, { sync: "content/mids/*.json", access: { read: "anyone" } });
 const bottoms = table({
-  personId: integer().references(() => people.id),
-  loopId: integer().references(() => mids.id).optional(),
+  personId: ref(people),
+  loopId: ref(mids).optional().onDelete("restrict"),
 }, { sync: "content/bottoms/*.json", access: { read: "anyone" } });
 const eggs = table({
-  chickenId: integer().references((): any => chickens.id),
+  chickenId: ref(() => chickens),
 }, { sync: "content/eggs/*.json", access: { read: "anyone" } });
 const chickens = table({
-  eggId: integer().references(() => eggs.id),
+  eggId: ref(eggs),
 }, { sync: "content/chickens/*.json", access: { read: "anyone" } });
 // A head requires a rung; a rung requires the next rung and may name its head. The last rung of a
 // ladder points at a rung already on the site. Heads and rungs reference each other, so neither
 // collection is ordered first.
 const heads = table({
-  rungId: integer().references((): any => rungs.id),
+  rungId: ref(() => rungs),
 }, { sync: "content/heads/*.json", access: { read: "anyone" } });
 const rungs = table({
-  nextId: integer().references((): any => rungs.id),
-  headId: integer().references(() => heads.id).optional(),
+  nextId: ref(() => rungs),
+  headId: ref(heads).optional().onDelete("restrict"),
 }, { sync: "content/rungs/*.json", access: { read: "anyone" } });
 // Content only admins may read (field access): editors sync these without a body.
 const dossiers = table({
@@ -92,16 +92,23 @@ const dossiers = table({
 // A required reference to a target the syncing editor may not list (admins only), on a record whose
 // identity is pushed first because of an optional reference to a record not on the site yet.
 const safes = table({
-  vaultId: integer().references(() => vaults.id),
-  keeperId: integer().references(() => people.id).optional(),
-  snippetKey: integer().references(() => snippets.key).access({ read: "admin" }).optional(),
+  vaultId: ref(() => vaults),
+  keeperId: ref(people).optional().onDelete("restrict"),
+  snippetId: ref(snippets).access({ read: "admin" }).optional(),
 }, { sync: "content/safes/*.json", access: { read: "anyone" } });
 // A reference target the syncing editor may not read (admins only): knowing its UID grants no access.
 const vaults = table({
   name: text(),
 }, { uid: true, access: { read: "admin" } });
 
-export default defineConfig({ name: "notes", tables: { people, notes, snippets, teams, players, steps, tops, mids, bottoms, eggs, chickens, vaults, safes, heads, rungs, dossiers } });
+// A docs section: a hierarchical collection synced from a folder tree (content/docs/**/*.md).
+const docs = collection({
+  title: text(),
+  slug: slug({ source: "title" }),
+  body: richText().optional(),
+}, { content: "body", hierarchical: true, sync: "content/docs/**/*.md", access: { read: "anyone" } });
+
+export default defineConfig({ name: "notes", collections: { docs }, tables: { people, notes, snippets, teams, players, steps, tops, mids, bottoms, eggs, chickens, vaults, safes, heads, rungs, dossiers } });
 "#;
 
 struct Site {
@@ -250,6 +257,13 @@ fn setup() -> (PathBuf, Site) {
     let _ = std::fs::remove_dir_all(&project);
     std::fs::create_dir_all(project.join("content/notes")).unwrap();
     std::fs::write(project.join("first.config.ts"), CONFIG).unwrap();
+    // A component content may use as a block (`<Note kind="tip">…</Note>` in a Markdown file).
+    std::fs::create_dir_all(project.join("first/components")).unwrap();
+    std::fs::write(
+        project.join("first/components/Note.tsx"),
+        "export const blocks = [\"Note\"];\nexport function Note({ kind, children }: { kind: \"tip\" | \"warning\"; children?: JSX.Element }) {\n  return <aside className={kind}>{children}</aside>;\n}\n",
+    )
+    .unwrap();
     let out = first().arg("build").arg(&project).output().unwrap();
     assert!(out.status.success(), "build: {}", String::from_utf8_lossy(&out.stderr));
     // A fresh WordPress on SQLite with the built plugins active, served by php -S: one JSON line with
@@ -896,12 +910,11 @@ fn a_pointerless_reference_refusal_is_not_reported_as_a_missing_target() {
         String::from_utf8_lossy(&pulled.stdout)
     );
     let path = project.join(format!("content/snippets/{uid}.json"));
-    let mut record: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    record["key"] = serde_json::json!(2);
-    std::fs::write(&path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+    std::fs::remove_file(&path).unwrap();
 
-    // Even an empty hidden incoming relationship refuses a key change. This is not a target
-    // another push could create, so preserve the server's refusal rather than defer it.
+    // Even an empty hidden incoming relationship (`safes.snippetId`, admin-only) refuses the delete.
+    // This is not a target another push could create, so preserve the server's refusal rather than
+    // defer it.
     let out = sync(&project, &site, &["--only", "snippets"]);
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(
@@ -910,12 +923,7 @@ fn a_pointerless_reference_refusal_is_not_reported_as_a_missing_target() {
             "snippets/{uid}: Rows in safes may reference this row (reference_violation)"
         )])
     );
-    assert_eq!(site.rows("snippets")[0]["key"], 1, "the refused update did not land");
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap()["key"],
-        2,
-        "the local edit is retained"
-    );
+    assert_eq!(site.rows("snippets").len(), 1, "the refused delete did not land");
     let _ = std::fs::remove_dir_all(&project);
 }
 
@@ -2133,4 +2141,742 @@ fn a_file_edited_while_resolve_deletes_it_is_kept() {
             .is_some_and(|b| b.contains("Kept: typed during the delete."))
     }));
     let _ = std::fs::remove_dir_all(&project);
+}
+
+/// A folder tree of Markdown syncs with a hierarchical kind: a file's folders are its parent chain
+/// and its name its slug, so neither is written in front matter; a page moved on the site moves
+/// its file, and a page that gains children becomes its folder's index file.
+#[test]
+fn a_folder_tree_keeps_drafts_empty_folders_and_moved_folders() {
+    let (project, site) = setup();
+    let dir = project.join("content/docs");
+    let tree = |dir: &Path| {
+        let mut files: Vec<String> = Vec::new();
+        let mut pending = vec![dir.to_path_buf()];
+        while let Some(d) = pending.pop() {
+            for e in std::fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                if p.is_dir() {
+                    pending.push(p);
+                } else {
+                    files.push(p.strip_prefix(dir).unwrap().to_string_lossy().into_owned());
+                }
+            }
+        }
+        files.sort();
+        files
+    };
+    let ok = |out: &std::process::Output| {
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    std::fs::create_dir_all(dir.join("guides/deploy")).unwrap();
+    std::fs::create_dir_all(dir.join("faq")).unwrap();
+    std::fs::write(dir.join("guides/index.md"), "---\ntitle: Guides\n---\nHow to.\n").unwrap();
+    std::fs::write(
+        dir.join("guides/deploy/index.md"),
+        "---\ntitle: Deploy\n---\nShip it.\n",
+    )
+    .unwrap();
+    // Named to sort before `index.md`, so it is pushed before its folder's page.
+    std::fs::write(dir.join("guides/deploy/aws.md"), "---\ntitle: AWS\n---\nOn AWS.\n").unwrap();
+    // A folder the author made before writing its pages: it stays a folder.
+    std::fs::write(dir.join("faq/index.md"), "---\ntitle: FAQ\n---\nAsked.\n").unwrap();
+    ok(&sync(&project, &site, &["--only", "docs"]));
+    assert_eq!(
+        tree(&dir),
+        [
+            "faq/index.md",
+            "guides/deploy/aws.md",
+            "guides/deploy/index.md",
+            "guides/index.md"
+        ],
+        "a push leaves the author's files where they are"
+    );
+
+    // An editor starts a draft under Guides in wp-admin: WordPress gives it no slug yet.
+    let guides = site.rows("docs").into_iter().find(|r| r["slug"] == "guides").unwrap();
+    let (s, draft) = site.call(
+        "POST",
+        "/docs",
+        Some(serde_json::json!({ "title": "Not yet", "status": "draft", "parent": guides["id"] })),
+    );
+    assert_eq!(s, 201, "{draft}");
+    // As the block editor saves a new draft: no post_name until it is published.
+    site.sql(&format!(
+        "UPDATE {{prefix}}posts SET post_name = '' WHERE ID = {}",
+        draft["data"]["id"]
+    ));
+    ok(&sync(&project, &site, &["--only", "docs"]));
+    let draft_file = tree(&dir)
+        .into_iter()
+        .find(|f| f.starts_with("guides/zr_"))
+        .unwrap_or_else(|| panic!("a slugless draft is named by its uid: {:?}", tree(&dir)));
+    ok(&sync(&project, &site, &["--only", "docs"]));
+    assert!(
+        dir.join(&draft_file).exists(),
+        "the next run reads the draft's file back"
+    );
+    let kept = site.rows("docs").into_iter().find(|r| r["title"] == "Not yet");
+    assert!(
+        kept.is_some_and(|r| r["status"] == "draft"),
+        "and the draft stays a draft, not trashed"
+    );
+
+    // The author moves the deploy folder to the top; its pages follow it.
+    std::fs::rename(dir.join("guides/deploy"), dir.join("deploy")).unwrap();
+    ok(&sync(&project, &site, &["--only", "docs"]));
+    let files = tree(&dir);
+    assert!(
+        files.contains(&"deploy/aws.md".to_string()) && files.contains(&"deploy/index.md".to_string()),
+        "{files:?}"
+    );
+    let rows = site.rows("docs");
+    let deploy = rows.iter().find(|r| r["slug"] == "deploy").unwrap();
+    let aws = rows.iter().find(|r| r["slug"] == "aws").unwrap();
+    assert_eq!(deploy["parent"], serde_json::Value::Null, "{rows:?}");
+    assert_eq!(aws["parent"], deploy["id"], "{rows:?}");
+    // And the tree is settled: nothing left to do.
+    let again = data(&sync(&project, &site, &["--only", "docs", "--check"]));
+    assert_eq!(again["pending"], serde_json::json!([]), "{again}");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+fn a_folder_tree_syncs_with_a_hierarchical_kind_both_ways() {
+    let (project, site) = setup();
+    let dir = project.join("content/docs");
+    std::fs::create_dir_all(dir.join("guides")).unwrap();
+    std::fs::write(dir.join("intro.md"), "---\ntitle: Intro\norder: 1\n---\nHello.\n").unwrap();
+    std::fs::write(
+        dir.join("guides/index.md"),
+        "---\ntitle: Guides\norder: 2\n---\nHow to.\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("guides/install.md"), "---\ntitle: Install\n---\nRun it.\n").unwrap();
+    let out = sync(&project, &site, &["--only", "docs"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let rows = site.rows("docs");
+    let by_slug = |slug: &str| {
+        rows.iter()
+            .find(|r| r["slug"] == slug)
+            .unwrap_or_else(|| panic!("{slug}: {rows:?}"))
+            .clone()
+    };
+    let (intro, guides, install) = (by_slug("intro"), by_slug("guides"), by_slug("install"));
+    assert_eq!(intro["parent"], serde_json::Value::Null);
+    assert_eq!(intro["order"], 1);
+    assert_eq!(guides["order"], 2);
+    assert_eq!(install["parent"], guides["id"], "a file's folder is its parent");
+    // The files carry their uid, and never their slug or parent: the path says those.
+    let install_file = read(&project, "content/docs/guides/install.md");
+    assert!(install_file.starts_with("---\nuid: zr_"), "{install_file}");
+    assert!(
+        !install_file.contains("slug:") && !install_file.contains("parent:"),
+        "{install_file}"
+    );
+
+    // On the site: Intro moves under Guides, and Install gets a child of its own.
+    let (s, moved) = site.call(
+        "PATCH",
+        &format!("/docs/{}", intro["id"]),
+        Some(serde_json::json!({ "parent": guides["id"], "order": 0 })),
+    );
+    assert_eq!(s, 200, "{moved}");
+    let (s, child) = site.call(
+        "POST",
+        "/docs",
+        Some(serde_json::json!({ "title": "On Linux", "slug": "linux", "parent": install["id"], "body": "<!-- wp:paragraph -->\n<p>Use the package.</p>\n<!-- /wp:paragraph -->" })),
+    );
+    assert_eq!(s, 201, "{child}");
+    let out = sync(&project, &site, &["--only", "docs"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let pulled = data(&out);
+    let mut files: Vec<String> = Vec::new();
+    let mut pending = vec![dir.clone()];
+    while let Some(d) = pending.pop() {
+        for e in std::fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                pending.push(p);
+            } else {
+                files.push(p.strip_prefix(&dir).unwrap().to_string_lossy().into_owned());
+            }
+        }
+    }
+    files.sort();
+    assert_eq!(
+        files,
+        [
+            "guides/index.md",
+            "guides/install/index.md",
+            "guides/install/linux.md",
+            "guides/intro.md"
+        ],
+        "the files follow the tree: {pulled}"
+    );
+    assert!(read(&project, "content/docs/guides/install/linux.md").contains("Use the package."));
+    // A second run changes nothing: the tree and the files agree.
+    let again = data(&sync(&project, &site, &["--only", "docs", "--check"]));
+    assert_eq!(again["pending"], serde_json::json!([]), "{again}");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+/// A component block in a synced Markdown file round-trips through `first sync`: pushed as the
+/// app's block with its Markdown as inner blocks, edited on the site, and pulled back as the tag.
+#[test]
+fn a_component_block_in_markdown_syncs_both_ways() {
+    let (project, site) = setup();
+    let dir = project.join("content/docs");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("tips.md"),
+        "---\ntitle: Tips\n---\nBefore.\n\n<Note kind=\"tip\">\nUse **sync**.\n</Note>\n\nAfter.\n",
+    )
+    .unwrap();
+    let out = sync(&project, &site, &["--only", "docs"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let row = site
+        .rows("docs")
+        .into_iter()
+        .find(|r| r["slug"] == "tips")
+        .expect("tips");
+    let body = row["body"].as_str().unwrap();
+    assert!(body.contains("<!-- wp:notes/note {\"kind\":\"tip\"} -->"), "{body}");
+    assert!(body.contains("<p>Use <b>sync</b>.</p>"), "{body}");
+    // On the site the block's prop changes; the pull writes the same tag with the new value.
+    let edited = body.replace("{\"kind\":\"tip\"}", "{\"kind\":\"warning\"}");
+    let (s, answer) = site.call(
+        "PATCH",
+        &format!("/docs/{}", row["id"]),
+        Some(serde_json::json!({ "body": edited })),
+    );
+    assert_eq!(s, 200, "{answer}");
+    let out = sync(&project, &site, &["--only", "docs"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let file = read(&project, "content/docs/tips.md");
+    assert!(
+        file.ends_with("Before.\n\n<Note kind=\"warning\">\nUse **sync**.\n</Note>\n\nAfter.\n"),
+        "{file}"
+    );
+    let again = data(&sync(&project, &site, &["--only", "docs", "--check"]));
+    assert_eq!(again["pending"], serde_json::json!([]), "{again}");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+/// A fake of the GitHub REST API's pull request calls, for `first sync --pr`: it keeps pull requests
+/// and comments in memory and records every call. Never a real GitHub.
+#[derive(Default)]
+struct FakeGitHub {
+    pulls: Vec<serde_json::Value>,
+    comments: Vec<(u64, String)>,
+    calls: Vec<String>,
+    /// Refuse new pull requests (as GitHub does when Actions may not create them).
+    refuse_pulls: bool,
+    /// Fail every description update and comment (a rate limit after the push).
+    refuse_writes: bool,
+    /// Branches deleted through the API.
+    deleted: Vec<String>,
+}
+
+fn fake_github(repo: &'static str) -> (String, std::sync::Arc<std::sync::Mutex<FakeGitHub>>) {
+    let state = std::sync::Arc::new(std::sync::Mutex::new(FakeGitHub::default()));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let shared = state.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut client) = stream else { continue };
+            let mut reader = std::io::BufReader::new(client.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let mut parts = line.split_whitespace();
+            let (method, target) = (
+                parts.next().unwrap_or("").to_string(),
+                parts.next().unwrap_or("").to_string(),
+            );
+            let (mut length, mut auth) = (0usize, String::new());
+            loop {
+                let mut h = String::new();
+                reader.read_line(&mut h).unwrap();
+                if h.trim().is_empty() {
+                    break;
+                }
+                let (k, v) = h.split_once(':').unwrap();
+                match k.to_ascii_lowercase().as_str() {
+                    "content-length" => length = v.trim().parse().unwrap(),
+                    "authorization" => auth = v.trim().to_string(),
+                    _ => {}
+                }
+            }
+            let mut body = vec![0u8; length];
+            reader.read_exact(&mut body).unwrap();
+            let body: serde_json::Value = serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
+            let mut s = shared.lock().unwrap();
+            s.calls.push(format!("{method} {target}"));
+            let path = target.split('?').next().unwrap().to_string();
+            let prefix = format!("/repos/{repo}");
+            let (status, answer) = if auth != "Bearer test-token" {
+                (401, serde_json::json!({"message": "Bad credentials"}))
+            } else {
+                match (method.as_str(), path.strip_prefix(&prefix).unwrap_or("?")) {
+                    ("GET", "") => (200, serde_json::json!({"default_branch": "main"})),
+                    ("GET", "/pulls") => (
+                        200,
+                        serde_json::Value::Array(s.pulls.iter().filter(|p| p["state"] == "open").cloned().collect()),
+                    ),
+                    ("POST", "/pulls") if s.refuse_pulls => (
+                        403,
+                        serde_json::json!({"message": "GitHub Actions is not permitted to create or approve pull requests."}),
+                    ),
+                    ("PATCH", _) | ("POST", _) if s.refuse_writes && !path.ends_with("/pulls") => {
+                        (403, serde_json::json!({"message": "API rate limit exceeded"}))
+                    }
+                    ("GET", p) if p.starts_with("/issues/") && p.ends_with("/comments") => {
+                        let n: u64 = p["/issues/".len()..p.len() - "/comments".len()].parse().unwrap();
+                        let list: Vec<serde_json::Value> = s
+                            .comments
+                            .iter()
+                            .filter(|(m, _)| *m == n)
+                            .map(|(_, b)| serde_json::json!({"body": b}))
+                            .collect();
+                        (200, serde_json::Value::Array(list))
+                    }
+                    ("DELETE", p) if p.starts_with("/git/refs/heads/") => {
+                        let branch = p["/git/refs/heads/".len()..].to_string();
+                        s.deleted.push(branch);
+                        (204, serde_json::Value::Null)
+                    }
+                    ("POST", "/pulls") => {
+                        let number = s.pulls.len() as u64 + 1;
+                        let pr = serde_json::json!({
+                            "number": number, "state": "open", "html_url": format!("https://github.test/{repo}/pull/{number}"),
+                            "title": body["title"], "body": body["body"], "base": {"ref": body["base"]},
+                            "head": {"ref": body["head"], "repo": {"full_name": repo.to_uppercase()}},
+                        });
+                        s.pulls.push(pr.clone());
+                        (201, pr)
+                    }
+                    ("PATCH", p) if p.starts_with("/pulls/") => {
+                        let n: u64 = p["/pulls/".len()..].parse().unwrap();
+                        let pr = &mut s.pulls[n as usize - 1];
+                        for (k, v) in body.as_object().unwrap() {
+                            pr[k] = v.clone();
+                        }
+                        (200, pr.clone())
+                    }
+                    ("POST", p) if p.starts_with("/issues/") && p.ends_with("/comments") => {
+                        let n: u64 = p["/issues/".len()..p.len() - "/comments".len()].parse().unwrap();
+                        s.comments.push((n, body["body"].as_str().unwrap().to_string()));
+                        (201, serde_json::json!({"id": s.comments.len()}))
+                    }
+                    _ => (404, serde_json::json!({"message": "Not Found"})),
+                }
+            };
+            drop(s);
+            let text = if status == 204 {
+                String::new()
+            } else {
+                answer.to_string()
+            };
+            let _ = client.write_all(
+                format!(
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
+                    text.len()
+                )
+                .as_bytes(),
+            );
+        }
+    });
+    (format!("http://127.0.0.1:{port}"), state)
+}
+
+/// `git` with a test identity (the commits a person makes on the repository's main branch).
+fn git_as_person(dir: &Path, args: &[&str]) -> String {
+    let mut all = vec!["-c", "user.name=t", "-c", "user.email=t@example.test"];
+    all.extend_from_slice(args);
+    git(dir, &all)
+}
+
+#[test]
+fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date() {
+    let (project, site) = setup();
+    // The repository: `origin` is a bare repository beside the project; main holds the project.
+    let origin = project.with_extension("origin.git");
+    let _ = std::fs::remove_dir_all(&origin);
+    let out = Command::new("git")
+        .args(["init", "-q", "--bare", "-b", "main"])
+        .arg(&origin)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    git(&project, &["checkout", "-q", "-B", "main"]);
+    std::fs::write(
+        project.join("content/notes/hello.md"),
+        "---\ntitle: Hello\nlevel: intro\n---\nIn git.\n",
+    )
+    .unwrap();
+    git(
+        &project,
+        &["add", "first.config.ts", "first/components", ".gitignore", "content"],
+    );
+    git_as_person(&project, &["commit", "-q", "-m", "a project"]);
+    git(&project, &["remote", "add", "origin", origin.to_str().unwrap()]);
+    git(&project, &["push", "-q", "origin", "main"]);
+    let checkout_head = git(&project, &["rev-parse", "HEAD"]);
+    let (api, github) = fake_github("acme/site");
+    let pr_out = |extra: &[&str]| -> Output {
+        first()
+            .args(["sync", "--pr", "--repo", "acme/site"])
+            .args(extra)
+            .arg(&project)
+            .args(["--site", &site.url(), "--json"])
+            .env("FIRST_APP_PASSWORD", &site.token)
+            .env("GITHUB_TOKEN", "test-token")
+            .env("GITHUB_API_URL", &api)
+            .env_remove("GITHUB_REPOSITORY")
+            .env_remove("GITHUB_ACTIONS")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.test")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.test")
+            .output()
+            .unwrap()
+    };
+    let pr = |extra: &[&str]| -> serde_json::Value {
+        let out = pr_out(extra);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        data(&out)
+    };
+    let show = |rev: &str| git(&origin, &["show", rev]);
+    let branch_of = |run: &serde_json::Value| run["pr"]["branch"].as_str().unwrap().to_string();
+
+    // A record made on the site: the first run pushes the file in git to the site and opens a pull
+    // request whose branch holds the site's record as a file. The checkout it ran from is untouched.
+    let (s, made) = site.call("POST", "/notes", Some(serde_json::json!({"title": "From the site", "body": "<!-- wp:paragraph -->\n<p>Written in wp-admin.</p>\n<!-- /wp:paragraph -->"})));
+    assert_eq!(s, 201, "{made}");
+    let opened = pr(&[]);
+    assert_eq!(opened["pr"]["action"], "opened", "{opened}");
+    assert_eq!(opened["pr"]["number"], 1);
+    let branch = branch_of(&opened);
+    assert!(branch.starts_with("first-sync/127.0.0.1-"), "{branch}");
+    assert!(show(&format!("{branch}:content/notes/from-the-site.md")).contains("Written in wp-admin."));
+    assert!(show(&format!("{branch}:.first/sync-base.json")).contains("\"version\": 1"));
+    assert!(
+        site.rows("notes").iter().any(|r| r["title"] == "Hello"),
+        "the file in git reached the site"
+    );
+    assert_eq!(
+        git(&project, &["rev-parse", "HEAD"]),
+        checkout_head,
+        "the checkout is never committed on"
+    );
+    assert!(!project.join("content/notes/from-the-site.md").exists());
+    {
+        let gh = github.lock().unwrap();
+        assert_eq!(gh.pulls[0]["base"]["ref"], "main");
+        assert!(
+            gh.pulls[0]["body"]
+                .as_str()
+                .unwrap()
+                .contains("`content/notes/from-the-site.md`")
+        );
+    }
+
+    // Nothing new on the site: no push, no new pull request, no edit.
+    let first_head = git(&origin, &["rev-parse", &branch]).trim().to_string();
+    let calls = github.lock().unwrap().calls.len();
+    let unchanged = pr(&[]);
+    assert_eq!(unchanged["pr"]["action"], "unchanged", "{unchanged}");
+    assert_eq!(git(&origin, &["rev-parse", &branch]).trim(), first_head);
+    let gh_calls: Vec<String> = github.lock().unwrap().calls[calls..].to_vec();
+    assert!(gh_calls.iter().all(|c| c.starts_with("GET ")), "{gh_calls:?}");
+    assert_eq!(github.lock().unwrap().pulls.len(), 1);
+
+    // Another edit on the site: the same pull request, its branch moved forward (never rewritten).
+    let id = made["data"]["id"].clone();
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{id}"),
+        Some(serde_json::json!({"title": "Renamed on the site"})),
+    );
+    assert_eq!(s, 200);
+    let updated = pr(&[]);
+    assert_eq!(updated["pr"]["action"], "updated", "{updated}");
+    assert_eq!(updated["pr"]["number"], 1);
+    assert_eq!(branch_of(&updated), branch);
+    git(&origin, &["merge-base", "--is-ancestor", &first_head, &branch]);
+    let file = updated["pr"]["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|c| c.as_str()?.strip_prefix("M content/notes/").map(String::from))
+        .unwrap();
+    assert!(show(&format!("{branch}:content/notes/{file}")).contains("title: Renamed on the site"));
+    assert_eq!(github.lock().unwrap().pulls.len(), 1);
+
+    // The pull request is merged: main has what the site has, so the next run has nothing to do.
+    let clone = project.with_extension("clone");
+    let _ = std::fs::remove_dir_all(&clone);
+    let out = Command::new("git")
+        .args(["clone", "-q"])
+        .arg(&origin)
+        .arg(&clone)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    git_as_person(
+        &clone,
+        &[
+            "merge",
+            "-q",
+            "--no-ff",
+            "-m",
+            "Merge the sync",
+            &format!("origin/{branch}"),
+        ],
+    );
+    git(&clone, &["push", "-q", "origin", "main"]);
+    github.lock().unwrap().pulls[0]["state"] = "closed".into();
+    let none = pr(&[]);
+    assert_eq!(none["pr"]["action"], "none", "{none}");
+    assert_eq!(github.lock().unwrap().pulls.len(), 1);
+
+    // GitHub refuses the new pull request (Actions may not create them): the branch pushed for it is
+    // deleted again, so no run leaves one behind. The site's edit waits for the next run.
+    let (s, refused_edit) = site.call(
+        "POST",
+        "/notes",
+        Some(serde_json::json!({"title": "Waits for a pull request"})),
+    );
+    assert_eq!(s, 201, "{refused_edit}");
+    github.lock().unwrap().refuse_pulls = true;
+    let out = pr_out(&[]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let deleted = github.lock().unwrap().deleted.clone();
+    assert_eq!(deleted.len(), 1, "{deleted:?}");
+    assert!(deleted[0].starts_with("first-sync/127.0.0.1-"), "{deleted:?}");
+    github.lock().unwrap().refuse_pulls = false;
+    git(&origin, &["push", "-q", ".", &format!(":refs/heads/{}", deleted[0])]);
+    let (s, _) = site.call("DELETE", &format!("/notes/{}", refused_edit["data"]["id"]), None);
+    assert_eq!(s, 200);
+    assert_eq!(pr(&[])["pr"]["action"], "none");
+
+    // A file change merged in git goes to the site; only the sync base changes, and it goes to main.
+    let hello = std::fs::read_to_string(clone.join("content/notes/hello.md")).unwrap();
+    std::fs::write(
+        clone.join("content/notes/hello.md"),
+        hello.replace("In git.", "Edited in git."),
+    )
+    .unwrap();
+    git_as_person(&clone, &["commit", "-q", "-am", "Edit hello"]);
+    git(&clone, &["push", "-q", "origin", "main"]);
+    let pushed = pr(&[]);
+    assert_eq!(pushed["pr"]["action"], "base", "{pushed}");
+    assert!(
+        site.rows("notes")
+            .iter()
+            .any(|r| r["body"].as_str().unwrap_or("").contains("Edited in git.")),
+        "the merged file reached the site"
+    );
+    assert_eq!(
+        github.lock().unwrap().pulls.len(),
+        1,
+        "no pull request for bookkeeping alone"
+    );
+    git(&clone, &["pull", "-q", "--ff-only"]);
+    assert_eq!(pr(&[])["pr"]["action"], "none");
+
+    // The same field edited in git and on the site: a pull request with the conflict file and a
+    // comment naming it; neither side is overwritten.
+    let hello = std::fs::read_to_string(clone.join("content/notes/hello.md")).unwrap();
+    std::fs::write(
+        clone.join("content/notes/hello.md"),
+        hello.replace("title: Hello", "title: Git title"),
+    )
+    .unwrap();
+    git_as_person(&clone, &["commit", "-q", "-am", "Retitle hello in git"]);
+    git(&clone, &["push", "-q", "origin", "main"]);
+    let hello_row = site.rows("notes").into_iter().find(|r| r["title"] == "Hello").unwrap();
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{}", hello_row["id"]),
+        Some(serde_json::json!({"title": "Site title"})),
+    );
+    assert_eq!(s, 200);
+    let conflicted = pr(&[]);
+    assert_eq!(conflicted["pr"]["action"], "opened", "{conflicted}");
+    assert_eq!(conflicted["conflicts"].as_array().unwrap().len(), 1, "{conflicted}");
+    let branch = branch_of(&conflicted);
+    let uid = hello_row["uid"].as_str().unwrap();
+    let conflict = show(&format!("{branch}:.first/conflicts/{uid}.md"));
+    assert!(
+        conflict.contains("<<<<<<< files") && conflict.contains("Site title"),
+        "{conflict}"
+    );
+    assert!(show(&format!("{branch}:content/notes/hello.md")).contains("title: Git title"));
+    assert_eq!(
+        site.rows("notes")
+            .into_iter()
+            .find(|r| r["id"] == hello_row["id"])
+            .unwrap()["title"],
+        "Site title"
+    );
+    {
+        let gh = github.lock().unwrap();
+        let (n, comment) = gh.comments.last().expect("a comment listing the conflicts");
+        assert_eq!(*n, 2);
+        assert!(comment.contains(&format!(".first/conflicts/{uid}.md")), "{comment}");
+    }
+    // Run again: the same conflict, no second comment, nothing pushed.
+    let comments = github.lock().unwrap().comments.len();
+    assert_eq!(pr(&[])["pr"]["action"], "unchanged");
+    assert_eq!(github.lock().unwrap().comments.len(), comments);
+    // Another site edit updates the pull request; the conflicts are the same, so still one comment.
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{id}"),
+        Some(serde_json::json!({"title": "Renamed again"})),
+    );
+    assert_eq!(s, 200);
+    assert_eq!(pr(&[])["pr"]["action"], "updated");
+    assert_eq!(github.lock().unwrap().comments.len(), comments);
+
+    // A description or comment that failed after the push is written by the next run, which pushes
+    // nothing new.
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{id}"),
+        Some(serde_json::json!({"title": "Renamed a third time"})),
+    );
+    assert_eq!(s, 200);
+    let head_before = git(&origin, &["rev-parse", &branch]);
+    github.lock().unwrap().refuse_writes = true;
+    let out = pr_out(&[]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_ne!(
+        git(&origin, &["rev-parse", &branch]),
+        head_before,
+        "the push went through"
+    );
+    github.lock().unwrap().refuse_writes = false;
+    // The failed run's description was never stored: plant a stale one, as GitHub would still show.
+    github.lock().unwrap().pulls[1]["body"] = "stale".into();
+    let calls = github.lock().unwrap().calls.len();
+    let retried = pr(&[]);
+    assert_eq!(retried["pr"]["action"], "unchanged", "{retried}");
+    let made: Vec<String> = github.lock().unwrap().calls[calls..].to_vec();
+    assert!(made.iter().any(|c| c == "PATCH /repos/acme/site/pulls/2"), "{made:?}");
+    assert_ne!(github.lock().unwrap().pulls[1]["body"], "stale");
+    let n = github.lock().unwrap().comments.len();
+    assert_eq!(pr(&[])["pr"]["action"], "unchanged");
+    assert_eq!(
+        github.lock().unwrap().comments.len(),
+        n,
+        "a comment already there is not posted again"
+    );
+
+    // --only would rebuild the pull request without the other kinds: refused.
+    let out = pr_out(&["--only", "notes"]);
+    assert_eq!(out.status.code(), Some(3), "{}", String::from_utf8_lossy(&out.stderr));
+    // A setup refusal (no GITHUB_TOKEN) is a JSON error with --json.
+    let out = first()
+        .args(["sync", "--pr", "--repo", "acme/site", "--json"])
+        .arg(&project)
+        .args(["--site", &site.url()])
+        .env("FIRST_APP_PASSWORD", &site.token)
+        .env_remove("GITHUB_TOKEN")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let refused: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
+    assert!(
+        refused["error"]["detail"]
+            .as_str()
+            .is_some_and(|d| d.contains("GITHUB_TOKEN")),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+
+    // Resolving the conflict as the comment says: the site made to say what git says. The next run
+    // drops the conflict file from the pull request and says so.
+    let (s, _) = site.call(
+        "PATCH",
+        &format!("/notes/{}", hello_row["id"]),
+        Some(serde_json::json!({"title": "Git title"})),
+    );
+    assert_eq!(s, 200);
+    let resolved = pr(&[]);
+    assert_eq!(resolved["pr"]["action"], "updated", "{resolved}");
+    assert!(resolved["conflicts"].as_array().unwrap().is_empty(), "{resolved}");
+    assert!(
+        git(
+            &origin,
+            &["ls-tree", "-r", "--name-only", &branch, "--", ".first/conflicts"]
+        )
+        .trim()
+        .is_empty(),
+        "the conflict file is gone from the branch"
+    );
+    assert!(
+        github
+            .lock()
+            .unwrap()
+            .comments
+            .last()
+            .unwrap()
+            .1
+            .contains("No conflicts left")
+    );
+
+    // A commit someone else put on the sync branch stops the run before anything is rebuilt.
+    let other = project.with_extension("other");
+    let _ = std::fs::remove_dir_all(&other);
+    let out = Command::new("git")
+        .args(["clone", "-q", "-b", &branch])
+        .arg(&origin)
+        .arg(&other)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    std::fs::write(other.join("notes.txt"), "mine").unwrap();
+    git(&other, &["add", "notes.txt"]);
+    git_as_person(&other, &["commit", "-q", "-m", "A note of mine"]);
+    git(&other, &["push", "-q", "origin", &branch]);
+    let out = first()
+        .args(["sync", "--pr", "--repo", "acme/site"])
+        .arg(&project)
+        .args(["--site", &site.url()])
+        .env("FIRST_APP_PASSWORD", &site.token)
+        .env("GITHUB_TOKEN", "test-token")
+        .env("GITHUB_API_URL", &api)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("A note of mine"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    for dir in [&project, &origin, &clone, &other] {
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

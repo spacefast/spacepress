@@ -14,6 +14,8 @@ use std::rc::Rc;
 pub const FIRST_MODULE: &str = "first";
 /// Page and layout helpers for `first/app/` and components (docs/spec/rendering.md §2–§4).
 pub const APP_MODULE: &str = "first/app";
+/// Navigation for a hierarchical kind's pages: `nav`, `pager`, `headings` (src/compile/content.rs).
+pub const CONTENT_MODULE: &str = "first/content";
 /// Hooks for `"use client"` components (docs/decisions/2026-11-08-tsx-to-php.md, generator B).
 pub const CLIENT_MODULE: &str = "first/client";
 /// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
@@ -28,6 +30,7 @@ pub fn builtin_module(spec: &str) -> bool {
         || spec == WORDPRESS_MODULE
         || spec == DB_MODULE
         || spec == APP_MODULE
+        || spec == CONTENT_MODULE
         || spec == CLIENT_MODULE
         || crate::builtins::module(spec).is_some()
 }
@@ -114,6 +117,9 @@ pub struct Program {
     /// `first/app/`: the route table, and each route file's module by its path relative to `first/`.
     pub app: crate::app::Table,
     pub app_files: Vec<(String, usize)>,
+    /// Files components and pages import that are not code (`.css`, `.module.css`, images), by
+    /// module id: the evaluator binds their import to a URL or a class map (`crate::assets`).
+    pub assets: HashMap<usize, crate::assets::Asset>,
 }
 
 /// One `first/wp-hooks/` file: `first/wp-hooks/<hook>.ts`, or `first/wp-hooks/<hook>/<file>.ts`.
@@ -148,6 +154,7 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
         components: Vec::new(),
         app: crate::app::Table::default(),
         app_files: Vec::new(),
+        assets: HashMap::new(),
     };
     let mut by_path: HashMap<PathBuf, usize> = HashMap::new();
     let mut diagnostics = Vec::new();
@@ -173,6 +180,20 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
             }
         }
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    }
+    // Pages beside first.config.ts are from before `first/app/`: refuse them rather than build a
+    // site without them. (A converted 0.8 capsule's `pages/` is read by `first migrate`, not here.)
+    if !fs.frozen_capture() && fs.is_dir(&program.root.join("pages")) {
+        let pages = program.root.join("pages");
+        let file = diag::register_file(&pages, "");
+        diagnostics.push(
+            Diag::new(
+                Span { file, start: 0, end: 0 },
+                "pages/ beside first.config.ts is from the old pages renderer; nothing serves it",
+            )
+            .help("TSX pages live in first/app/ now (docs/pages.md): move each pages/<path>/page.tsx to first/app/<path>/page.tsx, and replace load() with `await db.query…` in the page")
+            .code(diag::Code::Import),
+        );
     }
     // Handlers beside first.config.ts are from before `first/wp-hooks/`: refuse them rather than
     // build without them, which would drop every filter they register.
@@ -231,6 +252,9 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
     if diagnostics.is_empty() {
         diagnostics.extend(jsx_reachability(&program));
     }
+    // Two CSS modules may name a class alike; the later one takes a numbered name before any
+    // import of it is bound.
+    crate::assets::dedupe(&mut program.assets.values_mut().collect::<Vec<_>>());
     if diagnostics.is_empty() {
         Ok(program)
     } else {
@@ -562,13 +586,65 @@ fn load_module(
             true => Ok(target),
             false => fence(&program.root, path, &spec, target, span),
         });
-        match target.and_then(|target| load_module(fs, &target, program, by_path, diagnostics)) {
+        let target = target.and_then(|target| match crate::assets::kind(&target) {
+            Some(kind) => load_asset(fs, &target, kind, program, by_path, span),
+            None => load_module(fs, &target, program, by_path, diagnostics),
+        });
+        match target {
             Ok(target_id) => {
                 program.resolved.insert((id, spec), target_id);
             }
             Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
         }
     }
+    Ok(id)
+}
+
+/// A stylesheet or image import: no code, so its module has an empty body, and the file itself is
+/// read into `program.assets`. Sources travel to a host as text (the source bundle), so an image is
+/// imported only when it is text (SVG); a binary image belongs in public/. Only components, pages and
+/// `"use client"` files import assets: they render HTML that links the file. The config, hooks and
+/// actions run on the server, where a stylesheet means nothing.
+fn load_asset(
+    fs: &dyn Fs,
+    path: &Path,
+    kind: crate::assets::Kind,
+    program: &mut Program,
+    by_path: &mut HashMap<PathBuf, usize>,
+    span: Span,
+) -> Result<usize> {
+    if let Some(&id) = by_path.get(path) {
+        return Ok(id);
+    }
+    let relative = path
+        .strip_prefix(&program.root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/");
+    let text = fs.read_to_string(path).map_err(|e| {
+        let d = Diag::new(span, format!("can't import {relative}: {e}")).code(diag::Code::Import);
+        if e.kind() == std::io::ErrorKind::InvalidData {
+            d.help("components import text files only (CSS, SVG): put a binary image in public/ and write its URL, e.g. `<img src=\"/photo.png\">`")
+        } else {
+            d
+        }
+    })?;
+    let file = diag::register_file(path, &text);
+    let id = program.modules.len();
+    by_path.insert(path.to_path_buf(), id);
+    let asset = crate::assets::Asset::new(&relative, kind, text.into_bytes(), file)?;
+    program.modules.push(Rc::new(Module {
+        id,
+        file,
+        path: path.to_path_buf(),
+        body: Vec::new(),
+        commonjs: None,
+        dynamic: false,
+        type_names: Default::default(),
+        jsx: false,
+        use_client: false,
+    }));
+    program.assets.insert(id, asset);
     Ok(id)
 }
 
@@ -1479,10 +1555,17 @@ fn resolve_source(fs: &dyn Fs, base: &Path, spec: &str, span: Span) -> Result<Pa
         }
     }
     if fs.is_file(base) {
+        if crate::assets::kind(base).is_some() {
+            return fs.canonicalize(base).map_err(|e| Diag::new(span, e.to_string()));
+        }
         return Err(Diag::new(
             span,
             format!("can't import \"{spec}\": expected TypeScript or JavaScript source"),
-        ));
+        )
+        .help(format!(
+            "components and pages import {}; other files (a binary image, a font) belong in public/, by their URL",
+            crate::assets::EXTENSIONS.join(", ")
+        )));
     }
     Err(Diag::new(span, format!("can't find \"{spec}\"")))
 }

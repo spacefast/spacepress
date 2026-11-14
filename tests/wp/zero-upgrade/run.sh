@@ -36,6 +36,10 @@ url=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["url"])' "
 "$wp/harness.sh" compose exec -T db mariadb -uroot -pfirst-test-root wordpress < "$here/fixture/site.sql"
 "$wp/harness.sh" wp option update home "$url" >/dev/null
 "$wp/harness.sh" wp option update siteurl "$url" >/dev/null
+# The 0.3.0 session in the dump lived for a day from when stage.sh ran; a browser signed in on the
+# 0.3.0 site still holds it today, so it is dated now, as if the visitor had just signed in.
+"$wp/harness.sh" compose exec -T db mariadb -uroot -pfirst-test-root wordpress -e \
+  "UPDATE wp_zero_identity_sessions SET created_at = UNIX_TIMESTAMP(), verified_at = UNIX_TIMESTAMP(), expires_at = UNIX_TIMESTAMP() + 86400"
 tar -C "$here/fixture/uploads" -cf - zero-private | "$wp/harness.sh" compose exec -T wordpress sh -c \
   "mkdir -p /var/www/html/wp-content/uploads && tar -C /var/www/html/wp-content/uploads -xf - && chown -R $(id -u):$(id -g) /var/www/html/wp-content/uploads"
 # The private-files probe goes to the web server's in-network name, as on the 0.3.0 site.

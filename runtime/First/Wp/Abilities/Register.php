@@ -17,6 +17,7 @@ use First\Wp\Runtime;
  *   name, op, label, description, input, output, annotations, agents, first (meta),
  *   rule [rule, op, what], data? (input → rule data), defer? (rule needs the pipeline),
  *   call (input → [method, path, query, body]) and result? (data → output), or run (input → output).
+ * A post kind with revisions also gets one ability per staged-version step ({@see staged()}).
  * `agents: false` keeps the ability registered (PHP, `wp first run`) but out of core REST and MCP.
  */
 final class Register
@@ -30,8 +31,12 @@ final class Register
     private static ?string $untyped = null;
     /** The REST run endpoint's JSON `input`, decoded with `{}` kept: [ability name, input]. */
     private static ?array $raw = null;
-    /** @var array<string, string> the run request's headers an operation reads (Idempotency-Key, First-Signature) */
-    private static array $headers = [];
+    /**
+     * @var array{string, array<string, string>}|null the run request's ability and its headers an
+     * operation reads (Idempotency-Key, First-Signature): they belong to that one run, not to abilities
+     * its code calls in turn.
+     */
+    private static ?array $headers = null;
     /** @var array<string, string> headers the operation answered with, for the run response */
     private static array $responded = [];
 
@@ -122,11 +127,13 @@ final class Register
                 self::$method = self::$sanitizing;
                 self::$untyped = null;
                 self::$responded = [];
-                self::$headers = [];
-                if ($request instanceof \WP_REST_Request) {
+                self::$headers = null;
+                if ($request instanceof \WP_REST_Request && preg_match('#^/wp-abilities/v1/abilities/(.+)/run$#', (string) $request->get_route(), $m)) {
+                    $headers = [];
                     foreach ($request->get_headers() as $name => $values) {
-                        self::$headers[str_replace('_', '-', strtolower((string) $name))] = implode(', ', (array) $values);
+                        $headers[str_replace('_', '-', strtolower((string) $name))] = implode(', ', (array) $values);
                     }
+                    self::$headers = [urldecode($m[1]), $headers];
                 }
                 // The run body's own input, or (for the facade's GET/DELETE runs) what withSentInput set.
                 self::$raw = ($request instanceof \WP_REST_Request ? self::rawInput($request) : null) ?? self::$raw;
@@ -187,7 +194,7 @@ final class Register
         self::$method = null;
         self::$untyped = null;
         self::$raw = null;
-        self::$headers = [];
+        self::$headers = null;
         if ($response instanceof \WP_REST_Response) {
             foreach (self::$responded as $name => $value) {
                 $response->header($name, $value);
@@ -211,10 +218,22 @@ final class Register
         return $response;
     }
 
-    /** @return array<string, string> the run request's headers, lower-cased */
-    public static function headers(): array
+    /**
+     * The run request's headers, lower-cased, for ability $name's own run, once: an ability that code
+     * inside it executes (`wp_get_ability()->execute()`) sees none, so an Idempotency-Key sent for the
+     * outer run never keys an inner one.
+     *
+     * @return array<string, string>
+     */
+    public static function headers(string $name): array
     {
-        return self::$headers;
+        if (self::$headers === null || self::$headers[0] !== $name) {
+            return [];
+        }
+        $headers = self::$headers[1];
+        self::$headers = null;
+
+        return $headers;
     }
 
     /** The operation's own response headers (`Idempotent-Replayed`), for the run response. */
@@ -279,6 +298,8 @@ final class Register
             array_push($ops, ...self::global($app, $label, (string) $name, $global));
         }
         array_push($ops, ...self::media($app, $label));
+        // Features add their own operations here (runtime schema changes: First\RuntimeSchema\Surfaces).
+        $ops = apply_filters('first_ability_operations', $ops, $app);
         if (($enqueue = Module::enqueuer()) !== null) {
             foreach ($schema->jobs() as $name => $job) {
                 if ($job['agents'] ?? false) {
@@ -300,7 +321,7 @@ final class Register
                 $columns = $schema->collection($collection)['columns'];
                 $op['shape'] = match ($op['op']) {
                     'create' => $columns,
-                    'update' => ['id' => null, 'patch' => $columns],
+                    'update', 'stage' => ['id' => null, 'patch' => $columns],
                     'sync-apply', 'sync-trash', 'sync-read' => ['type' => 'sync', 'collection' => $collection],
                     default => ['type' => 'query', 'collection' => $collection],
                 };
@@ -395,6 +416,9 @@ final class Register
                 'result' => static fn (array $revisions): array => ['revisions' => $revisions],
             ];
         }
+        if (\First\Wp\Staged::enabled($spec) && ($api['update'] ?? true)) {
+            array_push($ops, ...self::staged($app, $appLabel, $name, $base, $rules['update'], $row, $pk, $spec));
+        }
         // Content sync (§5.3) rides its `/sync` routes: these exist exactly when the sync feature does.
         if (($spec['sync'] ?? null) !== null && Extensions::routeHandler('sync') !== null) {
             // Apply is a create or an update depending on `expect`; only the sync route can tell, so it decides.
@@ -416,6 +440,63 @@ final class Register
         }
 
         return $ops;
+    }
+
+    /**
+     * A post kind's staged version ({@see \First\Wp\Staged}), one ability per step, so that a
+     * credential can be given `-stage` without `-staged-promote`. Each needs the item's update rule;
+     * the operation itself decides it (`defer`), so a caller it doesn't cover gets the 404 a missing
+     * item gets and never learns whether anything is staged.
+     *
+     * @return list<array>
+     */
+    private static function staged(string $app, string $appLabel, string $name, array $base, array $rule, array $row, array $pk, array $spec): array
+    {
+        $k = self::kebab($name);
+        $when = ['type' => 'string', 'format' => 'date-time'];
+        $record = [
+            'id' => ['type' => 'integer'], 'at' => $when, 'promoteAt' => ['type' => ['string', 'null'], 'format' => 'date-time'],
+            'by' => ['type' => ['object', 'null'], 'properties' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'string']]],
+        ];
+        $version = ['type' => 'object', 'required' => ['id', 'row', 'fields'], 'properties' => ['row' => $row, 'fields' => ['type' => 'array', 'items' => ['type' => 'string']]] + $record];
+        $id = static fn (array $in): int|string => is_int($in['id'] ?? null) || (is_string($in['id'] ?? null) && $in['id'] !== '') ? $in['id'] : throw HttpError::invalidInput('id is required', '/id');
+        $op = static fn (string $suffix, string $kind, string $label, string $description, array $input, array $output, array $annotations, \Closure $run): array => $base + [
+            'name' => "$app/$k-$suffix", 'op' => $kind, 'label' => $label, 'description' => $description, 'input' => $input, 'output' => $output,
+            'annotations' => $annotations, 'rule' => [$rule, 'update', "update $name rows"], 'defer' => true,
+            'run' => static fn (array $in): mixed => $run($id($in), $in, Invoke::viewer()),
+        ];
+        $one = JsonSchema::input(['id' => $pk], ['id']);
+        $readonly = ['readonly' => true, 'idempotent' => true];
+
+        return [
+            $op('stage', 'stage', "Stage a change to $name",
+                "Save changes to one $name row of the $appLabel app as its staged version: the given fields of `patch` are staged, and the live row stays as it is until the staged version is promoted.",
+                JsonSchema::input(['id' => $pk, 'patch' => JsonSchema::patch($spec)], ['id', 'patch']), $version, [],
+                static fn (int|string $id, array $in, \First\Viewer $viewer): array => \First\Wp\Staged::stage($name, $id, Invoke::object($in['patch'] ?? false) ?? throw HttpError::invalidInput('patch must be an object', '/patch'), $viewer)),
+            $op('staged-get', 'staged-get', "Staged version of $name",
+                "Read the staged version of one $name row of the $appLabel app: the row as it would be once promoted, and the fields that are staged.",
+                $one, $version, $readonly,
+                static fn (int|string $id, array $in, \First\Viewer $viewer): array => \First\Wp\Staged::get($name, $id, $viewer)),
+            $op('staged-compare', 'staged-compare', "Compare staged and live $name",
+                "List the staged fields of one $name row of the $appLabel app whose value differs from the live row, with both values.",
+                $one, ['type' => 'object', 'required' => ['id', 'changes'], 'properties' => ['changes' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['field'], 'properties' => ['field' => ['type' => 'string']]]]] + $record], $readonly,
+                static fn (int|string $id, array $in, \First\Viewer $viewer): array => \First\Wp\Staged::compare($name, $id, $viewer)),
+            $op('staged-promote', 'staged-promote', "Promote staged $name",
+                "Make the staged version of one $name row of the $appLabel app live, as an update of the row. With `at` (a future time) the promote is scheduled instead; `at: null` cancels a scheduled promote.",
+                JsonSchema::input(['id' => $pk, 'at' => ['type' => ['string', 'null'], 'format' => 'date-time']], ['id']), [], [],
+                static fn (int|string $id, array $in, \First\Viewer $viewer): array => array_key_exists('at', $in)
+                    ? \First\Wp\Staged::schedule($name, $id, $in['at'], $viewer)
+                    : \First\Wp\Staged::promote($name, $id, $viewer)),
+            $op('staged-discard', 'staged-discard', "Discard staged $name",
+                "Discard the staged version of one $name row of the $appLabel app. The live row is untouched and the discarded version stays in the row's revisions.",
+                $one, ['type' => 'object', 'required' => ['revision'], 'properties' => ['revision' => ['type' => 'integer']]], ['idempotent' => false],
+                static fn (int|string $id, array $in, \First\Viewer $viewer): array => \First\Wp\Staged::discard($name, $id, $viewer)),
+            $op('staged-preview', 'staged-preview', "Preview link for staged $name",
+                "Create a signed link to the staged version of one $name row of the $appLabel app. It works without signing in until it expires (`ttl` seconds, an hour by default) or the staged version is promoted or discarded.",
+                JsonSchema::input(['id' => $pk, 'ttl' => ['type' => 'integer', 'minimum' => 60, 'maximum' => 86400]], ['id']),
+                ['type' => 'object', 'required' => ['token', 'expiresAt', 'api'], 'properties' => ['token' => ['type' => 'string'], 'expiresAt' => $when, 'api' => ['type' => 'string'], 'url' => ['type' => ['string', 'null']]]], [],
+                static fn (int|string $id, array $in, \First\Viewer $viewer): array => \First\Wp\Staged::preview($name, $id, $in['ttl'] ?? null, $viewer)),
+        ];
     }
 
     private static function action(string $app, string $appLabel, string $name, array $action): array

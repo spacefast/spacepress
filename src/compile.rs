@@ -8,6 +8,8 @@
 
 mod annotations;
 mod app;
+mod content;
+pub use content::{CONTENT_EXPORTS, CONTENT_TYPES};
 mod classes;
 mod client;
 mod effects;
@@ -389,6 +391,9 @@ pub struct Compiler<'a, 'p> {
     fx: Option<FnCtx>,
     /// Inferred result type of each action handler (for the typed client).
     pub action_results: HashMap<String, Ty>,
+    /// Each server component's props type (`first/components/x.tsx#Name` → its first parameter),
+    /// for the blocks Markdown pages use (`crate::content_blocks`).
+    pub component_props: HashMap<String, Ty>,
     /// Set for the one callback `once()` runs in place, which may be async (lane D).
     async_callback: bool,
     /// The `this` type for the next object-literal method compiled (the literal's own type).
@@ -489,6 +494,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             output: String::new(),
             fx: None,
             action_results: HashMap::new(),
+            component_props: HashMap::new(),
             plugin: None,
             current: String::new(),
             uses: Vec::new(),
@@ -846,12 +852,31 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
                 let actions: std::collections::BTreeSet<String> = self.schema.actions.keys().cloned().collect();
+                let program = self.ev_program();
+                let assets: Vec<(String, &crate::assets::Asset)> = module
+                    .body
+                    .iter()
+                    .filter_map(|s| match s {
+                        crate::ir::Stmt::Import { source, specs, .. } => Some((source, specs)),
+                        _ => None,
+                    })
+                    .filter_map(|(source, specs)| {
+                        let target = program.resolved.get(&(module.id, source.clone()))?;
+                        let asset = program.assets.get(target)?;
+                        let local = specs
+                            .iter()
+                            .find(|s| matches!(s.imported, crate::ir::ImportName::Default))
+                            .map(|s| s.local.clone())?;
+                        Some((local, asset))
+                    })
+                    .collect();
                 let analysis = crate::client_component::analyse(
                     namespace,
                     &root.closure.func,
                     module,
                     crate::loader::CLIENT_MODULE,
                     &actions,
+                    &assets,
                 )?;
                 self.client = Some(client::ClientCtx {
                     analysis,
@@ -873,6 +898,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
                 self.islands.push(ctx.analysis);
+            }
+            if let Slot::Component { name: component } = &root.slot
+                && let Some(Ty::Fn(params, _)) = self.helper_types.get(&key)
+            {
+                let props = params.first().cloned().unwrap_or(Ty::Obj(IndexMap::new()));
+                self.component_props.insert(component.clone(), props);
             }
             if let Slot::ActionHandler { action } = &root.slot
                 && let Some(Ty::Fn(_, ret)) = self.helper_types.get(&key)
@@ -4225,6 +4256,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Ok(Out::atom("\\First\\db()", Ty::Db))
             }
+            Value::Asset(file) => Ok(Out::atom(format!("\\First\\Assets::url({})", php_str(file)), Ty::Str)),
             Value::Env(name) => {
                 self.uses("env", name.to_string(), span);
                 Ok(Out::atom(
@@ -4278,6 +4310,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             | Value::Relation(_)
             | Value::Action(_)
             | Value::Job(_)
+            | Value::Route(_)
             | Value::Plugin(_)
             | Value::FileBucket(_)
             | Value::Bound(..) => err(
@@ -7736,6 +7769,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if let Some(name) = self.app_builtin(callee)? {
             return self.app_call(name, args, span);
         }
+        if let Some(name) = self.content_builtin(callee)? {
+            return self.content_call(name, args, span);
+        }
         match &callee.kind {
             ExprKind::Member {
                 obj,
@@ -10141,7 +10177,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "NOT" => self.filter(table, v, allow_relations)?,
                 name => {
                     let c = &self.schema.collections[table];
-                    if let Some(col) = c.columns.get(name) {
+                    // A `ref()` field is both the id column and the relation: an object of other
+                    // than field operators filters through the relation.
+                    let through = c.relations.contains_key(name)
+                        && (!c.columns.contains_key(name)
+                            || matches!(&v.kind, ExprKind::Object(ps) if !ps.is_empty() && ps.iter().any(|p| !matches!(p, Prop::KV(PropKey::Static(k), _) if FILTER_OPS.contains(&k.as_str())))));
+                    if let Some(col) = c.columns.get(name).filter(|_| !through) {
                         let col = col.clone();
                         let editor = c.editor;
                         self.field_filter(&col, v, editor)?
@@ -10181,7 +10222,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "`{op}` on `{}` isn't supported on editor collections; filter on a scalar column",
                         col.name
                     ),
-                    "on WordPress this value is spread over many postmeta rows; use isNull/isNotNull, or `editor: false`",
+                    "on WordPress this value is spread over many postmeta rows; use isNull/isNotNull, or keep this data in a table()",
                 );
             }
             Ok(())

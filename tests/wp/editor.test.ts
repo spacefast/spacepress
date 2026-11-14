@@ -197,13 +197,44 @@ test("editor password writes invalidate visibility and keep relations private", 
   const row = await ok("POST", "/posts", { as: "editor", body: { title: `Password write ${run}`, status: "published" } });
   const id = row.id;
   await ok("POST", "/comments", { as: "editor", body: { postId: id, name: "Visibility", body: "Related" } });
-  const comments = () => ok("GET", `/comments?with=post&where=${encodeURIComponent(JSON.stringify({ postId: id }))}`, { as: "subscriber" });
-  assert.equal((await comments())[0].post.id, id);
+  const comments = () => ok("GET", `/comments?with=postId&where=${encodeURIComponent(JSON.stringify({ postId: id }))}`, { as: "subscriber" });
+  assert.equal((await comments())[0].postId.id, id);
   const protectedPost = await http("POST", `${core}/first_posts/${id}`, { as: "editor", body: { password: "editor-secret" } });
   assert.equal(protectedPost.status, 200);
-  assert.equal((await comments())[0].post, null);
+  assert.equal((await comments())[0].postId, null);
   assert.equal((await http("GET", `${core}/first_posts/${id}?password=editor-secret`)).status, 200);
   const cleared = await http("POST", `${core}/first_posts/${id}`, { as: "editor", body: { password: "" } });
   assert.equal(cleared.status, 200);
-  assert.equal((await comments())[0].post.id, id);
+  assert.equal((await comments())[0].postId.id, id);
+});
+
+// The block editor saves title, content and slug as core post fields, not as `acf`/`meta`: First's
+// rules on those columns (min, max) hold on its saves too, and a refused save stores nothing. A save
+// within the rules, an autosave included, goes through; a typed slug is core's to sanitize.
+test("the block editor's title, content and slug saves follow First's rules on those columns", async () => {
+  const before = sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'first_posts'")[0].n;
+  const longTitle = await http("POST", `${core}/first_posts`, { as: "editor", body: { title: "x".repeat(121), content: "<!-- wp:paragraph --><p>Hi</p><!-- /wp:paragraph -->", status: "draft" } });
+  assert.equal(longTitle.status, 422, JSON.stringify(longTitle.json));
+  const emptyTitle = await http("POST", `${core}/first_posts`, { as: "editor", body: { title: "", status: "draft" } });
+  assert.equal(emptyTitle.status, 422, JSON.stringify(emptyTitle.json));
+  assert.equal(sql("SELECT COUNT(*) AS n FROM wp_posts WHERE post_type = 'first_posts'")[0].n, before, "nothing was saved");
+  // A slug the editor types is sanitized by core into one First's slug rule accepts, as for any post.
+  const typed = await http("POST", `${core}/first_posts`, { as: "editor", body: { title: `Slug ${run}`, slug: `Typed Slug ${run}!`, status: "draft" } });
+  assert.equal(typed.status, 201, JSON.stringify(typed.json));
+  assert.equal(first("find", "posts", JSON.stringify({ where: { id: typed.json.id } }))[0].slug, `typed-slug-${run}`);
+  // Within the rules: the editor creates the post, edits its title, and autosaves.
+  const made = await http("POST", `${core}/first_posts`, { as: "editor", body: { title: `Editor ${run}`, content: "<!-- wp:paragraph --><p>Hi</p><!-- /wp:paragraph -->", status: "draft" } });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  const renamed = await http("POST", `${core}/first_posts/${made.json.id}`, { as: "editor", body: { title: `Editor ${run} renamed` } });
+  assert.equal(renamed.status, 200, JSON.stringify(renamed.json));
+  const autosave = await http("POST", `${core}/first_posts/${made.json.id}/autosaves`, { as: "editor", body: { title: `Editor ${run} autosaved`, content: "<p>more</p>" } });
+  assert.equal(autosave.status, 200, JSON.stringify(autosave.json));
+  // (The author's autosave of their own draft writes the draft itself, as WordPress does.)
+  const saved = first("find", "posts", JSON.stringify({ where: { id: made.json.id } }))[0].title;
+  assert.equal(saved, `Editor ${run} autosaved`);
+  const tooLongEdit = await http("POST", `${core}/first_posts/${made.json.id}`, { as: "editor", body: { title: "y".repeat(121) } });
+  assert.equal(tooLongEdit.status, 422, JSON.stringify(tooLongEdit.json));
+  const tooLongAutosave = await http("POST", `${core}/first_posts/${made.json.id}/autosaves`, { as: "editor", body: { title: "z".repeat(121) } });
+  assert.equal(tooLongAutosave.status, 422, JSON.stringify(tooLongAutosave.json));
+  assert.equal(first("find", "posts", JSON.stringify({ where: { id: made.json.id } }))[0].title, saved, "the refused edit and autosave changed nothing");
 });

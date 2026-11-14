@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "plugins": {
+    "seo": {
+      "package": "zero-plugin-seo",
+      "version": "1.2.0",
+      "integrity": "sha256-b5cb11c8c24d4798244b26c241d40addaf4a78582b9a440e33a2090dc2d4d2cb",
+      "grant": {
+        "read": [
+          "posts"
+        ],
+        "write": [
+          "posts.*"
+        ],
+        "delete": [],
+        "hooks": [
+          "posts.beforeCreate"
+        ],
+        "actions": [
+          "seo_tag"
+        ],
+        "routes": [
+          "GET /sitemap-seo.xml"
+        ],
+        "http": [],
+        "env": [],
+        "mail": [],
+        "jobs": [],
+        "timers": [],
+        "abilities": [],
+        "wpHooks": [],
+        "php": []
+      }
+    }
+  }
+}

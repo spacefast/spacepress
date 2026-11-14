@@ -244,7 +244,8 @@ final class WpSite
             $port = $this->port;
             putenv("FIRST_TEST_SERVER_PORT=$port");
             $server = proc_open(
-                [PHP_BINARY, '-S', "127.0.0.1:$port", __DIR__ . '/wp-router.php'],
+                // A suite that rewrites schema.php (an app update) is served the new file by the next request.
+                [PHP_BINARY, '-d', 'opcache.revalidate_freq=0', '-S', "127.0.0.1:$port", __DIR__ . '/wp-router.php'],
                 [1 => ['file', "$this->dir/server.log", 'a'], 2 => ['file', "$this->dir/server.log", 'a']],
                 $pipes,
                 $this->dir,
@@ -288,9 +289,14 @@ final class WpSite
         // and a fatal error as text, not WordPress's "critical error" page.
         ini_set('display_errors', 'stderr');
         add_filter('wp_php_error_message', static fn (string $message, array $error): string => $error['message'] . ' in ' . $error['file'] . ':' . $error['line'], 10, 2);
-        add_filter('wp_die_handler', static fn () => static function (mixed $message): never {
+        // WordPress reports a fatal error through wp_die() with `exit => false`, from inside a
+        // shutdown function. Exiting there would skip every shutdown function registered later:
+        // the suite's own cleanup, so its php -S child and its site directory would stay behind.
+        add_filter('wp_die_handler', static fn () => static function (mixed $message, mixed $title = '', mixed $args = []): void {
             fwrite(STDERR, 'wp_die: ' . (is_string($message) ? $message : json_encode($message)) . "\n");
-            exit(255);
+            if (!is_array($args) || ($args['exit'] ?? true)) {
+                exit(255);
+            }
         });
         $plugin = \First\Wp\Runtime::plugin() ?? throw new RuntimeException('the First app did not boot: ' . $this->debugLog());
         if ($plugin->unavailable() !== null) {
@@ -304,13 +310,19 @@ final class WpSite
         return is_file("$this->content/debug.log") ? (string) file_get_contents("$this->content/debug.log") : '(no debug.log)';
     }
 
-    public function destroy(): void
+    /** Stops the php -S child; `startServer()` starts a new one (a new process: no cached code). */
+    public function stopServer(): void
     {
         if ($this->server !== null) {
             proc_terminate($this->server);
             proc_close($this->server);
             $this->server = null;
         }
+    }
+
+    public function destroy(): void
+    {
+        $this->stopServer();
         if (is_dir($this->dir)) {
             exec('rm -rf ' . escapeshellarg($this->dir));
         }
@@ -355,6 +367,12 @@ final class WpSite
         }
 
         return $out;
+    }
+
+    /** The php -S child's process id, or null when no server runs. */
+    public function serverPid(): ?int
+    {
+        return $this->server === null ? null : (proc_get_status($this->server)['pid'] ?? null);
     }
 
     /** Whether the php -S child is still running. */

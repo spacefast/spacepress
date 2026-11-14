@@ -70,13 +70,6 @@ export type ColumnKind =
   | "repeater"
   | "blocks";
 
-export type ReferentialAction = "cascade" | "restrict" | "set null" | "no action";
-
-export interface ReferenceOptions {
-  onDelete?: ReferentialAction;
-  onUpdate?: ReferentialAction;
-}
-
 /** Values a `$onUpdate`/`$default` function may return: `Date` is accepted on time columns. */
 type GeneratedValue<TKind extends ColumnKind, TData> =
   | TData
@@ -90,8 +83,6 @@ type BoundedKind = "integer" | "number" | "text" | "email" | "url" | "slug" | "r
 type PatternKind = "text" | "email" | "url" | "slug";
 /** `.unique()`. */
 type UniqueKind = "id" | "integer" | "number" | "text" | "email" | "url" | "slug" | "boolean" | "date" | "timestamp";
-/** `.references()`. */
-type ReferenceKind = "id" | "integer" | "number";
 /** `.default()` and friends: every kind but media. */
 type DefaultKind = Exclude<ColumnKind, "media">;
 
@@ -200,12 +191,10 @@ export interface ColumnBuilder<
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /** Unique text columns also need `.max(n)` with n ≤ 191 (MySQL index limit). Not allowed on sub-fields or globals. */
   unique(this: ColumnBuilder<UniqueKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
-  /** Foreign key. The target column's type must match this column's type. */
-  references(
-    this: ColumnBuilder<ReferenceKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
-    ref: () => Column<ColumnKind, NonNullable<TData>>,
-    options?: ReferenceOptions,
-  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
+  /** What deleting the referenced row does: `restrict` (the default when required), `setNull` (the default when optional) or `cascade`. `ref()` fields only. */
+  onDelete(action: "cascade" | "restrict" | "setNull"): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
+  /** The name of the list of referencing rows on the target. Default: the referencing kind's name. `ref()` fields only. */
+  reverse(name: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
 
   /** Numbers: inclusive lower bound. text/email/url/slug/richText: length in code points. repeater/mediaList/select(multiple)/blocks: item count. */
   min(this: ColumnBuilder<BoundedKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>, n: number): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
@@ -252,6 +241,12 @@ export interface Column<
 
 export type AnyColumn = Column<ColumnKind, unknown, boolean, boolean, string, string>;
 
+/**
+ * A reference to a row of `kind` (its `id`): the field holds the id, `with: { field: true }` loads the
+ * row in its place, and `kind` gets a list of the referencing rows named after this kind. Pass
+ * `() => kind` for a kind declared later or for the kind itself.
+ */
+export declare function ref(kind: AnyCollection | (() => AnyCollection)): ColumnBuilder<"integer", number, true, false>;
 /** Every field is required unless `.optional()`; `.default()` or `.defaultNow()` make it omittable on create. */
 export declare function integer(): ColumnBuilder<"integer", number, true, false>;
 /** Any finite number (a double). */
@@ -397,8 +392,10 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   /** Declares a rename: this table was stored as `old` (its name in first/_generated/migrations/snapshot.json).
    * The deploy renames the table and keeps its rows. table() only. */
   was?: string;
-  /** Project-relative Markdown/JSON files; implies uid: true. */
+  /** Project-relative Markdown/JSON files; implies uid: true. A `**` folder before the file pattern (`content/docs/` then `**` then `/*.md`) reads a folder tree into a hierarchical collection. */
   sync?: `${string}/*.md` | `${string}/*.json`;
+  /** Items nest like WordPress Pages: adds `parent` and `order`, and `:path` in `url` is the parent chain. collection() only. */
+  hierarchical?: boolean;
   uid?: boolean;
   /** Expose through WordPress abilities/MCP. Default true. */
   agents?: boolean;
@@ -416,6 +413,11 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   drafts?: boolean;
   /** Keep a revision per update. Default true for collections, false for tables. */
   revisions?: boolean;
+  /**
+   * Staged versions: a change to an item saved beside the live one, then compared, promoted or
+   * discarded. Default true for collections; `false` turns them off. collection() only.
+   */
+  staged?: boolean;
   /** WordPress comments on this collection's post type. Default false: comments are closed on every kind that doesn't turn them on. */
   comments?: boolean;
   /** The WordPress post title: a NOT NULL `text()` column. Default: a text column named `title`. Required for collections. */
@@ -554,12 +556,6 @@ export type Schema = Record<string, AnyCollection>;
 // 4. Relations
 // ---------------------------------------------------------------------------
 
-/** `r.<collectionKey>.<column>` inside `defineRelations`. */
-export interface RelationColumn<TKey extends string = string> {
-  readonly [relationBrand]: { collection: TKey };
-}
-
-type RelationColumns = RelationColumn | readonly [RelationColumn, ...RelationColumn[]];
 
 export interface One<TTarget extends string = string, TOptional extends boolean = boolean> {
   readonly [relationBrand]: { kind: "one"; target: TTarget; optional: TOptional };
@@ -571,44 +567,13 @@ export interface Many<TTarget extends string = string> {
 
 export type AnyRelation = One | Many;
 
-export interface OneConfig {
-  from: RelationColumns;
-  to: RelationColumns;
-  /** `false` when the related row always exists; the result then isn't nullable. Default `true`. */
-  optional?: boolean;
-}
 
-export interface ManyConfig {
-  from: RelationColumns;
-  to: RelationColumns;
-}
-
-/** Overloads (not a generic) so `optional` isn't inferred from the contextual return type. */
-export interface OneFn<TTarget extends string> {
-  (config: OneConfig & { optional: false }): One<TTarget, false>;
-  (config: OneConfig & { optional?: true }): One<TTarget, true>;
-  (config: OneConfig): One<TTarget, boolean>;
-}
-
-export interface ManyFn<TTarget extends string> {
-  /** With no config, inferred from the single `one` relation pointing back. */
-  (config?: ManyConfig): Many<TTarget>;
-}
-
-export type RelationsBuilder<TSchema extends Schema> = {
-  readonly [K in keyof TSchema & string]: {
-    readonly [C in keyof ColumnsOf<TSchema[K]>]: RelationColumn<K>;
-  };
-} & {
-  readonly one: { readonly [K in keyof TSchema & string]: OneFn<K> };
-  readonly many: { readonly [K in keyof TSchema & string]: ManyFn<K> };
-};
 
 export type RelationsConfig<TSchema extends Schema> = {
   [K in keyof TSchema]?: Record<string, AnyRelation>;
 };
 
-/** Result of `defineRelations`. */
+/** The kinds and their relations, as `first build` registers them in first/_generated/db.d.ts. */
 export interface Relations<
   TSchema extends Schema = Schema,
   TConfig extends RelationsConfig<TSchema> = RelationsConfig<TSchema>,
@@ -616,13 +581,6 @@ export interface Relations<
   readonly [relationsBrand]: { schema: TSchema; config: TConfig };
 }
 
-export declare function defineRelations<TSchema extends Schema>(
-  schema: TSchema,
-): Relations<TSchema, {}>;
-export declare function defineRelations<
-  TSchema extends Schema,
-  TConfig extends RelationsConfig<TSchema>,
->(schema: TSchema, relations: (r: RelationsBuilder<TSchema>) => TConfig): Relations<TSchema, TConfig>;
 
 /** Relations declared for collection `K` (empty when none). */
 type RelationsOf<TRels, K> = K extends keyof TRels
@@ -704,9 +662,11 @@ export type RelationsFilter<
   TSchema extends Schema,
   TRels,
   K extends keyof TSchema,
-> = ColumnFilters<ColumnsOf<TSchema[K]>> & {
+> = Omit<ColumnFilters<ColumnsOf<TSchema[K]>>, keyof RelationsOf<TRels, K>> & {
+  // A `ref()` field filters its id, or the row it refers to.
   [R in keyof RelationsOf<TRels, K>]?:
     | boolean
+    | (R extends keyof ColumnFilters<ColumnsOf<TSchema[K]>> ? ColumnFilters<ColumnsOf<TSchema[K]>>[R] : never)
     | RelationsFilter<TSchema, TRels, TargetOf<RelationsOf<TRels, K>[R]> & keyof TSchema>;
 } & {
   OR?: RelationsFilter<TSchema, TRels, K>[];
@@ -791,8 +751,10 @@ type WithResult<TSchema extends Schema, TRels, K extends keyof TSchema, TWith> =
 };
 
 /** One row of `db.query.<K>` given its `columns` and `with`. */
+/** A `ref()` field loaded by `with` holds the row in place of its id. */
 export type QueryRow<TSchema extends Schema, TRels, K extends keyof TSchema, TCols, TWith> = Simplify<
-  PickColumns<TSchema[K]["$inferSelect"], TCols> & WithResult<TSchema, TRels, K, TWith>
+  Omit<PickColumns<TSchema[K]["$inferSelect"], TCols>, keyof WithResult<TSchema, TRels, K, TWith>> &
+    WithResult<TSchema, TRels, K, TWith>
 >;
 
 export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof TSchema> {
@@ -1001,10 +963,19 @@ export interface AccessCtx<TData = Record<string, unknown>> {
 
 /**
  * A filter an access function may return: column conditions of the collection, plus relation
- * conditions (`{ author: { userId: ctx.user?.id } }`). Relation names aren't known where the
- * collection is defined, so the compiler checks those.
+ * conditions (`{ author: { userId: ctx.user?.id } }`). A `ref()` field is an integer column and its
+ * relation at once, so an integer column also takes a filter on the row it refers to. Relation names
+ * and targets aren't known where the collection is defined, so the compiler checks those.
  */
-export type AccessFilter<T extends AnyCollection> = TableFilter<T> & { [relation: string]: unknown };
+export type AccessFilter<T extends AnyCollection> = {
+  [K in keyof ColumnsOf<T>]?: ColumnKindOf<ColumnsOf<T>[K]> extends "integer"
+    ? ColumnFilter<ColumnsOf<T>[K]> | { [field: string]: unknown }
+    : ColumnFilter<ColumnsOf<T>[K]>;
+} & {
+  OR?: AccessFilter<T>[];
+  AND?: AccessFilter<T>[];
+  NOT?: AccessFilter<T>;
+} & { [relation: string]: unknown };
 
 /** `"anyone"` includes unauthenticated callers; `"authenticated"` is any user; a role admits itself and above. */
 export type AccessShorthand = boolean | "anyone" | "authenticated" | "self" | Role;
@@ -1074,7 +1045,15 @@ export type InferActionInput<TInput extends ColumnsConfig> = Simplify<
 
 export interface Action<TInput extends ColumnsConfig = ColumnsConfig, TResult = unknown> {
   readonly [actionBrand]: { input: TInput; result: TResult };
+  /**
+   * From a `"use client"` component: a `fetch` to the action's endpoint, with the REST nonce. The
+   * parameter is checked through `ClientInput`, so an action of any input stays an `AnyAction`.
+   */
+  <I extends ClientInput<TInput>>(input: I): Promise<Awaited<TResult>>;
 }
+
+/** The input a client call passes: the action's input, or anything for `AnyAction`. */
+type ClientInput<TInput extends ColumnsConfig> = ColumnsConfig extends TInput ? Record<string, unknown> : InferActionInput<TInput>;
 
 export type AnyAction = Action<ColumnsConfig, unknown>;
 
@@ -1134,7 +1113,6 @@ export interface ConfigInput<
   collections?: TCollections & Record<string, CollectionMeta<string, ColumnsConfig, false, "collection">>;
   tables?: TTables & Record<string, CollectionMeta<string, ColumnsConfig, false, "table">>;
   users?: TUsers & Record<string, CollectionMeta<string, ColumnsConfig, true, "userProjection">>;
-  relations?: TRelations;
   /** Key = the name used in `db.globals.<key>` and `/globals/<key>`. */
   globals?: TGlobals;
   /** `NoInfer`: types come from the explicit registries, so unknown hook keys are errors. */
@@ -1152,6 +1130,11 @@ export interface ConfigInput<
   plugins?: Readonly<Record<string, WordPressPlugin>>;
   /** Ship the optional admin screens (`first-admin`) with the build. Default `false`. */
   admin?: boolean;
+  /**
+   * Let the running site add collections, globals and fields, each change stored there as a numbered
+   * schema version. The build declares the changes listed in `first/_generated/runtime-schema.json`. Default `false`.
+   */
+  runtimeSchema?: boolean;
   /**
    * Who renders the public site. Leave it out for the theme (or `first/app` when it exists); `false`
    * for backend only; an external site's `https://` address to point links, previews and feeds there.

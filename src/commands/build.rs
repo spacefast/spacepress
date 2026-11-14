@@ -6,8 +6,13 @@ use crate::{diag, layout, loader, platform, schema_php, wp_plugins};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+/// Compiles the project and writes nothing: the schema, for a command that only needs to know it.
+pub(super) fn compile(project: &Path) -> Result<crate::schema::Schema, Diag> {
+    build(project, false).map(|built| built.schema)
+}
+
 /// Runs the whole pipeline in memory.
-fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
+pub(super) fn build(project: &Path, frozen: bool) -> Result<Built, Diag> {
     let entry = project.join("first.config.ts");
     if !entry.is_file() {
         return Err(Diag::new(
@@ -104,7 +109,16 @@ fn write_new(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
     file.write_all(content.as_ref())
 }
 
-/// Writes `first/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks and the typed client.
+/// Compiles the project and writes `first/_generated/` only: what `first pull` runs after it
+/// changes the runtime schema lock, so the types and the typed client follow the lock. The error
+/// is the rendered diagnostic.
+pub(super) fn refresh(project: &Path) -> Result<(), String> {
+    let built = build(project, false).map_err(|d| diag::render(&d, project))?;
+    emit_project(project, &built).map_err(|e| e.to_string())
+}
+
+/// Writes `first/_generated/` (committed): migrations, the snapshot, `db.d.ts`, the locks, the typed
+/// client and `openapi.json`.
 fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
     let migrations = migrations_dir(project);
     for (name, sql) in &built.migrations {
@@ -129,6 +143,7 @@ fn emit_project(project: &Path, built: &Built) -> std::io::Result<()> {
             serde_json::to_string_pretty(lock)? + "\n",
         )?;
     }
+    write(&project.join(layout::OPENAPI), crate::openapi::render(&built.openapi))?;
     let client_dir = project.join(layout::CLIENT);
     for (name, content) in &built.client_files {
         write(&client_dir.join(name), content)?;
@@ -327,29 +342,30 @@ fn php_lint(files: &[PathBuf]) -> Result<(), String> {
     Ok(())
 }
 
-fn check_json(project: &Path, frozen: bool) -> ExitCode {
-    let (diagnostics, plugins, snapshot) = match loader::load_all(&project.join("first.config.ts")) {
-        Err(diagnostics) => (diagnostics, None, None),
-        Ok(program) => match build_program(project, &program, frozen) {
-            Ok(built) => (Vec::new(), Some(built.plugin_report), Some(built.snapshot)),
-            Err(d) => (vec![d], None, None),
-        },
+/// What `first check --json` answers: the `first-diagnostics` envelope, and the build when it has
+/// no diagnostics. Compiles in memory and writes nothing.
+pub(crate) fn check(project: &Path, frozen: bool) -> (serde_json::Value, Option<Built>) {
+    let built = match loader::load_all(&project.join("first.config.ts")) {
+        Err(diagnostics) => Err(diagnostics),
+        Ok(program) => build_program(project, &program, frozen).map_err(|d| vec![d]),
     };
-    let mut envelope = diag::envelope(&diagnostics, project);
-    if let Some(snapshot) = &snapshot {
-        envelope = envelope.with_indexes(snapshot);
+    let mut envelope = diag::envelope(built.as_ref().err().map_or(&[], Vec::as_slice), project);
+    if let Ok(built) = &built {
+        envelope = envelope.with_indexes(&built.snapshot);
     }
     let mut envelope = serde_json::to_value(envelope).expect("diagnostic envelope serializes");
     // Each plugin's package, source integrity, locked and inferred grant, and read→send flows.
-    if let Some(plugins) = plugins.filter(|p| p.as_array().is_some_and(|p| !p.is_empty())) {
-        envelope["plugins"] = plugins;
+    if let Ok(built) = &built
+        && built.plugin_report.as_array().is_some_and(|p| !p.is_empty())
+    {
+        envelope["plugins"] = built.plugin_report.clone();
     }
-    println!("{envelope}");
-    if diagnostics.is_empty() {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::from(1)
-    }
+    (envelope, built.ok())
+}
+
+/// CI never approves a plugin grant: the committed lock is the only one.
+pub(crate) fn frozen(flag: bool) -> bool {
+    flag || std::env::var_os("CI").is_some_and(|v| !v.is_empty() && v != "false")
 }
 
 pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
@@ -358,10 +374,15 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         eprintln!("no command {}\n{}", args.command, crate::cli::help());
         return ExitCode::from(2);
     }
-    // CI never approves a grant: the committed lock is the only one.
-    let frozen = args.frozen || std::env::var_os("CI").is_some_and(|v| !v.is_empty() && v != "false");
+    let frozen = frozen(args.frozen);
     if args.command == "check" && args.json {
-        return check_json(&project, frozen);
+        let (envelope, built) = check(&project, frozen);
+        println!("{envelope}");
+        return if built.is_some() {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::from(1)
+        };
     }
     let started = std::time::Instant::now();
     let built = match build(&project, frozen) {
@@ -377,9 +398,13 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
     for w in &built.unsupported_plugins {
         eprintln!("warning: {w}");
     }
+    // A project that ran `first init`: its agent files follow the config and the compiler.
+    let agent_files = (!args.quiet)
+        .then(|| super::init::stale_hint(&project, &built.schema))
+        .flatten();
     if args.command == "check" {
         if !args.quiet {
-            for h in &built.hints {
+            for h in built.hints.iter().chain(&agent_files) {
                 eprintln!("hint: {h}");
             }
         }
@@ -431,7 +456,7 @@ pub(super) fn run(args: &crate::cli::Args) -> ExitCode {
         eprintln!("warning: this migration {w}");
     }
     if !args.quiet {
-        for h in &built.hints {
+        for h in built.hints.iter().chain(&agent_files) {
             eprintln!("hint: {h}");
         }
     }

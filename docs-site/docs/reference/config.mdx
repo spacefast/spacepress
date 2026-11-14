@@ -15,7 +15,6 @@ A First app is one `first.config.ts`. It imports its building blocks from `"firs
 | `collections` | Editorial content stored as WordPress posts, with the WordPress editor. Build each one with `collection()`. |
 | `tables` | App data in SQL tables of their own. Build each one with `table()`. |
 | `users` | Fields on WordPress users. Build each one with `userProjection()`. |
-| `relations` | Links between collections and tables. Build them with `defineRelations()`. |
 | `globals` | Key = the name used in `db.globals.<key>` and `/globals/<key>`. |
 | `hooks` | Functions that run before or after a create, update or delete. |
 | `actions` | Named endpoints at `POST /__first/api/v1/actions/<name>`. Build each one with `action()`. |
@@ -28,10 +27,19 @@ A First app is one `first.config.ts`. It imports its building blocks from `"firs
 | `locales` | The languages content is written in. Setting it installs Polylang. |
 | `plugins` | Build-only WordPress plugin dependencies. |
 | `admin` | Ship the optional admin screens (`first-admin`) with the build. Default `false`. |
+| `runtimeSchema` | Let the running site add collections, globals and fields, each change stored there as a numbered schema version. The build declares the changes listed in `first/_generated/runtime-schema.json`. Default `false`. |
 | `frontend` | Who renders the public site. Leave it out for the theme (or `first/app` when it exists); `false` for backend only; an external site's `https://` address to point links, previews and feeds there. |
 | `use` | Plugin packages, registered in order: `use: [seo({ ... })]`. Each one's capabilities are inferred from its compiled code and granted by the committed `first/_generated/plugins.lock.json`. |
 
 ## Columns
+
+### `ref`
+
+A reference to a row of `kind` (its `id`): the field holds the id, `with: { field: true }` loads the row in its place, and `kind` gets a list of the referencing rows named after this kind. Pass `() => kind` for a kind declared later or for the kind itself.
+
+```ts
+export declare function ref(kind: AnyCollection | (() => AnyCollection)): ColumnBuilder<"integer", number, true, false>;
+```
 
 ### `integer`
 
@@ -213,20 +221,6 @@ One projection over existing wp_users/wp_usermeta, never a post or a second user
 export declare function userProjection<TCols extends ColumnsConfig, TUid extends boolean = false>(fields: TCols,
   options?: NoInfer<CollectionOptions<Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">>> & { drafts?: false; revisions?: false; uid?: TUid },
 ): Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">;
-```
-
-## Relations
-
-### `defineRelations`
-
-```ts
-export declare function defineRelations<TSchema extends Schema>(
-  schema: TSchema,
-): Relations<TSchema, {}>;
-export declare function defineRelations<
-  TSchema extends Schema,
-  TConfig extends RelationsConfig<TSchema>,
->(schema: TSchema, relations: (r: RelationsBuilder<TSchema>) => TConfig): Relations<TSchema, TConfig>;
 ```
 
 ## Hooks, actions, globals, config

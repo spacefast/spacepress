@@ -46,7 +46,18 @@ final class Schema
             throw new \RuntimeException("schema.php built for runtime $series; this runtime is " . self::SERIES . '; rebuild with this First version');
         }
 
-        return new self($raw);
+        // `runtimeSchema: true` (spec §2.10): the site's active schema version adds its fields.
+        return new self(isset($raw['runtimeSchema']) ? RuntimeSchema\Loader::merge($raw, dirname($file)) : $raw);
+    }
+
+    /**
+     * Null unless the app set `runtimeSchema: true`. Otherwise the version the build contains
+     * (`version`, `hash`) and the site's active version this request runs (`active`: its `version`
+     * and `hash`).
+     */
+    public function runtimeSchema(): ?array
+    {
+        return $this->raw['runtimeSchema'] ?? null;
     }
 
     public function version(): int
@@ -118,6 +129,12 @@ final class Schema
      *
      * @return array<string, string>
      */
+    /** @return array<string, array{tag: string, component: string, attributes: array, required: list<string>, children: bool}> blocks content may use, by block name */
+    public function contentBlocks(): array
+    {
+        return $this->raw['blocks'] ?? [];
+    }
+
     public function components(): array
     {
         return $this->raw['components'] ?? [];
@@ -241,7 +258,12 @@ final class Schema
             ];
         }
 
-        return Extensions::describe([
+        $runtimeSchema = $this->runtimeSchema();
+
+        return Extensions::describe(($runtimeSchema === null ? [] : [
+            // The schema below is the build's plus this version of the site's own changes (spec §2.10).
+            'runtimeSchema' => ['version' => $runtimeSchema['active']['version'] ?? 0, 'hash' => $runtimeSchema['active']['hash'] ?? '', 'build' => ['version' => $runtimeSchema['version'] ?? 0, 'hash' => $runtimeSchema['hash'] ?? '']],
+        ]) + [
             'name' => $this->name(),
             'runtime' => ['series' => $this->runtime()],
             'locales' => $this->locales(), 'media' => $this->media(),
@@ -284,6 +306,28 @@ final class Schema
         }
 
         return $col;
+    }
+
+    /** Filter operators on a field (`{ gt: 1, OR: [...] }`). */
+    public const FIELD_OPS = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'like', 'notLike', 'ilike', 'notIlike', 'isNull', 'isNotNull', 'has', 'NOT', 'OR', 'AND'];
+
+    /**
+     * Whether a filter on `$key` goes through its relation: a `ref()` field is both the id column and
+     * the relation (`where: { location: 5 }` filters the id, `where: { location: { name: "x" } }`
+     * filters through it), so an object whose keys aren't all field operators means the relation.
+     */
+    public static function filtersRelation(array $spec, string $key, mixed $value): bool
+    {
+        if (!isset($spec['relations'][$key])) {
+            return false;
+        }
+        if (!isset($spec['columns'][$key])) {
+            return true;
+        }
+        $value = $value instanceof JsObject ? $value->p : ($value instanceof \stdClass ? get_object_vars($value) : $value);
+
+        return is_array($value) && $value !== [] && !array_is_list($value)
+            && array_diff(array_map('strval', array_keys($value)), self::FIELD_OPS) !== [];
     }
 
     // ================================================================ generators

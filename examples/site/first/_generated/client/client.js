@@ -25,19 +25,24 @@ export const SCHEMA = {
 			"revisions": true,
 			"localized": true,
 			"relations": {
-				"author": {
+				"authorId": {
 					"kind": "one",
 					"collection": "authors",
 					"optional": true
+				},
+				"comments": {
+					"kind": "many",
+					"collection": "comments",
+					"optional": false
 				},
 				"subscribers": {
 					"kind": "many",
 					"collection": "subscribers",
 					"optional": false
 				},
-				"comments": {
+				"announcements": {
 					"kind": "many",
-					"collection": "comments",
+					"collection": "announcements",
 					"optional": false
 				}
 			},
@@ -52,7 +57,7 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": { "post": {
+			"relations": { "postId": {
 				"kind": "one",
 				"collection": "posts",
 				"optional": false
@@ -67,7 +72,7 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": { "post": {
+			"relations": { "postId": {
 				"kind": "one",
 				"collection": "posts",
 				"optional": true
@@ -82,10 +87,10 @@ export const SCHEMA = {
 			"drafts": false,
 			"revisions": false,
 			"localized": false,
-			"relations": { "post": {
+			"relations": { "postId": {
 				"kind": "one",
 				"collection": "posts",
-				"optional": true
+				"optional": false
 			} },
 			"media": [],
 			"mediaList": [],
@@ -681,7 +686,13 @@ export function createClient(options = {}) {
 				list: (id) => request("GET", `${one(id)}/revisions`),
 				get: (id, rid) => request("GET", `${one(id)}/revisions/${seg(rid)}`),
 				restore: (id, rid) => request("POST", `${one(id)}/revisions/${seg(rid)}/restore`)
-			}
+			},
+			stage: (id, patch) => request("PATCH", `${one(id)}/staged`, { json: patch }),
+			staged: (id) => request("GET", `${one(id)}/staged`),
+			compare: (id) => request("GET", `${one(id)}/staged/compare`),
+			promote: (id, options) => request("POST", `${one(id)}/staged/promote`, { json: options ?? {} }),
+			discard: (id) => request("DELETE", `${one(id)}/staged`),
+			previewLink: (id, options) => request("POST", `${one(id)}/staged/preview`, { json: options ?? {} })
 		};
 	}
 	const client = {

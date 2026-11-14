@@ -96,8 +96,11 @@ test("core /wp-abilities/v1 lists the blog abilities with their JSON Schemas and
   }
   const byName = Object.fromEntries(listed.map((a: any) => [a.name, a]));
   const golden = JSON.parse(readFileSync(join(here, "fixtures/abilities.json"), "utf8"));
+  // A subscriber's update rule covers no blog row, so the staged-version abilities aren't offered to
+  // them (docs/staged.md); every other ability the golden shows in REST is.
+  const staged = (a: any) => /^(stage|staged-)/.test(a.meta.first.op);
   assert.deepEqual(Object.keys(byName).filter((n) => golden.some((a: any) => a.name === n)).sort(),
-    golden.filter((a: any) => a.meta.show_in_rest).map((a: any) => a.name).sort());
+    golden.filter((a: any) => a.meta.show_in_rest && !staged(a)).map((a: any) => a.name).sort());
 
   const list = byName["blog/posts-list"];
   assert.equal(list.category, "blog");
@@ -163,7 +166,7 @@ test("GET filters core can't type are refused; as JSON strings they match REST a
   // Bracketed, `false` in these places would arrive as the truthy string "false" and invert.
   const shapes = (op: string) => [
     ["where", { id: postId, AND: [{ AND: [{ cover: { [op]: false } }] }] }],
-    ["where", { id: postId, AND: [{ author: { userId: { [op]: false } } }] }],
+    ["where", { id: postId, AND: [{ authorId: { userId: { [op]: false } } }] }],
     ["with", { comments: { where: { body: { [op]: false } } } }],
   ] as const;
   // A query string core can't type as a whole stays all strings, the typed parts included.

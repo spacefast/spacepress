@@ -98,12 +98,15 @@ final class JsonSchema
         return self::input($props + $virtual, $required);
     }
 
-    /** Update patch: every writable column, all optional. */
+    /** Update patch: every writable column, all optional; a users kind's also takes a new `password` (Auth\Module::password). */
     public static function patch(array $spec): array
     {
         $props = [];
         foreach (self::writable($spec, false) as $name => $col) {
             $props[$name] = self::column($col);
+        }
+        if (($spec['auth'] ?? false) && !isset($props['password'])) {
+            $props['password'] = ['type' => 'string'];
         }
 
         return ['type' => 'object', 'properties' => $props];
@@ -158,8 +161,10 @@ final class JsonSchema
                 $props[(string) $name] = $f;
             }
         }
+        // A `ref()` field is its column and its relation: the column's operators describe it, and an
+        // object of the target's fields still validates against them (no additionalProperties).
         foreach ($relations as $name) {
-            $props[(string) $name] = self::UNTYPED;
+            $props[(string) $name] ??= self::UNTYPED;
         }
         $nested = $depth > 0 ? self::filterObject($columns, $depth - 1, $relations) : self::UNTYPED;
         $props['AND'] = ['type' => 'array', 'items' => $nested];

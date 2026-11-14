@@ -312,12 +312,19 @@ export interface PostPatch {
 	uid?: string | null;
 }
 export interface PostWith {
-	author?: true | {
+	authorId?: true | {
 		where?: AuthorFilter;
 		orderBy?: AuthorOrder;
 		limit?: number;
 		offset?: number;
 		with?: AuthorWith;
+	};
+	comments?: true | {
+		where?: CommentFilter;
+		orderBy?: CommentOrder;
+		limit?: number;
+		offset?: number;
+		with?: CommentWith;
 	};
 	subscribers?: true | {
 		where?: SubscriberFilter;
@@ -326,12 +333,12 @@ export interface PostWith {
 		offset?: number;
 		with?: SubscriberWith;
 	};
-	comments?: true | {
-		where?: CommentFilter;
-		orderBy?: CommentOrder;
+	announcements?: true | {
+		where?: AnnouncementFilter;
+		orderBy?: AnnouncementOrder;
 		limit?: number;
 		offset?: number;
-		with?: CommentWith;
+		with?: AnnouncementWith;
 	};
 	cover?: true;
 	manuscript?: true;
@@ -482,7 +489,7 @@ export interface PostFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | AuthorFilter;
 	seo?: {
 		noindex: boolean;
 		metaTitle: string | null;
@@ -615,9 +622,9 @@ export interface PostFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	author?: true | AuthorFilter;
-	subscribers?: true | SubscriberFilter;
 	comments?: true | CommentFilter;
+	subscribers?: true | SubscriberFilter;
+	announcements?: true | AnnouncementFilter;
 	AND?: PostFilter[];
 	OR?: PostFilter[];
 	NOT?: PostFilter;
@@ -646,7 +653,7 @@ export interface CommentPatch {
 	createdAt?: string;
 }
 export interface CommentWith {
-	post?: true | {
+	postId?: true | {
 		where?: PostFilter;
 		orderBy?: PostOrder;
 		limit?: number;
@@ -678,7 +685,7 @@ export interface CommentFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | PostFilter;
 	name?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -735,7 +742,6 @@ export interface CommentFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	post?: true | PostFilter;
 	AND?: CommentFilter[];
 	OR?: CommentFilter[];
 	NOT?: CommentFilter;
@@ -758,7 +764,7 @@ export interface SubscriberPatch {
 	createdAt?: string;
 }
 export interface SubscriberWith {
-	post?: true | {
+	postId?: true | {
 		where?: PostFilter;
 		orderBy?: PostOrder;
 		limit?: number;
@@ -806,7 +812,7 @@ export interface SubscriberFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | PostFilter;
 	createdAt?: string | null | {
 		eq?: string | null;
 		ne?: string | null;
@@ -819,7 +825,6 @@ export interface SubscriberFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	post?: true | PostFilter;
 	AND?: SubscriberFilter[];
 	OR?: SubscriberFilter[];
 	NOT?: SubscriberFilter;
@@ -842,7 +847,7 @@ export interface AnnouncementPatch {
 	attempt?: number;
 }
 export interface AnnouncementWith {
-	post?: true | {
+	postId?: true | {
 		where?: PostFilter;
 		orderBy?: PostOrder;
 		limit?: number;
@@ -874,7 +879,7 @@ export interface AnnouncementFilter {
 		notIn?: number[];
 		isNull?: true;
 		isNotNull?: true;
-	};
+	} | PostFilter;
 	recipients?: number | null | {
 		eq?: number | null;
 		ne?: number | null;
@@ -899,7 +904,6 @@ export interface AnnouncementFilter {
 		isNull?: true;
 		isNotNull?: true;
 	};
-	post?: true | PostFilter;
 	AND?: AnnouncementFilter[];
 	OR?: AnnouncementFilter[];
 	NOT?: AnnouncementFilter;
@@ -1158,19 +1162,24 @@ export declare const SCHEMA: {
 			readonly revisions: true;
 			readonly localized: true;
 			readonly relations: {
-				readonly author: {
+				readonly authorId: {
 					readonly kind: "one";
 					readonly collection: "authors";
 					readonly optional: true;
+				};
+				readonly comments: {
+					readonly kind: "many";
+					readonly collection: "comments";
+					readonly optional: false;
 				};
 				readonly subscribers: {
 					readonly kind: "many";
 					readonly collection: "subscribers";
 					readonly optional: false;
 				};
-				readonly comments: {
+				readonly announcements: {
 					readonly kind: "many";
-					readonly collection: "comments";
+					readonly collection: "announcements";
 					readonly optional: false;
 				};
 			};
@@ -1196,7 +1205,7 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly post: {
+				readonly postId: {
 					readonly kind: "one";
 					readonly collection: "posts";
 					readonly optional: false;
@@ -1213,7 +1222,7 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly post: {
+				readonly postId: {
 					readonly kind: "one";
 					readonly collection: "posts";
 					readonly optional: true;
@@ -1230,10 +1239,10 @@ export declare const SCHEMA: {
 			readonly revisions: false;
 			readonly localized: false;
 			readonly relations: {
-				readonly post: {
+				readonly postId: {
 					readonly kind: "one";
 					readonly collection: "posts";
-					readonly optional: true;
+					readonly optional: false;
 				};
 			};
 			readonly media: readonly [];
@@ -1346,6 +1355,68 @@ export interface CollectionClient<K extends CollectionKey> {
 		/** Runs the update pipeline with the revision as the patch; returns the updated row. */
 		restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
 	};
+	/**
+	* Save `patch` as the item's staged version: the live row stays as it is until `promote`. One
+	* staged version per item, shared by everyone who may update it; each call adds to it. Post
+	* kinds only. Every staged call needs `update` access on the row, and answers 404 without it.
+	*/
+	stage(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<StagedVersion<K>>;
+	/** The staged version: the row as it would be once promoted. 404 when nothing is staged. */
+	staged(id: IdOf<K>): Promise<StagedVersion<K>>;
+	/** The staged fields whose value differs from the live row, with both values. */
+	compare(id: IdOf<K>): Promise<StagedComparison<K>>;
+	/**
+	* Make the staged version live, as an update of the row by the caller. With `at` (a future ISO
+	* time) the promote is scheduled instead, and `at: null` cancels a scheduled one; both return
+	* the staged version.
+	*/
+	promote(id: IdOf<K>): Promise<Row<K>>;
+	promote(id: IdOf<K>, options: {
+		at: string | null;
+	}): Promise<StagedVersion<K>>;
+	/** End the staged version. It stays in the row's revisions, as `revision`. */
+	discard(id: IdOf<K>): Promise<{
+		revision: number;
+	}>;
+	/** A signed link to the staged version that works without signing in for `ttl` seconds (an hour by default). */
+	previewLink(id: IdOf<K>, options?: {
+		ttl?: number;
+	}): Promise<StagedPreview>;
+}
+/** A staged version: the row once promoted, the fields that are staged, who staged last. */
+export interface StagedVersion<K extends CollectionKey> {
+	/** The revision holding it. */
+	id: number;
+	row: Row<K>;
+	fields: (keyof Row<K> & string)[];
+	by: {
+		id: number;
+		name: string;
+	} | null;
+	at: string;
+	/** When a scheduled promote runs, or null. */
+	promoteAt: string | null;
+	/** Why the last scheduled promote did not run. */
+	error?: {
+		code: string;
+		detail: string;
+		at: string;
+	};
+}
+export interface StagedComparison<K extends CollectionKey> extends Omit<StagedVersion<K>, "row" | "fields"> {
+	changes: { [F in keyof Row<K> & string]: {
+		field: F;
+		live: Row<K>[F];
+		staged: Row<K>[F];
+	} }[keyof Row<K> & string][];
+}
+export interface StagedPreview {
+	token: string;
+	expiresAt: string;
+	/** Reads the staged version without signing in. */
+	api: string;
+	/** The item's own page showing the staged version, when the kind has a public URL. */
+	url: string | null;
 }
 export interface MediaQuery {
 	where?: Record<string, unknown>;

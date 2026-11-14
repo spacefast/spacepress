@@ -772,7 +772,7 @@ Name the variable: process.env.NAME or process.env["NAME"]. Computed names, iter
 
 Status: **refused**. Diagnostic: `F4001`.
 
-WordPress's database login (DB_NAME, DB_USER, DB_PASSWORD, DB_HOST) and its keys and salts (AUTH_KEY … NONCE_SALT, SECRET_KEY, SECRET_SALT, WP_CACHE_KEY_SALT) can't be read through process.env or env(), and read as unset at runtime on every host. Give the app its own variable.
+WordPress's database login (DB_NAME, DB_USER, DB_PASSWORD, DB_HOST), its keys and salts (AUTH_KEY … NONCE_SALT, SECRET_KEY, SECRET_SALT, WP_CACHE_KEY_SALT) and the Secrets API site key (WP_SECRETS_KEY, WP_SECRETS_KEY_PREVIOUS) can't be read through process.env or env(), and read as unset at runtime on every host. Give the app its own variable.
 
 [Evidence](../tests/fixtures/reject-process-env-host)
 

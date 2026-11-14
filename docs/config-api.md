@@ -1423,7 +1423,8 @@ variable is unset; the process environment is read first, then a
 
 WordPress's own secrets are never app variables: its database login
 (`DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`) and its keys and salts
-(`AUTH_KEY` … `NONCE_SALT`, `SECRET_KEY`, `SECRET_SALT`, `WP_CACHE_KEY_SALT`)
+(`AUTH_KEY` … `NONCE_SALT`, `SECRET_KEY`, `SECRET_SALT`, `WP_CACHE_KEY_SALT`),
+and the Secrets API site key (`WP_SECRETS_KEY`, `WP_SECRETS_KEY_PREVIOUS`)
 are a build error in `process.env` and `env()`, and read as unset at runtime
 on every host. Values the web server sets for each request (names starting with
 `HTTP_`, `REDIRECT_` or `PHP_AUTH_`, and `AUTH_TYPE`, `REMOTE_USER`) are

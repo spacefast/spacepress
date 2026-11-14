@@ -128,7 +128,7 @@ These fail the build at the line that uses them. Each row is the advice the comp
 | `fetch-binary-body` | Send a string (JSON.stringify(value) for JSON) or URLSearchParams. Blob, FormData, ArrayBuffer and stream bodies are not available. |
 | `response-streams` | The body is read in full (at most 1 MiB) before fetch() resolves. Read it with text() or json(); arrayBuffer, blob, formData and clone are refused. |
 | `process-env-dynamic` | Name the variable: process.env.NAME or process.env["NAME"]. Computed names, iterating process.env and writes are refused, so request input cannot choose a server variable. |
-| `process-env-host` | WordPress's database login (DB_NAME, DB_USER, DB_PASSWORD, DB_HOST) and its keys and salts (AUTH_KEY … NONCE_SALT, SECRET_KEY, SECRET_SALT, WP_CACHE_KEY_SALT) can't be read through process.env or env(), and read as unset at runtime on every host. Give the app its own variable. |
+| `process-env-host` | WordPress's database login (DB_NAME, DB_USER, DB_PASSWORD, DB_HOST), its keys and salts (AUTH_KEY … NONCE_SALT, SECRET_KEY, SECRET_SALT, WP_CACHE_KEY_SALT) and the Secrets API site key (WP_SECRETS_KEY, WP_SECRETS_KEY_PREVIOUS) can't be read through process.env or env(), and read as unset at runtime on every host. Give the app its own variable. |
 | `process-members` | Handlers run in PHP. Only process.env.NAME is supported. |
 | `env-in-handlers` | env("NAME") is a deferred reference inside defineConfig (webhook URLs and secrets, action signatures, upload credentials). Handlers read runtime variables with process.env.NAME. |
 | `web-crypto-subtle` | SubtleCrypto needs ArrayBuffers and is not compiled. Hash and sign with createHash and createHmac from "node:crypto". |

@@ -11,8 +11,9 @@ final class Env
     private static ?array $variables = null;
 
     /**
-     * WordPress's own secrets: its database login and its keys and salts (wp-config.php
-     * constants, including the pre-2.7 `SECRET_KEY`/`SECRET_SALT` that `wp_salt()` still reads).
+     * WordPress's own secrets: its database login, its keys and salts (wp-config.php constants,
+     * including the pre-2.7 `SECRET_KEY`/`SECRET_SALT` that `wp_salt()` still reads), and the site
+     * key of core's Secrets API (`WP_SECRETS_KEY`, and `WP_SECRETS_KEY_PREVIOUS` during rotation).
      * They are never an app variable on any host. The compiler refuses the same names
      * (`src/compile.rs`, `HOST_SECRETS`); a unit test there keeps the two lists equal.
      */
@@ -21,6 +22,7 @@ final class Env
         'AUTH_KEY', 'SECURE_AUTH_KEY', 'LOGGED_IN_KEY', 'NONCE_KEY',
         'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT',
         'SECRET_KEY', 'SECRET_SALT', 'WP_CACHE_KEY_SALT',
+        'WP_SECRETS_KEY', 'WP_SECRETS_KEY_PREVIOUS',
     ];
 
     /**

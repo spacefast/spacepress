@@ -98,7 +98,8 @@ fn is_env_name(s: &str) -> bool {
         && chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
 }
 
-/// WordPress's own secrets: its database login and its keys and salts. App code never reads them,
+/// WordPress's own secrets: its database login, its keys and salts, and the Secrets API site key.
+/// App code never reads them,
 /// on any host; `First\\Env::HOST_SECRETS` answers null for the same names at runtime, and
 /// `host_secrets_match_the_runtime` keeps the lists equal.
 const HOST_SECRETS: &[&str] = &[
@@ -117,6 +118,8 @@ const HOST_SECRETS: &[&str] = &[
     "SECRET_KEY",
     "SECRET_SALT",
     "WP_CACHE_KEY_SALT",
+    "WP_SECRETS_KEY",
+    "WP_SECRETS_KEY_PREVIOUS",
 ];
 
 pub(crate) fn reserved_env_name(name: &str) -> bool {

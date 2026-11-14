@@ -8,6 +8,7 @@ use First\HttpError;
 use First\Js;
 use First\Viewer;
 use First\Wp\Abilities\JsonSchema;
+use First\Wp\Media\Rest;
 
 /**
  * Core `/wp/v2/users` for the users kind (spec §2.2, §3a): every member field is registered user meta
@@ -35,50 +36,43 @@ final class UserMeta
         add_filter('rest_user_query', [self::class, 'query'], 20, 2);
         add_filter('rest_request_before_callbacks', [self::class, 'before'], 20, 3);
         add_filter('rest_dispatch_request', [self::class, 'dispatch'], 20, 4);
-        add_filter('rest_endpoints', [self::class, 'endpoints']);
+        add_filter('rest_request_before_callbacks', [self::class, 'readable'], 10, 3);
     }
 
     /**
-     * rest_endpoints: reading a user runs core's check first (one's own row, `list_users`, or an author
-     * of published posts), then First's read rule, which only narrows. On the API's own dispatches a
-     * refusal is a 404, so a member's existence never leaks (§1.6); core's own clients keep core's
-     * answers.
+     * rest_request_before_callbacks: reading a user runs core's check first (one's own row,
+     * `list_users`, or an author of published posts), then First's read rule, which only narrows. On
+     * the API's own dispatches a refusal is a 404, so a member's existence never leaks (§1.6); core's
+     * own clients keep core's answers. Core runs its own check again after this one allows: both read
+     * the same state, so the answer doesn't change.
      */
-    public static function endpoints(array $endpoints): array
+    public static function readable(mixed $response, mixed $handler, mixed $request): mixed
     {
-        foreach ($endpoints['/wp/v2/users/(?P<id>[\d]+)'] ?? [] as $i => $handler) {
-            if (!is_array($handler) || !isset($handler['permission_callback'])) {
-                continue;
+        if ($response !== null || !$request instanceof \WP_REST_Request || !Rest::reads($handler)
+            || preg_match('#^/wp/v2/users/(\d+)$#i', $request->get_route()) !== 1
+            || !Facade::dispatching() || ($collection = self::collection()) === null) {
+            return $response;
+        }
+        $allowed = call_user_func($handler['permission_callback'], $request);
+        $missing = new \WP_Error('rest_user_invalid_id', __('Invalid user ID.'), ['status' => 404]);
+        if ($allowed !== true) {
+            // Signed out, the caller is asked to sign in (401), as First's read rule answers an
+            // anonymous viewer; signed in, a user it may not read is a missing one. Core's own check
+            // gives its answer when this returns nothing.
+            if (get_current_user_id() === 0 || (is_wp_error($allowed) && $allowed->get_error_code() === 'rest_forbidden_context')) {
+                return is_wp_error($allowed) ? $allowed : null;
             }
-            $methods = $handler['methods'] ?? '';
-            if (!(is_array($methods) ? isset($methods['GET']) : str_contains((string) $methods, 'GET'))) {
-                continue;
-            }
-            $core = $handler['permission_callback'];
-            $endpoints['/wp/v2/users/(?P<id>[\d]+)'][$i]['permission_callback'] = static function (\WP_REST_Request $request) use ($core): mixed {
-                $allowed = call_user_func($core, $request);
-                $collection = self::collection();
-                if (!Facade::dispatching() || $collection === null) {
-                    return $allowed;
-                }
-                $missing = new \WP_Error('rest_user_invalid_id', __('Invalid user ID.'), ['status' => 404]);
-                if ($allowed !== true) {
-                    // Signed out, the caller is asked to sign in (401), as First's read rule answers
-                    // an anonymous viewer; signed in, a user it may not read is a missing one.
-                    return get_current_user_id() === 0 || (is_wp_error($allowed) && $allowed->get_error_code() === 'rest_forbidden_context') ? $allowed : $missing;
-                }
-                $viewer = CoreAccess::viewer();
-                try {
-                    $row = $viewer === null ? null : self::plugin()->db()->findFirst($collection, ['where' => ['id' => (int) $request['id']]], $viewer);
-                } catch (HttpError $e) {
-                    return CoreAccess::error($e);
-                }
 
-                return $row !== null ? true : $missing;
-            };
+            return $missing;
+        }
+        $viewer = CoreAccess::viewer();
+        try {
+            $row = $viewer === null ? null : self::plugin()->db()->findFirst($collection, ['where' => ['id' => (int) $request['id']]], $viewer);
+        } catch (HttpError $e) {
+            return CoreAccess::error($e);
         }
 
-        return $endpoints;
+        return $row !== null ? null : $missing;
     }
 
     public static function registerMeta(): void
@@ -240,7 +234,7 @@ final class UserMeta
         // and the member's ladder role follows its capabilities (WpUserStore::syncRole).
         $roles = $request->get_param('roles');
         if (is_array($roles) && count($roles) === 1 && ($role = WpUserStore::firstRole((string) reset($roles))) !== null) {
-            if (is_wp_error($denied = self::checkRoles($controller, $id, $roles))) {
+            if (is_wp_error($denied = self::checkRoles($id, $roles))) {
                 return $denied;
             }
             $core['role'] = $role;
@@ -298,7 +292,7 @@ final class UserMeta
         }
         $roles = $request->get_param('roles');
         if (is_array($roles) && $roles !== []) {
-            if (is_wp_error($denied = self::checkRoles($controller, 0, $roles))) {
+            if (is_wp_error($denied = self::checkRoles(0, $roles))) {
                 return $denied;
             }
             $data['role'] = count($roles) === 1 ? WpUserStore::firstRole((string) reset($roles)) : null;
@@ -321,13 +315,15 @@ final class UserMeta
                 do_action('rest_insert_user', $user, $request, true);
                 $others = is_array($meta) ? array_diff_key($meta, self::fields()) : [];
                 if ($others !== []) {
-                    $fields = (fn () => $this->meta)->call($controller);
-                    $done = $fields->update_value($others, $id);
+                    $done = (new \WP_REST_User_Meta_Fields())->update_value($others, $id);
                     if (is_wp_error($done)) {
                         throw self::failure($done);
                     }
                 }
                 $user = get_user_by('id', $id);
+                // Fields other plugins registered with register_rest_field: core runs them from its
+                // protected update_additional_fields_for_object, and nothing public lists them
+                // (docs/wordpress-internals.md).
                 $done = (fn ($u, $r) => $this->update_additional_fields_for_object($u, $r))->call($controller, $user, $request);
                 if (is_wp_error($done)) {
                     throw self::failure($done); // the member First created rolls back with it
@@ -347,10 +343,29 @@ final class UserMeta
         return $response;
     }
 
-    /** Core's own role check (the role exists, is editable by the caller, no self-demotion from edit_users). */
-    private static function checkRoles(\WP_REST_Users_Controller $controller, int $id, array $roles): true|\WP_Error
+    /**
+     * Core's role check for `roles` on a user (WP_REST_Users_Controller::check_role_update), with
+     * public functions: the role exists, an admin can't give themselves a role without `edit_users`
+     * (a multisite super admin can), and the caller may give it (`get_editable_roles()`).
+     */
+    private static function checkRoles(int $id, array $roles): true|\WP_Error
     {
-        return (fn (int $id, array $roles) => $this->check_role_update($id, $roles))->call($controller, $id, $roles);
+        foreach ($roles as $role) {
+            $potential = wp_roles()->get_role((string) $role);
+            if ($potential === null) {
+                /* translators: %s: Role key. */
+                return new \WP_Error('rest_user_invalid_role', sprintf(__('The role %s does not exist.'), $role), ['status' => 400]);
+            }
+            if (!(is_multisite() && current_user_can('manage_sites')) && get_current_user_id() === $id && !$potential->has_cap('edit_users')) {
+                return new \WP_Error('rest_user_invalid_role', __('Sorry, you are not allowed to give users that role.'), ['status' => rest_authorization_required_code()]);
+            }
+            require_once ABSPATH . 'wp-admin/includes/user.php';
+            if (empty(get_editable_roles()[$role])) {
+                return new \WP_Error('rest_user_invalid_role', __('Sorry, you are not allowed to give users that role.'), ['status' => 403]);
+            }
+        }
+
+        return true;
     }
 
     /**

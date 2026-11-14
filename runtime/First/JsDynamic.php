@@ -980,6 +980,8 @@ trait JsDynamic
             if ($method === 'of') { return new JsArray($a); }
         }
         if ($owner === 'String' && $method === 'raw') { return self::stringRaw(...$a); }
+        if ($owner === 'String' && $method === 'fromCharCode') { return self::fromCharCode(...$a); }
+        if ($owner === 'String' && $method === 'fromCodePoint') { return self::fromCodePoint(...$a); }
         if ($owner === 'Reflect' && $method === 'ownKeys') {
             // Own keys of a plain object: integer-like keys ascending, then other strings in
             // insertion order, then symbols. Arrays add "length". Every compiled string key is an

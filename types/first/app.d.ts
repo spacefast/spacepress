@@ -47,6 +47,14 @@ export interface Metadata {
   /** An absolute URL or a path on this site. */
   canonical?: string;
   robots?: { index?: boolean; follow?: boolean };
+  /** Open Graph tags. `title` and `description` default to the page's; `image` may be a path on this site. */
+  openGraph?: { title?: string; description?: string; image?: string; type?: string };
+  /** `<meta name="twitter:card">`: `"summary"` or `"summary_large_image"`. */
+  twitter?: { card: string };
+  /** More `<link>`s for the head (`rel="alternate"`, `rel="describedby"`, …). Each layout's and the page's all appear. */
+  links?: { rel: string; href: string; type?: string }[];
+  /** Script modules the page loads: paths on this site (a file in `public/`) or https:// URLs. Each layout's and the page's all load, once each. */
+  scripts?: string[];
 }
 
 /** `export const guard` in a layout: who may see everything below it. */

@@ -8,17 +8,21 @@ import { MediaEditor } from './media-editor';
 
 export const route = {
 	canvas: async ( { params }: { params: { id: string } } ) => {
+		// WordPress 7.1 registers these actions in the editor store; 7.2 registers them on the server,
+		// where First Admin takes them off attachments (lib/post.php) and the store has no unregister.
 		const { unregisterEntityAction } = unlock( dispatch( editorStore ) );
-		await unregisterEntityAction(
-			'postType',
-			'attachment',
-			'duplicate-post'
-		);
-		await unregisterEntityAction(
-			'postType',
-			'attachment',
-			'move-to-trash'
-		);
+		if ( typeof unregisterEntityAction === 'function' ) {
+			await unregisterEntityAction(
+				'postType',
+				'attachment',
+				'duplicate-post'
+			);
+			await unregisterEntityAction(
+				'postType',
+				'attachment',
+				'move-to-trash'
+			);
+		}
 
 		return {
 			postType: 'attachment',

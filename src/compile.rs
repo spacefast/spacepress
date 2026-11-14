@@ -7765,6 +7765,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    /// `Object.prototype`, read from the global `Object` (not a local binding of that name).
+    fn is_object_prototype(&mut self, e: &Expr) -> bool {
+        let ExprKind::Member { obj, prop, .. } = &e.kind else {
+            return false;
+        };
+        let ExprKind::Ident(name) = &obj.kind else {
+            return false;
+        };
+        prop == "prototype"
+            && name == "Object"
+            && matches!(self.resolve(name, obj.span), Ok(Resolved::Global("Object")))
+    }
+
     fn call(&mut self, callee: &Expr, args: &[ArrEl], optional: bool, span: Span) -> Result<Out> {
         if let ExprKind::Member { obj, prop, .. } = &callee.kind
             && prop == "call"
@@ -7772,7 +7785,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 obj: prototype, prop, ..
             } = &obj.kind
             && prop == "toString"
-            && matches!(&prototype.kind, ExprKind::Object(props) if props.is_empty())
+            && (matches!(&prototype.kind, ExprKind::Object(props) if props.is_empty())
+                || self.is_object_prototype(prototype))
         {
             self.arg(args, 0, span, "a receiver")?;
             let argv = self.plain_args(args)?;
@@ -8795,7 +8809,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             || args.iter().any(|a| matches!(a, ArrEl::Spread(_))))
             && matches!(
                 g,
-                "Math" | "Array" | "Object" | "Number" | "JSON" | "URL" | "AbortSignal"
+                "Math" | "Array" | "Object" | "Reflect" | "Number" | "JSON" | "URL" | "AbortSignal"
             )
         {
             if (g, m) == ("AbortSignal", "timeout") {

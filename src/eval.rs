@@ -336,6 +336,7 @@ const FIRST_TYPES: &[&str] = &[
 const GLOBALS: &[&str] = &[
     "Math",
     "Object",
+    "Reflect",
     "Array",
     "Set",
     "Map",

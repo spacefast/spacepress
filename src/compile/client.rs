@@ -341,7 +341,8 @@ impl Compiler<'_, '_> {
                         "return one element per item, e.g. `<li key={item.id}>…</li>`",
                     ));
                 }
-                if a.bindings.contains_key(item) {
+                // Another list's item of the same name is fine: each template binds its own.
+                if a.bindings.get(item).is_some_and(|b| !matches!(b, Binding::Item)) {
                     return Err(refuse(f.span, format!("the item `{item}` hides a value of the component"), "name the item differently"));
                 }
                 Ok(Some(Reactive::List { list: obj, item, item_span, body }))
@@ -407,19 +408,27 @@ impl Compiler<'_, '_> {
                         span: test.span,
                     };
                     let path = self.client_reference(&shown)?;
-                    // The server renders the branch the condition picks now, as the expression would.
-                    let php_test = {
+                    // The server renders the branch the condition picks now, as the expression
+                    // would; inside another template the browser picks it.
+                    let inner = self.client.as_ref().expect("client").template;
+                    let php_test = if inner {
+                        "false".to_string()
+                    } else {
                         let v = self.expr(test)?;
                         let v = self.finish_value(v, test.span)?;
                         let t = self.truthy(&v);
                         if negate { format!("!({t})") } else { t }
                     };
-                    let v = self.expr(branch)?;
-                    let v = self.finish_value(v, branch.span)?;
+                    let rendered = if inner {
+                        "null".to_string()
+                    } else {
+                        let v = self.expr(branch)?;
+                        self.finish_value(v, branch.span)?.php
+                    };
                     let template = self.client_template(branch, None)?;
                     out.push(format!(
                         "\\First\\Html::children(({php_test}) ? \\First\\Islands::eachChild({}, {}) : null, \\First\\Islands::template({}, {}, {template}, 'context.firstShown'))",
-                        v.php,
+                        rendered,
                         php_str(&format!("{}::{}", self.client.as_ref().expect("client").analysis.namespace, path)),
                         php_str("data-wp-each--first-shown"),
                         php_str(&path),
@@ -457,8 +466,14 @@ impl Compiler<'_, '_> {
     /// A reactive list: the server renders every item now, marked as the template's children,
     /// then the template.
     fn client_each(&mut self, child: &Expr, path: &str, item: &str, key: &str, list: &Expr, item_span: Span, body: &Expr) -> Result<String> {
-        let v = self.expr(child)?;
-        let v = self.finish_value(v, child.span)?;
+        // Inside another template (a list in a list item) the browser renders the items too.
+        let inner = self.client.as_ref().expect("client").template;
+        let rendered = if inner {
+            "null".to_string()
+        } else {
+            let v = self.expr(child)?;
+            self.finish_value(v, child.span)?.php
+        };
         let l = self.expr(list)?;
         let l = self.finish_value(l, list.span)?;
         let item_ty = match l.ty.non_null() {
@@ -476,7 +491,7 @@ impl Compiler<'_, '_> {
             .collect::<String>();
         Ok(format!(
             "\\First\\Html::children(\\First\\Islands::eachChild({}, {}), \\First\\Islands::template({}, {}, {template}, {}))",
-            v.php,
+            rendered,
             php_str(&format!("{namespace}::{path}")),
             php_str(&format!("data-wp-each--{item_attr}")),
             php_str(path),

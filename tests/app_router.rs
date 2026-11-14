@@ -1281,14 +1281,29 @@ fn refuses_client_code_outside_the_subset() {
         "returns its element",
         "first/components/A.tsx:3:",
     );
+    // Reactive lists and conditionals: the item is one keyed element, and each branch is one element.
+    let shelf = |markup: &str| {
+        component(&format!(
+            "export function A() {{ const [xs, setXs] = useState([{{ id: 1, t: \"a\" }}]); return <ul onClick={{() => setXs([])}}>{markup}</ul>; }}"
+        ))
+    };
+    for (markup, refusal) in [
+        ("{xs.map((x) => <li>{x.t}</li>)}", "each item of a reactive list needs a `key`"),
+        ("{xs.map((x) => <><li key={x.id}/><li/></>)}", "each item of a reactive list is one element"),
+        ("{xs.map((x, i) => <li key={i}/>)}", "a reactive list's callback takes one item"),
+        ("{xs.length > 0 && <><li/><li/></>}", "a reactive `&&` renders one element"),
+    ] {
+        rejects(&dir, &[("first/components/A.tsx", &shelf(markup))], refusal, "first/components/A.tsx:3:");
+    }
     let _ = std::fs::remove_dir_all(dir);
 }
 
 /// The record's browser check: compiled client components on a real WordPress page, in Chromium
 /// with `SCRIPT_DEBUG` (the Interactivity runtime's development build, the one that warns).
 /// Hydration changes nothing in the server HTML, the runtime logs no warnings, a click calls the
-/// server action and updates the label, effects and shared state follow state changes, and a CSS
-/// module's class switches with state and styles the element.
+/// server action and updates the label, effects and shared state follow state changes, a CSS
+/// module's class switches with state and styles the element, and a reactive list and
+/// conditionals re-render from their templates, keeping the server's elements.
 #[test]
 fn client_components_hydrate_in_the_browser() {
     assert!(
@@ -1352,6 +1367,22 @@ fn client_components_hydrate_in_the_browser() {
         ),
         "{seen}"
     );
+    // A reactive list adds and drops items by key, and `&&` and `?:` switch their elements.
+    let step = |books: &[&str], open: u64, count: Option<&str>, empty: u64| {
+        serde_json::json!({ "books": books, "open": open, "count": count, "empty": empty })
+    };
+    assert_eq!(
+        seen["shelfSteps"],
+        serde_json::json!([
+            step(&["1:Dune", "2:Emma"], 1, Some("2"), 0),
+            step(&["1:Dune", "2:Emma", "3:Book 3"], 1, Some("3"), 0),
+            step(&["1:Dune", "2:Emma", "3:Book 3"], 0, Some("3"), 0),
+            step(&[], 0, None, 1),
+            step(&["1:Book 1"], 1, Some("1"), 0),
+        ]),
+        "{seen}"
+    );
+    assert_eq!(seen["kept"], true, "the server-rendered item is kept, not re-created: {seen}");
 }
 
 /// rendering.md §6.1 and §6.2 for `first/app/` pages, on WordPress with a stand-in host listening

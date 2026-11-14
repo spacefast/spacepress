@@ -6808,6 +6808,26 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         );
                     }
                     self.jsx_attribute_rule(&folded_tag, name, literal, value, *span)?;
+                    // In a list's or conditional's `<template>`, a value the browser computes is
+                    // left to its directive: the server has no item to compute it from. A style
+                    // object keeps the properties that don't change.
+                    let value = match self.client.as_ref() {
+                        Some(ctx) if ctx.template && ctx.analysis.reactive(value) => match &value.kind {
+                            ExprKind::Object(props) if name.eq_ignore_ascii_case("style") => {
+                                let fixed: Vec<Prop> = props
+                                    .iter()
+                                    .filter(|p| !matches!(p, Prop::KV(_, v) if ctx.analysis.reactive(v)))
+                                    .cloned()
+                                    .collect();
+                                &Expr { kind: ExprKind::Object(fixed), span: value.span }
+                            }
+                            _ => continue,
+                        },
+                        _ => value,
+                    };
+                    if name == "key" && self.client.is_some() {
+                        continue;
+                    }
                     let v = self.expr(value)?;
                     let v = self.finish_value(v, value.span)?;
                     let php = if name.eq_ignore_ascii_case("style") {

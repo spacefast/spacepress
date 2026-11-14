@@ -7,7 +7,10 @@ type Book = { id: number; title: string };
 export function Shelf({ books: initial }: { books: Book[] }) {
   const [books, setBooks] = useState(initial);
   const [open, setOpen] = useState(true);
-  const add = () => setBooks([...books, { id: books.length + 1, title: `Book ${books.length + 1}` }]);
+  const add = () => {
+    const id = books.length === 0 ? 1 : books[books.length - 1].id + 1;
+    setBooks([...books, { id, title: `Book ${id}` }]);
+  };
   const drop = () => setBooks(books.slice(1));
   return (
     <section className="shelf">

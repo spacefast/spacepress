@@ -156,8 +156,8 @@ The TSX → directive mapping, which also defines what's supported:
 | `style={{ color }}` | `data-wp-style--color` |
 | `onClick`, `onInput`, … | `data-wp-on--click`, … (`withSyncEvent` for `preventDefault`) |
 | window/document listeners via `useEvent("resize", …)` | `data-wp-on-window--resize` |
-| `{cond && <X/>}`, `{a ? <X/> : <Y/>}` | `<template>` toggled by a derived boolean, or `data-wp-bind--hidden` for static subtrees |
-| `{list.map((x) => <li key={x.id}>…)}` | `<template data-wp-each--x="…" data-wp-each-key="…">` |
+| `{cond && <X/>}`, `{a ? <X/> : <Y/>}` | a `<template data-wp-each--first-shown>` per branch over a derived `[1]` or `[]`; a condition that reads nothing reactive renders once on the server |
+| `{list.map((x) => <li key={x.id}>…)}` | `<template data-wp-each--x="…" data-wp-each-key="…">`, after the server's items marked `data-wp-each-child` |
 | `useEffect(fn, [deps])` | `data-wp-watch` (cleanup returned) |
 | `useMount(fn)` | `data-wp-init` |
 | `useRef()` | `getElement().ref` |

@@ -21,12 +21,17 @@ final class ActionSchedulerQueue implements Queue
 
     /** The group of the action Action Scheduler is executing right now. */
     private static string $group = '';
+    /** When that action was scheduled for (Unix seconds), or null. */
+    private static ?int $scheduled = null;
 
     public static function register(): void
     {
         Outbox::useQueue(new self());
         add_action('action_scheduler_before_execute', static function (int $actionId): void {
-            self::$group = (string) (\ActionScheduler::store()->fetch_action($actionId)->get_group() ?? '');
+            $action = \ActionScheduler::store()->fetch_action($actionId);
+            self::$group = (string) ($action->get_group() ?? '');
+            $date = $action->get_schedule()?->get_date();
+            self::$scheduled = $date instanceof \DateTimeInterface ? $date->getTimestamp() : null;
         });
         add_action(self::HOOK, static function (string $id): void {
             $plugin = Runtime::plugin();
@@ -34,6 +39,14 @@ final class ActionSchedulerQueue implements Queue
                 // Storage is behind this build: run the job once it has caught up, not on the old schema.
                 (new self())->schedule($id, \First\Js::iso(\First\Js::now() + 60_000));
             } elseif ($plugin?->app() !== null) {
+                // A delivery scheduled for before its job's time is an older one: a failed attempt moved
+                // the job later and scheduled its own delivery for then, so running now would skip the
+                // backoff. The job's current delivery runs even if someone runs it early by hand.
+                $runAt = \First\Jobs\Storage::run('SELECT "runAt" FROM {jobs} WHERE "id" = ?', [$id])[0]['runAt'] ?? null;
+                if (is_string($runAt) && self::$scheduled !== null && \First\Js::date($runAt) > \First\Js::now()
+                    && self::$scheduled < intdiv((int) \First\Js::date($runAt), 1000)) {
+                    return;
+                }
                 Runner::run($id);
             } else {
                 // No First app is running (deactivated or uninstalled, runtime still active). A job

@@ -29,6 +29,9 @@ final class Runtime
         }
         self::$booted = true;
         self::$runtimeFile = $runtimeFile;
+        // A guarded upgrade step, not a table: staged revisions written before they had their own
+        // status get it (WpPostStore::upgradeStagedStatus), once per site with the other steps.
+        \First\SystemTables::register('__first_staged_status', [WpPostStore::upgradeStagedStatus(...)]);
         // First's API (/__first/api/v1) is a REST request outside /wp-json: Polylang must set itself up
         // as for one (every language, the API's own `locale`), not as a front-end page whose language
         // would filter every internal query. Its context is chosen on plugins_loaded, after this file.
@@ -42,6 +45,7 @@ final class Runtime
         add_action('wp_authenticate_application_password_errors', [AgentScope::class, 'authenticating'], 10, 3);
         add_filter('rest_authentication_errors', [AgentScope::class, 'unenforced'], 95);
         register_activation_hook($runtimeFile, [self::class, 'activate']);
+        PageCaches::register();
         // A site that ran a build from before the rename to First moves its stored names first, before
         // any table, option or post type of First's exists (ZeroNames). Managed apps do it in initialize().
         add_action('init', static function (): void {

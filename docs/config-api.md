@@ -15,7 +15,7 @@ nothing else chooses storage: not a field, not an option.
 |---|---|---|
 | Builders | `collection()`, `userProjection()`, `global()`, and the media library | `table()` |
 | Stored as | WordPress's own objects: posts and post meta, users and user meta, attachments, options | one SQL table per kind, `wp_first_<name>` |
-| Edited in | wp-admin and the WordPress editor; a collection has drafts and revisions | your app, through the API and the typed client (and the optional `admin: true` screens) |
+| Edited in | wp-admin and the WordPress editor; a collection has drafts and revisions | your app, through the API and the typed client (and First Admin's screens) |
 | Other plugins | work on the same posts, users and media | don't know these tables |
 | Field types | a collection's fields are post meta: text, cast to the field's type when read | typed columns (`BIGINT`, `DOUBLE`, `VARCHAR`, ...) |
 | References | checked by First when it writes | a SQL foreign key between two tables; checked by First when the target is content |
@@ -165,6 +165,7 @@ isn't changed either. None of these switches can be turned off in
 | `comments` | comments closed on every post type except collections with `comments: true` |
 | `authors` | the site's users aren't listed to the public: core's user routes, author archives, `?author=N`, the users sitemap and oEmbed's author fields (see [Authors](#authors)) |
 | `schemaLock` | the app's schema is changed in `first.config.ts` and nowhere on the site (see [Schema lock](#schema-lock)) |
+| `loginErrors` | signing in doesn't tell a visitor which accounts exist: an unknown username or email answers as a wrong password (`wp-login.php` shows one message and keeps the typed username either way), lost password answers "check your email" either way, an unknown user costs the same password hash as a wrong password, and a REST application password for an unknown user or a guest gets the wrong-password error. An imported account whose password hash is older than the site's (MD5, phpass) can still be told apart by timing on `wp-login.php` until it signs in once; First Identity's own sign-in times every stored hash type alike. With `first-identity`, an account with a second factor says so only once the password is right. Adapted from VIP's `security/login-error.php` (GPL-2.0-or-later) |
 | `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
 | `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
 | `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
@@ -252,13 +253,15 @@ app is active they are closed to visitors who aren't signed in:
 
 | route | answer |
 |---|---|
-| `/wp/v2/users`, `/wp/v2/users/<id>`, the same through `?rest_route=`, `/batch/v1` or any letter case | 401 |
+| `/wp/v2/users`, `/wp/v2/users/<id>`, the same through `?rest_route=` or any letter case | 401 (`OPTIONS` keeps core's route description, which names no user) |
+| a `/batch/v1` sub-request for those routes (the batch takes writes only) | the batch answers 207 and the sub-request holds the 401 |
 | a post's REST `_embed=author` | the embed holds that 401, not the user |
 | `?author=<id>` (core redirects it to `/author/<login>/`), `?author_name=`, `/author/<login>/`, its feed and its `.md` twin | 404, no redirect |
 | the users sitemap (`/wp-sitemap-users-1.xml`), and its entry in `/wp-sitemap.xml` | gone (with a users kind: only the users below) |
 | a post's oEmbed `author_name` and `author_url` | the site's name and address, as core answers for a post with no author |
-| `/__first/api/v1/users` | follows the core route (401) |
-| the app's own users kind on First's API (`GET /__first/api/v1/<kind>`) | its read rule decides, as for every viewer: a rule that needs a signed-in user (`self`, a role) answers the list with First's 401, a rule that filters answers with the rows it gives a signed-out visitor (often none), and one user is a 401 unless the rule gives that row to anyone, whether or not the id exists |
+| `/__first/api/v1/users`, in an app without a users kind | follows the core route (401) |
+| the app's own users kind on First's API (`GET /__first/api/v1/<kind>`, also at `/users`) | its read rule decides, as for every viewer: a rule that needs a signed-in user (`self`, a role) answers the list with First's 401, a rule that filters answers with the rows it gives a signed-out visitor (often none). One user is a 401 unless the rule gives that row to anyone, whether or not the id exists; core's own rule still applies after that, so a visible user with no published post is in the list and a 401 on their own |
+| a registered commenter's `comment-author-<nicename>` class, and a byline's link to the archive | the class is left out; the link points at the home page unless that user is a public author |
 
 With a users kind, its read rule also says who is a public author, user by
 user: a user whose row the rule gives a signed-out visitor keeps their author
@@ -268,8 +271,16 @@ has gets, and a kind whose rule gives a visitor no user has no public author
 and no users sitemap file. Core's `/wp/v2/users` stays closed either way; the
 kind's own route on First's API is where an app reads its users.
 
-Signed-in users and credentials keep core's answers (the block editor's author
-picker), and the users kind's read rule decides what First's API shows. A
+On core's REST routes, signed-in users and credentials keep core's answers (the
+block editor's author picker), and the users kind's read rule decides what
+First's API shows. A guest session is not signed in for this purpose: any
+visitor can start one, so core's users routes stay closed to it, and it reads
+only its own record through First's API. The front-end pages (author archives,
+`?author=`, the sitemap, oEmbed) answer the same for everyone, signed in or
+not, so a page cache can hold them; wp-admin's own lists by author are not
+affected, nor are REST routes that take `author` as a parameter
+(`/wp/v2/posts?author=<id>` lists that user's published posts by id, as in
+core). A
 scoped agent credential without `personal` sees what core shows anyone
 ([agents](agents.md)).
 
@@ -279,13 +290,18 @@ Authors are public, as WordPress ships them, when the app says so: either set
 export default defineConfig({ publicAuthors: true });
 ```
 
-or give the users kind a read rule that lets anyone read every user
-(`access: { read: "anyone" }`). `GET /__first/api/v1` reports which applies under
-`runtime.wp.publicAuthors`.
+or give the users kind the read rule `"anyone"`
+(`access: { read: "anyone" }`). `GET /__first/api/v1` reports whether either
+applies, as one boolean, under `runtime.wp.publicAuthors`. A coded rule that
+happens to return `true` for every user opens the archives, the sitemap and
+oEmbed user by user, but not core's `/wp/v2/users`, and is not reported as
+public.
 
 A post's byline and its feed's `<dc:creator>` still show the author's display
 name, which is what a site publishes on purpose. Set a display name that isn't
 the login (WordPress's default) for users whose login should stay private.
+A theme can still print a user's nicename, which WordPress derives from the
+login, in markup of its own; First closes the two places core's blocks do.
 
 ## Mixed content and app data
 
@@ -632,6 +648,45 @@ may see which row.
 curl https://example.test/__first/api/v1/openapi.json
 ```
 
+### An API reference on the site
+
+`apiReference()` from `"first/content"` gives a page the same document as data it maps over, so an
+app renders its own API reference with its own layout. `first add api-reference` writes a working
+one into the project, as files you own: `/api`, a page per operation at `/api/<tag>/<operation>`,
+and the component that lists fields. A smaller version of `/api`:
+
+```tsx
+// first/app/api/page.tsx
+import { Html, Link } from "first/app";
+import { apiReference } from "first/content";
+
+export default function Api() {
+  const api = apiReference();                     // { title, server, description, tags }
+  return (
+    <main>
+      <h1>{api.title}</h1>
+      {api.tags.map((t) => (
+        <section key={t.slug} id={t.slug}>
+          <h2>{t.name}</h2>
+          {t.operations.map((o) => <p key={o.id}><Link href={`/api/${t.slug}/${o.slug}`}>{o.summary}</Link> <code>{o.method} {o.path}</code></p>)}
+        </section>
+      ))}
+    </main>
+  );
+}
+```
+
+- Each operation has its `method`, `path`, `summary`, `description` and `access`. It also has
+  `params`, `body` and `responses`, each holding a list of fields, and a `curl` and a `fetch`
+  sample against the document's server.
+- A field is `{ name, depth, type, required, description, constraints, in }`. Nested properties
+  follow their parent with `depth` one higher, so a page indents by `depth` and never walks a
+  schema itself. `type` reads as a reader says it (`string | null`, `Post[]`). A schema that
+  refers to itself is listed once.
+- `description` fields are the document's Markdown as HTML: render them with `<Html value>`.
+- `apiReference("partner-api.json")` reads a JSON file in the app's `public/` folder instead, for a
+  reference to another API. The path is a literal; one outside `public/` is a build error.
+
 ## Locales
 
 ```ts
@@ -708,6 +763,13 @@ The tree is the published items the visitor may read, siblings by order then tit
 deep. `headings()` gives the ids the page renders its headings with. An id follows GitHub's rule,
 as READMEs and most docs tools spell it: `## What's \`first/app/\`?` is `#whats-firstapp`, and a
 second `## Why` on the page is `#why-1`. A heading with its own id keeps it.
+
+`first doctor --site <url> --links` reads the served site as a visitor does and reports every link
+and `#anchor` its pages make that doesn't resolve, with the page it is on. It starts at the home
+page, WordPress's sitemap and `/llms.txt`, and follows the site's own links, images, stylesheets and
+scripts. It never fetches other sites or WordPress's own paths (`/wp-admin`, `/wp-json`, feeds).
+Content edited in wp-admin, synced Markdown and TSX pages are checked the same way, so run it
+against `first dev` before a release and against the published site after one.
 
 ### Components in Markdown
 
@@ -1066,8 +1128,9 @@ These are build errors with the same message the runtime returns.
 `defineConfig({ name?, collections?, tables?, users?, globals?, hooks?, actions?,
 jobs?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend?, runtimeSchema? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `first-app-<name>`.
-`admin: true` ships the optional admin screens as a fourth plugin,
-`first-admin`; by default the build emits none. `frontend` says who renders the
+Every build ships First Admin, the default admin at `/wp-admin/new/`, as a fourth
+plugin, `first-admin`; `admin: false` leaves it out and keeps only classic wp-admin
+([docs/admin.md](admin.md)). `frontend` says who renders the
 public site: leave it out for the theme (or `first/app` when it exists), `false`
 for backend only, or an external site's `https://` address (`http://` only on
 localhost) so links, previews and feeds point there.

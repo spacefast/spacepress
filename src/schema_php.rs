@@ -416,18 +416,22 @@ pub fn render(schema: &Schema) -> String {
                 None => "null".into(),
             };
             format!(
-                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}], 'kind' => {kind}]",
+                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}], 'kind' => {kind}{}]",
                 php_str(&r.id),
                 php_str(&r.pattern),
                 opt(&r.page),
                 opt(&r.handler),
                 r.layouts.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", "),
                 opt(&r.error),
-                r.styles.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", ")
+                r.styles.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", "),
+                if r.prerender { ", 'prerender' => true" } else { "" }
             )
         };
         if app.legacy_routes {
             out.push_str("        'legacyRoutes' => true,\n");
+        }
+        if schema.output == crate::schema::Output::Static {
+            out.push_str("        'output' => 'static',\n");
         }
         out.push_str("        'routes' => [\n");
         for r in &app.routes {
@@ -461,7 +465,7 @@ pub fn render(schema: &Schema) -> String {
                 .join(", ");
             let _ = writeln!(
                 out,
-                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'access' => {}, 'signature' => {}, 'search' => {}, 'methods' => [{methods}]],",
+                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'access' => {}, 'signature' => {}, 'search' => {}, 'methods' => [{methods}]{}],",
                 php_str(path),
                 opt(&f.component),
                 f.metadata.as_ref().map(php_json).unwrap_or_else(|| "null".into()),
@@ -472,6 +476,10 @@ pub fn render(schema: &Schema) -> String {
                     .as_ref()
                     .map(|s| fields_block(&s.fields, 3))
                     .unwrap_or_else(|| "null".into()),
+                f.static_params
+                    .as_ref()
+                    .map(|n| format!(", 'staticParams' => {}", php_str(n)))
+                    .unwrap_or_default(),
             );
         }
         out.push_str("        ],\n");

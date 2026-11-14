@@ -44,6 +44,9 @@ pub enum Binding {
     Shared,
     /// An imported CSS module's class map, known at build time: inlined as a JavaScript object.
     Static(String),
+    /// The item of a list a `data-wp-each--<name>` template renders: `context.<name>`, set per
+    /// item by the Interactivity runtime.
+    Item,
 }
 
 #[derive(Debug, Default)]
@@ -72,7 +75,7 @@ pub struct Analysis {
     pub props: Vec<String>,
 }
 
-fn refuse(span: Span, message: impl Into<String>, help: impl Into<String>) -> Diag {
+pub(crate) fn refuse(span: Span, message: impl Into<String>, help: impl Into<String>) -> Diag {
     Diag::new(span, message).help(help)
 }
 
@@ -487,7 +490,7 @@ impl Analysis {
     /// The directive reference for an identifier used in markup: `context.count`, `state.label`.
     pub fn reference(&self, name: &str) -> Option<String> {
         match self.bindings.get(name)? {
-            Binding::State { .. } | Binding::Prop => Some(format!("context.{name}")),
+            Binding::State { .. } | Binding::Prop | Binding::Item => Some(format!("context.{name}")),
             Binding::Derived | Binding::Shared => Some(format!("state.{name}")),
             Binding::Action => Some(format!("actions.{name}")),
             _ => None,
@@ -525,7 +528,9 @@ impl Analysis {
         let mut ok = true;
         visit(e, &mut |x| match &x.kind {
             ExprKind::Ident(n) => match self.bindings.get(n) {
-                Some(Binding::State { .. } | Binding::Prop | Binding::Derived | Binding::Shared) => reads = true,
+                Some(Binding::State { .. } | Binding::Prop | Binding::Derived | Binding::Shared | Binding::Item) => {
+                    reads = true
+                }
                 // A class map is the same on both sides: inlined into the store.
                 Some(Binding::Static(_)) | None => {}
                 Some(_) => ok = false,
@@ -729,7 +734,7 @@ impl Analysis {
             }
             ExprKind::Ident(n) if scope.locals.contains(n) => n.clone(),
             ExprKind::Ident(n) => match self.bindings.get(n) {
-                Some(Binding::State { .. } | Binding::Prop) => format!("context.{n}"),
+                Some(Binding::State { .. } | Binding::Prop | Binding::Item) => format!("context.{n}"),
                 Some(Binding::Derived) => format!("state.{n}"),
                 Some(Binding::Shared) => format!("state.{n}"),
                 Some(Binding::Ref) => "getElement().ref".to_string(),

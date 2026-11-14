@@ -169,6 +169,8 @@ $out['blocks twin'] = fetch("$url/docs/guides/install.md")['body'];
 // An editor changes a prop in the block editor: the file's tag follows.
 $changed = str_replace('{"type":"warning","title":"Before you start"}', '{"type":"note","title":"Before you start"}', $stored);
 $out['blocks edited back'] = \First\Sync\Markdown::fromBlocks($changed);
+// The editor stores a cleared text field or choice as "": written back, the prop isn't there.
+$out['blocks cleared back'] = \First\Sync\Markdown::fromBlocks('<!-- wp:docskind/status {"label":"","kind":""} /-->' . "\n\n" . '<!-- wp:docskind/badge {"label":"x","count":3} /-->');
 // What a Markdown file can't say about a block is refused with the reason, never stored half.
 foreach ([
     'unknown tag' => "<Tabs>\nx\n</Tabs>\n",

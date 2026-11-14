@@ -268,6 +268,7 @@ pub fn build(
             | Slot::AppMetadata { .. }
             | Slot::AppGuard { .. }
             | Slot::AppAccess { .. }
+            | Slot::AppStaticParams { .. }
             | Slot::AppHandler { .. } => {
                 app::fill(&mut schema, &slot, &name);
             }
@@ -330,6 +331,9 @@ pub fn build(
         let block = crate::content_blocks::block(&schema.name, &component, &props, span)
             .map_err(|d| d.phase(diag::Code::Compile))?;
         schema.blocks.push(block);
+    }
+    if let Some(app) = &schema.app {
+        self::app::viewer_calls(program, app, &wordpress_uses).map_err(|d| d.phase(diag::Code::Compile))?;
     }
     schema.wp_views =
         !wordpress_uses.is_empty() && wordpress_uses.iter().any(|u| u.kind != compile::WordPressKind::Ability);

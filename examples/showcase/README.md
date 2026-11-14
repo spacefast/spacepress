@@ -54,7 +54,7 @@ remove its recovery flag just to retry. The normal runtime migration recovery
 commands remain documented in the WordPress harness. The launcher also refuses
 to overwrite this evidence or stop a stack with an unresolved publication.
 
-Edit records in `/first-admin/` or the classic WordPress admin’s **Pantry** menu,
+Edit records in `/wp-admin/new/` or the classic WordPress admin’s **Pantry** menu,
 then refresh. The classic menu provides items, locations and the shopping list
 using the same generated client and server rules.
 

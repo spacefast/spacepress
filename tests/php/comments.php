@@ -237,7 +237,23 @@ $purged = static function (callable $event) use ($wpdb): array {
     wp_cache_delete('test_purges', 'options');
     return array_values(array_filter((array) get_option('test_purges', []), static fn (string $p): bool => str_starts_with($p, '/notes/open-note')));
 };
-$held = 0;
+// A page at another address that rendered the note and its thread, cached for anonymous visitors:
+// approving a comment purges it too. A page that only listed notes keeps its copy.
+$featured = fetch("$url/featured");
+$out['featured cache'] = $featured['headers']['cache-control'][0] ?? null;
+$out['featured purged'] = (static function () use ($wpdb, $note, $url): array {
+    \First\Wp\Purges::flush();
+    $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'test_purges'");
+    wp_cache_delete('test_purges', 'options');
+    wp_set_current_user(1);
+    $id = (int) wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Seen on featured', 'comment_author' => 'x', 'comment_approved' => 0]);
+    wp_set_comment_status($id, 'approve');
+    \First\Wp\Purges::flush();
+    wp_set_current_user(0);
+    wp_cache_delete('test_purges', 'options');
+    $all = (array) get_option('test_purges', []);
+    return [in_array('/featured', $all, true), in_array('/notes/open-note/', $all, true)];
+})();
 $out['purges'] = [
     'held' => $purged(static function () use ($note, &$held): void {
         $held = (int) wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Held one', 'comment_author' => 'x', 'comment_approved' => 0]);
@@ -258,6 +274,11 @@ $out['purges'] = [
         $id = (int) wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Will be trashed', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1]);
         \First\Wp\Purges::flush();
         return $purged(static fn () => wp_trash_comment($id));
+    })(),
+    'edited and approved at once' => (static function () use ($purged, $note): array {
+        $id = (int) wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Held, then both', 'comment_author' => 'x', 'comment_approved' => 0]);
+        \First\Wp\Purges::flush();
+        return $purged(static fn () => wp_update_comment(['comment_ID' => $id, 'comment_content' => 'Edited and approved', 'comment_approved' => 1]));
     })(),
     'control: a note edit' => $purged(static fn () => wp_update_post(['ID' => $note, 'post_title' => 'Open note'])),
     'approved on insert' => $purged(static fn () => wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Straight in', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1])),

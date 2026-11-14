@@ -123,10 +123,18 @@ final class Comments
     {
         $post = get_post((int) $comment->comment_post_ID);
         if ($post instanceof \WP_Post && $post->post_status === 'publish') {
+            // The item's own URL and comments feed, and every page that rendered this item: a
+            // first/app/ page can show the thread somewhere else, and a kind without a url has
+            // only WordPress's query-string permalink, which no page is cached at. Pages that only
+            // listed the kind keep their copy (a comment count there updates within the window).
+            $collection = self::collection($post->ID);
+            $urls = array_map('home_url', $collection === null ? [] : \First\Render\Cache::itemUrls($collection, $post->ID));
             $link = get_permalink($post);
             if (is_string($link)) {
-                Purges::announce([$link, get_post_comments_feed_link($post->ID)]);
+                $urls[] = $link;
             }
+            $urls[] = get_post_comments_feed_link($post->ID);
+            Purges::announce($urls);
         }
     }
 

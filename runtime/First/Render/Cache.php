@@ -134,6 +134,22 @@ final class Cache
         Extensions::afterCommit(self::flush(...));
     }
 
+    /**
+     * The URLs whose cacheable render read row $id of $collection itself: the exact item, never the
+     * pages that listed the kind (`*`). For a change that only shows where the item is shown (its
+     * thread), not in a listing.
+     *
+     * @return list<string> home-relative paths with their queries, as recorded
+     */
+    public static function itemUrls(string $collection, int|string $id): array
+    {
+        if (!self::listening()) {
+            return [];
+        }
+
+        return array_map(static fn (array $r): string => (string) $r['url'], self::run('SELECT DISTINCT "url" FROM {reads} WHERE "kind" = ? AND "item" = ?', [$collection, (string) $id]));
+    }
+
     public static function flush(): void
     {
         $urls = array_keys(self::$pending);

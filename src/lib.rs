@@ -8,6 +8,7 @@
 pub mod app;
 mod app_plugin;
 pub mod assets;
+pub mod astro_content;
 pub mod builtins;
 pub mod client;
 pub mod client_component;

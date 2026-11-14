@@ -551,7 +551,7 @@ pub fn allowed_exports(file: &str) -> &'static [&'static str] {
 pub const METHODS: &[&str] = &["GET", "POST", "PUT", "PATCH", "DELETE"];
 
 /// Values `"first/app"` exports (docs/spec/rendering.md §3).
-pub const EXPORTS: &[&str] = &["notFound", "redirect", "Content", "Html", "Link", "Pagination"];
+pub const EXPORTS: &[&str] = &["notFound", "redirect", "useFormState", "Content", "Html", "Link", "Pagination"];
 /// Type-only exports of `"first/app"`: importable, erased.
 pub const TYPES: &[&str] = &[
     "PageProps",
@@ -561,6 +561,7 @@ pub const TYPES: &[&str] = &[
     "RouteResponse",
     "Guard",
     "SearchParams",
+    "FormState",
     "StaticParams",
 ];
 

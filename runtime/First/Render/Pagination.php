@@ -77,7 +77,7 @@ final class Pagination
         $kept = [];
         foreach (\First\QueryString::parse($query) as [$name, $value]) {
             // A form's flash marker is this visitor's alone: never carried into another URL.
-            if ($name !== $param && $name !== '_flash') {
+            if ($name !== $param && $name !== Forms::MARKER) {
                 $kept[] = rawurlencode($name) . '=' . rawurlencode($value);
             }
         }

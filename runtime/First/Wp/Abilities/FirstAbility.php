@@ -33,7 +33,8 @@ final class FirstAbility extends \WP_Ability
      */
     protected function sanitize_input($input)
     {
-        if (!Register::queryString() || $input === null) {
+        // No input at all has nothing to type: First's own validation names what is missing.
+        if (!Register::queryString() || $input === null || $input === []) {
             return $input;
         }
         $schema = $this->get_input_schema();

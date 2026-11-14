@@ -19,6 +19,7 @@ pub(crate) fn adapter(args: &[String]) -> ExitCode {
         for (name, bytes) in [
             ("local.php", include_bytes!("../../scripts/deploy/local.php").as_slice()),
             ("Json.php", include_bytes!("../../runtime/First/Json.php").as_slice()),
+            ("Env.php", include_bytes!("../../runtime/First/Env.php").as_slice()),
             (
                 "Artifact.php",
                 include_bytes!("../../runtime/First/Deployment/Artifact.php").as_slice(),

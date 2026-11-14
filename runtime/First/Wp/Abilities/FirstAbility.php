@@ -24,13 +24,27 @@ final class FirstAbility extends \WP_Ability
     }
 
     /**
-     * WordPress 7.2 sanitizes an ability's input by its schema inside execute(), after validating it.
-     * First's pipeline is the one validator of its abilities (Register::validate) and reads the input
-     * as it was sent, so nothing is cast here. Query-string input is still typed by core's run route
-     * before it gets here.
+     * WordPress 7.2 types an ability's input by its schema here, inside execute(), where 7.1 typed
+     * it as a REST argument. First's pipeline is the one validator of its abilities
+     * (Register::validate), so JSON input is read as it was sent. A query string (core's GET and
+     * DELETE runs) carries only strings, so core types it, and only when all of it validates: typing
+     * part of an invalid filter would read "false" as true. Why it was left untyped is kept for
+     * Invoke::requireTyped.
      */
     protected function sanitize_input($input)
     {
-        return $input;
+        if (!Register::queryString() || $input === null) {
+            return $input;
+        }
+        $schema = $this->get_input_schema();
+        $valid = $schema === [] ? true : rest_validate_value_from_schema($input, $schema, 'input');
+        if ($valid instanceof \WP_Error) {
+            Register::untyped($valid->get_error_message());
+
+            return $input;
+        }
+        Register::untyped(null);
+
+        return parent::sanitize_input($input);
     }
 }

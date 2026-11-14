@@ -112,6 +112,12 @@ final class Register
         };
     }
 
+    /** Records why this request's query-string input was left untyped (null: it was typed). */
+    public static function untyped(?string $reason): void
+    {
+        self::$untyped = $reason;
+    }
+
     /** Why core left this request's query-string input untyped, or null when it typed it. */
     public static function untypedReason(): ?string
     {

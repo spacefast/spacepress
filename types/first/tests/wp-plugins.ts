@@ -15,8 +15,8 @@ const plugins = {
 } satisfies Readonly<Record<string, WordPressPlugin>>;
 
 defineConfig({ collections: {}, plugins });
-// The optional admin screens are a boolean opt-in.
-defineConfig({ collections: {}, admin: true });
+// First Admin ships by default; `admin` is a boolean, and false leaves it out.
+defineConfig({ collections: {}, admin: false });
 // @ts-expect-error admin is a boolean, not a settings object
 defineConfig({ collections: {}, admin: { menu: true } });
 // Runtime schema changes are a boolean opt-in.

@@ -16,7 +16,7 @@ final class ReservedNames
         'PropertyKey', 'Promise', 'Error', 'Blob', 'URLSearchParams', 'FormData', 'Uint8Array', 'Headers',
         'Request', 'RequestInit', 'Response', 'SchemaDescriptor', 'Descriptor', 'CollectionDescriptors', 'CollectionKey', 'Row',
         'Rels', 'IdOf', 'Requested', 'NestedWith', 'RelationValue', 'WithValue', 'RowWith', 'OptionalKeys',
-        'ExactWith', 'StatusQuery', 'LocaleQuery', 'ListQuery', 'CollectionClient', 'MediaQuery', 'MediaClient', 'FileBucketClient',
+        'ExactWith', 'StatusQuery', 'LocaleQuery', 'ListQuery', 'Query', 'ReadCall', 'CollectionClient', 'MediaQuery', 'MediaClient', 'FileBucketClient',
         'FilesClient', 'ActionsClient', 'GlobalsClient', 'Session', 'AuthClient', 'Client', 'ClientOptions', 'AuthOptions',
         'Problem', 'FirstError', 'Json', 'Send', 'Held', 'Issued', 'OidcTokens', 'BrowserGlobals',
     ];

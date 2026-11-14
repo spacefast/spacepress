@@ -69,6 +69,35 @@ test("activating an unlisted plugin is refused on every path; a listed one activ
   assert.ok(active().includes("hello-dolly"));
 });
 
+test("a plugin a sealed site never runs is refused whatever the list says, and reported when it is already active", async () => {
+  const file = "vip-block-data-api/vip-block-data-api.php";
+  // Even with a list that names it (written by something other than the compiler, which refuses to).
+  const allows = wp("eval", `$s = new ReflectionProperty(First\\Wp\\Sealed::class, 'allowed'); $was = $s->getValue(); $s->setValue(null, First\\Wp\\Sealed::listed(['vip-block-data-api', 'vip-decoupled-bundle', 'hello-dolly'])); echo wp_json_encode([First\\Wp\\Sealed::allows('${file}'), First\\Wp\\Sealed::allows('vip-decoupled-bundle/vip-decoupled.php'), First\\Wp\\Sealed::allows('hello-dolly/hello.php')]); $s->setValue(null, $was);`);
+  assert.deepEqual(JSON.parse(allows), [false, false, true]);
+  // Every activation path, as for any unlisted plugin, with a message that says why.
+  assert.doesNotMatch(wpTry("plugin", "activate", "vip-block-data-api"), /Success/);
+  // What `activate_plugin()` answers on every path (WP-CLI prints it on stderr, wp-admin on a page).
+  const refusal = wp("eval", `require_once ABSPATH . 'wp-admin/includes/plugin.php'; $r = activate_plugin('${file}'); echo is_wp_error($r) ? $r->get_error_code() . ': ' . $r->get_error_message() : 'activated';`);
+  assert.match(refusal, /^first_sealed: Refused: .*a sealed site never runs vip-block-data-api\/vip-block-data-api\.php: it serves stored content around First's read rules/);
+  const rest = await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/vip-block-data-api/vip-block-data-api", { status: "active" });
+  assert.equal(rest.status, 403, await rest.text());
+  assert.equal(active().includes("vip-block-data-api"), false);
+  assert.equal((await fetch(`${site}/wp-json/vip-block-data-api/v1/posts/1/blocks`)).status, 404, "its route doesn't exist");
+  // Activated around sealed mode: it runs (a plain host can't stop a plugin WordPress loads), and
+  // the report and `first doctor` name it.
+  wp("eval", `$a = get_option('active_plugins'); $a[] = '${file}'; update_option('active_plugins', $a);`);
+  try {
+    assert.equal((await fetch(`${site}/wp-json/vip-block-data-api/v1/posts/1/blocks`)).status, 200);
+    const report = (await (await fetch(`${site}/__first/api/v1`, { headers: auth("admin") })).json()).data.runtime.wp.sealed;
+    assert.deepEqual(report.plugins, [file]);
+    // A host that enforces the list never loads it.
+    const hosted = wp("eval", `require_once WP_CONTENT_DIR . '/first-loader.php'; echo wp_json_encode(First\\Loader\\Loader::allowedPlugins(['${file}', 'first-runtime/first-runtime.php'], ['vip-block-data-api', 'first-runtime']));`);
+    assert.deepEqual(JSON.parse(hosted), ["first-runtime/first-runtime.php"]);
+  } finally {
+    wp("eval", `update_option('active_plugins', array_values(array_diff(get_option('active_plugins'), ['${file}'])));`);
+  }
+});
+
 test("the plugins the app runs on can't be deactivated from wp-admin or REST, so the list can't be switched off there", async () => {
   const cookie = await loginCookie(site, "admin", `${site}/wp-admin/`);
   const screen = await (await fetch(`${site}/wp-admin/plugins.php`, { headers: { cookie } })).text();
@@ -87,7 +116,7 @@ test("the plugins the app runs on can't be deactivated from wp-admin or REST, so
 });
 
 test("First's admin is First's own: a sealed site activates it though the build doesn't ship it, and it saves through REST", async () => {
-  // Installed beside the build (sealed-run.sh), not declared, and `admin: true` isn't set.
+  // Installed beside the build (sealed-run.sh), not declared: the build sets `admin: false`.
   assert.equal(active().includes("first-admin"), false);
   const on = await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/first-admin/first-admin", { status: "active" });
   assert.equal(on.status, 200, await on.text());
@@ -112,10 +141,13 @@ test("First's admin is First's own: a sealed site activates it though the build 
     assert.equal((await viaApi.json()).data.mood, "steady");
     const global = await json(auth("admin"), "PATCH", "/__first/api/v1/banner", { motto: "From the admin" });
     assert.equal((await global.json()).data.motto, "From the admin");
-    // The admin's page is served.
-    const cookie = await loginCookie(site, "admin", `${site}/first-admin/`);
-    const page = await fetch(`${site}/first-admin/`, { headers: { cookie }, redirect: "manual" });
-    assert.equal(page.status, 200, String(page.headers.get("location")));
+    // The admin's page is served at its mount, /wp-admin/new/ (wp-admin's query form sends the
+    // visitor there once the rewrite rule is written).
+    const adminPage = `${site}/wp-admin/admin.php?page=first-admin`;
+    const cookie = await loginCookie(site, "admin", adminPage);
+    const page = await fetch(adminPage, { headers: { cookie } });
+    assert.equal(page.status, 200, page.url);
+    assert.ok((await page.text()).includes('id="first-admin-app"'), "the admin's app shell");
     // It isn't one of the plugins the site can't run without: it deactivates, classic wp-admin stays.
     const off = await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/first-admin/first-admin", { status: "inactive" });
     assert.equal(off.status, 200, await off.text());

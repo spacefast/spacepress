@@ -238,6 +238,13 @@ when one transaction changes more than 100 of its rows, or any of its ids is lon
 than 191 characters. A transaction touching more than 64 collections is announced
 as several notices. Notices never carry row values.
 
+WordPress comments on a kind with `comments` report as `wp:comments`, with
+`ids: null`, when the approved thread changes: a comment approved, saved
+approved, edited while approved, unapproved, spammed, trashed or deleted. A
+comment held for moderation, or spam that was never approved, reports nothing.
+`wp:comments` is not a collection key; `<Live>` regions that show a
+`<Comments>` thread ask again on it.
+
 A host can register a transport in PHP instead of hooking the action:
 
 ```php

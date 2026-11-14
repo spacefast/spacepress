@@ -1,1 +1,0 @@
-<?php return array('name' => '@first-admin/theme', 'dependencies' => array('react', 'wp-theme'), 'moduleDependencies' => array('@first-admin/private-apis'), 'version' => '4022f66af8100a6f29df');

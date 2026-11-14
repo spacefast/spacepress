@@ -13,7 +13,7 @@
 	"dependencies": {
 		"@first-admin/private-apis": "workspace:*",
 		"@first-admin/design-system": "workspace:*",
-		"@first-admin/theme": "workspace:*",
+		"@wordpress/theme": "catalog:",
 		"@first-admin/dataviews": "workspace:*",
 		"@wordpress/a11y": "catalog:",
 		"@wordpress/base-styles": "catalog:",

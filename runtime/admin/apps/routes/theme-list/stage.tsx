@@ -46,6 +46,7 @@ export default function ThemesContent() {
 	const { view, isModified, updateView, resetToDefault } = useView( {
 		kind: 'root',
 		name: 'theme',
+		slug: 'all',
 		defaultView,
 		queryParams: searchParams,
 		onChangeQueryParams: handleQueryParamsChange,

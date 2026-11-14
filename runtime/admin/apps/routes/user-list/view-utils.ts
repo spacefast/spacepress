@@ -181,6 +181,7 @@ export async function ensureView(
 	return loadView( {
 		kind: 'root',
 		name: 'user',
+		slug: slug ?? 'all',
 		defaultView,
 		queryParams: search,
 	} );

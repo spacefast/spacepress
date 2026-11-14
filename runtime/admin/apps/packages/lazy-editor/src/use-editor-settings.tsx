@@ -3,7 +3,15 @@ import {
 	mergeGlobalStyles,
 	type GlobalStylesConfig,
 } from '@wordpress/global-styles-engine';
-import { useThemeProviderStyles } from '@first-admin/theme';
+import { privateApis as themePrivateApis } from '@wordpress/theme';
+import { unlock } from '@first-admin/private-apis';
+
+// A private API of @wordpress/theme (no public replacement yet), unlocked as core's packages do.
+const { useThemeProviderStyles } = unlock( themePrivateApis ) as {
+	useThemeProviderStyles: ( options?: {
+		color?: { primary?: string; background?: string };
+	} ) => { themeProviderStyles: Record< string, string > | null };
+};
 import { store as coreDataNextStore } from '@first-admin/core-data-next';
 import { store as coreStore } from '@wordpress/core-data';
 import { useMemo, useSyncExternalStore } from '@wordpress/element';

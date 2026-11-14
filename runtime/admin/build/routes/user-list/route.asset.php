@@ -1,1 +1,1 @@
-<?php return array('name' => 'user-list', 'dependencies' => array('wp-core-data', 'wp-data'), 'moduleDependencies' => array('@first-admin/core-data-next', '@first-admin/views'), 'version' => '68410bbbef85780cdb18');
+<?php return array('name' => 'user-list', 'dependencies' => array('wp-core-data', 'wp-data'), 'moduleDependencies' => array('@first-admin/core-data-next', '@first-admin/views'), 'version' => 'f33e39bfacefdb07d4ad');

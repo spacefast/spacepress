@@ -42,6 +42,7 @@ export const route = {
 		const view = await loadView( {
 			kind: 'taxonomy',
 			name: params.taxonomy,
+			slug: 'all',
 			defaultView,
 			queryParams: search,
 		} );

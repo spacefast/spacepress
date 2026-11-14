@@ -6,7 +6,7 @@ import {
 import { useContext } from 'react';
 // eslint-disable-next-line @first-admin/design-system/use-new-components
 import { Stack } from '@first-admin/design-system';
-import { ThemeProvider } from '@first-admin/theme';
+import { ThemeProvider } from '@wordpress/theme';
 import { Page, useColorPreference, unlock } from '@first-admin/admin-toolkit';
 import clsx from 'clsx';
 import { __ } from '@wordpress/i18n';

@@ -31,6 +31,7 @@ export const route = {
 		const view = await loadView( {
 			kind: 'root',
 			name: 'theme',
+			slug: 'all',
 			defaultView,
 			queryParams: search
 				? { page: search.page, search: search.search }

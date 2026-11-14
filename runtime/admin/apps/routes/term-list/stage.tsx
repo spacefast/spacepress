@@ -123,6 +123,7 @@ function TaxonomyTerms() {
 	const { view, isModified, updateView, resetToDefault } = useView( {
 		kind: 'taxonomy',
 		name: taxonomy,
+		slug: 'all',
 		defaultView,
 		queryParams: searchParams,
 		onChangeQueryParams: handleQueryParamsChange,

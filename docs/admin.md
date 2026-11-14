@@ -90,7 +90,7 @@ underneath it, the change is the smallest one that keeps that look:
 | Change | Why |
 |---|---|
 | `font-weight: var(--wpds-typography-font-weight-emphasis, 499)` (and `-default, 400`) for `$font-weight-medium`/`-regular` | the pinned `@wordpress/base-styles` removed those variables; the tokens carry the same values |
-| `@first-admin/theme` passes the `bg` seed also as `background` | the pinned `@wordpress/theme` renamed it |
+| Color settings name the background seed `background` and use `@wordpress/theme` directly | upstream's `@first-admin/theme` shim passed the old `bg` seed; WordPress 7.1's `wp-theme` reads `background` |
 | The site hub wraps its title in a `<span>` | the upstream stylesheet sizes the link's first span, which the pinned `@wordpress/ui` Link no longer adds |
 | `style` on design-system popups and primitives | the pinned Base UI types moved it |
 | The page opts in to view transitions (`@view-transition`) | the router starts one on each navigation; without the opt-in the browser aborts it with an error |
@@ -100,6 +100,47 @@ mount and subdirectory URLs, First's schema screens, and the AI chat button,
 which needs a provider (see External services). First's own screens
 (`packages/schema`) use `@wordpress/components` and DataViews with upstream's
 spacing.
+
+## WordPress packages instead of copies
+
+Where the WordPress floor (7.1) allows it, First Admin uses WordPress's own
+packages instead of the copies the upstream admin carried:
+
+| Was | Now | How it loads |
+|---|---|---|
+| `packages/theme` (`@first-admin/theme`) | `@wordpress/theme` | WordPress 7.1's `wp-theme` script; `useThemeProviderStyles` is its private API, unlocked as core's packages do |
+| `packages/views`: `useView`, `loadView`, the view types and preference keys | `@wordpress/views` | bundled into the admin (WordPress 7.1 has no `wp-views` script) |
+| `packages/views`: `useViewConfig`, the `DataViews` layout wrapper | stays First's | `useViewConfig` reads First Admin's own fields (tabs, quick and add forms, labels, actions) from `/first-admin/v1/view-config`, which core's endpoint doesn't serve |
+| `packages/wp-build` | stays for now | `@wordpress/build` targets WordPress core's admin boot and a newer `@wordpress/theme` than 7.1 ships; it moves with First Admin onto core's boot |
+
+The packages are pinned with the rest in `apps/pnpm-workspace.yaml`. Their former
+copies stay recorded in `upstream-inventory.json`, with each retained input.
+
+### Saved list layouts reset once
+
+`@wordpress/views` stores a user's list layout (columns, sort, layout type,
+page size) under `dataviews-<kind>-<name>-<tab>` where the copy used
+`<kind>-<name>`, and it saves only what the user changed from the default.
+Layouts saved before this change are not read: every list opens on its default
+layout once, then saves under the new key. Nothing is migrated.
+
+The seven lists that change (twelve call sites: each list and, for most, its
+route loader), and how:
+
+| List | Route | What changes |
+|---|---|---|
+| Users | `/users`, `/users/list/<role>` | each role tab keeps its own layout; the role filter is the tab's and is never saved |
+| Posts and pages (each post type) | `/types/<type>/list/<tab>` | each status tab keeps its own layout; the tab's status filter is never saved |
+| Media | `/media` | layout saved under `all` |
+| Plugins | `/plugins/list/<tab>` | each tab (all, active, inactive, …) keeps its own layout |
+| Categories, tags and other taxonomies | `/types/<type>/taxonomies/<taxonomy>` | layout saved under `all` |
+| Themes | `/design/themes` | layout saved under `all` |
+| Navigation menus | `/design/navigation/list` | layout saved under `all` |
+
+Changing a column and changing it back now removes the saved layout rather than
+saving a copy of the default. A tab's filters (a role, a status) are applied on
+top of whatever the user saved, so a saved filter on the same field can't
+override the tab.
 
 ## Provenance and updates
 

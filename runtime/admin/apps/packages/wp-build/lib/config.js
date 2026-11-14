@@ -26,6 +26,8 @@ async function exists( pathToCheck ) {
 
 // Packages that should be bundled instead of externalized
 const bundledPackages = [
+	// First: not a WordPress 7.1 script handle (core has no `wp-views`), so it ships in the bundle.
+	'@wordpress/views',
 	'@wordpress/icons',
 	'@wordpress/fields',
 	'@wordpress/interface',

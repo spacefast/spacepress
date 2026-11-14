@@ -5,8 +5,8 @@ import { store as preferencesStore } from '@wordpress/preferences';
 type ColorScheme = 'wpModernLight' | 'wpModernDark' | 'custom';
 type InterfaceTheme = 'system' | ColorScheme;
 export type ThemeColorSettings = {
-	app: { bg: string; primary: string };
-	sidebar: { bg: string; primary: string };
+	app: { background: string; primary: string };
+	sidebar: { background: string; primary: string };
 };
 
 // A host page that embeds the admin sets the seeds, so it matches the page
@@ -36,12 +36,12 @@ const DEFAULT_INTERFACE_THEME_DARK: ColorScheme = 'wpModernDark';
 
 const THEME_COLOR_PRESETS: Record< string, ThemeColorSettings > = {
 	wpModernLight: {
-		app: { bg: '#fcfcfc', primary: '#3858e9' },
-		sidebar: { bg: '#f8f8f8', primary: '#3858e9' },
+		app: { background: '#fcfcfc', primary: '#3858e9' },
+		sidebar: { background: '#f8f8f8', primary: '#3858e9' },
 	},
 	wpModernDark: {
-		app: { bg: '#fcfcfc', primary: '#3858e9' },
-		sidebar: { bg: '#1e1e1e', primary: '#3858e9' },
+		app: { background: '#fcfcfc', primary: '#3858e9' },
+		sidebar: { background: '#1e1e1e', primary: '#3858e9' },
 	},
 };
 
@@ -69,26 +69,26 @@ function createDefaults() {
 		interfaceTheme: DEFAULT_INTERFACE_THEME,
 		interfaceThemeLight: DEFAULT_INTERFACE_THEME_LIGHT,
 		interfaceThemeDark: DEFAULT_INTERFACE_THEME_DARK,
-		interfaceThemeCustomAppBg: THEME_COLOR_PRESETS.wpModernDark.app.bg,
+		interfaceThemeCustomAppBg: THEME_COLOR_PRESETS.wpModernDark.app.background,
 		interfaceThemeCustomAppPrimary:
 			THEME_COLOR_PRESETS.wpModernDark.app.primary,
 		interfaceThemeCustomSidebarBg:
-			THEME_COLOR_PRESETS.wpModernDark.sidebar.bg,
+			THEME_COLOR_PRESETS.wpModernDark.sidebar.background,
 		interfaceThemeCustomSidebarPrimary:
 			THEME_COLOR_PRESETS.wpModernDark.sidebar.primary,
 		interfaceThemeLightCustomAppBg:
-			THEME_COLOR_PRESETS.wpModernLight.app.bg,
+			THEME_COLOR_PRESETS.wpModernLight.app.background,
 		interfaceThemeLightCustomAppPrimary:
 			THEME_COLOR_PRESETS.wpModernLight.app.primary,
 		interfaceThemeLightCustomSidebarBg:
-			THEME_COLOR_PRESETS.wpModernLight.sidebar.bg,
+			THEME_COLOR_PRESETS.wpModernLight.sidebar.background,
 		interfaceThemeLightCustomSidebarPrimary:
 			THEME_COLOR_PRESETS.wpModernLight.sidebar.primary,
-		interfaceThemeDarkCustomAppBg: THEME_COLOR_PRESETS.wpModernDark.app.bg,
+		interfaceThemeDarkCustomAppBg: THEME_COLOR_PRESETS.wpModernDark.app.background,
 		interfaceThemeDarkCustomAppPrimary:
 			THEME_COLOR_PRESETS.wpModernDark.app.primary,
 		interfaceThemeDarkCustomSidebarBg:
-			THEME_COLOR_PRESETS.wpModernDark.sidebar.bg,
+			THEME_COLOR_PRESETS.wpModernDark.sidebar.background,
 		interfaceThemeDarkCustomSidebarPrimary:
 			THEME_COLOR_PRESETS.wpModernDark.sidebar.primary,
 	};
@@ -123,11 +123,11 @@ function useColorPreference() {
 	// if ( prefs.interfaceTheme === 'custom' ) {
 	// 	themeColorSettings = {
 	// 		app: {
-	// 			bg: prefs.interfaceThemeCustomAppBg,
+	// 			background: prefs.interfaceThemeCustomAppBg,
 	// 			primary: prefs.interfaceThemeCustomAppPrimary,
 	// 		},
 	// 		sidebar: {
-	// 			bg: prefs.interfaceThemeCustomSidebarBg,
+	// 			background: prefs.interfaceThemeCustomSidebarBg,
 	// 			primary: prefs.interfaceThemeCustomSidebarPrimary,
 	// 		},
 	// 	};

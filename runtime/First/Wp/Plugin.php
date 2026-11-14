@@ -107,6 +107,7 @@ final class Plugin
         });
         Facade::register($this);
         AppRouter::register($this);
+        \First\Render\Prebuilt::boot($this);
         Comments::register($this);
         // Code blocks: highlighted with their title and marked lines, grouped into tabs (no script).
         add_filter('render_block_core/code', [\First\Content\Code::class, 'render'], 10, 2);

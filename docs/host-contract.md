@@ -93,6 +93,7 @@ The app API is `/__first/api/v1`; actions are `POST /__first/api/v1/actions/<nam
 | `first_mail_transport` | filter | delivers `mail.send` messages; without it, the app's mail is refused |
 | `first_purge_urls` | action | the root-relative URLs a committed content write changed, for a host's page cache |
 | `first_private_probe_url` | filter | the URL the private-files probe fetches, when the public URL is not reachable from the server |
+| `first_prebuild_url` | filter | the URL a prebuilt page is rendered from, when the site cannot reach its own address (`output: "server"` with `prerender`) |
 | `first_identity_providers` | filter | OpenID Connect sign-in providers First Identity offers |
 | `first_identity_rest_cookie_auth` | filter | lets the identity session cookie authenticate the app's REST API (a host serving its own frontend) |
 | `first_identity_session_cookie_aliases` | filter | other cookie names whose session a migrated site keeps |
@@ -142,6 +143,7 @@ First puts every table under WordPress's `$wpdb->prefix` and never changes it. A
     "first_mail_transport",
     "first_purge_urls",
     "first_private_probe_url",
+    "first_prebuild_url",
     "first_identity_providers",
     "first_identity_rest_cookie_auth",
     "first_identity_session_cookie_aliases",

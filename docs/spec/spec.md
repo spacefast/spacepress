@@ -201,9 +201,9 @@ Fields every kind gets:
 
 | Kind | Fields |
 |---|---|
-| every kind with rows | `id`, `author`, `createdAt`, `updatedAt` |
+| every kind with rows but taxonomies | `id`, `author`, `createdAt`, `updatedAt` (`users`, globals and files have no `author`) |
 | collection, `posts`, `pages` | `slug`, `status` (`draft`, `pending`, `scheduled`, `published`, `private`), `publishedAt`, `url`, `terms` (by taxonomy name) |
-| taxonomy, `categories`, `tags` | `name`, `slug`, `description`, `parent` (hierarchical), `count`, `url` |
+| taxonomy, `categories`, `tags` | `id`, `name`, `slug`, `description`, `parent` (hierarchical), `count`, `url`; no `author` and no timestamps, since core stores none for a term |
 
 ### 2.5 Fields
 
@@ -260,7 +260,9 @@ links, so the two never disagree. Placeholders: `:slug`, `:id`,
 first term (`:topics.slug`), and `:path` for hierarchical kinds.
 
 - It compiles to rewrite rules, the core link filters for that kind, the `url` field,
-  and an automatic 301 when the pattern or a slug changes.
+  and an automatic 301 when the pattern or a slug changes. The 301 holds for post kinds only for
+  now: core keeps old slugs for posts, and a term's slug or a taxonomy's pattern changes without a
+  redirect until that is built ([decision](../decisions/2026-11-11-authoring-surface.md), deferrals).
 - The link filters per kind, because core applies a different one to each
   (`wp-includes/link-template.php`):
   - `wp.posts`: `post_link`;

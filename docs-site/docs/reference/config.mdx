@@ -15,6 +15,7 @@ A First app is one `first.config.ts`. It imports its building blocks from `"firs
 | `collections` | Editorial content stored as WordPress posts, with the WordPress editor. Build each one with `collection()`. |
 | `tables` | App data in SQL tables of their own. Build each one with `table()`. |
 | `users` | Fields on WordPress users. Build each one with `userProjection()`. |
+| `taxonomies` | Terms in WordPress taxonomies of their own, attached to collections. Build each one with `taxonomy()`. |
 | `globals` | Key = the name used in `db.globals.<key>` and `/globals/<key>`. |
 | `hooks` | Functions that run before or after a create, update or delete. |
 | `actions` | Named endpoints at `POST /__first/api/v1/actions/<name>`. Build each one with `action()`. |
@@ -225,6 +226,25 @@ export declare function userProjection<TCols extends ColumnsConfig, TUid extends
 ): Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">;
 ```
 
+### `taxonomy`
+
+A taxonomy: terms in WordPress's term tables, with term meta fields, attached to collections.
+
+```ts
+export declare function taxonomy<TFields extends TermFields = {}, THierarchical extends boolean = false>(
+  fields?: TFields,
+  options?: NoInfer<TaxonomyOptions<Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">>> & { hierarchical?: THierarchical },
+): Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">;
+```
+
+### `terms`
+
+An item's terms of `taxonomy`: the term ids in write order (`[]` when none), kept as WordPress's term relationships. `with: { field: true }` loads the term rows, and the taxonomy gets a list of the items named after this kind. The same field `on` adds, under another name or with `.access()`, `.ui()` or `.reverse()`; the build refuses any other modifier.
+
+```ts
+export declare function terms(taxonomy: CollectionMeta<string, ColumnsConfig, false, "taxonomy"> | (() => CollectionMeta<string, ColumnsConfig, false, "taxonomy">)): ColumnBuilder<"refList", number[], true, true, false, false>;
+```
+
 ## Hooks, actions, globals, config
 
 ### `action`
@@ -266,12 +286,12 @@ export declare function global<const TName extends string, TFields extends Field
 
 ```ts
 export declare function defineConfig<
-  TCollections extends Schema = {}, TTables extends Schema = {}, TUsers extends Schema = {},
-  TRelations extends Relations<TCollections & TTables & TUsers, any> = Relations<TCollections & TTables & TUsers, {}>,
+  TCollections extends Schema = {}, TTables extends Schema = {}, TUsers extends Schema = {}, TTaxonomies extends Schema = {},
+  TRelations extends Relations<TCollections & TTables & TUsers & TTaxonomies, any> = Relations<TCollections & TTables & TUsers & TTaxonomies, {}>,
   TGlobals extends Record<string, AnyGlobal> = {},
   TJobs extends Record<string, AnyJob> = {},
   const TLocales extends LocalesConfig = LocalesConfig,
->(config: ConfigInput<TCollections & TTables & TUsers, TRelations, TGlobals, TJobs, TLocales, TCollections, TTables, TUsers>): FirstConfig<TCollections & TTables & TUsers, TRelations, TGlobals, TJobs, TLocales>;
+>(config: ConfigInput<TCollections & TTables & TUsers & TTaxonomies, TRelations, TGlobals, TJobs, TLocales, TCollections, TTables, TUsers, TTaxonomies>): FirstConfig<TCollections & TTables & TUsers & TTaxonomies, TRelations, TGlobals, TJobs, TLocales>;
 ```
 
 ### `definePlugin`

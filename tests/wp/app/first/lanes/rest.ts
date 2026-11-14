@@ -3,7 +3,7 @@
 //
 // Lane R (core `/wp/v2` under First's rules): an admin-only collection, one whose read rule is a
 // per-owner filter, and one with an admin-only field.
-import { action, blocks, collection, db, group, HttpError, integer, json, repeater, richText, slug, text, table, ref } from "first";
+import { action, blocks, collection, db, group, HttpError, integer, json, repeater, richText, slug, text, table, ref, taxonomy } from "first";
 import { jottings, vault as vaultKind } from "first:db";
 
 export const vault = collection({ title: text(), code: text().optional() },
@@ -126,6 +126,11 @@ export const oracleKids = collection({
   // A many-ref between two post-backed kinds: links in First's join table, a post_object (multiple) in the editor.
   mentors: ref(oracleParents).many().optional().reverse("mentees"),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+// A taxonomy (docs/decisions/2026-11-11-authoring-surface.md, rulings 24-33): terms in core's term
+// tables, a `oracleTopics` field on oracleKids, a term URL and its terms in core's sitemap; the app
+// has `locales`, so it is one vocabulary for every locale and stays out of Polylang.
+export const oracleTopics = taxonomy({ color: text().optional() },
+  { hierarchical: true, url: "/oracle-topics/:path", on: [oracleKids], translations: false });
 export const oracleGrandchildren = collection({
   title: text(), childId: ref(oracleKids).optional().onDelete("restrict"),
 }, { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });

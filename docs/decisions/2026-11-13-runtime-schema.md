@@ -38,12 +38,13 @@ of truth only for the additions made since the last build that contains them.
   build must be able to load, not state of one build.
 - The compiler records what a plugin package's code uses (`plugins::Use`): reads per kind, writes
   per field. For the app's own code it records nothing per field or per kind.
-- `taxonomy()` is not on main yet. Globals and collections are.
+- `taxonomy()` is on main as a build-only kind (docs/decisions/2026-11-11-authoring-surface.md,
+  rulings 24-33): a runtime schema change to a taxonomy is deferred.
 
 ## Scope
 
 Runtime changes cover what is data in WordPress: fields on `collection()` kinds, new collections,
-globals, taxonomies once `taxonomy()` lands, labels and editor presentation. `table()` kinds, hooks,
+globals, labels and editor presentation. Taxonomies stay build-only until their own slice. `table()` kinds, hooks,
 actions, jobs, pages, routes, file buckets, and any field option that is a function (`.validate()`,
 function access rules, function defaults) stay build-only. A change that needs one of them is
 refused, and the refusal names the source edit to make.
@@ -269,8 +270,8 @@ wp-admin or over core REST protects these too.
 1. This record and the spec edits.
 2. The flag, version store, loader, PHP validator, the compiler reading the lock, the corpus: adding
    fields to an existing collection.
-3. New collections and globals, labels and presentation, removal and rollback; taxonomies when
-   `taxonomy()` is on main.
+3. New collections and globals, labels and presentation, removal and rollback. Runtime changes to
+   taxonomies (`taxonomy()` is on main, build-only) are a later slice.
 4. `first pull`, the references index, the deploy-time report and refusal.
 5. Abilities, commands, the admin screen.
 

@@ -1,0 +1,7 @@
+---
+import { getCollection } from "astro:content";
+const notes = (await getCollection("notes")).sort((a, b) => a.data.rank - b.data.rank);
+---
+<ul>
+  {notes.map((n) => <li><a href={`/notes/${n.id}/`}>{n.data.title}</a></li>)}
+</ul>

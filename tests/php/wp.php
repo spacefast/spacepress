@@ -55,6 +55,8 @@ final class WpSite
     /** @var resource|null the php -S child that stands in for the web server (private-file probes) */
     private $server = null;
     private int $port = 0;
+    /** The path the site lives under (`/blog` for a subdirectory install), or '' at the server's root. */
+    private string $base = '';
 
     private function __construct(string $dir)
     {
@@ -70,7 +72,9 @@ final class WpSite
      *   migration: MySQL DDL for the app's `editor: false` tables ({prefix} replaced);
      *   identity: install first-identity too; users: extra WordPress users (name => role);
      *   server: start a php -S that answers the private-files probe (needed for file buckets);
-     *   akismet: activate the Akismet core ships (Jetpack's), with no key unless the suite sets one.
+     *   akismet: activate the Akismet core ships (Jetpack's), with no key unless the suite sets one;
+     *   base: a path such as `/blog` the site lives under (WordPress in a subdirectory); the web
+     *   server answers only below it.
      */
     public static function create(string $label, array $fixture): self
     {
@@ -149,7 +153,8 @@ final class WpSite
         $users = ['editor' => 'editor', 'author' => 'author', 'subscriber' => 'subscriber'] + ($fixture['users'] ?? []);
         // The site's URL is where its php -S would listen, so WordPress never redirects a client elsewhere.
         $site->port = wpFreePort();
-        file_put_contents("$dir/site.json", json_encode(['core' => $core, 'activate' => $activate, 'users' => $users, 'url' => $site->url()], JSON_THROW_ON_ERROR));
+        $site->base = rtrim((string) ($fixture['base'] ?? ''), '/');
+        file_put_contents("$dir/site.json", json_encode(['core' => $core, 'activate' => $activate, 'users' => $users, 'url' => $site->url(), 'base' => $site->base], JSON_THROW_ON_ERROR));
         if ($fixture['server'] ?? false) {
             $site->startServer();
         }
@@ -227,7 +232,7 @@ final class WpSite
     /** The site's URL (WP_HOME); `startServer()` makes it answer. */
     public function url(): string
     {
-        return "http://127.0.0.1:$this->port";
+        return "http://127.0.0.1:$this->port$this->base";
     }
 
     /**
@@ -747,7 +752,7 @@ function wpCliRoot(string $dir): string
     if (!is_dir($root)) {
         // Built aside and moved in, so a concurrent request (the test server's) never sees half of it.
         $final = $root;
-        $root = "$final." . getmypid();
+        $root = "$final." . getmypid() . '.' . bin2hex(random_bytes(4));
         mkdir($root);
         foreach (scandir($site['core']) as $entry) {
             if ($entry !== '.' && $entry !== '..' && $entry !== 'wp-config.php' && $entry !== 'wp-content') {
@@ -761,6 +766,9 @@ function wpCliRoot(string $dir): string
         if (!@rename($root, $final)) {
             array_map('unlink', glob("$root/*"));
             rmdir($root);
+            if (!is_dir($final)) {
+                throw new RuntimeException("could not create $final");
+            }
         }
         $root = $final;
     }

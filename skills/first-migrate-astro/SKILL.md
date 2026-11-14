@@ -9,7 +9,7 @@ compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `firs
 ## When to use
 
 - An Astro site should be served by WordPress through First: editors in wp-admin, the pages in
-  PHP. To keep Astro and read a First app instead, use the `@first/astro` package.
+  PHP. To keep Astro and read a First app instead, use `@first/astro` (`docs/astro.md`).
 
 The conversion is done by you, file by file, with the table in
 [references/astro-to-first.md](references/astro-to-first.md). There is no converter command.
@@ -84,5 +84,5 @@ The conversion is done by you, file by file, with the table in
   not drop them silently.
 - Copying a live site's content is publishing; do it only when the owner asks.
 
-Reference: `docs/pages.md` and `docs/config-api.md` (Astro's
+Reference: `docs/astro.md`, `docs/pages.md` and `docs/config-api.md` (Astro's
 `src/content.config.ts`); a worked migration is `examples/migrate-astro/` in the repository.

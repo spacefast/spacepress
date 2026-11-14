@@ -1252,7 +1252,7 @@
       "sha256": "278f6833c5cfa5429b17af5864b42fa9d5bd1ace2caaf9ef8f2d33023f5a2467",
       "path": "apps/fields/core-user-fields/password/style.scss",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "86229fe53416ffdf530735b6773b5dd46434b94be4408f80a19273426a1280ac",
+      "adaptedSha256": "ffe18c2de6cb96a13f04321b6e6951006519d428dc1a57decc9d4f782c5f83ed",
       "normalizedSha256": "278f6833c5cfa5429b17af5864b42fa9d5bd1ace2caaf9ef8f2d33023f5a2467",
       "retainedSourcePath": "upstream-metadata/adapter-originals/fields/core-user-fields/password/style.scss"
     },
@@ -1513,7 +1513,7 @@
       "sha256": "65f227f123e66a297df391daeacb4a1eb57110b44be290e3a223fa622bfc2c64",
       "path": "lib/first-admin-menu.php",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "9308f93cf3058a45a9eaf33807c20de79d93f63f3f9e4ab5a7d8e9729ada740c",
+      "adaptedSha256": "bcd0ef26eb48a037e371a158a970565fa835a25d9e6fcebd25514727d0af960d",
       "normalizedSha256": "3eee912c993199ce7c6c3ccd994750a7457e201631a42608a615e720395f6910",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/next-admin-menu.php"
     },
@@ -1522,7 +1522,7 @@
       "sha256": "4ee77e2840097e35aaf3e71552ec27f95995df31fca41766e9fadf05cc155c84",
       "path": "lib/pages/admin.php",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "47427a6af63577a69aa84eec7244c06d60d9ca1112a5419f9e9056d5250df2ac",
+      "adaptedSha256": "8749559baa17cec6f66f7fdb89e2ef86ddd1ac572fc7865e70b10b0af55fe748",
       "normalizedSha256": "a52a5f84bd89933a49bbfcac90a69d8fee37d8a47c3eb2f23ca073e3aa09c81f",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/pages/admin.php"
     },
@@ -1620,10 +1620,10 @@
       "source": "lib/site-preview.php",
       "sha256": "9699a20779b44d69ff8b9681bd7ffdfb59d8868232296ca30107cc5a669d86fd",
       "path": "lib/site-preview.php",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "16e06b432ae91476c724968eddc8a80a78b067d12732c915fda5911fb22af15b",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "af47df5483e108c26cf83af728ab48b5c4f7d698d7a796d808da20eec7aa78db",
       "normalizedSha256": "16e06b432ae91476c724968eddc8a80a78b067d12732c915fda5911fb22af15b",
-      "retainedSourcePath": "lib/site-preview.php"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/lib/site-preview.php"
     },
     {
       "source": "lib/taxonomies.php",
@@ -2233,7 +2233,7 @@
       "sha256": "09d1b1fcbb4328c2c2f66bc84bad96307f923e34e9bfe1d7a33e5c489ac755aa",
       "path": "apps/packages/boot/src/components/app/legacy-admin-ui-bridge.scss",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "27c635115c2d23225ac2c3372f19fb38c7b22f8256e0f83bd45cebf6f82eb67f",
+      "adaptedSha256": "bc8108607ff9123859d3934f8a00885fb2142e33a26ac0a606956b625306cef9",
       "normalizedSha256": "87c359b68b8dd1c857d0ec75d32a8ad0c35c7d14447516b3bd19c440d0ca04e1",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/src/components/app/legacy-admin-ui-bridge.scss"
     },
@@ -2629,7 +2629,7 @@
       "sha256": "885abe33660954b34931a6d9a8ca4821fc71c3d6b200b9b75633b60b462f06aa",
       "path": "apps/packages/boot/src/components/sidebar-navigation-item/style.scss",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "188f711d57d1dcecba7f29280b844bca936ef6dde3303f6a2ccbfd6037df5455",
+      "adaptedSha256": "68e94160a5779319e7d57df29cd2c3aa637bcfdad1f75e5f89c6dc06c27d9080",
       "normalizedSha256": "4b473187551a063b554ff9b00a75b5fa7f1f580fd4f7d0dbf06a026c3d4b9b55",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/src/components/sidebar-navigation-item/style.scss"
     },
@@ -2674,7 +2674,7 @@
       "sha256": "c35b3e73546c94d69ac22fbab46cabdfb4786569d8df211b111cdeddda49a832",
       "path": "apps/packages/boot/src/components/site-hub/style.scss",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "26e672c6c2579488e618a6ec0c79845999dd36145a623d75d445fa48b888222d",
+      "adaptedSha256": "559014716a00a49fe603f4ff110f6b6482b377fc1691800594c16946305133fd",
       "normalizedSha256": "457001e0e6f4f9b9c64ba7ee88568cfb9243d40415742920f813c145bb937667",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/src/components/site-hub/style.scss"
     },
@@ -6922,7 +6922,7 @@
       "sha256": "78484d3ee81fb842e542b0c2ff95616c2bb680086d0ac6c60d8a7d4cbcd8ddc7",
       "path": "apps/routes/attachment/media-editor/components/editor-canvas/index.tsx",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "4c29f909927c5faf30860d9b3ee08b97cc3ca8aaa9fa870db531dfda1bd8a879",
+      "adaptedSha256": "71bfc16b334a6bceca5b3260abe719ce6ac354bc8bb29067e30ce3670a995d6e",
       "normalizedSha256": "2e80129739873163063a25035b22cae1ffde1d235aa86e15c49e1ff4d9f395c4",
       "retainedSourcePath": "upstream-metadata/adapter-originals/routes/attachment/media-editor/components/editor-canvas/index.tsx"
     },
@@ -6949,7 +6949,7 @@
       "sha256": "a0967492fe640dfab6d90ace238d9fce612a22f57db233818690a25b0b74d605",
       "path": "apps/routes/attachment/media-editor/components/layout/style.scss",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "70ff3f5303bb11fc4dc71dc930fa090190f56c39b9c636068e47c71fe63edba4",
+      "adaptedSha256": "0a29b39649b4fe52cda26b4a70de71ddec1c0a08f89bf790f048cf7e2823b5ee",
       "normalizedSha256": "7901239a0da3bec16fbd63ff36f94558e85677ea11d6e8041d27c860fdc238fd",
       "retainedSourcePath": "upstream-metadata/adapter-originals/routes/attachment/media-editor/components/layout/style.scss"
     },
@@ -7390,7 +7390,7 @@
       "sha256": "361785c8ecec11c32b3a585c7cabcaa86127a51184b8066af137c7318601cfcf",
       "path": "apps/routes/dashboard/package.json",
       "adaptation": "pinned dependency catalog and First module/route integration",
-      "adaptedSha256": "371fc337fd67028fd52907d9a653d589b3ef6cb7ef4b1ba89aaefb2c395bb717",
+      "adaptedSha256": "a1bced6ef04c2703834d20cd2733f165c07e7ed297061b5744d11101d3f854a7",
       "normalizedSha256": "8917a2fb7ed2638164ff129496522c4e27915aa0af75fc8e6f8cf761c1f3b9e9",
       "retainedSourcePath": "upstream-metadata/adapter-originals/routes/dashboard/package.json"
     },

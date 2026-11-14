@@ -1,7 +1,7 @@
 // "first/app": pages, layouts and HTTP routes under first/app/ (docs/spec/rendering.md §2–§4).
 // Types only: the compiler lowers these to PHP; nothing here runs in Node or the browser.
 /// <reference path="./assets.d.ts" />
-import type { RouteRequest, RouteResponse, User } from "first";
+import type { Action, ColumnsConfig, RouteRequest, RouteResponse, User } from "first";
 import type { JSX } from "first/jsx-runtime";
 
 export type { RouteRequest, RouteResponse };
@@ -66,6 +66,26 @@ export declare function notFound(): never;
 /** Stops the render and redirects (302 unless given 301, 303, 307 or 308). */
 export declare function redirect(url: string, status?: 301 | 302 | 303 | 307 | 308): never;
 
+/**
+ * What the last submit of a `<form action={action}>` on this page left: read once, after the form
+ * posted without JavaScript and came back. `pending` is false on the server. `error.fields` names
+ * the field an input error is about; `values` is what was typed, to fill the form again (never a
+ * password field).
+ */
+export declare function useFormState<TResult>(action: Action<ColumnsConfig, TResult> | Action<any, TResult>): FormState<Awaited<TResult>>;
+export interface FormState<TResult> {
+  pending: boolean;
+  error: { code: string; message: string; fields: Record<string, string | undefined> } | null;
+  result: TResult | null;
+  values: Record<string, string | undefined>;
+}
+
+/**
+ * The thread on `for` (an item of a kind with `comments` on), as the visitor may read it, and a
+ * form that posts a comment without JavaScript. Who may comment, moderation and reply depth are
+ * the kind's comment options, enforced wherever a comment is created, never props.
+ */
+export declare function Comments(props: { for: { id: number }; className?: string }): JSX.Element;
 /** A post body (block markup) rendered through `the_content`. */
 export declare function Content(props: { value: string | null | undefined }): JSX.Element;
 /** Trusted markup: a literal is placed as written; any other value goes through `wp_kses_post`. */

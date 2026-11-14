@@ -7,6 +7,11 @@ import { addDays, overdueDelay, today } from "./first/lib/dates";
 
 const owner = integer().access({ create: false, update: false }).ui({ label: "Owner", help: "Set automatically from your WordPress account." });
 
+export const manuals = files({
+      accept: ["application/pdf"], maxBytes: 20_000_000,
+      access: { read: "owner", delete: "owner" },
+    });
+
 export const systems = collection({
   name: text().min(1).max(120),
   ownerId: owner,
@@ -15,7 +20,7 @@ export const systems = collection({
   make: text().max(120).optional(),
   model: text().max(120).optional(),
   installedOn: date().optional(),
-  manual: file({ bucket: "manuals" }).ui({
+  manual: file(manuals).ui({
     label: "Manual PDF", help: "Upload to /__first/api/v1/files/manuals, then enter its file ID.",
   }).optional(),
 }, { title: "name", label: "Home systems", access: {
@@ -73,14 +78,8 @@ async function scheduleOverdue(task: InferSelectModel<typeof tasks>) {
 
 export default defineConfig({
   name: "home-maintenance",
-  admin: true,
   collections,
-  files: {
-    manuals: files("manuals", {
-      accept: ["application/pdf"], maxBytes: 20_000_000,
-      access: { read: "owner", delete: "owner" },
-    }),
-  },
+  files: { manuals },
   hooks: {
     systems: {
       beforeCreate(data, ctx) {

@@ -26,7 +26,7 @@ A First app is one `first.config.ts`. It imports its building blocks from `"firs
 | `media` | Image sizes WordPress makes for uploaded images. |
 | `locales` | The languages content is written in. Setting it installs Polylang. |
 | `plugins` | Build-only WordPress plugin dependencies. |
-| `admin` | Ship the optional admin screens (`first-admin`) with the build. Default `false`. |
+| `admin` | Ship First Admin (`first-admin`), the default admin at `/wp-admin/new/`, with the build. Default `true`; `false` leaves only classic wp-admin. |
 | `publicAuthors` | Keep the site's authors public as WordPress ships them: author archives, `?author=N`, the users sitemap, author names in oEmbed and unauthenticated `/wp/v2/users`. Default `false`: closed, unless the users kind's read rule lets anyone read users. |
 | `sealed` | Sealed mode: the only code that runs as a plugin is First's own plugins, the platform plugins, the `plugins` declared here (exact versions, checksums in the committed lock) and `use` plugin packages. Activating anything else is refused; anything else already loaded is reported. A host that mounts First through the build store can enforce the list before any plugin loads. Default `false`. See docs/sealed.md for what is and isn't guaranteed. |
 | `runtimeSchema` | Let the running site add collections, globals and fields, each change stored there as a numbered schema version. The build declares the changes listed in `first/_generated/runtime-schema.json`. Default `false`. |
@@ -130,7 +130,7 @@ export declare function slug(config: { source: string }): ColumnBuilder<"slug", 
 A private-file id in the named bucket.
 
 ```ts
-export declare function file(config: { bucket: string }): ColumnBuilder<"file", number, true, false>;
+export declare function file(bucket: FileBucket): ColumnBuilder<"file", number, true, false>;
 ```
 
 ### `richText`
@@ -249,18 +249,17 @@ export declare function action<TInput extends ColumnsConfig, TResult>(definition
 
 ### `global`
 
-Defines a global. Fields use the column builders with the sub-field restrictions, and no `.unique()`/`slug()`/`blocks()`; a required field needs a default. Default access: `read: "anyone"`, `update: "editor"`.
+Defines a global, named by its export: `export const settings = global({ ... })`. Fields use the column builders with the sub-field restrictions, and no `.unique()`/`slug()`/`blocks()`; a required field needs a default. Default access: `read: "anyone"`, `update: "editor"`.
 
 ```ts
-export declare function global<const TName extends string, TFields extends FieldsConfig>(
-  name: TName,
+export declare function global<TFields extends FieldsConfig>(
   fields: TFields,
   options?: {
     label?: string;
     agents?: boolean;
     access?: { read?: GateRule<never>; update?: GateRule<Partial<SelectShape<TFields>>> };
   },
-): Global<TName, TFields>;
+): Global<string, TFields>;
 ```
 
 ### `defineConfig`
@@ -317,8 +316,10 @@ export declare function env(name: string): EnvValue;
 
 ### `files`
 
+A private file bucket, named by its export: `export const decks = files({ accept, maxBytes })`.
+
 ```ts
-export declare function files(name: string, options: {
+export declare function files(options: {
   accept: string[];
   maxBytes: number;
   access?: { read?: FileRule; create?: FileRule; delete?: FileRule };

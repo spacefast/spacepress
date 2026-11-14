@@ -114,6 +114,7 @@ test("the facade denies what core denies", async () => {
 
 test("the users kind: rows as First reads them, writes through First's rules, creates and permanent deletes", async () => {
   const sub = harness.users.subscriber.id;
+  first("update", "members", JSON.stringify({ id: sub }), JSON.stringify({ notes: { private: "admin only" } }));
   // A member reads their own row whole (email, role) without list_users; another's is not theirs.
   const own = await f("GET", `/members/${sub}`, { as: "subscriber" });
   const trusted = first("find", "members", JSON.stringify({ where: { id: sub } }))[0];
@@ -335,4 +336,25 @@ test("a revisions list pages like every list: { data, cursor }, nothing dropped 
   const whole = await f("GET", `/posts/${post.id}/revisions`, { as: "editor" });
   assert.deepEqual([whole.json.data.length, whole.json.cursor], [5, null], "one page holds them all under the default limit");
   assert.equal((await f("GET", `/posts/${post.id}/revisions` + qs({ cursor: "nonsense" }), { as: "editor" })).status, 400);
+});
+
+test("a restore puts back the whole revision, fields hidden from the caller included, and never returns them", async () => {
+  // payroll: editors update rows; salary is readable and settable by admins only.
+  const id = first("insert", "payroll", JSON.stringify({ title: `Restore pay ${run}`, salary: "1k" }))[0].id;
+  first("update", "payroll", JSON.stringify({ id }), JSON.stringify({ title: `Restore pay ${run} later`, salary: "2k" }));
+  const revisions = await f("GET", `/payroll/${id}/revisions`, { as: "editor" });
+  assert.equal(revisions.status, 200, JSON.stringify(revisions.json));
+  const oldest = revisions.json.data.at(-1).id;
+  const snapshot = await f("GET", `/payroll/${id}/revisions/${oldest}`, { as: "editor" });
+  assert.equal("salary" in snapshot.json.data, false, "the revision is masked for the editor");
+  const restored = await f("POST", `/payroll/${id}/revisions/${oldest}/restore`, { as: "editor" });
+  assert.equal(restored.status, 200, JSON.stringify(restored.json));
+  assert.equal(restored.json.data.title, `Restore pay ${run}`);
+  assert.equal("salary" in restored.json.data, false, "the answer is masked like every read");
+  const stored = first("find", "payroll", JSON.stringify({ where: { id } }))[0];
+  assert.deepEqual([stored.title, stored.salary], [`Restore pay ${run}`, "1k"], "the hidden field came back from the revision, not left at its later value");
+  // Sending a hidden field is still refused: a restore writes it only from the stored revision.
+  const direct = await f("PATCH", `/payroll/${id}`, { as: "editor", body: { salary: "3k" } });
+  assert.deepEqual([direct.status, direct.json.pointer], [403, "/salary"]);
+  assert.equal((await f("POST", `/payroll/${id}/revisions/${oldest}/restore`)).status, 404, "anonymous: no such row");
 });

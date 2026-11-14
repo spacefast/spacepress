@@ -445,7 +445,8 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
   the raw body.
   It can also be called from a form (rendering.md).
 - **`job`** runs on Action Scheduler after the request commits. A plain call
-  becomes an async action. `every` compiles to a recurring action and `cron`
+  becomes an async action, written in the request's transaction, so it commits
+  or rolls back with the request. `every` compiles to a recurring action and `cron`
   to a cron action; both are unique and re-registered on
   `action_scheduler_ensure_recurring_actions`.
 - Handlers get the globals `fetch`, `crypto`, `process.env`, `mail`, `once` and `HttpError`.
@@ -507,6 +508,8 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
   - changing the app's schema on the site: `first.config.ts` is the only way to
     change the field groups, post types, taxonomies, meta, roles and
     capabilities First generates (`docs/config-api.md`, "Schema lock");
+  - telling a visitor which accounts exist when they sign in or reset a
+    password: one error for an unknown account and a wrong password;
   - the theme front end when `app/` or `frontend` takes over.
 - **Sealed mode** (`sealed: true`, opt-in): only First's plugins, the pinned
   platform plugins, the `plugins` the config declares and `use` plugin packages

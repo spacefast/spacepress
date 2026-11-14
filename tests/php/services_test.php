@@ -70,6 +70,8 @@ eq('mail waits for its scheduled job, with real persisted values', [glob($eviden
 eq('retry returns the same receipt', $servicePost('forms/contact', $submission, 'contact-1')[1], $receipt);
 eq('changed data cannot reuse a receipt', $servicePost('forms/contact', ['data' => ['email' => 'visitor@example.test', 'message' => 'changed']], 'contact-1')[1]['code'], 'idempotency_mismatch');
 
+$pendingActions = static fn (): int => (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}actionscheduler_actions WHERE `hook` = 'first_job' AND `status` = 'pending'");
+$actionsBefore = $pendingActions();
 try {
     $db->transaction(static function () use ($wp, $submission): void {
         $wp->app()->dispatch('POST', '/services/forms/contact', [], json_encode($submission), new \First\Viewer(null), ['idempotency-key' => 'rolled-back']);
@@ -78,10 +80,10 @@ try {
 } catch (RuntimeException $error) {
     eq('rollback probe reached its intended abort', $error->getMessage(), 'rollback probe');
 }
-eq('rollback removes the submission, job, outbox and replay receipt together', [
+eq('rollback removes the submission, job, its action and replay receipt together', [
     (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first__services_submissions'),
     (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first__jobs'),
-    (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first__outbox'),
+    $pendingActions() - $actionsBefore,
     (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first__receipts WHERE `key` = ?', ['rolled-back']),
 ], [1, 1, 0, 0]);
 

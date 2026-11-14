@@ -133,6 +133,7 @@ const CONFIG_KEYS: &[&str] = &[
     "plugins",
     "admin",
     "publicAuthors",
+    "sealed",
     "services",
     "use",
     "frontend",
@@ -311,6 +312,16 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         crate::wp_plugins::resolve(&plugins, &crate::platform::plugins(out.schema.locales.is_some()))
             .map_err(|e| Diag::new(span, format!("plugins: {e}")))?;
         out.plugins = Some(plugins);
+    }
+    // After `plugins`: a sealed site runs the plugins it declares, by their directory slug.
+    if bool_option(&cfg_map, "sealed", false, span_of(ev, config, "sealed", config_span))? {
+        let mut declared: Vec<String> = out
+            .plugins
+            .iter()
+            .flat_map(|config| config.plugins.iter().map(|plugin| plugin.slug.clone()))
+            .collect();
+        declared.sort();
+        out.schema.sealed = Some(declared);
     }
 
     for registry in ["collections", "tables", "users"] {
@@ -3585,6 +3596,7 @@ mod legacy {
             entry.methods.insert(method, String::new());
             table.files.insert(file.clone(), entry);
             table.routes.push(AppRoute {
+                explicit_id: None,
                 id: name,
                 pattern: path,
                 page: None,

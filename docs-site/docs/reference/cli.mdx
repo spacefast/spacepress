@@ -19,7 +19,7 @@ These commands run on your machine, on the project's files.
 | `first build [dir] [--out dir] [--quiet] [--preserve-data snapshot.json] [--frozen]` | Write the WordPress plugins to first/dist/wp-content. |
 | `first check [dir] [--json] [--frozen]` | Compile and report problems; write nothing. |
 | `first add <module> [dir]` | Add a module to the project as files you own; never overwrites one. Modules: db (SQL tables) |
-| `first doctor [dir] [--out dir] [--site url] [--json]` | Check a build, and a running site (FIRST_TOKEN) |
+| `first doctor [dir] [--out dir] [--site url] [--json]` | Check a build, and a running site (FIRST_TOKEN or FIRST_APP_PASSWORD) |
 | `first init [dir] [--check] [--github]` | Write AGENTS.md, .mcp.json and the agent skills for this project; --github adds the content sync workflow; --check exits 1 when they are out of date. |
 | `first mcp [dir] [--allow-remote-read] [--allow-writes]` | Serve the project to a coding agent as an MCP server on stdio. |
 | `first sync [status \| resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--pr [--repo owner/name] [--base branch]] [--json]` | Content files \<-\> site records (FIRST_APP_PASSWORD or FIRST_TOKEN) |

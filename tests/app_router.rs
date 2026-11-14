@@ -1909,12 +1909,27 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         serde_json::json!([
             "#why Why depth-2",
             "#small-print Small print depth-3",
-            "#why-2 Why depth-2"
+            "#whats-firstapp What's first/app/? depth-3",
+            "#why-1 Why depth-2",
+            "#step-1---install Step 1 - Install depth-3",
+            "#the---force-flag The --force flag depth-3",
+            "#why-1-1 Why 1 depth-2",
+            "#two--spaces Two spaces depth-2"
         ])
     );
+    // Ids follow GitHub's rule (github-slugger): punctuation goes, a repeat gets `-1`.
     assert_eq!(
         seen["introduction"]["anchors"],
-        serde_json::json!(["h2#why", "h3#small-print", "h2#why-2"])
+        serde_json::json!([
+            "h2#why",
+            "h3#small-print",
+            "h3#whats-firstapp",
+            "h2#why-1",
+            "h3#step-1---install",
+            "h3#the---force-flag",
+            "h2#why-1-1",
+            "h2#two--spaces"
+        ])
     );
     assert_eq!(seen["introduction"]["title"], "Introduction · Docs");
     assert_eq!(
@@ -1954,6 +1969,11 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         seen["same slug elsewhere"],
         serde_json::json!([["Install again"], ["Install"]])
     );
+    // Every id github-slugger gives the fixture's headings (tests/fixtures/docs-kind/heading-ids.json).
+    assert_eq!(seen["heading ids"], serde_json::json!([]));
+    assert_eq!(seen["heading id cases"], 17);
+    // `## Why`, `<h2 id="why">`, `## Why`: the own id stays, and the generated ones step around it.
+    assert_eq!(seen["own ids"], serde_json::json!(["why-1", "why", "why-2"]));
     // A block that renders differently each time doesn't cost the headings their anchors.
     assert_eq!(
         seen["headings beside a gallery"],
@@ -1961,9 +1981,23 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             [
                 "#why Why depth-2",
                 "#small-print Small print depth-3",
-                "#why-2 Why depth-2"
+                "#whats-firstapp What's first/app/? depth-3",
+                "#why-1 Why depth-2",
+                "#step-1---install Step 1 - Install depth-3",
+                "#the---force-flag The --force flag depth-3",
+                "#why-1-1 Why 1 depth-2",
+                "#two--spaces Two spaces depth-2"
             ],
-            ["h2#why", "h3#small-print", "h2#why-2"]
+            [
+                "h2#why",
+                "h3#small-print",
+                "h3#whats-firstapp",
+                "h2#why-1",
+                "h3#step-1---install",
+                "h3#the---force-flag",
+                "h2#why-1-1",
+                "h2#two--spaces"
+            ]
         ])
     );
     // Components in Markdown (docs/decisions/2026-11-13-components-in-markdown.md): the file's
@@ -2490,6 +2524,18 @@ fn docs_read_as_published(seen: &serde_json::Value) {
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
     // Home → the docs, by the reader's click; the doc has its title and the published tree.
     assert_eq!(seen["home"], "First docs");
+    // The router region is processed as core processes a block theme's: core/router's state.url
+    // comes from the server, follows a <Link> click that swapped the region in the same document,
+    // and core's loading bar is in the footer with its styles.
+    assert_eq!(seen["serverUrl"], format!("{url}/"), "{seen}");
+    assert_eq!(
+        seen["navigation"],
+        serde_json::json!({
+            "sameDocument": true,
+            "url": format!("{url}/docs/introduction"),
+            "loadingBar": [["core/router/private", "fixed"]]
+        })
+    );
     assert_eq!(
         seen["intro"],
         serde_json::json!({ "path": "/docs/introduction", "title": "Introduction · First docs", "h1": "Introduction" })
@@ -2714,4 +2760,92 @@ fn static_routes_have_code_owned_pages() {
         (&seen["sitemap pages"], &seen["sitemap app"]),
         (&serde_json::json!(4), &serde_json::json!(3))
     );
+}
+
+/// An explicit route id (`export const route = { id }` on a page.tsx, `id:` in a page.md's front
+/// matter) keeps the page's WordPress Page when its file moves to another URL: the second build
+/// moves both files under `company/`, and both Pages keep their IDs with the new URL as their link,
+/// while the old URLs redirect there. Without an id the route id is the folder path.
+#[test]
+fn route_ids_keep_pages_when_files_move() {
+    let first = fixture("route-ids", "first");
+    build(&first);
+    let second = fixture("route-ids", "second");
+    let app = second.join("first/app");
+    std::fs::create_dir_all(app.join("company")).unwrap();
+    for page in ["about", "colophon"] {
+        std::fs::rename(app.join(page), app.join("company").join(page)).unwrap();
+    }
+    build(&second);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/route_ids.php"))
+        .arg(first.join("first/dist/wp-content"))
+        .arg(second.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&first);
+    let _ = std::fs::remove_dir_all(&second);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{stdout}{}", String::from_utf8_lossy(&out.stderr));
+    let json: String = stdout
+        .lines()
+        .skip_while(|l| !l.starts_with('{'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let seen: serde_json::Value = serde_json::from_str(&json).unwrap_or_else(|_| panic!("{stdout}"));
+    assert_eq!(seen["first served"], serde_json::json!([200, 200]));
+    assert_eq!(
+        seen["second served"],
+        serde_json::json!([200, 200, 301, 301]),
+        "the old URLs redirect"
+    );
+    for (title, before, after) in [
+        ("About", "/about", "/company/about"),
+        ("Colophon", "/colophon", "/company/colophon"),
+    ] {
+        assert_eq!(seen["first"][title]["link"], before, "{title}: {seen}");
+        assert_eq!(
+            seen["second"][title]["id"], seen["first"][title]["id"],
+            "{title} keeps its Page"
+        );
+        assert_eq!(seen["second"][title]["link"], after, "{title}: {seen}");
+        assert_eq!(seen["second"][title]["status"], "publish");
+    }
+    let titles: Vec<&String> = seen["second"].as_object().unwrap().keys().collect();
+    assert_eq!(titles, ["About", "Colophon", "Home"], "one Page each, none duplicated");
+}
+
+/// A route id is a literal, and two pages can't share one; the error is at the export.
+#[test]
+fn refuses_route_ids_it_cannot_keep() {
+    let dir = std::env::temp_dir().join(format!("first-route-ids-{}", std::process::id()));
+    let page =
+        |id: &str| format!("export const route = {{ id: {id} }};\nexport default function P() {{ return <p/>; }}\n");
+    rejects(
+        &dir,
+        &[
+            ("first/app/a/page.tsx", &page("\"site.page\"")),
+            ("first/app/b/page.tsx", &page("\"site.page\"")),
+        ],
+        "route id `site.page` is already app/a/page.tsx's",
+        "first/app/b/page.tsx:1:14",
+    );
+    rejects(
+        &dir,
+        &[("first/app/a/page.tsx", &page("\"site page\""))],
+        "`route` must be `{ id: \"…\" }` with a literal id",
+        "first/app/a/page.tsx:1:14",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/a/page.tsx", &page("\"site.page\"")),
+            ("first/app/b/page.md", "---\nid: site.page\ntitle: B\n---\n\nText.\n"),
+        ],
+        "id `site.page` is already app/a/page.tsx's",
+        "first/app/b/page.md:2:",
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

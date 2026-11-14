@@ -528,6 +528,7 @@ pub fn allowed_exports(file: &str) -> &'static [&'static str] {
     match name {
         "page.tsx" => &[
             "default",
+            "route",
             "metadata",
             "search",
             "prerender",

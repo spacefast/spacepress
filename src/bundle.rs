@@ -445,6 +445,8 @@ pub(crate) struct Compiled {
     /// The app has an auth collection, so it mounts `first-identity`.
     pub identity: bool,
     pub admin: bool,
+    /// `sealed: true`: the plugin slugs a host lets load, First's own and the platform's.
+    pub sealed: Option<Vec<String>>,
 }
 
 /// `compile`, optionally without the schema-independent runtime plugins (a build store keeps
@@ -805,9 +807,14 @@ pub(crate) fn compile_tree(
     actions.sort();
     let summary = serde_json::json!({"name": schema.name, "collections": collections, "tables": tables, "actions": actions,
         "identity": schema.collections.values().any(|c| c.auth), "admin": schema.admin});
-    let manifest = serde_json::json!({"format":"first.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
+    let mut manifest = serde_json::json!({"format":"first.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
         "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "routes":routes, "pagePaths":page_paths,
         "summary":summary, "host":crate::host_contract::manifest_host(), "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
+    let sealed = sealed_plugins(&built.schema, hosted_first(&built.schema));
+    // No key when the app isn't sealed, so an unsealed app's tree hashes as it did before.
+    if let Some(sealed) = &sealed {
+        manifest["sealed"] = sealed.clone().into();
+    }
     std::fs::write(
         output.join("manifest.json"),
         serde_json::to_vec_pretty(&manifest).unwrap(),
@@ -817,8 +824,51 @@ pub(crate) fn compile_tree(
         manifest,
         identity: built.schema.collections.values().any(|c| c.auth),
         admin: built.schema.admin,
+        sealed,
         name: built.schema.name,
     })
+}
+
+/// The First plugins a host mounts for this build (the build store loader's order).
+#[cfg(feature = "host")]
+fn hosted_first(schema: &crate::schema::Schema) -> Vec<String> {
+    ["first-runtime".to_string(), format!("first-app-{}", schema.name)]
+        .into_iter()
+        .chain(
+            schema
+                .collections
+                .values()
+                .any(|c| c.auth)
+                .then(|| "first-identity".to_string()),
+        )
+        .chain(schema.admin.then(|| "first-admin".to_string()))
+        .collect()
+}
+
+/// A sealed app's plugin allow-list (docs/sealed.md), by directory slug: `first` (the First plugins
+/// of this target, which its caller names), First's admin, the platform pins this app needs, and
+/// the WordPress plugins the config declares. `None` when the app isn't sealed. Plugin packages (`use`) are compiled into the app
+/// plugin, so they need no entry.
+pub(crate) fn sealed_plugins(
+    schema: &crate::schema::Schema,
+    first: impl IntoIterator<Item = String>,
+) -> Option<Vec<String>> {
+    let declared = schema.sealed.as_ref()?;
+    let mut slugs: Vec<String> = first
+        .into_iter()
+        // First's admin is First's own plugin: listed whether or not this build ships it
+        // (`admin: true`), so a sealed site never refuses it however it is installed.
+        .chain(["first-admin".to_string()])
+        .chain(
+            crate::platform::plugins(schema.locales.is_some())
+                .into_iter()
+                .map(|p| p.slug),
+        )
+        .chain(declared.iter().cloned())
+        .collect();
+    slugs.sort();
+    slugs.dedup();
+    Some(slugs)
 }
 
 #[cfg(feature = "cli")]

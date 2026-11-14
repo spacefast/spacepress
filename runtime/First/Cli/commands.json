@@ -7,7 +7,7 @@
     { "name": "export", "args": "[dir] [--out dir] [--site url] [--base /path] [--site-url https://example.com]", "summary": "write first/app/ as a static site to first/dist/static (output: \"static\"); --site renders a hosted site's content (FIRST_APP_PASSWORD or FIRST_TOKEN)" },
     { "name": "check", "args": "[dir] [--json] [--frozen]", "summary": "compile and report problems; write nothing" },
     { "name": "add", "args": "<module> [dir]", "summary": "add a module to the project as files you own; never overwrites one. Modules: db (SQL tables)" },
-    { "name": "doctor", "args": "[dir] [--out dir] [--site url] [--json]", "summary": "check a build, and a running site (FIRST_TOKEN)" },
+    { "name": "doctor", "args": "[dir] [--out dir] [--site url] [--json]", "summary": "check a build, and a running site (FIRST_TOKEN or FIRST_APP_PASSWORD)" },
     { "name": "init", "args": "[dir] [--check] [--github]", "summary": "write AGENTS.md, .mcp.json and the agent skills for this project; --github adds the content sync workflow; --check exits 1 when they are out of date" },
     { "name": "mcp", "args": "[dir] [--allow-remote-read] [--allow-writes]", "summary": "serve the project to a coding agent as an MCP server on stdio" },
     { "name": "sync", "args": "[status | resolve <uid>] [dir] [--site url] [--only c1,c2] [--check] [--no-commit] [--pr [--repo owner/name] [--base branch]] [--json]", "summary": "content files <-> site records (FIRST_APP_PASSWORD or FIRST_TOKEN)" },

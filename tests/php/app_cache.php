@@ -31,9 +31,13 @@ $site = wpSite('app-cache', ['wpContent' => $argv[1], 'users' => ['chief' => 'ed
             $seen[] = "$cache $url";
             update_option('test_cleared', $seen, false);
         }
+        // Batcache counts only while its drop-in runs: that is what sets $batcache.
+        $GLOBALS['batcache'] = new stdClass();
         function batcache_clear_url($url) { first_test_cleared('batcache', $url); }
         function wpvip_purge_edge_cache_for_url($url) { first_test_cleared('vip', $url); }
+        function wpvip_purge_edge_cache_for_site() { first_test_cleared('vip', '*'); }
         add_action('jetpack_boost_clear_page_cache_url', static fn ($url) => first_test_cleared('boost', $url));
+        add_action('jetpack_boost_clear_page_cache_home', static fn () => first_test_cleared('boost', 'home'));
         PHP,
 ]]);
 wp_set_current_user(1);
@@ -101,10 +105,20 @@ wp_cache_delete('test_purges', 'options');
 $out['purged'] = get_option('test_purges', []);
 wp_cache_delete('test_cleared', 'options');
 $out['cleared'] = str_replace($url, '', get_option('test_cleared', []));
-// A whole-host purge reaches Boost's clear-all; Batcache has none.
+// A whole-host purge bans the VIP site and reaches Boost's clear-all; Batcache has none.
 delete_option('test_cleared');
 add_action('jetpack_boost_clear_page_cache_all', static fn () => first_test_cleared('boost', '*'));
 \First\Wp\PageCaches::purge(['/*']);
 $out['cleared all'] = get_option('test_cleared', []);
+// More paths than VIP queues in one request: one site ban for VIP, each path still for the others.
+delete_option('test_cleared');
+\First\Wp\PageCaches::purge(array_map(static fn (int $n): string => "/n/$n", range(1, 101)));
+$cleared = get_option('test_cleared', []);
+$out['cleared many'] = [count(array_filter($cleared, static fn ($c) => str_starts_with($c, 'vip '))), in_array('vip *', $cleared, true), count(array_filter($cleared, static fn ($c) => str_starts_with($c, 'batcache ')))];
+// Without the drop-in ($batcache unset), Batcache's manager plugin alone is not a page cache.
+unset($GLOBALS['batcache']);
+delete_option('test_cleared');
+\First\Wp\PageCaches::purge(['/about']);
+$out['without batcache drop-in'] = str_replace($url, '', get_option('test_cleared', []));
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

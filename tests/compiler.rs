@@ -775,6 +775,56 @@ fn context_values_pass_through_typed_helpers() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
+/// A value typed as a function only by a type assertion or parsed JSON can be a string at run
+/// time. Passed to a callback-taking method or called, it is refused as a JavaScript TypeError;
+/// PHP never calls the PHP function the request named. `sprintf`, `max` and `First\Js::typeOf`
+/// accept any argument count, so before the check they ran and returned a result. (A JSON array
+/// parses to a JsArray, never a PHP `[class, method]` array; tests/php/js_parity.php covers those.)
+#[test]
+fn a_string_from_input_is_never_called_as_a_php_function() {
+    let tmp = std::env::temp_dir().join(format!("first-callback-closures-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/callback-closures"), &tmp);
+    let built = first().arg("build").arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let got = wp_eval_json(
+        &tmp.join("first/dist/wp-content"),
+        r#"$out = [];
+           foreach ($arg as [$action, $input]) {
+               [$status, $body] = $wp->call("POST", "/actions/$action", $input);
+               $out[] = [$action, $status, $body["detail"] ?? $body];
+           }
+           echo json_encode($out);"#,
+        &serde_json::json!([
+            ["map", { "fn": "sprintf" }],
+            ["map", { "fn": "First\\Js::typeOf" }],
+            ["filter", { "fn": "strrev" }],
+            ["reduce", { "fn": "max" }],
+            ["replace", { "fn": "max" }],
+            ["range", { "fn": "max" }],
+            ["passed", { "fn": "strrev" }],
+            ["call", { "fn": "strrev", "arg": "abc" }],
+            ["json", { "body": "{\"fn\":\"sprintf\"}" }],
+        ]),
+    );
+    let refused = "Callback is not a function";
+    assert_eq!(
+        got,
+        serde_json::json!([
+            ["map", 422, refused],
+            ["map", 422, refused],
+            ["filter", 422, refused],
+            ["reduce", 422, refused],
+            ["replace", 422, refused],
+            ["range", 422, refused],
+            ["passed", 422, refused],
+            ["call", 422, refused],
+            ["json", 422, refused],
+        ])
+    );
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
 /// §1.6: access rules are compiled like hooks, but return a boolean or a filter on the collection.
 #[test]
 fn rejects_access_rules_that_cant_hold() {
@@ -2596,6 +2646,23 @@ export default defineConfig({ name: "kindurls", sealed: true, admin: true, local
         built["sealed"],
         serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor"]})
     );
+    // A sealed site can't declare a plugin that hands content out around First's read rules.
+    for slug in ["vip-block-data-api", "vip-decoupled-bundle"] {
+        let denied = tmp.path().join(format!("app-sealed-denied-{slug}"));
+        std::fs::create_dir_all(&denied).unwrap();
+        std::fs::write(
+            denied.join("first.config.ts"),
+            format!("import {{ defineConfig }} from \"first\";\nexport default defineConfig({{ name: \"kindurls\", sealed: true, plugins: {{ \"{slug}\": {{ version: \"1.0.0\", pluginData: {{ resource: \"url\", url: \"https://example.test/{slug}.zip\" }}, sha256: \"{}\" }} }} }});\n", "0".repeat(64)),
+        )
+        .unwrap();
+        let out = first().args(["build", "--quiet"]).arg(&denied).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success(), "{slug}: {stderr}");
+        assert!(
+            stderr.contains(&format!("a sealed site can't run {slug}")) && stderr.contains("around First's read rules"),
+            "{slug}: {stderr}"
+        );
+    }
     let refused = tmp.path().join("app-sealed-refused");
     std::fs::create_dir_all(&refused).unwrap();
     std::fs::write(

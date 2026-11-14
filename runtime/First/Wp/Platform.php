@@ -82,6 +82,11 @@ final class Platform
                 $problems[] = "$name $minimum+ is required (found " . ($version ?? 'inactive') . ')';
             }
         }
+        // First calls Polylang's language model where 3.7 put it (PLL()->model->languages), not the
+        // older names Polylang forwards for compatibility: a Polylang without it can't add a locale.
+        if ($localized && $versions['polylang'] !== null && function_exists('PLL') && !Polylang::hasLanguageModel()) {
+            $problems[] = 'polylang ' . self::PLUGINS['polylang']['version'] . '+ with PLL()->model->languages is required (found ' . $versions['polylang'] . ')';
+        }
         $database = $versions['database'];
         $minimum = match ($database['kind']) { 'mariadb' => self::MARIADB, 'sqlite' => self::SQLITE, default => self::MYSQL };
         if (version_compare($database['version'], $minimum, '<')) {

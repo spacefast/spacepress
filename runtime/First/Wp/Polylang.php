@@ -146,10 +146,10 @@ final class Polylang
         // Polylang resolves the slug through the language list this request loaded; one loaded before
         // another request provisioned the language wouldn't know it. Reload once, then refuse rather
         // than store a post without its language.
-        if (!PLL()->model->get_language(self::slug($locale))) {
+        if (!self::languages()->get(self::slug($locale))) {
             self::reload();
         }
-        if (!PLL()->model->get_language(self::slug($locale))) {
+        if (!self::languages()->get(self::slug($locale))) {
             throw new HttpError(503, 'unavailable', "Polylang has no $locale language yet; try again shortly");
         }
         self::busy(static fn () => pll_set_post_language($id, self::slug($locale)));
@@ -231,15 +231,15 @@ final class Polylang
             }
             [$lang, $region] = array_pad(explode('-', $locale, 2), 2, null);
             $wpLocale = $region !== null ? $lang . '_' . strtoupper($region) : ($lang === 'en' ? 'en_US' : $lang . '_' . strtoupper($lang));
-            $added = PLL()->model->add_language(['locale' => $wpLocale, 'slug' => self::slug($locale), 'name' => $locale, 'term_group' => $i]);
+            $added = self::languages()->add(['locale' => $wpLocale, 'slug' => self::slug($locale), 'name' => $locale, 'term_group' => $i]);
             if ($added instanceof \WP_Error) {
                 throw new \RuntimeException("Polylang could not add $locale: " . $added->get_error_message());
             }
         }
         // Polylang's default follows locales.default, also on sites whose languages already existed.
-        $default = PLL()->model->get_language(self::slug($locales['default']));
+        $default = self::languages()->get(self::slug($locales['default']));
         if ($default instanceof \PLL_Language && pll_default_language() !== $default->slug) {
-            PLL()->model->update_default_lang($default->slug);
+            self::languages()->update_default($default->slug);
         }
         // Posts of localized post types that predate localization (no language) become default-locale rows.
         $types = self::postTypes();
@@ -251,6 +251,30 @@ final class Polylang
             }
         }
         update_option('first_polylang_languages', self::state($locales), false);
+    }
+
+    /**
+     * Polylang's language model: `PLL()->model->languages` (`get`, `add`, `update_default`), where
+     * Polylang 3.7 moved them. The older `PLL()->model->get_language()` forms still answer only
+     * through its backward-compatibility `__call`, so First calls the real methods
+     * (docs/wordpress-internals.md). A Polylang without them is a platform problem, not a fatal.
+     */
+    private static function languages(): object
+    {
+        if (!self::hasLanguageModel()) {
+            throw new HttpError(503, 'platform', 'Polylang ' . Platform::PLUGINS['polylang']['version'] . '+ is required (found '
+                . (defined('POLYLANG_VERSION') ? POLYLANG_VERSION : 'inactive') . ' without PLL()->model->languages)');
+        }
+
+        return PLL()->model->languages;
+    }
+
+    /** Whether the loaded Polylang has the language model First calls ({@see languages()}). */
+    public static function hasLanguageModel(): bool
+    {
+        $languages = function_exists('PLL') && is_object(PLL()->model ?? null) ? (PLL()->model->languages ?? null) : null;
+
+        return is_object($languages) && method_exists($languages, 'get') && method_exists($languages, 'add') && method_exists($languages, 'update_default');
     }
 
     /** Polylang's language list as committed now: its own cache, and WordPress's term-query cache it reads through. */

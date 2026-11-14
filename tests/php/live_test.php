@@ -27,6 +27,9 @@ $schema = ['name' => 'live', 'collections' => [
         'relations' => ['todos' => ['kind' => 'many', 'collection' => 'todos', 'from' => 'id', 'to' => 'listId', 'optional' => false]]],
     'todos' => ['key' => 'todos', 'primaryKey' => 'id', 'columns' => ['id' => $id, 'title' => $text, 'listId' => ['type' => 'integer']], 'access' => $open,
         'relations' => ['list' => ['kind' => 'one', 'collection' => 'lists', 'from' => 'listId', 'to' => 'id', 'optional' => true]]],
+    // A `ref()` field as the compiler emits it: one name for the column and the relation.
+    'chores' => ['key' => 'chores', 'primaryKey' => 'id', 'columns' => ['id' => $id, 'title' => $text, 'list' => ['type' => 'integer', 'references' => ['collection' => 'lists', 'column' => 'id']]], 'access' => $open,
+        'relations' => ['list' => ['kind' => 'one', 'collection' => 'lists', 'from' => 'list', 'to' => 'id', 'optional' => true]]],
     // Editors only.
     'secrets' => ['key' => 'secrets', 'primaryKey' => 'id', 'columns' => ['id' => $id, 'title' => $text], 'access' => ['read' => ['role' => 'editor'], 'create' => ['role' => 'editor']]],
     // A field only admins read.
@@ -188,6 +191,17 @@ $db->update('lists', ['name' => 'Flat'], ['id' => $list['id']]);
 $r2 = $ask(null, $through + ['token' => $r['token']]);
 eq('a write to the kind a filter looks into refreshes the read', [$r2['changed'], $r2['data'] ?? null], [true, 0]);
 
+// The same through a `ref()` field, where the column and the relation share a name.
+$db->insert('chores', ['title' => 'sweep', 'list' => $list['id']]);
+$byRef = ['kind' => 'chores', 'op' => 'count', 'args' => ['where' => ['list' => ['name' => 'Flat']]]];
+$f = $ask(null, $byRef);
+eq('a filter through a ref() field', $f['data'], 1);
+$db->update('lists', ['name' => 'Loft'], ['id' => $list['id']]);
+$f2 = $ask(null, $byRef + ['token' => $f['token']]);
+eq('a write to the kind a ref() field filters into refreshes the read', [$f2['changed'], $f2['data'] ?? null], [true, 0]);
+$byValue = ['kind' => 'chores', 'op' => 'count', 'args' => ['where' => ['list' => $list['id']]]];
+eq('a ref() field filtered by its value depends on its own kind only', Token::open($ask(null, $byValue)['token'])['c'], [['chores', 'all', $counter('chores')]]);
+
 // ---------------------------------------------------------------- a reader the kind refuses
 
 $db->insert('secrets', ['title' => 'plan']);
@@ -310,6 +324,15 @@ foreach (['garbage', '', str_repeat('A', Token::MAX_LENGTH + 1), substr($t1['tok
 $raw = (string) base64_decode(strtr($t1['token'], '-_', '+/'));
 check('a token is sealed: no kind, claim name or hash shows in it', !str_contains($raw, 'todos') && !str_contains($raw, '"c"') && !str_contains($raw, (string) Token::open($t1['token'])['h']), bin2hex($raw));
 check('and its claims open only with the site key', Token::open($t1['token']) !== null && array_keys(Token::open($t1['token'])) === ['q', 'c', 'h', 't']);
+// Its length doesn't follow a counter's digits: counters of 9 and 10 seal to tokens of one length.
+$sealed = static fn (int $n): int => strlen(Token::seal(['q' => 'x', 'c' => [['todos', 'all', $n]], 'h' => str_repeat('h', 44), 't' => 1]));
+eq('a token is padded', [$sealed(9), $sealed(99)], [$sealed(10), $sealed(100)]);
+// A post-password cookie changes what a visitor reads, so a token is for one cookie.
+$_COOKIE['wp-postpass_' . COOKIEHASH] = 'a-proof';
+eq('another visitor\'s password proof makes a token no token', $ask(null, $q + ['token' => $ask(null, $q)['token']])['changed'], false);
+$held = $ask(null, $q)['token'];
+unset($_COOKIE['wp-postpass_' . COOKIEHASH]);
+eq('a token held under one password proof answers nothing without it', $ask(null, $q + ['token' => $held])['changed'], true);
 // Two visitors who may not read a kind's rows alike never share what a token says: the refused one holds none.
 eq('a refused read issues no token to compare', array_key_exists('token', $ask('sub', $secret)), false);
 // A visitor answered by hash holds a token without counters.
@@ -340,14 +363,31 @@ wp_delete_post((int) $article['id'], true);
 $wp->actAs(null);
 $a4 = $ask(null, $articles + ['token' => $a3['token']]);
 eq('a permanent delete in wp-admin reaches the visitor', [$a4['changed'], $plain($a4['data'] ?? null)], [true, []]);
+// Move to Trash (wp-admin's, and core REST's DELETE without `force`) and back.
+$kept = $db->insert('articles', ['title' => 'Trashed', 'status' => 'published'], true)[0];
+$t0 = $ask(null, $articles);
+$wp->actAs('ed');
+wp_trash_post((int) $kept['id']);
+$wp->actAs(null);
+$t1 = $ask(null, $articles + ['token' => $t0['token']]);
+eq('moving a published post to the trash reaches the visitor', [$t1['changed'], array_column($plain($t1['data'] ?? []), 'title')], [true, []]);
+$wp->actAs('ed');
+wp_untrash_post((int) $kept['id']);
+wp_publish_post((int) $kept['id']);
+$wp->actAs(null);
+$t2 = $ask(null, $articles + ['token' => $t1['token']]);
+eq('and restoring it does too', [$t2['changed'], array_column($plain($t2['data'] ?? []), 'title')], [true, ['Trashed']]);
 
 // ---------------------------------------------------------------- bounds
 
 $many = array_fill(0, 4, ['kind' => 'todos', 'op' => 'count']);
 $bounded = Live::evaluate($db, $as(null), [$top, ...$many], 0);
 eq('past the time budget the rest are pending; the first always runs', array_map(static fn ($r) => array_keys($r), $bounded), [['changed', 'token', 'data', 'json'], ['pending'], ['pending'], ['pending'], ['pending']]);
+for ($i = count($db->findMany('todos', ['limit' => 1000])); $i < Live::MAX_LIST_LIMIT + 5; $i++) {
+    $db->insert('todos', ['title' => "filler $i"]);
+}
 $capped = $ask(null, ['kind' => 'todos', 'op' => 'list', 'args' => ['limit' => 100000]]);
-check('a list is capped at the API limit', isset($capped['data']));
+eq('a list is capped at the API limit', count($plain($capped['data'])), Live::MAX_LIST_LIMIT);
 foreach ([
     'an unknown kind' => [['kind' => 'nope', 'op' => 'list'], 404, 'not_found', '/queries/0/kind'],
     'the stored name is not the key' => [['kind' => 'job_notes', 'op' => 'list'], 404, 'not_found', '/queries/0/kind'],
@@ -359,6 +399,8 @@ foreach ([
     'an id on a list' => [['kind' => 'todos', 'op' => 'list', 'id' => 1], 422, 'invalid_input', '/queries/0/id'],
     'a bad limit' => [['kind' => 'todos', 'op' => 'list', 'args' => ['limit' => 0]], 400, 'invalid_query', '/queries/0/args/limit'],
     'not an object' => ['todos', 422, 'invalid_input', '/queries/0'],
+    'an offset past the API\'s' => [['kind' => 'todos', 'op' => 'list', 'args' => ['offset' => Live::MAX_OFFSET + 1]], 400, 'invalid_query', '/queries/0/args/offset'],
+    'relations nested too deep' => [['kind' => 'todos', 'op' => 'list', 'args' => ['with' => ['list' => ['with' => ['todos' => ['with' => ['list' => ['with' => ['todos' => true]]]]]]]]], 400, 'invalid_query', '/queries/0/args/with'],
     'listing switched off' => [['kind' => 'hidden', 'op' => 'list'], 405, 'method_not_allowed', '/queries/0/op'],
     'counting switched off with it' => [['kind' => 'hidden', 'op' => 'count'], 405, 'method_not_allowed', '/queries/0/op'],
 ] as $label => [$query, $status, $code, $pointer]) {

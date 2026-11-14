@@ -647,6 +647,7 @@
 				"a-page-with-its-own-form-handler",
 				"forms-that-post-to-an-action",
 				"comments",
+				"search",
 				"markdown-pages",
 				"a-docs-section-a-folder-of-markdown-as-a-kind",
 				"typed-search-a-guard-http-handlers",
@@ -1177,7 +1178,7 @@
 			"stops": [],
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/language-support.mdx",
 			"toc": [
-				"compiles-51",
+				"compiles-52",
 				"compiles-and-differs-from-javascript-2",
 				"refused-93"
 			],

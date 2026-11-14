@@ -1096,6 +1096,14 @@ Status: **supported**.
 
 [Evidence](../tests/app_router.rs) (`comments_follow_the_kind_policy_on_every_path`)
 
+## jsx-live
+
+Status: **supported**.
+
+`<Live id="notes">…</Live>` from "first/app" marks part of a server page the browser keeps current: when something the page read for it changes, the region is rendered again as the visitor and updated in place through the Interactivity router. `id` is a literal, unique on the page; `<Live>` belongs in server components (a client component uses `useLive`).
+
+[Evidence](../tests/app_router.rs) (`live_regions_update_in_the_browser`)
+
 ## jsx-form-action
 
 Status: **supported**.

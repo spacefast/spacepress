@@ -160,6 +160,45 @@ takes options, the policy is signed-in users only, first-time moderation, and
 replies three levels deep (a deeper reply is refused). See
 [the decision](decisions/2026-11-14-comments.md).
 
+## Live regions
+
+```tsx
+import { notes } from "first:db";
+import { Live } from "first/app";
+
+export default async function Home() {
+  const all = await notes.list({ orderBy: { id: "asc" } });
+  return <Live id="notes"><ul>{all.map((n) => <li key={n.id}>{n.title}</li>)}</ul></Live>;
+}
+```
+
+`<Live id="…">` marks part of a server page the browser keeps current. When
+something the page read for it changes, the region is rendered again on the
+server, as the visitor, and the page updates in place through the
+Interactivity router. Client components and form fields in the page keep their
+state. `id` is a literal (lowercase letters, digits, dashes) and unique on the
+page.
+
+- **When it updates.** Each region subscribes with the kinds its page read. With
+  a realtime transport it updates on the next change notice for one of them,
+  or after a write the visitor makes through the typed client. Without one it
+  updates on the next poll, 2 to 30 seconds apart. `<Comments>` inside a region
+  updates when a comment's approval changes. A region whose page read nothing
+  updates on the poll only. Anything that changes without a First write (the
+  clock, another plugin's SQL) shows within five minutes.
+- **What it costs.** A page with a live region makes one uncached request to
+  WordPress when it loads, then one per poll while the tab is visible (or on a
+  notice), per open tab. That holds even when the page itself came from a page
+  cache, and that first request is what brings a cached copy current. A tab
+  opened in the background costs nothing until it is shown. An unchanged region
+  usually costs no render (the change counters answer). A region that reads
+  something the counters can't follow, such as a comment thread, renders once
+  per poll. Think about this before putting `<Live>` on a busy cached page.
+- At most four regions render per request; a page with more fills the rest on
+  the next request.
+
+See [the decision](decisions/2026-11-14-live-regions.md).
+
 ## Markdown pages
 
 ```md

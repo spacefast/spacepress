@@ -218,8 +218,9 @@ This spec adds:
   region read, it calls the router to re-fetch the page and swap only that
   region. No client data code is needed. As built: a `page` read on the
   subscription endpoint (`{ op: "page", args: { url, region } }`, decision
-  [2026-11-14](../decisions/2026-11-14-live-regions.md)); the server half lands
-  first, the browser half with the component's browser swap.
+  [2026-11-14](../decisions/2026-11-14-live-regions.md)); the browser subscribes through the
+  typed client with the kinds the region read and swaps through the router
+  ([pages.md](../pages.md#live-regions)).
 - `useLive(kind, query)` inside client components: the result lives in
   context, and directives update when it changes.
 

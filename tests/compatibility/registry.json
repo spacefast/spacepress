@@ -1040,6 +1040,13 @@
       "guidance": "`<Comments for={item} />` from \"first/app\" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props."
     },
     {
+      "id": "jsx-live",
+      "status": "supported",
+      "evidence": "tests/app_router.rs",
+      "test": "live_regions_update_in_the_browser",
+      "guidance": "`<Live id=\"notes\">…</Live>` from \"first/app\" marks part of a server page the browser keeps current: when something the page read for it changes, the region is rendered again as the visitor and updated in place through the Interactivity router. `id` is a literal, unique on the page; `<Live>` belongs in server components (a client component uses `useLive`)."
+    },
+    {
       "id": "jsx-form-action",
       "status": "supported",
       "evidence": "tests/app_router.rs",

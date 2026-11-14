@@ -1389,3 +1389,84 @@ test("while live, a slow jittered safety poll still recovers a notice the transp
   await settle();
   assert.equal(refreshes.length, base + 2, "no poll after the last watcher stops");
 });
+
+// pageRead: First's own `<Live>` regions (docs/decisions/2026-11-14-live-regions.md).
+
+test("pageRead: a page read is keyed apart from every kind read, and asks with { op: page, args: { url, region } }", async () => {
+  const server = liveServer((q) => (q.op === "page" ? { html: `<p>${q.args.region}</p>`, kinds: ["posts"] } : [q.kind]));
+  const client = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const page = mod.pageRead(client, "/", "notes", ["posts"]);
+  const list = client.posts.list();
+  assert.notEqual(page.key, list.key);
+  assert.notEqual(mod.pageRead(client, "/", "notes", []).key, mod.pageRead(client, "/", "other", []).key, "each region is its own read");
+  const got: unknown[] = [];
+  const stop = page.subscribe((d: unknown) => got.push(d));
+  await tick();
+  assert.deepEqual(server.requests[0], [{ op: "page", args: { url: "/", region: "notes" } }]);
+  assert.deepEqual(got, [{ html: "<p>notes</p>", kinds: ["posts"] }]);
+  stop();
+  assert.throws(() => mod.pageRead({}, "/", "notes", []), TypeError, "only a client from createClient()");
+});
+
+test("pageRead: its deps are what the caller passes, so a notice or a write naming one of them asks again", async () => {
+  let n = 0;
+  const server = liveServer((q) => (q.op === "page" ? { html: `<p>${n}</p>`, kinds: ["posts", "wp:comments"] } : { id: 1 }));
+  const transport = fakeTransport();
+  const client = mod.createClient({ url, realtime: { transport, pollMs: false, livePollMs: false } });
+  const got: any[] = [];
+  const stop = mod.pageRead(client, "/", "notes", ["posts", "wp:comments"]).subscribe((d: any) => got.push(d.html));
+  transport.set("live");
+  await tick();
+  const before = server.requests.length;
+  n = 1;
+  transport.push(notice("wp:comments", null));
+  await tick();
+  assert.equal(server.requests.length, before + 1, "a notice for a dep asks at once");
+  assert.equal(got.at(-1), "<p>1</p>");
+  transport.push(notice("shoppingList"));
+  await tick();
+  assert.equal(server.requests.length, before + 1, "a kind it doesn't depend on does not");
+  n = 2;
+  await client.posts.update(1, { title: "x" });
+  await tick();
+  assert.equal(server.requests.length, before + 2, "a write through the same client to a dep asks at once");
+  assert.equal(got.at(-1), "<p>2</p>");
+  stop();
+});
+
+test("pageRead: a seeded region sends its token with the first ask; resubscribing with new deps keeps one read", async () => {
+  const server = liveServer(() => ({ html: "<p>same</p>", kinds: ["posts"] }));
+  const client = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const seed = { html: "<p>same</p>", kinds: ["posts"] };
+  const got: unknown[] = [];
+  let stop = mod.pageRead(client, "/", "notes", ["posts"]).subscribe((d: unknown) => got.push(d), undefined, { token: JSON.stringify(seed), data: seed });
+  await tick();
+  assert.equal(server.requests[0][0].token, JSON.stringify(seed), "the seed's token goes with the first ask");
+  assert.equal(got.length, 1, "the seed is delivered once; the unchanged answer calls nothing");
+  // The region's page read other kinds this time: the browser module subscribes again with them.
+  stop();
+  stop = mod.pageRead(client, "/", "notes", ["posts", "authors"]).subscribe(() => {});
+  await tick();
+  assert.equal(server.requests.at(-1).length, 1, "one read per region");
+  stop();
+});
+
+test("pageRead: an answer `pending` (over the server's per-request cap of page reads) is asked again at once", async () => {
+  let calls = 0;
+  const state = { requests: [] as any[][] };
+  reply = (s) => {
+    const queries = JSON.parse(s.body.toString()).queries as any[];
+    state.requests.push(queries);
+    calls++;
+    const results = queries.map((q, i) => (calls === 1 && i >= 4 ? { pending: true } : { changed: true, token: `t${q.args.region}`, data: { html: q.args.region, kinds: [] } }));
+    return ok({ results, poll: { minMs: 2000, maxMs: 30000 } })();
+  };
+  const client = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const got = new Map<string, string>();
+  const stops = ["a", "b", "c", "d", "e"].map((r) => mod.pageRead(client, "/", r, []).subscribe((d: any) => got.set(r, d.html)));
+  await tick();
+  await tick();
+  assert.deepEqual(state.requests.map((q) => q.length), [5, 1], "the pending read is asked again at once, alone");
+  assert.deepEqual([...got.keys()].sort(), ["a", "b", "c", "d", "e"], "every region is filled");
+  for (const stop of stops) stop();
+});

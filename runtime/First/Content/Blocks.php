@@ -118,12 +118,12 @@ final class Blocks
      *
      * @return array<string, mixed>
      */
-    private static function props(array $spec, array $attrs, bool $declaredOnly = true): array
+    private static function props(array $spec, array $attrs): array
     {
         $attributes = self::attributes($spec);
         $props = [];
         foreach ($attrs as $key => $value) {
-            if ((!$declaredOnly || isset($attributes[$key])) && $value !== null && $value !== '') {
+            if (isset($attributes[$key]) && $value !== null && $value !== '') {
                 $props[$key] = $value;
             }
         }
@@ -347,8 +347,7 @@ final class Blocks
             $flush();
             $spec = $all[$name];
             $attrs = '';
-            // Props the component no longer declares are written too, so a push names them instead of losing them.
-            foreach (self::props($spec, (array) ($block['attrs'] ?? []), declaredOnly: false) as $key => $value) {
+            foreach (self::props($spec, (array) ($block['attrs'] ?? [])) as $key => $value) {
                 $attrs .= ' ' . $key . match (true) {
                     $value === true => '',
                     is_bool($value) => '={false}',

@@ -380,6 +380,10 @@ final class Markdown
             return $inner === [] ? null : ['block' => 'core/freeform', 'attrs' => [], 'inner' => $inner];
         }
         $attrs = is_array($block['attrs'] ?? null) ? $block['attrs'] : [];
+        // A component block's empty prop is an unset one (the editor stores a cleared field as "").
+        if (isset(\First\Content\Blocks::all()[$name])) {
+            $attrs = array_filter($attrs, static fn (mixed $value): bool => $value !== '' && $value !== null);
+        }
         $root = null;
         foreach ($inner as $position => $token) {
             if (isset($token['tag'])) {

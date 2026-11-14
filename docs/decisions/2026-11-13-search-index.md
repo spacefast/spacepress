@@ -117,9 +117,10 @@ updates its product lookup table only when a looked-up property changed
 
 ## Not done
 
-The static JSON index of prerendered pages: static prerender into `first/dist/` is not on main yet
-(it belongs to the app-pages work). When it lands, the build can write the index of the pages it
-prerendered from the same text rules.
+The static JSON index of prerendered pages. Prebuilt pages and `first export` are on main now
+([static output](2026-11-13-static-output.md)), but the export writes no search index yet. A static
+site's index would be written by `first export`, from the pages it rendered and the same text
+rules.
 
 `first/app/` pages are not in the search index. A page's text is what it renders for a reader, which
 depends on who reads it; the rows it shows are searchable through their kinds. With prerender, the

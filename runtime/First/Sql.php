@@ -105,7 +105,12 @@ final class Sql
         $select = [];
         // Schema columns only: a Source may carry helper expressions (the post-backed translation group).
         foreach ($spec['columns'] as $name => $col) {
-            $expr = ($col['derived'] ?? false) ? $this->translations($collection, $alias) : $this->ref($collection, (string) $name, $alias, false);
+            // A many-ref's value is its links, which Db reads from the join table.
+            $expr = match (true) {
+                $col['derived'] ?? false => $this->translations($collection, $alias),
+                $col['type'] === 'refList' => 'NULL',
+                default => $this->ref($collection, (string) $name, $alias, false),
+            };
             $select[] = $expr . ' AS ' . $this->d->quote((string) $name);
         }
         // Joins last: every expression above has marked the columns it needs.
@@ -200,6 +205,9 @@ final class Sql
             if (!isset($spec['columns'][$col])) {
                 throw HttpError::invalidQuery("Unknown column '$col'", $cptr);
             }
+            if ($spec['columns'][$col]['type'] === 'refList') {
+                throw HttpError::invalidQuery('`orderBy` isn\'t supported on list columns', $cptr);
+            }
             if ($dir !== 'asc' && $dir !== 'desc') {
                 throw HttpError::invalidQuery("orderBy direction must be 'asc' or 'desc'", $cptr);
             }
@@ -250,6 +258,8 @@ final class Sql
                 $parts[] = 'NOT (' . $this->filter($collection, $value, $alias, $kptr) . ')';
             } elseif (Schema::filtersRelation($spec, $key, $value)) {
                 $parts[] = $this->relationFilter($collection, $spec['relations'][$key], $value, $alias, $kptr);
+            } elseif (($spec['columns'][$key]['type'] ?? null) === 'refList') {
+                $parts[] = $this->linkFilter($collection, $key, $value, $alias, $kptr);
             } elseif (isset($spec['columns'][$key])) {
                 $parts[] = $this->fieldFilter($collection, $key, $value, $alias, $kptr);
             } else {
@@ -462,6 +472,57 @@ final class Sql
         return $this->ref($collection, $name, $alias, false) . " = '[]'";
     }
 
+    /** A many-ref's links for the row at $alias: `l.<to>` values, as a subquery. */
+    private function linked(string $collection, array $through, string $alias): string
+    {
+        $links = $this->store instanceof Links ? $this->store : throw new \LogicException('This store keeps no ref().many() links');
+        $l = $this->alias();
+        $pk = $this->schema->collection($collection)['primaryKey'];
+
+        return 'SELECT ' . $l . '.' . $this->d->quote($through['to']) . ' FROM ' . $links->linkTable($through['table']) . ' ' . $l
+            . ' WHERE ' . $l . '.' . $this->d->quote($through['from']) . ' = ' . $this->cmpRef($collection, $pk, $alias);
+    }
+
+    /**
+     * Operators on a `ref().many()` field's own ids: `{ has: id }` and `{ eq: [] }` (no links), with
+     * NOT/AND/OR. A filter on the linked rows goes through the relation (relationFilter).
+     */
+    private function linkFilter(string $collection, string $name, mixed $value, string $alias, string $ptr): string
+    {
+        $rel = $this->schema->collection($collection)['relations'][$name];
+        $through = $rel['through'];
+        if (is_bool($value)) {
+            return $this->relationFilter($collection, $rel, $value, $alias, $ptr);
+        }
+        if (!is_array($value) || array_is_list($value)) {
+            if ($value === []) {
+                return 'NOT EXISTS (' . $this->linked($collection, $through, $alias) . ')';
+            }
+            throw HttpError::invalidQuery("`$name` is a list of ids: filter it with `{ has: id }`, or on the linked rows", $ptr);
+        }
+        $parts = [];
+        foreach ($value as $op => $arg) {
+            $optr = $ptr . HttpError::seg($op);
+            $parts[] = match ((string) $op) {
+                'has' => Js::isInteger($arg)
+                    ? (function () use ($collection, $through, $alias, $arg): string {
+                        $sql = 'EXISTS (' . $this->linked($collection, $through, $alias) . ' AND ' . $this->d->quote('target_id') . ' = ?)';
+                        $this->params[] = (int) $arg;
+
+                        return $sql;
+                    })()
+                    : throw HttpError::invalidQuery('has expects an id', $optr),
+                'eq' => $arg === [] ? 'NOT EXISTS (' . $this->linked($collection, $through, $alias) . ')'
+                    : throw HttpError::invalidQuery("`eq` isn't supported on list columns; use `has`", $optr),
+                'NOT' => 'NOT (' . $this->linkFilter($collection, $name, $arg, $alias, $optr) . ')',
+                'AND', 'OR' => $this->combine((string) $op, $arg, $optr, fn ($f, $p) => $this->linkFilter($collection, $name, $f, $alias, $p)),
+                default => throw HttpError::invalidQuery("`$op` isn't supported on list columns; use `has`", $optr),
+            };
+        }
+
+        return $parts === [] ? '1 = 1' : implode(' AND ', $parts);
+    }
+
     private function relationFilter(string $collection, array $rel, mixed $value, string $alias, string $ptr): string
     {
         $target = $rel['collection'];
@@ -471,7 +532,9 @@ final class Sql
         if ($src->baseWhere !== '') {
             $conds[] = $this->sub($src->baseWhere, $inner, '');
         }
-        $conds[] = $this->cmpRef($target, $rel['to'], $inner) . ' = ' . $this->cmpRef($collection, $rel['from'], $alias);
+        $conds[] = isset($rel['through'])
+            ? $this->cmpRef($target, $this->schema->collection($target)['primaryKey'], $inner) . ' IN (' . $this->linked($collection, $rel['through'], $alias) . ')'
+            : $this->cmpRef($target, $rel['to'], $inner) . ' = ' . $this->cmpRef($collection, $rel['from'], $alias);
         if (!$this->trusted && $this->guardsFor !== null) {
             foreach ($this->relationGuards[$target] ??= ($this->guardsFor)($target) as $g) {
                 $conds[] = $this->guard($target, $g, $inner);

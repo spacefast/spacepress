@@ -21,9 +21,9 @@ final class Schema
 
     /** The role ladder, lowest first; guests (§6.2) sit below subscribers. */
     public const ROLES = ['guest', 'subscriber', 'author', 'editor', 'admin'];
-    private const JSON_TYPES = ['json', 'mediaList', 'select', 'group', 'repeater', 'blocks'];
+    private const JSON_TYPES = ['json', 'mediaList', 'select', 'refList', 'group', 'repeater', 'blocks'];
     private const STRING_TYPES = ['text', 'email', 'url', 'slug', 'richText'];
-    private const LIST_TYPES = ['mediaList', 'select', 'repeater', 'blocks'];
+    private const LIST_TYPES = ['mediaList', 'select', 'refList', 'repeater', 'blocks'];
     private const SLUG_RE = '/^[a-z0-9]+(?:-[a-z0-9]+)*$/D';
 
     /** @param array{version?: int, runtime?: string, collections?: array<string, array>, globals?: array<string, array>, actions?: array<string, array>} $raw */
@@ -420,6 +420,7 @@ final class Schema
             'date' => is_string($v) && self::isDate($v) ? $v : throw $bad(),
             'json' => self::jsonValue($v) ?? throw $bad(),
             'mediaList' => self::idList($v, $name, $pointer) ?? throw $bad(),
+            'refList' => self::refList($v, $name, $pointer) ?? throw $bad(),
             'select' => self::selectList($col, $v, $name, $pointer) ?? throw $bad(),
             'group' => self::isObject($v) ? self::normalizeFields($col['fields'] ?? [], $v, $pointer) : throw $bad(),
             'repeater' => is_array($v) && array_is_list($v) ? self::repeater($col, $v, $name, $pointer) : throw $bad(),
@@ -527,6 +528,26 @@ final class Schema
         return $out;
     }
 
+    /** @return ?list<int> a many-ref's target ids, in write order, each once */
+    private static function refList(mixed $v, string $name, string $pointer): ?array
+    {
+        if (!is_array($v) || !array_is_list($v)) {
+            return null;
+        }
+        $out = [];
+        foreach ($v as $i => $id) {
+            if (!(is_int($id) || (is_float($id) && Js::isInteger($id) && abs($id) <= 9007199254740991))) {
+                throw HttpError::invalidInput("$name items must be ids", "$pointer/$i");
+            }
+            if (in_array((int) $id, $out, true)) {
+                throw HttpError::invalidInput("$name has a duplicate id " . (int) $id, "$pointer/$i");
+            }
+            $out[] = (int) $id;
+        }
+
+        return $out;
+    }
+
     /** @return ?list<string> */
     private static function selectList(array $col, mixed $v, string $name, string $pointer): ?array
     {
@@ -572,6 +593,7 @@ final class Schema
             'media' => 'a media id',
             'file' => 'a file id',
             'mediaList' => 'a list of media ids',
+            'refList' => 'a list of ids',
             'select' => 'a list of options',
             'group' => 'an object',
             'repeater', 'blocks' => 'a list of objects',
@@ -648,7 +670,7 @@ final class Schema
             // A json() value keeps object/list handles; structured columns are
             // normalized against their fields, so plain arrays are exact there.
             'json' => ($col['system'] ?? false) ? Seam::toPhp(is_string($v) ? self::json($v) : $v) : (is_string($v) ? self::json($v) : $v),
-            'mediaList', 'select' => is_string($v) ? json_decode($v, true) : $v,
+            'mediaList', 'select', 'refList' => is_string($v) ? json_decode($v, true) : $v,
             'group' => self::fillFields($col['fields'] ?? [], Seam::toPhp(is_string($v) ? self::json($v) : $v, $col)),
             'repeater' => array_map(
                 static fn ($item) => self::fillFields($col['fields'] ?? [], $item),

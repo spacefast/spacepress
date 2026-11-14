@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace First\Wp;
 
 use First\Access;
-use First\HttpError;
 use First\Schema;
 use First\Viewer;
 
@@ -24,7 +23,9 @@ use First\Viewer;
  * closed. Core's `/wp/v2/users` stays closed either way; First's API serves the kind.
  *
  * Signed-in users keep core's answers on the REST routes (the block editor lists authors), and the
- * users kind's own rules decide what First's API shows ({@see UserMeta}). Nothing is written.
+ * users kind's own rules decide what First's API shows ({@see UserMeta}). A guest session is not
+ * signed in for this purpose: any visitor can start one. The front-end pages (archives, the sitemap,
+ * oEmbed) answer the same for everyone, so a page cache can hold them. Nothing is written.
  */
 final class Authors
 {
@@ -46,7 +47,32 @@ final class Authors
             // Core's own answer for a post with no author: the site's name and address.
             return ['author_name' => get_bloginfo('name'), 'author_url' => get_home_url()] + $data;
         }, PHP_INT_MAX, 2);
+        // The other places a theme prints a user's nicename, which WordPress derives from the login:
+        // a registered commenter's `comment-author-<nicename>` class, and a byline's archive link.
+        add_filter('comment_class', static fn (mixed $classes): mixed => !is_array($classes) || self::public($schema) ? $classes
+            : array_values(array_filter($classes, static fn (mixed $class): bool => !is_string($class) || !str_starts_with($class, 'comment-author-'))), PHP_INT_MAX);
+        add_filter('author_link', static fn (mixed $link, mixed $author = 0): mixed => self::$archiveUrl || is_admin() || self::visible($schema, (int) $author) ? $link : home_url('/'), PHP_INT_MAX, 2);
+        // Whether a user's archive answers depends on their row: a write to it purges the archive.
+        \First\Extensions::onWritten(static function (string $op, string $collection, array $row, ?array $previous = null) use ($schema): void {
+            $id = (int) ($row['id'] ?? $previous['id'] ?? 0);
+            if ($collection !== self::kind($schema) || $id <= 0) {
+                return;
+            }
+            unset(self::$seen[$id]);
+            self::$archiveUrl = true;
+            try {
+                $url = get_author_posts_url($id);
+            } finally {
+                self::$archiveUrl = false;
+            }
+            Purges::announce([$url]);
+        });
     }
+
+    /** True while the purge above asks for a user's real archive URL, whoever may see it. */
+    private static bool $archiveUrl = false;
+    /** @var array<int, bool> {@see visible()} by user id, for this request */
+    private static array $seen = [];
 
     /** The app's users kind, or null when it has none. */
     private static function kind(Schema $schema): ?string
@@ -84,47 +110,74 @@ final class Authors
         if ($users === null || $user <= 0 || $plugin === null || $plugin->unavailable() !== null) {
             return false;
         }
-        try {
-            return $plugin->db()->findFirst($users, ['where' => ['id' => $user]], new Viewer(null)) !== null;
-        } catch (HttpError) {
-            return false; // the rule refuses signed-out visitors
+        if (!isset(self::$seen[$user])) {
+            try {
+                self::$seen[$user] = $plugin->db()->findFirst($users, ['where' => ['id' => $user]], new Viewer(null)) !== null;
+            } catch (\Throwable) {
+                // The rule refuses signed-out visitors, or fails for one (a coded rule that reads a
+                // user who isn't there): nobody is shown.
+                self::$seen[$user] = false;
+            }
         }
+
+        return self::$seen[$user];
     }
 
     /**
-     * rest_pre_dispatch: a visitor who isn't signed in reads no user from core's routes, listed or one
-     * by one, directly, through `?rest_route=`, a batch or an embed. Core answers a signed-out request
-     * for a user it won't show this way.
+     * Whether the caller is a visitor for this purpose: not signed in, or in a guest session, which
+     * any visitor can start without credentials.
+     */
+    private static function visitor(): bool
+    {
+        return !is_user_logged_in() || in_array('first_guest', (array) wp_get_current_user()->roles, true);
+    }
+
+    /**
+     * rest_pre_dispatch: a visitor reads no user from core's routes, listed or one by one, directly,
+     * through `?rest_route=`, a batch or an embed. Core answers a signed-out request for a user it
+     * won't show this way. `OPTIONS` keeps core's route description, which names no user (a browser's
+     * CORS preflight is one, sent without credentials).
      *
-     * One case is left to its own rule: First's API reading an app's users kind. There First selects
-     * the rows by the kind's read rule and returns its own row for each ({@see UserMeta}), so a
-     * signed-out visitor gets what that rule gives anyone, which is nothing unless the app says so.
+     * The answer is a response, not a WP_Error: core's batch endpoint hands this filter's result to
+     * `rest_post_dispatch` callbacks that take responses only.
      */
     private static function route(Schema $schema, mixed $result, mixed $request): mixed
     {
         if ($result !== null || !$request instanceof \WP_REST_Request || !preg_match(self::USERS, $request->get_route())
-            || is_user_logged_in() || self::public($schema) || self::ruled($schema, $request)) {
+            || $request->get_method() === 'OPTIONS' || !self::visitor() || self::public($schema) || self::ruled($schema, $request)) {
             return $result;
         }
 
-        return new \WP_Error('rest_user_cannot_view', __('Sorry, you are not allowed to list users.'), ['status' => rest_authorization_required_code()]);
+        return rest_convert_error_to_response(new \WP_Error('rest_user_cannot_view', __('Sorry, you are not allowed to list users.'), ['status' => rest_authorization_required_code()]));
     }
 
     /**
-     * Whether this is First's API reading the app's users kind, where the kind's read rule decides. A
-     * list is the rule's to answer: its own 401 when it needs a signed-in user, else the rows it gives
-     * a signed-out viewer. One user is passed on only when the rule
-     * gives that row to a signed-out viewer; every other id, real or not, gets the same 401, so the
-     * answer doesn't say which ids exist.
+     * Whether this is First's API reading users on a visitor's behalf, where First's own rules decide.
+     *
+     * A guest keeps its own record (`/users/me`, on core's route too), and with a users kind the
+     * kind's rules decide for it on First's API as for any viewer. For a signed-out visitor, only reads of a users kind pass: a list First selected
+     * by the kind's read rule (its own 401 when the rule needs a signed-in user, else the rows it gives
+     * a signed-out viewer), and one user only when the rule gives that row to a signed-out viewer;
+     * every other id, real or not, gets the same 401, so the answer doesn't say which ids exist.
      */
     private static function ruled(Schema $schema, \WP_REST_Request $request): bool
     {
-        if (self::kind($schema) === null || !Facade::dispatching() || $request->get_method() !== 'GET') {
+        $route = strtolower(untrailingslashit($request->get_route()));
+        if (is_user_logged_in() && $route === '/wp/v2/users/me') {
+            return true; // a guest's own record, on core's route as on First's
+        }
+        if (!Facade::dispatching()) {
             return false;
         }
-        $route = strtolower(untrailingslashit($request->get_route()));
+        if (is_user_logged_in()) {
+            return self::kind($schema) !== null;
+        }
+        if (self::kind($schema) === null || $request->get_method() !== 'GET') {
+            return false;
+        }
         if ($route === '/wp/v2/users') {
-            return true;
+            // The API's own list always carries `where`, which is what makes First select the rows.
+            return $request->get_param('where') !== null;
         }
 
         return preg_match('#^/wp/v2/users/(\d+)$#', $route, $m) === 1 && self::visible($schema, (int) $m[1]);
@@ -136,20 +189,25 @@ final class Authors
      * unless it names one user a visitor may see as an author ({@see visible()}). Every other form
      * (a list of ids, an excluded id, a login nobody has) gets the same 404.
      *
+     * Only front-end requests: `author` and `author_name` are public query vars, so WordPress copies
+     * them into a REST request's vars too (`/wp/v2/posts?author=5`, a comment's `author_name`), where
+     * they are that route's own parameters. An empty `author` or `0` is no author query, as in core.
+     *
      * @param array<string, mixed> $vars
      * @return array<string, mixed>
      */
     private static function archive(Schema $schema, array $vars): array
     {
-        if ((!isset($vars['author']) && !isset($vars['author_name'])) || self::public($schema) || is_admin()) {
+        if (!empty($vars['rest_route']) || self::public($schema) || is_admin()) {
             return $vars;
         }
         $named = [];
-        if (isset($vars['author'])) {
-            $id = is_scalar($vars['author']) ? (string) $vars['author'] : '';
+        $author = $vars['author'] ?? '';
+        if (!in_array($author, ['', '0', 0, null], true)) {
+            $id = is_scalar($author) ? (string) $author : '';
             $named[] = ctype_digit($id) ? (int) $id : 0;
         }
-        if (isset($vars['author_name'])) {
+        if (isset($vars['author_name']) && $vars['author_name'] !== '') {
             // As core reads it: the last segment of the path, as a user's nicename.
             $parts = is_string($vars['author_name']) ? array_values(array_filter(explode('/', $vars['author_name']), static fn (string $p): bool => $p !== '')) : [];
             $user = $parts === [] ? false : get_user_by('slug', sanitize_title_for_query($parts[count($parts) - 1]));

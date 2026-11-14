@@ -2074,6 +2074,14 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     }
     want.sort();
     assert_eq!(cleared, want);
+    // A twin fetched before its page was ever rendered records what it read under its own URL, so
+    // a write to the row it shows purges it (and `/`, which lists notes, with its twin).
+    assert_eq!(seen["twin only"]["status"], 200, "{}", seen["twin only"]);
+    assert_eq!(seen["twin index"], serde_json::json!(["notes third /notes/third.md"]));
+    assert_eq!(
+        seen["twin purged"],
+        serde_json::json!([["/", "/index.md", "/notes/third.md"]])
+    );
     assert_eq!(seen["cleared all"], serde_json::json!(["vip *", "boost *"]));
     // Over VIP's 100 URLs a request: one site ban, and every path still for Batcache.
     assert_eq!(seen["cleared many"], serde_json::json!([1, true, 101]));

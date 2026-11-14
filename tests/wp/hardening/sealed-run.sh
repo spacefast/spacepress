@@ -17,7 +17,7 @@ mkdir "$work/app"
 # The same app, sealed, declaring Hello Dolly. WordPress's image also ships Akismet and the
 # single-file hello.php, which nobody declares.
 # `admin: false`: First Admin is on by default, and this run installs it beside the build instead.
-sed 's/^  globals: { banner },$/  globals: { banner },\n  sealed: true,\n  admin: false,\n  plugins: { "hello-dolly": "1.7.2" },/' "$here/first.config.ts" > "$work/app/first.config.ts"
+sed 's/^  name: "hardening-lane",$/  name: "hardening-lane",\n  sealed: true,\n  admin: false,\n  plugins: { "hello-dolly": "1.7.2" },/' "$here/first.config.ts" > "$work/app/first.config.ts"
 grep -q 'sealed: true' "$work/app/first.config.ts"
 grep -q 'admin: false' "$work/app/first.config.ts"
 "$target/debug/first" build "$work/app" --quiet >/dev/null 2>&1

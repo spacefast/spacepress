@@ -45,7 +45,7 @@ root=/var/www/html/wp-content/plugins/first-store
 site() {
   local q
   for q in "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ORDER BY 1, 2" \
-    "SELECT option_name, MD5(option_value) FROM wp_options WHERE option_name NOT LIKE '\\_transient%' AND option_name NOT LIKE '\\_site\\_transient%' AND option_name NOT IN ('first_test_contract', 'first_installlane_hook_ran') AND option_name NOT LIKE 'action\\_scheduler\\_lock\\_%' ORDER BY 1" \
+    "SELECT option_name, MD5(option_value) FROM wp_options WHERE option_name NOT LIKE '\\_transient%' AND option_name NOT LIKE '\\_site\\_transient%' AND option_name NOT IN ('first_test_contract', 'installlane_hook_ran') AND option_name NOT LIKE 'action\\_scheduler\\_lock\\_%' ORDER BY 1" \
     "SELECT * FROM wp_first__migrations ORDER BY app, id" "SELECT ID, post_type, post_status, post_name FROM wp_posts ORDER BY ID" \
     "SELECT post_id, meta_key, MD5(meta_value) FROM wp_postmeta ORDER BY 1, 2" "SELECT user_id, meta_key, MD5(meta_value) FROM wp_usermeta ORDER BY 1, 2" \
     "SELECT hook, status, \`group_id\` FROM wp_actionscheduler_actions WHERE status = 'pending' ORDER BY 1"; do
@@ -70,10 +70,10 @@ probe_route
 # option out, and the hook gets its own checks.
 fresh=$(site)
 inspect "$build" "['install']" >/dev/null
-[[ $(wp option get first_installlane_hook_ran 2>/dev/null) == "" ]] || fail "inspecting ran the app's compiled WordPress hook"
+[[ $(wp option get installlane_hook_ran 2>/dev/null) == "" ]] || fail "inspecting ran the app's compiled WordPress hook"
 host "echo 'booted';" >/dev/null
-[[ $(wp option get first_installlane_hook_ran) == yes ]] || fail "a managed boot runs the app's compiled WordPress hooks"
-wp option delete first_installlane_hook_ran >/dev/null
+[[ $(wp option get installlane_hook_ran) == yes ]] || fail "a managed boot runs the app's compiled WordPress hooks"
+wp option delete installlane_hook_ran >/dev/null
 booted=$(site)
 [[ $fresh == "$booted" ]] || { diff <(echo "$fresh") <(echo "$booted") >&2; fail "a managed boot before initialize changed the site"; }
 ok "a managed boot before initialize installs nothing; inspecting runs none of the app's hooks"
@@ -158,7 +158,7 @@ sed -i.bak 's#url: "/topics/:slug"#url: "/subjects/:slug"#' "$work/installlane/f
 "$bin" sources "$work/installlane" --out "$work/sources-term-url"
 moved=$("$bin" compile-to-store "$work/sources-term-url" "$store" "$work/sources-term-url" "$build" | json build)
 steps=$(wp --exec="define('FIRST_TEST_BUILD', '$moved');" eval "echo json_encode(First\\Loader\\Loader::inspect('$root', '$moved')['install']);")
-[[ $steps == '[{"step":"rewrite-rules"}]' ]] || fail "a taxonomy URL-pattern change plans one step: $steps"
+[[ $steps == '[{"kind":"rewrite-rules","id":"rewrite-rules","state":"pending"}]' ]] || fail "a taxonomy URL-pattern change plans one step: $steps"
 [[ $before == "$(site)" ]] || fail "inspecting the taxonomy candidate changed the site"
 ok "a candidate that changes only a taxonomy URL pattern plans one step"
 

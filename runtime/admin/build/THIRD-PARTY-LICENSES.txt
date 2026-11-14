@@ -9295,21 +9295,3 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
----
-
-packages/boot/src/dashicons/LICENSE.md
-# Dashicons
-
-`dashicons.woff2` and the glyph rules in `dashicons.css` come from WordPress
-7.0.2 (`wp-includes/fonts/dashicons.woff2`, `wp-includes/css/dashicons.css`),
-built from https://github.com/WordPress/dashicons.
-
-Dashicons is licensed under the GNU General Public License, version 2 or any
-later version (GPL-2.0-or-later), with the font exception: embedding the font
-in a document does not by itself make that document a derivative work of the
-font.
-
-The Content frame loads this copy because the page it renders in is not a
-WordPress admin page and never enqueues core's `dashicons` style.

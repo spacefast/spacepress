@@ -63,8 +63,9 @@ Styles, Navigation, taxonomy and comment fields, importers and the AI-agent
 integration package. These surfaces are retained alongside First's schema-driven
 collections, tables, relations, media and globals.
 
-The default `/` route is First's collection overview. `/dashboard` opens the
-upstream dashboard. The sidebar includes native WordPress content types as well
+The home route `/` is the upstream dashboard, as upstream has it;
+`/collections` is First's collection overview (Collections → All collections in
+the sidebar). The sidebar includes native WordPress content types as well
 as First collections; mapped types appear through the access-aware First adapter.
 Native content uses WordPress's editor routes. The complete upstream attachment
 editor is at `/types/attachment/edit/:id`; `Edit image` opens it from First
@@ -72,6 +73,25 @@ media details, with crop/rotate/flip tools and WordPress-native image saving. Fi
 editor with Secure Custom Fields and First's existing REST authorization.
 Database tables use First's table forms and relation pickers. Hiding navigation
 never grants or revokes access: the server remains the authority.
+
+## Styles
+
+First Admin keeps the upstream look. Where a pinned WordPress package changed
+underneath it, the change is the smallest one that keeps that look:
+
+| Change | Why |
+|---|---|
+| `font-weight: var(--wpds-typography-font-weight-emphasis, 499)` (and `-default, 400`) for `$font-weight-medium`/`-regular` | the pinned `@wordpress/base-styles` removed those variables; the tokens carry the same values |
+| `@first-admin/theme` passes the `bg` seed also as `background` | the pinned `@wordpress/theme` renamed it |
+| The site hub wraps its title in a `<span>` | the upstream stylesheet sizes the link's first span, which the pinned `@wordpress/ui` Link no longer adds |
+| `style` on design-system popups and primitives | the pinned Base UI types moved it |
+| The page opts in to view transitions (`@view-transition`) | the router starts one on each navigation; without the opt-in the browser aborts it with an error |
+
+Everything else that differs from the retained originals is behaviour: the
+mount and subdirectory URLs, First's schema screens, and the AI chat button,
+which needs a provider (see External services). First's own screens
+(`packages/schema`) use `@wordpress/components` and DataViews with upstream's
+spacing.
 
 ## Provenance and updates
 

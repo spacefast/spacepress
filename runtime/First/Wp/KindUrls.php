@@ -191,6 +191,41 @@ final class KindUrls
     }
 
     /** A scalar field's value for a placeholder, or a referenced item's slug (`:author.slug`). */
+    /**
+     * Whether $viewer may read every field the kind's `url` pattern puts in an address. A pattern
+     * that shows a field the viewer may not read (`:slug` with a read rule on the slug) gives them no
+     * address: it would carry the hidden value. The sitemap and core's search both ask.
+     */
+    public static function patternReadable(array $spec, \First\Viewer $viewer): bool
+    {
+        foreach (explode('/', trim((string) $spec['url'], '/')) as $segment) {
+            if (!str_starts_with($segment, ':')) {
+                continue;
+            }
+            [$field, $through] = array_pad(explode('.', substr($segment, 1), 2), 2, null);
+            $column = match ($field) {
+                'slug', 'path' => $spec['slug'] ?? null,
+                'id', 'year', 'month', 'day' => null,
+                default => $field,
+            };
+            if ($column !== null && isset($spec['columns'][$column]) && \First\FieldAccess::mayHide($spec['columns'][$column], $viewer)) {
+                return false;
+            }
+            // `:author.slug`: the address also shows the referenced item's slug ({@see field()}).
+            $target = $through === 'slug' && $column !== null ? ($spec['columns'][$column]['references']['collection'] ?? null) : null;
+            if ($target !== null) {
+                $schema = Plugin::instance()?->schema;
+                $targetSpec = $schema !== null && $schema->hasCollection($target) ? $schema->collection($target) : null;
+                $slug = $targetSpec['slug'] ?? null;
+                if ($targetSpec === null || ($slug !== null && isset($targetSpec['columns'][$slug]) && \First\FieldAccess::mayHide($targetSpec['columns'][$slug], $viewer))) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     private static function field(string $kind, \WP_Post $post, string $field): ?string
     {
         [$column, $through] = array_pad(explode('.', $field, 2), 2, null);

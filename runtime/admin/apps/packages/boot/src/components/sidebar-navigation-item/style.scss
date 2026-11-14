@@ -38,7 +38,7 @@
 	}
 
 	&.active {
-		font-weight: 500;
+		font-weight: var(--wpds-typography-font-weight-emphasis, 499);
 		color: var( --wpds-color-fg-interactive-neutral-active );
 		background: var( --wpds-color-bg-interactive-neutral-weak-active );
 	}
@@ -49,7 +49,7 @@
 
 	&[aria-current="true"] {
 		color: var( --wpds-color-fg-interactive-brand-active );
-		font-weight: 500;
+		font-weight: var(--wpds-typography-font-weight-emphasis, 499);
 	}
 
 	// Make sure the focus style is drawn on top of the current item background.

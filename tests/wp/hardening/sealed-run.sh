@@ -16,10 +16,10 @@ trap cleanup EXIT
 mkdir "$work/app"
 # The same app, sealed, declaring Hello Dolly. WordPress's image also ships Akismet and the
 # single-file hello.php, which nobody declares.
-sed 's/^  globals: { banner },$/  globals: { banner },\n  sealed: true,\n  plugins: { "hello-dolly": "1.7.2" },/' "$here/first.config.ts" > "$work/app/first.config.ts"
+sed 's/^  globals: { banner },$/  globals: { banner },\n  sealed: true,\n  admin: false,\n  plugins: { "hello-dolly": "1.7.2" },/' "$here/first.config.ts" > "$work/app/first.config.ts"
 grep -q 'sealed: true' "$work/app/first.config.ts"
 "$target/debug/first" build "$work/app" --quiet >/dev/null 2>&1
-# First's admin, installed but not part of this build (no `admin: true`): staged as the admin lane
+# First's admin, installed but not part of this build (`admin: false`): staged as the admin lane
 # stages it, with the header placeholders the binary substitutes.
 admin="$work/app/first/dist/wp-content/plugins/first-admin"
 mkdir -p "$admin"

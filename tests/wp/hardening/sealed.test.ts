@@ -141,10 +141,13 @@ test("First's admin is First's own: a sealed site activates it though the build 
     assert.equal((await viaApi.json()).data.mood, "steady");
     const global = await json(auth("admin"), "PATCH", "/__first/api/v1/banner", { motto: "From the admin" });
     assert.equal((await global.json()).data.motto, "From the admin");
-    // The admin's page is served.
-    const cookie = await loginCookie(site, "admin", `${site}/first-admin/`);
-    const page = await fetch(`${site}/first-admin/`, { headers: { cookie }, redirect: "manual" });
+    // The admin's page is served, in the form every server serves (`/wp-admin/new/` is the same
+    // page through a rewrite rule written on a later request).
+    const mount = `${site}/wp-admin/admin.php?page=first-admin&p=%2F`;
+    const cookie = await loginCookie(site, "admin", mount);
+    const page = await fetch(mount, { headers: { cookie }, redirect: "manual" });
     assert.equal(page.status, 200, String(page.headers.get("location")));
+    assert.ok((await page.text()).includes('id="first-admin-app"'));
     // It isn't one of the plugins the site can't run without: it deactivates, classic wp-admin stays.
     const off = await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/first-admin/first-admin", { status: "inactive" });
     assert.equal(off.status, 200, await off.text());

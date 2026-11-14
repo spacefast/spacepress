@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { submitSignIn } from './sign-in';
 const harness = JSON.parse(
 	readFileSync(
 		process.env.FIRST_WP_HARNESS ??
@@ -15,11 +16,7 @@ const subdir = new URL(site).pathname !== '/';
 async function login(page: Page, role: 'admin' | 'editor' | 'subscriber') {
 	await page.goto(`${site}/wp-admin/new/`);
 	await expect(page.locator('#user_login')).toBeVisible();
-	// WordPress focuses this field after its login page has loaded.
-	await expect(page.locator('#user_login')).toBeFocused();
-	await page.locator('#user_login').fill(role);
-	await page.locator('#user_pass').fill(`first-test-${role}`);
-	await page.locator('#wp-submit').click();
+	await submitSignIn(page, role, `first-test-${role}`);
 	await expect(page).toHaveURL(`${site}/wp-admin/new/`);
 	// The upstream home route: the dashboard.
 	await expect(

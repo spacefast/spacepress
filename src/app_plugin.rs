@@ -48,6 +48,11 @@ pub(crate) fn files(
     if let Some(bodies) = crate::content_page::bodies_php(&built.schema) {
         files.push((at("first/app/content.php"), bodies.into_bytes()));
     }
+    // The typed client as a browser module (`@first/client`): what keeps a page's data live, so it
+    // polls and subscribes with the same code every other caller of the API runs.
+    if let Some((_, js)) = built.client_files.iter().find(|(name, _)| name == "client.js") {
+        files.push((at("first/app/client/first-client.js"), js.clone()));
+    }
     // Compiled `"use client"` stores, which the page loads as script modules (generator B).
     for island in built.schema.islands.values() {
         files.push((

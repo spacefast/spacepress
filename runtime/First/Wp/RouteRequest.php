@@ -16,6 +16,20 @@ namespace First\Wp;
  */
 final class RouteRequest
 {
+    /** Whether core accepted an application password on this request (`application_password_did_authenticate`). */
+    private static bool $applicationPassword = false;
+
+    /** Core's own application-password actions, registered as the runtime loads (before any user is resolved). */
+    public static function register(): void
+    {
+        add_action('application_password_did_authenticate', static function (): void {
+            self::$applicationPassword = true;
+        });
+        add_action('application_password_failed_authentication', static function (): void {
+            self::$applicationPassword = false;
+        });
+    }
+
     /**
      * The route caller per the class comment. WpAuth::current() still runs first, so a failed
      * Bearer or a suspended account answers its problem rather than running anonymously.
@@ -31,9 +45,8 @@ final class RouteRequest
         if (IdentityBridge::available() && \First\Identity\Bearer::token() !== null) {
             return $user;
         }
-        // Core records an application password it accepted here; such a caller is refused below.
-        $application = $GLOBALS['wp_rest_application_password_status'] ?? null;
-        if ($application instanceof \WP_User) {
+        // An application password core accepted is never a route credential.
+        if (self::$applicationPassword) {
             return null;
         }
         // The remaining channel is the cookie: unsafe methods need the REST nonce.

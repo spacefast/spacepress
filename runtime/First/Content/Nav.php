@@ -28,7 +28,7 @@ final class Nav
 
     /** @var array<string, list<array{id: int, title: string, parent: ?int, href: string}>> per kind, per request */
     private static array $items = [];
-    /** @var array<string, true> rendered content headings() read, by hash: `the_content` gives it the same ids */
+    /** @var array<string, list<string>> each heading's id, in order, by the hash of the block markup headings() read */
     private static array $anchored = [];
 
     /** The id of the current item: a row, an id, or nothing. */
@@ -147,12 +147,15 @@ final class Nav
         $row = Seam::container($row);
         $blocks = is_array($row) && is_string($row[$column] ?? null) ? $row[$column] : '';
         $html = self::render($blocks);
+        $scanned = self::scan($html);
         if ($html !== '') {
             self::listen();
-            self::$anchored[md5($blocks)] = true;
+            // `the_content` gives the page's headings these ids, computed here once: its later
+            // filters (wptexturize turns `--` and ` - ` into dashes) must not change them.
+            self::$anchored[md5($blocks)] = array_column($scanned, 2);
         }
         $out = [];
-        foreach (self::scan($html) as [$depth, $text, $id]) {
+        foreach ($scanned as [$depth, $text, $id]) {
             if ($depth >= 2 && $depth <= 3) {
                 $out[] = new JsObject(['depth' => $depth, 'text' => $text, 'id' => $id]);
             }
@@ -181,22 +184,23 @@ final class Nav
             return;
         }
         $on = true;
-        $marked = false;
+        $marked = null;
         add_filter('the_content', static function (string $source) use (&$marked): string {
-            $marked = isset(self::$anchored[md5($source)]);
+            $marked = self::$anchored[md5($source)] ?? null;
             return $source;
         }, PHP_INT_MIN);
         add_filter('the_content', static function (string $html) use (&$marked): string {
-            $mine = $marked;
-            $marked = false;
-            return $mine ? self::headingIds($html) : $html;
+            $ids = $marked;
+            $marked = null;
+            return $ids === null ? $html : self::headingIds($html, $ids);
         }, PHP_INT_MAX);
     }
 
     /**
-     * Every heading in rendered HTML: (level, text, id). A heading with its own id keeps it; any
-     * other gets one from its text (slug()), made unique in the page with `-1`, `-2`, … as GitHub
-     * does, so a link to a heading of a README or an earlier docs site lands on the same one.
+     * Every heading in rendered HTML: (level, text, id). A heading with its own id keeps it as it
+     * is; any other gets one from its text (slug()), made unique in the page with `-1`, `-2`, … as
+     * GitHub does, so a link to a heading of a README or an earlier docs site lands on the same one.
+     * An own id counts as taken, so no generated id repeats it.
      *
      * @return list<array{int, string, string}>
      */
@@ -216,7 +220,7 @@ final class Nav
             if ($doc->get_token_type() === '#tag' && is_string($tag) && preg_match('/^H([1-6])$/', $tag, $m) === 1) {
                 if ($doc->is_tag_closer()) {
                     if ($level > 0) {
-                        $out[] = [$level, trim(preg_replace('/\s+/u', ' ', $text) ?? ''), $own];
+                        $out[] = [$level, $text, $own];
                     }
                     $level = 0;
                     continue;
@@ -231,14 +235,24 @@ final class Nav
                 $text .= $doc->get_modifiable_text();
             }
         }
-        foreach ($out as $i => [$depth, $words, $id]) {
-            $id ??= self::slug($words);
-            $base = $id;
-            for ($n = 1; isset($seen[$id]); $n++) {
-                $id = "$base-$n";
+        foreach ($out as [, , $own]) {
+            if ($own !== null) {
+                $seen[$own] = true;
             }
-            $seen[$id] = true;
-            $out[$i] = [$depth, $words, $id];
+        }
+        foreach ($out as $i => [$depth, $raw, $own]) {
+            // The id from the text as written (CommonMark trims a heading's ends); the text shown
+            // in a table of contents with its runs of white space as one space.
+            $id = $own;
+            if ($id === null) {
+                $base = self::slug(trim($raw, " \t\n\r\f"));
+                $id = $base;
+                for ($n = 1; isset($seen[$id]); $n++) {
+                    $id = "$base-$n";
+                }
+                $seen[$id] = true;
+            }
+            $out[$i] = [$depth, trim((string) preg_replace('/\s+/u', ' ', $raw)), $id];
         }
 
         return $out;
@@ -250,6 +264,10 @@ final class Nav
      * punctuation (`_`), hyphens and spaces, and the enclosed letters it keeps (Ⓐ, 🅐); drop every
      * other character; then each space is a hyphen. `What's first/app/?` is `whats-firstapp`, and
      * `C++ & Rust` is `c--rust`. A heading whose text keeps nothing is `section`.
+     *
+     * Two differences remain, both outside what headings say in practice: letters added to Unicode
+     * after github-slugger's table (Unicode 13) are kept rather than dropped, and on PHP 8.2 a word
+     * ending in a capital sigma lowercases to `σ`, not `ς` (8.3 follows JavaScript).
      */
     public static function slug(string $text): string
     {
@@ -260,15 +278,16 @@ final class Nav
     }
 
     /**
-     * `the_content` filter for a hierarchical kind's items: every `h1`–`h6` without an id gets the
-     * one headings() reports, so a table of contents links land.
+     * `the_content` for an item headings() read: every `h1`–`h6` without an id gets the one
+     * headings() reported for it, in order, so a table of contents links land.
+     *
+     * @param list<string> $ids
      */
-    public static function headingIds(string $html): string
+    private static function headingIds(string $html, array $ids): string
     {
         if (!str_contains($html, '<h')) {
             return $html;
         }
-        $ids = array_column(self::scan($html), 2);
         $tags = new Tags($html);
         $i = 0;
         while ($tags->next_tag()) {

@@ -1615,13 +1615,26 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             "#why Why depth-2",
             "#small-print Small print depth-3",
             "#whats-firstapp What's first/app/? depth-3",
-            "#why-1 Why depth-2"
+            "#why-1 Why depth-2",
+            "#step-1---install Step 1 - Install depth-3",
+            "#the---force-flag The --force flag depth-3",
+            "#why-1-1 Why 1 depth-2",
+            "#two--spaces Two spaces depth-2"
         ])
     );
     // Ids follow GitHub's rule (github-slugger): punctuation goes, a repeat gets `-1`.
     assert_eq!(
         seen["introduction"]["anchors"],
-        serde_json::json!(["h2#why", "h3#small-print", "h3#whats-firstapp", "h2#why-1"])
+        serde_json::json!([
+            "h2#why",
+            "h3#small-print",
+            "h3#whats-firstapp",
+            "h2#why-1",
+            "h3#step-1---install",
+            "h3#the---force-flag",
+            "h2#why-1-1",
+            "h2#two--spaces"
+        ])
     );
     assert_eq!(seen["introduction"]["title"], "Introduction · Docs");
     assert_eq!(
@@ -1664,6 +1677,8 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // Every id github-slugger gives the fixture's headings (tests/fixtures/docs-kind/heading-ids.json).
     assert_eq!(seen["heading ids"], serde_json::json!([]));
     assert_eq!(seen["heading id cases"], 17);
+    // `## Why`, `<h2 id="why">`, `## Why`: the own id stays, and the generated ones step around it.
+    assert_eq!(seen["own ids"], serde_json::json!(["why-1", "why", "why-2"]));
     // A block that renders differently each time doesn't cost the headings their anchors.
     assert_eq!(
         seen["headings beside a gallery"],
@@ -1672,9 +1687,22 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
                 "#why Why depth-2",
                 "#small-print Small print depth-3",
                 "#whats-firstapp What's first/app/? depth-3",
-                "#why-1 Why depth-2"
+                "#why-1 Why depth-2",
+                "#step-1---install Step 1 - Install depth-3",
+                "#the---force-flag The --force flag depth-3",
+                "#why-1-1 Why 1 depth-2",
+                "#two--spaces Two spaces depth-2"
             ],
-            ["h2#why", "h3#small-print", "h3#whats-firstapp", "h2#why-1"]
+            [
+                "h2#why",
+                "h3#small-print",
+                "h3#whats-firstapp",
+                "h2#why-1",
+                "h3#step-1---install",
+                "h3#the---force-flag",
+                "h2#why-1-1",
+                "h2#two--spaces"
+            ]
         ])
     );
     // Components in Markdown (docs/decisions/2026-11-13-components-in-markdown.md): the file's

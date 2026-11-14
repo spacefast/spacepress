@@ -653,6 +653,7 @@
 				"interactive-components-use-client",
 				"stylesheets-and-images",
 				"on-wordpress",
+				"static-output",
 				"from-the-old-pages-renderer"
 			],
 			"prev": "/compiler",
@@ -1176,7 +1177,7 @@
 			"stops": [],
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/language-support.mdx",
 			"toc": [
-				"compiles-49",
+				"compiles-50",
 				"compiles-and-differs-from-javascript-2",
 				"refused-93"
 			],

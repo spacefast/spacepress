@@ -214,3 +214,13 @@ test("astro build of a page written against \"emdash\" renders the site", { time
   assert.match(post, /<h2 class="wp-block-heading">Crocuses<\/h2>/);
   assert.match(post, /class="headings">Crocuses</);
 });
+
+test("a page written against \"emdash\" type-checks with firstEmdash()'s declarations alone", { timeout: 300_000 }, () => {
+  const run = spawnSync(process.execPath, [join(here, "../node_modules/astro/bin/astro.mjs"), "check", "--root", join(here, "emdash-site")], {
+    cwd: join(here, "emdash-site"),
+    env: { ...process.env, FIRST_URL: site.url, ASTRO_TELEMETRY_DISABLED: "1" },
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 0, run.stdout + run.stderr);
+  assert.match(run.stdout, /0 errors/);
+});

@@ -36,6 +36,7 @@
     "astro": ">=7.4.0 <8"
   },
   "devDependencies": {
+    "@astrojs/check": "0.9.10",
     "astro": "7.4.5",
     "typescript": "5.9.3"
   },

@@ -149,7 +149,7 @@ import { firstEmdash } from "@first/astro/emdash";
 export default defineConfig({ output: "server", adapter: node({ mode: "standalone" }), integrations: [firstEmdash()] });
 ```
 
-It reads the site at `FIRST_URL`. The First app declares what the templates show:
+It reads the site at `FIRST_URL`, and adds type declarations for the `emdash` modules, so a template type-checks (`astro check`) with its own upstream tsconfig and no EmDash package. The First app declares what the templates show:
 
 | The template reads | The First app declares |
 |---|---|

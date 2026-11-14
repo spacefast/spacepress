@@ -1481,6 +1481,79 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
 
 /// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
 /// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
+/// A hierarchical kind at the site root (`url: "/:path"`), rendered by `first/app/[...path]` beside the
+/// app's own pages, on WordPress over HTTP (tests/php/docs_root.php).
+#[test]
+fn docs_at_the_site_root() {
+    let project = fixture("docs-root", "serve");
+    build(&project);
+    let work = tempfile::tempdir().unwrap();
+    let (sources, compiled) = (work.path().join("sources"), work.path().join("compiled"));
+    for args in [
+        vec![
+            "sources".as_ref(),
+            project.as_os_str(),
+            "--out".as_ref(),
+            sources.as_os_str(),
+        ],
+        vec![
+            "compile-sources".as_ref(),
+            sources.as_os_str(),
+            compiled.as_os_str(),
+            project.as_os_str(),
+        ],
+    ] {
+        let out = first().args(&args).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/docs_root.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .arg(compiled.join("seed"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let page = |status: u16, h1: &str| serde_json::json!({ "status": status, "h1": h1, "location": null });
+    // Each published item at its path, parent by parent; the app's own pages beside them.
+    assert_eq!(seen["pages"]["/"], page(200, "Home"));
+    assert_eq!(seen["pages"]["/getting-started"], page(200, "Get started"));
+    assert_eq!(seen["pages"]["/reference"], page(200, "Reference"));
+    assert_eq!(seen["pages"]["/reference/config"], page(200, "Config API"));
+    assert_eq!(seen["pages"]["/playground"], page(200, "Playground"));
+    // A draft, a path with the wrong parent, the slug alone and an unknown path: the app's 404.
+    for path in ["/roadmap", "/reference/nothing", "/nothing", "/config"] {
+        assert_eq!(seen["pages"][path], page(404, "Not here"), "{path}");
+    }
+    // Links, the tree and the pager all use the root paths, as does WordPress's sitemap.
+    assert_eq!(seen["permalink"], "/reference/config/");
+    assert_eq!(seen["tree"], serde_json::json!(["/getting-started", "/reference"]));
+    assert_eq!(seen["next"], "/reference");
+    assert_eq!(
+        seen["sitemap"],
+        serde_json::json!(["/getting-started/", "/reference/", "/reference/config/"])
+    );
+    // WordPress's own addresses keep answering, and so do its Pages, posts and their twins: the kind
+    // takes a path only when one of its items is there.
+    assert_eq!(
+        seen["wordpress"],
+        serde_json::json!({ "/wp-login.php": 302, "/feed/": 200, "/llms.txt": 200, "/robots.txt": 200, "/getting-started.md": 200, "/reference/config.md": 200 })
+    );
+    assert_eq!(seen["twin"], true);
+    assert_eq!(
+        seen["wordpress pages"],
+        serde_json::json!({ "/about/": [200, true], "/news/": [200, true], "/about.md": [200, true], "/news.md": [200, true] })
+    );
+}
+
 /// `nav`, `pager` and `headings` from "first/content", on WordPress over HTTP (tests/php/docs_kind.php).
 #[test]
 fn docs_kind_serves_a_folder_tree_with_navigation() {

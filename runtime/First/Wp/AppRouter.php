@@ -287,6 +287,15 @@ final class AppRouter
         if ($match['route']['pattern'] === '/' && !(is_front_page() || is_home())) {
             return;
         }
+        // A page serving a kind at the site root (`url: "/:path"`) takes a path only when it names
+        // one of that kind's items: any other path is WordPress's (a Page, a post, an archive),
+        // or the app's 404 when WordPress has nothing there either.
+        if ($this->rootKind($match['route']) && !(is_singular() && get_queried_object() instanceof \WP_Post && get_queried_object()->post_type === $this->kindType($match['route']))) {
+            if (is_404()) {
+                $this->notFound();
+            }
+            return;
+        }
         $this->serving = true;
         // A static route's code Page ({@see RoutePages}) is the queried object while it renders,
         // as WordPress's own page template would have it: menus, SEO plugins and `the_ID()` see it.
@@ -302,6 +311,20 @@ final class AppRouter
             $this->notFound();
         }
         $this->serve($match['route'], $match['params'], $viewer, 200);
+    }
+
+    /** @param array<string, mixed> $route whether the route serves a kind whose url is the site root, `/:path` */
+    private function rootKind(array $route): bool
+    {
+        $name = $route['kind']['name'] ?? null;
+        return is_string($name) && ($this->plugin->schema->collection($name)['url'] ?? null) === '/:path';
+    }
+
+    /** @param array<string, mixed> $route the post type of the kind the route serves */
+    private function kindType(array $route): ?string
+    {
+        $name = $route['kind']['name'] ?? null;
+        return is_string($name) ? ($this->plugin->schema->collection($name)['wp']['postType'] ?? null) : null;
     }
 
     /** The main query as WordPress sets it for a singular Page: `is_page()`, `get_queried_object()`, `$post`. */
@@ -571,7 +594,8 @@ final class AppRouter
             if (($route['kind'] ?? null) !== null) {
                 $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $match['params']));
                 if ($item === null) {
-                    return [404, "# Not found\n\nNothing is published at this address.\n"];
+                    // A kind at the site root has only its own items: WordPress's twin answers the rest.
+                    return $this->rootKind($route) ? null : [404, "# Not found\n\nNothing is published at this address.\n"];
                 }
                 $props->p['item'] = $item;
             }

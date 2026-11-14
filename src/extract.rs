@@ -465,7 +465,13 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.agents = opts.agents;
         let key = coll.key.clone();
         if let Some((pattern, shape, span)) = opts.url {
-            if let Some((other, ..)) = url_shapes.iter().find(|(_, s, _)| crate::kind_url::overlaps(s, &shape)) {
+            // A kind at the site root (`/:path`) takes only the URLs no other pattern matches, so it
+            // overlaps no other kind; two of them would.
+            let root = |s: &[crate::kind_url::Segment]| matches!(s, [crate::kind_url::Segment::Path]);
+            if let Some((other, ..)) = url_shapes
+                .iter()
+                .find(|(_, s, _)| crate::kind_url::overlaps(s, &shape) && root(s) == root(&shape))
+            {
                 return Err(
                     Diag::new(span, format!("\"{pattern}\" can match the same URLs as {other}'s url"))
                         .help("give one of them a different literal segment, e.g. \"/blog/:slug\" and \"/docs/:slug\""),

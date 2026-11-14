@@ -25,7 +25,7 @@ namespace First\Wp;
  */
 final class KindUrls
 {
-    /** @var array<string, array{type: string, pattern: string, segments: list<string>, slug: ?string}> */
+    /** @var array<string, array{type: string, pattern: string, segments: list<string>, slug: ?string, reserved: list<string>}> */
     private array $kinds = [];
     private static ?self $instance = null;
 
@@ -66,6 +66,8 @@ final class KindUrls
                 'pattern' => $spec['url'],
                 'segments' => explode('/', trim($spec['url'], '/')),
                 'slug' => $spec['slug'] ?? null,
+                // WordPress's and First's own first segments, which a kind at the root never takes.
+                'reserved' => array_map('strtolower', $spec['reserved'] ?? []),
             ];
         }
     }
@@ -74,6 +76,9 @@ final class KindUrls
     public function rewrites(): void
     {
         foreach ($this->kinds as $name => $kind) {
+            if (self::root($kind)) {
+                continue; // resolved in request(), after every rule: a rule would match every path
+            }
             $regex = '';
             $query = [];
             $n = 0;
@@ -124,7 +129,7 @@ final class KindUrls
     {
         $name = $vars['first_kind'] ?? null;
         if (!is_string($name) || !isset($this->kinds[$name])) {
-            return $vars;
+            return $this->rootItem() ?? $vars;
         }
         unset($vars['first_kind']);
         $vars['post_type'] = $this->kinds[$name]['type'];
@@ -142,6 +147,48 @@ final class KindUrls
         }
         // Fields other than slug/id/date are checked once the item is known (oldSlug runs then).
         return $vars;
+    }
+
+    /** A kind at the site root: `url: "/:path"`, a hierarchical kind's whole parent chain. */
+    private static function root(array $kind): bool
+    {
+        return $kind['segments'] === [':path'];
+    }
+
+    /**
+     * A kind at the site root (`/:path`) answers a path no other kind's pattern matched when one of
+     * its published items has exactly that path, parent by parent: `/reference/config` is the
+     * `config` item under `reference`. It takes the path from WordPress's catch-all permalink rules
+     * (a post's `/%postname%/`, a Page's path), as the app declared the root for it; WordPress's own
+     * entry points, First's, feeds and archives are never asked. Anything else is left as parsed.
+     *
+     * @return ?array<string, mixed> the query for that item
+     */
+    private function rootItem(): ?array
+    {
+        foreach ($this->kinds as $kind) {
+            if (!self::root($kind)) {
+                continue;
+            }
+            $path = trim((string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH), '/');
+            $home = trim((string) wp_parse_url(home_url('/'), PHP_URL_PATH), '/');
+            if ($home !== '') {
+                if ($path !== $home && !str_starts_with($path, $home . '/')) {
+                    return null;
+                }
+                $path = trim(substr($path, strlen($home)), '/');
+            }
+            $first = strtolower(rawurldecode(explode('/', $path, 2)[0]));
+            if ($path === '' || in_array($first, $kind['reserved'], true) || str_starts_with($first, 'wp-')) {
+                return null;
+            }
+            $post = get_page_by_path(rawurldecode($path), OBJECT, $kind['type']);
+            if (!$post instanceof \WP_Post || $post->post_status !== 'publish') {
+                return null;
+            }
+            return ['post_type' => $kind['type'], 'p' => $post->ID];
+        }
+        return null;
     }
 
     /** `post_type_link`: the item's URL from its kind's pattern. */

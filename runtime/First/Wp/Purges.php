@@ -6,8 +6,9 @@ namespace First\Wp;
 
 /**
  * The URLs a committed content write changed, announced on the host's `first_purge_urls` action
- * (docs/runtime-contract.md). Only a host that serves cached pages listens: off Spacefast nothing
- * does, and this does no work at all (`has_action`).
+ * (docs/runtime-contract.md). Only a host that serves cached pages listens, or the runtime itself
+ * where Batcache, the VIP edge cache or Jetpack Boost runs (PageCaches); with no listener this does
+ * no work at all (`has_action`).
  *
  * A write to a public post, page or term names, as root-relative paths with their query:
  * - the item's URL before and after the write (a slug, status or parent change moves or hides it);

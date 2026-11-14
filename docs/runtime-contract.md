@@ -742,14 +742,22 @@ listens and purges those URLs from Batcache and the edge. With no listener
   paths, `.md` twins included.
 - **`first/app/` pages** (`Render\Cache`): an anonymous visitor's 200 render of
   a page outside any guarded layout sends `Cache-Control: public,
-  s-maxage=300, max-age=0, must-revalidate` (the `first_app_cache_window`
-  filter sets the window); anything else sends `private, no-store` and calls
+  max-age=0, s-maxage=300, must-revalidate` (the `first_app_cache_window`
+  filter sets the window; `s-maxage` comes after `max-age` because Batcache
+  takes the last `max-age=` in the header as its own window); anything else sends `private, no-store` and calls
   `batcache_cancel()`. Each cacheable render records the rows it read in
   `first__app_reads` (kind, row id or `*` for a listing, path with query). A
   committed write to a kind announces, once after commit, every recorded path
   that read that row or listed the kind, with its `.md` twin. More than 200
   paths becomes `/*`, a whole-host purge. Nothing is recorded or announced
   without a listener.
+- **Page caches the runtime purges itself** (`Wp\PageCaches`): where Batcache
+  (`batcache_clear_url()`), the VIP edge cache (`wpvip_purge_edge_cache_for_url()`,
+  or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins) or Jetpack
+  Boost (`jetpack_boost_clear_page_cache_url`) is loaded, the runtime listens on
+  `first_purge_urls` and clears each path in each of them. `/*` bans the VIP
+  site and clears Boost's whole cache; Batcache has no whole-site clear, so its
+  entries run out with the window. A host's own listener runs beside these.
 
 ## Reactive queries (`Live\Module`)
 

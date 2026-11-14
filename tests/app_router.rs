@@ -76,7 +76,7 @@ fn app_router_serves_pages_on_wordpress() {
     // An anonymous visitor's page is cacheable (rendering.md §6.1; app_pages_cache_and_purge_by_what_they_read).
     assert_eq!(
         seen["home cache"][0],
-        "public, s-maxage=300, max-age=0, must-revalidate"
+        "public, max-age=0, s-maxage=300, must-revalidate"
     );
     // `<Link>` to a path on the site is the router region's navigation, loaded on the page.
     assert!(body.contains(r#"/notes" data-wp-interactive="first/router" data-wp-on--click="actions.navigate" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
@@ -326,7 +326,7 @@ fn page_md_is_a_wordpress_page() {
     let seen: serde_json::Value =
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
     let text = |v: &serde_json::Value| v.as_str().unwrap_or_default().to_string();
-    let shared = "public, s-maxage=300, max-age=0, must-revalidate";
+    let shared = "public, max-age=0, s-maxage=300, must-revalidate";
     let private = "private, no-store, max-age=0";
 
     // The file's Markdown is stored as blocks in a Page, and the route renders that Page inside
@@ -1377,7 +1377,24 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         String::from_utf8_lossy(&out.stderr)
     );
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let shared = "public, s-maxage=300, max-age=0, must-revalidate";
+    // Batcache's own regex over every policy: a shareable page is kept for its window, the
+    // filtered one too, and a private answer for none (max-age=0 means Batcache skips it).
+    assert_eq!(
+        seen["batcache"],
+        serde_json::json!([
+            [200, true, false, true, 300],
+            [200, false, false, false, 0],
+            [200, true, true, false, 0],
+            [404, true, false, false, 0],
+            [500, true, false, false, 0],
+            ["window 60", 60]
+        ])
+    );
+    assert_eq!(
+        seen["batcache served"],
+        serde_json::json!({ "home": 300, "as editor": 0, "missing": 0 })
+    );
+    let shared = "public, max-age=0, s-maxage=300, must-revalidate";
     let private = "private, no-store, max-age=0";
     for key in ["home", "note", "other note", "about"] {
         assert_eq!(
@@ -1407,6 +1424,24 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         seen["purged"],
         serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])
     );
+    // The runtime's own listener cleared those paths in Batcache (keyed as `http://`, no query),
+    // the VIP edge and Jetpack Boost; `/*` reaches Boost's clear-all.
+    let mut cleared: Vec<String> = seen["cleared"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    cleared.sort();
+    let mut want = Vec::new();
+    for cache in ["batcache", "boost", "vip"] {
+        for path in ["/", "/index.md", "/notes/hello", "/notes/hello.md"] {
+            want.push(format!("{cache} {path}"));
+        }
+    }
+    want.sort();
+    assert_eq!(cleared, want);
+    assert_eq!(seen["cleared all"], serde_json::json!(["boost *"]));
 }
 
 /// Stylesheets and SVGs that pages, layouts and components import (docs/spec/tsx-to-php.md,
@@ -1624,7 +1659,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     assert_eq!(seen["introduction"]["title"], "Introduction · Docs");
     assert_eq!(
         seen["introduction"]["cache"],
-        "public, s-maxage=300, max-age=0, must-revalidate"
+        "public, max-age=0, s-maxage=300, must-revalidate"
     );
     // The draft: a 404 and no twin for visitors; in nobody's tree or pager, an editor's included.
     assert_eq!(seen["roadmap"], 404);
@@ -2114,7 +2149,7 @@ fn page_reads_run_as_the_visitor() {
     // Only the anonymous render is shared; an editor's is private, and doesn't replace it.
     assert_eq!(
         seen["anonymous"]["page cache"],
-        "public, s-maxage=300, max-age=0, must-revalidate"
+        "public, max-age=0, s-maxage=300, must-revalidate"
     );
     assert_eq!(seen["editor"]["page cache"], "private, no-store, max-age=0");
     assert_eq!(seen["anonymous after editor"], public);

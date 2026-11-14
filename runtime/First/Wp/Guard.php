@@ -44,14 +44,19 @@ final class Guard
             self::option($args[0] ?? null, $kind === 'write' ? 'write' : 'read');
         } elseif ($kind === 'post') {
             $post = $args[0] ?? null;
+            // An object, as the catalog declares: WordPress parses a string as a query string
+            // (`ID=1&post_type=customize_changeset`), which no field check would see.
+            if (!is_array($post)) {
+                throw new HttpError(403, 'protected_post_field', 'App code passes wp_insert_post an object of post fields, not ' . get_debug_type($post));
+            }
             // Only the fields the catalog declares, whatever the value's type said at build time.
             $rules = self::rules()['postTypes'];
-            foreach (is_array($post) ? array_keys($post) : [] as $field) {
+            foreach (array_keys($post) as $field) {
                 if (!in_array($field, $rules['fields'], true)) {
                     throw new HttpError(403, 'protected_post_field', 'App code can\'t pass `' . self::shown((string) $field) . "` to wp_insert_post: {$rules['fieldsWhy']}");
                 }
             }
-            self::postType(is_array($post) ? ($post['post_type'] ?? 'post') : 'post');
+            self::postType($post['post_type'] ?? 'post');
         }
     }
 
@@ -122,18 +127,9 @@ final class Guard
         if (isset(self::$tables[$key])) {
             return;
         }
-        // Only names the converter could have digested (identifiers, of any length: it cuts only the
-        // physical name), so a name can't be varied freely in search of a digest that matches
-        // another Space's table. A stored name
-        // (`my_tasks`) stands for the key it was made from, so its camelCase form is tried too.
-        $spellings = [];
-        foreach ($names as $n) {
-            if (preg_match('/\A[A-Za-z][A-Za-z0-9_]*\z/', $n) === 1) {
-                $spellings[] = $n;
-                $spellings[] = (string) preg_replace_callback('/(?<=[a-z0-9])_([a-z])/', static fn (array $m) => strtoupper($m[1]), $n);
-            }
-        }
-        $names = array_values(array_unique($spellings));
+        // Only names the converter could have digested: identifiers, of any length (it cuts only the
+        // physical name). `casings` tries the keys a stored, lowercased name may stand for.
+        $names = array_values(array_unique(array_filter($names, static fn (string $n) => preg_match('/\A[A-Za-z][A-Za-z0-9_]*\z/', $n) === 1)));
         $reason = self::tableRefusal($name, $prefix, $names);
         if ($reason !== null) {
             throw new HttpError(409, 'existing_table_refused', "existingTable `" . self::shown($name) . "` is refused: $reason");
@@ -294,16 +290,62 @@ final class Guard
         if (!str_starts_with($m[1], $head)) {
             return false;
         }
-        // The digest is over the 0.8 table's own name, case included.
+        // The digest is over the 0.8 table's own name, case included. A stored name (`api_keys`, from
+        // a snapshot written before `adoptedAs`) and the physical name's own part (`mytasks`) have
+        // lost the key's case (`APIKeys`, `myTasks`), so each casing of their letters is tried, each
+        // `_` kept or dropped. Every spelling still needs the digest of this Space's id, so only
+        // this Space's own 0.8 tables match; the names matter for ones the converter cut.
         $rest = substr($lower, strlen($head), -11);
         foreach (array_unique(array_filter([...$names, $rest], static fn ($t) => $t !== '')) as $table) {
-            $base = substr($head . $part($table), 0, 53);
-            if ($base === $m[1] && hash_equals($m[2], substr(hash('sha256', $space . "\0" . $table), 0, 10))) {
-                return true;
+            foreach (self::casings($table) as $spelling) {
+                $base = substr($head . $part($spelling), 0, 53);
+                if ($base === $m[1] && hash_equals($m[2], substr(hash('sha256', $space . "\0" . $spelling), 0, 10))) {
+                    return true;
+                }
             }
         }
 
         return false;
+    }
+
+    /**
+     * `$name` itself and, when it is all lowercase (a stored name), the converter-legal names it
+     * may have been made from: each letter in either case, with each `_` kept or dropped
+     * (`api_keys` → `APIKeys`, `apiKeys`, `ApiKeys`, ...). Only names of up to 14 letters and 3
+     * underscores are expanded (at most 2^17 digests), which covers registry keys; longer stored
+     * names have their `adoptedAs` written by any build since it.
+     *
+     * @return iterable<string>
+     */
+    private static function casings(string $name): iterable
+    {
+        yield $name;
+        $letters = preg_match_all('/[a-z]/', $name);
+        $underscores = substr_count($name, '_');
+        if ($name !== strtolower($name) || $letters > 14 || $underscores > 3 || preg_match('/\A[a-z][a-z0-9_]*\z/', $name) !== 1) {
+            return;
+        }
+        $spellings = [''];
+        foreach (str_split($name) as $i => $c) {
+            $next = [];
+            foreach ($spellings as $s) {
+                if (ctype_lower($c)) {
+                    $next[] = $s . $c;
+                    $next[] = $s . strtoupper($c);
+                } elseif ($c === '_' && $i > 0) {
+                    $next[] = $s . '_';
+                    $next[] = $s;
+                } else {
+                    $next[] = $s . $c;
+                }
+            }
+            $spellings = $next;
+        }
+        foreach ($spellings as $s) {
+            if ($s !== $name && preg_match('/\A[A-Za-z][A-Za-z0-9_]*\z/', $s) === 1) {
+                yield $s;
+            }
+        }
     }
 
     /** A name as an error message shows it: printable, bounded. */

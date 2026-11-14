@@ -941,10 +941,13 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
         }
     }
     for t in prev_t.keys().filter(|t| !next_t.contains_key(*t)) {
-        out.push(checked(
-            json!({ "check": "drop", "name": t, "table": physical(t, &prev_t), "adopted": adopted(&prev_t[t]) }),
-            format!("DROP TABLE {};", table(t, &prev_t)),
-        ));
+        let mut check =
+            json!({ "check": "drop", "name": t, "table": physical(t, &prev_t), "adopted": adopted(&prev_t[t]) });
+        // The name a dropped binding was adopted under: the runtime checks the adoption again first.
+        if prev_t[t]["adoptedAs"].is_string() {
+            check["adoptedAs"] = prev_t[t]["adoptedAs"].clone();
+        }
+        out.push(checked(check, format!("DROP TABLE {};", table(t, &prev_t))));
     }
     out
 }

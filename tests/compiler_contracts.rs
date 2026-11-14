@@ -4751,6 +4751,34 @@ fn an_adopted_table_keeps_the_name_it_was_adopted_under_across_renames() {
         "{:#}",
         aliased.snapshot
     );
+
+    // Removing a renamed binding: the drop's check names the table it was adopted under, so the
+    // runtime can check that adoption again even with no collection left to give the name.
+    let with_notes = build(
+        &format!(
+            "{head} const items = table({{ title: text() }}, {{ was: 'my_tasks', existingTable: '{legacy}' }}); const notes = table({{ title: text() }}); export default defineConfig({{ tables: {{ items, notes }} }});"
+        ),
+        Some(renamed.snapshot.clone()),
+    );
+    let removed = build(
+        &format!(
+            "{head} const notes = table({{ title: text() }}); export default defineConfig({{ tables: {{ notes }} }});"
+        ),
+        Some(with_notes.snapshot.clone()),
+    );
+    let sql = &removed.migrations[0].1;
+    let drop: Value = serde_json::from_str(
+        sql.lines()
+            .filter_map(|l| l.strip_prefix("-- first-check "))
+            .find(|c| c.contains("\"drop\""))
+            .expect("a drop check"),
+    )
+    .unwrap();
+    assert_eq!(
+        (&drop["name"], &drop["table"], &drop["adoptedAs"]),
+        (&json!("items"), &json!(legacy), &json!("myTasks")),
+        "{sql}"
+    );
 }
 
 /// The OpenAPI document and the Abilities describe one value one way. `src/json_schema.rs` is the

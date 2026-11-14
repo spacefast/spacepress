@@ -76,6 +76,10 @@ $kind = wp_insert_post(['post_type' => 'first_posts', 'post_status' => 'publish'
 foreach (['ID' => $kind, 'import_id' => $kind + 1000, 'meta_input' => ['_edit_lock' => 'x'], 'tax_input' => ['category' => [1]], 'post_date' => '2001-01-01 00:00:00'] as $field => $value) {
     problem("wp_insert_post refuses the field $field", static fn () => $call('wp_insert_post', [new JsObject(['post_title' => 'overwritten', $field => $value]), true]), 403, 'protected_post_field');
 }
+// A string is parsed by WordPress as a query string, so it would carry any field: refused.
+foreach (['ID=' . $kind . '&post_title=overwritten', 'post_type=customize_changeset&post_status=publish', 42] as $raw) {
+    problem('wp_insert_post refuses a non-object ' . json_encode($raw), static fn () => $call('wp_insert_post', [$raw, true]), 403, 'protected_post_field');
+}
 eq('the First post is untouched', [get_post_type($kind), get_the_title($kind)], ['first_posts', 'Kept']);
 
 // existingTable: this site's prefix (wp_ here), never WordPress's, First's or Action Scheduler's own.
@@ -176,14 +180,19 @@ $adopts('a long table name the converter cut adopts through the collection named
 $GLOBALS['GUARD_SPACE'] = 'spc_mine';
 $myTasks = $legacyOf('spc_mine', 'myTasks');
 $spec = ['key' => 'items', 'existingTable' => $myTasks];
-try {
-    Guard::table($myTasks, $mine, Guard::names('items', $spec));
-    check('a renamed collection without its adopted name does not match the digest', false, 'accepted');
-} catch (\First\HttpError $e) {
-    check('a renamed collection without its adopted name does not match the digest', $e->errorCode === 'existing_table_refused');
-}
+// The physical name holds the 0.8 name lowercased (`mytasks`); its casings find `myTasks` even
+// with no adopted name. The digest is over this Space's id, so that admits only its own tables.
+$adopts('a renamed collection binds its uncut 0.8 table through the physical name', $myTasks, $mine, Guard::names('items', $spec));
 $adopts('a collection renamed with was still binds its 0.8 table', $myTasks, $mine, Guard::names('items', $spec + ['adoptedAs' => 'myTasks']));
 $adopts("a snapshot from before adoptedAs names the stored table (my_tasks), whose key's digest still matches", $myTasks, $mine, Guard::names('items', $spec + ['adoptedAs' => 'my_tasks']));
+// The stored name has lost the key's case however it was written: APIKeys is stored as api_keys.
+$apiKeys = $legacyOf('spc_mine', 'APIKeys');
+$adopts('a stored name stands for its key in any casing (APIKeys as api_keys)', $apiKeys, $mine, Guard::names('items', ['key' => 'items', 'existingTable' => $apiKeys, 'adoptedAs' => 'api_keys']));
+// A Space id long enough that the converter cuts the table part: the stored name still finds it.
+$GLOBALS['GUARD_SPACE'] = $longSpace = 'spc_' . str_repeat('l', 44);
+$adopts('and when the converter cut the 0.8 name', $legacyOf($longSpace, 'APIKeys'), $sfz($longSpace), Guard::names('items', ['key' => 'items', 'adoptedAs' => 'api_keys']));
+$GLOBALS['GUARD_SPACE'] = 'spc_mine';
+$refused("another Space's APIKeys, whatever casing is tried", $legacyOf('spc_other', 'APIKeys'), $mine);
 $adopts('a renamed collection over a cut 0.8 name', $legacyOf('spc_mine', 'aVeryLongTableNameThatTheConverterCutsDownToSize'), $mine,
     Guard::names('short', ['key' => 'short', 'adoptedAs' => 'aVeryLongTableNameThatTheConverterCutsDownToSize']));
 // The converter hashes the whole 0.8 name, however long; only the physical name is cut.
@@ -275,6 +284,25 @@ foreach (['wp_users' => 'WordPress users', $sfz('spc_other') . 'users' => "anoth
     problem("a historical adoption of $what's table is still refused", static fn () => $under($site, static fn () => $replay->migrate()), 409, 'existing_table_refused');
 }
 $wp->connection()->run("DROP TABLE IF EXISTS `{$mine}first__migrations`");
+
+// An adoption record from before `name`, whose collection was renamed (myTasks to items) and then
+// removed: the drop check carries the name it was adopted under, so this Space's table still drops.
+$GLOBALS['GUARD_SPACE'] = 'spc_mine';
+$wp->connection()->run("CREATE TABLE IF NOT EXISTS `$legacy` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `title` TEXT)");
+array_map('unlink', glob("$dir/*"));
+file_put_contents("$dir/0001_adopt.sql", $adoptRecord($legacy, null));
+file_put_contents("$dir/0002_update.sql", '-- first-check ' . json_encode(['check' => 'drop', 'name' => 'items', 'table' => $legacy, 'adopted' => true, 'adoptedAs' => 'myTasks']) . "\nDROP TABLE `$legacy`;");
+$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}first__migrations`");
+$renamedAway = new Migrator($wp->connection(), $dir, new \First\Schema($later), ['items' => 0]);
+try {
+    $under($mine, static fn () => $renamedAway->plan());
+    check('a renamed then removed adoption plans with its drop confirmed', true);
+} catch (\Throwable $e) {
+    check('a renamed then removed adoption plans with its drop confirmed', false, $e->getMessage());
+}
+$wp->connection()->run("DROP TABLE IF EXISTS `{$mine}first__migrations`");
+$wp->connection()->run("DROP TABLE IF EXISTS `$legacy`");
+$GLOBALS['GUARD_SPACE'] = '';
 
 // An adoption an earlier runtime applied, whose collection is gone, is checked again before a later
 // statement drops its table: a ledger that recorded `0001_adopt` of wp_users can't drop wp_users.

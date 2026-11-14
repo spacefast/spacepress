@@ -348,8 +348,8 @@ final class Migrator
         foreach ($migrations as $statements) {
             foreach ($statements as $later) {
                 $check = SchemaCheck::parse($later);
-                if (($check['check'] ?? null) === 'drop' && !isset($check['column']) && ($check['table'] ?? null) === $table && is_string($check['name'] ?? null)) {
-                    $names[] = $check['name'];
+                if (($check['check'] ?? null) === 'drop' && !isset($check['column']) && ($check['table'] ?? null) === $table) {
+                    $names = [...$names, ...array_filter([$check['adoptedAs'] ?? null, $check['name'] ?? null], 'is_string')];
                 }
             }
         }

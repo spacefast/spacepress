@@ -485,8 +485,10 @@ final class Prebuilt
 
     /**
      * plugins_loaded: answer a GET or HEAD for a prebuilt path from its file, before WordPress parses
-     * the request. Anything that could make the answer differ (a query string, a signed-in, preview or
-     * comment-author cookie, a missing file) falls through to the router.
+     * the request. Anything that could make the answer differ falls through to the router: a query
+     * string, a signed-in, preview or comment-author cookie, `Accept: text/markdown` (the Markdown
+     * negotiation's, rendering.md §5), another spelling of the path, a missing file or one past
+     * MAX_AGE, and a site that hides itself from the public.
      */
     public static function serve(): void
     {

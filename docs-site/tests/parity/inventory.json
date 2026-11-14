@@ -148,7 +148,7 @@
 			"stops": [],
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/changelog/index.mdx",
 			"toc": [],
-			"prev": "/publishing/other-platforms",
+			"prev": "/publishing/content-in-git",
 			"next": "/changelog/blocks",
 			"sidebar": true
 		},
@@ -554,7 +554,7 @@
 		"/pages": {
 			"title": "Pages in TSX and the Interactivity API - First",
 			"h1": "Pages in TSX and the Interactivity API",
-			"description": "Render a First app's front end from first/app/ in TSX, compiled to PHP and rendered by WordPress; and the pages/ pipeline it replaces.",
+			"description": "Render a First app's front end from first/app/ in TSX, compiled to PHP and rendered by WordPress.",
 			"canonical": "/pages",
 			"markdown": "/pages.md",
 			"ogImage": "/og/pages.png",
@@ -600,16 +600,9 @@
 				"a-docs-section-a-folder-of-markdown-as-a-kind",
 				"typed-search-a-guard-http-handlers",
 				"interactive-components-use-client",
+				"stylesheets-and-images",
 				"on-wordpress",
-				"the-pages-pipeline-being-replaced",
-				"files-and-routes",
-				"a-page-before-and-after",
-				"data-comes-per-request",
-				"metadata-css-and-assets",
-				"islands-and-the-interactivity-api",
-				"escaping",
-				"build",
-				"not-in-this-release"
+				"from-the-old-pages-renderer"
 			],
 			"prev": "/compiler",
 			"next": "/agents",
@@ -700,6 +693,57 @@
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/publishing/other-platforms.mdx",
 			"toc": [],
 			"prev": "/publishing/spacefast",
+			"next": "/publishing/content-in-git",
+			"sidebar": true
+		},
+		"/publishing/content-in-git": {
+			"title": "Content in git - First",
+			"h1": "Content in git",
+			"description": "Edits made on a First site come back to the repository as a pull request, and content merged in git goes to the site, through first sync.",
+			"canonical": "/publishing/content-in-git",
+			"markdown": "/publishing/content-in-git.md",
+			"ogImage": "/og/publishing/content-in-git.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/publishing/content-in-git.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Content in git - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/publishing/content-in-git.mdx",
+			"toc": [
+				"the-pull-request",
+				"the-github-workflow",
+				"conflicts",
+				"permissions"
+			],
+			"prev": "/publishing/other-platforms",
 			"next": "/changelog",
 			"sidebar": true
 		},
@@ -1322,8 +1366,55 @@
 			"edit": null,
 			"toc": [],
 			"prev": "/rest/account/auth-guest",
-			"next": "/rest/search/search",
+			"next": "/rest/live/live-refresh",
 			"operation": "DELETE /auth/session",
+			"sidebar": true
+		},
+		"/rest/live/live-refresh": {
+			"title": "Refresh subscribed reads - First",
+			"h1": "Refresh subscribed reads",
+			"description": "Takes up to 20 reads, each with the token of the answer the caller last got, and answers each… Reference for the POST /_live endpoint in the First REST API.",
+			"canonical": "/rest/live/live-refresh",
+			"markdown": "/rest/live/live-refresh.md",
+			"ogImage": "/og/rest/live/live-refresh.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/live/live-refresh.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Refresh subscribed reads - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/account/auth-sign-out",
+			"next": "/rest/search/search",
+			"operation": "POST /_live",
 			"sidebar": true
 		},
 		"/rest/actions/actions-approve-comment": {
@@ -2648,6 +2739,7 @@
 				"wordpress",
 				"media",
 				"account",
+				"live",
 				"search",
 				"schema"
 			],
@@ -4154,7 +4246,7 @@
 			"stops": [],
 			"edit": null,
 			"toc": [],
-			"prev": "/rest/account/auth-sign-out",
+			"prev": "/rest/live/live-refresh",
 			"next": "/rest/schema/schema",
 			"operation": "GET /search",
 			"sidebar": true
@@ -5366,6 +5458,11 @@
 				"group": "Publishing"
 			},
 			{
+				"label": "Content in git",
+				"href": "/publishing/content-in-git",
+				"group": "Publishing"
+			},
+			{
 				"label": "Changelogs",
 				"href": "/changelog",
 				"group": "Changelog"
@@ -5857,6 +5954,11 @@
 				"group": "Account"
 			},
 			{
+				"label": "Refresh subscribed readsPOST",
+				"href": "/rest/live/live-refresh",
+				"group": "Live"
+			},
+			{
 				"label": "Search the siteGET",
 				"href": "/rest/search/search",
 				"group": "Search"
@@ -6179,6 +6281,7 @@
 		"/index.md",
 		"/pages.md",
 		"/publishing/other-platforms.md",
+		"/publishing/content-in-git.md",
 		"/publishing/spacefast.md",
 		"/reference.md",
 		"/reference/cli.md",
@@ -6192,6 +6295,7 @@
 		"/rest/account/auth-guest.md",
 		"/rest/account/auth-me.md",
 		"/rest/account/auth-sign-out.md",
+		"/rest/live/live-refresh.md",
 		"/rest/actions/actions-approve-comment.md",
 		"/rest/actions/actions-published-count.md",
 		"/rest/authors/authors-compare.md",
@@ -6289,6 +6393,7 @@
 		"/index.mdx",
 		"/pages.mdx",
 		"/publishing/other-platforms.mdx",
+		"/publishing/content-in-git.mdx",
 		"/publishing/spacefast.mdx",
 		"/reference.mdx",
 		"/reference/cli.mdx",
@@ -6302,6 +6407,7 @@
 		"/rest/account/auth-guest.mdx",
 		"/rest/account/auth-me.mdx",
 		"/rest/account/auth-sign-out.mdx",
+		"/rest/live/live-refresh.mdx",
 		"/rest/actions/actions-approve-comment.mdx",
 		"/rest/actions/actions-published-count.mdx",
 		"/rest/authors/authors-compare.mdx",
@@ -6405,6 +6511,7 @@
 		"/api/docs/pages/index.json",
 		"/api/docs/pages/pages.json",
 		"/api/docs/pages/publishing/other-platforms.json",
+		"/api/docs/pages/publishing/content-in-git.json",
 		"/api/docs/pages/publishing/spacefast.json",
 		"/api/docs/pages/reference.json",
 		"/api/docs/pages/reference/cli.json",
@@ -6418,6 +6525,7 @@
 		"/api/docs/pages/rest/account/auth-guest.json",
 		"/api/docs/pages/rest/account/auth-me.json",
 		"/api/docs/pages/rest/account/auth-sign-out.json",
+		"/api/docs/pages/rest/live/live-refresh.json",
 		"/api/docs/pages/rest/actions/actions-approve-comment.json",
 		"/api/docs/pages/rest/actions/actions-published-count.json",
 		"/api/docs/pages/rest/authors/authors-compare.json",
@@ -6526,6 +6634,7 @@
 		"/og/pages.png",
 		"/og/playground.png",
 		"/og/publishing/other-platforms.png",
+		"/og/publishing/content-in-git.png",
 		"/og/publishing/spacefast.png",
 		"/og/reference.png",
 		"/og/reference/cli.png",
@@ -6539,6 +6648,7 @@
 		"/og/rest/account/auth-guest.png",
 		"/og/rest/account/auth-me.png",
 		"/og/rest/account/auth-sign-out.png",
+		"/og/rest/live/live-refresh.png",
 		"/og/rest/actions/actions-approve-comment.png",
 		"/og/rest/actions/actions-published-count.png",
 		"/og/rest/authors/authors-compare.png",
@@ -6640,6 +6750,7 @@
 		"/pages",
 		"/playground",
 		"/publishing/other-platforms",
+		"/publishing/content-in-git",
 		"/publishing/spacefast",
 		"/reference",
 		"/reference/cli",
@@ -6653,6 +6764,7 @@
 		"/rest/account/auth-guest",
 		"/rest/account/auth-me",
 		"/rest/account/auth-sign-out",
+		"/rest/live/live-refresh",
 		"/rest/actions/actions-approve-comment",
 		"/rest/actions/actions-published-count",
 		"/rest/authors/authors-compare",
@@ -6744,6 +6856,7 @@
 		"/agents",
 		"/publishing/spacefast",
 		"/publishing/other-platforms",
+		"/publishing/content-in-git",
 		"/changelog",
 		"/changelog/blocks",
 		"/examples",
@@ -6841,6 +6954,7 @@
 		"/rest/account/auth-config",
 		"/rest/account/auth-guest",
 		"/rest/account/auth-sign-out",
+		"/rest/live/live-refresh",
 		"/rest/search/search",
 		"/rest/schema/schema",
 		"/rest/schema/openapi",

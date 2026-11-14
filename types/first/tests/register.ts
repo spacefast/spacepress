@@ -9,7 +9,7 @@ type Graph = {
   items: { locationId: One<"locations", true>; shoppingList: Many<"shoppingList"> };
   shoppingList: { itemId: One<"items", true> };
   authors: { posts: Many<"posts"> };
-  posts: { authorId: One<"authors", true>; comments: Many<"comments"> };
+  posts: { authorId: One<"authors", true>; related: Many<"posts">; relatedFrom: Many<"posts">; comments: Many<"comments"> };
   comments: { postId: One<"posts", false> };
 };
 export type AppRelations = Relations<typeof entities, Graph>;

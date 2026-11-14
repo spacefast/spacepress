@@ -193,6 +193,36 @@ fn replaced_field_forms_name_their_replacement() {
             "ref() takes a kind, not \"notes\"",
             "first/schema.ts:2:37",
         ),
+        (
+            "reject-ref-many-set-null",
+            "`.onDelete()` on the `ref().many()` field `tags` takes \"cascade\" or \"restrict\"",
+            "first/schema.ts:3:53",
+        ),
+        (
+            "reject-ref-many-unique",
+            "`.unique()` isn't valid on a `ref().many()` field",
+            "first/schema.ts:3:53",
+        ),
+        (
+            "reject-ref-many-sub",
+            "`ref()` isn't allowed inside a group, repeater, or blocks field (`tags`)",
+            "first/schema.ts:3:50",
+        ),
+        (
+            "reject-ref-many-clash",
+            "`extra` gives \"tags\" a reverse list named `name`, which \"tags\" already has",
+            "first/schema.ts:3:61",
+        ),
+        (
+            "reject-ref-many-sync",
+            "`tags` is a `ref().many()` list, which sync can't carry yet",
+            "first/schema.ts:3:56",
+        ),
+        (
+            "reject-ref-many-input",
+            "`ref()` isn't allowed on an action input (`ids`)",
+            "first.config.ts:3:88",
+        ),
     ] {
         rejects(fixture, message, at);
     }
@@ -2486,6 +2516,28 @@ export default defineConfig({ name: "kindurls" });
 "#,
     );
     assert!(built.get("frontend").is_none(), "{built}");
+    // `publicAuthors` reaches the runtime only when set (spec.md §6, the authors switch).
+    assert!(built.get("publicAuthors").is_none(), "{built}");
+    let built = schema(
+        r#"import { defineConfig } from "first";
+export default defineConfig({ name: "kindurls", publicAuthors: true });
+"#,
+    );
+    assert_eq!(built["publicAuthors"], true);
+    let refused = tmp.path().join("app-public-authors");
+    std::fs::create_dir_all(&refused).unwrap();
+    std::fs::write(
+        refused.join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"kindurls\", publicAuthors: \"yes\" });\n",
+    )
+    .unwrap();
+    let out = first().args(["build", "--quiet"]).arg(&refused).output().unwrap();
+    assert!(!out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("publicAuthors must be true or false"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     // `staged: false` is the one staged setting the schema carries: collections stage unless it is there.
     let built = schema(
         r#"import { collection, defineConfig, text } from "first";
@@ -2959,6 +3011,112 @@ export default defineConfig({ name: "p", actions: { a: action({ access: "anyone"
         projections < 5 * facts,
         "the effects solver repeats work: {projections} projections for {facts} facts"
     );
+}
+
+/// `ref(kind).many()` (docs/decisions/2026-11-11-authoring-surface.md, ruling 3): a First-owned join
+/// table per field, a many relation each way in schema.php and db.d.ts, and a field that leaves the
+/// config drops nothing without `--drop`.
+#[test]
+fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
+    let tmp = std::env::temp_dir().join(format!("first-ref-many-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(tmp.join("first")).unwrap();
+    std::fs::write(
+        tmp.join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"many\" });\n",
+    )
+    .unwrap();
+    let schema = |posts_extra: &str| {
+        format!(
+            "import {{ collection, ref, table, text }} from \"first\";\n\
+             export const tags = table({{ name: text() }});\n\
+             export const notes = table({{ body: text(), tags: ref(tags).many(){posts_extra} }});\n\
+             export const posts = collection({{ title: text(), tags: ref(tags).many().optional().reverse(\"taggedPosts\").onDelete(\"restrict\") }});\n"
+        )
+    };
+    std::fs::write(tmp.join("first/schema.ts"), schema("")).unwrap();
+    let build = || {
+        let out = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    };
+    build();
+    let migration = std::fs::read_to_string(tmp.join("first/_generated/migrations/0001_init.sql")).unwrap();
+    // Both sides custom tables: constraints cascade. A post-backed side: no constraint.
+    assert!(migration.contains("CREATE TABLE `{prefix}first_notes_tags` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`),\n\tCONSTRAINT `first_notes_tags_owner_id_fk` FOREIGN KEY (`owner_id`) REFERENCES `{prefix}first_notes` (`id`) ON DELETE CASCADE,\n\tCONSTRAINT `first_notes_tags_target_id_fk` FOREIGN KEY (`target_id`) REFERENCES `{prefix}first_tags` (`id`) ON DELETE CASCADE\n)"), "{migration}");
+    assert!(migration.contains("CREATE TABLE `{prefix}first_posts_tags` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)\n)"), "{migration}");
+    assert!(
+        !migration.contains("ADD COLUMN `tags`") && !migration.contains("`tags` LONGTEXT"),
+        "{migration}"
+    );
+
+    let out = Command::new("php")
+        .args(["-r", "echo json_encode(require $argv[1]);"])
+        .arg(tmp.join("first/dist/wp-content/plugins/first-app-many/first/app/schema.php"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let php: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let posts = &php["collections"]["posts"];
+    assert_eq!(posts["columns"]["tags"]["type"], "refList");
+    assert_eq!(
+        posts["columns"]["tags"]["references"],
+        serde_json::json!({ "collection": "tags", "column": "id", "onDelete": "restrict", "join": "posts_tags" })
+    );
+    assert_eq!(
+        php["collections"]["notes"]["columns"]["tags"]["references"]["onDelete"],
+        "cascade"
+    );
+    assert_eq!(
+        posts["relations"]["tags"],
+        serde_json::json!({ "kind": "many", "collection": "tags", "from": "id", "to": "id", "optional": false, "through": { "table": "posts_tags", "from": "owner_id", "to": "target_id" } })
+    );
+    let tags = &php["collections"]["tags"]["relations"];
+    assert_eq!(
+        tags["taggedPosts"]["through"],
+        serde_json::json!({ "table": "posts_tags", "from": "target_id", "to": "owner_id" })
+    );
+    assert_eq!(tags["notes"]["through"]["table"], "notes_tags");
+
+    let dts = std::fs::read_to_string(tmp.join("first/_generated/db.d.ts")).unwrap();
+    assert!(
+        dts.contains("'tags': ColumnBuilder<'refList', number[], false, false, false, false>;"),
+        "{dts}"
+    );
+    assert!(
+        dts.contains("'taggedPosts': Many<'posts'>;") && dts.contains("'notes': Many<'notes'>;"),
+        "{dts}"
+    );
+
+    // Another many-ref adds its table; removing one drops it only through the deploy's `drop` check,
+    // which refuses while links exist unless `--drop` names them.
+    let migration = |n: &str| {
+        let dir = tmp.join("first/_generated/migrations");
+        let name = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .find(|f| f.starts_with(n))
+            .unwrap_or_else(|| panic!("no migration {n}"));
+        std::fs::read_to_string(dir.join(name)).unwrap()
+    };
+    std::fs::write(
+        tmp.join("first/schema.ts"),
+        schema(", related: ref(() => notes).many().reverse(\"relatedFrom\")"),
+    )
+    .unwrap();
+    build();
+    assert!(
+        migration("0002").starts_with("CREATE TABLE `{prefix}first_notes_related` ("),
+        "{}",
+        migration("0002")
+    );
+    std::fs::write(tmp.join("first/schema.ts"), schema("")).unwrap();
+    build();
+    let dropped = migration("0003");
+    assert_eq!(
+        dropped.trim_end(),
+        "-- first-check {\"check\":\"drop\",\"name\":\"notes_related\",\"table\":\"{prefix}first_notes_related\",\"adopted\":false}\nDROP TABLE `{prefix}first_notes_related`;"
+    );
+    let _ = std::fs::remove_dir_all(tmp);
 }
 
 /// A request to the facade with any body and headers: (status, content type, body text).
@@ -3644,6 +3802,56 @@ fn the_openapi_document_describes_what_the_api_answers() {
         b"",
     );
     assert_eq!(status, 405);
+
+    // Subscribed reads: one request answers each as the caller, and the token makes the next
+    // answer "not modified". `members` reads only the caller's own row: none for a visitor.
+    let queries = json!({ "queries": [
+        { "kind": "notes", "op": "list", "args": { "orderBy": { "id": "asc" }, "limit": 2 } },
+        { "kind": "notes", "op": "count" },
+        { "kind": "notes", "op": "paginate", "args": { "limit": 1 } },
+        { "kind": "notes", "op": "get", "id": id },
+        { "kind": "members", "op": "list" },
+    ] });
+    let first = check("POST", "/_live", None, &[], &json(queries.clone()), 200);
+    let results = first["data"]["results"].as_array().unwrap();
+    assert!(results.iter().all(|r| r["changed"] == true), "{first}");
+    assert_eq!(results[4]["data"], json!([]), "a visitor reads no member");
+    let mut again = queries.clone();
+    for (query, result) in again["queries"].as_array_mut().unwrap().iter_mut().zip(results) {
+        if let Some(token) = result.get("token") {
+            query["token"] = token.clone();
+        }
+    }
+    let second = check("POST", "/_live", None, &[], &json(again), 200);
+    assert_eq!(
+        second["data"]["results"][0],
+        json!({ "changed": false, "token": second["data"]["results"][0]["token"] })
+    );
+    check("POST", "/_live", None, &[], &json(json!({ "queries": [] })), 422);
+    check("POST", "/_live", None, &[], b"{", 400);
+    // The document's `maxItems` is the runtime's limit: that many are answered, one more is refused.
+    let max = document["paths"]["/_live"]["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+        ["queries"]["maxItems"]
+        .as_u64()
+        .unwrap() as usize;
+    let count = json!({ "kind": "notes", "op": "count" });
+    let at_max = check(
+        "POST",
+        "/_live",
+        None,
+        &[],
+        &json(json!({ "queries": vec![count.clone(); max] })),
+        200,
+    );
+    assert_eq!(at_max["data"]["results"].as_array().unwrap().len(), max);
+    check(
+        "POST",
+        "/_live",
+        None,
+        &[],
+        &json(json!({ "queries": vec![count; max + 1] })),
+        422,
+    );
 
     // Users: a member reads and changes their own row only.
     let me = check("GET", "/me", Some("subscriber"), &[], b"", 200);

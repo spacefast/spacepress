@@ -566,7 +566,7 @@
     {
       "name": "group",
       "kind": "articles",
-      "field": "seo",
+      "field": "meta",
       "definition": {
         "type": "group",
         "fields": {
@@ -609,7 +609,7 @@
     {
       "name": "repeater with a row range",
       "kind": "articles",
-      "field": "links",
+      "field": "related",
       "definition": {
         "type": "repeater",
         "rules": {
@@ -813,7 +813,7 @@
     {
       "name": "a required sub-field needs no default",
       "kind": "articles",
-      "field": "seo",
+      "field": "meta",
       "definition": {
         "type": "group",
         "fields": {
@@ -904,7 +904,7 @@
     {
       "name": "a range on a group",
       "kind": "articles",
-      "field": "seo",
+      "field": "meta",
       "definition": {
         "type": "group",
         "rules": {
@@ -956,7 +956,7 @@
     {
       "name": "a sub-field name with a space",
       "kind": "articles",
-      "field": "seo",
+      "field": "meta",
       "definition": {
         "type": "group",
         "fields": {
@@ -1145,7 +1145,7 @@
     {
       "name": "blocks inside a group",
       "kind": "articles",
-      "field": "seo",
+      "field": "meta",
       "definition": {
         "type": "group",
         "fields": {
@@ -1577,7 +1577,7 @@
     {
       "name": "a group without fields",
       "kind": "articles",
-      "field": "seo",
+      "field": "meta",
       "definition": {
         "type": "group"
       },
@@ -1587,7 +1587,7 @@
     {
       "name": "a group with no fields in it",
       "kind": "articles",
-      "field": "seo",
+      "field": "meta",
       "definition": {
         "type": "group",
         "fields": {}
@@ -1851,6 +1851,120 @@
       },
       "runtime": "accept",
       "compiler": "accept",
+      "stored": {
+        "type": "text"
+      }
+    },
+    {
+      "name": "a field stored under a compiled group sub-field's meta key",
+      "kind": "articles",
+      "field": "seo_title",
+      "definition": {
+        "type": "integer"
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a field stored under a compiled repeater's row keys",
+      "kind": "articles",
+      "field": "links_0_href",
+      "definition": {
+        "type": "text"
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a field stored under a compiled repeater's later row keys",
+      "kind": "articles",
+      "field": "links_12_href",
+      "definition": {
+        "type": "text"
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a group whose sub-field is stored under a compiled group sub-field's key",
+      "kind": "articles",
+      "field": "seo",
+      "definition": {
+        "type": "group",
+        "fields": {
+          "x": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a group whose sub-field lands on a compiled repeater row key",
+      "kind": "articles",
+      "field": "links_0",
+      "definition": {
+        "type": "group",
+        "fields": {
+          "href": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a repeater whose rows land on a compiled group sub-field key",
+      "kind": "articles",
+      "field": "seo",
+      "definition": {
+        "type": "repeater",
+        "fields": {
+          "title": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a field named like a compiled repeater's row prefix is stored under its own key",
+      "kind": "articles",
+      "field": "links_3",
+      "definition": {
+        "type": "text"
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "type": "text"
+      }
+    },
+    {
+      "name": "a field whose name only starts like a compiled group",
+      "kind": "articles",
+      "field": "seot",
+      "definition": {
+        "type": "text"
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "type": "text"
+      }
+    },
+    {
+      "name": "a field whose name only starts like a compiled repeater",
+      "kind": "articles",
+      "field": "links_x_href",
+      "definition": {
+        "type": "text"
+      },
+      "compiler": "accept",
+      "runtime": "accept",
       "stored": {
         "type": "text"
       }
@@ -2315,8 +2429,9 @@
           }
         }
       },
-      "compiler": "F3001",
-      "runtime": "F3001"
+      "compiler": "accept",
+      "runtime": "F3001",
+      "note": "The site refuses adding a kind the build declares. A lock that lists such a kind is what `first pull` writes after a collection the site added moved into source; the compiler builds it, taking the kind from source."
     },
     {
       "name": "a name the build's table has",
@@ -2761,6 +2876,133 @@
       },
       "compiler": "accept",
       "runtime": "schema_reserved"
+    },
+    {
+      "name": "a global whose option keys overlap a compiled global's",
+      "op": "addGlobal",
+      "name_": "site_meta",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a global whose name a compiled global's options start with",
+      "op": "addGlobal",
+      "name_": "site_meta_x",
+      "definition": {
+        "fields": {
+          "y": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "fields": {
+          "y": {
+            "type": "text"
+          }
+        }
+      }
+    },
+    {
+      "name": "a collection whose meta keys a compiled group's sub-fields already use",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "seo_title": {
+            "type": "integer"
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "seo_title": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    {
+      "name": "a collection whose own fields share a meta key",
+      "op": "addCollection",
+      "name_": "events",
+      "definition": {
+        "fields": {
+          "title": {
+            "type": "text",
+            "notNull": true
+          },
+          "venue": {
+            "type": "group",
+            "fields": {
+              "name": {
+                "type": "text"
+              }
+            }
+          },
+          "venue_name": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a global whose group's sub-field lands on a compiled global's option",
+      "op": "addGlobal",
+      "name_": "site_meta",
+      "definition": {
+        "fields": {
+          "x": {
+            "type": "text"
+          },
+          "ti": {
+            "type": "group",
+            "fields": {
+              "tle": {
+                "type": "text"
+              }
+            }
+          }
+        }
+      },
+      "compiler": "accept",
+      "runtime": "accept",
+      "stored": {
+        "fields": {
+          "x": {
+            "type": "text"
+          },
+          "ti": {
+            "type": "group",
+            "fields": {
+              "tle": {
+                "type": "text"
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }

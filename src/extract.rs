@@ -110,6 +110,8 @@ struct RefField {
     target: String,
     optional: bool,
     reverse: Option<String>,
+    /// `.many()`: a list through the field's join table.
+    many: bool,
     span: Span,
 }
 
@@ -130,6 +132,7 @@ const CONFIG_KEYS: &[&str] = &[
     "locales",
     "plugins",
     "admin",
+    "publicAuthors",
     "services",
     "use",
     "frontend",
@@ -250,6 +253,12 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         }
     };
     out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
+    out.schema.public_authors = bool_option(
+        &cfg_map,
+        "publicAuthors",
+        false,
+        span_of(ev, config, "publicAuthors", config_span),
+    )?;
     let runtime_schema = span_of(ev, config, "runtimeSchema", config_span);
     out.schema.runtime_schema = bool_option(&cfg_map, "runtimeSchema", false, runtime_schema)?.then(Default::default);
     out.schema.frontend = match cfg_map.get("frontend") {
@@ -487,6 +496,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 column: "id".into(),
                 on_delete: Some(crate::schema::RefAction::SetNull),
                 on_update: None,
+                join: None,
             });
             parent.system = true;
             let mut order = Column::new("order", ColType::Integer);
@@ -504,6 +514,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     from: "parent".into(),
                     to: "id".into(),
                     optional: true,
+                    through: None,
                 },
             );
             coll.relations.insert(
@@ -515,6 +526,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     from: "id".into(),
                     to: "parent".into(),
                     optional: false,
+                    through: None,
                 },
             );
         }
@@ -1555,7 +1567,7 @@ fn postmeta_hints(out: &mut Extracted) {
             if !c.editor || c.is_core_column(&col.name) {
                 continue;
             }
-            if col.unique || col.references.is_some() {
+            if col.unique || col.references.is_some() && col.ty != ColType::RefList {
                 hints.push((c.table.clone(), col.name.clone()));
             }
         }
@@ -1771,6 +1783,24 @@ fn column(
         }
         Some(DefaultVal::Value(_)) => unreachable!("$onUpdate always takes a function"),
     };
+    let many_ref = b.ty == ColType::RefList;
+    if many_ref {
+        // A many-ref is a set of links in First's join table, not a value: nothing to make unique,
+        // default, translate or regenerate (docs/decisions/2026-11-11-authoring-surface.md, ruling 3).
+        let bad = [
+            ("unique", b.unique),
+            ("default", b.default.is_some()),
+            ("$onUpdate", b.on_update.is_some()),
+            ("was", b.was.is_some()),
+        ];
+        if let Some((m, _)) = bad.iter().find(|(_, on)| *on) {
+            return Err(Diag::new(
+                b.span_of(m),
+                format!("`.{m}()` isn't valid on a `ref().many()` field (`{name}`)"),
+            )
+            .help("a many-ref is a list of links First keeps in its own table; remove the modifier"));
+        }
+    }
     let references = match &b.references {
         None => None,
         Some((target, on_delete, on_update, span)) => {
@@ -1804,7 +1834,7 @@ fn column(
                 );
             }
             let target_col = &kind.columns[&column];
-            if target_col.ty != b.ty {
+            if target_col.ty != if many_ref { ColType::Integer } else { b.ty } {
                 return Err(Diag::new(
                     *span,
                     format!(
@@ -1826,8 +1856,23 @@ fn column(
                     ),
                 ));
             }
-            // A `ref()` defaults to `restrict` when required and `setNull` when optional (spec §2.5).
+            let on_delete_span = b
+                .mods
+                .iter()
+                .rev()
+                .find(|(m, _)| *m == "onDelete")
+                .map_or(*span, |(_, s)| *s);
+            if many_ref && on_delete.is_some_and(|a| !matches!(a, RefAction::Cascade | RefAction::Restrict)) {
+                return Err(Diag::new(
+                    on_delete_span,
+                    format!("`.onDelete()` on the `ref().many()` field `{name}` takes \"cascade\" or \"restrict\""),
+                )
+                .help("\"cascade\" (the default) removes the link when a linked row is deleted; \"restrict\" refuses the delete while links exist"));
+            }
+            // A `ref()` defaults to `restrict` when required and `setNull` when optional (spec §2.5);
+            // a many-ref's links go with either side.
             let on_delete = match (on_delete, matches!(target, RefTarget::Column(_))) {
+                (None, false) if many_ref => Some(RefAction::Cascade),
                 (Some(action), _) => Some(*action),
                 (None, true) => None,
                 (None, false) if b.optional => Some(RefAction::SetNull),
@@ -1835,11 +1880,7 @@ fn column(
             };
             if on_delete == Some(RefAction::SetNull) && !b.optional {
                 return Err(Diag::new(
-                    b.mods
-                        .iter()
-                        .rev()
-                        .find(|(m, _)| *m == "onDelete")
-                        .map_or(*span, |(_, s)| *s),
+                    on_delete_span,
                     format!("`{name}` is required, so deleting what it refers to can't set it to null"),
                 )
                 .help("make it `.optional()`, or use `.onDelete(\"cascade\")` or `.onDelete(\"restrict\")`"));
@@ -1853,14 +1894,20 @@ fn column(
                     target: kind.table().to_string(),
                     optional: b.optional,
                     reverse: b.reverse.clone(),
+                    many: many_ref,
                     span: *span,
                 });
             }
+            let join = match owner {
+                Owner::Collection(table) if many_ref => Some(join_key(table, name)),
+                _ => None,
+            };
             Some(Reference {
                 collection: kind.table().to_string(),
                 column,
                 on_delete,
                 on_update: *on_update,
+                join,
             })
         }
     };
@@ -2111,6 +2158,7 @@ fn check_value(name: &str, b: &ColBuilder, v: &Value) -> Result<Json> {
             return bad("a list column (use an array)");
         }
         (ColType::Group, _) => return bad("a group column (use an object)"),
+        (ColType::RefList, _) => return bad("a many-ref (it takes no default)"),
     }
     to_json(v).ok_or_else(|| {
         Diag::new(
@@ -2203,17 +2251,46 @@ fn digits(s: &str) -> Option<u32> {
 /// say which field it follows.
 fn ref_relations(out: &mut Extracted) -> Result<()> {
     let refs = std::mem::take(&mut out.refs);
+    let mut joins: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for r in refs.iter().filter(|r| r.many) {
+        let key = join_key(&r.table, &r.field);
+        if out.schema.collections.values().any(|c| c.table == key) || joins.contains(&key) {
+            return Err(Diag::new(
+                r.span,
+                format!(
+                    "`{}`'s join table would be named \"{key}\", which another kind or many-ref already uses",
+                    r.field
+                ),
+            )
+            .help("rename the field, or give the other kind another `storageName`"));
+        }
+        joins.insert(key);
+    }
     for r in &refs {
         let coll = out.schema.collections.get_mut(&r.table).expect("collection");
         coll.relations.insert(
             r.field.clone(),
-            Relation {
-                name: r.field.clone(),
-                kind: RelKind::One,
-                collection: r.target.clone(),
-                from: r.field.clone(),
-                to: "id".into(),
-                optional: r.optional,
+            if r.many {
+                // `posts.tags` → the tags linked from this post, in position order.
+                Relation {
+                    name: r.field.clone(),
+                    kind: RelKind::Many,
+                    collection: r.target.clone(),
+                    from: "id".into(),
+                    to: "id".into(),
+                    optional: false,
+                    through: Some((join_key(&r.table, &r.field), "owner_id".into(), "target_id".into())),
+                }
+            } else {
+                Relation {
+                    name: r.field.clone(),
+                    kind: RelKind::One,
+                    collection: r.target.clone(),
+                    from: r.field.clone(),
+                    to: "id".into(),
+                    optional: r.optional,
+                    through: None,
+                }
             },
         );
     }
@@ -2253,12 +2330,21 @@ fn ref_relations(out: &mut Extracted) -> Result<()> {
                 kind: RelKind::Many,
                 collection: r.table.clone(),
                 from: "id".into(),
-                to: r.field.clone(),
+                to: if r.many { "id".into() } else { r.field.clone() },
                 optional: false,
+                through: r
+                    .many
+                    .then(|| (join_key(&r.table, &r.field), "target_id".into(), "owner_id".into())),
             },
         );
     }
     Ok(())
+}
+
+/// A many-ref's join table key (`posts` + `relatedPosts` → `posts_related_posts`), stored as
+/// `{prefix}first_<key>`.
+pub fn join_key(table: &str, field: &str) -> String {
+    format!("{table}_{}", crate::schema::physical_name(field))
 }
 
 fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -> Result<()> {
@@ -2368,6 +2454,7 @@ fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -
                                 from: fc,
                                 to: tc,
                                 optional,
+                                through: None,
                             },
                         );
                 }
@@ -2400,6 +2487,7 @@ fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -
                                 from: fc,
                                 to: tc,
                                 optional: false,
+                                through: None,
                             },
                         );
                 }
@@ -2451,6 +2539,7 @@ fn relations(rel: &Value, ev: &Evaluator<'_>, out: &mut Extracted, span: Span) -
                     from,
                     to,
                     optional: false,
+                    through: None,
                 },
             );
     }
@@ -3148,6 +3237,13 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
     }
     for c in out.schema.collections.values().filter(|c| c.sync.is_some()) {
         for col in c.columns.values() {
+            if col.ty == ColType::RefList {
+                return Err(Diag::new(
+                    out.collections.iter().find(|b| b.table() == c.table).unwrap().columns[&col.name].span,
+                    format!("`{}` is a `ref().many()` list, which sync can't carry yet", col.name),
+                )
+                .help("leave the list off synced kinds, or turn sync off for this kind"));
+            }
             if let Some(r) = &col.references
                 && !out.schema.collections[&r.collection].uid
             {

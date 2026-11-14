@@ -77,9 +77,15 @@ final class SchemaVersions
         }
         $app = $this->plugin->schema->name();
 
-        return Migrator::locked($db, Loader::option($app), function () use ($db, $app, $parent, $changeSet, $actor): array {
+        // The lock a deploy holds (Plugin::schemaLock): a change never lands half way through one.
+        return Migrator::locked($db, $this->plugin->schemaLock(), function () use ($db, $app, $parent, $changeSet, $actor): array {
+            if (!$this->plugin->buildIsCurrent()) {
+                // A deploy replaced the build while this request waited: the change was checked against
+                // the old one. The next request runs the new build; propose the change there.
+                throw new Refused('schema_build_changed', 'A new build was deployed while this change waited for the schema lock. Read the schema again and propose the change on the new build', null, '/changes', 409);
+            }
             $db->applySystemStatements(['CREATE TABLE IF NOT EXISTS `{prefix}' . self::TABLE . '` (`app` VARCHAR(191) NOT NULL, `version` BIGINT NOT NULL, `parent` BIGINT NOT NULL, `format` INT NOT NULL, `build` CHAR(64) NOT NULL, `actor` LONGTEXT NOT NULL, `changes` LONGTEXT NOT NULL, `hash` CHAR(64) NOT NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`app`, `version`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin']);
-            $rows = $this->rows();
+            $rows = $this->checked();
             $newest = $rows === [] ? ['version' => 0, 'hash' => ''] : end($rows);
             if ($parent !== $newest['version']) {
                 throw new Refused('schema_conflict', "The schema is at version {$newest['version']}, not $parent: another change was applied first. Read the schema and propose the change again", null, '/parent', 409);
@@ -88,7 +94,7 @@ final class SchemaVersions
             wp_cache_delete('alloptions', 'options');
             wp_cache_delete(Loader::option($app), 'options');
             $state = Loader::state($app);
-            if ((int) ($state['version'] ?? 0) !== $newest['version'] || ($state['format'] ?? null) !== Loader::FORMAT) {
+            if ((int) ($state['version'] ?? 0) !== $newest['version'] || ($state['format'] ?? null) !== Loader::FORMAT || ($state['seal'] ?? null) !== Loader::seal($state)) {
                 $state = $this->replay($rows);
             }
             $resolved = Changes::resolve($this->compiled(), $state, $changeSet, Loader::references(), Loader::declared($this->plugin->schema->name()));
@@ -107,7 +113,7 @@ final class SchemaVersions
                     throw $taken ? new Refused('schema_conflict', "Version {$row['version']} already exists: another change was applied first. Read the schema and propose the change again", null, '/parent', 409) : $e;
                 }
                 $db->touchOption(Loader::option($app));
-                update_option(Loader::option($app), $state, true);
+                update_option(Loader::option($app), Loader::sealed($state), true);
             });
 
             return $row;
@@ -131,10 +137,66 @@ final class SchemaVersions
         return Loader::compiled() ?? throw new \LogicException('The app was loaded without its compiled schema');
     }
 
-    /** Every version, oldest first. Empty before the first change. */
+    /**
+     * Every version, oldest first, after checking the chain; empty before the first change. Reading
+     * the versions also puts the option back to the state they add up to, if something else wrote it.
+     *
+     * @throws Refused 409 `schema_chain_broken` when a stored version was changed outside First
+     */
     public function list(): array
     {
-        return $this->exists() ? $this->rows() : [];
+        return $this->exists() ? $this->checked() : [];
+    }
+
+    /**
+     * Every version, checked: each row's parent is the one before it and its hash covers it and its
+     * parent's hash. A row edited or removed in the database breaks the chain from there on.
+     *
+     * @throws Refused 409 `schema_chain_broken`, naming the first version that doesn't check out
+     */
+    private function verified(): array
+    {
+        $rows = $this->rows();
+        $parentHash = '';
+        foreach ($rows as $i => $row) {
+            if ($row['version'] !== $i + 1 || $row['parent'] !== $i || self::hashOf($parentHash, $row) !== $row['hash']) {
+                throw new Refused('schema_chain_broken', "schema version {$row['version']} does not match its hash: a stored version was changed outside First. Restore it from a backup; nothing is applied on top of a broken history", null, '/changes', 409);
+            }
+            $parentHash = $row['hash'];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The stored versions, checked, after which the option is the state they add up to. A broken
+     * chain keeps the option as the last state that checked out and records why on it.
+     */
+    private function checked(): array
+    {
+        $app = $this->plugin->schema->name();
+        try {
+            $rows = $this->verified();
+        } catch (Refused $broken) {
+            $state = Loader::state($app);
+            if (($state['problem'] ?? null) !== self::chainProblem($broken)) {
+                update_option(Loader::option($app), Loader::sealed(['problem' => self::chainProblem($broken)] + $state), true);
+            }
+            throw $broken;
+        }
+        $state = Loader::sealed($rows === [] ? Loader::EMPTY : $this->replay($rows));
+        wp_cache_delete('alloptions', 'options');
+        wp_cache_delete(Loader::option($app), 'options');
+        if ($rows !== [] && Loader::state($app) !== $state) {
+            update_option(Loader::option($app), $state, true);
+        }
+
+        return $rows;
+    }
+
+    private static function chainProblem(Refused $broken): string
+    {
+        return explode(':', $broken->getMessage(), 2)[0];
     }
 
     private function rows(): array
@@ -192,11 +254,12 @@ final class SchemaVersions
     /**
      * What a build that is about to run on this site would do to the site's runtime changes.
      * Nothing is ever dropped: changes the build doesn't contain stay active and are listed in
-     * `kept`; names the site removed that the build's code uses are active again and listed in
+     * `kept`; fields both declare with the same stored shape but other rules or presentation are
+     * `changed` (the build's declaration is used); names the site removed that the build's code uses are active again and listed in
      * `restored`. `refusals` are the cases where the build and the site disagree about stored data: a
      * name both declare with different stored types.
      *
-     * @return array{site: array{version: int, hash: string}, build: array{version: int, hash: string}, kept: list<string>, restored: list<string>, refusals: list<array{code: string, name: string, message: string, fix: string}>}
+     * @return array{site: array{version: int, hash: string}, build: array{version: int, hash: string}, kept: list<string>, changed: list<string>, restored: list<string>, refusals: list<array{code: string, name: string, message: string, fix: string}>}
      */
     public function deployCheck(): array
     {
@@ -204,45 +267,7 @@ final class SchemaVersions
         $state = $rows === [] ? Loader::EMPTY : $this->replay($rows);
         $compiled = $this->compiled();
         $build = ['version' => (int) ($compiled['runtimeSchema']['version'] ?? 0), 'hash' => (string) ($compiled['runtimeSchema']['hash'] ?? '')];
-        $kept = $refusals = [];
-        $differs = static function (string $name, string $site, string $built) use (&$refusals): void {
-            $refusals[] = ['code' => 'runtime_type_differs', 'name' => $name,
-                'message' => "$name is a $site field on this site (a runtime schema change) and a $built field in this build; its stored values are {$site}s.",
-                'fix' => "Declare $name as $site in the project (run `first pull` to take the site's definition), or give the build's field another name."];
-        };
-        foreach (['collections' => 'columns', 'globals' => 'fields'] as $section => $inner) {
-            foreach ($state[$section] ?? [] as $kind => $entry) {
-                foreach ($entry[$inner] ?? [] as $field => $definition) {
-                    $built = $compiled[$section][$kind][$inner][$field] ?? null;
-                    if ($built === null) {
-                        $kept[] = "$kind.$field";
-                    } elseif ($built['type'] !== $definition['type']) {
-                        $differs("$kind.$field", $definition['type'], $built['type']);
-                    }
-                }
-            }
-            foreach ($state['added'][$section] ?? [] as $kind => $stored) {
-                if (!isset($compiled[$section][$kind])) {
-                    $kept[] = $kind;
-                    continue;
-                }
-                foreach ($stored['fields'] as $field => $definition) {
-                    $built = $compiled[$section][$kind][$inner][$field] ?? null;
-                    if ($built !== null && $built['type'] !== $definition['type']) {
-                        $differs("$kind.$field", $definition['type'], $built['type']);
-                    }
-                }
-            }
-            // A removed name keeps its values; a build that declares it again must read them as they were stored.
-            foreach ($state['removed'][$section] ?? [] as $kind => $removed) {
-                foreach ($removed['fields'] ?? [] as $field => $type) {
-                    $built = $compiled[$section][$kind][$inner][$field] ?? null;
-                    if ($built !== null && $built['type'] !== $type) {
-                        $differs("$kind.$field", $type, $built['type']);
-                    }
-                }
-            }
-        }
+        ['kept' => $kept, 'changed' => $changed, 'refusals' => $refusals] = \First\RuntimeSchema\Deploy::check($compiled, $state);
         // What the site removed and this build declares in a way that can't be hidden: active again.
         $restored = [];
         $references = Loader::references();
@@ -260,7 +285,7 @@ final class SchemaVersions
         }
         $newest = $rows === [] ? ['version' => 0, 'hash' => ''] : end($rows);
 
-        return ['site' => ['version' => $newest['version'], 'hash' => $newest['hash']], 'build' => $build, 'kept' => $kept, 'restored' => $restored, 'refusals' => $refusals];
+        return ['site' => ['version' => $newest['version'], 'hash' => $newest['hash']], 'build' => $build, 'kept' => $kept, 'changed' => $changed, 'restored' => $restored, 'refusals' => $refusals];
     }
 
     /**

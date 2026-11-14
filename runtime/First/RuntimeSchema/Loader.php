@@ -107,6 +107,27 @@ final class Loader
 
     public const EMPTY = ['format' => self::FORMAT, 'version' => 0, 'hash' => ''];
 
+    /**
+     * The seal a state is written with: a hash of everything else in it, the newest version's chain
+     * hash included. Only apply writes a state, and it seals what it writes, so a state whose seal
+     * doesn't match was written some other way and is not served.
+     */
+    public static function seal(array $state): string
+    {
+        unset($state['seal']);
+        ksort($state);
+
+        return hash('sha256', serialize($state));
+    }
+
+    /** A state with its seal. */
+    public static function sealed(array $state): array
+    {
+        unset($state['seal']);
+
+        return $state + ['seal' => self::seal($state)];
+    }
+
     /** The site's active version ({@see Changes::fold()} for its keys); version 0 before any change. */
     public static function state(string $app): array
     {
@@ -164,9 +185,23 @@ final class Loader
         }
 
         $state = self::state((string) ($raw['name'] ?? 'app'));
+        if (($state['version'] ?? 0) !== 0 && ($state['seal'] ?? null) !== self::seal($state)) {
+            // Not written by apply: serve the build alone until apply (or `wp first schema list`)
+            // rebuilds the option from the stored versions.
+            $raw['runtimeSchema']['active'] = ['version' => (int) ($state['version'] ?? 0), 'hash' => (string) ($state['hash'] ?? ''),
+                'problem' => 'the runtime schema option does not match its own hash; apply a change, or run `wp first schema list`, to rebuild it from the stored versions'];
+
+            return $raw;
+        }
+        $problem = is_string($state['problem'] ?? null) ? $state['problem'] : null;
 
         // The index is read only when the site removed something: nothing else needs it per request.
-        return self::apply($raw, $state, isset($state['removed']) ? self::references() : null);
+        $raw = self::apply($raw, $state, isset($state['removed']) ? self::references() : null);
+        if ($problem !== null) {
+            $raw['runtimeSchema']['active']['problem'] = $problem;
+        }
+
+        return $raw;
     }
 
     /**
@@ -186,10 +221,20 @@ final class Loader
 
             return $raw;
         }
+        // The option is data whoever can write options may change, so it is read as the operations a
+        // runtime change can make, and nothing else: an added kind is rebuilt from its stored
+        // definition (the access rules, post type and hooks are the ones expandCollection gives every
+        // runtime kind), and a field is served only in a stored form the validator accepts. Anything
+        // else in the option is ignored; the version table is the record, and apply rewrites the option.
         foreach (['collections', 'globals'] as $section) {
-            foreach ($state['compiled'][$section] ?? [] as $name => $kind) {
+            foreach ($state['added'][$section] ?? [] as $name => $stored) {
+                $name = (string) $name;
                 // A name is one thing across the app, so anything the build declares under it wins.
-                if (!isset($raw['collections'][$name]) && !isset($raw['globals'][$name]) && !isset($raw['actions'][$name]) && !isset($raw['jobs'][$name])) {
+                if (isset($raw['collections'][$name]) || isset($raw['globals'][$name]) || isset($raw['actions'][$name]) || isset($raw['jobs'][$name])) {
+                    continue;
+                }
+                $kind = self::kind($section, $name, $stored);
+                if ($kind !== null) {
                     $raw[$section][$name] = $kind;
                 }
             }
@@ -197,12 +242,12 @@ final class Loader
         foreach ($state['collections'] ?? [] as $kind => $entry) {
             if (isset($raw['collections'][$kind]['wp']['postType'])) {
                 // A row carries its relations under their names, so a relation the build declares wins too.
-                $raw['collections'][$kind]['columns'] += array_diff_key($entry['columns'] ?? [], $raw['collections'][$kind]['relations'] ?? []);
+                $raw['collections'][$kind]['columns'] += array_diff_key(self::fields((string) $kind, $entry['columns'] ?? [], Validator::COLLECTION), $raw['collections'][$kind]['relations'] ?? []);
             }
         }
         foreach ($state['globals'] ?? [] as $kind => $entry) {
             if (isset($raw['globals'][$kind])) {
-                $raw['globals'][$kind]['fields'] += $entry['fields'] ?? [];
+                $raw['globals'][$kind]['fields'] += self::fields((string) $kind, $entry['fields'] ?? [], Validator::GLOBAL);
             }
         }
         foreach (['collections' => 'columns', 'globals' => 'fields'] as $section => $inner) {
@@ -226,12 +271,16 @@ final class Loader
                 if (!isset($raw[$section][$kind])) {
                     continue;
                 }
-                if (isset($override['label'])) {
+                if (is_string($override['label'] ?? null) && $override['label'] !== '' && strlen($override['label']) <= 120) {
                     $raw[$section][$kind]['label'] = $override['label'];
                 }
-                foreach ($override['ui'] ?? [] as $field => $ui) {
+                foreach (is_array($override['ui'] ?? null) ? $override['ui'] : [] as $field => $ui) {
                     if (isset($raw[$section][$kind][$inner][$field])) {
-                        $raw[$section][$kind][$inner][$field]['ui'] = $ui;
+                        try {
+                            $raw[$section][$kind][$inner][$field]['ui'] = Validator::presentation($ui, "$kind.$field");
+                        } catch (Refused) {
+                            // Not a presentation a change could set: ignored.
+                        }
                     }
                 }
             }
@@ -240,4 +289,32 @@ final class Loader
 
         return $raw;
     }
+
+    /** An added kind's `schema.php` array, built from its stored definition; null when that isn't one. */
+    private static function kind(string $section, string $name, mixed $stored): ?array
+    {
+        try {
+            return $section === 'globals'
+                ? Kinds::expandGlobal($name, Kinds::global($name, $stored))
+                : Kinds::expandCollection($name, Kinds::collection($name, $stored));
+        } catch (Refused|\TypeError) {
+            return null;
+        }
+    }
+
+    /** The stored fields the validator accepts, in its stored form; the rest are left out. */
+    private static function fields(string $kind, mixed $fields, string $place): array
+    {
+        $out = [];
+        foreach (is_array($fields) ? $fields : [] as $field => $definition) {
+            try {
+                $out[(string) $field] = Validator::definition("$kind.$field", (string) $field, $definition, $place);
+            } catch (Refused|\TypeError) {
+                // Not a field a change could add: left out.
+            }
+        }
+
+        return $out;
+    }
+
 }

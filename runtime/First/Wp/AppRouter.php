@@ -288,6 +288,12 @@ final class AppRouter
             return;
         }
         $this->serving = true;
+        // A static route's code Page ({@see RoutePages}) is the queried object while it renders,
+        // as WordPress's own page template would have it: menus, SEO plugins and `the_ID()` see it.
+        $id = RoutePages::instance()?->pages()[(string) $match['route']['id']] ?? null;
+        if ($id !== null) {
+            self::query(get_post($id));
+        }
         if ($this->plugin->unavailable() !== null) {
             $this->document(503, ['title' => get_bloginfo('name')], '<p>' . esc_html__('This page is temporarily unavailable.') . '</p>');
         }
@@ -296,6 +302,31 @@ final class AppRouter
             $this->notFound();
         }
         $this->serve($match['route'], $match['params'], $viewer, 200);
+    }
+
+    /** The main query as WordPress sets it for a singular Page: `is_page()`, `get_queried_object()`, `$post`. */
+    private static function query(?\WP_Post $post): void
+    {
+        if (!$post instanceof \WP_Post || $post->post_type !== 'page') {
+            return;
+        }
+        $query = new \WP_Query();
+        $query->query = ['page_id' => $post->ID];
+        $query->query_vars = $query->fill_query_vars($query->query);
+        $query->queried_object = $post;
+        $query->queried_object_id = $post->ID;
+        $query->posts = [$post];
+        $query->post = $post;
+        $query->post_count = 1;
+        $query->found_posts = 1;
+        $query->max_num_pages = 1;
+        $query->is_page = true;
+        $query->is_singular = true;
+        $query->is_home = false;
+        $GLOBALS['wp_query'] = $query;
+        $GLOBALS['wp_the_query'] = $query;
+        $GLOBALS['post'] = $post;
+        $query->setup_postdata($post);
     }
 
     private function notFound(): never

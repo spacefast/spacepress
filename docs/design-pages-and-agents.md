@@ -212,7 +212,6 @@ export default defineConfig({
   collections: { authors, posts },
   jobs: { notifyReaders: job({ input: { postId: ref("posts").notNull() }, retries: 3, async handler() { /* … */ } }) },
   pages: { sync: true },          // content-owned pages are editable and round-trip (§4.8)
-  admin: true,
 });
 ```
 
@@ -1058,7 +1057,6 @@ export default defineConfig({
   name: "pantry",
   collections: { items },
   actions: { expiringSoon, discard },
-  admin: true,
   agents: {
     pantryHelper: agent({
       label: "Pantry helper",

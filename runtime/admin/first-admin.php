@@ -97,6 +97,9 @@ function first_admin_activate() {
 	if ( ! first_admin_has_app() ) {
 		return;
 	}
+	// Activating from the Plugins screen includes this file after plugins_loaded, so
+	// first_admin_boot() has not run in this request: the rule's filter must be added here too.
+	add_filter( 'mod_rewrite_rules', 'first_admin_remove_qsa_flag' );
 	delete_option( FIRST_ADMIN_REWRITE_OPTION );
 	first_admin_persist_rewrite_rule();
 }
@@ -184,7 +187,9 @@ function first_admin_front_request( $parse ) {
 		wp_safe_redirect( first_admin_url( $route ) . ( '' !== $query ? '?' . $query : '' ), 302 );
 		exit;
 	}
-	wp_safe_redirect( first_admin_query_url( $route ), 302 );
+	// The route's own query travels inside `p`, as the router reads it: beside it, its `page` would
+	// replace wp-admin's `page=first-admin`.
+	wp_safe_redirect( first_admin_query_url( $route . ( '' !== $query ? '?' . $query : '' ) ), 302 );
 	exit;
 }
 
@@ -212,8 +217,9 @@ function first_admin_render_page() {
 }
 
 /**
- * After login, the default destination (wp-admin's index) is this admin. A destination the visitor
- * asked for (any other `redirect_to`) is kept, and classic wp-admin stays one click away.
+ * After login, WordPress's default destination (wp-admin's index, used when the request names no
+ * `redirect_to`) becomes this admin. A destination the visitor asked for is kept, classic
+ * `/wp-admin/` included, and classic wp-admin stays one click away.
  *
  * @param string           $redirect_to The destination.
  * @param string           $requested   The requested destination.
@@ -224,7 +230,9 @@ function first_admin_login_redirect( $redirect_to, $requested, $user ) {
 	if ( ! $user instanceof WP_User || ! $user->has_cap( 'read' ) ) {
 		return $redirect_to;
 	}
-	if ( in_array( $redirect_to, array( admin_url(), 'wp-admin/' ), true ) ) {
+	// Only WordPress's own default: no `redirect_to` in the request. A visitor sent to the login from
+	// a classic page (auth_redirect sets `redirect_to`) returns to that page, `/wp-admin/` included.
+	if ( '' === $requested && in_array( $redirect_to, array( admin_url(), 'wp-admin/' ), true ) ) {
 		return first_admin_url( '/' );
 	}
 	return $redirect_to;

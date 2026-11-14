@@ -344,6 +344,10 @@ final class Loader
         if (!class_exists(\First\Wp\Runtime::class, false) || !\First\Wp\Runtime::managed() || \First\Wp\Runtime::plugin() === null) {
             throw new \RuntimeException('The First build did not mount; WordPress must reach plugins_loaded first');
         }
+        // Identity's tables first: the app's migration provisions its guest role and client in them.
+        if (self::$loaded['identity']) {
+            \First\Identity\Plugin::install();
+        }
         $migrations = \First\Wp\Runtime::initialize();
         if (self::$loaded['identity'] && !wp_next_scheduled('first_identity_maintenance')) {
             $scheduled = wp_schedule_event(time() + 60, 'hourly', 'first_identity_maintenance', [], true);
@@ -356,6 +360,27 @@ final class Loader
         $result = ['migrations' => array_values($migrations), 'seed' => $counts];
         Store::writeJson($root, 'ready/' . $build . '.json', ['build' => $build, 'initializedAt' => gmdate('c')] + $result);
         return $result;
+    }
+
+    /**
+     * What {@see initialize()} would run for the loaded build on this site, computed without
+     * writing anything ({@see \First\Wp\Runtime::inspect()}). `$drops` are the `--drop` confirmations
+     * the schema check would take.
+     *
+     * @param array<string, int> $drops
+     */
+    public static function inspect(string $root, string $build, array $drops = []): array
+    {
+        $root = rtrim($root, '/');
+        if (self::$loaded === null || self::$loaded['root'] !== $root || self::$loaded['build'] !== $build) {
+            throw new \LogicException('Load this First build before inspecting it');
+        }
+        if (!class_exists(\First\Wp\Runtime::class, false) || !\First\Wp\Runtime::managed() || \First\Wp\Runtime::plugin() === null) {
+            throw new \RuntimeException('The First build did not mount; WordPress must reach plugins_loaded first');
+        }
+        $seed = $root . '/app/' . self::$loaded['manifest']['app'] . '/seed';
+
+        return ['build' => $build, 'manifest' => self::$loaded['manifest'], 'seed' => is_dir($seed)] + \First\Wp\Runtime::inspect($drops);
     }
 
     /** plugins_url() for files under the store, which lives outside WP_PLUGIN_DIR. */

@@ -980,6 +980,24 @@ trait JsDynamic
             if ($method === 'of') { return new JsArray($a); }
         }
         if ($owner === 'String' && $method === 'raw') { return self::stringRaw(...$a); }
+        if ($owner === 'Reflect' && $method === 'ownKeys') {
+            // Own keys of a plain object: integer-like keys ascending, then other strings in
+            // insertion order, then symbols. Arrays add "length". Every compiled string key is an
+            // own enumerable data property, so this is the object's full key list.
+            $target = $get(0);
+            if ($target instanceof JsPrototype) { throw new JsError('Reflect.ownKeys on a class prototype is not supported', 'TypeError'); }
+            if ($target instanceof JsObject) {
+                $keys = array_map('strval', self::ownKeys($target->p));
+                foreach ($target->symbols as [$symbol]) { $keys[] = $symbol; }
+                return new JsArray($keys);
+            }
+            if ($target instanceof JsArray) {
+                $keys = self::dynamicKeys($target)->a;
+                $keys[] = 'length';
+                return new JsArray($keys);
+            }
+            throw new JsError('Reflect.ownKeys needs an object', 'TypeError');
+        }
         if ($owner === 'Object') {
             $source = $get(0);
             if (in_array($method, ['keys', 'values', 'entries'], true)) {
@@ -989,6 +1007,25 @@ trait JsDynamic
                 return new JsArray(array_map(static fn ($key) => $method === 'values' ? self::dynamicGet($source, $key) : new JsArray([$key, self::dynamicGet($source, $key)]), $keys->a));
             }
             if ($method === 'defineProperty') { return self::dynamicDefineProperty($source, $get(1), $get(2)); }
+            if ($method === 'assign') {
+                // ToObject on the target; each source's own enumerable string keys, then symbols, in order.
+                if (self::isNullish($source)) { throw new JsError('Cannot convert undefined or null to object', 'TypeError'); }
+                if (!$source instanceof JsObject && !$source instanceof JsArray) {
+                    throw new JsError('Object.assign in compiled code needs an object or array target', 'TypeError');
+                }
+                foreach (array_slice($a, 1) as $from) {
+                    if (self::isNullish($from)) { continue; }
+                    foreach (self::dynamicKeys($from)->a as $key) {
+                        self::dynamicSet($source, $key, self::dynamicGet($from, $key));
+                    }
+                    if ($from instanceof JsObject) {
+                        foreach ($from->symbols as [$symbol, $value, $enumerable]) {
+                            if ($enumerable) { self::dynamicSet($source, $symbol, $value); }
+                        }
+                    }
+                }
+                return $source;
+            }
             if ($method === 'hasOwn' && $source instanceof JsPrototype) { throw new JsError('Object.hasOwn on a class prototype is not supported', 'TypeError'); }
             if ($method === 'hasOwn' && $get(1) instanceof JsSymbol) {
                 self::requirePresent($source);

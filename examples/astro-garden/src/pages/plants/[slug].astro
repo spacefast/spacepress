@@ -1,0 +1,17 @@
+---
+import { getCollection, render } from "astro:content";
+import Site from "../../layouts/Site.astro";
+export async function getStaticPaths() {
+  return (await getCollection("plants")).map((plant) => ({ params: { slug: plant.id }, props: { plant } }));
+}
+const { plant } = Astro.props;
+const { Content } = await render(plant);
+---
+<Site title={plant.data.title} description={plant.data.summary ?? undefined}>
+  <article class="plant">
+    <p class="back"><a href="/">← All plants</a></p>
+    <h1>{plant.data.title}</h1>
+    <p class="meta">{plant.data.family}{plant.data.height !== null && ` · up to ${plant.data.height} cm`}</p>
+    <Content />
+  </article>
+</Site>

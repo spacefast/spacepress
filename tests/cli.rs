@@ -2470,6 +2470,7 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
             "first-dev-site",
             "first-fix-diagnostic",
             "first-migrate",
+            "first-migrate-astro",
             "first-write-action"
         ]
     );

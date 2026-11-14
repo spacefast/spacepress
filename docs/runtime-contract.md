@@ -714,6 +714,22 @@ and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
 - `GET /search` runs the search on every kind with a searchable field and an
   API `list`, as the caller. A kind the caller may not read, and a `kinds=`
   name that isn't a searchable kind, are left out without a word.
+- **Core's search.** `GET /wp/v2/search` (the block editor's link picker, the
+  navigation block) also finds items of every kind with a `url`, a searchable
+  field and an API `list` (`Wp\SearchHandler`, on `wp_rest_search_handlers`).
+  The kinds are subtypes of `post`, because the editor asks for `type=post`
+  only and core keeps one handler per type. The handler wraps whichever
+  handler of `post` the site had: core's results come first, unchanged, then
+  each kind's published items as the caller reads them through First's read
+  pipeline with `search`. A kind the caller may not read is left out without a
+  word; a row the rule hides is neither found nor counted (`X-WP-Total`); a
+  title hidden from the caller comes back empty, and a kind whose `url` shows a
+  field the caller may not read (or, for `:ref.slug`, the referenced item's
+  slug) is not searched; the sitemap applies the same check. `subtype`, `include`,
+  `exclude`, `page` and `per_page` work as on core's posts. A site with
+  `frontend: false` adds nothing.
+- **Updates that change no searchable field** leave the row's entries alone
+  (the before and after rows of the write are compared field by field).
 
 ## URL purges (`Wp\Purges`)
 

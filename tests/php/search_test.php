@@ -21,6 +21,38 @@ $schema['collections']['posts']['columns']['body']['access'] = ['read' => ['role
 $schema['collections']['authors']['access']['read'] = ['role' => 'authenticated'];
 // An after-hook that writes its own row again: the index holds the final text, not the create's.
 $schema['collections']['comments']['hooks']['afterUpdate'] = 'comments__afterUpdate';
+// Items with addresses, for core's /wp/v2/search (the editor's link picker).
+$schema['collections']['posts']['url'] = '/blog/:slug';
+$schema['collections']['authors']['url'] = '/authors/:id';
+// A kind whose read rule hides some rows from everyone but editors, and whose title only editors read.
+$notes = $schema['collections']['authors'];
+$notes['key'] = 'notes';
+$notes['label'] = 'Notes';
+$notes['relations'] = [];
+$notes['url'] = '/notes/:id';
+$notes['wp'] = ['postType' => 'first_notes', 'groupKey' => 'group_first_notes', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_notes_'];
+$notes['access']['read'] = ['fn' => 'notes__access__read'];
+$notes['columns']['name']['access'] = ['read' => ['role' => 'editor']];
+$schema['collections']['notes'] = $notes;
+// A kind whose address shows a referenced item's slug that only editors read (`/stories/:topic.slug/:id`).
+$topics = $schema['collections']['authors'];
+$topics['key'] = 'topics';
+$topics['label'] = 'Topics';
+$topics['relations'] = [];
+$topics['slug'] = 'slug';
+$topics['columns']['slug'] = ['type' => 'slug', 'source' => 'name', 'access' => ['read' => ['role' => 'editor']]];
+$topics['columns']['email']['unique'] = false;
+$topics['wp'] = ['postType' => 'first_topics', 'groupKey' => 'group_first_topics', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_topics_'];
+$schema['collections']['topics'] = $topics;
+$stories = $schema['collections']['authors'];
+$stories['key'] = 'stories';
+$stories['label'] = 'Stories';
+$stories['relations'] = [];
+$stories['url'] = '/stories/:topic.slug/:id';
+$stories['columns']['email']['unique'] = false;
+$stories['columns']['topic'] = ['type' => 'integer', 'references' => ['collection' => 'topics', 'column' => 'id', 'onDelete' => 'set null']];
+$stories['wp'] = ['postType' => 'first_stories', 'groupKey' => 'group_first_stories', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_stories_'];
+$schema['collections']['stories'] = $stories;
 $wp = wpSite('search', [
     'schema' => $schema,
     'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
@@ -30,6 +62,13 @@ $wp = wpSite('search', [
             if (str_contains((string) \First\Js::prop($row, 'body'), 'rewrite me')) {
                 \First\Seam::update('comments', new \First\JsObject(['body' => 'Rewritten by the hook']), ['id' => \First\Js::prop($row, 'id')]);
             }
+        }
+
+        function notes__access__read(\First\JsObject $ctx)
+        {
+            $user = \First\Js::prop($ctx, 'user');
+
+            return $user !== null && in_array(\First\Js::prop($user, 'role'), ['editor', 'admin'], true) ? true : ['email' => ['ne' => 'hidden@example.test']];
         }
         PHP,
     'users' => ['ed' => 'editor', 'alice' => 'author', 'sub' => 'subscriber'],
@@ -76,6 +115,25 @@ $db->update('comments', ['body' => 'Please rewrite me'], ['id' => $hooked['id']]
 check('an after-hook\'s own write is what stays indexed, not the outer write\'s older row',
     in_array('body:Rewritten by the hook', $index('comments'), true) && !in_array('body:Please rewrite me', $index('comments'), true), $index('comments'));
 $db->delete('comments', ['id' => $hooked['id']]);
+// A write that changes no searchable field leaves the row's entries alone (WooCommerce's product
+// lookup table does the same: class-wc-product-data-store-cpt.php, update_lookup_table only when a
+// looked-up prop changed). A planted entry shows whether they were rewritten.
+$plant = static fn () => $wp->exec("UPDATE `{$prefix}first__search` SET `body` = 'Planted' WHERE `kind` = ? AND `item` = ? AND `field` = ?",
+    [$bytes('posts'), $bytes((string) $public['id']), $bytes('title')]);
+$plant();
+$db->update('posts', ['tags' => ['news']], ['id' => $public['id']]);
+check('an update of no searchable field does not rewrite the entries', in_array('title:Planted', $index('posts'), true), $index('posts'));
+wp_update_post(['ID' => $public['id'], 'menu_order' => 3]);
+check('nor does a core save that changes none', in_array('title:Planted', $index('posts'), true), $index('posts'));
+$db->update('posts', ['excerpt' => 'Short summary'], ['id' => $public['id']]);
+check('an update of any searchable field rewrites every entry of the row',
+    in_array('title:Brewing green tea', $index('posts'), true) && in_array('excerpt:Short summary', $index('posts'), true), $index('posts'));
+$db->update('posts', ['excerpt' => null], ['id' => $public['id']]);
+check('and a field emptied by an update loses its entry', !in_array('excerpt:Short summary', $index('posts'), true), $index('posts'));
+$plant();
+wp_update_post(['ID' => $public['id'], 'post_title' => 'Brewing green tea, again']);
+wp_update_post(['ID' => $public['id'], 'post_title' => 'Brewing green tea']);
+check('a core save that changes the title rewrites it', in_array('title:Brewing green tea', $index('posts'), true), $index('posts'));
 wp_set_current_user(0);
 
 // ---------------------------------------------------------------- `search` on a kind, as the reader
@@ -166,6 +224,101 @@ eq('a signed-in reader finds the author', array_column($signed['results'] ?? [],
 eq('kinds= narrows it; an unknown kind adds nothing', array_column($only['results'] ?? [], 'kind'), ['comments']);
 [$status, $refused] = $wp->call('GET', '/search', query: ['q' => '??']);
 eq('q needs a word', [$status, $refused['code'] ?? null], [400, 'invalid_query']);
+
+// ---------------------------------------------------------------- core's /wp/v2/search (the link picker)
+
+wp_set_current_user(1);
+$corePost = wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Green tea on the blog']);
+$visibleNote = $db->insert('notes', ['name' => 'Visible jasmine', 'bio' => 'Jasmine blossoms', 'email' => 'shown@example.test', 'status' => 'published'], true)[0];
+$hiddenNote = $db->insert('notes', ['name' => 'Hidden jasmine', 'bio' => 'Jasmine kept back', 'email' => 'hidden@example.test', 'status' => 'published'], true)[0];
+$draftNote = $db->insert('notes', ['name' => 'Draft jasmine', 'bio' => 'Jasmine unpublished', 'email' => 'draft@example.test', 'status' => 'draft'], true)[0];
+wp_set_current_user(0);
+/** @return array{int, list<array>, int} status, results (or the error code), X-WP-Total */
+$coreSearch = static function (array $params, ?string $who) use ($wp): array {
+    $wp->actAs($who);
+    try {
+        $request = new \WP_REST_Request('GET', '/wp/v2/search');
+        $request->set_query_params($params);
+        $response = rest_do_request($request);
+    } finally {
+        wp_set_current_user(0);
+    }
+    if ($response->get_status() !== 200) {
+        return [$response->get_status(), $response->as_error()->get_error_code(), 0];
+    }
+
+    return [200, rest_get_server()->response_to_data($response, false), (int) ($response->get_headers()['X-WP-Total'] ?? -1)];
+};
+$hits = static fn (array $found): array => array_map(static fn (array $r): string => $r['subtype'] . ':' . $r['id'], $found[1]);
+// The request the block editor's link picker sends (core-data's fetchLinkSuggestions): type=post, no subtype.
+$picker = $coreSearch(['search' => 'green', 'per_page' => 20, 'type' => 'post'], null);
+eq('the link picker\'s request finds core\'s posts and First\'s items together', [$picker[0], $hits($picker), $picker[2]],
+    [200, ["post:$corePost", "first_posts:{$public['id']}"], 2]);
+$item = array_values(array_filter($picker[1], static fn (array $r): bool => $r['subtype'] === 'first_posts'))[0] ?? [];
+eq('an item comes in core\'s shape: its id, title, address, type and post type', array_diff_key($item, ['_links' => true]),
+    ['id' => $public['id'], 'title' => 'Brewing green tea', 'url' => get_permalink($public['id']), 'type' => 'post', 'subtype' => 'first_posts']);
+eq('with core\'s links to the item and its type', [$item['_links']['self'][0]['href'] ?? null, $item['_links']['about'][0]['href'] ?? null],
+    [rest_url('wp/v2/first_posts/' . $public['id']), rest_url('wp/v2/types/first_posts')]);
+check('its address is the kind\'s own', str_contains((string) get_permalink($public['id']), '/blog/'), get_permalink($public['id']));
+eq('without a type, core\'s default type (post) answers the same', $hits($coreSearch(['search' => 'green'], null)), $hits($picker));
+eq('subtype narrows it to one kind', $hits($coreSearch(['search' => 'green', 'subtype' => 'first_posts'], null)), ["first_posts:{$public['id']}"]);
+eq('or to core\'s post types alone', $hits($coreSearch(['search' => 'green', 'subtype' => 'post'], null)), ["post:$corePost"]);
+eq('a draft is not found, by a visitor or an editor (core lists published posts only)',
+    [$hits($coreSearch(['search' => 'teapots'], null)), $hits($coreSearch(['search' => 'teapots'], 'ed'))], [[], []]);
+eq('a word only in a field the reader may not read finds nothing', $coreSearch(['search' => 'mentions'], null)[1], []);
+eq('the editor, who reads it, finds the item', $hits($coreSearch(['search' => 'mentions'], 'ed')), ["first_posts:{$secret['id']}"]);
+eq('a kind the reader may not read is left out, not refused', [$coreSearch(['search' => 'writer'], null)[0], $hits($coreSearch(['search' => 'writer'], null))], [200, []]);
+eq('a reader of the kind finds its item', count($hits($coreSearch(['search' => 'writer'], 'sub'))), 1);
+eq('a row the read rule hides is neither found nor counted', [$hits($found = $coreSearch(['search' => 'jasmine'], null)), $found[2]], [["first_notes:{$visibleNote['id']}"], 1]);
+eq('a title the reader may not read is not shown', $found[1][0]['title'] ?? null, '');
+eq('nor is a word of it matched', $coreSearch(['search' => 'visible'], null)[1], []);
+$edFound = $coreSearch(['search' => 'jasmine'], 'ed');
+eq('an editor finds both published rows, with their titles', [$hits($edFound), array_column($edFound[1], 'title')],
+    [["first_notes:{$visibleNote['id']}", "first_notes:{$hiddenNote['id']}"], ['Visible jasmine', 'Hidden jasmine']]);
+// Pages run over core's results, then First's items, as one list.
+$pageOf = static fn (int $page) => $coreSearch(['search' => 'green', 'per_page' => 1, 'page' => $page], null);
+eq('page 1 holds core\'s result, page 2 the item, and both count 2', [[$hits($pageOf(1)), $pageOf(1)[2]], [$hits($pageOf(2)), $pageOf(2)[2]]],
+    [[["post:$corePost"], 2], [["first_posts:{$public['id']}"], 2]]);
+eq('a page past the end is core\'s 400', $pageOf(3)[0], 400);
+eq('exclude leaves an item out', $hits($coreSearch(['search' => 'green', 'exclude' => [$public['id']]], null)), ["post:$corePost"]);
+eq('include keeps only the items named', $hits($coreSearch(['search' => 'green', 'include' => [$public['id']]], null)), ["first_posts:{$public['id']}"]);
+// An address that would show a slug the reader may not read is not given: the kind isn't searched for them.
+wp_set_current_user(1);
+$topic = $db->insert('topics', ['name' => 'Secret topic', 'email' => 't@example.test', 'status' => 'published'], true)[0];
+$story = $db->insert('stories', ['name' => 'Oolong story', 'email' => 's@example.test', 'topic' => $topic['id'], 'status' => 'published'], true)[0];
+wp_set_current_user(0);
+// (A subscriber reads the kind, as `authors` it was cloned from; only editors read a topic's slug.)
+eq('a kind whose address shows a referenced slug hidden from the reader is not searched for them', $coreSearch(['search' => 'oolong'], 'sub')[1], []);
+eq('an editor, who reads that slug, finds the item', $hits($coreSearch(['search' => 'oolong'], 'ed')), ["first_stories:{$story['id']}"]);
+// Another plugin's handler of `post` that declares no subtypes still answers `subtype=any`.
+$plugin = new class extends \WP_REST_Search_Handler {
+    public function __construct() { $this->type = 'post'; }
+    public function search_items(\WP_REST_Request $request) { return [self::RESULT_IDS => [987654], self::RESULT_TOTAL => 1]; }
+    public function prepare_item($id, array $fields) { return ['id' => $id, 'title' => 'From a plugin', 'url' => '', 'type' => 'post', 'subtype' => 'plugin']; }
+    public function prepare_item_links($id) { return []; }
+};
+add_filter('wp_rest_search_handlers', $swap = static function (array $handlers) use ($plugin): array {
+    return array_map(static fn ($h) => $h instanceof \WP_REST_Post_Search_Handler ? $plugin : $h, $handlers);
+}, 10);
+$handlers = apply_filters('wp_rest_search_handlers', [new \WP_REST_Post_Search_Handler()]);
+remove_filter('wp_rest_search_handlers', $swap, 10);
+$wrapped = array_values(array_filter($handlers, static fn ($h) => $h->get_type() === 'post'))[0];
+$anyRequest = new \WP_REST_Request('GET', '/wp/v2/search');
+$anyRequest->set_query_params(['search' => 'green', 'subtype' => ['any'], 'page' => 1, 'per_page' => 10]);
+check('the plugin\'s handler is the one wrapped', $wrapped instanceof \First\Wp\SearchHandler);
+eq('its results for subtype=any are kept, before First\'s', $wrapped->search_items($anyRequest), ['ids' => [987654, $public['id']], 'total' => 2]);
+wp_set_current_user(1);
+$db->delete('stories', ['id' => $story['id']]);
+$db->delete('topics', ['id' => $topic['id']]);
+wp_set_current_user(0);
+$subtypes = rest_get_server()->get_routes()['/wp/v2/search'][0]['args']['subtype']['items']['enum'] ?? [];
+check('the kinds with addresses are subtypes of post, next to core\'s', array_intersect(['post', 'page', 'first_posts', 'first_authors', 'first_notes'], $subtypes) === ['post', 'page', 'first_posts', 'first_authors', 'first_notes'], $subtypes);
+wp_set_current_user(1);
+wp_delete_post($corePost, true);
+foreach ([$visibleNote, $hiddenNote, $draftNote] as $note) {
+    $db->delete('notes', ['id' => $note['id']]);
+}
+wp_set_current_user(0);
 
 // ---------------------------------------------------------------- a rebuild through the job
 

@@ -4,6 +4,7 @@ import { Stack } from '@first-admin/design-system';
 import { useSelect } from '@wordpress/data';
 import { store as coreStore, useEntityId } from '@wordpress/core-data';
 import MediaRenderer from '../media-renderer';
+import { useMediaEditorState } from '../../provider/with-media-editor-state-provider';
 import type { MediaItem } from '../../types';
 
 export default function MediaEditorCanvas() {
@@ -20,13 +21,17 @@ export default function MediaEditorCanvas() {
 		[ postId ]
 	);
 	/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
+	const { isImageEditorOpen } = useMediaEditorState();
 	if ( ! post ) {
 		return null;
 	}
 
 	return (
 		<Stack
-			className={ clsx( 'first-admin-media-details__content-container' ) }
+			className={ clsx( 'first-admin-media-details__content-container', {
+				'first-admin-media-details__content-container--cropper':
+					isImageEditorOpen,
+			} ) }
 			direction="column"
 			justify="center"
 			align="center"

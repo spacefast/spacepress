@@ -92,7 +92,12 @@ fn invalid_service_definitions_report_the_authored_property() {
         ),
         (
             "search: { articles: ['missing'] }",
-            "`missing` must name a text column",
+            "`missing` must name a searchable text column",
+            "articles",
+        ),
+        (
+            "search: { articles: ['status'] }",
+            "`status` must name a searchable text column",
             "articles",
         ),
         (

@@ -2637,14 +2637,12 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
             .iter()
             .enumerate()
             .map(|(i, d)| {
-                format!("const k{i} = collection({{ title: text(), body: richText().optional() }}, {{ content: \"body\", sync: \"{d}/*.md\" }});\n")
+                format!("export const k{i} = collection({{ title: text(), body: richText().optional() }}, {{ content: \"body\", sync: \"{d}/*.md\" }});\n")
             })
             .collect();
-        let names: Vec<String> = (0..dirs.len()).map(|i| format!("k{i}")).collect();
         format!(
-            "import {{ defineConfig, collection, text, richText }} from \"first\";\n{}export default defineConfig({{ name: \"gh\", collections: {{ {} }} }});\n",
-            kinds.concat(),
-            names.join(", ")
+            "import {{ defineConfig, collection, text, richText }} from \"first\";\n{}export default defineConfig({{ name: \"gh\" }});\n",
+            kinds.concat()
         )
     };
     std::fs::write(project.join("first.config.ts"), config(&["content/posts"])).unwrap();

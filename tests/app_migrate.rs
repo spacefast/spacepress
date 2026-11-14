@@ -1739,12 +1739,26 @@ fn a_handler_named_like_a_table_is_exported_under_a_suffixed_name() {
         "{report:#}"
     );
     build(&out);
-    let results = run_actions(
-        &out,
-        &[],
-        &serde_json::json!([["add", { "body": "one" }], ["notesQuery", {}]]),
+    let run = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/php/wp.php"))
+        .arg("eval")
+        .arg(out.join("first/dist/wp-content"))
+        .arg(
+            r#"$r = fn ($n, $in) => $wp->call("POST", "/actions/$n", (object) $in, "admin")[1];
+               $r("add", ["body" => "one"]);
+               echo json_encode(array_map(fn ($row) => $row["body"], $r("notesQuery", []))), "\n";"#,
+        )
+        .arg("null")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert_eq!(
+        stdout.lines().next_back().unwrap_or(""),
+        r#"["one"]"#,
+        "{stdout}{}",
+        String::from_utf8_lossy(&run.stderr)
     );
-    assert_eq!(results[1]["data"][0]["body"], "one", "{results}");
     // The table keeps its name: its storage and its ledger follow it.
     let snapshot: Value =
         serde_json::from_slice(&std::fs::read(out.join("first/_generated/migrations/snapshot.json")).unwrap()).unwrap();

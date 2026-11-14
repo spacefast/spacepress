@@ -34,21 +34,13 @@ final class WpFiles implements FileStorage
      */
     public static function boot(): void
     {
-        $install = static function (): void {
-            self::ensureSecret();
-            if (!Uploads::active()) {
-                self::protect();
-                self::probe();
-            }
-        };
-        add_action('activated_plugin', static fn (string $plugin) => str_starts_with($plugin, 'first-') ? $install() : null);
+        add_action('activated_plugin', static fn (string $plugin) => str_starts_with($plugin, 'first-') ? self::install() : null);
         // Sites upgraded in place (no reactivation) install protection when the runtime adds the table.
-        add_action('first_runtime_tables_installed', $install);
-        add_action('admin_init', static function (): void {
-            if (!Uploads::active() && (int) get_option(self::CHECKED, 0) < time() - DAY_IN_SECONDS) {
-                self::probe();
-            }
-        });
+        add_action('first_runtime_tables_installed', [self::class, 'install']);
+        // The daily re-probe: on wp-admin for a plugin-installed site; a managed build writes nothing on
+        // a request, so its daily jobs maintenance (an existing schedule) runs it instead.
+        add_action('admin_init', static fn () => Runtime::managed() ? null : self::recheck());
+        add_action(Jobs\ActionSchedulerQueue::MAINTAIN, static fn () => Runtime::managed() ? self::recheck() : null);
         // Editor saves (wp-admin and core REST `acf`) bypass the API pipeline: check file ids there too.
         // Top-level file fields are SCF numbers; nested ones are reached through their top-level
         // group/repeater/flexible_content field (SCF validates REST values per top-level field).
@@ -84,6 +76,24 @@ final class WpFiles implements FileStorage
         }
 
         return $valid;
+    }
+
+    /** The secret, and with local storage the deny rules and a probe: activation, and a managed build's initialize. */
+    public static function install(): void
+    {
+        self::ensureSecret();
+        if (!Uploads::active()) {
+            self::protect();
+            self::probe();
+        }
+    }
+
+    /** Probe again when the last probe is a day old. */
+    private static function recheck(): void
+    {
+        if (!Uploads::active() && (int) get_option(self::CHECKED, 0) < time() - DAY_IN_SECONDS) {
+            self::probe();
+        }
     }
 
     /** The runtime secret, created once (activation, or first use). */

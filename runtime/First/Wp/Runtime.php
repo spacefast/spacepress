@@ -195,12 +195,16 @@ final class Runtime
     {
         \First\RuntimeSchema\Surfaces::grant();
         Uploads::install();
+        if (self::$plugin->schema->files() !== []) {
+            WpFiles::install();
+        }
         if (function_exists('as_schedule_recurring_action')) {
             Jobs\ActionSchedulerQueue::install();
             Guests::install();
         }
         ContentPages::install();
         RoutePages::install();
+        \First\Search\Index::reindexChanged();
         self::installRewrites();
         // The Pages log and swallow a failure on a request (the next one retries); initialize's
         // receipt must mean everything is installed, so what is still to do is a failure here.
@@ -281,6 +285,9 @@ final class Runtime
     public static function installPlan(): array
     {
         $steps = [...ContentPages::plan(), ...RoutePages::plan()];
+        if (class_exists(\First\Search\Index::class, false) && \First\Search\Index::shapeChanged()) {
+            $steps[] = ['step' => 'search-shape'];
+        }
         if (self::rewritesBehind()) {
             $steps[] = ['step' => 'rewrite-rules'];
         }

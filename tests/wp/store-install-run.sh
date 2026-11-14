@@ -59,6 +59,10 @@ host() { wp --exec="define('FIRST_TEST_BUILD', '$build');" eval "$@"; }
 "$here/harness.sh" up --wp-content "$work/content" --platform > "$work/harness.json"
 url=$(json url < "$work/harness.json")
 "$here/harness.sh" compose exec -T wordpress sh -c "mkdir -p /var/www/html/wp-content/mu-plugins && cp /var/www/html/wp-content/plugins/first-store-host.php /var/www/html/wp-content/mu-plugins/"
+# The private-files probe fetches a URL from inside the stack: route it to the web server's name, as a
+# host does with this filter (docs/host-contract.md).
+probe_route() { wp eval 'wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . "/test-probe-route.php", "<?php\nadd_filter(\"first_private_probe_url\", fn (\$u) => str_replace(home_url(), \"http://wordpress\", \$u));\n");' >/dev/null; }
+probe_route
 
 fresh=$(site)
 host "echo 'booted';" >/dev/null
@@ -71,6 +75,7 @@ python3 - "$plan" <<'PY' || fail "a fresh site's install plan: $plan"
 import json,sys
 steps=sorted((s['step'], s.get('route','')) for s in json.loads(sys.argv[1]))
 assert ('rewrite-rules','') in steps, steps
+assert ('search-shape','') in steps, steps
 assert [s for s in steps if s[0]=='page.create'].__len__()==2, steps
 PY
 [[ $fresh == "$(site)" ]] || fail "inspecting changed the site"
@@ -80,6 +85,10 @@ receipt=$(host "echo json_encode(First\\Loader\\Loader::initialize('$root', '$bu
 [[ $(json migrations.0 <<< "$receipt") == 0001_init ]] || fail "initialize applies the init migration: $receipt"
 initialized=$(site)
 [[ $(host "echo json_encode(First\\Loader\\Loader::inspect('$root', '$build')['install']);") == '[]' ]] || fail "after initialize nothing is left to install"
+# Initialize from WP-CLI set up private files: the secret, the deny rules and a passing probe.
+[[ $(wp option get first_runtime_private_ok) == 1 && -n $(wp option get first_runtime_secret) ]] || fail "initialize set up and probed private files"
+"$here/harness.sh" compose exec -T wordpress sh -c 'test -f /var/www/html/wp-content/uploads/first-private/.htaccess' || fail "initialize wrote the private files' deny rules"
+[[ -n $(wp option get first_search_shape --format=json) ]] || fail "initialize recorded the search shape"
 # Initialize ran from WP-CLI and no web request has reached the build yet: the first request to
 # First Admin's mount and to a kind URL already answer. Apache serves /wp-admin/new/ from the rule
 # initialize wrote into .htaccess.
@@ -131,6 +140,7 @@ ok "a candidate that changes only a URL pattern plans one step; the initialized 
 rm -rf "$work/plugins-content" && mkdir -p "$work/plugins-content"
 rsync -a "$work/installlane/first/dist/wp-content/" "$work/plugins-content/"
 "$here/harness.sh" up --wp-content "$work/plugins-content" > "$work/plugins.json"
+probe_route
 url=$(json url < "$work/plugins.json")
 for path in / /about /colophon /wp-admin/ /wp-login.php /__first/api/v1/kinds/notes; do
   curl -s -o /dev/null "$url$path" || true

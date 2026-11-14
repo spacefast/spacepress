@@ -109,10 +109,16 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
       if (!t.error) throw error;
     }
   });
-  await command(['dev', project, '--port', String(await freePort()), '--no-watch'], env);
+  const firstStart = await command(['dev', project, '--port', String(await freePort()), '--no-watch'], env);
   const status = JSON.parse(await command(['dev', 'status', project], env));
   assert.equal(status.isOnline, true);
   const base = status.siteUrl.replace(/\/$/, '');
+  // The summary links First Admin where it is mounted. Studio's server reads no .htaccess, so the
+  // address answers with the form every server serves, wp-admin's own page for First Admin.
+  assert.match(firstStart, new RegExp(`First Admin: ${base}/wp-admin/new/\n`));
+  const adminLink = await fetch(`${base}/wp-admin/new/`, { redirect: 'manual' });
+  assert.equal(adminLink.status, 302);
+  assert.equal(adminLink.headers.get('location'), `${base}/wp-admin/admin.php?page=first-admin&p=%2F`);
   // A coding agent's view of the same site: its state and URL, a read, and (only when the server
   // was started with --allow-writes) a write and an action, all through the site commands.
   const [devStatus, refusedInsert] = await mcp([project], env, [

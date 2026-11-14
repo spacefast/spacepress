@@ -228,6 +228,14 @@ wp_enqueue_script_module( 'first-admin-boot' );
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>First Admin</title>
 	<style>
+		/* First: the router starts view transitions on navigation; without the document's opt-in
+		   the browser aborts each one with an error. */
+		@media (prefers-reduced-motion: no-preference) {
+			@view-transition {
+				navigation: auto;
+			}
+		}
+
 		html {
 			background: #f1f1f1;
 			color: #444;

@@ -25,6 +25,8 @@ async function login(page: Page, role: 'admin' | 'editor' | 'subscriber') {
 	await expect(
 		page.getByRole('heading', { name: 'Dashboard', exact: true })
 	).toBeVisible();
+	// Collections opens the app's collections in the sidebar.
+	await page.locator('.first-admin-sidebar__content').getByRole('button', { name: 'Collections', exact: true }).click();
 	await expect(
 		page.getByRole('link', { name: 'Posts', exact: true }).last()
 	).toBeVisible();
@@ -72,6 +74,7 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await page.screenshot({ path: test.info().outputPath('classic-admin.png'), animations: 'disabled' });
 	await wordpressMenu.getByRole('link', { name: 'First', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/new/`);
+	await sidebar.getByRole('button', { name: 'Collections', exact: true }).click();
 	await sidebar.getByRole('link', { name: 'Posts', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/new/collections/posts`);
 	await expect(page.getByRole('heading', { name: 'Posts', exact: true })).toBeVisible();

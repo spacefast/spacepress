@@ -1105,7 +1105,10 @@ export interface Query<T> extends Promise<T> {
 }
 export interface CollectionClient<K extends CollectionKey> {
 	list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Query<RowWith<K, W>[]>;
-	/** One page and the `cursor` of the next (null on the last page): pass it back as `cursor`. */
+	/**
+	* One page and the `cursor` of the next (null on the last page): pass it back as `cursor`. A page
+	* with `offset` can be awaited but not subscribed to (`subscribe` throws): subscribe by `cursor`.
+	*/
 	paginate<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>> & {
 		cursor?: string | null;
 	}): Query<{

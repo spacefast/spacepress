@@ -653,6 +653,7 @@
 				"interactive-components-use-client",
 				"stylesheets-and-images",
 				"on-wordpress",
+				"static-output",
 				"from-the-old-pages-renderer"
 			],
 			"prev": "/compiler",

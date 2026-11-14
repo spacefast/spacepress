@@ -107,6 +107,7 @@ final class Plugin
         });
         Facade::register($this);
         AppRouter::register($this);
+        \First\Render\Prebuilt::boot($this);
         PublicFiles::register($this);
         Comments::register($this);
         // Code blocks: highlighted with their title and marked lines, grouped into tabs (no script).
@@ -560,9 +561,16 @@ final class Plugin
         Scf::registerFilters();
     }
 
+    /**
+     * The app's own wp-admin menu: the parent of its globals (SCF options pages) and of First Admin's
+     * table screens (runtime/admin/lib/screens.php), so it exists when the app has either.
+     */
     public function adminMenu(): void
     {
-        if ($this->schema->globals() === []) {
+        // The kinds First Admin gives a classic list screen (runtime/admin/lib/screens.php uses the same test).
+        $tables = array_filter($this->schema->collections(), static fn (array $c): bool => !isset($c['wp']['postType']) && empty($c['auth'])
+            && ($c['api']['list'] ?? true) !== false && ($c['agents'] ?? true) !== false);
+        if ($this->schema->globals() === [] && ($tables === [] || !function_exists('first_admin_register_screen'))) {
             return;
         }
         $slug = 'first-' . $this->schema->name();
@@ -646,8 +654,15 @@ final class Plugin
     {
         $id = (int) ($post instanceof \WP_Post ? $post->ID : $post);
         if (isset($this->promoting[$id]) && ($collection = $this->collectionOf($id)) !== null) {
-            // Promotion runs no write hooks; watchers still need to see the row appear.
-            $this->app()->db->current(static fn () => \First\Realtime\Module::promoted($collection, [$id]));
+            // Promotion runs no write hooks but `afterPublish`; watchers still need to see the row appear.
+            $db = $this->app()->db;
+            $db->current(static fn () => \First\Realtime\Module::promoted($collection, [$id]));
+            try {
+                $db->transaction(static fn () => $db->current(static fn () => $db->afterPromotion($collection, $id)));
+            } catch (\Throwable $e) {
+                // A scheduled publish has no request to refuse: core has published the post already.
+                error_log('[first] afterPublish failed for ' . $collection . ' #' . $id . ': ' . $e->getMessage());
+            }
         }
         unset($this->promoting[$id]);
     }

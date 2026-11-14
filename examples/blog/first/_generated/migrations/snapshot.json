@@ -108,7 +108,10 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "userId"
+      ]
     },
     "posts": {
       "editor": true,
@@ -337,7 +340,10 @@
           "references": null
         }
       },
-      "localized": true
+      "localized": true,
+      "queried": [
+        "status"
+      ]
     },
     "comments": {
       "editor": false,
@@ -426,7 +432,11 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "approved",
+        "id"
+      ]
     },
     "members": {
       "editor": false,

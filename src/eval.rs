@@ -12,7 +12,7 @@ use crate::num::js_number_to_string;
 use crate::schema::{ColType, RefAction, RelKind};
 use crate::value::*;
 use indexmap::IndexMap;
-use std::cell::OnceCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -2499,6 +2499,13 @@ impl<'p> Evaluator<'p> {
             Value::Regex(p, _) if prop == "source" => Ok(Value::str(&crate::builtins::regex_source(p))),
             Value::Regex(_, f) if prop == "flags" => Ok(Value::str(f)),
             Value::Num(_) | Value::Column(_) | Value::Regex(..) => bound(),
+            // `kind.on({ ... })`: the hooks method, never a field (spec §2.8).
+            Value::Collection(c) if prop == "on" && !c.columns.contains_key(prop) => {
+                Ok(Value::Bound(Rc::new(v.clone()), Rc::from(prop)))
+            }
+            Value::Collection(c) if prop == "index" && !c.columns.contains_key(prop) => {
+                Ok(Value::Bound(Rc::new(v.clone()), Rc::from(prop)))
+            }
             Value::Collection(c) => {
                 if c.columns.contains_key(prop) {
                     Ok(Value::ColRef(Rc::new(ColRefVal {
@@ -2793,6 +2800,8 @@ impl<'p> Evaluator<'p> {
                     columns,
                     options,
                     span,
+                    hooks: RefCell::new(Vec::new()),
+                    indexes: std::cell::RefCell::new(Vec::new()),
                 })))
             }
             Builtin::Column(ty) => self.make_column(ty.name(), &args, span),
@@ -3756,6 +3765,28 @@ impl<'p> Evaluator<'p> {
             }
             Value::Column(c) if self.legacy && legacy::MODIFIERS.contains(&m) => legacy::modifier(c, m, &args, span),
             Value::Column(c) => column_method(c, m, &args, span),
+            // `.on({ beforeCreate, ... })` (spec §2.8, ruling 18): handlers in call order; returns the kind.
+            Value::Collection(c) if m == "on" => {
+                let extra = args.len() > 1;
+                let handlers = args.into_iter().next().unwrap_or(Value::Undef);
+                if !matches!(handlers, Value::Object(_)) || extra {
+                    return err_help(
+                        span,
+                        format!(".on() takes one object of hooks, not {}", handlers.describe()),
+                        "write `.on({ beforeCreate(data, ctx) { ... } })`",
+                    );
+                }
+                // Ruling 18: hooks belong to the declaration, so another file can't add them.
+                if span.file != c.span.file {
+                    return err_help(
+                        span,
+                        ".on() belongs to the kind's declaration, in the file that declares it",
+                        "move this .on({ ... }) next to the kind's collection()/table() call; handler functions may come from anywhere",
+                    );
+                }
+                c.hooks.borrow_mut().push((handlers, span));
+                Ok(recv.clone())
+            }
             Value::Str(s) => string_method(s, m, &args, span),
             Value::Num(n) => {
                 crate::builtins::check("number", m, args.len(), crate::builtins::Phase::Evaluator, span)
@@ -3781,6 +3812,70 @@ impl<'p> Evaluator<'p> {
                         "build the collection with its entries; mutate it inside a hook or action",
                     ),
                 }
+            }
+            Value::Collection(c) if m == "index" => {
+                let fields = match args.first() {
+                    Some(Value::Array(a)) => a
+                        .borrow()
+                        .iter()
+                        .map(|v| match v {
+                            Value::Str(s) => Ok(s.to_string()),
+                            other => Err(other.describe()),
+                        })
+                        .collect::<Result<Vec<_>, _>>(),
+                    _ => Err("no list".into()),
+                };
+                let Ok(fields) = fields.and_then(|f| {
+                    if f.is_empty() {
+                        Err("an empty list".into())
+                    } else {
+                        Ok(f)
+                    }
+                }) else {
+                    return err_help(
+                        span,
+                        "`.index()` takes a list of field names",
+                        "write `.index([\"post\", \"author\"], { unique: true })`",
+                    );
+                };
+                let unique = match args.get(1) {
+                    None | Some(Value::Undef) => false,
+                    Some(Value::Object(o)) => {
+                        let o = o.borrow();
+                        if let Some(k) = o.keys().find(|k| k.as_str() != "unique") {
+                            return err_help(
+                                span,
+                                format!("`.index()` options have no `{k}`"),
+                                "the only option is `unique: true`",
+                            );
+                        }
+                        match o.get("unique") {
+                            None | Some(Value::Undef) => false,
+                            Some(Value::Bool(b)) => *b,
+                            Some(_) => return err(span, "`unique` must be true or false"),
+                        }
+                    }
+                    Some(other) => {
+                        return err(
+                            span,
+                            format!("`.index()` options must be an object, not {}", other.describe()),
+                        );
+                    }
+                };
+                for f in &fields {
+                    if !c.columns.contains_key(f) {
+                        let mut d = Diag::new(
+                            span,
+                            format!("`.index()` names `{f}`, which is not a field of this kind"),
+                        );
+                        if let Some(s) = suggest(f, c.columns.keys().map(String::as_str)) {
+                            d = d.help(format!("did you mean `{s}`?"));
+                        }
+                        return Err(Ctl::Err(d));
+                    }
+                }
+                c.indexes.borrow_mut().push((fields, unique, span));
+                Ok(recv.clone())
             }
             other => err(span, format!("{} has no method `{m}`", other.describe())),
         }

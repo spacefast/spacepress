@@ -786,7 +786,7 @@ pub(crate) fn compile_tree(
     let mut tables: Vec<&str> = schema
         .collections
         .values()
-        .filter(|c| !c.editor && !c.auth)
+        .filter(|c| !c.editor && !c.auth && c.taxonomy.is_none())
         .map(|c| c.table.as_str())
         .collect();
     tables.sort();

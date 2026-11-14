@@ -184,7 +184,15 @@ pub fn declare(program: &Program, ev: &mut Evaluator<'_>, config: &Value) -> Res
                 .ok_or_else(|| refuse(name, "a kind needs at least one field"))?;
             let registry = if global { "globals" } else { "collections" };
             // A name is one thing across the app (spec §1.1), whoever declared it.
-            for other in ["collections", "tables", "users", "globals", "actions", "jobs"] {
+            for other in [
+                "collections",
+                "tables",
+                "users",
+                "taxonomies",
+                "globals",
+                "actions",
+                "jobs",
+            ] {
                 let taken = match cfg.borrow().get(other) {
                     Some(Value::Object(entries)) => entries.borrow().contains_key(name),
                     _ => false,

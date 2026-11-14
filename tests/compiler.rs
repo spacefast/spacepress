@@ -228,6 +228,126 @@ fn replaced_field_forms_name_their_replacement() {
     }
 }
 
+/// `taxonomy()` and `terms()` refusals (docs/decisions/2026-11-11-authoring-surface.md, rulings 24-33
+/// and the deferred list): each a build error at its source.
+#[test]
+fn rejects_what_taxonomies_and_terms_do_not_build_yet() {
+    for (fixture, message, at) in [
+        (
+            "reject-taxonomy-hooks",
+            "hooks on the taxonomy `topics` aren't built yet",
+            "first.config.ts:2:48",
+        ),
+        (
+            "reject-taxonomy-long",
+            "\"a_very_long_taxonomy_name_indeed\" is too long for a taxonomy: WordPress limits taxonomy names to 32 characters and First prefixes `first_`",
+            "first/schema.ts:2:44",
+        ),
+        (
+            "reject-taxonomy-on-clash",
+            "`topics`'s `on` gives `posts` a terms field named `topics`, which is already a field of `posts`",
+            "first/schema.ts:3:42",
+        ),
+        (
+            "reject-taxonomy-on-table",
+            "`on` lists the table `notes`; terms attach to collection() kinds only",
+            "first/schema.ts:3:42",
+        ),
+        (
+            "reject-taxonomy-option",
+            "`abilities` on a taxonomy isn't built yet",
+            "first/schema.ts:2:49",
+        ),
+        (
+            "reject-taxonomy-ref",
+            "`topic` refers to a taxonomy with `ref()`, which isn't built yet",
+            "first/schema.ts:3:57",
+        ),
+        (
+            "reject-taxonomy-reserved",
+            "`author` is built into every term; delete this field",
+            "first/schema.ts:2:42",
+        ),
+        (
+            "reject-taxonomy-richtext",
+            "richText() fields on a taxonomy aren't built yet (`body`)",
+            "first/schema.ts:2:40",
+        ),
+        (
+            "reject-taxonomy-sync",
+            "a taxonomy can't sync: `sync` is for collections and tables",
+            "first/schema.ts:2:44",
+        ),
+        (
+            "reject-taxonomy-translations",
+            "taxonomy translations aren't built yet; add `translations: false`",
+            "first/schema.ts:2:23",
+        ),
+        (
+            "reject-taxonomy-url",
+            "`:name` in \"/topics/:name\" isn't a term placeholder",
+            "first/schema.ts:2:43",
+        ),
+        (
+            "reject-taxonomy-was",
+            "`was` on a taxonomy isn't built yet: renaming one has to move its terms",
+            "first/schema.ts:2:43",
+        ),
+        (
+            "reject-terms-global",
+            "`terms()` isn't allowed on a global field (`featured`)",
+            "first.config.ts:4:83",
+        ),
+        (
+            "reject-terms-input",
+            "`terms()` isn't allowed on an action input (`ids`)",
+            "first.config.ts:3:70",
+        ),
+        (
+            "reject-terms-many",
+            "`.many()` isn't valid on a `terms()` field",
+            "first/schema.ts:3:72",
+        ),
+        (
+            "reject-terms-min",
+            "`.min()` isn't valid on a `terms()` field",
+            "first/schema.ts:3:72",
+        ),
+        (
+            "reject-terms-not-taxonomy",
+            "terms() takes a taxonomy() export, not a collection() kind",
+            "first/schema.ts:3:56",
+        ),
+        (
+            "reject-terms-reverse-clash",
+            "`topics` gives \"topics\" a reverse list named `posts`, which \"topics\" already has",
+            "first/schema.ts:3:58",
+        ),
+        (
+            "reject-terms-sub",
+            "`terms()` isn't allowed inside a group, repeater, or blocks field (`topics`)",
+            "first/schema.ts:3:72",
+        ),
+        (
+            "reject-terms-sync",
+            "`topics` holds terms, which sync can't carry yet",
+            "first/schema.ts:3:58",
+        ),
+        (
+            "reject-terms-table",
+            "`terms()` isn't available on a table() kind (`topics`)",
+            "first/schema.ts:3:52",
+        ),
+        (
+            "reject-terms-twice",
+            "`b` and `a` are both `terms()` of the same taxonomy",
+            "first/schema.ts:3:71",
+        ),
+    ] {
+        rejects(fixture, message, at);
+    }
+}
+
 /// JSX outside the subset fails the build at its source, saying what to write instead
 /// (docs/decisions/2026-11-08-tsx-to-php.md, "Errors").
 #[test]
@@ -3154,6 +3274,100 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
         dropped.trim_end(),
         "-- first-check {\"check\":\"drop\",\"name\":\"notes_related\",\"table\":\"{prefix}first_notes_related\",\"adopted\":false}\nDROP TABLE `{prefix}first_notes_related`;"
     );
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
+/// `taxonomy()` and `terms()` (docs/decisions/2026-11-11-authoring-surface.md, rulings 24-33): schema.php
+/// carries the taxonomy under `taxonomies` with its WordPress names, the item field and a relation each
+/// way through core's term relationships; db.d.ts types them; nothing enters the migration snapshot.
+#[test]
+fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways() {
+    let tmp = std::env::temp_dir().join(format!("first-taxonomy-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(tmp.join("first")).unwrap();
+    std::fs::write(
+        tmp.join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"taxo\" });\n",
+    )
+    .unwrap();
+    let build = |schema: &str| {
+        std::fs::write(tmp.join("first/schema.ts"), schema).unwrap();
+        let out = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    };
+    let plain = "import { collection, text } from \"first\";\nexport const posts = collection({ title: text() });\n";
+    build(plain);
+    let snapshot = || std::fs::read_to_string(tmp.join("first/_generated/migrations/snapshot.json")).unwrap();
+    let before = snapshot();
+    build(
+        "import { collection, taxonomy, terms, text } from \"first\";\n\
+         export const tags = taxonomy({}, { url: \"/tags/:slug\" });\n\
+         export const posts = collection({ title: text(), labels: terms(tags).reverse(\"labelled\") });\n\
+         export const topics = taxonomy({ color: text().optional() }, { hierarchical: true, on: [posts], access: { create: \"author\" } });\n",
+    );
+    // No SQL: terms, term meta and links are core's.
+    assert_eq!(snapshot(), before);
+    let migrations: Vec<_> = std::fs::read_dir(tmp.join("first/_generated/migrations"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .filter(|f| f.ends_with(".sql"))
+        .collect();
+    assert_eq!(migrations, ["0001_init.sql"]);
+
+    let out = Command::new("php")
+        .args(["-r", "echo json_encode(require $argv[1]);"])
+        .arg(tmp.join("first/dist/wp-content/plugins/first-app-taxo/first/app/schema.php"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let php: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(php["collections"].get("topics").is_none());
+    let topics = &php["taxonomies"]["topics"];
+    assert_eq!(
+        topics["wp"],
+        serde_json::json!({ "taxonomy": "first_topics", "groupKey": "group_first_topics", "metaPrefix": "first_", "fieldKeyPrefix": "field_first_topics_", "on": ["posts"] })
+    );
+    assert_eq!(topics["hierarchical"], true);
+    assert_eq!(
+        topics["columns"].as_object().unwrap().keys().collect::<Vec<_>>(),
+        ["id", "name", "slug", "description", "parent", "count", "url", "color"]
+    );
+    assert_eq!(topics["columns"]["count"]["readOnly"], true);
+    assert_eq!(topics["access"]["create"], serde_json::json!({ "role": "author" }));
+    assert!(php["taxonomies"]["tags"]["columns"].get("parent").is_none());
+    assert_eq!(php["taxonomies"]["tags"]["url"], "/tags/:slug");
+    let posts = &php["collections"]["posts"];
+    assert_eq!(posts["columns"]["topics"]["type"], "refList");
+    assert_eq!(posts["columns"]["topics"]["references"]["join"], "term:topics");
+    assert_eq!(posts["columns"]["labels"]["references"]["join"], "term:tags");
+    assert_eq!(
+        posts["relations"]["topics"],
+        serde_json::json!({ "kind": "many", "collection": "topics", "from": "id", "to": "id", "optional": false, "through": { "table": "term:topics", "from": "owner_id", "to": "target_id" } })
+    );
+    assert_eq!(
+        topics["relations"]["posts"]["through"],
+        serde_json::json!({ "table": "term:topics", "from": "target_id", "to": "owner_id" })
+    );
+    assert_eq!(
+        php["taxonomies"]["tags"]["relations"]["labelled"]["collection"],
+        "posts"
+    );
+
+    let dts = std::fs::read_to_string(tmp.join("first/_generated/db.d.ts")).unwrap();
+    assert!(dts.contains("'topics': Collection<'topics', {"), "{dts}");
+    assert!(dts.contains("}, false, 'taxonomy'>;"), "{dts}");
+    assert!(
+        dts.contains("'topics': ColumnBuilder<'refList', number[], true, true, false, false>;"),
+        "{dts}"
+    );
+    assert!(
+        dts.contains("'posts': Many<'posts'>;") && dts.contains("'topics': Many<'topics'>;"),
+        "{dts}"
+    );
+
+    // Removing the taxonomy again changes no stored schema either.
+    build(plain);
+    assert_eq!(snapshot(), before);
     let _ = std::fs::remove_dir_all(tmp);
 }
 

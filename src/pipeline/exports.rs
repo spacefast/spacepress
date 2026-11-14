@@ -3,7 +3,7 @@
 //! and whether or not anything imports it. Other exports are ignored, so helper modules need no
 //! special place.
 //!
-//! Registration fills the config's own registries (`collections`, `tables`, `users`, `globals`,
+//! Registration fills the config's own registries (`collections`, `tables`, `users`, `taxonomies`, `globals`,
 //! `actions`, `jobs`), so everything after it reads one shape. An export and a config entry for the
 //! same value are the same registration; anything else that shares a name is `F1221`.
 
@@ -28,6 +28,7 @@ fn registry(value: &Value) -> Option<&'static str> {
             StorageKind::Collection => "collections",
             StorageKind::Table => "tables",
             StorageKind::UserProjection => "users",
+            StorageKind::Taxonomy => "taxonomies",
         },
         Value::Global(_) => "globals",
         Value::Action(_) => "actions",
@@ -133,7 +134,15 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
     // an exported table's name. Names only listed in `defineConfig` keep that API's per-registry
     // namespaces (0.8 apps converted onto it name a query like its table) until it is removed.
     for (name, taken) in &taken {
-        for registry in ["collections", "tables", "users", "globals", "actions", "jobs"] {
+        for registry in [
+            "collections",
+            "tables",
+            "users",
+            "taxonomies",
+            "globals",
+            "actions",
+            "jobs",
+        ] {
             let Some(Value::Object(entries)) = cfg.borrow().get(registry).cloned() else {
                 continue;
             };
@@ -146,7 +155,7 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
     }
     // `"first:db"` resolves to every registered kind, by its registry key.
     let mut kinds = IndexMap::new();
-    for registry in ["collections", "tables", "users"] {
+    for registry in ["collections", "tables", "users", "taxonomies"] {
         if let Some(Value::Object(entries)) = cfg.borrow().get(registry) {
             for (name, value) in entries.borrow().iter() {
                 kinds.insert(name.clone(), value.clone());

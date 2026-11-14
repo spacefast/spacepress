@@ -94,7 +94,7 @@ fn table(schema: &Schema, key: Option<&str>) -> bool {
     schema
         .collections
         .values()
-        .any(|c| !c.editor && !c.auth && key.is_none_or(|key| c.key == key))
+        .any(|c| !c.editor && !c.auth && c.taxonomy.is_none() && key.is_none_or(|key| c.key == key))
 }
 
 /// Why `file` doesn't belong in a project with this schema, or None when it does.

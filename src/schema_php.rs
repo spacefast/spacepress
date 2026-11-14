@@ -156,6 +156,9 @@ fn column(c: &Column, ctx: Ctx, indent: usize) -> String {
     if c.hidden {
         parts.push("'hidden' => true".into());
     }
+    if c.read_only {
+        parts.push("'readOnly' => true".into());
+    }
     if c.system && top {
         parts.push("'system' => true".into());
     }
@@ -227,6 +230,9 @@ fn collection(out: &mut String, c: &Collection) {
     if c.hierarchical {
         out.push_str("            'hierarchical' => true,\n");
     }
+    if c.taxonomy.is_some() {
+        out.push_str("            'taxonomy' => true,\n");
+    }
     let _ = writeln!(out, "            'title' => {},", opt(&c.title));
     let _ = writeln!(out, "            'content' => {},", opt(&c.content));
     let _ = writeln!(out, "            'slug' => {},", opt(&c.slug));
@@ -288,7 +294,17 @@ fn collection(out: &mut String, c: &Collection) {
     if let Some(url) = &c.url {
         let _ = writeln!(out, "            'url' => {},", php_str(url));
     }
-    if c.editor {
+    if let Some(tax) = &c.taxonomy {
+        // A taxonomy's terms are core's (ruling 24): `wp_terms`, `wp_term_taxonomy`, term meta.
+        let t = &c.table;
+        let on: Vec<String> = tax.on.iter().map(|k| php_str(k)).collect();
+        let _ = writeln!(
+            out,
+            "            'wp' => ['taxonomy' => 'first_{t}', 'groupKey' => 'group_first_{t}', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_{t}_', 'on' => [{}]],",
+            on.join(", ")
+        );
+        let _ = writeln!(out, "            'table' => null,");
+    } else if c.editor {
         let t = &c.table;
         let _ = writeln!(
             out,
@@ -511,8 +527,16 @@ pub fn render(schema: &Schema) -> String {
         schema.webhooks.iter().map(php_json).collect::<Vec<_>>().join(", ")
     );
     out.push_str("    'collections' => [\n");
-    for c in schema.collections.values() {
+    for c in schema.collections.values().filter(|c| c.taxonomy.is_none()) {
         collection(&mut out, c);
+    }
+    // Taxonomies (docs/decisions/2026-11-11-authoring-surface.md, ruling 24): the same kind shape,
+    // read and written by the term store; the runtime finds them by name like any kind.
+    if schema.collections.values().any(|c| c.taxonomy.is_some()) {
+        out.push_str("    ],\n    'taxonomies' => [\n");
+        for c in schema.collections.values().filter(|c| c.taxonomy.is_some()) {
+            collection(&mut out, c);
+        }
     }
     out.push_str("    ],\n    'globals' => [\n");
     for g in schema.globals.values() {
@@ -574,6 +598,8 @@ pub fn gen_ts(schema: &Schema) -> String {
     for c in schema.collections.values() {
         let storage = if c.auth {
             "userProjection"
+        } else if c.taxonomy.is_some() {
+            "taxonomy"
         } else if c.editor {
             "collection"
         } else {

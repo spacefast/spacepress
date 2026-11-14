@@ -33,6 +33,9 @@ use WP_HTML_Tag_Processor as Tags;
  */
 final class Blocks
 {
+    /** Set while core's block renderer (the editor's preview) is answering. */
+    private static bool $previewing = false;
+
     /** @return array<string, array{tag: string, component: string, attributes: array<string, array>}> by block name */
     public static function all(): array
     {
@@ -59,6 +62,12 @@ final class Blocks
     public static function register(): void
     {
         $blocks = self::all();
+        if ($blocks !== []) {
+            add_filter('rest_request_before_callbacks', static function (mixed $response, array $handler, \WP_REST_Request $request): mixed {
+                self::$previewing = str_starts_with($request->get_route(), '/wp/v2/block-renderer/');
+                return $response;
+            }, 10, 3);
+        }
         $nested = array_filter($blocks, static fn (array $spec): bool => !empty($spec['children']));
         if ($nested !== []) {
             add_action('enqueue_block_editor_assets', static function () use ($nested): void {
@@ -73,11 +82,58 @@ final class Blocks
             register_block_type($name, [
                 'title' => $spec['tag'],
                 'category' => 'design',
-                'attributes' => $spec['attributes'],
+                'attributes' => self::attributes($spec),
                 'supports' => ['html' => false] + (empty($spec['children']) ? ['autoRegister' => true] : []),
                 'render_callback' => static fn (array $attrs, string $content): string => self::render($spec, $attrs, $content),
             ]);
         }
+    }
+
+    /**
+     * The attributes as the editor holds them. A choice prop the component may go without gets an empty
+     * choice, so the editor's select can show and return to "not set"; a choice it needs defaults to its
+     * first value, so the select shows what is saved. An empty string is an unset prop (self::props).
+     */
+    private static function attributes(array $spec): array
+    {
+        $attributes = $spec['attributes'];
+        foreach ($attributes as $key => $attribute) {
+            if (!isset($attribute['enum'])) {
+                continue;
+            }
+            if (in_array($key, $spec['required'] ?? [], true)) {
+                $attributes[$key]['default'] = $attribute['enum'][0];
+            } else {
+                $attributes[$key]['enum'] = ['', ...$attribute['enum']];
+            }
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * A block's props, in the order they are stored: the attributes the component declares, without
+     * an empty string (the editor stores a cleared field as `""`), and a required choice the block
+     * doesn't store yet as its default.
+     *
+     * @return array<string, mixed>
+     */
+    private static function props(array $spec, array $attrs, bool $declaredOnly = true): array
+    {
+        $attributes = self::attributes($spec);
+        $props = [];
+        foreach ($attrs as $key => $value) {
+            if ((!$declaredOnly || isset($attributes[$key])) && $value !== null && $value !== '') {
+                $props[$key] = $value;
+            }
+        }
+        foreach ($attributes as $key => $attribute) {
+            if (!array_key_exists($key, $props) && isset($attribute['default'])) {
+                $props[$key] = $attribute['default'];
+            }
+        }
+
+        return $props;
     }
 
     /** The component, called with the block's attributes as props and its rendered inner blocks as `children`. */
@@ -89,16 +145,52 @@ final class Blocks
             return '';
         }
         $plugin->app();
-        $props = [];
-        foreach ($spec['attributes'] as $key => $attribute) {
-            if (array_key_exists($key, $attrs)) {
-                $props[$key] = $attrs[$key];
-            }
-        }
+        $props = self::props($spec, $attrs);
         $props['children'] = Html::raw($content);
         $fn = '\\FirstApp\\' . $function;
+        $html = Html::child(Html::component($fn(...), new JsObject($props)));
 
-        return Html::child(Html::component($fn(...), new JsObject($props)));
+        // The editor's preview (core's block renderer) puts the block's own box on the output's one
+        // root element. Output with none (nothing, or bare text) or several gets one, so the block
+        // can still be selected.
+        if (self::previewing() && self::roots($html) !== 1) {
+            return '<div class="first-block-preview">' . ($html !== '' ? $html : esc_html('<' . $spec['tag'] . ' />')) . '</div>';
+        }
+
+        return $html;
+    }
+
+    /** Whether this is the block editor asking the server to render a block for its preview. */
+    private static function previewing(): bool
+    {
+        return self::$previewing;
+    }
+
+    /** How many elements the HTML has at its top level; null if it has text there too. */
+    private static function roots(string $html): ?int
+    {
+        $tags = \WP_HTML_Processor::create_fragment($html);
+        if ($tags === null) {
+            return null;
+        }
+        $roots = 0;
+        $top = null;
+        while ($tags->next_token()) {
+            $depth = $tags->get_current_depth();
+            $top ??= $depth;
+            if ($depth !== $top) {
+                continue;
+            }
+            $type = $tags->get_token_type();
+            if ($type === '#text' && trim($tags->get_modifiable_text()) !== '') {
+                return null;
+            }
+            if ($type === '#tag' && !$tags->is_tag_closer()) {
+                $roots++;
+            }
+        }
+
+        return $roots;
     }
 
     // ------------------------------------------------------------------ Markdown ⇄ blocks
@@ -255,7 +347,8 @@ final class Blocks
             $flush();
             $spec = $all[$name];
             $attrs = '';
-            foreach ((array) ($block['attrs'] ?? []) as $key => $value) {
+            // Props the component no longer declares are written too, so a push names them instead of losing them.
+            foreach (self::props($spec, (array) ($block['attrs'] ?? []), declaredOnly: false) as $key => $value) {
                 $attrs .= ' ' . $key . match (true) {
                     $value === true => '',
                     is_bool($value) => '={false}',

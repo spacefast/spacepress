@@ -258,3 +258,34 @@ test("WordPress's /wp/v2/view-config is core's, and core's filter reaches First 
   assert.ok(first.tabs.some((t: { slug: string }) => t.slug === "administrator"));
   assert.ok(Array.isArray(first.edit_form?.fields), "the user edit form survives the round trip");
 });
+
+test("a screen's capability gates its declaration, its classic page and its sidebar entry, for every role below it", async () => {
+  wp("option", "delete", "first_harness_admin_only_data");
+  for (const role of ["editor", "subscriber"] as const) {
+    const declaration = await fetch(`${site}/wp-json/first-admin/v1/screens/test-admin-only`, { headers: auth(role) });
+    assert.equal(declaration.status, 403, `${role}: the declaration`);
+    const cookie = await loginCookie(site, role, `${site}/wp-admin/`);
+    wp("transient", "delete", "pll_activation_redirect");
+    const classic = await fetch(`${site}/wp-admin/tools.php?page=first-screen-test-admin-only`, { headers: { cookie }, redirect: "manual" });
+    assert.notEqual(classic.status, 200, `${role}: the classic page`);
+    assert.doesNotMatch(await classic.text(), /Administrators only/);
+    const page = await (await fetch(`${site}/wp-admin/new/`, { headers: { cookie } })).text();
+    assert.doesNotMatch(page, /screen-test-admin-only/, `${role}: no sidebar entry`);
+  }
+  // Its `data` ran for nobody so far: it is evaluated only for users the capability lets in.
+  assert.equal(wp("eval", "echo (int) get_option('first_harness_admin_only_data', 0);"), "0");
+  const admin = await (await fetch(`${site}/wp-json/first-admin/v1/screens/test-admin-only`, { headers: auth("admin") })).json();
+  assert.deepEqual(admin.data, ["Administrators only."]);
+  const cookie = await loginCookie(site, "admin", `${site}/wp-admin/new/`);
+  assert.match(await (await fetch(`${site}/wp-admin/new/`, { headers: { cookie } })).text(), /screen-test-admin-only/, "the administrator's sidebar has it");
+});
+
+test("table screens are named after the kind in kebab case, as its abilities are", async () => {
+  const kinds = JSON.parse(wp("eval", "echo wp_json_encode(array_keys(array_filter(\\First\\Wp\\Runtime::plugin()->schema->collections(), fn ($c) => !isset($c['wp']['postType']) && empty($c['auth']) && ($c['api']['list'] ?? true) !== false && ($c['agents'] ?? true) !== false)));"));
+  const camel = kinds.find((k: string) => /[A-Z_]/.test(k));
+  assert.ok(camel, `the test app has a table kind that isn't one lowercase word: ${kinds}`);
+  const kebab = camel.replace(/_/g, "-").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  const screen = await fetch(`${site}/wp-json/first-admin/v1/screens/table-${kebab}`, { headers: auth("admin") });
+  assert.equal(screen.status, 200, `table-${kebab}`);
+  assert.equal((await screen.json()).view.ability, `blog/${kebab}-list`);
+});

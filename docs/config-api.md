@@ -1154,7 +1154,8 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   every version, newest first, with who made it and each change in words, and says which runtime
   changes the running build doesn't contain yet. It is a screen declared once
   ([admin-screens.md](admin-screens.md)) over `<app>/schema-read`, whose versions carry the same
-  `by` and `summary`.
+  `by` and `summary`. With `admin: false` there is no screen; `first schema list` and the
+  `<app>/schema-read` ability show the same.
 
 Taxonomies can't be added at runtime: `taxonomy()` is not in this First version.
 

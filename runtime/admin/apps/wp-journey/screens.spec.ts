@@ -59,7 +59,9 @@ async function shown( page: Page, body: string ) {
 	await expect( row ).toBeVisible();
 	const headings = await screen.getByRole( 'columnheader' ).allInnerTexts();
 	await row.getByRole( 'button', { name: 'Actions' } ).click();
-	const actions = await page.getByRole( 'menu' ).last().getByRole( 'menuitem' ).allInnerTexts();
+	const menu = page.getByRole( 'menu' ).last();
+	await expect( menu.getByRole( 'menuitem' ).first() ).toBeVisible();
+	const actions = await menu.getByRole( 'menuitem' ).allInnerTexts();
 	await page.keyboard.press( 'Escape' );
 	return { headings: headings.map( ( h ) => h.trim() ).filter( Boolean ), actions, row };
 }

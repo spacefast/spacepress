@@ -72,6 +72,8 @@ function fields( declared: ScreenField[] ): Field< Item >[] {
 		type: fieldType( f.type ) as Field< Item >[ 'type' ],
 		elements: f.elements,
 		enableGlobalSearch: f.type === undefined || f.type === 'text',
+		// Search runs over the rows the ability returned; filters would need the ability's `where`.
+		filterBy: false,
 		getValue: ( { item } ) => item[ f.id ],
 		render: ( { item } ) => (
 			<span className="first-admin-screen__value">
@@ -161,9 +163,9 @@ function ScreenList( {
 	const search = ( view.search ?? '' ).toLowerCase();
 	const filtered = sorted( search
 		? state.value.filter( ( item ) =>
-				declared.fields.some( ( f ) =>
-					display( item[ f.id ] ).toLowerCase().includes( search )
-				)
+				declared.fields
+					.filter( ( f ) => f.type === undefined || f.type === 'text' )
+					.some( ( f ) => display( item[ f.id ] ).toLowerCase().includes( search ) )
 		  )
 		: state.value, view.sort as { field: string; direction: 'asc' | 'desc' } | undefined );
 	const perPage = view.perPage ?? 20;

@@ -124,7 +124,10 @@ export function readPath( source: ScreenSource ): string {
 	}
 	const query = new URLSearchParams();
 	const add = ( prefix: string, value: unknown ) => {
-		if ( value !== null && typeof value === 'object' ) {
+		if ( value === null || value === undefined ) {
+			return; // A query string has no null: leave the key out, as the ability's default.
+		}
+		if ( typeof value === 'object' ) {
 			for ( const [ k, v ] of Object.entries( value ) ) {
 				add( `${ prefix }[${ k }]`, v );
 			}

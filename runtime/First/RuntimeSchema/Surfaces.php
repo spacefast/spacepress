@@ -243,8 +243,15 @@ final class Surfaces
                 // Who made each version (a login, an application password's name) is personal data: a
                 // credential scoped without it reads the versions without them.
                 $personal = \First\Wp\AgentScope::may('personal');
-                $shown = static fn (array $row): array => $personal ? self::version($row)
-                    : ['actor' => array_intersect_key($row['actor'], ['user' => 1, 'via' => 1])] + self::version($row);
+                $shown = static function (array $row) use ($personal): array {
+                    if ($personal) {
+                        return self::version($row);
+                    }
+                    // `by` is built from the same actor, so it goes with it.
+                    $row['actor'] = array_intersect_key($row['actor'], ['user' => 1, 'via' => 1]);
+
+                    return self::version($row);
+                };
 
                 return ['version' => $versions->active()['version'], 'hash' => $versions->active()['hash'],
                     'versions' => array_map($shown, $versions->list()), 'deploy' => $versions->deployCheck()];
@@ -394,6 +401,9 @@ final class Surfaces
     /** Who made a version, in words. */
     private static function by(array $row): string
     {
+        if (!isset($row['actor']['login']) && isset($row['actor']['user'])) {
+            return 'user ' . $row['actor']['user'] . (($row['actor']['via'] ?? null) === 'wp-cli' ? ' (WP-CLI)' : '');
+        }
         $who = (string) ($row['actor']['login'] ?? 'system');
         if (isset($row['actor']['credential']['name'])) {
             return $who . ' (application password ' . $row['actor']['credential']['name'] . ')';

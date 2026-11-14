@@ -136,9 +136,9 @@ function first_admin_screen_fields( $screen ) {
 	return array_values( (array) ( $screen['view']['fields'] ?? $screen['form']['fields'] ?? array() ) );
 }
 
-/** A field as core's registry takes it: `type` only from the values DataViews provides. */
+/** A field as core's registry takes it: the declaration's own (core's type list includes `array`). */
 function first_admin_screen_core_field( $field ) {
-	return 'array' === ( $field['type'] ?? null ) ? array_merge( $field, array( 'type' => 'text' ) ) : $field;
+	return $field;
 }
 
 add_action(
@@ -287,9 +287,11 @@ function first_admin_register_classic_screens() {
 		$render   = static function () use ( $id ) {
 			first_admin_render_classic_screen( $id );
 		};
+		// wp-admin prints menu titles as HTML; a title can come from a runtime label.
+		$label    = esc_html( $screen['title'] );
 		$hook     = empty( $classic['parent'] )
-			? add_menu_page( $screen['title'], $screen['title'], $screen['capability'], first_admin_screen_page( $id ), $render, $classic['icon'] ?? 'dashicons-admin-generic', $classic['position'] ?? null )
-			: add_submenu_page( $classic['parent'], $screen['title'], $screen['title'], $screen['capability'], first_admin_screen_page( $id ), $render, $classic['position'] ?? null );
+			? add_menu_page( $label, $label, $screen['capability'], first_admin_screen_page( $id ), $render, $classic['icon'] ?? 'dashicons-admin-generic', $classic['position'] ?? null )
+			: add_submenu_page( $classic['parent'], $label, $label, $screen['capability'], first_admin_screen_page( $id ), $render, $classic['position'] ?? null );
 		if ( $hook ) {
 			add_action( 'load-' . $hook, static fn () => first_admin_enqueue_classic_screen( $id ) );
 		}
@@ -422,16 +424,18 @@ add_action(
 				);
 			}
 			first_admin_register_screen(
-				'table-' . $name,
+				// The kebab-case kind name (`stockItems` → `stock-items`), as the ability names use it.
+				'table-' . $k,
 				array(
 					'title'      => $kind['label'] ?? $name,
+					'description' => __( 'The 100 most recent rows. All of them are in First Admin, under Collections.', 'first-admin' ),
 					'capability' => 'read',
 					'classic'    => array( 'parent' => 'first-' . $app ),
 					// First Admin lists every kind under Collections already.
 					'menu'       => false,
 					'view'       => array(
 						'ability' => "$app/$k-list",
-						'input'   => array( 'limit' => 100 ),
+						'input'   => array( 'limit' => 100, 'orderBy' => array( $primary => 'desc' ) ),
 						'items'   => 'rows',
 						'id'      => $primary,
 						'fields'  => $fields,

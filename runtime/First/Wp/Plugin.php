@@ -547,7 +547,9 @@ final class Plugin
      */
     public function adminMenu(): void
     {
-        $tables = array_filter($this->schema->collections(), static fn (array $c): bool => !isset($c['wp']['postType']) && empty($c['auth']));
+        // The kinds First Admin gives a classic list screen (runtime/admin/lib/screens.php uses the same test).
+        $tables = array_filter($this->schema->collections(), static fn (array $c): bool => !isset($c['wp']['postType']) && empty($c['auth'])
+            && ($c['api']['list'] ?? true) !== false && ($c['agents'] ?? true) !== false);
         if ($this->schema->globals() === [] && ($tables === [] || !function_exists('first_admin_register_screen'))) {
             return;
         }

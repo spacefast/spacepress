@@ -493,6 +493,7 @@ $privateRead = json_decode((string) curl_exec($ch), true);
 $withActor = array_values(array_filter($privateRead['versions'] ?? [], static fn (array $v): bool => isset($v['actor']['credential']) || isset($v['actor']['login'])));
 eq('a credential without personal data reads every version, but no login or password name', [count($privateRead['versions'] ?? []) > 0, $withActor, $privateRead['versions'][0]['actor'] ?? null],
     [true, [], ['user' => $wp->userId('admin'), 'via' => $privateRead['versions'][0]['actor']['via'] ?? null]]);
+check('nor in the line saying who made each version', !str_contains(json_encode(array_column($privateRead['versions'] ?? [], 'by')), 'admin') && !str_contains(json_encode(array_column($privateRead['versions'] ?? [], 'by')), 'application password'), array_column($privateRead['versions'] ?? [], 'by'));
 eq('a credential with personal data still sees them', isset($run('schema-read', [], 'admin')[1]['versions'][0]['actor']['login']), true);
 
 eq('the three are agent tools', [$tools['rtschema/schema-read'] ?? null, $tools['rtschema/schema-propose'] ?? null, $tools['rtschema/schema-apply'] ?? null], [true, true, true]);

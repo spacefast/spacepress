@@ -26,6 +26,17 @@ add_action('first_admin_screens', static function (): void {
         ],
         'data' => ['Approving a comment publishes it.'],
     ]);
+    // An administrators-only screen: the same list, and a `data` line that must never reach anyone else.
+    first_admin_register_screen('test-admin-only', [
+        'title' => 'Admin only',
+        'capability' => 'manage_options',
+        'classic' => ['parent' => 'tools.php'],
+        'view' => ['ability' => 'blog/comments-list', 'items' => 'rows', 'fields' => [['id' => 'body']]],
+        'data' => static function (): array {
+            update_option('first_harness_admin_only_data', (int) get_option('first_harness_admin_only_data', 0) + 1, false);
+            return ['Administrators only.'];
+        },
+    ]);
 });
 
 // A plugin that patches the users list with WordPress 7.1's own view config API.

@@ -148,7 +148,7 @@
 			"stops": [],
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/changelog/index.mdx",
 			"toc": [],
-			"prev": "/publishing/other-platforms",
+			"prev": "/publishing/content-in-git",
 			"next": "/changelog/blocks",
 			"sidebar": true
 		},
@@ -693,6 +693,57 @@
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/publishing/other-platforms.mdx",
 			"toc": [],
 			"prev": "/publishing/spacefast",
+			"next": "/publishing/content-in-git",
+			"sidebar": true
+		},
+		"/publishing/content-in-git": {
+			"title": "Content in git - First",
+			"h1": "Content in git",
+			"description": "Edits made on a First site come back to the repository as a pull request, and content merged in git goes to the site, through first sync.",
+			"canonical": "/publishing/content-in-git",
+			"markdown": "/publishing/content-in-git.md",
+			"ogImage": "/og/publishing/content-in-git.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/publishing/content-in-git.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Content in git - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/publishing/content-in-git.mdx",
+			"toc": [
+				"the-pull-request",
+				"the-github-workflow",
+				"conflicts",
+				"permissions"
+			],
+			"prev": "/publishing/other-platforms",
 			"next": "/changelog",
 			"sidebar": true
 		},
@@ -5359,6 +5410,11 @@
 				"group": "Publishing"
 			},
 			{
+				"label": "Content in git",
+				"href": "/publishing/content-in-git",
+				"group": "Publishing"
+			},
+			{
 				"label": "Changelogs",
 				"href": "/changelog",
 				"group": "Changelog"
@@ -6172,6 +6228,7 @@
 		"/index.md",
 		"/pages.md",
 		"/publishing/other-platforms.md",
+		"/publishing/content-in-git.md",
 		"/publishing/spacefast.md",
 		"/reference.md",
 		"/reference/cli.md",
@@ -6282,6 +6339,7 @@
 		"/index.mdx",
 		"/pages.mdx",
 		"/publishing/other-platforms.mdx",
+		"/publishing/content-in-git.mdx",
 		"/publishing/spacefast.mdx",
 		"/reference.mdx",
 		"/reference/cli.mdx",
@@ -6398,6 +6456,7 @@
 		"/api/docs/pages/index.json",
 		"/api/docs/pages/pages.json",
 		"/api/docs/pages/publishing/other-platforms.json",
+		"/api/docs/pages/publishing/content-in-git.json",
 		"/api/docs/pages/publishing/spacefast.json",
 		"/api/docs/pages/reference.json",
 		"/api/docs/pages/reference/cli.json",
@@ -6519,6 +6578,7 @@
 		"/og/pages.png",
 		"/og/playground.png",
 		"/og/publishing/other-platforms.png",
+		"/og/publishing/content-in-git.png",
 		"/og/publishing/spacefast.png",
 		"/og/reference.png",
 		"/og/reference/cli.png",
@@ -6633,6 +6693,7 @@
 		"/pages",
 		"/playground",
 		"/publishing/other-platforms",
+		"/publishing/content-in-git",
 		"/publishing/spacefast",
 		"/reference",
 		"/reference/cli",
@@ -6737,6 +6798,7 @@
 		"/agents",
 		"/publishing/spacefast",
 		"/publishing/other-platforms",
+		"/publishing/content-in-git",
 		"/changelog",
 		"/changelog/blocks",
 		"/examples",

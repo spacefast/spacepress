@@ -207,6 +207,10 @@ fn collection(out: &mut String, c: &Collection) {
     let _ = writeln!(out, "            'editor' => {},", c.editor);
     let _ = writeln!(out, "            'drafts' => {},", c.drafts);
     let _ = writeln!(out, "            'revisions' => {},", c.revisions);
+    if c.editor && !c.staged {
+        // Staged versions are on for every collection; only the opt-out is written.
+        let _ = writeln!(out, "            'staged' => false,");
+    }
     let _ = writeln!(out, "            'comments' => {},", c.comments);
     let _ = writeln!(out, "            'uid' => {},", c.uid);
     let _ = writeln!(
@@ -217,6 +221,9 @@ fn collection(out: &mut String, c: &Collection) {
     let _ = writeln!(out, "            'auth' => {},", c.auth);
     let _ = writeln!(out, "            'agents' => {},", c.agents);
     let _ = writeln!(out, "            'localized' => {},", c.localized);
+    if c.hierarchical {
+        out.push_str("            'hierarchical' => true,\n");
+    }
     let _ = writeln!(out, "            'title' => {},", opt(&c.title));
     let _ = writeln!(out, "            'content' => {},", opt(&c.content));
     let _ = writeln!(out, "            'slug' => {},", opt(&c.slug));
@@ -301,6 +308,14 @@ pub fn render(schema: &Schema) -> String {
             let _ = writeln!(out, "    'frontend' => {},", php_str(url));
         }
     }
+    if let Some(runtime) = &schema.runtime_schema {
+        let _ = writeln!(
+            out,
+            "    'runtimeSchema' => ['version' => {}, 'hash' => {}],",
+            runtime.version,
+            php_str(&runtime.hash)
+        );
+    }
     out.push_str("    'site' => ['uidPrefix' => 'zr_'],\n");
     let _ = writeln!(
         out,
@@ -333,6 +348,9 @@ pub fn render(schema: &Schema) -> String {
         for (name, function) in &schema.components {
             let _ = writeln!(out, "        {} => {},", php_str(name), php_str(function));
         }
+    }
+    if !schema.blocks.is_empty() {
+        out.push_str(&crate::content_blocks::schema_php(&schema.blocks));
     }
     if !schema.islands.is_empty() {
         out.push_str("    ],\n    'islands' => [\n");
@@ -395,6 +413,9 @@ pub fn render(schema: &Schema) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+        if !app.content.is_empty() {
+            out.push_str(&crate::content_page::schema_php(app));
+        }
         out.push_str("        'files' => [\n");
         for (path, f) in &app.files {
             let methods = f

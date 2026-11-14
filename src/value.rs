@@ -317,6 +317,8 @@ pub enum Builtin {
     App(&'static str),
     // "first/client": hooks for "use client" components, compiled to the Interactivity API.
     Client(&'static str),
+    // "first/content": `nav`, `pager`, `headings` for a hierarchical kind's pages.
+    Content(&'static str),
 }
 
 #[derive(Debug, Clone)]

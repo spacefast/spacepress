@@ -2,13 +2,13 @@
 import { db } from "first";
 import { CheerButton } from "../../components/CheerButton";
 
-export const metadata = { title: "Applause · Field Notes", description: "Cheer for the notes you liked." };
+export const metadata = { title: "Applause", description: "Cheer for the notes you liked." };
 
 export default async function Applause() {
   const notes = await db.query.notes.findMany({ orderBy: { id: "desc" }, limit: 50 });
   const counts = await db.query.cheers.findMany({ limit: 500 });
   return (
-    <main>
+    <>
       <h1>Applause</h1>
       {notes.length === 0 && <p>Nothing published yet.</p>}
       <ul>
@@ -18,6 +18,6 @@ export default async function Applause() {
           </li>
         ))}
       </ul>
-    </main>
+    </>
   );
 }

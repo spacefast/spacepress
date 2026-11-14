@@ -18,7 +18,8 @@
 		"test": "node --test tests/unit/*.test.ts",
 		"test:browser": "playwright test",
 		"test:playground": "node --test --test-concurrency=1 tests/playground/*.test.ts",
-		"check": "pnpm wasm && pnpm showcase && pnpm generate:check && pnpm test && blume build && blume validate && pnpm test:browser && pnpm test:playground"
+		"test:parity": "playwright test -c tests/parity/playwright.config.ts",
+		"check": "pnpm wasm && pnpm showcase && pnpm generate:check && pnpm test && blume build && blume validate && pnpm test:browser && pnpm test:parity && pnpm test:playground"
 	},
 	"dependencies": {
 		"@pierre/diffs": "1.6.4",

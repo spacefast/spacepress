@@ -27,4 +27,7 @@ if [[ ! -f $jetpack ]]; then
 fi
 printf '%s  %s\n' 7252ef239f6763b6d09bdd5cbbaf6ed52e6e30044e1a48ae8fd10d16b075c9f2 "$jetpack" | sha256sum -c --quiet
 "$wp/harness.sh" wp plugin install /first-cache/jetpack.16.4.zip --activate >/dev/null
+# Two runs, in this order: hardening.test.ts ends by deactivating the app.
+FIRST_WP_HARNESS="$work/harness.json" node --test --test-concurrency=1 "$here/schema-lock.test.ts"
+FIRST_WP_HARNESS="$work/harness.json" node --test --test-concurrency=1 "$here/agent-scope.test.ts"
 FIRST_WP_HARNESS="$work/harness.json" node --test --test-concurrency=1 "$here/hardening.test.ts"

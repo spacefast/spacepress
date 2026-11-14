@@ -30,6 +30,7 @@ Every First file starts with `declare(strict_types=1);`. Namespace `First`.
     first-app-<name>.php                plugin header
     first/app/schema.php                generated: `return [...]` schema metadata
     first/app/functions.php             generated: compiled hooks, actions, helpers (namespace FirstApp)
+    first/app/openapi.json              generated: the API as OpenAPI 3.1, served at /__first/api/v1/openapi.json
     first/app/migrations/NNNN_<name>.sql  MySQL DDL, `{prefix}` for the table prefix
     public/...                         copied from <project>/public if present
   *.zip                                the same plugins, packaged
@@ -492,14 +493,17 @@ route); the facade maps input and output only. Everything else → 404 problem.
 | Method + path | Dispatched to | Success |
 |---|---|---|
 | `GET /` | the app's schema: `kinds` (each with its core `route`), `globals`, `actions`, `runtime`, `site` | 200 `{data}` |
+| `GET /search?q=…` | each searchable kind's read as the caller, with `search` (`Search\Module`); `kinds=`, `limit=` (10, at most 50) | 200 `{data: {q, results: [{kind, rows}]}}`; 400 `invalid_query` without a word |
 | `GET /{kind}` | `GET /wp/v2/<route>` with `where`, `orderBy`, `with`, `search`, `locale`, `status`; `limit` (default 50, max 100), `offset`, `cursor` | 200 `{data: [rows], cursor}` |
 | `GET /{kind}/{id}` (`slug:x`) | `GET /wp/v2/<route>/{id}`, `with` allowed; `?format=md` is `MarkdownTwins::post()` | 200 `{data: row}` / 404 `not_found` |
 | `POST /{kind}`, `PATCH /{kind}/{id}`, `DELETE /{kind}/{id}` | the core route's create, update and permanent delete, through First's write pipeline | 201/200 `{data: row}` |
 | `GET /{kind}/{id}/revisions[/{rid}]`, `POST …/{rid}/restore` | core's revisions route; a restore is an update | 200 `{data}` |
+| `GET`/`PATCH`/`DELETE /{kind}/{id}/staged`, `GET …/staged/compare`, `POST …/staged/promote`, `POST …/staged/preview` | `Wp\Staged` (no core route): a post kind's [staged version](staged.md); a promote is an update | 200 `{data}` / 404 `not_found` without the update rule |
 | `GET`/`PATCH /{global}` | `/wp-abilities/v1/abilities/<app>/global-<name>-{get,update}/run` | 200 `{data}` |
 | `POST /actions/{name}` (`GET` when readonly) | `/wp-abilities/v1/abilities/<app>/<name>/run` | 200 `{data: result}` |
 | `GET /me`, `/settings`, `/menus[/{location}]` | `/wp/v2/users/me`, `/wp/v2/settings`, `/wp/v2/menu-locations` + `/wp/v2/menu-items` | 200 `{data}` |
 | `/auth/*`, `/sync/*`, `/services/*`, `/files/*`, `/media/{id}/file/*` | First's own routes (no core route) | as each documents |
+| `GET /openapi.json` | the app plugin's `first/app/openapi.json` (`First\OpenApi`), with this site in `servers` | 200, the OpenAPI 3.1 document itself, `Cache-Control: public, max-age=300` |
 
 Kinds are the app's collections, tables and users kind, plus WordPress's
 own (`posts`, `pages`, `comments`, `media`, `categories`, `tags`, `menus`)
@@ -509,7 +513,8 @@ Authentication is core REST's (cookie and nonce, an application password,
 or a First Identity bearer); CORS headers and `OPTIONS` preflights are
 core's; `_method` and `X-HTTP-Method-Override` work as on `/wp-json`. Every
 answer is `Cache-Control: private, no-store` with `Vary: Origin, Cookie,
-Authorization`, except file streams.
+Authorization`, except file streams and `/openapi.json`, which is the same for
+every caller.
 
 Success body: `{"data": ...}` with `Content-Type: application/json`.
 Failure body (RFC 9457), `Content-Type: application/problem+json`:
@@ -609,6 +614,101 @@ values slashed as WordPress expects), as a signed-out visitor, and suppresses
 the headers WordPress would send for the HTML page. Call it at most once per
 request.
 
+## The sitemap (`Wp\Sitemap`)
+
+The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
+`robots.txt`). Core renders the index, each file, the stylesheets and the
+`robots.txt` line; First writes no XML.
+
+- **Core's providers** list posts, pages, terms and authors as on any
+  WordPress site, with the links First's kind `url` patterns filter. First
+  narrows them in two ways: a password-protected post is left out
+  (`wp_sitemaps_posts_query_args`), and with a users kind an author is listed
+  only when a signed-out visitor may read that user's row
+  (`wp_sitemaps_users_query_args`).
+- **First's provider** (`first`, registered on `wp_sitemaps_init` with
+  `wp_register_sitemap_provider()`) adds a file per kind that has a `url`,
+  `/wp-sitemap-first-<kind>-<n>.xml`, and one for `first/app/` pages,
+  `/wp-sitemap-first-app-pages-<n>.xml`. A file holds up to
+  `wp_sitemaps_get_max_urls('first')` URLs (2000), as core's do.
+- **Only what a signed-out visitor may read.** A sitemap request is answered as
+  nobody: no user, and no post-password cookie. A kind's items are selected by
+  First's read pipeline as an anonymous viewer, so the read rule, a filter the
+  rule returns and draft visibility decide, exactly as for a visitor's
+  `posts.list()`. Then an item is listed only when it is published without a
+  password, every placeholder of its `url` comes from a field a visitor may read
+  (a `:slug` only editors read lists nothing), and no `first/app/` page under a
+  layout `guard` serves its address. A file's count, its paging and its entries
+  come from that one list, so a hidden row adds no file and no page. A kind with
+  nothing to list has no file.
+- **App pages** are the ones `/llms.txt` lists (no parameters, no layout
+  `guard`, a 200 for a signed-out visitor), less the home page (core lists it)
+  and any page whose metadata says `robots: { index: false }`.
+- **Core's home entry** is dated from the newest post the posts file lists
+  (core's own query would count protected posts). With a users kind, the users
+  file lists only users whose row a visitor may read, and none while storage is
+  behind the build.
+- **Front-end modes.** `frontend: false` has no public pages, so sitemaps are
+  off (`wp_sitemaps_enabled`) and core answers their URLs with a 404. With an
+  external frontend the sitemap is still answered here (a 404 stays a 404, never
+  a redirect), and every `<loc>` is at that site, like every other link.
+- **`first_sitemap_entry` filter** (`array $entry, string $subtype`): change one
+  entry of First's files, or return an empty value to leave the URL out. Core's
+  own filters (`wp_sitemaps_posts_entry`, `wp_sitemaps_max_urls`,
+  `wp_sitemaps_add_provider`, ...) work as on any site.
+
+## Search (`Search\Index`, `Search\Module`)
+
+`search` is a reserved kind name: the compiler refuses it, as it does `media` and
+`files`, because the API serves `GET /search`.
+
+`search` on a kind (`posts.list({ search })`, `?search=` on `/__first/api/v1/<kind>`
+and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
+
+- **The index.** `{prefix}first__search` has one row per (kind, row id, field):
+  the field's text with markup and block comments removed (each tag is a word
+  break) and entities decoded. Kind, row id and field are bytes, so ids that
+  differ only in case are different rows.
+  Searchable fields are the kind's title and content and every `text` and
+  `richText` field without an `enum`. The table carries a FULLTEXT key.
+- **Kept on write.** `Extensions::onWritten` replaces a row's entries inside the
+  write's transaction, for every pipeline write and every wp-admin or core REST
+  save, from the row as stored at that moment (an after-hook that writes the row
+  again leaves its own text, not the outer write's); a rollback leaves the index
+  as it was. Users changed by WordPress itself (`wp_insert_user`,
+  `wp_update_user`, the profile screen, sign-up) are re-indexed on core's
+  `user_register`, `profile_update` and `deleted_user`. When a build changes a
+  kind's searchable fields, the first request after it queues the runtime job
+  `first.search.reindex` (outbox and Action Scheduler) for each kind that has
+  rows. It re-indexes 200 rows per run, each locked against a concurrent write,
+  and queues the next; nothing is cleared first, so rows stay searchable during
+  it, and the last run removes entries of deleted rows and dropped fields. A run
+  queued for an older build's fields does nothing.
+- **Read.** A search becomes one condition on the kind's own read: every word
+  occurs, as the start of a word, in an indexed field the reader may read in
+  every row (`FieldAccess::mayHide`). The read rule, draft visibility and the
+  store's guards apply as on any list, so results, counts and order are the
+  reader's. There is no relevance order. MySQL and MariaDB match with
+  `MATCH ... AGAINST ('+word*' IN BOOLEAN MODE)`; the SQLite translator with
+  `FIRST_WORD_PREFIX(body, word)`, which `Wp\Connection` registers. A text with
+  no letter or digit matches nothing; at most 8 words and 200 characters.
+- **Not refused.** A search is never a 403 because a field is hidden from the
+  reader: it runs over the fields they may read. On core's users route
+  (`/wp/v2/users?search=`) First selects the members as the reader and core's
+  own search over login, nicename and email is off; `search_columns=name` is
+  the member's name, and other columns match nothing. `X-WP-Total` counts the
+  same members.
+- **Engine differences.** On MySQL and MariaDB an InnoDB FULLTEXT index sees a
+  transaction's writes only after it commits, so a search inside the
+  transaction that wrote a row (a hook searching for the row it just saved)
+  doesn't find it; the SQLite path does. MySQL folds accents with the table's
+  `utf8mb4_unicode_ci` collation (`cafe` finds `café`) and keeps `_` inside a
+  word (`bar` doesn't find `foo_bar`); the SQLite path folds case only and
+  starts a word after `_`.
+- `GET /search` runs the search on every kind with a searchable field and an
+  API `list`, as the caller. A kind the caller may not read, and a `kinds=`
+  name that isn't a searchable kind, are left out without a word.
+
 ## URL purges (`Wp\Purges`)
 
 After a committed write to public content, the v2 app plugin announces the
@@ -619,13 +719,16 @@ listens and purges those URLs from Batcache and the edge. With no listener
 
 - **Writes covered:** posts and pages of public post types (create, update,
   publish, unpublish, trash, delete), term assignments, and term edits and
-  deletes in public taxonomies. Drafts that stay drafts and First collections
-  (not public) announce nothing.
+  deletes in public taxonomies, and First kinds with a `url`. Drafts that stay
+  drafts and First kinds without a `url` announce nothing. A First write to a
+  kind with a `url`, or to the users kind, also purges that kind's sitemap
+  files, since it can change who may read a row without touching the post.
 - **Paths, root-relative with their query:** the item's URL before and after
   the write (a slug change purges both), the home page, the posts page, the
   post type archive, every term archive the post had or has, the author
-  archive, page 2 of each listing, the feed, `/llms.txt`, and every page
-  URL's `.md` twin. A term edit or delete purges its archive and page 2, and a
+  archive, page 2 of each listing, the feed, `/llms.txt`, the sitemap index
+  and every file of the sub-sitemap that would list the item (as many as the
+  index last showed, plus one), and every page URL's `.md` twin. A term edit or delete purges its archive and page 2, and a
   slug change purges both the old and the new archive. Adding or removing a
   post's terms (`wp_set_object_terms()`, `wp_remove_object_terms()`) purges
   page 1 and page 2 of every term archive it joined or left. Deeper listing pages fall back to the edge's `s-maxage`
@@ -656,6 +759,8 @@ wp first find <collection> [opts-json]
 wp first insert <collection> <json>
 wp first update <collection> <where-json> <set-json>
 wp first delete <collection> <where-json>
+wp first staged list [<kind>] | show|compare|discard <kind> <id> | stage <kind> <id> <json>
+wp first staged promote <kind> <id> [--at=<ISO time> | --cancel]
 ```
 
 Prints `{"data": ...}` on success (exit 0) or `{"error": {problem}}` (exit 1)

@@ -65,13 +65,13 @@ final class TableController extends \WP_REST_Controller
     public function get_items($request)
     {
         return $this->run('list', $request, function (Viewer $viewer) use ($request): \WP_REST_Response {
-            $query = array_intersect_key($request->get_query_params(), array_flip(['where', 'orderBy', 'with', 'locale']));
+            $query = array_intersect_key($request->get_query_params(), array_flip(['where', 'orderBy', 'with', 'locale', 'search']));
             $opts = App::listOptions($query);
             $perPage = (int) $request['per_page'];
             $page = (int) $request['page'];
             $db = $this->db();
             // The total over the same pipeline (read rule, query checks), counted in SQL.
-            $count = $db->countQuery($this->collection, $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true]));
+            $count = $db->countQuery($this->collection, $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true, 'search' => true]));
             $total = (int) (Plugin::instance()?->connection()->run($count['sql'], $count['params'])[0]['n'] ?? 0);
             // `offset` (core's own list argument) wins over `page`, as on core's posts and users routes.
             $offset = $request['offset'] !== null ? (int) $request['offset'] : ($page - 1) * $perPage;
@@ -180,7 +180,8 @@ final class TableController extends \WP_REST_Controller
     public function get_collection_params()
     {
         $params = parent::get_collection_params();
-        unset($params['search']); // tables declare no searchable title or content
+        // A table's text fields are searchable too (Search\Index): core's own `search` param, as First reads it.
+        $params['search'] = ['description' => 'Words to find, each at the start of a word, in the text fields the caller may read.', 'type' => 'string'];
         $params['per_page']['maximum'] = 100;
         $params['offset'] = ['description' => 'Rows to skip; replaces `page`.', 'type' => 'integer', 'minimum' => 0];
 

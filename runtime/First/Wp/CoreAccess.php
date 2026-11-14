@@ -337,7 +337,10 @@ final class CoreAccess
         return self::strip($response, $collection, $snapshot, self::viewer());
     }
 
-    /** A list query naming a column the viewer may not read (search over content, slug) is refused. */
+    /**
+     * A list query naming a column the viewer may not read (slug) is refused. `search` isn't: it
+     * matches only the fields the viewer may read ({@see \First\Search\Index::predicate()}).
+     */
     public static function queryDenial(string $collection, \WP_REST_Request $request, ?Viewer $viewer): ?\WP_Error
     {
         if ($viewer === null) {
@@ -345,10 +348,7 @@ final class CoreAccess
         }
         $spec = self::schema()->collection($collection);
         $hidden = static fn (?string $col): bool => $col !== null && FieldAccess::mayHide($spec['columns'][$col], $viewer);
-        $columns = (array) ($request['search_columns'] ?? []);
         $probes = [
-            'search' => self::given($request['search']) && $hidden($spec['content'] ?? null)
-                && ($columns === [] || array_intersect($columns, ['post_content', 'post_excerpt']) !== []),
             'slug' => self::given($request['slug']) && $hidden($spec['slug'] ?? null),
             'orderby' => $request['orderby'] === 'slug' && $hidden($spec['slug'] ?? null),
         ];
@@ -479,6 +479,8 @@ final class CoreAccess
         if ($protected || $type !== 'post' || !is_string($key)) {
             return $protected;
         }
+        // Compared as the database matches keys: its collation ignores letter case and accents.
+        $key = strtolower(remove_accents($key));
         foreach (self::postBacked() as $spec) {
             if (str_starts_with($key, $spec['wp']['metaPrefix']) || str_starts_with($key, '_' . $spec['wp']['metaPrefix'])) {
                 return true;

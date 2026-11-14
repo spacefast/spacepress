@@ -12,21 +12,25 @@ pub mod builtins;
 pub mod client;
 pub mod client_component;
 pub mod compile;
+pub mod content_blocks;
+pub mod content_page;
 pub mod css;
 pub mod diag;
 pub mod eval;
 pub mod extract;
 pub mod ir;
+pub mod json_schema;
 pub mod kind_url;
 pub mod layout;
 pub mod loader;
 pub mod lower;
 pub mod migrate;
 pub mod num;
-pub mod pages;
+pub mod openapi;
 pub mod pipeline;
 pub mod platform;
 pub mod plugins;
+pub mod runtime_schema;
 pub mod schema;
 pub mod schema_php;
 pub mod services_config;
@@ -51,13 +55,19 @@ pub mod host;
 pub mod host_contract;
 #[cfg(feature = "host")]
 pub mod store;
-#[cfg(any(feature = "cli", feature = "host"))]
+// The front matter reader is part of the core: `page.md` routes parse with it in every build.
 pub mod sync;
 #[cfg(target_arch = "wasm32")]
 mod wasm_host_fs;
 #[cfg(feature = "host")]
 mod runtime_files {
     include!(concat!(env!("OUT_DIR"), "/runtime_files.rs"));
+}
+
+#[cfg(feature = "cli")]
+mod docs_files {
+    include!(concat!(env!("OUT_DIR"), "/docs_files.rs"));
+    include!(concat!(env!("OUT_DIR"), "/skills_files.rs"));
 }
 
 pub mod bundle;

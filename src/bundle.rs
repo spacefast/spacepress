@@ -133,8 +133,6 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
             "hosted apps cannot install WordPress plugins; the host provides the platform",
         ));
     }
-    // TSX pages travel as their render artifact plus the inputs it was rendered from.
-    crate::pages::check(&*recording, &project, &built)?;
     let mut app = SourceBundle::default();
     let mut vendor = SourceBundle::default();
     if fs.exists(&project.join(crate::pipeline::OLD_LEDGER)) {
@@ -197,8 +195,18 @@ fn sync_files(fs: &dyn Fs, root: &Path, sync: &serde_json::Value) -> Result<Vec<
     if !fs.exists(&directory) {
         return Ok(Vec::new());
     }
-    let mut paths = fs.read_dir(&directory).map_err(io)?;
-    paths.retain(|p| p.extension().and_then(|e| e.to_str()) == sync["format"].as_str());
+    let mut paths = Vec::new();
+    // `content/docs/**/*.md` walks the folders below too (`crate::sync::tree`), never a symlink.
+    let mut pending = vec![directory];
+    while let Some(dir) = pending.pop() {
+        for path in fs.read_dir(&dir).map_err(io)? {
+            if sync["nested"] == true && !fs.is_symlink(&path) && fs.is_dir(&path) {
+                pending.push(path);
+            } else if path.extension().and_then(|e| e.to_str()) == sync["format"].as_str() {
+                paths.push(path);
+            }
+        }
+    }
     paths.sort();
     for path in &paths {
         safe_input(&relative(root, path).map_err(io)?)?;
@@ -255,10 +263,6 @@ pub(crate) fn write_sources(project: &Path, destination: &Path, packages: bool) 
 
 fn is_vendor(path: &str) -> bool {
     path.split('/').any(|part| part == "node_modules")
-}
-
-pub(crate) fn check_input(path: &str) -> Result<(), Diag> {
-    safe_input(path)
 }
 
 fn safe_input(path: &str) -> Result<(), Diag> {
@@ -441,7 +445,6 @@ pub(crate) struct Compiled {
     /// The app has an auth collection, so it mounts `first-identity`.
     pub identity: bool,
     pub admin: bool,
-    pub pages: Option<String>,
 }
 
 /// `compile`, optionally without the schema-independent runtime plugins (a build store keeps
@@ -488,6 +491,19 @@ pub(crate) fn compile_tree(
                 .collect(),
         }
     };
+    // A capture from before `first/app/` may hold TSX pages for the old renderer (`pages/`, with
+    // their `first/pages.json` artifact). There is no renderer for them any more, and compiling the
+    // rest would publish the site without its pages.
+    if let Some(path) = sources
+        .files
+        .keys()
+        .find(|p| *p == "first/pages.json" || p.starts_with("pages/"))
+    {
+        return Err(failure(format!(
+            "this bundle has TSX pages from the old pages renderer ({path}), which First no longer has"
+        ))
+        .help("move the pages to first/app/ (docs/pages.md), then publish again with `first sources`"));
+    }
     let name = manifest.name;
     let root = source.join("modules");
     let source_migrations = sources
@@ -537,12 +553,16 @@ pub(crate) fn compile_tree(
     if built.plugins.as_ref().is_some_and(|p| !p.plugins.is_empty()) {
         return Err(failure("hosted apps cannot install WordPress plugins"));
     }
-    let pages = crate::pages::check(&*fs, &root, &built)?;
     let mut seeds = Vec::new();
     for (name, collection) in &built.schema.collections {
         let Some(sync) = &collection.sync else { continue };
         let mut records = Vec::new();
         let mut uids = BTreeSet::new();
+        let nested = sync["nested"] == true;
+        let sync_dir = root.join(sync["dir"].as_str().unwrap_or("."));
+        // A folder tree: (record index, the file holding its parent), resolved once every file is read.
+        let mut parents: Vec<(usize, Option<String>)> = Vec::new();
+        let mut by_path: BTreeMap<String, String> = BTreeMap::new();
         for path in sync_files(&*fs, &root, sync)? {
             let text = fs.read_to_string(&path).map_err(io)?;
             let parsed = if sync["format"] == "md" {
@@ -567,7 +587,50 @@ pub(crate) fn compile_tree(
                 )
             };
             let (mut fields, body) = parsed.map_err(|(line, message)| diagnostic(line, message))?;
+            // Below the sync folder: what a folder-tree file is named by, and its stable identity.
+            let below = relative(&sync_dir, &path).map_err(io)?;
+            let place = if nested {
+                let (slug, parent) = crate::sync::files::tree_place(&below, sync["format"].as_str().unwrap_or("md"))
+                    .map_err(|message| diagnostic(1, message))?;
+                let slug_col = collection.slug.clone().expect("a folder-tree sync has a slug");
+                for (key, what) in [(slug_col.as_str(), "slug"), ("parent", "parent")] {
+                    if fields.contains_key(key) {
+                        return Err(diagnostic(
+                            1,
+                            format!("`{key}` comes from where the file is: its {what} is set by its path ({below})"),
+                        ));
+                    }
+                }
+                fields.insert(slug_col, serde_json::Value::String(slug));
+                Some(parent)
+            } else {
+                None
+            };
+            if place.is_some() {
+                // Slugs are unique in a kind, and a file without a uid is identified by its slug.
+                let slug = fields[collection.slug.as_deref().unwrap_or("slug")]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
+                if let Some((other, _)) = by_path.iter().find(|(p, _)| {
+                    crate::sync::files::tree_place(p, sync["format"].as_str().unwrap_or("md"))
+                        .is_ok_and(|(s, _)| s == slug)
+                }) {
+                    return Err(diagnostic(
+                        1,
+                        format!(
+                            "{below} and {other} both have the slug `{slug}`; a kind's slugs are unique, so rename one"
+                        ),
+                    ));
+                }
+            }
             let uid = match fields.shift_remove("uid") {
+                None if nested => crate::sync::uid::for_tree_file(
+                    name,
+                    fields[collection.slug.as_deref().unwrap_or("slug")]
+                        .as_str()
+                        .unwrap_or_default(),
+                ),
                 None => crate::sync::uid::for_file(name, &path.file_name().unwrap_or_default().to_string_lossy()),
                 Some(serde_json::Value::String(uid)) if crate::sync::uid::valid(&uid) => uid,
                 Some(_) => {
@@ -580,9 +643,37 @@ pub(crate) fn compile_tree(
             if !uids.insert(uid.clone()) {
                 return Err(diagnostic(1, format!("duplicate sync uid {uid}")));
             }
+            if let Some(parent) = place {
+                parents.push((records.len(), parent));
+                by_path.insert(below, uid.clone());
+            }
             records.push(
                 serde_json::json!({"uid":uid,"fields":fields,"body":body,"path":relative(&root,&path).map_err(io)?}),
             );
+        }
+        if nested {
+            // Each record's parent is its folder's index file, by uid; parents are seeded before
+            // their children, so every reference names a row that already exists.
+            let mut depth = vec![0usize; records.len()];
+            for (index, parent) in &parents {
+                if let Some(parent) = parent {
+                    let Some(uid) = by_path.get(parent) else {
+                        return Err(failure(format!(
+                            "{}: its folder has no {}, the page the folder stands for",
+                            records[*index]["path"].as_str().unwrap_or_default(),
+                            parent
+                        )));
+                    };
+                    records[*index]["fields"]["parent"] = serde_json::Value::String(uid.clone());
+                    depth[*index] = parent.matches('/').count();
+                }
+            }
+            let mut ordered: Vec<(usize, serde_json::Value)> = depth.into_iter().zip(records).collect();
+            ordered.sort_by(|a, b| {
+                a.0.cmp(&b.0)
+                    .then_with(|| a.1["path"].as_str().cmp(&b.1["path"].as_str()))
+            });
+            records = ordered.into_iter().map(|(_, r)| r).collect();
         }
         seeds.push((
             name,
@@ -624,9 +715,6 @@ pub(crate) fn compile_tree(
     )
     .map_err(io)?;
     crate::emit::emit_generated(assets, &migrations, &output.join("plugins"), &built, runtime).map_err(io)?;
-    if let Some(pages) = &pages {
-        crate::pages::emit(&output.join("plugins"), pages).map_err(io)?;
-    }
     let client = output.join("client");
     for (name, bytes) in &built.client_files {
         std::fs::create_dir_all(&client).map_err(io)?;
@@ -636,9 +724,9 @@ pub(crate) fn compile_tree(
         .into_iter()
         .map(|p| (p.slug, p.version))
         .collect();
-    // The app's first.config.ts routes and TSX pages, so the host can tell which of its URLs outside
-    // /wp-json to hand to WordPress without booting it to ask. Identity's /identity and the pages
-    // plugin's assets/ are the host's own and not listed. Both lists use the route path grammar: a
+    // The app's `first/app/` routes and pages, so the host can tell which of its URLs outside
+    // /wp-json to hand to WordPress without booting it to ask. Identity's /identity and the app
+    // plugin's own files are not listed. Both lists use the route path grammar: a
     // leading `/`, no trailing slash except `/`, literal segments, `:name` for one segment and a
     // final `*name` for one or more. A host matching against them should:
     // - trim one trailing `/` from the request path first (pages canonicalize `/about/` to `/about`);
@@ -647,10 +735,7 @@ pub(crate) fn compile_tree(
     //   the wrong method gets the runtime's 405 rather than the host's 404.
     // `pagePaths` are GET and HEAD only. The runtime still picks the most specific route.
     let mut app_routes: Vec<(String, String)> = Vec::new();
-    let mut page_paths: Vec<String> = pages
-        .as_ref()
-        .map(|p| p.patterns.iter().map(|pattern| page_path(pattern)).collect())
-        .unwrap_or_default();
+    let mut page_paths: Vec<String> = Vec::new();
     // `first/app/` pages are GET paths; `route.ts` handlers and pages with handlers take any
     // method. A zero-or-more catch-all (`**rest`) is its folder plus `*rest`, in the host grammar.
     if let Some(app) = &built.schema.app {
@@ -710,7 +795,7 @@ pub(crate) fn compile_tree(
     let summary = serde_json::json!({"name": schema.name, "collections": collections, "tables": tables, "actions": actions,
         "identity": schema.collections.values().any(|c| c.auth), "admin": schema.admin});
     let manifest = serde_json::json!({"format":"first.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
-        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "pages":pages.as_ref().map(|p| format!("first-pages-{}", p.app)), "routes":routes, "pagePaths":page_paths,
+        "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "routes":routes, "pagePaths":page_paths,
         "summary":summary, "host":crate::host_contract::manifest_host(), "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
     std::fs::write(
         output.join("manifest.json"),
@@ -721,7 +806,6 @@ pub(crate) fn compile_tree(
         manifest,
         identity: built.schema.collections.values().any(|c| c.auth),
         admin: built.schema.admin,
-        pages: pages.as_ref().map(|p| format!("first-pages-{}", p.app)),
         name: built.schema.name,
     })
 }
@@ -792,15 +876,4 @@ pub(crate) fn compile_cli(args: &[String]) -> std::process::ExitCode {
             std::process::ExitCode::FAILURE
         }
     }
-}
-
-/// A page route pattern (`/notes/[]`, whose last segment is an item) in the route path grammar
-/// (`/notes/:item`), so one matcher serves `routes` and `pagePaths`.
-#[cfg(feature = "host")]
-fn page_path(pattern: &str) -> String {
-    pattern
-        .split('/')
-        .map(|segment| if segment == "[]" { ":item" } else { segment })
-        .collect::<Vec<_>>()
-        .join("/")
 }

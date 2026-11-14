@@ -1313,6 +1313,12 @@ Throwing anything aborts the request and rolls back every write in it.
 - `signature: { secret: env("NAME"), header, scheme: "first" | "hmac-sha256" }`:
   an inbound webhook. The HMAC over the raw body replaces the access rule;
   `first` also checks a timestamp so old deliveries are refused.
+  `hmac-sha256` takes the header as HMAC-SHA256 of the raw body in hex (any
+  case, optionally `sha256=`-prefixed, as GitHub sends it) or in standard base64
+  (as WooCommerce's `X-WC-Webhook-Signature` and Shopify's
+  `X-Shopify-Hmac-Sha256` send it). Both are compared in constant time against
+  the full 32-byte digest; a failure is 401 `invalid_signature`. It has no
+  timestamp, so make the handler idempotent on the provider's delivery id.
 - `agents: false` keeps it out of MCP and the abilities' public REST
   discovery; it stays callable over the app's own API.
 - `readonly: true` marks an action that only reads; `destructive: true` one

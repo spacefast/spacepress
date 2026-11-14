@@ -1459,6 +1459,19 @@ final class Db
     }
 
     /**
+     * editorRow() for a row WordPress may hold in its trash: what a move into or out of the trash, and
+     * a permanent delete from it, know of the row as stored. Every other read leaves the trash out.
+     */
+    public function editorRowIncludingTrash(string $collection, int|string $pk): ?array
+    {
+        $store = $this->store;
+
+        return $store instanceof Wp\CompositeStore
+            ? $store->posts->withTrash(fn () => $this->editorRow($collection, $pk))
+            : $this->editorRow($collection, $pk);
+    }
+
+    /**
      * After a wp-admin/core REST save: afterCreate (no $previousRow) or afterUpdate, with the row
      * re-read through the store. Counts toward MAX_HOOK_DEPTH. Runs in one transaction.
      */

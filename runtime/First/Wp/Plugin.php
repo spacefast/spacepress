@@ -621,22 +621,40 @@ final class Plugin
             return;
         }
         $post = get_post($postId);
+        // A trashed post is read too: its untrash is an update of a row that exists, never a create.
         $this->before[$postId] = $post instanceof \WP_Post && $post->post_status !== 'auto-draft'
-            ? $this->app()->db->editorRow($collection, $postId)
+            ? ($post->post_status === 'trash' ? $this->app()->db->editorRowIncludingTrash($collection, $postId) : $this->app()->db->editorRow($collection, $postId))
             : null;
+    }
+
+    /** Run $fn with trashed posts readable ({@see WpPostStore::withTrash()}): a move into the trash re-reads the row. */
+    private function withTrash(callable $fn): mixed
+    {
+        $store = $this->app()->db->store();
+
+        return $store instanceof CompositeStore ? $store->posts->withTrash($fn) : $fn();
     }
 
     public function afterEditorSave(int $postId, \WP_Post $post, bool $update, ?\WP_Post $before): void
     {
         $collection = $this->collectionOf($postId);
-        if ($collection === null || isset($this->promoting[$postId]) || $this->connection()->busy() || $this->unavailable() !== null || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
+        if ($collection === null || isset($this->promoting[$postId]) || $this->connection()->busy() || $this->unavailable() !== null || in_array($post->post_status, ['auto-draft', 'inherit'], true)) {
             return;
         }
         $previous = $this->editorPrevious($postId, $before);
         unset($this->before[$postId]);
+        // WordPress's trash is not a delete: the row stays and an untrash brings it back. Into or out of
+        // the trash, the move is reported as the status change it is for visitors (a published item
+        // leaving or entering the published set, as an unpublish or a publish is), and is nothing to
+        // them otherwise. Delete hooks and referential actions run only on a permanent delete.
+        $trash = $post->post_status === 'trash' || $before?->post_status === 'trash';
+        if ($trash && ($before?->post_status === 'publish') === ($post->post_status === 'publish')) {
+            return;
+        }
         $app = $this->app();
         try {
-            $app->db->transaction(fn () => $app->db->afterEditorSave($collection, $postId, $previous, WpAuth::current()));
+            $save = fn () => $app->db->transaction(fn () => $app->db->afterEditorSave($collection, $postId, $previous, WpAuth::current()));
+            $trash ? $this->withTrash($save) : $save();
         } catch (\Throwable $e) {
             EditorSave::fail($e);
         }
@@ -649,7 +667,8 @@ final class Plugin
             return;
         }
         $db = $this->app()->db;
-        $row = $db->editorRow($collection, $postId);
+        // A post deleted from the trash is still the row it was: the delete runs its lifecycle here, once.
+        $row = $db->editorRowIncludingTrash($collection, $postId);
         if ($row !== null) {
             $this->deleting[$postId] = [$collection, $row];
             try {

@@ -26,6 +26,8 @@ final class WpPostStore implements Store
 
     /** @var array<string, Source> */
     private array $sources = [];
+    /** Trashed posts are read too ({@see withTrash()}). */
+    private bool $trashVisible = false;
     /** @var array<string, array> Request-local SQL visibility guards. */
     private array $visibility = [];
     private int $visibilityGeneration = -1;
@@ -64,7 +66,27 @@ final class WpPostStore implements Store
 
     public function source(string $collection): Source
     {
-        return $this->sources[$collection] ??= $this->buildSource($collection);
+        $source = $this->sources[$collection] ??= $this->buildSource($collection);
+        if (!$this->trashVisible) {
+            return $source;
+        }
+
+        return new Source($source->table, str_replace("NOT IN ('trash', ", 'NOT IN (', $source->baseWhere), $source->columns);
+    }
+
+    /**
+     * Run $fn with trashed posts readable: what wp-admin's own trash, untrash and permanent delete
+     * need to know of the row (its status reads as `draft`). Every other read leaves the trash out.
+     */
+    public function withTrash(callable $fn): mixed
+    {
+        $previous = $this->trashVisible;
+        $this->trashVisible = true;
+        try {
+            return $fn();
+        } finally {
+            $this->trashVisible = $previous;
+        }
     }
 
     public function readGuards(string $collection, \First\Viewer $viewer): array

@@ -728,7 +728,8 @@ listens and purges those URLs from Batcache and the edge. With no listener
 - **Paths, root-relative with their query:** the item's URL before and after
   the write (a slug change purges both), the home page, the posts page, the
   post type archive, every term archive the post had or has, the author
-  archive, page 2 of each listing, the feed, `/llms.txt`, the sitemap index
+  archive, page 2 of each listing, the site's posts and comments feeds, the
+  post's comments feed and each of its terms' feeds, `/llms.txt`, the sitemap index
   and every file of the sub-sitemap that would list the item (as many as the
   index last showed, plus one), and every page URL's `.md` twin. A term edit or delete purges its archive and page 2, and a
   slug change purges both the old and the new archive. Adding or removing a

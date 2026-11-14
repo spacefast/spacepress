@@ -247,6 +247,7 @@ impl Compiler<'_, '_> {
             "Content" | "Html" => &["value"],
             "Comments" => &["for", "className"],
             "Live" => &["id", "children"],
+            "Pagination" => &["page", "pages", "param", "className", "aria-label"],
             "Link" => &[
                 "href",
                 "children",
@@ -312,6 +313,42 @@ impl Compiler<'_, '_> {
                 // region alone and record only its reads.
                 Ok(Out::atom(
                     format!("\\First\\Render\\Live::region({}, fn () => {children})", php_str(&id)),
+                    Ty::Html,
+                ))
+            }
+            "Pagination" => {
+                let mut arg = |k: &str, want: Ty, default: Option<&str>| -> Result<String> {
+                    let wanted = match &want {
+                        Ty::Num => "a number".to_string(),
+                        Ty::Str => "a string".to_string(),
+                        other => other.describe(),
+                    };
+                    match get(k) {
+                        None => default.map(str::to_string).ok_or_else(|| {
+                            crate::diag::Diag::new(span, format!("`<Pagination>` needs `{k}`"))
+                                .help("write `<Pagination page={search.page} pages={Math.ceil(total / 20)} />`")
+                        }),
+                        Some(v) => {
+                            let out = self.expr(v)?;
+                            let out = self.finish_value(out, v.span)?;
+                            if !assignable(&out.ty, &want) {
+                                return err(
+                                    v.span,
+                                    format!("`<Pagination {k}>` takes {wanted}, not {}", out.ty.describe()),
+                                );
+                            }
+                            Ok(out.php)
+                        }
+                    }
+                };
+                let page = arg("page", Ty::Num, None)?;
+                let pages = arg("pages", Ty::Num, None)?;
+                let param = arg("param", Ty::Str, Some("'page'"))?;
+                let optional = Ty::union([Ty::Str, Ty::Null, Ty::Undefined]);
+                let class = arg("className", optional.clone(), Some("null"))?;
+                let label = arg("aria-label", optional, Some("null"))?;
+                Ok(Out::atom(
+                    format!("\\First\\Render\\Pagination::render({page}, {pages}, {param}, {class}, {label})"),
                     Ty::Html,
                 ))
             }

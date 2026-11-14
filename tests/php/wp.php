@@ -745,6 +745,9 @@ function wpCliRoot(string $dir): string
     $site = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
     $root = "$dir/wp-cli-root";
     if (!is_dir($root)) {
+        // Built aside and moved in, so a concurrent request (the test server's) never sees half of it.
+        $final = $root;
+        $root = "$final." . getmypid();
         mkdir($root);
         foreach (scandir($site['core']) as $entry) {
             if ($entry !== '.' && $entry !== '..' && $entry !== 'wp-config.php' && $entry !== 'wp-content') {
@@ -755,6 +758,11 @@ function wpCliRoot(string $dir): string
             . 'require_once ' . var_export(__FILE__, true) . ";\n"
             . 'wpDefine(' . var_export($dir, true) . ', ' . var_export($site['url'], true) . ");\n"
             . "require_once ABSPATH . 'wp-settings.php';\n");
+        if (!@rename($root, $final)) {
+            array_map('unlink', glob("$root/*"));
+            rmdir($root);
+        }
+        $root = $final;
     }
 
     return $root;

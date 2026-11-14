@@ -58,7 +58,7 @@ const run = async (file, args, options = {}) => {
   return result.stdout;
 };
 let session, siteCreated = false, primary;
-const studio = (args) => run('npx', ['--yes', '--package', 'wp-studio@2.1.1', '--', 'studio', ...args], { cwd: work });
+const studio = (args) => run('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', ...args], { cwd: work });
 try {
   for (const unavailable of ['cargo', 'rustc', 'docker', 'php']) await assert.rejects(exec(unavailable, ['--version'], { env }), (error) => error.code === 'ENOENT');
   const pack = async (directory) => JSON.parse(await run('npm', ['pack', directory, '--json', '--pack-destination', work], { cwd: repo }))[0].filename;

@@ -50,8 +50,10 @@ Keep core's sitemap as the only one and add to it through core's API.
 ## Not done
 
 App pages are found by rendering each parameterless page as a visitor, once per sitemap request,
-as `/llms.txt` does. A site with very many such pages would want that list computed at build time;
-static prerender, which would provide it, is not on main yet.
+as `/llms.txt` does. A site with very many such pages would want that list computed ahead of time.
+Prebuilt pages are on main now ([static output](2026-11-13-static-output.md)): `First\Render\Prebuilt::urls()`
+lists every prebuilt URL, and `first export` writes its own `sitemap.xml`. The WordPress sitemap
+doesn't read that list yet.
 
 Term archives of First taxonomies are not added: `taxonomy()` kinds are not on main yet, and core's
 taxonomies provider will list them once they register as public taxonomies.

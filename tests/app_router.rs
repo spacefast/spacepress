@@ -1222,6 +1222,9 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     assert_eq!(seen["purge all, no files"], true);
     // A render that began before a write named its path is not written.
     assert_eq!(seen["race"], json!([true, false, false]));
+    // `Accept: text/markdown` on the HTML URL is never answered with the HTML file: the file lane
+    // steps aside for the Markdown negotiation, which a host's engine runs.
+    assert_eq!(seen["accept markdown"], json!([false, true]));
 }
 
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.
@@ -2108,6 +2111,12 @@ fn client_components_hydrate_in_the_browser() {
         seen["kept"], true,
         "the server-rendered item is kept, not re-created: {seen}"
     );
+    // The typed client is served from the app plugin as a module the browser imports as is.
+    assert_eq!(
+        seen["client"],
+        serde_json::json!([200, "text/javascript;charset=UTF-8", "function", "function"]),
+        "{seen}"
+    );
 }
 
 /// rendering.md §6.1 and §6.2 for `first/app/` pages, on WordPress with a stand-in host listening
@@ -2176,6 +2185,11 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         "{index:?}"
     );
     assert!(!index.iter().any(|r| r.ends_with(" /about")), "{index:?}");
+    assert_eq!(
+        seen["count reads"],
+        serde_json::json!({ "notes": { "ids": [], "listed": true } }),
+        "a count depends on every row of its kind"
+    );
     assert_eq!(
         seen["purged"],
         serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])

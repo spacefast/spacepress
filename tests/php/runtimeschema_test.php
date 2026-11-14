@@ -21,7 +21,7 @@ require __DIR__ . '/harness.php';
 $base = require dirname(__DIR__) . '/runtime-schema/base.schema.php';
 // The build's articles have hooks that return a replacement object, as compiled code may.
 $base['collections']['articles']['hooks'] = ['beforeCreate' => 'articles__hook__beforeCreate', 'beforeUpdate' => 'articles__hook__beforeUpdate'];
-$wp = wpSite('rtschema', ['schema' => $base, 'server' => true, 'muPlugins' => ['rtschema-propose' => <<<'PHP'
+$wp = wpSite('rtschema', ['schema' => $base, 'server' => true, 'identity' => true, 'muPlugins' => ['rtschema-propose' => <<<'PHP'
     <?php
     // Test only: proposes the posted change set in a fresh request, which sees the build as deployed now.
     add_action('init', static function (): void {
@@ -463,6 +463,27 @@ eq('and that one can\'t apply either', $runAs('schema-apply', ['parent' => $newe
 // A deny list written as the first release documented it, a list of password UUIDs, still denies.
 update_option('first_rtschema_schema_apply_denied', [$applied['actor']['credential']['uuid']]);
 eq('a password UUID listed on its own is denied', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Old form']]], 'admin')[0], 403);
+// A user denied for First Identity access tokens who uses a token to create an application password
+// through core: the new password is denied too, so the token can't get round the deny that way.
+\First\Identity\Plugin::$db->insert('applications', ['id' => 'app_rtschema', 'name' => 'Schema tests', 'redirects' => '[]', 'origins' => '[]']);
+$bearer = \First\Identity\Plugin::$accounts->issueForUser($wp->userId('admin'), 'app_rtschema')['access_token'];
+$withBearer = static function (string $method, string $url, mixed $body) use ($bearer): array {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json', "Authorization: Bearer $bearer"], CURLOPT_POSTFIELDS => json_encode($body)]);
+    $res = curl_exec($ch);
+
+    return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), is_string($res) ? json_decode($res, true) : null];
+};
+$applyUrl = $wp->url() . '/wp-json/wp-abilities/v1/abilities/rtschema/schema-apply/run';
+update_option('first_rtschema_schema_apply_denied', [['user' => $wp->userId('admin'), 'credential' => 'bearer']]);
+eq('an administrator denied for access tokens can\'t apply with one', $withBearer('POST', $applyUrl, ['input' => ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Bearer']]]])[0], 403);
+[$status, $fromBearer] = $withBearer('POST', $wp->url() . '/wp-json/wp/v2/users/me/application-passwords', ['name' => 'made with a denied token']);
+eq('the token can create an application password through core', $status, 201);
+wp_cache_delete($wp->userId('admin'), 'user_meta');
+\First\Wp\AgentScope::store($wp->userId('admin'), $fromBearer['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
+eq('and that password can\'t apply: the token\'s deny passed to it', $runAs('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'From bearer']]], "admin:{$fromBearer['password']}")[0], 403);
+eq('it signs in fine otherwise', $runAs('schema-read', [], "admin:{$fromBearer['password']}")[0], 405);
 // Denying a user's application passwords as a kind: every one of them, present and future.
 update_option('first_rtschema_schema_apply_denied', [['user' => $wp->userId('admin'), 'credential' => 'application-password']]);
 eq('denying all of a user\'s application passwords covers the one they sign in with now', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Kind']]], 'admin')[0], 403);

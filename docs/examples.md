@@ -17,6 +17,7 @@ builds its disposable app under `.first/showcase/`, leaving its sources unchange
 | [`examples/drive-locker/`](../examples/drive-locker/README.md) | Owner-scoped drive inventory, health trends, Action Scheduler, typed React SPA and capacity reports; main runtime and publication gaps are documented |
 | [`examples/docs/`](../examples/docs/README.md) | A documentation site: a docs kind synced from a folder of Markdown, navigation, components and highlighted code in Markdown, and a Markdown page, with a browser test |
 | [`examples/garden/`](../examples/garden/README.md) and [`examples/astro-garden/`](../examples/astro-garden/README.md) | One plant guide twice: as a First app with `first/app/` pages, and as an Astro site reading that app with `@first/astro`; a browser test reads both |
+| [`examples/migrate-astro/`](../examples/migrate-astro/README.md) | An Astro site before and after the `first-migrate-astro` skill: what it converted, what it flagged, and a browser test of the result |
 | `examples/blog/` | The CMS tour: every phase-2 feature, with a browser page |
 | `examples/site/` | The publication that `tests/system` drives end to end |
 | `examples/wp-plugins/` | Extra pinned WordPress plugins (see [plugin dependencies](wp-plugins.md)) |

@@ -249,5 +249,36 @@ add_filter('wp_is_application_passwords_available', '__return_false');
 eq('with application passwords off, every user gets "not available"', array_map($appPassword, ['nobody', 'admin']), ['application_passwords_disabled', 'application_passwords_disabled']);
 remove_filter('wp_is_application_passwords_available', '__return_false');
 
+// The limiter on this harness's database (SQLite, through WordPress's MySQL translation): one row per
+// bucket, a window that starts at the first attempt and restarts once it has ended. tests/identity
+// proves the same on MariaDB.
+$security = \First\Identity\Plugin::$security;
+$identityDb = \First\Identity\Plugin::$db;
+$epoch = 2_000_000_100;
+$at = static function (int $seconds) use ($epoch): void { \First\Identity\Security::$clock = static fn (): int => $epoch + $seconds; };
+$attempt = static function (string $bucket, int $max) use ($security): string {
+    try {
+        $security->limit($bucket, $max);
+        return 'ok';
+    } catch (\First\Identity\Failure $e) {
+        return $e->kind;
+    }
+};
+$stored = static fn (): array => array_map(static fn (array $r): array => [(int) $r['hits'], (int) $r['expires_at']], $identityDb->rows("SELECT hits, expires_at FROM {$identityDb->prefix}limits WHERE id=%s", \First\Identity\Security::hash('corpus-probe')));
+$identityDb->run("DELETE FROM {$identityDb->prefix}limits");
+$at(299);
+eq('limiter: three attempts pass and the fourth is refused', [$attempt('corpus-probe', 3), $attempt('corpus-probe', 3), $attempt('corpus-probe', 3), $attempt('corpus-probe', 3)], ['ok', 'ok', 'ok', 'rate_limited']);
+eq('limiter: one row, counted, ending a window after the first attempt', $stored(), [[4, $epoch + 599]]);
+eq('limiter: reading it counts nothing', [$security->limited('corpus-probe', 3), $security->limited('corpus-probe', 5), $stored()], [true, false, [[4, $epoch + 599]]]);
+$at(301);
+eq('limiter: not reset by the clock passing a multiple of the window', [$attempt('corpus-probe', 3), $stored()], ['rate_limited', [[5, $epoch + 599]]]);
+$at(599);
+eq('limiter: full through the last second of its window', $security->limited('corpus-probe', 3), true);
+$at(600);
+eq('limiter: an ended window holds nothing', $security->limited('corpus-probe', 3), false);
+eq('limiter: the next attempt starts a new window from one', [$attempt('corpus-probe', 3), $stored()], ['ok', [[1, $epoch + 900]]]);
+\First\Identity\Security::$clock = null;
+$identityDb->run("DELETE FROM {$identityDb->prefix}limits");
+
 require dirname(__DIR__) . '/identity/native-auth-storage.php';
 finish('auth_test');

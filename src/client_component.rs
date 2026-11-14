@@ -548,7 +548,7 @@ impl Analysis {
             "import { store, getContext, getElement, getConfig, withSyncEvent } from \"@wordpress/interactivity\";\n\n",
         );
         let _ = writeln!(out, "const ns = {};", js_str(&self.namespace));
-        out.push_str("const call = async (name, input) => {\n  const config = getConfig(ns);\n  const response = await fetch(config.actions[name], { method: \"POST\", credentials: \"same-origin\", headers: { \"content-type\": \"application/json\", \"x-wp-nonce\": config.nonce }, body: JSON.stringify(input ?? {}) });\n  const result = await response.json();\n  if (!response.ok) throw new Error(result?.detail ?? result?.error?.message ?? `action ${name} failed`);\n  return result.data;\n};\n\n");
+        out.push_str("const call = async (name, input) => {\n  const config = getConfig(ns);\n  const response = await fetch(config.actions[name], { method: \"POST\", credentials: \"same-origin\", headers: config.nonce ? { \"content-type\": \"application/json\", \"x-wp-nonce\": config.nonce } : { \"content-type\": \"application/json\" }, body: JSON.stringify(input ?? {}) });\n  const result = await response.json();\n  if (!response.ok) throw new Error(result?.detail ?? result?.error?.message ?? `action ${name} failed`);\n  return result.data;\n};\n\n");
         let _ = writeln!(out, "const {{ state, actions }} = store(ns, {{");
         out.push_str("  state: {\n");
         for (name, init) in &self.shared {

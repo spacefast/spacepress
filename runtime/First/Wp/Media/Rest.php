@@ -23,46 +23,52 @@ final class Rest
         add_action('rest_api_init', [self::class, 'fields']);
         // Media reads need core's check (an attachment of a post the caller can't read is a 404,
         // as on /wp/v2/media) and First's media read rule on top of it.
-        add_filter('rest_endpoints', [self::class, 'endpoints']);
+        add_filter('rest_request_before_callbacks', [self::class, 'readable'], 10, 3);
     }
 
     /**
-     * rest_endpoints: a media item read runs core's permission check first (its parent post's read
-     * check, as core does for an attached item), then First's media read rule. First's rule only
-     * narrows: the API never shows a media item core REST hides from the same caller.
+     * rest_request_before_callbacks: a media item read runs core's permission check first (its parent
+     * post's read check, as core does for an attached item), then First's media read rule. First's
+     * rule only narrows: the API never shows a media item core REST hides from the same caller. Core
+     * runs its own check again after this one allows: both read the same state.
      */
-    public static function endpoints(array $endpoints): array
+    public static function readable(mixed $response, mixed $handler, mixed $request): mixed
     {
-        foreach ($endpoints['/wp/v2/media/(?P<id>[\d]+)'] ?? [] as $i => $handler) {
-            if (!is_array($handler) || !isset($handler['permission_callback']) || !str_contains((string) ($handler['methods'] ?? ''), 'GET')
-                && !(is_array($handler['methods'] ?? null) && isset($handler['methods']['GET']))) {
-                continue;
-            }
-            $core = $handler['permission_callback'];
-            $endpoints['/wp/v2/media/(?P<id>[\d]+)'][$i]['permission_callback'] = static function (\WP_REST_Request $request) use ($core): mixed {
-                $allowed = call_user_func($core, $request);
-                $post = get_post((int) $request['id']);
-                if (!$post instanceof \WP_Post || $post->post_type !== 'attachment') {
-                    return $allowed;
-                }
-                if ($allowed !== true) {
-                    // On the API a hidden item is a missing one: its existence never leaks.
-                    // (Core answers a parent it can't read with `false`, which REST turns into rest_forbidden.)
-                    return \First\Wp\Facade::dispatching() && ($allowed === false || (is_wp_error($allowed) && $allowed->get_error_code() === 'rest_forbidden'))
-                        ? new \WP_Error('rest_post_invalid_id', __('Invalid post ID.'), ['status' => 404])
-                        : $allowed;
-                }
-                try {
-                    Access::require(Access::MEDIA['read'], new Viewer(WpAuth::current()), 'read', null, 'read media');
-                } catch (HttpError $e) {
-                    return CoreAccess::error($e);
-                }
-
-                return true;
-            };
+        if ($response !== null || !$request instanceof \WP_REST_Request || !self::reads($handler)
+            || preg_match('#^/wp/v2/media/(\d+)$#i', $request->get_route()) !== 1) {
+            return $response;
+        }
+        $post = get_post((int) $request['id']);
+        if (!$post instanceof \WP_Post || $post->post_type !== 'attachment') {
+            return $response;
+        }
+        $allowed = call_user_func($handler['permission_callback'], $request);
+        if ($allowed !== true) {
+            // On the API a hidden item is a missing one: its existence never leaks. (Core answers a
+            // parent it can't read with `false`, which REST turns into rest_forbidden.) Otherwise core's
+            // own check gives its answer.
+            return \First\Wp\Facade::dispatching() && ($allowed === false || (is_wp_error($allowed) && $allowed->get_error_code() === 'rest_forbidden'))
+                ? new \WP_Error('rest_post_invalid_id', __('Invalid post ID.'), ['status' => 404])
+                : $response;
+        }
+        try {
+            Access::require(Access::MEDIA['read'], new Viewer(WpAuth::current()), 'read', null, 'read media');
+        } catch (HttpError $e) {
+            return CoreAccess::error($e);
         }
 
-        return $endpoints;
+        return $response;
+    }
+
+    /** Whether a route handler is one that answers GET (and so HEAD) and has a permission check. */
+    public static function reads(mixed $handler): bool
+    {
+        if (!is_array($handler) || !is_callable($handler['permission_callback'] ?? null)) {
+            return false;
+        }
+        $methods = $handler['methods'] ?? '';
+
+        return is_array($methods) ? isset($methods['GET']) : str_contains((string) $methods, 'GET');
     }
 
     /**

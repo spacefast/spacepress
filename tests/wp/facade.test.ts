@@ -358,3 +358,27 @@ test("a restore puts back the whole revision, fields hidden from the caller incl
   assert.deepEqual([direct.status, direct.json.pointer], [403, "/salary"]);
   assert.equal((await f("POST", `/payroll/${id}/revisions/${oldest}/restore`)).status, 404, "anonymous: no such row");
 });
+
+test("a core error code the facade doesn't name reaches clients by its status, as First's", async () => {
+  // As a core release that adds or renames a code would answer: a `rest_*` code with only a status.
+  const plugin = "first-test-new-codes";
+  // The facade's own dispatch is in-process: the plugin reads the outer request's headers.
+  const php = "<?php\nadd_filter('rest_pre_dispatch', function ($r, $s, $req) { $c = $_SERVER['HTTP_X_FIRST_TEST_CODE'] ?? ''; return $c !== '' && str_starts_with($req->get_route(), '/wp/v2/') ? new WP_Error($c, 'From a newer core', ['status' => (int) ($_SERVER['HTTP_X_FIRST_TEST_STATUS'] ?? 0)]) : $r; }, 10, 3);\n";
+  wp("eval", `wp_mkdir_p(WPMU_PLUGIN_DIR); file_put_contents(WPMU_PLUGIN_DIR . '/${plugin}.php', base64_decode('${Buffer.from(php).toString("base64")}'));`);
+  try {
+    const answer = async (code: string, status: number, as?: Role) => {
+      const res = await fetch(`${facade}/posts`, { headers: { ...(as ? auth(as) : {}), "x-first-test-code": code, "x-first-test-status": String(status) } });
+      return [res.status, (await res.json()).code];
+    };
+    assert.deepEqual(await answer("rest_cannot_frobnicate", 403), [401, "unauthenticated"]);
+    assert.deepEqual(await answer("rest_cannot_frobnicate", 403, "editor"), [403, "forbidden"]);
+    assert.deepEqual(await answer("rest_frob_invalid_id", 404, "editor"), [404, "not_found"]);
+    assert.deepEqual(await answer("rest_frob_invalid", 400, "editor"), [400, "invalid_input"]);
+    assert.deepEqual(await answer("rest_frob_method", 405, "editor"), [405, "method_not_allowed"]);
+    // A plugin's own code, and a core one with a status the facade has no name for, pass through.
+    assert.deepEqual(await answer("plugin_says_no", 403, "editor"), [403, "plugin_says_no"]);
+    assert.deepEqual(await answer("rest_frob_conflict", 409, "editor"), [409, "rest_frob_conflict"]);
+  } finally {
+    wp("eval", `@unlink(WPMU_PLUGIN_DIR . '/${plugin}.php');`);
+  }
+});

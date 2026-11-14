@@ -346,15 +346,23 @@ final class PostsController extends \WP_REST_Posts_Controller
                 throw new \First\HttpError(400, 'invalid_input', $done->get_error_message());
             }
         }
+        // What core's update_item does after its save, with public functions: the featured image,
+        // the page template (handle_template is public) and the terms of each REST taxonomy.
         if ($request->has_param('featured_media')) {
-            $this->handle_featured_media($request['featured_media'], $post->ID);
+            (int) $request['featured_media'] !== 0 ? set_post_thumbnail($post->ID, (int) $request['featured_media']) : delete_post_thumbnail($post->ID);
         }
         if ($request->has_param('template')) {
             $this->handle_template($request['template'], $post->ID, true);
         }
-        $terms = $this->handle_terms($post->ID, $request);
-        if (is_wp_error($terms)) {
-            throw new \First\HttpError(400, 'invalid_input', $terms->get_error_message());
+        foreach (wp_list_filter(get_object_taxonomies($this->post_type, 'objects'), ['show_in_rest' => true]) as $taxonomy) {
+            $base = !empty($taxonomy->rest_base) ? $taxonomy->rest_base : $taxonomy->name;
+            if (!isset($request[$base])) {
+                continue;
+            }
+            $terms = wp_set_object_terms($post->ID, $request[$base], $taxonomy->name);
+            if (is_wp_error($terms)) {
+                throw new \First\HttpError(400, 'invalid_input', $terms->get_error_message());
+            }
         }
     }
 

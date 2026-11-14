@@ -36,8 +36,10 @@ final class PublicFiles
         'webp' => 'image/webp', 'avif' => 'image/avif', 'ico' => 'image/x-icon',
         'woff' => 'font/woff', 'woff2' => 'font/woff2', 'ttf' => 'font/ttf', 'otf' => 'font/otf',
         'wasm' => 'application/wasm', 'pdf' => 'application/pdf', 'zip' => 'application/zip', 'gz' => 'application/gzip',
-        'mp4' => 'video/mp4', 'webm' => 'video/webm', 'mp3' => 'audio/mpeg', 'wav' => 'audio/wav',
     ];
+
+    /** `/.well-known/` names WordPress plugins and hosts answer: First Identity's discovery, the host's. */
+    private const WELL_KNOWN = ['openid-configuration', 'oauth-authorization-server', 'jwks.json', 'spacefast-runtime', 'stattic-runtime'];
 
     /** Never served, whatever their place in `public/`: code WordPress would run, and server config. */
     private const REFUSED = ['php', 'phtml', 'phar', 'php3', 'php4', 'php5', 'php7', 'php8', 'phps', 'htaccess', 'htpasswd', 'ini', 'user.ini'];
@@ -61,14 +63,14 @@ final class PublicFiles
     private static function serve(Plugin $plugin): void
     {
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
-        if ($method !== 'GET' && $method !== 'HEAD') {
+        if ($method !== 'GET' && $method !== 'HEAD' || MarkdownTwins::negotiating()) {
             return;
         }
         $file = self::file($plugin->dir . '/public', $plugin->schema->reserved());
         if ($file === null || self::page($plugin)) {
             return;
         }
-        $etag = '"' . md5_file($file) . '"';
+        $etag = '"' . dechex((int) filesize($file)) . '-' . dechex((int) filemtime($file)) . '"';
         $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
         $headers = [
             'Content-Type' => self::TYPES[$extension] ?? 'application/octet-stream',
@@ -76,12 +78,12 @@ final class PublicFiles
             'ETag' => $etag,
             'X-Content-Type-Options' => 'nosniff',
         ];
-        if ($extension === 'svg') {
-            // An SVG opened on its own runs no script.
+        if ($extension === 'svg' || $extension === 'xml') {
+            // An SVG or XML document opened on its own runs no script.
             $headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
         }
         // WordPress slashes $_SERVER (wp_magic_quotes), so an ETag's quotes arrive escaped.
-        if (trim(wp_unslash((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''))) === $etag) {
+        if (self::matches(wp_unslash((string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? '')), $etag)) {
             self::emit(304, $headers, null);
         }
         $headers['Content-Length'] = (string) filesize($file);
@@ -100,17 +102,16 @@ final class PublicFiles
         if ($base !== '' && str_starts_with($path, $base)) {
             $path = substr($path, strlen($base)) ?: '/';
         }
-        $match = AppRouter::match($app['routes'] ?? [], $path);
-        // A catch-all at the root (`[...path]`) would take every path; it serves only what it
-        // matches by a literal segment or a kind item, so a file still answers beside it.
-        return $match !== null && !self::catchAllOnly($match['route']);
-    }
+        // As Next.js orders them: a page at a literal path, then a file, then a dynamic route
+        // (`[slug]`, `[...path]`), which would otherwise take every file below it.
+        foreach ($app['routes'] ?? [] as $route) {
+            $pattern = (string) ($route['pattern'] ?? '');
+            if (!str_contains($pattern, ':') && !str_contains($pattern, '*') && AppRouter::match([$route], $path) !== null) {
+                return true;
+            }
+        }
 
-    /** @param array<string, mixed> $route a route that is a catch-all and nothing more (`/*rest`, `/**rest`) */
-    private static function catchAllOnly(array $route): bool
-    {
-        $parts = explode('/', trim((string) ($route['pattern'] ?? ''), '/'));
-        return count($parts) === 1 && str_starts_with($parts[0], '*');
+        return false;
     }
 
     /**
@@ -122,7 +123,8 @@ final class PublicFiles
      */
     public static function file(string $root, array $reserved): ?string
     {
-        $path = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
+        // WordPress slashes $_SERVER (wp_magic_quotes): `it's.png` arrives as `it\'s.png`.
+        $path = (string) (wp_parse_url(wp_unslash((string) ($_SERVER['REQUEST_URI'] ?? '/')), PHP_URL_PATH) ?? '/');
         $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
         if ($base !== '') {
             if ($path !== $base && !str_starts_with($path, $base . '/')) {
@@ -142,7 +144,9 @@ final class PublicFiles
             $segment = rawurldecode($raw);
             // A dotfile or dot-folder stays private (`.env`, `.git`), except `/.well-known/` (RFC 8615).
             $dot = str_starts_with($segment, '.') && !($segments === [] && $segment === '.well-known');
-            if ($segment === '.' || $segment === '..' || $dot || str_contains($segment, "\0") || str_contains($segment, '/') || str_contains($segment, '\\')) {
+            // A name Windows would read as another (`run.php.`, `run.php `, `run.php::$DATA`) is refused too.
+            if ($segment === '.' || $segment === '..' || $dot || str_contains($segment, "\0") || str_contains($segment, '/') || str_contains($segment, '\\')
+                || str_contains($segment, ':') || str_ends_with($segment, '.') || str_ends_with($segment, ' ')) {
                 return null;
             }
             $segments[] = $segment;
@@ -153,7 +157,11 @@ final class PublicFiles
             return null;
         }
         $first = strtolower($segments[0] ?? '');
-        if ($first !== '' && $first !== '.well-known' && (in_array($first, $reserved, true) || str_starts_with($first, 'wp-'))) {
+        if ($first !== '.well-known' && (in_array($first, $reserved, true) || str_starts_with($first, 'wp-'))) {
+            return null;
+        }
+        // Under /.well-known/, what WordPress plugins and the host answer themselves stays theirs.
+        if ($first === '.well-known' && in_array(strtolower($segments[1] ?? ''), self::WELL_KNOWN, true)) {
             return null;
         }
         if ($index) {
@@ -169,13 +177,44 @@ final class PublicFiles
         if ($real === false || $top === false || !str_starts_with($real, $top . DIRECTORY_SEPARATOR) || !is_file($real)) {
             return null;
         }
+        // The file it resolved to is judged as well: a link or a name the filesystem read
+        // differently must not serve PHP or a dotfile.
+        $resolved = strtolower(basename($real));
+        if (in_array(strtolower(pathinfo($resolved, PATHINFO_EXTENSION)), self::REFUSED, true) || in_array($resolved, self::REFUSED, true)) {
+            return null;
+        }
+        foreach (array_slice(explode(DIRECTORY_SEPARATOR, substr($real, strlen($top) + 1)), $first === '.well-known' ? 1 : 0) as $part) {
+            if (str_starts_with($part, '.')) {
+                return null;
+            }
+        }
 
         return $real;
+    }
+
+    /** Whether `If-None-Match` names this ETag: `*`, a list, weak forms (`W/"…"`) included. */
+    private static function matches(string $header, string $etag): bool
+    {
+        foreach (explode(',', $header) as $tag) {
+            $tag = trim($tag);
+            if ($tag === '*' || (str_starts_with($tag, 'W/') ? substr($tag, 2) : $tag) === $etag) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param array<string, string> $headers */
     private static function emit(int $status, array $headers, ?string $file): never
     {
+        // A file isn't a page: no page cache keeps it, and no output buffer holds it whole.
+        if (function_exists('batcache_cancel')) {
+            batcache_cancel();
+        }
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         status_header($status);
         foreach ($headers as $name => $value) {
             header("$name: $value");

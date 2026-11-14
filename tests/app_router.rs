@@ -1479,8 +1479,6 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
 }
 
-/// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
-/// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
 /// The project's `public/` folder at the site root (spec §1: "static files, served as-is"), on
 /// WordPress over HTTP (tests/php/public_root.php): each file at its path with its type; the app's
 /// own page over a file of the same name; never a dotfile, PHP, a path out of the folder or one
@@ -1516,23 +1514,36 @@ fn public_files_serve_at_the_site_root() {
             "/.well-known/ai.json": [200, "application/json", 13],
             "/notes.md": [200, "text/markdown; charset=utf-8", 15],
             "/robots-extra.txt": [200, "text/plain; charset=utf-8", 14],
-            "/index.html": [200, "text/html; charset=utf-8", 21]
+            "/index.html": [200, "text/html; charset=utf-8", 21],
+            "/it's.txt": [200, "text/plain; charset=utf-8", 1]
         })
     );
+    // robots.txt, llms.txt, feeds and First Identity's discovery document stay WordPress's.
+    for (path, kept) in seen["wordpress"].as_object().unwrap() {
+        assert_eq!(kept, true, "{path}");
+    }
+    // A `[slug]` route at the root doesn't take a file's path.
+    assert_eq!(seen["beside a dynamic route"], 200);
     assert_eq!(seen["home"], false);
     // `first/app/about/page.tsx` wins over `public/about`.
     assert_eq!(seen["about"], serde_json::json!([200, true, false]));
+    // Never a file's bytes for a dotfile, PHP (as Windows would read `run.php.`, `run.php `,
+    // `run.php::$DATA`, or in capitals), a path out of the folder, or a link that leaves it.
     for (path, answer) in seen["refused"].as_object().unwrap() {
-        assert_eq!(answer, &serde_json::json!([404, false]), "{path}");
+        assert_eq!(answer, &serde_json::json!([true, false]), "{path}");
     }
-    assert_eq!(seen["refused"].as_object().unwrap().len(), 9);
+    assert_eq!(seen["refused"].as_object().unwrap().len(), 15);
     assert_eq!(seen["head"], serde_json::json!([200, "", "11"]));
-    assert_eq!(seen["not modified"], 304);
+    // A matching ETag, its weak form, or one of a list: 304; another: 200.
+    assert_eq!(seen["not modified"], serde_json::json!([304, 304, 304, 200]));
     assert_eq!(seen["svg policy"], true);
     assert_eq!(seen["cache"], "public, max-age=300");
-    assert_eq!(seen["post"], 404);
+    // A POST isn't served a file; the `[slug]` page answers it as pages do (405).
+    assert_eq!(seen["post"], 405);
 }
 
+/// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
+/// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
 /// `nav`, `pager` and `headings` from "first/content", on WordPress over HTTP (tests/php/docs_kind.php).
 #[test]
 fn docs_kind_serves_a_folder_tree_with_navigation() {

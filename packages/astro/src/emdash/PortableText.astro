@@ -1,0 +1,5 @@
+---
+interface Props { value?: { _html?: string; children?: { text?: string }[] }[] }
+const { value = [] } = Astro.props;
+---
+{value.map(block => block._html ? <Fragment set:html={block._html} /> : <p>{block.children?.map(child => child.text ?? '').join('')}</p>)}

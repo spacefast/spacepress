@@ -75,8 +75,9 @@ export function connect(options = {}) {
   // The description is shared by every collection of one build; a custom fetch gets its own.
   if (!options.fetch && connections.has(key)) return connections.get(key);
 
-  async function request(method, path, body) {
-    const init = { method, headers: { ...headers } };
+  /** `extra`: headers for this request only (an Astro endpoint forwarding the visitor's cookie). */
+  async function request(method, path, body, extra) {
+    const init = { method, headers: { ...headers, ...extra } };
     if (body !== undefined) {
       init.headers["content-type"] = "application/json";
       init.body = JSON.stringify(body);

@@ -104,6 +104,25 @@ $out = [
     'rest note' => $got('/wp-json/wp/v2/first_notes/' . $noteId)['status'],
     'feed' => $got('/feed/')['status'],
 ];
+// Authors: the users kind's read rule shows a visitor the editor's row only, so the editor is a public
+// author (archive, `?author=<id>`, oEmbed) and the admin, who also has a published post, is not.
+$editorId = $site->userId('editor');
+$embed = static function (string $path) use ($got, $url, $strip): array {
+    $data = (array) json_decode($got('/wp-json/oembed/1.0/embed?url=' . rawurlencode($url . $path))['body'], true);
+    return [($data['author_name'] ?? null) === get_bloginfo('name'), $strip($data['author_url'] ?? null)];
+};
+$byId = $got('/?author=' . $editorId);
+$out['authors'] = [
+    'listed' => $got('/author/editor/')['status'],
+    'unlisted' => $got('/author/admin/')['status'],
+    'unknown' => $got('/author/nobody/')['status'],
+    'listed by id' => [$byId['status'], $strip($byId['location'])],
+    'unlisted by id' => $got('/?author=1')['status'],
+    'both ids' => $got('/?author=1,' . $editorId)['status'],
+    'listed embed' => $embed('/by-the-editor/'),
+    'unlisted embed' => $embed('/hello-world/'),
+    'core route' => [$got('/wp-json/wp/v2/users/' . $editorId)['status'], $got('/wp-json/wp/v2/users')['status']],
+];
 // A slug change: the old URL 301s to the new one, and both URLs (with twins) are purged.
 delete_option('test_purges');
 wp_set_current_user(1);

@@ -72,8 +72,13 @@ final class Prebuilt
     public static function boot(Plugin $plugin): void
     {
         $app = $plugin->schema->app();
-        if (!is_array($app) || !self::any($app)) {
-            return;
+        if (!is_array($app) || !self::any($app) || ($app['output'] ?? 'server') !== 'server') {
+            // No prebuilt pages are served by this build: a pointer an earlier build left goes, so a
+            // host stops serving that build's files on this request.
+            @unlink(self::pointerPath());
+            if (!is_array($app) || !self::any($app)) {
+                return;
+            }
         }
         self::$plugin = $plugin;
         if (self::prerendering()) {
@@ -94,16 +99,16 @@ final class Prebuilt
         add_action(self::ACTION, self::build(...), 10, 2);
         // After a build is initialized (first request, migrate, activation) the files are made, and
         // made again every MAX_AGE by the same stock Action Scheduler action.
-        add_action('init', static function (): void {
-            // A deploy changes the build id without forget(): a pointer naming another build would
-            // have a host serve that build's files. It goes before anything else this request does.
-            $pointer = self::pointer();
-            if (is_file($pointer)) {
-                $named = json_decode((string) @file_get_contents($pointer), true);
-                if (!is_array($named) || ($named['build'] ?? null) !== basename(self::dir())) {
-                    @unlink($pointer);
-                }
+        // A deploy changes the build id without forget(): a pointer naming another build would have a
+        // host serve that build's files. It goes on this request, before anything else it does.
+        $pointer = self::pointer();
+        if (is_file($pointer)) {
+            $named = json_decode((string) @file_get_contents($pointer), true);
+            if (!is_array($named) || ($named['build'] ?? null) !== basename(self::dir())) {
+                @unlink($pointer);
             }
+        }
+        add_action('init', static function (): void {
             if (self::$plugin?->unavailable() !== null || !function_exists('as_enqueue_async_action')) {
                 return;
             }
@@ -143,6 +148,9 @@ final class Prebuilt
         // build already running in another process that what it made is no longer wanted.
         @unlink(self::pointer());
         update_option(self::EPOCH, self::epoch() + 1, false);
+        // Again, after the bump: a publish() that checked the old epoch just before it may have
+        // renamed its pointer in since.
+        @unlink(self::pointer());
         if (is_dir(self::dir())) {
             self::remove(self::dir());
         }
@@ -171,7 +179,14 @@ final class Prebuilt
      */
     public static function pointer(): string
     {
-        return dirname(self::dir()) . '/current.json';
+        return self::pointerPath();
+    }
+
+    /** Where the pointer is: one per site (multisite keeps one directory per blog id). */
+    private static function pointerPath(): string
+    {
+        $root = (string) apply_filters('first_prebuilt_dir', WP_CONTENT_DIR . '/cache/first-prebuilt');
+        return $root . (is_multisite() ? '/sites/' . get_current_blog_id() : '') . '/current.json';
     }
 
     /**
@@ -183,9 +198,42 @@ final class Prebuilt
      */
     private static function publish(int $epoch): void
     {
+        // A chain of batches a forget() made obsolete leaves alone whatever a newer build wrote.
+        if (self::epoch() !== $epoch) {
+            return;
+        }
+        // Whatever serve() reads through a filter could answer differently per request, and a host
+        // can't run filters: then there is no pointer, and only serve() answers. That covers
+        // privacy plugins (`option_blog_public`), multi-domain and language plugins (`home_url`), a
+        // home URL whose scheme follows the request, and First's own filters.
+        $hooks = ['first_prebuilt_serve', 'first_app_cache_window', 'first_content_signal', 'first_prebuilt_dir',
+            'home_url', 'option_home', 'pre_option_home', 'option_blog_charset', 'pre_option_blog_charset'];
+        foreach (['blog_public', 'wpcom_public_coming_soon', 'wpcom_coming_soon'] as $option) {
+            $hooks[] = "option_$option";
+            $hooks[] = "pre_option_$option";
+        }
+        // Core's own callbacks give the same answer on every request (`WP_HOME` and the charset's
+        // canonical spelling); any other is a plugin's, which may not.
+        $core = ['_config_wp_home', '_config_wp_siteurl', '_wp_specialchars', '_canonical_charset'];
+        $filtered = array_filter($hooks, static function (string $hook) use ($core): bool {
+            global $wp_filter;
+            foreach (($wp_filter[$hook] ?? null)?->callbacks ?? [] as $callbacks) {
+                foreach ($callbacks as $callback) {
+                    if (!is_string($callback['function']) || !in_array($callback['function'], $core, true)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        });
         $public = (int) self::fresh('blog_public') >= 0 && !self::fresh('wpcom_public_coming_soon') && !self::fresh('wpcom_coming_soon');
-        $filtered = array_filter(['first_prebuilt_serve', 'first_app_cache_window', 'first_content_signal', 'first_prebuilt_dir'], static fn (string $hook): bool => has_filter($hook) !== false);
-        if (!$public || $filtered !== [] || self::epoch() !== $epoch) {
+        // home_url() switches to https for a request over TLS whatever the stored scheme is, so its
+        // links are the same for every request only when the stored home is already https (or a
+        // plain-http site the host serves on http alone; a host that knows that may say so with
+        // `first_prebuilt_http_only`).
+        $home = (string) self::fresh('home');
+        $fixedScheme = str_starts_with($home, 'https://') || (bool) apply_filters('first_prebuilt_http_only', false);
+        if (!$public || $filtered !== [] || !$fixedScheme) {
             @unlink(self::pointer());
             return;
         }
@@ -198,11 +246,15 @@ final class Prebuilt
             'contentSignal' => MarkdownTwins::contentSignal(),
             // The home path requests start with, and the URL the `Link` headers are built on.
             'home' => rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/'),
-            'homeUrl' => rtrim(home_url('/'), '/'),
+            'homeUrl' => rtrim($home, '/'),
         ];
         $tmp = self::pointer() . '.' . bin2hex(random_bytes(4)) . '.tmp';
         if (wp_mkdir_p(dirname(self::pointer())) && file_put_contents($tmp, (string) wp_json_encode($pointer, JSON_UNESCAPED_SLASHES)) !== false) {
             rename($tmp, self::pointer());
+            // A forget() between the check above and the rename: the pointer it removed is back.
+            if (self::epoch() !== $epoch) {
+                @unlink(self::pointer());
+            }
         } else {
             @unlink($tmp);
         }
@@ -544,7 +596,8 @@ final class Prebuilt
     /** This build's directory of prebuilt files; `first_prebuilt_dir` moves it. */
     public static function dir(): string
     {
-        return (string) apply_filters('first_prebuilt_dir', WP_CONTENT_DIR . '/cache/first-prebuilt') . '/' . substr(self::build_id(), 0, 16);
+        $root = (string) apply_filters('first_prebuilt_dir', WP_CONTENT_DIR . '/cache/first-prebuilt');
+        return $root . (is_multisite() ? '/sites/' . get_current_blog_id() : '') . '/' . substr(self::build_id(), 0, 16);
     }
 
     /**
@@ -592,6 +645,10 @@ final class Prebuilt
         $path = substr($uri, strlen($base)) ?: '/';
         // `/index` is not the home page's URL; only its twin `/index.md` is.
         if ($path === '/index' || $path === '/index/') {
+            return;
+        }
+        // `/.md` is not the home page twin's URL; `/index.md` is.
+        if ($path === '/.md') {
             return;
         }
         $markdown = str_ends_with($path, '.md');

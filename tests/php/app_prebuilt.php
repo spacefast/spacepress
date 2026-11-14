@@ -12,7 +12,9 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('app-prebuilt', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor']]);
+$site = wpSite('app-prebuilt', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor'],
+    // The test site serves plain http alone, as a host may say (docs/host-contract.md, "Prebuilt pages").
+    'muPlugins' => ['http-only' => "<?php add_filter('first_prebuilt_http_only', '__return_true');"]]);
 wp_set_current_user(1);
 $hello = \First\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published'], true)[0];
 \First\db()->insert('notes', ['title' => 'Secret', 'slug' => 'secret', 'status' => 'draft']);
@@ -238,8 +240,25 @@ add_filter('first_prebuilt_serve', static fn (bool $serve, string $path): bool =
 (new ReflectionMethod(\First\Render\Prebuilt::class, 'publish'))->invoke(null, (new ReflectionMethod(\First\Render\Prebuilt::class, 'epoch'))->invoke(null));
 $out['pointer with a serve filter'] = is_file(\First\Render\Prebuilt::pointer());
 remove_all_filters('first_prebuilt_serve');
-// More spellings that aren't a prebuilt page's URL: an empty segment, a `.` segment, `//`.
-$out['spellings'] = [fetch("$url/notes//hello")['prebuilt'], fetch("$url/./about")['prebuilt']];
+// More spellings that aren't a prebuilt page's URL: an empty segment, a `.` segment, `/.md`.
+$out['spellings'] = [fetch("$url/notes//hello")['prebuilt'], fetch("$url/./about")['prebuilt'], fetch("$url/.md")['prebuilt']];
+// A plugin that hides the site through a filter on blog_public (no stored change) gets no pointer.
+add_filter('option_blog_public', static fn (): int => -1);
+(new ReflectionMethod(\First\Render\Prebuilt::class, 'publish'))->invoke(null, (new ReflectionMethod(\First\Render\Prebuilt::class, 'epoch'))->invoke(null));
+$out['pointer with a privacy filter'] = is_file(\First\Render\Prebuilt::pointer());
+remove_all_filters('option_blog_public');
+// Without the host's word that it serves http alone, an http site's links follow the request's
+// scheme, so it gets no pointer either.
+remove_all_filters('first_prebuilt_http_only');
+(new ReflectionMethod(\First\Render\Prebuilt::class, 'publish'))->invoke(null, (new ReflectionMethod(\First\Render\Prebuilt::class, 'epoch'))->invoke(null));
+$out['pointer on an http site'] = is_file(\First\Render\Prebuilt::pointer());
+add_filter('first_prebuilt_http_only', '__return_true');
+// A chain of batches made obsolete by a forget() leaves a newer pointer alone.
+(new ReflectionMethod(\First\Render\Prebuilt::class, 'publish'))->invoke(null, (new ReflectionMethod(\First\Render\Prebuilt::class, 'epoch'))->invoke(null));
+$out['newer pointer written'] = is_file(\First\Render\Prebuilt::pointer());
+$old = (new ReflectionMethod(\First\Render\Prebuilt::class, 'epoch'))->invoke(null) - 1;
+(new ReflectionMethod(\First\Render\Prebuilt::class, 'publish'))->invoke(null, $old);
+$out['newer pointer kept'] = is_file(\First\Render\Prebuilt::pointer());
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

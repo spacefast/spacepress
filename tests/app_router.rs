@@ -1251,7 +1251,15 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     assert_eq!(seen["pointer of another build"], false);
     assert_eq!(seen["pointer after a forget mid-build"], false);
     assert_eq!(seen["pointer with a serve filter"], false);
-    assert_eq!(seen["spellings"], json!([false, false]));
+    assert_eq!(seen["spellings"], json!([false, false, false]));
+    // No pointer where a filter could change what serve() decides, or where links follow the
+    // request's scheme; an obsolete chain of batches leaves a newer pointer alone.
+    assert_eq!(seen["pointer with a privacy filter"], false);
+    assert_eq!(seen["pointer on an http site"], false);
+    assert_eq!(
+        (&seen["newer pointer written"], &seen["newer pointer kept"]),
+        (&json!(true), &json!(true))
+    );
 }
 
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.

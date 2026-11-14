@@ -12,6 +12,10 @@
 use super::*;
 use crate::client_component::{Analysis, Binding, refuse};
 
+/// The name a `useLive` field's server answer is read through: `<prefix><field>` resolves to the
+/// seeded `{ data, error, loading }` ([`Compiler::client_live_seed`]).
+pub(super) const LIVE_SEED: &str = "__first_live_";
+
 /// The client component being compiled: its analysis, and whether the root element is still to come.
 pub(super) struct ClientCtx {
     pub analysis: Analysis,
@@ -49,6 +53,24 @@ impl Compiler<'_, '_> {
                         });
                     }
                 }
+                // `useLive`: the server answers the read now, as the visitor, and the browser
+                // starts from that answer (a marker call `useLive(field)` compiles it).
+                Stmt::Decl {
+                    pat: Pat::Id(name, nspan),
+                    span,
+                    ..
+                } if analysis.live.iter().any(|(f, ..)| f == name) => {
+                    out.push(Stmt::Decl {
+                        kind: DeclKind::Const,
+                        pat: Pat::Id(name.clone(), *nspan),
+                        ann: None,
+                        init: Some(Expr {
+                            kind: ExprKind::Ident(format!("{LIVE_SEED}{name}")),
+                            span: *span,
+                        }),
+                        span: *span,
+                    });
+                }
                 Stmt::Decl {
                     pat: Pat::Id(name, _), ..
                 } if matches!(analysis.bindings.get(name), Some(Binding::Action | Binding::Ref)) => {}
@@ -68,9 +90,13 @@ impl Compiler<'_, '_> {
         let mut extra = Vec::new();
         if std::mem::take(&mut ctx.root_pending) {
             extra.push(format!("'data-wp-interactive' => {}", php_str(&ctx.analysis.namespace)));
-            // The context: each useState value and each prop, as the browser starts from them.
+            // The context: each useState value, each `useLive` answer and each prop, as the browser
+            // starts from them.
             let mut fields = Vec::new();
             for (name, _) in &ctx.analysis.state {
+                fields.push(name.clone());
+            }
+            for (name, ..) in &ctx.analysis.live {
                 fields.push(name.clone());
             }
             for name in &ctx.analysis.props {
@@ -111,6 +137,13 @@ impl Compiler<'_, '_> {
                     "{} => {}",
                     php_str(&format!("data-wp-init---{name}")),
                     php_str(&format!("callbacks.{name}"))
+                ));
+            }
+            for (field, ..) in &ctx.analysis.live {
+                extra.push(format!(
+                    "{} => {}",
+                    php_str(&format!("data-wp-init---live-{field}")),
+                    php_str(&format!("callbacks.live_{field}"))
                 ));
             }
         }
@@ -600,6 +633,50 @@ impl Compiler<'_, '_> {
             php_str(&format!("data-wp-each--{item_attr}")),
             php_str(path),
             php_str(key),
+        ))
+    }
+
+    /// A `useLive` field's first value: the read answered now, as the visitor, through the same
+    /// evaluation the subscription endpoint runs (`First\Live\Module::evaluate`), with the read's
+    /// descriptor and token beside it for the browser's subscription. Typed `{ data, error,
+    /// loading }`, with `data` as the kind query API types the read.
+    pub(super) fn client_live_seed(&mut self, field: &str, span: Span) -> Result<Out> {
+        let (kind, query, enabled) = {
+            let ctx = self.client.as_ref().expect("client");
+            let (_, kind, query, enabled) = ctx.analysis.live.iter().find(|(f, ..)| f == field).expect("live field");
+            (kind.clone(), query.clone(), enabled.clone())
+        };
+        let Some((collection, _)) = self
+            .schema
+            .collections
+            .iter()
+            .find(|(name, c)| *name == &kind || c.key == kind)
+        else {
+            return err_help(
+                span,
+                format!("`useLive` reads a kind; there is no `{kind}`"),
+                "name a collection or table the app exports",
+            );
+        };
+        let row = types::row(self.schema, collection);
+        let q = self.expr(&query)?;
+        let q = self.finish_value(q, query.span)?;
+        let on = self.expr(&enabled)?;
+        let on = self.finish_value(on, enabled.span)?;
+        let on = self.truthy(&on);
+        let mut error = IndexMap::new();
+        error.insert("code".to_string(), (Ty::Str, false));
+        error.insert("message".to_string(), (Ty::Str, false));
+        let mut state = IndexMap::new();
+        state.insert(
+            "data".to_string(),
+            (Ty::union([Ty::Array(Box::new(row)), Ty::Undefined]), false),
+        );
+        state.insert("error".to_string(), (Ty::union([Ty::Obj(error), Ty::Undefined]), false));
+        state.insert("loading".to_string(), (Ty::Bool, false));
+        Ok(Out::atom(
+            format!("\\First\\Islands::live({}, {}, {on})", php_str(&kind), q.php),
+            Ty::Obj(state),
         ))
     }
 }

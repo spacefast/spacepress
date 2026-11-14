@@ -299,6 +299,18 @@ fn collection(out: &mut String, c: &Collection) {
     );
     if let Some(url) = &c.url {
         let _ = writeln!(out, "            'url' => {},", php_str(url));
+        // A kind at the site root leaves WordPress's and First's own first segments alone.
+        if url == "/:path" {
+            let _ = writeln!(
+                out,
+                "            'reserved' => [{}],",
+                crate::kind_url::RESERVED_FIRST_SEGMENTS
+                    .iter()
+                    .map(|r| php_str(r))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
     }
     if c.editor {
         let t = &c.table;

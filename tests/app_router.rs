@@ -2502,6 +2502,95 @@ fn api_reference_renders_openapi_as_pages() {
     );
 }
 
+/// A hierarchical kind at the site root (`url: "/:path"`), rendered by `first/app/[...path]` beside the
+/// app's own pages, on WordPress over HTTP (tests/php/docs_root.php).
+#[test]
+fn docs_at_the_site_root() {
+    let project = fixture("docs-root", "serve");
+    build(&project);
+    let work = tempfile::tempdir().unwrap();
+    let (sources, compiled) = (work.path().join("sources"), work.path().join("compiled"));
+    for args in [
+        vec![
+            "sources".as_ref(),
+            project.as_os_str(),
+            "--out".as_ref(),
+            sources.as_os_str(),
+        ],
+        vec![
+            "compile-sources".as_ref(),
+            sources.as_os_str(),
+            compiled.as_os_str(),
+            project.as_os_str(),
+        ],
+    ] {
+        let out = first().args(&args).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/docs_root.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .arg(compiled.join("seed"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let page = |status: u16, h1: &str| serde_json::json!({ "status": status, "h1": h1, "location": null });
+    // Each published item at its path, parent by parent; the app's own pages beside them.
+    assert_eq!(seen["pages"]["/"], page(200, "Home"));
+    assert_eq!(seen["pages"]["/getting-started"], page(200, "Get started"));
+    assert_eq!(seen["pages"]["/reference"], page(200, "Reference"));
+    assert_eq!(seen["pages"]["/reference/config"], page(200, "Config API"));
+    assert_eq!(seen["pages"]["/playground"], page(200, "Playground"));
+    // A draft, a path with the wrong parent, the slug alone and an unknown path: the app's 404.
+    for path in ["/roadmap", "/reference/nothing", "/nothing", "/config"] {
+        assert_eq!(seen["pages"][path], page(404, "Not here"), "{path}");
+    }
+    // Links, the tree and the pager all use the root paths, as does WordPress's sitemap.
+    assert_eq!(seen["permalink"], "/reference/config/");
+    assert_eq!(seen["tree"], serde_json::json!(["/getting-started", "/reference"]));
+    assert_eq!(seen["next"], "/reference");
+    assert_eq!(
+        seen["sitemap"],
+        serde_json::json!(["/getting-started/", "/reference/", "/reference/config/"])
+    );
+    // WordPress's own addresses keep answering, and so do its Pages, posts and their twins: the kind
+    // takes a path only when one of its items is there.
+    assert_eq!(
+        seen["wordpress"],
+        serde_json::json!({ "/wp-login.php": 200, "/feed/": 200, "/llms.txt": 200, "/robots.txt": 200, "/getting-started.md": 200, "/reference/config.md": 200 })
+    );
+    assert_eq!(seen["twin"], true);
+    assert_eq!(
+        seen["wordpress pages"],
+        serde_json::json!({ "/about/": [200, true], "/news/": [200, true], "/about.md": [200, true], "/news.md": [200, true] })
+    );
+    // Nothing a signed-out visitor may not read reaches them: an item the read rule hides, an item
+    // under a draft, a draft, or any of them with its `/` written as %2F, as a page or a twin.
+    for (path, answer) in seen["hidden"].as_object().unwrap() {
+        assert_eq!(answer, &serde_json::json!([404, false]), "{path}");
+    }
+    assert_eq!(seen["hidden"].as_object().unwrap().len(), 10);
+    // An item under a first segment WordPress or First owns (`/auth`) has no URL of its own.
+    assert!(
+        seen["reserved permalink"].as_str().unwrap().contains("?post_type="),
+        "{seen}"
+    );
+    // A WordPress Page at an item's path keeps it; a form posting to a Page isn't refused.
+    assert_eq!(seen["page wins"], serde_json::json!([200, true, false]));
+    assert_eq!(seen["post to a page"], 200);
+    // Another case of the path redirects to the item's own.
+    assert_eq!(seen["case"], serde_json::json!([301, "/reference/config/"]));
+}
+
 /// The project's `public/` folder at the site root (spec §1: "static files, served as-is"), on
 /// WordPress over HTTP (tests/php/public_root.php): each file at its path with its type; the app's
 /// own page over a file of the same name; never a dotfile, PHP, a path out of the folder or one

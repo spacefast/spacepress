@@ -105,7 +105,8 @@ final class ActionSchedulerQueue
             return; // storage is behind this build; a later request prepares
         }
         $groups = ['first', 'first-' . $plugin->schema->name()];
-        $done = implode(',', $groups);
+        // A runtime that changes what preparing checks or creates bumps the version, so sites prepare again.
+        $done = 'v1:' . implode(',', $groups);
         if (get_option(self::PREPARED) === $done) {
             return;
         }

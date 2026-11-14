@@ -126,7 +126,7 @@ do_action('action_scheduler_init');
 do_action('action_scheduler_init');
 eq('the next request gives a stranded ticket its action, once, and no job a second one', array_map($actionsFor, $stranded), [1, 1, 0]);
 eq('the outbox rows stay: data is never deleted', $outbox(), 3);
-eq('the groups are recorded as prepared', get_option(\First\Wp\Jobs\ActionSchedulerQueue::PREPARED), 'first,first-blog');
+eq('the groups are recorded as prepared, with the version of the step', get_option(\First\Wp\Jobs\ActionSchedulerQueue::PREPARED), 'v1:first,first-blog');
 // The moved job runs with the others below; the two helper rows are this case's own.
 as_unschedule_all_actions('first_job', ['id' => $stranded[1]]);
 $wp->exec('DELETE FROM {prefix}first__jobs WHERE `id` IN (?, ?)', [$stranded[1], $stranded[2]]);

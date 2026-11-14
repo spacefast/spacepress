@@ -9,9 +9,6 @@ on:
   schedule:
     - cron: '17 5 * * 1'
   workflow_dispatch:
-  # TEMPORARY, removed before merge: a workflow can be dispatched only once it is on main.
-  push:
-    branches: [first/wordpress-ahead]
 
 permissions:
   contents: read
@@ -45,6 +42,7 @@ jobs:
           echo "Builds: $builds"
 
   php:
+    name: php (${{ matrix.build.name }})
     needs: builds
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -78,6 +76,7 @@ jobs:
         run: .github/actions/wordpress-build/summary.sh "${{ matrix.build.name }}" "${{ steps.core.outputs.version }}" php "$RUNNER_TEMP/php.log"
 
   wp:
+    name: wp (${{ matrix.build.name }})
     needs: builds
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -127,6 +126,7 @@ jobs:
         run: .github/actions/wordpress-build/summary.sh "${{ matrix.build.name }}" "${{ steps.core.outputs.version }}" wp "$RUNNER_TEMP/wp.log"
 
   wp-schema:
+    name: wp-schema (${{ matrix.build.name }})
     needs: builds
     runs-on: ubuntu-24.04
     timeout-minutes: 30

@@ -18,6 +18,8 @@ $site = wpSite('app-purges', ['wpContent' => $argv[1], 'muPlugins' => ['host' =>
     <?php
     add_action('first_purge_urls', static function (array $paths): void {
         $GLOBALS['test_purges'][] = $paths;
+        // Sent after the write committed: a request between the purge and the commit would cache the old page again.
+        $GLOBALS['test_purged_in_transaction'][] = \First\Wp\Plugin::instance()->connection()->inTransaction();
     });
     PHP]]);
 wp_set_current_user(1);
@@ -41,6 +43,7 @@ $stale = \First\Render\Prebuilt::ACTION;
 $announced = static function (callable $write) use ($stale): array {
     \First\Wp\Purges::flush(); // what setting up queued goes out first
     $GLOBALS['test_purges'] = [];
+    $GLOBALS['test_purged_in_transaction'] = [];
     as_unschedule_all_actions($stale);
     wp_set_current_user(1);
     try {
@@ -49,7 +52,7 @@ $announced = static function (callable $write) use ($stale): array {
     }
     \First\Wp\Purges::flush(); // the end of the request, for a write outside a transaction
     wp_set_current_user(0);
-    return ['calls' => $GLOBALS['test_purges'], 'rebuilds' => count(as_get_scheduled_actions(['hook' => $stale, 'status' => 'pending', 'per_page' => -1], 'ids'))];
+    return ['calls' => $GLOBALS['test_purges'], 'in transaction' => $GLOBALS['test_purged_in_transaction'], 'rebuilds' => count(as_get_scheduled_actions(['hook' => $stale, 'status' => 'pending', 'per_page' => -1], 'ids'))];
 };
 $edit = static fn (string $title) => static fn () => \First\db()->update('notes', ['title' => $title], ['id' => $hello]);
 

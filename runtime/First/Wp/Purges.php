@@ -34,6 +34,8 @@ final class Purges
     private static array $paths = [];
     /** @var array<int, list<string>> post id → its URLs before this write */
     private static array $before = [];
+    /** @var array<int, true> saves EditorSave::end collected; their wp_after_insert_post callback skips */
+    private static array $collected = [];
     private static bool $scheduled = false;
 
     public static function register(Plugin $plugin): void
@@ -43,14 +45,12 @@ final class Purges
                 self::$before[$id] = self::postUrls(get_post($id));
             }
         }, 10, 1);
-        // Just before EditorSave commits a wp-admin or core REST save of a First post (PHP_INT_MAX), so
-        // these URLs join that transaction's one announcement with what First's write path adds.
+        // A save EditorSave holds open (a wp-admin or core REST save of a First post) collects its URLs
+        // from EditorSave::end, before the commit, so they join the transaction's one announcement;
+        // by the time this runs that save is committed and collected. Every other save collects here.
         add_action('wp_after_insert_post', static function (int $id, \WP_Post $post) use ($plugin): void {
-            if (self::listening()) {
-                self::add($plugin, [...(self::$before[$id] ?? []), ...self::postUrls($post)]);
-                unset(self::$before[$id]);
-            }
-        }, PHP_INT_MAX - 1, 2);
+            self::saved($plugin, $id, $post);
+        }, PHP_INT_MAX, 2);
         // Trash, delete and status changes that don't go through wp_insert_post (wp_publish_post, cron).
         add_action('transition_post_status', static function (string $new, string $old, \WP_Post $post) use ($plugin): void {
             if (self::listening() && $new !== $old) {
@@ -123,6 +123,35 @@ final class Purges
     private static function listening(): bool
     {
         return has_action('first_purge_urls') !== false || \First\Render\Prebuilt::active();
+    }
+
+    /**
+     * A saved post's URLs, before and after the save: collected once per save, announced after its
+     * transaction commits (or at the end of the request when there is none).
+     */
+    public static function saved(Plugin $plugin, int $id, \WP_Post $post): void
+    {
+        if (isset(self::$collected[$id])) {
+            unset(self::$collected[$id]); // EditorSave::end collected this save before its commit
+            return;
+        }
+        if (!self::listening()) {
+            return;
+        }
+        $before = self::$before[$id] ?? [];
+        unset(self::$before[$id]);
+        self::add($plugin, [...$before, ...self::postUrls($post)]);
+    }
+
+    /** EditorSave::end: the save it holds open collects its URLs now, inside the transaction. */
+    public static function collect(int $id): void
+    {
+        $plugin = Plugin::instance();
+        $post = get_post($id);
+        if ($plugin !== null && $post instanceof \WP_Post) {
+            self::saved($plugin, $id, $post);
+            self::$collected[$id] = true;
+        }
     }
 
     /** URLs a write changed that no post hook names (First's own writes): announced with the rest. */

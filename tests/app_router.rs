@@ -2378,6 +2378,8 @@ fn one_write_announces_its_purges_once() {
         unique.sort();
         unique.dedup();
         assert_eq!(unique.len(), paths.len(), "{key}: each path once: {paths:?}");
+        // Sent after the commit, never from inside the write's transaction.
+        assert_eq!(seen[key]["in transaction"], serde_json::json!([false]), "{key}: {seen}");
         // Prebuilt::stale ran once, with that list: one rebuild of the note's prebuilt page.
         assert_eq!(seen[key]["rebuilds"], 1, "{key}: {seen}");
         paths
@@ -2400,10 +2402,14 @@ fn one_write_announces_its_purges_once() {
             assert!(paths.contains(&want), "{key}: {want} in {paths:?}");
         }
     }
-    assert_eq!(seen["rolled back"], json!({ "calls": [], "rebuilds": 0 }), "{seen}");
+    assert_eq!(
+        seen["rolled back"],
+        json!({ "calls": [], "in transaction": [], "rebuilds": 0 }),
+        "{seen}"
+    );
     assert_eq!(
         seen["limit"],
-        json!({ "index alone": true, "union over": true, "calls": [["/*"]], "rebuilds": 0 }),
+        json!({ "index alone": true, "union over": true, "calls": [["/*"]], "in transaction": [false], "rebuilds": 0 }),
         "{seen}"
     );
 }

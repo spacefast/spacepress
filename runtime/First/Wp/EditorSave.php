@@ -245,6 +245,8 @@ final class EditorSave
             if (!self::$open['checked']) {
                 self::authorizeOrDie();
             }
+            // The post's URLs join this transaction's purge announcement, sent after the commit.
+            Purges::collect((int) ($post instanceof \WP_Post ? $post->ID : $post));
             self::commit();
         }
     }

@@ -352,7 +352,8 @@ pub struct ColBuilder {
     pub show_if: Option<Value>,
     pub ui: Option<Value>,
     pub localized: bool,
-    pub bucket: Option<String>,
+    /// `file(decks)`: the bucket, by value; a 0.3.0 capture names it (`file({ bucket: "decks" })`).
+    pub bucket: Option<BucketRef>,
     /// `.was("old")`: the stored name this field had before a rename.
     pub was: Option<String>,
     pub span: Span,
@@ -374,7 +375,8 @@ impl ColBuilder {
 
 #[derive(Debug)]
 pub struct GlobalVal {
-    pub name: String,
+    /// Bound once from the export name (or the `globals` key); a 0.3.0 capture names it in the call.
+    pub name: OnceCell<String>,
     pub fields: IndexMap<String, Rc<ColBuilder>>,
     pub options: Option<Value>,
     pub span: Span,
@@ -456,9 +458,27 @@ pub struct RelVal {
     pub config: Option<Value>,
 }
 
+/// The bucket a `file()` field holds ids from.
+#[derive(Debug, Clone)]
+pub enum BucketRef {
+    Value(Rc<FileBucketVal>),
+    Name(String),
+}
+
+impl BucketRef {
+    /// The registered bucket name, once registration has named it.
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            BucketRef::Value(b) => b.name.get().map(String::as_str),
+            BucketRef::Name(n) => Some(n),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct FileBucketVal {
-    pub name: String,
+    /// Bound once from the export name (or the `files` key); a 0.3.0 capture names it in the call.
+    pub name: OnceCell<String>,
     pub options: Value,
     pub span: Span,
 }
@@ -602,7 +622,10 @@ impl Value {
             Value::FileBucket(_) => "a file bucket".into(),
             Value::Env(n) => format!("env({n:?})"),
             Value::Asset(file) => format!("the URL of {file}"),
-            Value::Global(g) => format!("global \"{}\"", g.name),
+            Value::Global(g) => match g.name.get() {
+                Some(name) => format!("global \"{name}\""),
+                None => "a global".into(),
+            },
             Value::Regex(p, f) => format!("/{}/{f}", crate::builtins::regex_source(p)),
             Value::Coll(c) => (if c.set { "a Set" } else { "a Map" }).into(),
             Value::Symbol(s) => format!("Symbol({})", s.description().unwrap_or_default()),

@@ -172,7 +172,28 @@ final class Index
 
             return;
         }
+        if ($op === 'update' && $previous !== null && !self::changed($fields, $row, $previous)) {
+            return; // no searchable field changed: the row's entries already hold this text
+        }
         self::refresh($collection, $spec, $id, $fields);
+    }
+
+    /**
+     * Whether an update changed a searchable field: both rows are the pipeline's full decoded rows
+     * (before the write, and as stored after it). Only a searchable field's value is indexed, so an
+     * update of anything else (a status, a number, a relation) leaves the entries as they are.
+     *
+     * @param list<string> $fields
+     */
+    private static function changed(array $fields, array $row, array $previous): bool
+    {
+        foreach ($fields as $field) {
+            if (!array_key_exists($field, $row) || !array_key_exists($field, $previous) || $row[$field] !== $previous[$field]) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

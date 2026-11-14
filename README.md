@@ -261,6 +261,11 @@ is also in `wp-admin` under Posts. Browser apps sign members in with
 `clientId` and `redirectUri`; see the client's generated README for sessions,
 guests and server-to-server auth.
 
+An Astro site reads a First app through content collections with
+[`@first/astro`](packages/astro/README.md): build-time collections that pull only what changed,
+live collections with cache tags, and a webhook endpoint that purges or rebuilds on write
+([Astro on First](docs/astro.md)).
+
 ## Requirements
 
 | | Minimum |

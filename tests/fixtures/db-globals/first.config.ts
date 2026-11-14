@@ -1,6 +1,6 @@
 import { collection, text, integer, json, global, defineConfig, action, db, table } from "first";
 const n = table({ meta: json().optional() });
-const settings = global("settings", {
+const settings = global({
   title: text().default("Hi"),
   stats: json<{ visits: number }>().optional(),
 });

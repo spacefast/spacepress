@@ -57,7 +57,6 @@ export default defineConfig({
   tables: { tasks, locations, items, shoppingList },
   globals: {
     settings: global(
-      "settings",
       {
         title: text().default("The small things, shipped."),
         description: text().default("A working publication, built with First.").optional(),

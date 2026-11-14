@@ -1178,6 +1178,12 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     assert_eq!(seen["fresh token"], "private, no-store, max-age=0");
     // A value staticParams stops listing loses its file.
     assert_eq!(seen["dropped value"], json!([false, true]));
+    // Another spelling of a path, and a coming-soon site, are never answered from a file.
+    assert_eq!(seen["encoded spelling"], false);
+    assert_eq!(seen["coming soon"], false);
+    assert_eq!(seen["purge all, no files"], true);
+    // A render that began before a write named its path is not written.
+    assert_eq!(seen["race"], json!([true, false, false]));
 }
 
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.

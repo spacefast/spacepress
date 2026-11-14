@@ -99,8 +99,10 @@ It needs the same credentials as `first sync` and `first pull`: an editor's appl
   query and the theme. It does that only for a GET or HEAD with no query string and no signed-in,
   comment-author or preview cookie, and with the cacheable policy's `Cache-Control`. Anything else
   falls through to the router, as before.
-  - A plugin that gates the site (private site, coming soon, membership) says no through the
-    `first_prebuilt_serve` filter.
+  - Nothing is served while the site hides itself from the public: `blog_public` below 0, or
+    WordPress.com's coming-soon options set. Another plugin that gates the site (membership,
+    private site) says no through the `first_prebuilt_serve` filter.
+  - Only the spelling a file was written under is served: `/%61bout` is not `/about`.
   - A host whose web server can serve files before PHP may serve the same directory, since its
     layout is the URL's path. It must then apply its own access gates first.
 - **On-demand regeneration (ISR).** A committed write that would purge a prebuilt URL deletes that
@@ -109,11 +111,13 @@ It needs the same credentials as `first sync` and `first pull`: an editor's appl
     write whose purge list names the URL.
   - Until the action has run, the URL falls through to SSR under the cache policy, so a visitor
     doesn't see content older than such a write.
-  - A render that started before the write is not written.
+  - A render that started before the write is not written. The check reads the write marks from
+    the database, not the object cache, and runs again just before the rename.
 - **What no write announces.** An option a page reads, a menu, another plugin's data or the time can
   change without naming any URL.
-  - A file is never served past an hour (`MAX_AGE`), and the action rebuilds every file that often,
-    so such content is at most an hour old. Batcache's window is five minutes.
+  - A file is never served past an hour (`MAX_AGE`), and the action rebuilds every file after 45
+    minutes, so a file is replaced before it expires and such content is at most an hour old.
+    Batcache's window is five minutes.
   - Site-wide settings drop every file at once: the site's name and tagline, `blog_public`, the
     language, permalinks, the theme and its settings, menus, and plugin or core updates.
 - **Paths that stop being listed.** A path `staticParams` stops listing, or an item that is
@@ -124,7 +128,11 @@ It needs the same credentials as `first sync` and `first pull`: an editor's appl
 - **The build directory.** It is named by a hash of:
   - the app's compiled files;
   - the runtime's content hash, stamped into `first-runtime.php` at build time;
-  - the WordPress, theme and active-plugin versions that write the page's head and asset URLs.
+  - the WordPress, theme and active-plugin versions (network-activated ones too), must-use plugins
+    and drop-ins, which write the page's head and asset URLs.
+
+  The id is kept in an autoloaded option and computed again only when the files' sizes and times
+  or those versions change, so the file lane costs one option read and one `stat`.
 
   A new hash starts an empty directory, so files from an older build or an older WordPress are
   never served. The first `first_prebuild` run under a new hash removes the other directories.

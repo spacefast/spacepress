@@ -21,7 +21,9 @@ use First\Wp\SchemaVersions;
  *   own through the `first_<app>_schema_apply_denied` option ({@see mayApply()}).
  * - `wp first schema list | diff <version> | apply <file> | rollback <version>`: the trusted CLI,
  *   which needs no capability (`first schema …` forwards to it).
- * - A wp-admin screen under Tools that lists the versions with what each one changed.
+ * - A screen, "Schema versions", declared once for both admins (runtime/admin/lib/screens.php):
+ *   under Tools in classic wp-admin and in First Admin's sidebar. It lists the versions through
+ *   `<app>/schema-read`, so it shows exactly what an agent reads.
  *
  * Every apply records who made it: the user, and the application password's UUID and name when one
  * signed the request (never the secret), or `wp-cli`.
@@ -39,7 +41,7 @@ final class Surfaces
         add_filter('first_ability_operations', [self::class, 'operations'], 10, 2);
         add_action('init', [self::class, 'grant']);
         add_action('wp_create_application_password', [self::class, 'inheritDeny'], 10, 2);
-        add_action('admin_menu', [self::class, 'menu']);
+        add_action('first_admin_screens', [self::class, 'screen']);
         // Outside the app's command transaction: applying takes the schema lock and commits its own.
         $command = static fn () => Runtime::command('schema', self::wpCli(...));
         did_action('first_runtime_loaded') ? $command() : add_action('first_runtime_loaded', $command);
@@ -203,10 +205,14 @@ final class Surfaces
         }
     }
 
-    /** A version as the surfaces show it: without the app name, which every row shares. */
+    /**
+     * A version as the surfaces show it: without the app name, which every row shares, and with
+     * `by` and `summary`, who made it and each change in a sentence.
+     */
     private static function version(array $row): array
     {
-        return array_diff_key($row, ['app' => true]);
+        return array_diff_key($row, ['app' => true])
+            + ['by' => self::by($row), 'summary' => array_map(self::describe(...), $row['changes'] ?? [])];
     }
 
     /**
@@ -258,8 +264,15 @@ final class Surfaces
                 // Who made each version (a login, an application password's name) is personal data: a
                 // credential scoped without it reads the versions without them.
                 $personal = \First\Wp\AgentScope::may('personal');
-                $shown = static fn (array $row): array => $personal ? self::version($row)
-                    : ['actor' => array_intersect_key($row['actor'], ['user' => 1, 'via' => 1])] + self::version($row);
+                $shown = static function (array $row) use ($personal): array {
+                    if ($personal) {
+                        return self::version($row);
+                    }
+                    // `by` is built from the same actor, so it goes with it.
+                    $row['actor'] = array_intersect_key($row['actor'], ['user' => 1, 'via' => 1]);
+
+                    return self::version($row);
+                };
 
                 return ['version' => $versions->active()['version'], 'hash' => $versions->active()['hash'],
                     'versions' => array_map($shown, $versions->list()), 'deploy' => $versions->deployCheck()];
@@ -366,52 +379,58 @@ final class Surfaces
     }
 
     /** Tools → Schema versions, for administrators, when the app uses runtime schema changes. */
-    public static function menu(): void
+    /** The versions screen, for both admins (First Admin's screen API; absent with `admin: false`). */
+    public static function screen(): void
     {
         $plugin = Runtime::plugin();
-        if ($plugin === null || SchemaVersions::of($plugin) === null) {
+        if ($plugin === null || SchemaVersions::of($plugin) === null || !function_exists('first_admin_register_screen')) {
             return;
         }
-        add_management_page('Schema versions', 'Schema versions', self::READ, 'first-schema-versions', [self::class, 'page']);
+        $app = $plugin->schema->name();
+        first_admin_register_screen('schema-versions', [
+            'title' => 'Schema versions',
+            'description' => 'Runtime schema changes stored on this site, newest first.',
+            'capability' => self::READ,
+            'classic' => ['parent' => 'tools.php'],
+            'menu' => ['icon' => 'dashicons-backup'],
+            'view' => [
+                'ability' => "$app/schema-read",
+                'items' => 'versions',
+                'id' => 'version',
+                'fields' => [
+                    ['id' => 'version', 'label' => 'Version', 'type' => 'integer'],
+                    ['id' => 'createdAt', 'label' => 'When', 'type' => 'datetime'],
+                    ['id' => 'by', 'label' => 'Who'],
+                    ['id' => 'summary', 'label' => 'Changes', 'type' => 'array'],
+                ],
+                'layout' => ['type' => 'table', 'fields' => ['createdAt', 'by', 'summary'], 'titleField' => 'version',
+                    'sort' => ['field' => 'version', 'direction' => 'desc']],
+            ],
+            'data' => static function (): array {
+                $versions = self::versions();
+                $deploy = $versions->deployCheck();
+                $lines = [sprintf('Active version: %d. The build this site runs contains version %d.', $versions->active()['version'], $deploy['build']['version'])];
+                if ($deploy['kept'] !== []) {
+                    $lines[] = 'On this site but not in the build: ' . implode(', ', $deploy['kept']) . '. Run `first pull` in the project to bring them into git.';
+                }
+
+                return $lines;
+            },
+        ]);
     }
 
-    public static function page(): void
+    /** Who made a version, in words. */
+    private static function by(array $row): string
     {
-        if (!current_user_can(self::READ)) {
-            wp_die(esc_html__('Sorry, you are not allowed to access this page.'), 403);
+        if (!isset($row['actor']['login']) && isset($row['actor']['user'])) {
+            return 'user ' . $row['actor']['user'] . (($row['actor']['via'] ?? null) === 'wp-cli' ? ' (WP-CLI)' : '');
         }
-        $versions = self::versions();
-        $rows = array_reverse($versions->list());
-        $deploy = $versions->deployCheck();
-        echo '<div class="wrap"><h1>' . esc_html__('Schema versions') . '</h1>';
-        echo '<p>' . esc_html(sprintf(
-            'Active version: %d. The build this site runs contains version %d.',
-            $versions->active()['version'],
-            $deploy['build']['version'],
-        )) . '</p>';
-        if ($deploy['kept'] !== []) {
-            echo '<p>' . esc_html('On this site but not in the build: ' . implode(', ', $deploy['kept']) . '. Run `first pull` in the project to bring them into git.') . '</p>';
+        $who = (string) ($row['actor']['login'] ?? 'system');
+        if (isset($row['actor']['credential']['name'])) {
+            return $who . ' (application password ' . $row['actor']['credential']['name'] . ')';
         }
-        if ($rows === []) {
-            echo '<p>' . esc_html__('No runtime schema changes yet.') . '</p></div>';
 
-            return;
-        }
-        echo '<table class="widefat striped"><thead><tr><th>Version</th><th>When</th><th>Who</th><th>Changes</th></tr></thead><tbody>';
-        foreach ($rows as $row) {
-            $who = (string) ($row['actor']['login'] ?? 'system');
-            if (isset($row['actor']['credential']['name'])) {
-                $who .= ' (application password ' . $row['actor']['credential']['name'] . ')';
-            } elseif (($row['actor']['via'] ?? null) === 'wp-cli') {
-                $who .= ' (WP-CLI)';
-            }
-            echo '<tr><td>' . esc_html((string) $row['version']) . '</td><td>' . esc_html($row['createdAt']) . '</td><td>' . esc_html($who) . '</td><td><ul>';
-            foreach ($row['changes'] as $change) {
-                echo '<li>' . esc_html(self::describe($change)) . '</li>';
-            }
-            echo '</ul></td></tr>';
-        }
-        echo '</tbody></table></div>';
+        return ($row['actor']['via'] ?? null) === 'wp-cli' ? $who . ' (WP-CLI)' : $who;
     }
 
     /** One change in a sentence. */

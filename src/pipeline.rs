@@ -176,6 +176,7 @@ pub fn build(
     let component_props;
     let islands;
     let wordpress_uses;
+    let queried;
     let catalog = crate::wordpress::abilities::Catalog::new(&schema, &read_lock(program)?);
     // Each collection hook kind: its compiled functions, by owning plugin (None: the app).
     let mut hooks: HookFunctions = indexmap::IndexMap::new();
@@ -190,6 +191,7 @@ pub fn build(
         component_props = std::mem::take(&mut c.component_props);
         islands = std::mem::take(&mut c.islands);
         wordpress_uses = std::mem::take(&mut c.wordpress_uses);
+        queried = std::mem::take(&mut c.queried);
         for ((slot, name), root) in slots.iter().zip(&roots) {
             if let Slot::Hook { table, kind } = slot {
                 hooks
@@ -352,7 +354,9 @@ pub fn build(
     );
     let previous = previous_value;
     adopted_names(&mut schema, &previous.snapshot);
-    let snapshot = migrate::snapshot(&schema);
+    // A 0.3.0 capture keeps the indexes its build had: recompiling a stored Space plans no migration.
+    let queried = if ev.legacy() { Default::default() } else { queried };
+    let snapshot = migrate::snapshot_with(&schema, &queried);
     if let Some(tables) = previous.snapshot.get("tables").and_then(serde_json::Value::as_object) {
         for stored in tables.keys() {
             // The table that keeps `stored`'s rows: the same name, or the one that declares `was: stored`.

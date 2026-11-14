@@ -416,6 +416,8 @@ pub struct Compiler<'a, 'p> {
     pub abilities: crate::wordpress::abilities::Catalog,
     /// What the compiled code uses from WordPress, in source order (see [`Compiler::use_wordpress`]).
     pub wordpress_uses: Vec<WordPressUse>,
+    /// `(table, column)` pairs a compiled `where` or `orderBy` names: candidates for an index (spec §2.9).
+    pub queried: std::collections::BTreeSet<(String, String)>,
     /// The plugin whose root is compiling, and its name; `None` for the app's own code.
     plugin: Option<(usize, String)>,
     /// The PHP function compiling right now, for the read→send report.
@@ -506,6 +508,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             plugin_names: ext.uses.iter().map(|p| p.name.clone()).collect(),
             abilities: crate::wordpress::abilities::Catalog::default(),
             wordpress_uses: Vec::new(),
+            queried: std::collections::BTreeSet::new(),
             client: None,
             islands: Vec::new(),
         }
@@ -7765,6 +7768,77 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    /// `Object.prototype`, read from the global `Object` (not a local binding of that name).
+    fn is_object_prototype(&mut self, e: &Expr) -> bool {
+        let ExprKind::Member { obj, prop, .. } = &e.kind else {
+            return false;
+        };
+        let ExprKind::Ident(name) = &obj.kind else {
+            return false;
+        };
+        prop == "prototype"
+            && name == "Object"
+            && matches!(self.resolve(name, obj.span), Ok(Resolved::Global("Object")))
+    }
+
+    /// `f?.(args)` and `o.m?.(args)` in imported JavaScript: the callee is read once (with its
+    /// receiver bound for a member), and when it is null or undefined the call is skipped, its
+    /// arguments are not evaluated, and the value is undefined. Typed code keeps the refusal.
+    fn optional_call(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Out> {
+        if !self.javascript_module(self.fx.as_ref().expect("fn").module) {
+            return err_help(
+                span,
+                "optional calls (`f?.()`) aren't supported in TypeScript code yet",
+                "check the function first: `if (f) f(...)`",
+            );
+        }
+        let f = self.tmp_var();
+        let read = match &callee.kind {
+            ExprKind::Member {
+                obj, prop, optional, ..
+            } if !prop.starts_with('#') && !matches!(&obj.kind, ExprKind::Ident(n) if n == "super") => {
+                let recv = self.expr(obj)?;
+                let recv = self.finish_value(recv, obj.span)?;
+                let name = php_str(prop);
+                if *optional {
+                    let r = self.tmp_var();
+                    format!(
+                        "(\\First\\Js::isNullish({r} = {}) ? null : \\First\\Js::optionalMethod({r}, {name}))",
+                        recv.php
+                    )
+                } else {
+                    format!("\\First\\Js::optionalMethod({}, {name})", recv.php)
+                }
+            }
+            ExprKind::Index { obj, index, optional } => {
+                let recv = self.expr(obj)?;
+                let recv = self.finish_value(recv, obj.span)?;
+                let r = self.tmp_var();
+                let key = self.expr(index)?;
+                let key = self.finish_value(key, index.span)?;
+                if *optional {
+                    format!(
+                        "(\\First\\Js::isNullish({r} = {}) ? null : \\First\\Js::optionalMethod({r}, {}))",
+                        recv.php, key.php
+                    )
+                } else {
+                    format!("\\First\\Js::optionalMethod({}, {})", recv.php, key.php)
+                }
+            }
+            _ => {
+                let v = self.expr(callee)?;
+                let v = self.finish_value(v, callee.span)?;
+                let t = self.tmp_var();
+                format!("(\\First\\Js::isNullish({t} = {}) ? null : {t})", v.php)
+            }
+        };
+        let argv = self.javascript_args(args)?;
+        Ok(Out::atom(
+            format!("(({f} = {read}) === null ? \\First\\Js::undefined() : \\First\\Js::dynamicCall({f}, {argv}))"),
+            Ty::Dynamic,
+        ))
+    }
+
     fn call(&mut self, callee: &Expr, args: &[ArrEl], optional: bool, span: Span) -> Result<Out> {
         if let ExprKind::Member { obj, prop, .. } = &callee.kind
             && prop == "call"
@@ -7772,7 +7846,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 obj: prototype, prop, ..
             } = &obj.kind
             && prop == "toString"
-            && matches!(&prototype.kind, ExprKind::Object(props) if props.is_empty())
+            && (matches!(&prototype.kind, ExprKind::Object(props) if props.is_empty())
+                || self.is_object_prototype(prototype))
         {
             self.arg(args, 0, span, "a receiver")?;
             let argv = self.plain_args(args)?;
@@ -7792,7 +7867,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(out);
         }
         if optional {
-            return err(span, "optional calls (`f?.()`) aren't supported");
+            return self.optional_call(callee, args, span);
         }
         if let Some(out) = self.host_call(callee, args, span)? {
             return Ok(out);
@@ -8800,7 +8875,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             || args.iter().any(|a| matches!(a, ArrEl::Spread(_))))
             && matches!(
                 g,
-                "Math" | "Array" | "Object" | "Number" | "JSON" | "URL" | "AbortSignal"
+                "Math" | "Array" | "Object" | "Reflect" | "Number" | "JSON" | "URL" | "AbortSignal"
             )
         {
             if (g, m) == ("AbortSignal", "timeout") {
@@ -10144,6 +10219,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if c.ty.is_list_kind() {
                 return err(dir.span, "`orderBy` isn't supported on list columns");
             }
+            self.queried.insert((table.to_string(), col.to_string()));
             let coll = &self.schema.collections[table];
             if coll.editor && coll.content.as_deref() == Some(col.as_str()) {
                 return err(
@@ -10224,6 +10300,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     if let Some(col) = c.columns.get(name).filter(|_| !through) {
                         let col = col.clone();
                         let editor = c.editor;
+                        self.queried.insert((table.to_string(), name.to_string()));
                         self.field_filter(&col, v, editor)?
                     } else if c.relations.contains_key(name) {
                         if !allow_relations {

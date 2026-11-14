@@ -291,16 +291,20 @@ pub enum HookKind {
     AfterUpdate,
     BeforeDelete,
     AfterDelete,
+    /// A post kind's item became published (created published, updated into it, or a scheduled
+    /// item reached its time). Spec §2.8.
+    AfterPublish,
 }
 
 impl HookKind {
-    pub const ALL: [HookKind; 6] = [
+    pub const ALL: [HookKind; 7] = [
         HookKind::BeforeCreate,
         HookKind::AfterCreate,
         HookKind::BeforeUpdate,
         HookKind::AfterUpdate,
         HookKind::BeforeDelete,
         HookKind::AfterDelete,
+        HookKind::AfterPublish,
     ];
 
     pub fn name(self) -> &'static str {
@@ -311,6 +315,7 @@ impl HookKind {
             HookKind::AfterUpdate => "afterUpdate",
             HookKind::BeforeDelete => "beforeDelete",
             HookKind::AfterDelete => "afterDelete",
+            HookKind::AfterPublish => "afterPublish",
         }
     }
 
@@ -354,6 +359,33 @@ impl Access {
 /// Operations a collection's access config covers, in schema.php order.
 pub const ACCESS_OPS: [&str; 4] = ["read", "create", "update", "delete"];
 
+/// How comments behave on a kind (spec §2.3). `comments: true` is these defaults.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommentPolicy {
+    /// Anonymous visitors may comment (name and email required).
+    pub guests: bool,
+    /// `"none"`, `"first-time"` or `"all"`.
+    pub moderation: &'static str,
+    /// Reply depth, 1 (flat) to 10.
+    pub threaded: u8,
+    /// Comments close this many days after the item was published; `None` never closes.
+    pub close_after_days: Option<u32>,
+    /// Comment types allowed on this kind besides normal comments.
+    pub types: Vec<String>,
+}
+
+impl Default for CommentPolicy {
+    fn default() -> Self {
+        CommentPolicy {
+            guests: false,
+            moderation: "first-time",
+            threaded: 3,
+            close_after_days: None,
+            types: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Collection {
     /// Logical registry key in the config (`shoppingList`).
@@ -376,6 +408,9 @@ pub struct Collection {
     pub staged: bool,
     /// `comments: true`: the post type supports WordPress comments; every other kind has them off.
     pub comments: bool,
+    /// What `comments: true | { ... }` asks of comments on this kind (spec §2.3), defaults filled.
+    /// `Some` exactly when `comments` is on.
+    pub comment_policy: Option<CommentPolicy>,
     pub title: Option<String>,
     pub content: Option<String>,
     pub slug: Option<String>,
@@ -398,6 +433,8 @@ pub struct Collection {
     /// `hierarchical: true` (spec §2.6): items nest under a `parent` and sort by `order`, stored as
     /// the post's own `post_parent` and `menu_order`; `:path` in the url is the parent chain.
     pub hierarchical: bool,
+    /// `.index(fields, { unique? })`: compound indexes the author declared, as (fields, unique).
+    pub indexes: Vec<(Vec<String>, bool)>,
 }
 
 impl Collection {

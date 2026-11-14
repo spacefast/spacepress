@@ -20,6 +20,9 @@ final class Functions
     /** @param list<mixed> $args the author's arguments, then the catalog's fixed ones */
     public static function call(string $function, array $args): mixed
     {
+        if (in_array($function, ['is_user_logged_in', 'current_user_can', 'get_current_user_id'], true)) {
+            \First\Render\Prebuilt::viewerCall($function);
+        }
         $args = array_map(self::toPhp(...), $args);
         Guard::call($function, $args);
         $result = self::tracked(static fn () => $function(...$args));

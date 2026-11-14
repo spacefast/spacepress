@@ -576,13 +576,37 @@ Locale collation depends on the host and cannot be reproduced deterministically.
 
 [Evidence](../tests/fixtures/reject-locale-compare)
 
+## object-reflect-runtime
+
+Status: **supported**.
+
+Imported JavaScript runs Object.assign(target, ...sources) on an object or array target (own enumerable string keys, then symbols, null and undefined sources skipped, TypeError on a null target), Reflect.ownKeys on plain objects and arrays (integer keys ascending, then strings in insertion order, then symbols; arrays add length), and Object.prototype.toString.call(x) at request time. Evidence: tests/differential/language/object-reflect.ts. Typed code keeps Object.assign at build time only.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## subtle-digest
+
+Status: **supported**.
+
+Imported JavaScript compiles crypto.subtle.digest(algorithm, data): SHA-1, SHA-256, SHA-384 and SHA-512 by name in any case or as { name }, over an ArrayBuffer, typed array or DataView, resolving to an ArrayBuffer; an unknown algorithm rejects with NotSupportedError and non-binary data with TypeError. Evidence: tests/differential/language/subtle-digest.ts.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
 ## optional-chains
 
 Status: **supported**.
 
-Optional chains support guarded property/index steps and single optional method calls. A non-optional continuation after a short-circuiting link is refused at source; guard each nullable step explicitly. Parenthesized chain boundaries retain ordinary property access and call behavior.
+Optional chains support guarded property/index steps and single optional method calls. In imported JavaScript, optional calls `f?.()`, `o.m?.()` and `o[k]?.()` read the callee once (keeping its receiver) and skip the call and its arguments when it is null or undefined (tests/differential/language/optional-calls.ts). A non-optional continuation after a short-circuiting link is refused at source; guard each nullable step explicitly. Parenthesized chain boundaries retain ordinary property access and call behavior.
 
 [Evidence](../tests/compiler_contracts.rs) (`optional_chains_refuse_unguarded_continuations_at_source`)
+
+## optional-call-typed
+
+Status: **refused**. Diagnostic: `F4001`.
+
+Optional calls compile in imported JavaScript. In typed TypeScript, check the function first: `if (f) f(...)`.
+
+[Evidence](../tests/fixtures/reject-optional-call-typed)
 
 ## parameter-default-scope
 
@@ -796,7 +820,7 @@ env("NAME") is a deferred reference inside defineConfig (webhook URLs and secret
 
 Status: **refused**. Diagnostic: `F4001`.
 
-SubtleCrypto needs ArrayBuffers and is not compiled. Hash and sign with createHash and createHmac from "node:crypto".
+Imported JavaScript compiles crypto.subtle.digest (see subtle-digest). Typed TypeScript hashes and signs with createHash and createHmac from "node:crypto".
 
 [Evidence](../tests/fixtures/reject-crypto-subtle)
 

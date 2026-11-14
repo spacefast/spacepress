@@ -526,6 +526,7 @@ $privateRead = json_decode((string) curl_exec($ch), true);
 $withActor = array_values(array_filter($privateRead['versions'] ?? [], static fn (array $v): bool => isset($v['actor']['credential']) || isset($v['actor']['login'])));
 eq('a credential without personal data reads every version, but no login or password name', [count($privateRead['versions'] ?? []) > 0, $withActor, $privateRead['versions'][0]['actor'] ?? null],
     [true, [], ['user' => $wp->userId('admin'), 'via' => $privateRead['versions'][0]['actor']['via'] ?? null]]);
+check('nor in the line saying who made each version', !str_contains(json_encode(array_column($privateRead['versions'] ?? [], 'by')), 'admin') && !str_contains(json_encode(array_column($privateRead['versions'] ?? [], 'by')), 'application password'), array_column($privateRead['versions'] ?? [], 'by'));
 eq('a credential with personal data still sees them', isset($run('schema-read', [], 'admin')[1]['versions'][0]['actor']['login']), true);
 
 eq('the three are agent tools', [$tools['rtschema/schema-read'] ?? null, $tools['rtschema/schema-propose'] ?? null, $tools['rtschema/schema-apply'] ?? null], [true, true, true]);
@@ -546,17 +547,12 @@ eq('schema rollback: a new version that reverses the given one', [$code, $rolled
 [$code, $bad] = $schemaCli(['diff', 'x']);
 eq('a bad argument says how to call it', [$code, $bad['error']['code'] ?? null], [1, 'invalid_command']);
 
-// The admin screen lists the versions with what each changed.
-$wp->actAs('admin');
-ob_start();
-\First\RuntimeSchema\Surfaces::page();
-$html = (string) ob_get_clean();
-$wp->actAs(null);
-check('the admin screen lists the versions, newest first, with each change in words',
-    str_contains($html, 'Added articles.byline (text)') && str_contains($html, 'Hid articles.teaserImage (its values are kept)') && str_contains($html, '(WP-CLI)')
-    && strpos($html, 'Hid articles.teaserImage') < strpos($html, 'Added articles.byline'), $html);
-check('it escapes what it shows', !str_contains($html, '<script'), $html);
-eq('the screen is under Tools for administrators', menu_page_url('first-schema-versions', false) !== '' || has_action('admin_menu', [\First\RuntimeSchema\Surfaces::class, 'menu']) !== false, true);
+// The versions screen (both admins) lists what schema-read returns: each version with who made it
+// and each change in words. The screens API itself is First Admin's; its WordPress tests cover both hosts.
+[, $read] = $run('schema-read', [], 'admin');
+$withByline = array_values(array_filter($read['versions'], static fn (array $v): bool => in_array('Added articles.byline (text)', $v['summary'] ?? [], true)));
+check('each version says what it changed, in words', $withByline !== [] && in_array('Hid articles.teaserImage (its values are kept)', array_merge(...array_map(static fn (array $v): array => $v['summary'], $read['versions'])), true), $read['versions']);
+check('and who made it', str_contains(implode(' ', array_column($read['versions'], 'by')), '(WP-CLI)'), array_column($read['versions'], 'by'));
 
 // ================================================================ the chain and the option are checked
 // The version rows are chained by hash; a row edited in the database breaks the chain. The site then
@@ -566,6 +562,12 @@ $goodState = get_option(Loader::option('rtschema'));
 $rowsBefore = $versions->list();
 $second = $rowsBefore[1];
 $wp->exec("UPDATE `$table` SET `changes` = ? WHERE `app` = 'rtschema' AND `version` = 2", [json_encode([['op' => 'addField', 'kind' => 'articles', 'field' => 'forged', 'definition' => ['type' => 'text']]])]);
+// A deployment's preflight reads the versions through verify(): the same refusal, and nothing written.
+$optionBefore = get_option(Loader::option('rtschema'));
+eq('verify refuses a broken chain as list does', $refusal(fn () => $versions->verify()), '409 schema_chain_broken /changes');
+wp_cache_delete('alloptions', 'options');
+wp_cache_delete(Loader::option('rtschema'), 'options');
+eq('and records nothing on the option', get_option(Loader::option('rtschema')), $optionBefore);
 eq('a broken chain refuses the next change, naming the first version that doesn\'t check out', $refusal(fn () => $versions->apply(count($rowsBefore), $add('afterForgery', ['type' => 'text']), $admin)), '409 schema_chain_broken /changes');
 eq('it exports no lock from a broken chain', $refusal(fn () => $versions->lock()) !== 'accepted', true);
 $d = $described();
@@ -577,6 +579,12 @@ eq('restoring the row restores the chain the next time the versions are read', [
 // An option rewritten by something other than apply: its own hash no longer matches its content.
 $forged = $goodState;
 $forged['collections']['articles']['columns']['planted'] = ['type' => 'text'];
+update_option(Loader::option('rtschema'), $forged, true);
+$verified = $versions->verify();
+wp_cache_delete('alloptions', 'options');
+wp_cache_delete(Loader::option('rtschema'), 'options');
+eq('verify compares against the stored versions and leaves the edited option as it is', [$verified['site']['version'], get_option(Loader::option('rtschema'))], [$goodState['version'], $forged]);
+eq('verify answers what deployCheck answers', $versions->verify(), $versions->deployCheck());
 update_option(Loader::option('rtschema'), $forged, true);
 $d = $described();
 eq('an option edited outside apply is not served: the build\'s schema is, and the API says why', [isset($d['kinds']['articles']['columns']['planted']), isset($d['kinds']['articles']['columns']['subtitle']), $d['runtimeSchema']['problem'] ?? null],

@@ -194,6 +194,30 @@ file_put_contents("$dir/0001_adopt.sql", "-- first-adopt {\"table\":\"wp_users\"
 $migrator = new Migrator($wp->connection(), $dir, new \First\Schema($bad));
 problem('the migrator refuses an existingTable of WordPress users', static fn () => $migrator->migrate(), 409, 'existing_table_refused');
 eq('and records nothing', in_array('0001_adopt', $migrator->pending(), true), true);
+problem('planning the deploy refuses it the same way, before the schema check reads it', static fn () => $migrator->plan(), 409, 'existing_table_refused');
+// A historical adoption record is refused by plan() too, with no collection binding the table.
+$historical = new Migrator($wp->connection(), $dir, new \First\Schema($schema));
+problem("planning refuses a historical adoption of WordPress users", static fn () => $historical->plan(), 409, 'existing_table_refused');
+// The site's read-only inspection returns the refusal instead of throwing: a copy of the plugin
+// whose app directory holds the historical adoption of wp_users.
+$plugin = (new \ReflectionClass(\First\Wp\Plugin::class))->newInstanceWithoutConstructor();
+$app = sys_get_temp_dir() . '/first-guard-app-' . getmypid();
+@mkdir("$app/first/app", 0777, true);
+@symlink($dir, "$app/first/app/migrations");
+(function () use ($app, $schema) {
+    $this->dir = $app;
+    $this->schema = new \First\Schema($schema);
+})->call($plugin);
+try {
+    $report = $plugin->inspect();
+    check('inspect reports an existingTable refusal instead of throwing', in_array('existing_table_refused', array_column($report['refusals'], 'code'), true), $report['refusals']);
+} catch (\Throwable $e) {
+    check('inspect reports an existingTable refusal instead of throwing', false, get_class($e) . ': ' . $e->getMessage());
+}
+unlink("$app/first/app/migrations");
+rmdir("$app/first/app");
+rmdir("$app/first");
+rmdir($app);
 array_map('unlink', glob("$dir/*"));
 
 // A historical adoption is checked on its own: a later migration of the same deploy dropped its

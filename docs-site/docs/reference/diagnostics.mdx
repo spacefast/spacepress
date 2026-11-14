@@ -104,6 +104,7 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F4001` | holds functions, so it exists only while the config is built | [`reject-namespace-value`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-namespace-value) |
 | `F4001` | digest() without an encoding returns a Buffer | [`reject-digest-buffer`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-digest-buffer) |
 | `F4001` | keyof supports finite object types | [`reject-type-open-keyof`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-open-keyof) |
+| `F4001` | optional calls (`f?.()`) aren't supported in TypeScript code yet | [`reject-optional-call-typed`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-optional-call-typed) |
 | `F4001` | creates a wrapper object | [`reject-new-boolean`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-new-boolean) |
 | `F4001` | `process.env` needs a literal variable name | [`reject-process-env-dynamic`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-process-env-dynamic) |
 | `F4001` | isn't available on `process` in First code | [`reject-process-member`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-process-member) |
@@ -120,7 +121,7 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F4001` | symbol-keyed class methods only work in imported JavaScript | [`reject-typescript-class-symbol-method`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-typescript-class-symbol-method) |
 | `F4001` | symbols aren't supported in TypeScript code yet | [`reject-typescript-symbol`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-typescript-symbol) |
 | `F4001` | `crypto.getRandomValues` needs typed arrays | [`reject-crypto-random-values`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-crypto-random-values) |
-| `F4001` | `crypto.subtle` isn't available in First code | [`reject-crypto-subtle`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-crypto-subtle) |
+| `F4001` | `crypto.subtle.digest` works in imported JavaScript only | [`reject-crypto-subtle`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-crypto-subtle) |
 | `F4001` | `acme/site-info` takes \{ field: "name" \| "url" \}, not \{ field: "title" \} | [`reject-ability-input`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-ability-input) |
 | `F4001` | abilities.call() needs the ability name as a string literal | [`reject-ability-name`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-ability-name) |
 | `F4001` | unknown ability `acme/site-infos` | [`reject-ability-unknown`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-ability-unknown) |

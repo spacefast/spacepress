@@ -292,6 +292,30 @@ Transactions run concurrently, so a read whose result the transaction then
 depends on takes an explicit lock (`FOR UPDATE`, `LOCK IN SHARE MODE`; see
 `Sync\Lock`, `Locale\Lock`, `Jobs\Storage`).
 
+A job queued inside a transaction (`Jobs::enqueue`, a retry, a re-queue) writes
+its `first__jobs` row and its Action Scheduler action in that transaction.
+Action Scheduler writes through the global `$wpdb`, the connection the
+transaction runs on (`Wp\Connection`), so the action commits or rolls back with
+the row, and a crash after the commit loses no job. Action Scheduler caches the
+id of each group it creates in the object cache, which a rollback doesn't undo,
+so First creates its groups (`first`, `first-<app>`) at `action_scheduler_init`,
+outside any transaction (`Wp\Jobs\ActionSchedulerQueue::prepare`). The same
+step requires Action Scheduler's actions and groups tables to be InnoDB, like
+First's own; until they are, First refuses writes. If wpdb reconnects during a
+transaction (it retries a query after a lost connection, and the server has
+rolled the transaction back), every later statement of it and its commit fail.
+A job queued before Action Scheduler is ready (a `wp-hooks` handler on `init`
+at priority 0) commits without an action and gets one once Action Scheduler is
+ready. `Jobs\Runner::recover`, run when the runtime prepares a site and by the
+daily maintenance action, gives each waiting job that has no `first_job` action
+of any status one, at most 1000 per run. That covers a request that died before
+Action Scheduler was ready, deleted actions, and the jobs that runtimes before
+this one left in `first__outbox`. A job whose action an administrator cancelled
+in Tools > Scheduled Actions stays as it is; `wp first jobs cancel` cancels a
+job. The `first__outbox` table, where each job's ticket waited until after
+commit, is no longer written; its rows stay
+(`tests/php/jobs_transaction_cases.php`, run on SQLite and MariaDB).
+
 ## Validation and coercion (input → stored)
 
 | type | accepts | stored as (custom table column) |
@@ -685,7 +709,7 @@ and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
   `wp_update_user`, the profile screen, sign-up) are re-indexed on core's
   `user_register`, `profile_update` and `deleted_user`. When a build changes a
   kind's searchable fields, the first request after it queues the runtime job
-  `first.search.reindex` (outbox and Action Scheduler) for each kind that has
+  `first.search.reindex` (Action Scheduler) for each kind that has
   rows. It re-indexes 200 rows per run, each locked against a concurrent write,
   and queues the next; nothing is cleared first, so rows stay searchable during
   it, and the last run removes entries of deleted rows and dropped fields. A run

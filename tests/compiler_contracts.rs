@@ -167,6 +167,47 @@ fn successful_json_check_and_the_reusable_recipe_write_nothing() {
 }
 
 /// `first check --json` lists each SQL index the deploy keeps and why it exists (spec §2.9).
+/// `.index(fields, { unique? })` (spec §2.9): a compound index the migration creates and `first check
+/// --json` lists with its reason; a field the kind doesn't have is refused where it is written.
+#[test]
+fn a_declared_index_is_created_and_listed() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_app(
+        tmp.path().join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"likes\" });\n",
+    )
+    .unwrap();
+    write_app(
+        tmp.path().join("first/schema.ts"),
+        "import { table, integer } from \"first\";\nexport const likes = table({ post: integer(), author: integer() }).index([\"post\", \"author\"], { unique: true });\n",
+    )
+    .unwrap();
+    let (out, report) = checked(tmp.path());
+    assert!(out.status.success(), "{report}");
+    assert!(
+        report["indexes"].as_array().unwrap().contains(&json!({ "table": "likes", "name": "idx_post_author", "unique": true, "columns": ["post", "author"], "reason": "declared with .index([\"post\", \"author\"], { unique: true })" })),
+        "{report}"
+    );
+    let built = first().args(["build", "--quiet"]).arg(tmp.path()).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let sql = std::fs::read_to_string(tmp.path().join("first/_generated/migrations/0001_init.sql")).unwrap();
+    assert!(sql.contains("UNIQUE KEY `idx_post_author` (`post`, `author`)"), "{sql}");
+
+    write_app(
+        tmp.path().join("first/schema.ts"),
+        "import { table, integer } from \"first\";\nexport const likes = table({ post: integer() }).index([\"psot\"]);\n",
+    )
+    .unwrap();
+    let (out, report) = checked(tmp.path());
+    assert!(!out.status.success());
+    let diagnostic = &report["diagnostics"][0];
+    assert_eq!(
+        diagnostic["message"], "`.index()` names `psot`, which is not a field of this kind",
+        "{report}"
+    );
+    assert_eq!(diagnostic["help"], "did you mean `post`?");
+}
+
 #[test]
 fn json_check_lists_each_index_with_its_reason() {
     let tmp = tempfile::tempdir().unwrap();
@@ -198,6 +239,21 @@ fn json_check_lists_each_index_with_its_reason() {
     assert_eq!(
         find("items", "first_items_locationId_fk")["reason"],
         "`locationId` references locations: MySQL indexes a foreign key"
+    );
+    // Inferred (spec §2.9): a field a compiled `where` or `orderBy` names gets an index, unless one
+    // already starts with it. pantry's hooks and actions filter and order items by both.
+    assert_eq!(
+        find("items", "expiresOn_queried"),
+        json!({ "table": "items", "name": "expiresOn_queried", "unique": false, "columns": ["expiresOn"], "reason": "`expiresOn` is in a compiled `where` or `orderBy`" })
+    );
+    assert!(find("items", "quantity_queried")["reason"].as_str().is_some());
+    // `shopping_list.itemId` (filtered, and `.unique()`) and `items.id` (filtered, the primary key)
+    // already lead an index: no second one.
+    assert!(
+        !indexes
+            .iter()
+            .any(|i| i["name"] == "itemId_queried" || i["name"] == "id_queried"),
+        "a field already leading an index gets no second one: {indexes:?}"
     );
     assert!(
         indexes

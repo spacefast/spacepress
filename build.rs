@@ -72,7 +72,9 @@ fn docs(dir: &Path, repo: &Path, recurse: bool, extensions: &[&str], out: &mut V
 /// The `docs/*.md` pages `first mcp` answers from: what someone building an app with First reads.
 const GUIDES: &[&str] = &[
     "admin.md",
+    "admin-screens.md",
     "agents.md",
+    "astro.md",
     "class-compilation.md",
     "compiler-diagnostics.md",
     "config-api.md",

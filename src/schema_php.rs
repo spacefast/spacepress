@@ -215,6 +215,18 @@ fn collection(out: &mut String, c: &Collection) {
         let _ = writeln!(out, "            'staged' => false,");
     }
     let _ = writeln!(out, "            'comments' => {},", c.comments);
+    if let Some(p) = &c.comment_policy {
+        // spec §2.3, defaults filled; the comment enforcement reads it through Schema::commentPolicy().
+        let _ = writeln!(
+            out,
+            "            'commentPolicy' => ['guests' => {}, 'moderation' => '{}', 'threaded' => {}, 'closeAfterDays' => {}, 'types' => [{}]],",
+            p.guests,
+            p.moderation,
+            p.threaded,
+            p.close_after_days.map_or_else(|| "null".to_string(), |d| d.to_string()),
+            p.types.iter().map(|t| format!("'{t}'")).collect::<Vec<_>>().join(", ")
+        );
+    }
     let _ = writeln!(out, "            'uid' => {},", c.uid);
     let _ = writeln!(
         out,

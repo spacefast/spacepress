@@ -8,11 +8,13 @@ export const notes = table({
   done: boolean().default(false),
 }, { access: { read: "anyone", create: "anyone", update: "anyone", delete: "admin" } });
 
+export const decks = files({ accept: ["text/plain"], maxBytes: 100000, access: { read: "anyone", create: "editor", delete: "editor" } });
+
 export const posts = collection({
   title: text().max(120),
   summary: text({ multiline: true }).max(500).optional(),
   tags: select(["news", "guide"]).many().default([]),
-  deck: file({ bucket: "decks" }).optional(),
+  deck: file(decks).optional(),
 }, { label: "Posts", title: "title", revisions: true, uid: true, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 
 export const members = userProjection({
@@ -21,7 +23,7 @@ export const members = userProjection({
   plan: select(["free", "pro"]).default("free"),
 }, { access: { read: "self", update: "self", create: "anyone", delete: "admin" } });
 
-export const settings = global("settings", {
+export const settings = global({
   siteTitle: text().default("Carry").max(80),
 }, { label: "Settings" });
 
@@ -31,7 +33,7 @@ export default defineConfig({
   collections: { posts },
   users: { members },
   globals: { settings },
-  files: { decks: files("decks", { accept: ["text/plain"], maxBytes: 100000, access: { read: "anyone", create: "editor", delete: "editor" } }) },
+  files: { decks },
   jobs: {
     stamp: job({
       input: { id: integer() },

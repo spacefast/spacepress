@@ -125,6 +125,34 @@ jobs:
         env:
           FIRST_BIN: ${{ github.workspace }}/target/debug/first
         run: node --test scripts/census-08/census.test.mjs scripts/census-08/usage.test.mjs
+      # @first/astro against a First site on WordPress-on-SQLite, and a real astro build.
+      - name: Astro loaders
+        if: matrix.shard == 'rest'
+        env:
+          FIRST_BIN: ${{ github.workspace }}/target/debug/first
+        run: |
+          npm ci --prefix packages/astro --ignore-scripts --no-audit --no-fund
+          tsc -p packages/astro
+          node --test packages/astro/test/loader.test.mjs packages/astro/test/paging.test.mjs
+      # examples/garden and its Astro twin render the same pages (Chromium from the slow shard's setup).
+      - name: Astro twin example
+        if: matrix.shard == 'rest'
+        env:
+          FIRST_BIN: ${{ github.workspace }}/target/debug/first
+        run: |
+          npm ci --prefix examples/astro-garden --ignore-scripts --no-audit --no-fund
+          npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
+          npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
+          node --test examples/astro-garden/twins.test.mjs
+      # The Astro site migrated with the first-migrate-astro skill, read in Chromium on WordPress.
+      - name: Migrated Astro example
+        if: matrix.shard == 'rest'
+        env:
+          FIRST_BIN: ${{ github.workspace }}/target/debug/first
+        run: |
+          npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
+          npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
+          node --test examples/migrate-astro/migrated.test.mjs
       - name: Docker-free local development acceptance
         if: matrix.shard == 'rest'
         run: node --test scripts/dev/acceptance.test.mjs
@@ -261,7 +289,7 @@ jobs:
       - run: tsc -p examples/blog
       - run: tsc -p examples/showcase
       - run: tsc -p examples/blog/client-tests
-      - run: node --test runtime/client/index.test.ts
+      - run: node --test runtime/client/index.test.ts runtime/client/committed.test.ts
       - run: node --test examples/showcase/build-app.test.mjs examples/showcase/rebuild-service.test.mjs
       - run: node --test scripts/dev/studio.test.mjs
       - run: node --test packages/cli/test/*.test.mjs packages/create-first/test/*.test.mjs scripts/release/archive.test.mjs
@@ -395,6 +423,8 @@ jobs:
         run: FIRST_WP_PROJECT=first-wp-hardening FIRST_WP_PORT=8896 tests/wp/hardening/run.sh
       - name: Sealed mode on its own stack
         run: FIRST_WP_PROJECT=first-wp-sealed FIRST_WP_PORT=8895 tests/wp/hardening/sealed-run.sh
+      - name: Build store, managed initialize, and inspecting a candidate without changing the site
+        run: FIRST_WP_PROJECT=first-wp-store FIRST_WP_PORT=8901 tests/wp/store-run.sh
 
   wp-s3:
     if: github.event_name != 'pull_request'

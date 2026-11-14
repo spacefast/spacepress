@@ -155,9 +155,10 @@ export default function Note({ item }: PageProps<"notes/[slug]">) {
 JavaScript. The item's kind must turn `comments` on; otherwise the build stops
 at the prop. Who may comment, moderation and reply depth belong to the kind, not
 the component, and are enforced wherever a comment is created: the form, the
-API and core's comment form all give the same answer. Until a kind's `comments`
-takes options, the policy is signed-in users only, first-time moderation, and
-replies three levels deep (a deeper reply is refused). See
+API and core's comment form all give the same answer. `comments: true` is
+signed-in users only, first-time moderation, and replies three levels deep (a
+deeper reply is refused); `comments: { guests, moderation, threaded,
+closeAfterDays }` changes any of them ([Comments](config-api.md#comments)). See
 [the decision](decisions/2026-11-14-comments.md).
 
 ## Live regions
@@ -353,6 +354,118 @@ export function CheerButton({ noteId, count: initial }: { noteId: number; count:
 
 See [rendering.md §4.1](spec/rendering.md#41-client-components) for the full
 mapping and [`examples/full-site`](../examples/full-site) for a site that uses one.
+
+## Static output
+
+Pages render on WordPress per request by default. Two settings prebuild them
+instead, in [Astro](https://docs.astro.build/en/guides/on-demand-rendering/)'s
+words. The design and measurements are in
+[the decision record](decisions/2026-11-13-static-output.md).
+
+| You want | Write |
+|---|---|
+| Some pages prebuilt, the rest rendered per request, on one WordPress | `export const prerender = true` in those pages |
+| A whole site as static files, with no WordPress serving it | `defineConfig({ output: "static" })`, then `first export` |
+| Static files from a WordPress that editors use somewhere else | the same, with `first export --site https://cms.example.com` |
+
+A prebuilt page is what a signed-out visitor sees, rendered by the page's own
+compiled code. So it can't depend on the request. These are build errors at
+the page, each with its fix:
+
+- a layout `guard` above the page;
+- `export const search`;
+- a dynamic segment the build can't list;
+- calling `is_user_logged_in`, `current_user_can` or `get_current_user_id`.
+
+### Which URLs a dynamic page has
+
+A page whose folders serve a kind's `url` (`notes/[slug]` for
+`url: "/notes/:slug"`) is built once per item a signed-out visitor may read.
+Drafts and rows an access rule hides are never built.
+
+Any other dynamic page lists its URLs with `staticParams`, Astro's
+`getStaticPaths`:
+
+```tsx
+// first/app/tags/[tag]/page.tsx
+import type { PageProps, StaticParams } from "first/app";
+
+export const prerender = true;
+
+export async function staticParams(): Promise<StaticParams<"tags/[tag]">> {
+  return ["field", "lab notes"].map((tag) => ({ tag }));
+}
+
+export default function Tag({ params }: PageProps<"tags/[tag]">) {
+  return <h1>{params.tag}</h1>;
+}
+```
+
+`staticParams` runs as a signed-out visitor, so it can read the database.
+
+### Prebuilt pages on WordPress (`prerender = true`)
+
+- **When the files are made.** After a deploy, an Action Scheduler action renders each prebuilt URL
+  and writes its HTML and Markdown to `wp-content/cache/first-prebuilt/`.
+- **How they are served.** The app answers from the file before WordPress parses the request, with
+  the same `Cache-Control` as a cacheable render and the header `X-First-Prebuilt: 1`.
+- **What still renders per request.** A signed-in visitor, a request with a query string, and a URL
+  whose file isn't written yet.
+- **After a write.** A write that changes what a prebuilt page shows deletes that page's files at
+  once and schedules its rebuild. Until the rebuild runs, the page renders per request, so nobody
+  sees the old content. Other pages keep their files.
+- **The rest of the site.** Markdown twins, `llms.txt` and the sitemap are unchanged.
+- **Hosts that can't reach their own address.** The rebuild fetches the page from the site's own
+  address. A host where that fails sets the `first_prebuild_url` filter.
+
+### A static site (`first export`)
+
+```sh
+first export                                       # writes first/dist/static/
+first export --site-url https://docs.example.com   # also writes sitemap.xml and canonical links
+first export --base /docs                          # for a site served below /docs/
+```
+
+The project must say `output: "static"`, where every page is prebuilt.
+`prerender = false` is a build error there.
+
+- **Where the content comes from.** Without `--site`, `first export` starts a throwaway WordPress on
+  SQLite (the one `first dev` uses) with the build installed and `first/content/` loaded, renders
+  every page, and removes the site.
+- **The URL layout.** It is the one GitHub Pages, Netlify, Cloudflare Pages and most static servers
+  answer.
+
+| URL | File |
+|---|---|
+| `/` | `index.html`, with `index.md` |
+| `/docs/intro` | `docs/intro.html`, with `docs/intro.md` |
+| an unknown URL | `404.html` |
+| `/llms.txt`, `/robots.txt`, `/sitemap.xml` | the files of those names; `sitemap.xml` only with `--site-url` |
+| a moved item's old URL | a line in `_redirects`, and a page that redirects in the browser |
+| stylesheets, images, fonts, the Interactivity API and router modules, client component stores | the path WordPress serves them from (`wp-content/…`, `wp-includes/…`) |
+
+**What a static page can't do.** The export refuses each of these with the page and the fix:
+
+- **A client component that calls an action.** There is no server. With `--site`, a public action
+  (`access: "anyone"`) is called on the hosted site instead.
+- **A link to a URL the export doesn't contain.** For example a page left out, or WordPress's
+  sign-in or comment form. With `--site`, sign-in, comment and `wp-admin` links go to the hosted
+  site.
+- **A page that redirects, or that `staticParams` lists but that renders a 404.**
+
+### WordPress as the CMS (`first export --site`)
+
+Editors work on a hosted WordPress running the app. `first export --site https://cms.example.com`
+renders that site's published content with this checkout's pages.
+
+- **Credentials.** It needs an editor's credential in `FIRST_APP_PASSWORD` (`user:application-password`)
+  or `FIRST_TOKEN`, the same as `first sync`.
+- **The site must run this checkout's build.** Otherwise the export stops and says to deploy first.
+- **Rebuilding on publish.** Add the hosted site's `webhooks` config to call a CI job on publish
+  (`events: ["*"]`). The job runs `first export --site …` and uploads `first/dist/static/`.
+- **Client components** call public actions on the hosted site, across origins.
+- **Comments and sign-in** happen on the hosted site.
+- **Guarded pages** can't be exported: a static file is the same for everyone.
 
 ## Publish on Spacefast
 

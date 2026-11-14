@@ -297,7 +297,8 @@ final class AppRouter
         if ($this->plugin->unavailable() !== null) {
             $this->document(503, ['title' => get_bloginfo('name')], '<p>' . esc_html__('This page is temporarily unavailable.') . '</p>');
         }
-        $viewer = CoreAccess::viewer();
+        // A prerender (First\Render\Prebuilt) is a signed-out visitor's render, whatever came with it.
+        $viewer = \First\Render\Prebuilt::prerendering() ? new Viewer(null) : CoreAccess::viewer();
         if ($viewer === null) {
             $this->notFound();
         }
@@ -365,14 +366,18 @@ final class AppRouter
             if (($page['search'] ?? null) !== null) {
                 $props->p['search'] = $this->search($page['search']);
             }
-            if (($route['kind'] ?? null) !== null) {
-                $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $params));
-                if ($item === null) {
-                    throw Halt::notFoundSignal();
+            // The item a kind URL names is one of the render's reads: a write to any of its fields
+            // purges this URL (and rebuilds a prebuilt one), not only a write core's post hooks see.
+            [$head, $body] = Reads::during(function () use ($route, $params, $viewer, $props, $page, $layouts): array {
+                if (($route['kind'] ?? null) !== null) {
+                    $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $params));
+                    if ($item === null) {
+                        throw Halt::notFoundSignal();
+                    }
+                    $props->p['item'] = $item;
                 }
-                $props->p['item'] = $item;
-            }
-            [$head, $body] = Reads::during(fn (): array => Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props)), $reads);
+                return Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props));
+            }, $reads);
         } catch (Halt $halt) {
             if ($halt->location !== null) {
                 nocache_headers();
@@ -549,12 +554,15 @@ final class AppRouter
      * A `first/app/` page's Markdown twin (rendering.md §5: "code pages render from their compiled
      * output"): the page rendered as an anonymous visitor, its title as the heading, the page's own
      * HTML (not its layouts' navigation) converted to Markdown. Null when the URL is not an app
-     * page, so the WordPress twin answers. A missing item or `notFound()` is a 404 twin.
+     * page, so the WordPress twin answers. A missing item or `notFound()` is a 404 twin. `$reads`
+     * gets what the render read, for the caller that serves the twin to record (rendering.md §6.2).
      *
+     * @param-out array<string, array{ids: list<int|string>, listed: bool}> $reads
      * @return ?array{int, string}
      */
-    public function twin(string $url): ?array
+    public function twin(string $url, ?array &$reads = null): ?array
     {
+        $reads = [];
         $match = $this->twinRoute($url);
         if ($match === null) {
             return null;
@@ -565,21 +573,27 @@ final class AppRouter
         $page = $this->file($route['page']);
         $layouts = array_map(fn (string $l): array => $this->file($l) + ['path' => $l], $route['layouts']);
         try {
-            $props = new JsObject([
-                'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \First\JsArray($v) : $v, $match['params'])),
-            ]);
-            if (($page['search'] ?? null) !== null) {
-                $props->p['search'] = $this->search($page['search']);
-            }
-            if (($route['kind'] ?? null) !== null) {
-                $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $match['params']));
-                if ($item === null) {
-                    return [404, "# Not found\n\nNothing is published at this address.\n"];
+            $rendered = Reads::during(function () use ($match, $route, $page, $layouts, $viewer): ?array {
+                $props = new JsObject([
+                    'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \First\JsArray($v) : $v, $match['params'])),
+                ]);
+                if (($page['search'] ?? null) !== null) {
+                    $props->p['search'] = $this->search($page['search']);
                 }
-                $props->p['item'] = $item;
+                if (($route['kind'] ?? null) !== null) {
+                    $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $match['params']));
+                    if ($item === null) {
+                        return null;
+                    }
+                    $props->p['item'] = $item;
+                }
+                // The page alone: its layouts add navigation and chrome, which a twin leaves out.
+                return Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props, false));
+            }, $reads);
+            if ($rendered === null) {
+                return [404, "# Not found\n\nNothing is published at this address.\n"];
             }
-            // The page alone: its layouts add navigation and chrome, which a twin leaves out.
-            [$head, $body] = Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props, false));
+            [$head, $body] = $rendered;
         } catch (Halt $halt) {
             return $halt->location === null ? [404, "# Not found\n\nNothing is published at this address.\n"] : null;
         } catch (\Throwable $error) {
@@ -817,6 +831,10 @@ final class AppRouter
             }
         }
         header('Cache-Control: ' . $this->cacheControl);
+        if (\First\Render\Prebuilt::prerendering()) {
+            // The prebuild writes a file only from an answer the router rendered for it.
+            header('X-First-Prerendered: 1');
+        }
         header('Content-Type: text/html; charset=' . get_option('blog_charset'));
         // First writes the only <title> and canonical for its pages.
         remove_action('wp_head', '_wp_render_title_tag', 1);

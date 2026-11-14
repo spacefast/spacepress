@@ -19,6 +19,10 @@ namespace First\Wp;
  *
  * After migrating, every First table plus wp_posts/wp_postmeta must be InnoDB: First's request
  * transactions depend on it (§3.3), so every migration path refuses otherwise.
+ *
+ * A file's row records `sql`, the SHA-256 of the file as it was applied (before `{prefix}` is
+ * replaced), so what ran can be compared with a build's files later. Rows written before the column
+ * existed, and step rows, have none: they count by id only.
  */
 final class Migrator
 {
@@ -72,28 +76,66 @@ final class Migrator
         $this->db->run("INSERT INTO `$ledger` (`app`, `id`, `applied_at`) VALUES (?, ?, ?)", [$this->schema->name(), $step, gmdate('Y-m-d\\TH:i:s.000\\Z')]);
     }
 
-    /** @return list<string> ids applied by this call */
-    public function migrate(): array
+    /**
+     * What {@see migrate()} would run, after the same schema check, without changing anything: no
+     * DDL, no ledger row, and an old unkeyed ledger is read, not converted. Per pending migration its
+     * id, the hash recorded once it applies, and the statements still to run (numbered from 1 in the
+     * file). Throws SchemaRefused exactly when migrate() would.
+     *
+     * @return list<array{id: string, sql: string, statements: list<int>}>
+     * @throws SchemaRefused
+     */
+    public function plan(): array
     {
-        $this->requireCompatibleTables();
-        $app = $this->schema->name();
+        ['migrations' => $migrations, 'hashes' => $hashes, 'done' => $done] = $this->read();
+        $this->check($migrations, $done);
+        $plan = [];
+        foreach ($migrations as $id => $statements) {
+            if (isset($done[$id])) {
+                continue;
+            }
+            $left = array_values(array_filter(array_keys($statements), static fn (int $i): bool => !isset($done[$id . ':' . ($i + 1)])));
+            $plan[] = ['id' => (string) $id, 'sql' => $hashes[$id], 'statements' => array_map(static fn (int $i): int => $i + 1, $left)];
+        }
+
+        return $plan;
+    }
+
+    /**
+     * This app's migration files (id => statements, `{prefix}` replaced; id => hash of the file) and
+     * what the ledger records as done, read without changing anything: a ledger from before rows were
+     * keyed by app is read as this app's when this app is its one owner (as ledger() would convert it).
+     *
+     * @return array{migrations: array<string, list<string>>, hashes: array<string, string>, done: array<string, int>}
+     */
+    private function read(): array
+    {
         $files = glob($this->dir . '/*.sql') ?: [];
         sort($files, SORT_STRING);
         $migrations = [];
+        $hashes = [];
         foreach ($files as $file) {
             $id = basename($file, '.sql');
-            $sql = str_replace('{prefix}', $this->db->prefix(), (string) file_get_contents($file));
-            $migrations[$id] = self::statements($sql);
+            $raw = (string) file_get_contents($file);
+            $hashes[$id] = hash('sha256', $raw);
+            $migrations[$id] = self::statements(str_replace('{prefix}', $this->db->prefix(), $raw));
         }
-        // What this app already applied, read without changing anything: a ledger from before rows
-        // were keyed by app is read as this app's when this app is its one owner (as ledger() would
-        // convert it), and is only converted below, once the check has passed.
-        $done = array_flip($this->keyed() ? $this->done() : $this->unkeyedDone());
-        // The deploy-time schema check (spec §2.9): every pending statement that could lose rows or
-        // leave them without a required value is measured first, across all pending files, so a
-        // refusal leaves the tables, the rows and the ledger untouched.
-        // A file that stopped part way has steps that already ran: their renames are replayed (not
-        // measured), so the checks after them find the tables and columns under their new names.
+
+        return ['migrations' => $migrations, 'hashes' => $hashes, 'done' => array_flip($this->keyed() ? $this->done() : $this->unkeyedDone())];
+    }
+
+    /**
+     * The deploy-time schema check (spec §2.9): every pending statement that could lose rows or leave
+     * them without a required value is measured first, across all pending files, so a refusal leaves
+     * the tables, the rows and the ledger untouched. A file that stopped part way has steps that
+     * already ran: their renames are replayed (not measured), so the checks after them find the
+     * tables and columns under their new names.
+     *
+     * @param array<string, list<string>> $migrations
+     * @param array<string, int> $done
+     */
+    private function check(array $migrations, array $done): void
+    {
         $pending = [];
         $applied = [];
         foreach ($migrations as $id => $statements) {
@@ -106,6 +148,16 @@ final class Migrator
             }
         }
         (new SchemaCheck($this->db, $this->drops))->check($pending, $applied);
+    }
+
+    /** @return list<string> ids applied by this call */
+    public function migrate(): array
+    {
+        $this->requireCompatibleTables();
+        $app = $this->schema->name();
+        ['migrations' => $migrations, 'hashes' => $hashes, 'done' => $done] = $this->read();
+        // The ledger is only converted below, once the check has passed.
+        $this->check($migrations, $done);
         // Check every pending adoption before any DDL or ledger writes, even across tables/files.
         foreach ($migrations as $id => $statements) {
             if (isset($done[$id])) {
@@ -142,7 +194,7 @@ final class Migrator
                 }
                 $this->db->run("INSERT INTO `$ledger` (`app`, `id`, `applied_at`) VALUES (?, ?, ?)", [$app, $step, gmdate('Y-m-d\TH:i:s.000\Z')]);
             }
-            $this->db->run("INSERT INTO `$ledger` (`app`, `id`, `applied_at`) VALUES (?, ?, ?)", [$app, $id, gmdate('Y-m-d\TH:i:s.000\Z')]);
+            $this->db->run("INSERT INTO `$ledger` (`app`, `id`, `applied_at`, `sql`) VALUES (?, ?, ?, ?)", [$app, $id, gmdate('Y-m-d\TH:i:s.000\Z'), $hashes[$id]]);
             $this->db->run("DELETE FROM `$ledger` WHERE `app` = ? AND `id` LIKE ?", [$app, $this->db->wpdb()->esc_like($id . ':') . '%']);
             $applied[] = $id;
         }
@@ -292,7 +344,7 @@ final class Migrator
     public function ledger(): string
     {
         $ledger = $this->table('first__migrations');
-        if ($this->keyed()) {
+        if ($this->keyed() && $this->hashed()) {
             return $ledger;
         }
         self::locked($this->db, 'first__migrations', fn () => $this->createOrConvert($ledger));
@@ -300,18 +352,48 @@ final class Migrator
         return $ledger;
     }
 
+    /** Whether the ledger has the `sql` column (rows recording the hash of what they applied). */
+    private function hashed(): bool
+    {
+        return $this->db->run('SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$this->table('first__migrations'), 'sql']) !== [];
+    }
+
+    /**
+     * This app's ledger rows: id, and the hash of the file it applied (null for rows from before the
+     * column existed, and for `<id>:<n>` step rows). Read only; empty without a keyed ledger.
+     *
+     * @return list<array{id: string, sql: ?string}>
+     */
+    public function history(): array
+    {
+        if (!$this->keyed()) {
+            return [];
+        }
+        $column = $this->hashed() ? '`sql`' : 'NULL';
+        $rows = $this->db->run("SELECT `id`, $column AS `sql` FROM `" . $this->table('first__migrations') . '` WHERE `app` = ? ORDER BY `id`', [$this->schema->name()]);
+
+        return array_map(static fn (array $r): array => ['id' => (string) $r['id'], 'sql' => $r['sql'] === null ? null : (string) $r['sql']], $rows);
+    }
+
     private function createOrConvert(string $ledger): void
     {
         $exists = $this->db->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$ledger]) !== [];
         if (!$exists) {
-            $this->db->run("CREATE TABLE `$ledger` (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, PRIMARY KEY (`app`, `id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-        } elseif (!$this->keyed()) {
+            $this->db->run("CREATE TABLE `$ledger` (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, `sql` CHAR(64) NULL, PRIMARY KEY (`app`, `id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+            return;
+        }
+        if (!$this->keyed()) {
             $owners = $this->legacyOwners();
             if (count($owners) !== 1) {
                 throw new \RuntimeException('the migration ledger predates per-app keys and its owner is unclear (' . ($owners === [] ? 'no app' : implode(', ', $owners)) . "); set its rows' app with: ALTER TABLE `$ledger` ADD COLUMN `app` VARCHAR(191) NOT NULL DEFAULT '<app>' FIRST, DROP PRIMARY KEY, ADD PRIMARY KEY (`app`, `id`)");
             }
             $this->db->run("ALTER TABLE `$ledger` ADD COLUMN `app` VARCHAR(191) NOT NULL DEFAULT '" . esc_sql($owners[0]) . "' FIRST, DROP PRIMARY KEY, ADD PRIMARY KEY (`app`, `id`)");
             $this->db->run("ALTER TABLE `$ledger` ALTER COLUMN `app` DROP DEFAULT");
+        }
+        if (!$this->hashed()) {
+            // Additive: rows already there keep a null hash and count by id only.
+            $this->db->run("ALTER TABLE `$ledger` ADD COLUMN `sql` CHAR(64) NULL");
         }
     }
 

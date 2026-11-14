@@ -263,7 +263,24 @@ final class SchemaVersions
      */
     public function deployCheck(): array
     {
-        $rows = $this->list();
+        return $this->compare($this->list());
+    }
+
+    /**
+     * {@see deployCheck()} without its side effect: reading the versions never puts the option back
+     * or records a broken chain on it. What a deployment's preflight uses, so inspecting a candidate
+     * that is then refused leaves the site exactly as it was.
+     *
+     * @throws Refused 409 `schema_chain_broken`, as {@see list()} does, with nothing written
+     */
+    public function verify(): array
+    {
+        return $this->compare($this->exists() ? $this->verified() : []);
+    }
+
+    /** The comparison both checks make, on versions already read and verified. */
+    private function compare(array $rows): array
+    {
         $state = $rows === [] ? Loader::EMPTY : $this->replay($rows);
         $compiled = $this->compiled();
         $build = ['version' => (int) ($compiled['runtimeSchema']['version'] ?? 0), 'hash' => (string) ($compiled['runtimeSchema']['hash'] ?? '')];

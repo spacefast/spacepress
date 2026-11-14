@@ -187,6 +187,8 @@ export async function publishPlugins(content, managed) {
 const IGNORED_NAMES = new Set(['.first', '.git', 'node_modules']);
 const GENERATED = new Set(['first/_generated', 'first/dist']);
 const ignoredPath = (name) => IGNORED_NAMES.has(name.split('/').at(-1)) || GENERATED.has(name);
+// What a build reads: TypeScript, `public/` files, and the Markdown pages under `first/app/`.
+const isSource = (name) => /\.[cm]?[jt]sx?$/.test(name) || name.split('/')[0] === 'public' || /^first\/app\/(.*\/)?page\.md$/.test(name);
 
 export async function sourceDigest(project) {
   const digest = createHash('sha256');
@@ -198,7 +200,7 @@ export async function sourceDigest(project) {
       if (ignoredPath(name) || entry.isSymbolicLink()) continue;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) await visit(path, `${name}/`);
-      else if (/\.[cm]?[jt]sx?$/.test(name) || name.startsWith('public/')) {
+      else if (isSource(name)) {
         digest.update(name); digest.update(await readFile(path));
       }
     }
@@ -244,7 +246,7 @@ export async function watchSources(project, onChange, onError) {
                   // Discover new directories before notifying: files may have been created
                   // before their directory acquired its own watch handle.
                   void refresh().then(changed, failed);
-                } else if (/\.[cm]?[jt]sx?$/.test(name) || name.split(/[\\/]/)[0] === 'public') {
+                } else if (isSource(name)) {
                   changed();
                 }
               });
@@ -325,7 +327,10 @@ async function main() {
   if (mode !== 'start') throw new Error(`Unknown dev command: ${mode}`);
   const content = resolve(output);
   if (inside(content, managed.state) || inside(managed.state, content)) throw new Error('--out must not overlap .first/dev.');
+  // Nothing to put in the background when the command returns by itself.
+  if (flags.includes('--detach') && !noWatch) return detached(managed);
   const release = await lock(managed.state);
+  const statePath = join(managed.state, 'state.json');
   await rm(join(managed.state, 'stop'), { force: true });
   let watcher, timer, stopTimer, stopping = false, running = false, dirty = false, siteStarted = false, siteUrl;
   let finish;
@@ -427,11 +432,21 @@ async function main() {
     await configure(flags.includes('--allow-destructive'));
     const response = await fetch(`${url}/__first/api/v1`, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`First application is not ready: HTTP ${response.status}. Run first doctor --site ${url}`);
-    console.log(`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`);
-    if (await exists(join(project, 'public/index.html'))) console.log(`App:       ${url}/wp-content/plugins/first-app-${encodeURIComponent(managed.owner.app)}/public/index.html`);
-    if (managed.owner.generated.includes('first-admin')) console.log(`First Admin: ${url}/first-admin/`);
-    console.log('Initial login: admin / first-test-admin (local development only; unchanged if you edited it)\n');
-    console.log(`Data persists in ${managed.owner.site}\nStop: first dev stop ${JSON.stringify(project)}`);
+    const summary = [`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`];
+    if (await exists(join(project, 'public/index.html'))) summary.push(`App:       ${url}/wp-content/plugins/first-app-${encodeURIComponent(managed.owner.app)}/public/index.html`);
+    if (managed.owner.generated.includes('first-admin')) summary.push(`First Admin: ${url}/first-admin/`);
+    summary.push('Initial login: admin / first-test-admin (local development only; unchanged if you edited it)\n');
+    summary.push(`Data persists in ${managed.owner.site}\nStop: first dev stop ${JSON.stringify(project)}`);
+    console.log(summary.join('\n'));
+    // What `first dev status --json` and `first mcp` read without starting Studio: where the site
+    // is, and the process that rebuilds it on save (none after --no-watch).
+    await atomicJson(statePath, {
+      version: 1, url, port: Number(new URL(url).port) || (url.startsWith('https:') ? 443 : 80),
+      pid: noWatch ? null : process.pid, log: process.send ? join(managed.state, 'dev.log') : null,
+      wordpress: status.wpVersion ?? null, php: status.phpVersion ?? null, startedAt: new Date().toISOString(),
+    });
+    // Started by --detach: tell the waiting command the site is ready, then let it go.
+    if (process.send) { process.send({ ready: true, summary: summary.join('\n') }); process.channel?.unref(); }
     running = false;
     if (await exists(join(managed.state, 'stop'))) stopping = true;
     if (noWatch) return;
@@ -468,8 +483,43 @@ async function main() {
       await runStudio(['stop']).catch((error) => console.error(error.message));
     }
     await rm(join(managed.state, 'stop'), { force: true });
+    // This process no longer rebuilds the site; the URL and port stay for the next start.
+    const state = await json(statePath).catch(() => null);
+    if (state?.pid === process.pid) await atomicJson(statePath, { ...state, pid: null, log: null });
     await release();
   }
+}
+
+// `first dev --detach`: the same command as a background process in its own session, so it outlives
+// the terminal or the agent that started it. Its output goes to .first/dev/dev.log. This process
+// waits for the one message the child sends when the site is ready, prints what the child printed,
+// and returns; a child that stops before that has failed, and its output is the explanation.
+async function detached(managed) {
+  // A running session keeps its log: refuse before the file is opened for writing.
+  const session = await json(join(managed.state, 'session.json')).catch(() => null);
+  let active = Number.isSafeInteger(session?.pid) && session.pid > 0;
+  if (active) {
+    try { process.kill(session.pid, 0); }
+    catch (error) { if (error.code !== 'ESRCH') throw error; active = false; }
+  }
+  if (active) throw new Error('Another first dev command owns this project. Use first dev stop first.');
+  const log = join(managed.state, 'dev.log');
+  const out = await open(log, 'w', 0o600);
+  try {
+    const args = process.argv.slice(2).filter((arg) => arg !== '--detach');
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...args], { detached: true, stdio: ['ignore', out.fd, out.fd, 'ipc'] });
+    const outcome = await new Promise((done) => {
+      child.once('message', done);
+      child.once('error', (error) => done({ failed: error.message }));
+      child.once('exit', (code, signal) => done({ failed: `exit ${code ?? signal}` }));
+    });
+    if (!outcome.ready) {
+      process.stderr.write(await readFile(log, 'utf8'));
+      throw new Error(`The background process stopped before the site was ready (${outcome.failed}). Its output is above.`);
+    }
+    child.disconnect(); child.unref();
+    console.log(`${outcome.summary}\nRunning in the background (pid ${child.pid}), rebuilding on save.\nLog:  ${log}`);
+  } finally { await out.close(); }
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {

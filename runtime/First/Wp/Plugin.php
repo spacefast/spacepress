@@ -57,6 +57,7 @@ final class Plugin
             }
         });
         CoreAccess::register();
+        AgentScope::register();
         EditorSave::register();
         ProfileForm::register();
         if (($this->schema->auth()['collection'] ?? null) !== null) {
@@ -101,9 +102,17 @@ final class Plugin
         });
         Facade::register($this);
         AppRouter::register($this);
+        // Code blocks: highlighted with their title and marked lines, grouped into tabs (no script).
+        add_filter('render_block_core/code', [\First\Content\Code::class, 'render'], 10, 2);
+        add_filter('the_content', [\First\Content\Code::class, 'groups'], 20);
+        // Components content may use as blocks (first/components: `export const blocks`).
+        add_action('init', [\First\Content\Blocks::class, 'register'], 5);
+        ContentPages::register($this);
         KindUrls::register($this);
         MarkdownTwins::register();
+        Sitemap::register($this);
         Purges::register($this);
+        Staged::register($this);
         Hooks::register($this);
         add_action('admin_menu', [$this, 'adminMenu'], 9);
         // A plugin updated by copying files in has no activation; the first request of any kind
@@ -145,7 +154,10 @@ final class Plugin
                 if (is_string($mark)) {
                     Migrator::locked($this->connection(), $this->schemaOption(), fn () => $this->migrator()->markApplied($mark));
                 }
-                [$code, $out] = [0, \First\Js::jsonStringify(['data' => ['applied' => $this->migrateLocked()]])];
+                $applied = $this->migrateLocked();
+                // With runtimeSchema: what this build leaves to the site's own schema versions (spec §2.10).
+                $runtime = SchemaVersions::of($this)?->deployCheck();
+                [$code, $out] = [0, \First\Js::jsonStringify(['data' => ['applied' => $applied] + ($runtime === null ? [] : ['runtimeSchema' => array_diff_key($runtime, ['refusals' => true])])])];
             } catch (\Throwable $e) {
                 [$code, $out] = [1, \First\Js::jsonStringify(['error' => \First\App::problem($e)])];
             }
@@ -384,7 +396,17 @@ final class Plugin
 
     private function migrateNow(): array
     {
+        // A build that reads a runtime field's stored values as another type is refused before any
+        // table changes, with the rest of the deploy's refusals (spec §2.10).
+        $runtime = SchemaVersions::of($this)?->deployCheck();
+        if (($runtime['refusals'] ?? []) !== []) {
+            throw new SchemaRefused(array_map(static fn (array $r): array => $r + ['rows' => 0], $runtime['refusals']));
+        }
         $applied = $this->migrator()->migrate();
+        if (($compiled = \First\RuntimeSchema\Loader::compiled()) !== null) {
+            // `runtimeSchema`: runtime changes are checked against the fields of every build that ran here.
+            \First\RuntimeSchema\Loader::rememberDeclared($compiled);
+        }
         delete_option($this->refusalOption());
         IdentityBridge::provision();
         $this->backfillMembers();
@@ -398,6 +420,17 @@ final class Plugin
      * runtime update alone (same app build, older ledger) is therefore an upgrade too; the per-request
      * check costs one cached option read, plus one information_schema read the first time per process.
      */
+    /**
+     * Storage matches this build: nothing refused or held back, and every migration file of the build
+     * is in the ledger. A build whose migrations haven't all run (WP-CLI before `first migrate`, a
+     * refused or held-back build, a ledger rewound by hand) may name tables that don't exist yet.
+     * One ledger read: call it where something is about to change, not on every request.
+     */
+    public function migrated(): bool
+    {
+        return $this->unavailable() === null && $this->pendingMigrations() === [];
+    }
+
     private function current(bool $fresh = false): bool
     {
         if ($fresh) {
@@ -436,6 +469,12 @@ final class Plugin
         return hash_file('sha256', $this->dir . '/first/app/schema.php');
     }
 
+    /** Identifies the compiled schema this request runs: what a runtime schema version was validated on. */
+    public function buildHash(): string
+    {
+        return $this->schemaHash();
+    }
+
     // ================================================================ registration
 
     public function registerPostTypes(): void
@@ -452,14 +491,15 @@ final class Plugin
                 'show_in_rest' => true,
                 'rest_base' => $type,
                 'menu_icon' => 'dashicons-database',
-                'supports' => array_values(array_filter(['title', ($spec['content'] ?? null) !== null ? 'editor' : null, ($spec['revisions'] ?? false) ? 'revisions' : null, ($spec['comments'] ?? false) ? 'comments' : null, 'author', 'custom-fields'])),
+                'supports' => array_values(array_filter(['title', ($spec['content'] ?? null) !== null ? 'editor' : null, ($spec['revisions'] ?? false) ? 'revisions' : null, ($spec['comments'] ?? false) ? 'comments' : null, 'author', 'custom-fields', ($spec['hierarchical'] ?? false) ? 'page-attributes' : null])),
                 // Singular differs from plural so `edit_<type>` stays a primitive cap. Every cap of the type
                 // is answered from the collection's access rules (CoreAccess::mapMetaCap), not from roles.
                 'capability_type' => [$type . '_item', $type],
                 'capabilities' => ['create_posts' => 'create_' . $type],
                 'map_meta_cap' => true,
                 'rest_controller_class' => PostsController::class,
-                'hierarchical' => false,
+                // A hierarchical kind's items nest (`parent`, `order`), so the editor offers a parent and an order.
+                'hierarchical' => (bool) ($spec['hierarchical'] ?? false),
                 'has_archive' => false,
                 'rewrite' => false,
                 'query_var' => false,

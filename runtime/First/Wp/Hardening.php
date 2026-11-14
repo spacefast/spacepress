@@ -24,7 +24,7 @@ final class Hardening
     private const RULES = 'first_rewrite_rules';
 
     /** In the order spec.md §6 lists them. */
-    public const SWITCHES = ['xmlrpc', 'pings', 'emoji', 'fileEditors', 'pluginAndThemeInstalls', 'autoUpdates', 'customizer', 'comments', 'permalinks', 'timezone', 'blockTheme'];
+    public const SWITCHES = ['xmlrpc', 'pings', 'emoji', 'fileEditors', 'pluginAndThemeInstalls', 'autoUpdates', 'customizer', 'comments', 'schemaLock', 'permalinks', 'timezone', 'blockTheme'];
 
     private static bool $applied = false;
 
@@ -163,6 +163,15 @@ final class Hardening
         add_filter('get_default_comment_status', static function (string $status, string $type, string $commentType) use ($open): string {
             return $commentType === 'comment' && isset($open[$type]) ? $status : 'closed';
         }, PHP_INT_MAX, 3);
+    }
+
+    /**
+     * The app's schema is changed in `first.config.ts` and nowhere on the site: what First generates
+     * (field groups, post types, taxonomies, meta, roles) is refused to every user ({@see SchemaLock}).
+     */
+    private static function schemaLock(\First\Schema $schema): void
+    {
+        SchemaLock::apply($schema);
     }
 
     // ================================================================ always configured

@@ -67,12 +67,10 @@ To publish a new version, run `sf publish` again from the same directory. The CL
 Each version runs the code it was compiled from. These work with no extra setup:
 
 - The API under `/__first/api/v1`, over WordPress's own REST routes. See the [API reference](/rest).
-- Pages and HTTP handlers under `first/app/` (`page.tsx`, `route.ts`), on their own paths. See [Pages](/pages).
+- Pages and HTTP handlers under `first/app/` (`page.tsx`, `route.ts`), on their own paths, with the stylesheets and SVGs they import. See [Pages](/pages).
 - `public/`, served as static files.
 - The typed client at `/__first/client.js`, with its types at `/__first/client.d.ts`.
 - Live updates. `watch()` in the client gets every committed change over Spacefast's realtime connection.
-
-TSX pages from `pages/` publish too, but Spacefast compiles your app without Node, so it can't render them. Run `first build` and `first-pages build` on your machine first, then `sf publish`. [Pages](/pages) has the details. `first/app/` pages are compiled with the rest of the app and need no separate step.
 
 ## Sign people in with Spacefast
 
@@ -83,5 +81,5 @@ A First app can sign people in with Spacefast like any other OAuth2 provider. Sp
 | Message | What to do |
 | --- | --- |
 | `first_source_needs_local_capture` because an import needs npm packages | Run `npm install` in the app, then publish again from your machine. |
-| `first_source_needs_local_capture` because `first/pages.json` is missing or stale | Run `first build`, then `npx @spacefast/first-pages build` to render the pages again, then publish again. |
+| The bundle has TSX pages from the old pages renderer | Move `pages/` to `first/app/` ([Pages](/pages#from-the-old-pages-renderer)), then publish again. |
 | A diagnostic code such as `F1002` | The compiler refused the config. Read the [diagnostic codes](/reference/diagnostics), fix the file and line it names, and publish again. |

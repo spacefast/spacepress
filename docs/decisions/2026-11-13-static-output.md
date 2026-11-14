@@ -212,8 +212,20 @@ Method:
 | SSR from Batcache | `advanced-cache.php`, before plugins load | 2.4 ms | 9.0 ms |
 | The same HTML as a file from Apache | no PHP (what `first export` gives a static host) | 0.7 ms | 4.5 ms |
 
+Measured again after #398 and #416 merged, on main at `29bc393bf`, the same way, on the same
+host. The differences from the first run: a fresh stack, and stock Batcache 1.5, unmodified,
+because main's header order lets it read `s-maxage` directly. The machine was also less loaded,
+so every case is faster. The order and the ratios of the first run hold.
+
+| Case | Median TTFB | p95 |
+|---|---|---|
+| SSR, uncached | 32.4 ms | 48.6 ms |
+| Prebuilt (hybrid), Batcache off | 12.3 ms | 19.6 ms |
+| SSR from Batcache | 0.7 ms | 1.0 ms |
+| The same HTML as a file from Apache | 0.3 ms | 1.0 ms |
+
 What this means:
-- A prebuilt page is about 4× faster than an uncached render.
+- A prebuilt page is 2.6× to 4× faster than an uncached render (32.4 / 12.3 and 71.7 / 17.6).
 - Batcache, where it runs, is faster still, because it answers before any plugin loads.
 - So the hybrid's prebuilt files matter most where they serve:
   - the first request after a deploy or an edit, which Batcache would render uncached and which a

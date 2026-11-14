@@ -125,7 +125,15 @@ try {
   await settle("1");
   await page.waitForFunction((s) => document.querySelector(`${s} p.shelf-open`) && document.querySelector(`${s} strong.shelf-count`), shelf, { timeout: 15000 });
   shelfSteps.push(await read());
-  process.stdout.write(JSON.stringify({ before, after, hydration, output, items, seen, toggleBefore, toggleAfter, shelfSteps, kept, warnings, responses }));
+  // The app's typed client is served as a browser module (`@first/client`): it loads with no
+  // bundler and exports the client every live read uses.
+  const client = await page.evaluate(async () => {
+    const url = new URL("wp-content/plugins/first-app-clients/first/app/client/first-client.js", document.baseURI.replace(/[^/]*$/, ""));
+    const response = await fetch(url);
+    const m = await import(url.href);
+    return [response.status, response.headers.get("content-type"), typeof m.createClient, typeof m.createClient({ url: location.origin + "/__first/api/v1" }).actions.like];
+  });
+  process.stdout.write(JSON.stringify({ client, before, after, hydration, output, items, seen, toggleBefore, toggleAfter, shelfSteps, kept, warnings, responses }));
 } finally {
   await browser.close();
 }

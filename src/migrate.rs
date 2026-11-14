@@ -76,6 +76,9 @@ pub fn snapshot_with(schema: &Schema, queried: &std::collections::BTreeSet<(Stri
         if !cols.is_empty() {
             t["queried"] = json!(cols);
         }
+        if !c.indexes.is_empty() {
+            t["indexes"] = c.indexes.iter().map(|(fields, unique)| json!({ "columns": fields, "unique": unique })).collect();
+        }
         tables.insert(c.table.clone(), t);
     }
     for c in schema.collections.values() {
@@ -338,7 +341,13 @@ pub fn index_report(snapshot: &Json) -> Json {
             );
         }
         for (name, unique, ix_cols) in indexes(t, def) {
-            let reason = if name.ends_with("_unique") {
+            let declared = def["indexes"].as_array().into_iter().flatten().any(|ix| {
+                ix["columns"].as_array().is_some_and(|c| c.iter().filter_map(Json::as_str).eq(ix_cols.iter().map(String::as_str)))
+                    && (ix["unique"].as_bool() == Some(true)) == unique
+            });
+            let reason = if declared {
+                format!("declared with .index([{}]{})", ix_cols.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", "), if unique { ", { unique: true }" } else { "" })
+            } else if name.ends_with("_unique") {
                 format!("`{}` is .unique()", ix_cols[0])
             } else if name == "status_publishedAt" {
                 "drafts: published rows are filtered by status and ordered by publishedAt".to_string()
@@ -395,6 +404,17 @@ fn indexes(t: &str, def: &Json) -> Vec<(String, bool, Vec<String>)> {
     }
     if def["system"].as_bool() == Some(true) && t == REVISIONS {
         out.push(("row".into(), false, vec!["collection".into(), "pk".into()]));
+    }
+    // `.index(fields, { unique? })`: compound indexes the author declared, named by their columns.
+    for ix in def["indexes"].as_array().into_iter().flatten() {
+        let fields: Vec<String> = ix["columns"].as_array().into_iter().flatten().filter_map(|c| c.as_str().map(str::to_owned)).collect();
+        if !fields.is_empty() && fields.iter().all(|f| cols.get(f).is_some_and(indexable)) {
+            let unique = ix["unique"].as_bool() == Some(true);
+            let name = format!("idx_{}", fields.join("_"));
+            if !out.iter().any(|(n, _, _)| n == &name) {
+                out.push((name, unique, fields));
+            }
+        }
     }
     // A column a compiled `where` or `orderBy` names (spec §2.9), unless an index already starts with
     // it: the primary key, `.unique()`, a reference (MySQL indexes a foreign key), or one above.

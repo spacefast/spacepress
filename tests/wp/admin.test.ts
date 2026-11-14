@@ -195,9 +195,13 @@ test("a declared screen: its declaration is served to users who may open it, wit
   // whatever that ability's annotations make core's run route require.
   const table = await (await fetch(`${site}/wp-json/first-admin/v1/screens/table-comments`, { headers: auth("admin") })).json();
   assert.equal(table.view.ability, "blog/comments-list");
-  const annotations = JSON.parse(wp("eval", "echo wp_json_encode(wp_get_ability('blog/comments-delete')->get_meta_item('annotations'));"));
-  const method = annotations.destructive && annotations.idempotent ? "DELETE" : "POST";
-  assert.deepEqual(table.actions.map((a: { ability: string; method: string }) => [a.ability, a.method]), [["blog/comments-delete", method]]);
+  assert.deepEqual(table.actions.map((a: { ability: string }) => a.ability), ["blog/comments-delete"]);
+  // Core's run route takes the declared method: with any other one it answers 405 before running.
+  const [del] = table.actions as { method: string }[];
+  const probe = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/comments-delete/run${del.method === "POST" ? "" : "?input[id]=0"}`, {
+    method: del.method, headers: { ...auth("admin"), "content-type": "application/json" }, body: del.method === "POST" ? JSON.stringify({ input: { id: 0 } }) : undefined,
+  });
+  assert.notEqual(probe.status, 405, `${del.method}: ${await probe.text()}`);
   // Classic wp-admin registered a page for each, under the declared parent.
   const pages = JSON.parse(wp("eval", `
     wp_set_current_user(${harness.users.admin.id});

@@ -819,6 +819,7 @@ pub(crate) fn compile_tree(
 }
 
 /// The First plugins a host mounts for this build (the build store loader's order).
+#[cfg(feature = "host")]
 fn hosted_first(schema: &crate::schema::Schema) -> Vec<String> {
     ["first-runtime".to_string(), format!("first-app-{}", schema.name)]
         .into_iter()

@@ -576,6 +576,22 @@ Locale collation depends on the host and cannot be reproduced deterministically.
 
 [Evidence](../tests/fixtures/reject-locale-compare)
 
+## subtle-digest
+
+Status: **supported**.
+
+Imported JavaScript compiles crypto.subtle.digest(algorithm, data): SHA-1, SHA-256, SHA-384 and SHA-512 by name in any case or as { name }, over an ArrayBuffer, typed array or DataView, resolving to an ArrayBuffer; an unknown algorithm rejects with NotSupportedError and non-binary data with TypeError. Evidence: tests/differential/language/subtle-digest.ts.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## subtle-digest-typed
+
+Status: **refused**. Diagnostic: `F4001`.
+
+Typed TypeScript hashes with createHash("sha256").update(text).digest("hex") from "node:crypto".
+
+[Evidence](../tests/fixtures/reject-subtle-digest-typed)
+
 ## optional-chains
 
 Status: **supported**.

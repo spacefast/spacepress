@@ -1,0 +1,15 @@
+// crypto.subtle.digest(algorithm, data) in imported JavaScript: SHA-1/256/384/512 by name (any case)
+// or { name }, over an ArrayBuffer, a typed array, a subarray or a DataView, resolving to an
+// ArrayBuffer; an unknown algorithm or non-binary data rejects (NotSupportedError, TypeError).
+// files-sdk 3.1.2's sha256Hex is included verbatim. Every action runs under Node and as compiled
+// PHP; the JSON results must be byte-identical. Typed TypeScript refuses crypto.subtle
+// (tests/fixtures/reject-subtle-digest-typed).
+import { action, defineConfig } from "first";
+import { digests } from "./subtle-digest-helpers.mjs";
+
+export default defineConfig({
+  name: "language-subtle-digest",
+  actions: {
+    digests: action({ input: {}, handler: async () => await digests() }),
+  },
+});

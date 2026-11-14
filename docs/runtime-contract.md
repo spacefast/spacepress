@@ -625,7 +625,9 @@ The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
   narrows them in two ways: a password-protected post is left out
   (`wp_sitemaps_posts_query_args`), and with a users kind an author is listed
   only when a signed-out visitor may read that user's row
-  (`wp_sitemaps_users_query_args`).
+  (`wp_sitemaps_users_query_args`). Without a users kind the users sitemap
+  is gone unless the config sets `publicAuthors`
+  ([Authors](config-api.md#authors)).
 - **First's provider** (`first`, registered on `wp_sitemaps_init` with
   `wp_register_sitemap_provider()`) adds a file per kind that has a `url`,
   `/wp-sitemap-first-<kind>-<n>.xml`, and one for `first/app/` pages,

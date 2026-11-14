@@ -2486,6 +2486,28 @@ export default defineConfig({ name: "kindurls" });
 "#,
     );
     assert!(built.get("frontend").is_none(), "{built}");
+    // `publicAuthors` reaches the runtime only when set (spec.md §6, the authors switch).
+    assert!(built.get("publicAuthors").is_none(), "{built}");
+    let built = schema(
+        r#"import { defineConfig } from "first";
+export default defineConfig({ name: "kindurls", publicAuthors: true });
+"#,
+    );
+    assert_eq!(built["publicAuthors"], true);
+    let refused = tmp.path().join("app-public-authors");
+    std::fs::create_dir_all(&refused).unwrap();
+    std::fs::write(
+        refused.join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"kindurls\", publicAuthors: \"yes\" });\n",
+    )
+    .unwrap();
+    let out = first().args(["build", "--quiet"]).arg(&refused).output().unwrap();
+    assert!(!out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("publicAuthors must be true or false"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     // `staged: false` is the one staged setting the schema carries: collections stage unless it is there.
     let built = schema(
         r#"import { collection, defineConfig, text } from "first";

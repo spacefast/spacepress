@@ -77,6 +77,33 @@ final class Crypto
         return self::encode($bytes === 0 ? '' : random_bytes($bytes), $encoding);
     }
 
+    /**
+     * `crypto.subtle.digest(algorithm, data)`: a promise of an ArrayBuffer holding the digest.
+     * The algorithm is a name or `{ name }` (SHA-1, SHA-256, SHA-384, SHA-512, case-insensitive);
+     * data is an ArrayBuffer, a typed array or a DataView. As in Web Crypto, a bad algorithm or
+     * data rejects the promise rather than throwing.
+     */
+    public static function subtleDigest(mixed $algorithm, mixed $data): JsPromise
+    {
+        try {
+            $name = $algorithm instanceof JsObject ? ($algorithm->p['name'] ?? null) : $algorithm;
+            $php = is_string($name) ? match (strtoupper($name)) {
+                'SHA-1' => 'sha1', 'SHA-256' => 'sha256', 'SHA-384' => 'sha384', 'SHA-512' => 'sha512', default => null,
+            } : null;
+            if ($php === null) {
+                throw new JsError('Unrecognized algorithm name', 'NotSupportedError');
+            }
+            $bytes = match (true) {
+                $data instanceof JsArrayBuffer => $data->bytes,
+                $data instanceof JsTypedArray, $data instanceof JsDataView => $data->bytes(),
+                default => throw new JsError('Failed to execute \'digest\' on \'SubtleCrypto\': 2nd argument is not instance of ArrayBuffer, Buffer, TypedArray, or DataView.', 'TypeError'),
+            };
+            return JsPromise::from(new JsArrayBuffer(hash($php, $bytes, true)));
+        } catch (JsError $error) {
+            return JsPromise::rejected($error);
+        }
+    }
+
     /** A random RFC 4122 version 4 UUID, as `crypto.randomUUID()` returns. */
     public static function randomUUID(): string
     {

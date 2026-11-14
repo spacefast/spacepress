@@ -220,7 +220,7 @@ class MarkdownConsumer implements DataFormatConsumer {
 						 *
 						 * @TODO: Patch the commonmark parser OR use a diffent parser.
 						 */
-						$this->append_content( $node->getLiteral() );
+						$this->append_content( str_replace( '<', '&lt;', $node->getLiteral() ) );
 						break;
 
 					case ExtensionInline\Code::class:

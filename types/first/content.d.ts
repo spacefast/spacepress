@@ -24,7 +24,10 @@ export interface PagerLink {
   href: Href;
 }
 
-/** One `##` or `###` heading of an item, with the anchor id the page renders it with. */
+/**
+ * One `##` or `###` heading of an item, with the anchor id the page renders it with: GitHub's
+ * rule (`## What's new?` is `whats-new`; a repeat on the page gets `-1`, `-2`, …).
+ */
 export interface Heading {
   depth: 2 | 3;
   text: string;

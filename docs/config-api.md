@@ -252,13 +252,15 @@ app is active they are closed to visitors who aren't signed in:
 
 | route | answer |
 |---|---|
-| `/wp/v2/users`, `/wp/v2/users/<id>`, the same through `?rest_route=`, `/batch/v1` or any letter case | 401 |
+| `/wp/v2/users`, `/wp/v2/users/<id>`, the same through `?rest_route=` or any letter case | 401 (`OPTIONS` keeps core's route description, which names no user) |
+| a `/batch/v1` sub-request for those routes (the batch takes writes only) | the batch answers 207 and the sub-request holds the 401 |
 | a post's REST `_embed=author` | the embed holds that 401, not the user |
 | `?author=<id>` (core redirects it to `/author/<login>/`), `?author_name=`, `/author/<login>/`, its feed and its `.md` twin | 404, no redirect |
 | the users sitemap (`/wp-sitemap-users-1.xml`), and its entry in `/wp-sitemap.xml` | gone (with a users kind: only the users below) |
 | a post's oEmbed `author_name` and `author_url` | the site's name and address, as core answers for a post with no author |
-| `/__first/api/v1/users` | follows the core route (401) |
-| the app's own users kind on First's API (`GET /__first/api/v1/<kind>`) | its read rule decides, as for every viewer: a rule that needs a signed-in user (`self`, a role) answers the list with First's 401, a rule that filters answers with the rows it gives a signed-out visitor (often none), and one user is a 401 unless the rule gives that row to anyone, whether or not the id exists |
+| `/__first/api/v1/users`, in an app without a users kind | follows the core route (401) |
+| the app's own users kind on First's API (`GET /__first/api/v1/<kind>`, also at `/users`) | its read rule decides, as for every viewer: a rule that needs a signed-in user (`self`, a role) answers the list with First's 401, a rule that filters answers with the rows it gives a signed-out visitor (often none). One user is a 401 unless the rule gives that row to anyone, whether or not the id exists; core's own rule still applies after that, so a visible user with no published post is in the list and a 401 on their own |
+| a registered commenter's `comment-author-<nicename>` class, and a byline's link to the archive | the class is left out; the link points at the home page unless that user is a public author |
 
 With a users kind, its read rule also says who is a public author, user by
 user: a user whose row the rule gives a signed-out visitor keeps their author
@@ -268,8 +270,16 @@ has gets, and a kind whose rule gives a visitor no user has no public author
 and no users sitemap file. Core's `/wp/v2/users` stays closed either way; the
 kind's own route on First's API is where an app reads its users.
 
-Signed-in users and credentials keep core's answers (the block editor's author
-picker), and the users kind's read rule decides what First's API shows. A
+On core's REST routes, signed-in users and credentials keep core's answers (the
+block editor's author picker), and the users kind's read rule decides what
+First's API shows. A guest session is not signed in for this purpose: any
+visitor can start one, so core's users routes stay closed to it, and it reads
+only its own record through First's API. The front-end pages (author archives,
+`?author=`, the sitemap, oEmbed) answer the same for everyone, signed in or
+not, so a page cache can hold them; wp-admin's own lists by author are not
+affected, nor are REST routes that take `author` as a parameter
+(`/wp/v2/posts?author=<id>` lists that user's published posts by id, as in
+core). A
 scoped agent credential without `personal` sees what core shows anyone
 ([agents](agents.md)).
 
@@ -279,13 +289,18 @@ Authors are public, as WordPress ships them, when the app says so: either set
 export default defineConfig({ publicAuthors: true });
 ```
 
-or give the users kind a read rule that lets anyone read every user
-(`access: { read: "anyone" }`). `GET /__first/api/v1` reports which applies under
-`runtime.wp.publicAuthors`.
+or give the users kind the read rule `"anyone"`
+(`access: { read: "anyone" }`). `GET /__first/api/v1` reports whether either
+applies, as one boolean, under `runtime.wp.publicAuthors`. A coded rule that
+happens to return `true` for every user opens the archives, the sitemap and
+oEmbed user by user, but not core's `/wp/v2/users`, and is not reported as
+public.
 
 A post's byline and its feed's `<dc:creator>` still show the author's display
 name, which is what a site publishes on purpose. Set a display name that isn't
 the login (WordPress's default) for users whose login should stay private.
+A theme can still print a user's nicename, which WordPress derives from the
+login, in markup of its own; First closes the two places core's blocks do.
 
 ## Mixed content and app data
 
@@ -744,7 +759,16 @@ export default async function Doc({ item }: PageProps<"docs/[[...path]]">) {
 ```
 
 The tree is the published items the visitor may read, siblings by order then title, four levels
-deep. `headings()` gives the ids the page renders its headings with.
+deep. `headings()` gives the ids the page renders its headings with. An id follows GitHub's rule,
+as READMEs and most docs tools spell it: `## What's \`first/app/\`?` is `#whats-firstapp`, and a
+second `## Why` on the page is `#why-1`. A heading with its own id keeps it.
+
+`first doctor --site <url> --links` reads the served site as a visitor does and reports every link
+and `#anchor` its pages make that doesn't resolve, with the page it is on. It starts at the home
+page, WordPress's sitemap and `/llms.txt`, and follows the site's own links, images, stylesheets and
+scripts. It never fetches other sites or WordPress's own paths (`/wp-admin`, `/wp-json`, feeds).
+Content edited in wp-admin, synced Markdown and TSX pages are checked the same way, so run it
+against `first dev` before a release and against the published site after one.
 
 ### Components in Markdown
 
@@ -1141,10 +1165,14 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   (`schema_reserved`); a removed name comes back only with the stored type it had, and a name
   that any build which ran on the site stores as another type keeps that type (`schema_retype`), so
   two builds the host serves at once never read one value two ways; a field stores its values under
-  keys no other field of its storage uses, sub-fields and repeater rows included (`seo_title` is
-  refused next to a group `seo` with a `title`, and so is a global `site_meta` with a field `title`
-  next to a global `site` with a field `meta_title`: both would be `first_global_site_meta_title`);
-  something a build declares is not removed at runtime (`schema_in_use`, or
+  keys no other field of its storage uses, sub-fields, repeater rows and a blocks field's layout
+  record (`_<field>_layout_meta`) included, and keys are compared without letter case, as MySQL
+  compares them (`seo_title` and `SEO_title` are refused next to a group `seo` with a `title`, and
+  so is a global `site_meta` with a field `title` next to a global `site` with a field
+  `meta_title`: both would be `first_global_site_meta_title`). The fields checked are every field
+  whose values may still be stored: the build's, hidden ones, removed ones, and those of every
+  build that ran on the site (whose sub-fields aren't recorded, so a group, repeater or blocks
+  field's whole `<field>_` prefix counts as its); something a build declares is not removed at runtime (`schema_in_use`, or
   `schema_build_only` when no runtime change added it). Every other operation (renaming, retyping,
   tables, hooks, actions, jobs, pages, taxonomies) is `schema_build_only`, with the source edit to
   make. Fields of a translated or synced collection are build-only for now.
@@ -1190,14 +1218,22 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   only when its name occurs nowhere. A field your code reads, or a required one, is
   `schema_in_use`. To remove it, delete it from your code and from the lock, build and deploy.
 - **Deploying.** A build that lacks the site's changes does not drop them: they stay active, with
-  their data, and `wp first migrate` lists them under `runtimeSchema.kept`. A build that declares
-  a runtime name, or a removed one, in a way that reads its stored values differently (another type,
-  other options, other sub-fields or layouts, or a `table()` named like a runtime collection) is
-  refused before any table changes, with the fix (usually: `first pull`, then build). A build that
-  only changes a runtime field's rules or presentation is listed under `runtimeSchema.changed`; its
-  declaration is used. Applying a change takes the same lock a deploy holds, so the two never
-  interleave; a change that waited for a deploy is refused with 409 `schema_build_changed` and is
-  proposed again on the new build.
+  their data, and `wp first migrate` lists them under `runtimeSchema.kept`. That includes the
+  fields of a kind the site added that the build declares without them. A build is refused before
+  any table changes, with the fix (usually: `first pull`, then build), when it declares a runtime
+  name, or a removed one, in a way that reads its stored values differently (another type, other
+  options, other sub-fields or layouts: `runtime_type_differs`), when one of its fields is stored
+  under a key a runtime field uses (`runtime_key_shared`), when it declares something other than a
+  collection under a runtime collection's name (a `table()`, a global, an action or a job:
+  `runtime_kind_differs`), and when it declares a runtime collection without the body the site
+  stored for it (`runtime_body_dropped`). The order of options, sub-fields and layouts changes no
+  stored value and is not refused. A build compiled without the lock that only changes a runtime
+  field's rules or presentation is listed under `runtimeSchema.changed`; its declaration is used.
+  (With the lock, `first build` already refuses a field the source declares differently.) Applying
+  a change takes the same lock a deploy holds, so the two never interleave; once it holds the lock,
+  apply checks that the build its request loaded is still the one the last deploy recorded, and a
+  change that waited for a deploy is refused with 409 `schema_build_changed` and is proposed again
+  on the new build.
 - **Moving a change into source.** Declare the field or kind there as the site stores it (the lock
   shows it). A kind the site added keeps building after you declare it: its title and body are the
   ones source declares.
@@ -1209,14 +1245,21 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   next version. Read and propose run over GET, so `changes` may also be one JSON string there. All
   three are tools on the app's MCP server. Reading and proposing need `manage_options`. Applying
   needs `first_apply_schema`. The administrator role is given it once, the first time the app runs
-  with `runtimeSchema`, and from then on it is an ordinary capability: `wp cap remove administrator
-  first_apply_schema` or `wp user remove-cap <user> first_apply_schema` takes it away for good. To
-  stop one way of signing in without touching the user, list it in the option
+  with `runtimeSchema` (a role that already says `false` keeps it), and from then on it is an
+  ordinary capability: `wp cap remove administrator first_apply_schema` takes it away from the role
+  for good, and giving one administrator the capability as false (in PHP,
+  `(new WP_User($id))->add_cap('first_apply_schema', false)`) takes it from that user while the
+  role keeps it. (`wp user remove-cap` removes only a capability given to the user, not one the
+  role gives.) To stop one way of signing in without touching the user, list it in the option
   `first_<app>_schema_apply_denied`: `{ "user": <id>, "password": "<uuid>" }` for one application
-  password (a password it creates later is denied too), `{ "user": <id>, "credential":
-  "application-password" }` for all of that user's passwords, present and future, or `{ "user":
-  <id>, "credential": "bearer" }` for every First Identity access token they are issued. A wp-admin
-  session is not denied this way; take the capability instead. Each version records the user and,
+  password, `{ "user": <id>, "credential": "application-password" }` for all of that user's
+  passwords, present and future, or `{ "user": <id>, "credential": "bearer" }` for every First
+  Identity access token they are issued. A UUID on its own, the form the first release documented,
+  denies that password too. A password a denied credential creates, for its own user or another, is
+  denied as well. A deny is not a boundary for an administrator's unscoped password: such a
+  password can still create users or change their credentials through core, and so act as another
+  user; scope agent passwords, or take the capability. A wp-admin session is not denied this way;
+  take the capability instead. Each version records the user and,
   when one signed the request, the application password's UUID and name (never the secret). A
   credential scoped without personal data reads the versions without the login and the password's
   name.

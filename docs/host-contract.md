@@ -18,6 +18,13 @@ it on assumptions.
 released before the rename to First, `zero.source-bundle.v1` (see [Deploy on Spacefast](spacefast-deploy.md)).
 `previous-output` is the tree of the version being replaced: its snapshot is the migration baseline.
 
+A client released before the rename (the hosted MCP server 0.9.0) uploads the raw project instead of
+a capture: `zero.config.ts` at the root, the relative modules it imports and `public/`. A host may
+pass that directory as `<sources>` to `compile-sources` or `compile-to-store`, or capture it first
+with `first::host::sources`; First captures it as the 0.3.0 compiler did and compiles that capture. Refused: an npm import (a host
+installs no packages; the owner publishes from the CLI), TSX pages (`pages/` or `zero/pages.json`),
+and a tree that also holds `first.config.ts` or a capture.
+
 ## Manifest
 
 Besides `format`, `hostContract`, `compiler` and the platform versions (`wordpress`, `php`, `requires`):
@@ -103,7 +110,7 @@ The app API is `/__first/api/v1`; actions are `POST /__first/api/v1/actions/<nam
 
 ### Sealed mode
 
-When the app sets `sealed: true`, the hosted manifest and the build manifest carry `sealed`: the plugin directory names that may load (First's own, the platform pins, and the plugins the config declares). The key is absent when the app isn't sealed. First itself only refuses new activations and reports what else is loaded, because WordPress loads drop-ins, must-use plugins and active plugins before First's app plugin. A host that wants the list enforced does it in its own early code (a must-use plugin of the host's, or `sunrise.php`): it filters `option_active_plugins` with `First\Loader\Loader::allowedPlugins($active, $sealed)`, keeps the hidden entries stored with `First\Loader\Loader::keepUnlisted($new, $stored, $sealed)` on `pre_update_option_active_plugins`, ships no must-use plugin or drop-in beyond its own, and defines `FIRST_SEALED_ENFORCED` so the app reports `enforced: "host"`. Nothing changes for sites that don't serve a First app. docs/sealed.md has the example.
+When the app sets `sealed: true`, the hosted manifest and the build manifest carry `sealed`: the plugin directory names that may load (First's own, the platform pins, and the plugins the config declares). The key is absent when the app isn't sealed. First itself only refuses new activations and reports what else is loaded, because WordPress loads drop-ins, must-use plugins and active plugins before First's app plugin. A host that wants the list enforced does it in its own early code (a must-use plugin of the host's, or `sunrise.php`): it filters `option_active_plugins` with `First\Loader\Loader::allowedPlugins($active, $sealed)`, keeps the hidden entries stored with `First\Loader\Loader::keepUnlisted($new, $stored, $sealed)` on `pre_update_option_active_plugins`, ships no must-use plugin or drop-in beyond its own, and defines `FIRST_SEALED_ENFORCED` so the app reports `enforced: "host"`. `allowedPlugins` never passes `vip-block-data-api` or `vip-decoupled-bundle`, whatever list it is given: each serves stored content around the app's read rules. Nothing changes for sites that don't serve a First app. docs/sealed.md has the example.
 
 ### Table prefix
 

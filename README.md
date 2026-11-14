@@ -146,7 +146,7 @@ Build the compiler from source
 with Rust 1.96 (the checkout pins it). Local development needs Node 22+ and
 npm; it needs neither Docker nor a host PHP installation. First automatically
 runs pinned [WordPress Studio CLI](https://github.com/Automattic/studio/tree/trunk/apps/cli)
-2.1.1 to provide WordPress 7.1.4, PHP 8.4 and SQLite Database Integration 3.1.2.
+2.2.0 to provide WordPress 7.1.4, PHP 8.4 and SQLite Database Integration 3.1.3.
 The first start downloads the local environment and required plugins.
 
 ```sh

@@ -57,6 +57,16 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 - `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
 - `<Content value>` renders a post body through `the_content`. `<Html value>` places a literal as written and runs anything else through `wp_kses_post`.
 
+### Forms that post to an action
+
+<RepoFile path="tests/fixtures/forms/first/app/page.tsx" />
+
+- `<form action={subscribe}>` posts to the action you import from your server code. It works with JavaScript off: the browser sends the form, the action runs as the visitor, and they come back to the same page.
+- `useFormState(subscribe)` reads what came back, once: `result` (the action's return value), `error` (`code`, `message`, and `fields.<name>` for the field it is about) and `values` (what was typed, to fill the form again; never a `type="password"` field).
+- Fields read as the action's input says: a number field from its digits, a `boolean()` from a checkbox (unchecked is `false`), and an empty field as absent.
+- The page a form comes back to is never cached for anyone else. A page with a form stays cacheable for signed-out visitors. A signed-in page's form carries the REST nonce. Only your own pages may post.
+- To go somewhere else after success, call `redirect()` when `state.result` is set.
+
 ### Markdown pages
 
 <RepoFile path="tests/fixtures/app-router/first/app/(site)/guide/page.md" />
@@ -117,10 +127,13 @@ A component file under `first/components/` that starts with `"use client"` runs 
 
 <RepoFile path="tests/fixtures/client-components/first/server.ts" />
 
+<RepoFile path="tests/fixtures/client-components/first/components/Shelf.tsx" />
+
 - `useState(initial)` becomes a field of the element's `data-wp-context`. A setter takes a value or an updater.
 - `onClick` and other event props become `data-wp-on--*` actions. An `await` in a handler is fine.
 - Calling an `action()` the file imports posts to that action's endpoint with the REST nonce, so the caller is the visitor.
 - `useEffect`, `useMount`, `useEvent` and `useRef` come from `"first/client"`, and `sharedState()` gives state every instance shares.
+- A list over state or props, `items.map((item) => <li key={item.id}>…</li>)`, and a conditional, `{open && <p>…</p>}` or `{empty ? <em>…</em> : <b>…</b>}`, re-render in the browser. Each item and each branch is one element, and each item has a `key`. A list or conditional over values that never change renders once, on the server.
 - npm imports, module-level helpers the browser doesn't have, and assigning state directly are build errors at the line, with the alternative.
 
 The server HTML matches what React renders for the same component, which the parity tests check. These files come from [`tests/fixtures/client-components`](https://github.com/spacefast/zero/tree/main/tests/fixtures/client-components), which the test suite serves on WordPress and clicks in a browser. [`examples/full-site`](/examples/full-site) uses one for its cheer button.

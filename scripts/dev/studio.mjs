@@ -7,7 +7,7 @@ import { createServer } from 'node:net';
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const STUDIO_VERSION = '2.1.1';
+const STUDIO_VERSION = '2.2.0';
 const WORDPRESS_VERSION = '7.1.4';
 const here = dirname(fileURLToPath(import.meta.url));
 const exists = async (path) => access(path).then(() => true, () => false);

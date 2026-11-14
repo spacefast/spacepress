@@ -451,6 +451,12 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     );
     rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:15");
     rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:15");
+    // The client declares `Query<T>`: a global of that name would declare a second `Query` type.
+    rejects(
+        "reject-global-client-query",
+        "\"query\" is reserved by generated client types",
+        "first.config.ts:2:15",
+    );
     rejects(
         "reject-reserved-search",
         "\"search\" is reserved",
@@ -766,6 +772,56 @@ fn context_values_pass_through_typed_helpers() {
         "{stderr}"
     );
     assert!(stderr.contains("help: use `keyof` on a finite object"), "{stderr}");
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
+/// A value typed as a function only by a type assertion or parsed JSON can be a string at run
+/// time. Passed to a callback-taking method or called, it is refused as a JavaScript TypeError;
+/// PHP never calls the PHP function the request named. `sprintf`, `max` and `First\Js::typeOf`
+/// accept any argument count, so before the check they ran and returned a result. (A JSON array
+/// parses to a JsArray, never a PHP `[class, method]` array; tests/php/js_parity.php covers those.)
+#[test]
+fn a_string_from_input_is_never_called_as_a_php_function() {
+    let tmp = std::env::temp_dir().join(format!("first-callback-closures-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/callback-closures"), &tmp);
+    let built = first().arg("build").arg(&tmp).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let got = wp_eval_json(
+        &tmp.join("first/dist/wp-content"),
+        r#"$out = [];
+           foreach ($arg as [$action, $input]) {
+               [$status, $body] = $wp->call("POST", "/actions/$action", $input);
+               $out[] = [$action, $status, $body["detail"] ?? $body];
+           }
+           echo json_encode($out);"#,
+        &serde_json::json!([
+            ["map", { "fn": "sprintf" }],
+            ["map", { "fn": "First\\Js::typeOf" }],
+            ["filter", { "fn": "strrev" }],
+            ["reduce", { "fn": "max" }],
+            ["replace", { "fn": "max" }],
+            ["range", { "fn": "max" }],
+            ["passed", { "fn": "strrev" }],
+            ["call", { "fn": "strrev", "arg": "abc" }],
+            ["json", { "body": "{\"fn\":\"sprintf\"}" }],
+        ]),
+    );
+    let refused = "Callback is not a function";
+    assert_eq!(
+        got,
+        serde_json::json!([
+            ["map", 422, refused],
+            ["map", 422, refused],
+            ["filter", 422, refused],
+            ["reduce", 422, refused],
+            ["replace", 422, refused],
+            ["range", 422, refused],
+            ["passed", 422, refused],
+            ["call", 422, refused],
+            ["json", 422, refused],
+        ])
+    );
     let _ = std::fs::remove_dir_all(tmp);
 }
 
@@ -1572,12 +1628,40 @@ fn html_runtime_drops_unsafe_attribute_names_from_any_source() {
     );
 }
 
-/// Server HTML with generator B's additions removed: every `data-wp-*` attribute, and the
-/// `<span data-wp-text="…">` wrappers it puts around dynamic text that shares its parent.
+/// Server HTML with generator B's additions removed: every `data-wp-*` attribute, the
+/// `<span data-wp-text="…">` wrappers it puts around dynamic text that shares its parent, and the
+/// `<template data-wp-each--…>` a reactive list or conditional re-renders from (templates nest
+/// when a list item holds a list).
 fn without_directives(html: &str) -> String {
+    let mut kept = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(at) = rest.find("<template data-wp-each") {
+        kept.push_str(&rest[..at]);
+        let mut depth = 0usize;
+        let mut i = at;
+        loop {
+            let open = rest[i..].find("<template").map(|o| o + i);
+            let close = rest[i..].find("</template>").map(|c| c + i).expect("closed template");
+            match open {
+                Some(o) if o < close => {
+                    depth += 1;
+                    i = o + 1;
+                }
+                _ => {
+                    depth -= 1;
+                    i = close + "</template>".len();
+                    if depth == 0 {
+                        break;
+                    }
+                }
+            }
+        }
+        rest = &rest[i..];
+    }
+    kept.push_str(rest);
     let attr = regex::Regex::new(r#" data-wp-[a-z0-9-]+="[^"]*""#).unwrap();
     let span = regex::Regex::new(r#"<span data-wp-text="[^"]*" data-first-text="">([^<]*)</span>"#).unwrap();
-    let html = span.replace_all(html, "$1");
+    let html = span.replace_all(&kept, "$1");
     attr.replace_all(&html, "").into_owned()
 }
 
@@ -2562,6 +2646,23 @@ export default defineConfig({ name: "kindurls", sealed: true, admin: true, local
         built["sealed"],
         serde_json::json!({"plugins": ["action-scheduler", "first-admin", "first-app-kindurls", "first-identity", "first-runtime", "mcp-adapter", "polylang", "secure-custom-fields", "two-factor"]})
     );
+    // A sealed site can't declare a plugin that hands content out around First's read rules.
+    for slug in ["vip-block-data-api", "vip-decoupled-bundle"] {
+        let denied = tmp.path().join(format!("app-sealed-denied-{slug}"));
+        std::fs::create_dir_all(&denied).unwrap();
+        std::fs::write(
+            denied.join("first.config.ts"),
+            format!("import {{ defineConfig }} from \"first\";\nexport default defineConfig({{ name: \"kindurls\", sealed: true, plugins: {{ \"{slug}\": {{ version: \"1.0.0\", pluginData: {{ resource: \"url\", url: \"https://example.test/{slug}.zip\" }}, sha256: \"{}\" }} }} }});\n", "0".repeat(64)),
+        )
+        .unwrap();
+        let out = first().args(["build", "--quiet"]).arg(&denied).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success(), "{slug}: {stderr}");
+        assert!(
+            stderr.contains(&format!("a sealed site can't run {slug}")) && stderr.contains("around First's read rules"),
+            "{slug}: {stderr}"
+        );
+    }
     let refused = tmp.path().join("app-sealed-refused");
     std::fs::create_dir_all(&refused).unwrap();
     std::fs::write(

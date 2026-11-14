@@ -6,7 +6,7 @@ const notes = collection({ title: text(), body: richText().optional(), mood: tex
 const memos = collection({ title: text(), body: richText().optional() }, { title: "title", content: "body" });
 
 // A global, for the options page SCF shows it on (the schema lock).
-const banner = global("banner", { motto: text().default("") });
+const banner = global({ motto: text().default("") });
 
 // Personal data for agent credentials: an email field and a field with a read rule.
 const contacts = table({

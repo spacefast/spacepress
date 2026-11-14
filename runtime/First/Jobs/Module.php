@@ -93,7 +93,7 @@ final class Module
         if (Storage::changes() === 0) {
             throw new HttpError(409, 'key_in_use', "Another pending job holds key '{$row['key']}'; retry $id after it finishes");
         }
-        Outbox::queue()->schedule($id, $now);
+        \First\Wp\Jobs\ActionSchedulerQueue::schedule($id, $now);
 
         return ['id' => $id, 'state' => 'pending'];
     }

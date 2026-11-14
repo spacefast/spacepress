@@ -647,6 +647,45 @@ may see which row.
 curl https://example.test/__first/api/v1/openapi.json
 ```
 
+### An API reference on the site
+
+`apiReference()` from `"first/content"` gives a page the same document as data it maps over, so an
+app renders its own API reference with its own layout. `first add api-reference` writes a working
+one into the project, as files you own: `/api`, a page per operation at `/api/<tag>/<operation>`,
+and the component that lists fields. A smaller version of `/api`:
+
+```tsx
+// first/app/api/page.tsx
+import { Html, Link } from "first/app";
+import { apiReference } from "first/content";
+
+export default function Api() {
+  const api = apiReference();                     // { title, server, description, tags }
+  return (
+    <main>
+      <h1>{api.title}</h1>
+      {api.tags.map((t) => (
+        <section key={t.slug} id={t.slug}>
+          <h2>{t.name}</h2>
+          {t.operations.map((o) => <p key={o.id}><Link href={`/api/${t.slug}/${o.slug}`}>{o.summary}</Link> <code>{o.method} {o.path}</code></p>)}
+        </section>
+      ))}
+    </main>
+  );
+}
+```
+
+- Each operation has its `method`, `path`, `summary`, `description` and `access`. It also has
+  `params`, `body` and `responses`, each holding a list of fields, and a `curl` and a `fetch`
+  sample against the document's server.
+- A field is `{ name, depth, type, required, description, constraints, in }`. Nested properties
+  follow their parent with `depth` one higher, so a page indents by `depth` and never walks a
+  schema itself. `type` reads as a reader says it (`string | null`, `Post[]`). A schema that
+  refers to itself is listed once.
+- `description` fields are the document's Markdown as HTML: render them with `<Html value>`.
+- `apiReference("partner-api.json")` reads a JSON file in the app's `public/` folder instead, for a
+  reference to another API. The path is a literal; one outside `public/` is a build error.
+
 ## Locales
 
 ```ts

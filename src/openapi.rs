@@ -29,6 +29,10 @@ const MAX_LIMIT: u32 = 100;
 /// Every way a request can sign in (spec §3a: what WordPress core accepts).
 const SCHEMES: [&[&str]; 3] = [&["cookie", "nonce"], &["applicationPassword"], &["bearer"]];
 
+/// Reads one `POST /_live` takes: `Live\Module::MAX_QUERIES` in the runtime. The OpenAPI test
+/// sends that many and one more.
+const LIVE_MAX_QUERIES: usize = 20;
+
 fn reference(component: &str) -> Value {
     json!({ "$ref": format!("#/components/schemas/{component}") })
 }
@@ -858,19 +862,13 @@ impl Builder<'_> {
                     &tag,
                     format!("{key}.revisions.list"),
                     format!("Revisions of {table}"),
-                    "Each saved version of the row, with its time and who saved it.",
+                    format!("Each saved version of the row, newest first, with its time and who saved it, one page at a time. `limit` is {LIMIT} unless given, and at most {MAX_LIMIT}; `cursor` is null on the last page."),
                 )
                 .rule(&update)
                 .note(needs)
-                .params([id.clone()])
-                .ok(
-                    200,
-                    envelope(
-                        "The revisions.",
-                        json!({ "type": "array", "items": self.own_ref("RevisionSummary") }),
-                    ),
-                )
-                .errors(&[404]),
+                .params([id.clone(), paging("limit"), paging("offset"), paging("cursor")])
+                .ok(200, page(self.own_ref("RevisionSummary")))
+                .errors(&[400, 404]),
             );
             self.paths.add(
                 &format!("{item}/revisions/{{revision}}"),
@@ -1638,6 +1636,35 @@ impl Builder<'_> {
             .errors(&[404]));
     }
 
+    /// `POST /_live` (`runtime/First/Live/Module.php`): the reads a page is subscribed to, each
+    /// answered "not modified" or with its fresh result, as the caller.
+    fn live(&mut self) {
+        self.tag(
+            "Live",
+            "Reads a page is subscribed to, kept current without a push transport.",
+        );
+        let kinds: Vec<Value> = self.schema.collections.values().map(|c| json!(c.key)).collect();
+        let query = json!({ "type": "object", "properties": {
+            "kind": { "type": "string", "enum": kinds, "description": "The kind, by the name the typed client uses." },
+            "op": { "type": "string", "enum": ["list", "paginate", "get", "count"] },
+            "args": { "type": "object", "description": "The arguments of that call on the kind: `where`, `orderBy`, `limit`, `offset` or `cursor`, `with`, `search`, `locale`." },
+            "id": { "type": ["integer", "string"], "description": "The row of a `get`; or give `args.where`." },
+            "token": { "type": "string", "description": "What the previous answer to the same read returned. Opaque." },
+        }, "required": ["kind", "op"] });
+        let result = json!({ "type": "object", "description": "`{ changed: true, token, data }` with the read's result as the caller reads it; `{ changed: false, token }` when what the caller holds is current; `{ error }` with the read's problem; `{ pending: true }` when the request ran out of time (ask again).", "properties": {
+            "changed": { "type": "boolean" }, "token": { "type": "string" }, "data": {}, "error": self.own_ref("Problem"), "pending": { "type": "boolean" },
+        } });
+        let max = LIVE_MAX_QUERIES;
+        self.paths.add("/_live", "post", Op::new("Live", "live.refresh", "Refresh subscribed reads", format!("Takes up to {max} reads, each with the `token` of the answer the caller last got, and answers each one as the caller, with every access rule and field rule applied. The typed client's `subscribe` calls it. An answer never says that something changed which the caller may not read."))
+            .rule(&Access::anyone())
+            .body(body("The subscribed reads.", json!({ "type": "object", "properties": { "queries": { "type": "array", "items": query, "minItems": 1, "maxItems": max } }, "required": ["queries"] })))
+            .ok(200, envelope("One result per read, in order, and the wait the client keeps between two requests.", json!({ "type": "object", "properties": {
+                "results": { "type": "array", "items": result },
+                "poll": { "type": "object", "properties": { "minMs": { "type": "integer" }, "maxMs": { "type": "integer" } }, "required": ["minMs", "maxMs"] },
+            }, "required": ["results", "poll"] })))
+            .errors(&[405, 413]));
+    }
+
     fn services(&mut self, services: &Value) {
         let tag = "Services";
         let description = "Forms, search and checkout from `services` in the app's config.";
@@ -1798,6 +1825,7 @@ pub fn document(schema: &Schema, services: Option<&Value>) -> Value {
     }
     b.wordpress();
     b.account();
+    b.live();
     if let Some(services) = services {
         b.services(services);
     }

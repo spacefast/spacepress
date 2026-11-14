@@ -596,6 +596,8 @@
 				"firstapp",
 				"a-layout",
 				"a-page-with-its-own-form-handler",
+				"forms-that-post-to-an-action",
+				"comments",
 				"markdown-pages",
 				"a-docs-section-a-folder-of-markdown-as-a-kind",
 				"typed-search-a-guard-http-handlers",
@@ -899,7 +901,8 @@
 				"options",
 				"the-readme-that-build-writes",
 				"signing-in",
-				"live-updates"
+				"live-updates",
+				"react"
 			],
 			"prev": "/reference/config",
 			"next": "/reference/cli",
@@ -1124,7 +1127,7 @@
 			"stops": [],
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/language-support.mdx",
 			"toc": [
-				"compiles-47",
+				"compiles-49",
 				"compiles-and-differs-from-javascript-2",
 				"refused-92"
 			],
@@ -1366,8 +1369,55 @@
 			"edit": null,
 			"toc": [],
 			"prev": "/rest/account/auth-guest",
-			"next": "/rest/search/search",
+			"next": "/rest/live/live-refresh",
 			"operation": "DELETE /auth/session",
+			"sidebar": true
+		},
+		"/rest/live/live-refresh": {
+			"title": "Refresh subscribed reads - First",
+			"h1": "Refresh subscribed reads",
+			"description": "Takes up to 20 reads, each with the token of the answer the caller last got, and answers each… Reference for the POST /_live endpoint in the First REST API.",
+			"canonical": "/rest/live/live-refresh",
+			"markdown": "/rest/live/live-refresh.md",
+			"ogImage": "/og/rest/live/live-refresh.png",
+			"tab": "/rest",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/rest/live/live-refresh.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "Refresh subscribed reads - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": null,
+			"toc": [],
+			"prev": "/rest/account/auth-sign-out",
+			"next": "/rest/search/search",
+			"operation": "POST /_live",
 			"sidebar": true
 		},
 		"/rest/actions/actions-approve-comment": {
@@ -2692,6 +2742,7 @@
 				"wordpress",
 				"media",
 				"account",
+				"live",
 				"search",
 				"schema"
 			],
@@ -4198,7 +4249,7 @@
 			"stops": [],
 			"edit": null,
 			"toc": [],
-			"prev": "/rest/account/auth-sign-out",
+			"prev": "/rest/live/live-refresh",
 			"next": "/rest/schema/schema",
 			"operation": "GET /search",
 			"sidebar": true
@@ -5906,6 +5957,11 @@
 				"group": "Account"
 			},
 			{
+				"label": "Refresh subscribed readsPOST",
+				"href": "/rest/live/live-refresh",
+				"group": "Live"
+			},
+			{
 				"label": "Search the siteGET",
 				"href": "/rest/search/search",
 				"group": "Search"
@@ -6242,6 +6298,7 @@
 		"/rest/account/auth-guest.md",
 		"/rest/account/auth-me.md",
 		"/rest/account/auth-sign-out.md",
+		"/rest/live/live-refresh.md",
 		"/rest/actions/actions-approve-comment.md",
 		"/rest/actions/actions-published-count.md",
 		"/rest/authors/authors-compare.md",
@@ -6353,6 +6410,7 @@
 		"/rest/account/auth-guest.mdx",
 		"/rest/account/auth-me.mdx",
 		"/rest/account/auth-sign-out.mdx",
+		"/rest/live/live-refresh.mdx",
 		"/rest/actions/actions-approve-comment.mdx",
 		"/rest/actions/actions-published-count.mdx",
 		"/rest/authors/authors-compare.mdx",
@@ -6470,6 +6528,7 @@
 		"/api/docs/pages/rest/account/auth-guest.json",
 		"/api/docs/pages/rest/account/auth-me.json",
 		"/api/docs/pages/rest/account/auth-sign-out.json",
+		"/api/docs/pages/rest/live/live-refresh.json",
 		"/api/docs/pages/rest/actions/actions-approve-comment.json",
 		"/api/docs/pages/rest/actions/actions-published-count.json",
 		"/api/docs/pages/rest/authors/authors-compare.json",
@@ -6592,6 +6651,7 @@
 		"/og/rest/account/auth-guest.png",
 		"/og/rest/account/auth-me.png",
 		"/og/rest/account/auth-sign-out.png",
+		"/og/rest/live/live-refresh.png",
 		"/og/rest/actions/actions-approve-comment.png",
 		"/og/rest/actions/actions-published-count.png",
 		"/og/rest/authors/authors-compare.png",
@@ -6707,6 +6767,7 @@
 		"/rest/account/auth-guest",
 		"/rest/account/auth-me",
 		"/rest/account/auth-sign-out",
+		"/rest/live/live-refresh",
 		"/rest/actions/actions-approve-comment",
 		"/rest/actions/actions-published-count",
 		"/rest/authors/authors-compare",
@@ -6896,6 +6957,7 @@
 		"/rest/account/auth-config",
 		"/rest/account/auth-guest",
 		"/rest/account/auth-sign-out",
+		"/rest/live/live-refresh",
 		"/rest/search/search",
 		"/rest/schema/schema",
 		"/rest/schema/openapi",

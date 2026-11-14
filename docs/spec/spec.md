@@ -337,8 +337,11 @@ build. The full design and what was measured are in
   those fields and kinds, so the next build contains them and the site's
   additions become no-ops. Deploying a build that lacks the site's runtime
   changes never drops them: the deploy-time check lists them and they stay
-  active. A deploy is refused only when the build declares a name the site
-  uses, or used and hid, with a different stored type.
+  active. A deploy is refused only when the build would read or write the
+  site's stored values another way: it declares a name the site uses, or used
+  and hid, with a different stored shape; one of its fields is stored under a
+  key a runtime field uses; or it declares something other than a collection,
+  or a collection without its stored body, under a runtime collection's name.
 - **Surfaces.** Abilities `<app>/schema-read`, `<app>/schema-propose` (validate
   and return the diff, apply nothing) and `<app>/schema-apply` (its own
   capability, so a credential can be denied it); `first schema list | diff |
@@ -497,10 +500,21 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
   - core auto-updates;
   - the Customizer;
   - comments on kinds without `comments`;
+  - listing the site's users to the public: core's user routes, author
+    archives, the users sitemap and oEmbed author fields, unless
+    `publicAuthors: true` or the users kind is readable by anyone (a users
+    kind whose read rule gives a visitor some users keeps those as authors);
   - changing the app's schema on the site: `first.config.ts` is the only way to
     change the field groups, post types, taxonomies, meta, roles and
     capabilities First generates (`docs/config-api.md`, "Schema lock");
+  - telling a visitor which accounts exist when they sign in or reset a
+    password: one error for an unknown account and a wrong password;
   - the theme front end when `app/` or `frontend` takes over.
+- **Sealed mode** (`sealed: true`, opt-in): only First's plugins, the pinned
+  platform plugins, the `plugins` the config declares and `use` plugin packages
+  run as plugins. Other activations are refused and anything else loaded is
+  reported; a host that mounts the build store can enforce the list before
+  any plugin loads ([sealed.md](../sealed.md)).
 - **Spam checks:** First uses the Akismet a site sets up through Jetpack. While it
   has a key (Jetpack's connection or `WPCOM_API_KEY`), Akismet checks every
   comment create. Without Akismet or a key, spam checks are off, the app

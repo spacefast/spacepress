@@ -58,9 +58,110 @@ impl Compiler<'_, '_> {
         })
     }
 
+    /// The registered name of the action `e` names (`subscribe` imported from `first/server.ts`), if
+    /// it names one.
+    pub(super) fn action_named(&mut self, e: &Expr) -> Result<Option<String>> {
+        let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
+        Ok(match self.resolve(n, e.span)? {
+            Resolved::Value(Value::Action(a), _) => self.action_values.get(&(Rc::as_ptr(&a) as usize)).cloned(),
+            _ => None,
+        })
+    }
+
+    /// `useFormState(subscribe)`: what the last no-JavaScript submit of that action's form left for
+    /// this page (docs/spec/rendering.md §4.2), read once.
+    fn use_form_state(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
+        let help = "pass the action the form posts to: `useFormState(subscribe)`";
+        let [ArrEl::Item(arg)] = args else {
+            return err_help(span, "`useFormState()` takes the form's action", help);
+        };
+        let Some(action) = self.action_named(arg)? else {
+            return err_help(
+                arg.span,
+                "`useFormState()` takes an action imported from your server code",
+                help,
+            );
+        };
+        let result = self.action_results.get(&action).cloned().unwrap_or(Ty::Unknown);
+        let mut error = IndexMap::new();
+        error.insert("code".to_string(), (Ty::Str, false));
+        error.insert("message".to_string(), (Ty::Str, false));
+        error.insert("fields".to_string(), (Ty::Map(Box::new(Ty::Str)), false));
+        let mut state = IndexMap::new();
+        state.insert("pending".to_string(), (Ty::Bool, false));
+        state.insert("error".to_string(), (Ty::union([Ty::Obj(error), Ty::Null]), false));
+        state.insert("result".to_string(), (Ty::union([result, Ty::Null]), false));
+        state.insert("values".to_string(), (Ty::Map(Box::new(Ty::Str)), false));
+        Ok(Out::atom(
+            format!("\\First\\Render\\Forms::state({})", php_str(&action)),
+            Ty::Obj(state),
+        ))
+    }
+
+    /// `<Comments for={item} />`: the item's thread, read as the visitor, and a form that posts a
+    /// comment without JavaScript (docs/decisions/2026-11-14-comments.md). The item's kind is the one
+    /// whose row type it has; that kind must turn `comments` on, where its policy lives.
+    fn comments_component(&mut self, item: Option<&Expr>, class: Option<&Expr>, span: Span) -> Result<Out> {
+        let Some(item) = item else {
+            return err_help(
+                span,
+                "`<Comments>` needs `for`",
+                "write `<Comments for={item} />` with the item the thread is on",
+            );
+        };
+        let v = self.expr(item)?;
+        let v = self.finish_value(v, item.span)?;
+        let mut kinds: Vec<&String> = self
+            .schema
+            .collections
+            .iter()
+            .filter(|(_, c)| v.ty.non_null() == types::row_of(c))
+            .map(|(name, _)| name)
+            .collect();
+        kinds.dedup();
+        let [kind] = kinds.as_slice() else {
+            return err_help(
+                item.span,
+                format!("`<Comments for>` takes a row of a collection, not {}", v.ty.describe()),
+                "pass the item a page reads, e.g. the `item` prop of a kind's page",
+            );
+        };
+        let kind = (*kind).clone();
+        if !self.schema.collections[&kind].comments {
+            return err_help(
+                item.span,
+                format!("`{kind}` has comments off"),
+                format!("turn them on where `{kind}` is declared: `collection({{ … }}, {{ comments: true }})`"),
+            );
+        }
+        let class = match class {
+            None => "null".to_string(),
+            Some(c) => {
+                let out = self.expr(c)?;
+                let out = self.finish_value(out, c.span)?;
+                if !assignable(&out.ty, &Ty::union([Ty::Str, Ty::Undefined, Ty::Null])) {
+                    return err(
+                        c.span,
+                        format!("`<Comments className>` takes a string, not {}", out.ty.describe()),
+                    );
+                }
+                out.php
+            }
+        };
+        Ok(Out::atom(
+            format!(
+                "\\First\\Render\\CommentsView::render({}, {}, {class})",
+                php_str(&kind),
+                v.php
+            ),
+            Ty::Html,
+        ))
+    }
+
     /// `notFound()` and `redirect(url, status?)`: they never return.
     pub(super) fn app_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         match name {
+            "useFormState" => self.use_form_state(args, span),
             "notFound" => {
                 if !args.is_empty() {
                     return err_help(span, "`notFound()` takes no arguments", "call `notFound()`");
@@ -144,6 +245,7 @@ impl Compiler<'_, '_> {
         }
         let allowed: &[&str] = match name {
             "Content" | "Html" => &["value"],
+            "Comments" => &["for", "className"],
             "Link" => &[
                 "href",
                 "children",
@@ -168,6 +270,7 @@ impl Compiler<'_, '_> {
         }
         let get = |k: &str| named.iter().find(|(n, _)| *n == k).map(|(_, v)| *v);
         match name {
+            "Comments" => self.comments_component(get("for"), get("className"), span),
             "Content" | "Html" => {
                 let Some(value) = get("value") else {
                     return err_help(

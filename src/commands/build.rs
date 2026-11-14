@@ -264,7 +264,12 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
     let mut versions = serde_json::Map::new();
     for slug in generated {
         let directory = plugins.join(&slug);
-        php_lint_tree(&directory)?;
+        // The app plugin is generated from the project: lint it every build. First's own plugins are
+        // the same bytes for every app (embedded from runtime/); tests/php/runtime_lint.php lints
+        // those once, so a build doesn't run `php -l` on hundreds of unchanged files.
+        if slug.starts_with("first-app-") {
+            php_lint_tree(&directory)?;
+        }
         zip_plugin(&directory)?;
         let version = if slug.starts_with("first-app-") {
             format!(
@@ -288,12 +293,18 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
         .into_iter()
         .map(|plugin| (plugin.slug, format!(">={}", plugin.version).into()))
         .collect();
+    let mut manifest = serde_json::json!({"first":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales});
+    // Sealed mode (docs/sealed.md): the plugin slugs this site runs, for a host to enforce. No key
+    // when the app isn't sealed.
+    if let Some(sealed) = crate::bundle::sealed_plugins(&built.schema, crate::app_plugin::first_plugins(&built.schema))
+    {
+        manifest["sealed"] = sealed.into();
+    }
     write(
         &stage.join("first-manifest.json"),
-        serde_json::to_string_pretty(
-            &serde_json::json!({"first":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales}),
-        )? + "\n",
+        serde_json::to_string_pretty(&manifest)? + "\n",
     )?;
+
     super::deploy::write_metadata(&stage, built)?;
     let lock_bytes = prepared.lock_bytes()?;
     std::fs::create_dir_all(lock.parent().unwrap())?;

@@ -366,7 +366,7 @@ fn reference(
     if boolean(o, "multiple", at)?.unwrap_or(false) {
         return Err(fail(
             &pointer(at, "multiple"),
-            "multiple references have no Zero column; model them as a join collection and port the data explicitly",
+            "a multiple reference is `ref(kind).many()`, whose links live in a join table the import doesn't fill; declare that field and port the links explicitly",
         ));
     }
     let to = string(o, "to", at)?;

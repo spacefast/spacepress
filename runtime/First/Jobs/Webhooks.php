@@ -16,8 +16,8 @@ use function First\db;
 /**
  * Webhooks (§6.1, D2). Outbound: every committed pipeline write on a collection a webhook listens
  * to enqueues the built-in `first.webhook` job, which POSTs a signed JSON event and retries on
- * failure with the job backoff. Inbound: an action with `signature` verifies an HMAC over the raw
- * body instead of an access rule.
+ * failure with the job backoff. Inbound: an action or route handler with `signature` verifies an
+ * HMAC over the raw body instead of an access rule.
  */
 final class Webhooks
 {
@@ -105,11 +105,31 @@ final class Webhooks
         }
         if (!is_string($given) || !match ($signature['scheme']) {
             'first' => self::verifyZero($secret, $given, $rawBody),
-            'hmac-sha256' => hash_equals(self::sign($secret, $rawBody), strtolower(trim($given))),
+            'hmac-sha256' => self::verifyHmac($secret, $given, $rawBody),
             default => false,
         }) {
             throw self::invalid();
         }
+    }
+
+    /**
+     * HMAC-SHA256 of the raw body, as providers send it: hex (GitHub, with or without `sha256=`) or
+     * base64 (WooCommerce, Shopify). Either is decoded to the 32 digest bytes and compared in
+     * constant time with the expected digest.
+     */
+    private static function verifyHmac(string $secret, string $header, string $rawBody): bool
+    {
+        $given = trim($header);
+        if (strncasecmp($given, 'sha256=', 7) === 0) {
+            $given = substr($given, 7);
+        }
+        $digest = match (true) {
+            preg_match('/^[0-9a-f]{64}$/iD', $given) === 1 => hex2bin($given),
+            preg_match('#^[A-Za-z0-9+/]{43}=?$#D', $given) === 1 => base64_decode($given, true),
+            default => false,
+        };
+
+        return is_string($digest) && hash_equals(hash_hmac('sha256', $rawBody, $secret, true), $digest);
     }
 
     /** `t=<unix>,v1=<hex>[,v1=<hex>]`: fresh timestamp and any matching v1 (secret rotation). */

@@ -37,12 +37,15 @@ need not list them. The current pins are SCF 6.9.7, Action Scheduler 4.2.0, MCP
 Adapter 0.7.1 and Two Factor 0.17.0, plus Polylang 3.9 when `locales` is
 configured. Users cannot remove them. Akismet isn't a platform plugin: spam
 checks use the Akismet a site sets up through Jetpack, only while it has a key
-(Jetpack's connection or `WPCOM_API_KEY`). Without one, comments aren't
-spam-checked and `first doctor` reports `spam checks: off`. Explicit overrides
-must satisfy the platform floor. `wp_plugins::version::at_least` owns comparison
+(Jetpack's connection or `WPCOM_API_KEY`); it checks comments and Services
+form submissions. Without one, neither is spam-checked and `first doctor`
+reports `spam checks: off`. Explicit overrides must satisfy the platform floor. `wp_plugins::version::at_least` owns comparison
 using PHP `version_compare` ordering, including WordPress beta/RC/pl suffixes.
 The exact header version is checked against the declaration; numeric trailing
 zero differences are accepted (the Polylang 3.9 archive declares 3.9.0).
+
+With `sealed: true`, the plugins declared here (and the platform pins) are the
+only ones a site runs as plugins besides First's own; see [sealed mode](sealed.md).
 
 ## Supported plugins
 
@@ -167,7 +170,7 @@ contents to detect changes before replacement; it is not a package signature.
 The canonical assembler owns `first-manifest.json`, generated plugin ZIPs, and
 `--out`. Its order is: supply exact platform pins; resolve; acquire every tree;
 copy existing output to private staging; install dependencies; emit/lint generated
-`first-runtime`, `first-identity`, `first-app-<name>` and, with `admin: true`,
+`first-runtime`, `first-identity`, `first-app-<name>` and, unless `admin: false`,
 `first-admin`, plus their ZIPs; write its
 manifest using resolved metadata; publish; persist the project lock. Preserve
 unrelated plugins and serialize the project lock/output while publishing.

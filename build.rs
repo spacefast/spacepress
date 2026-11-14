@@ -26,6 +26,9 @@ fn collect(dir: &Path, root: &Path, out: &mut Vec<String>) {
                 "vendor"
                     | "node_modules"
                     | "apps"
+                    // The admin's retained upstream inputs: provenance in the repository
+                    // (runtime/admin/NOTICE, upstream-inventory.json), never loaded by the plugin.
+                    | "upstream-metadata"
                     | "composer.json"
                     | "composer.lock"
                     | "vendor.sh"
@@ -85,6 +88,7 @@ const GUIDES: &[&str] = &[
     "npm-compatibility.md",
     "pages.md",
     "realtime.md",
+    "sealed.md",
     "services.md",
     "spacefast-deploy.md",
     "staged.md",

@@ -736,7 +736,7 @@ trait JsDynamic
                 'delete' => $receiver->delete($get(0), $get(1)), 'has' => $receiver->has($get(0), $get(1)),
                 'get' => $receiver->get($get(0)), 'getAll' => $receiver->getAll($get(0)), 'sort' => $receiver->sort(),
                 'toString' => $receiver->toString(),
-                'forEach' => $get(1) !== JsUndefined::Value ? throw new JsError('forEach thisArg is not supported', 'TypeError') : $receiver->forEach(self::dynamicCallback($get(0))),
+                'forEach' => $get(1) !== JsUndefined::Value ? throw new JsError('forEach thisArg is not supported', 'TypeError') : $receiver->forEach(self::callback($get(0))),
                 'keys' => new JsIterator($receiver->keysIterator(), 'URLSearchParams Iterator'),
                 'values' => new JsIterator($receiver->valuesIterator(), 'URLSearchParams Iterator'),
                 'entries' => new JsIterator($receiver->entriesIterator(), 'URLSearchParams Iterator'),
@@ -787,11 +787,11 @@ trait JsDynamic
                 'pop', 'shift' => $receiver->a === [] ? JsUndefined::Value : self::{$name}($receiver),
                 'reverse', 'toReversed' => self::{$name}($receiver, ...$a),
                 'flat' => self::dynamicFlat($receiver, $get(0)),
-                'find', 'findLast' => self::dynamicArrayFind($receiver, $name, self::dynamicCallback($get(0))),
-                'forEach' => self::forEach($receiver, self::dynamicCallback($get(0))),
-                'map', 'filter', 'some', 'every', 'findIndex', 'findLastIndex', 'flatMap' => self::{$name}($receiver, self::dynamicCallback($get(0))),
-                'reduce' => count($a) < 2 ? self::reduce($receiver, self::dynamicCallback($get(0))) : self::reduce($receiver, self::dynamicCallback($get(0)), $a[1]),
-                'sort', 'toSorted' => self::{$name}($receiver, $get(0) === JsUndefined::Value ? null : self::dynamicCallback($get(0))),
+                'find', 'findLast' => self::dynamicArrayFind($receiver, $name, self::callback($get(0))),
+                'forEach' => self::forEach($receiver, self::callback($get(0))),
+                'map', 'filter', 'some', 'every', 'findIndex', 'findLastIndex', 'flatMap' => self::{$name}($receiver, self::callback($get(0))),
+                'reduce' => count($a) < 2 ? self::reduce($receiver, self::callback($get(0))) : self::reduce($receiver, self::callback($get(0)), $a[1]),
+                'sort', 'toSorted' => self::{$name}($receiver, $get(0) === JsUndefined::Value ? null : self::callback($get(0))),
                 'fill' => self::dynamicFill($receiver, $get(0), $get(1), $get(2)),
                 'slice' => self::dynamicBorrowedSlice($receiver, $args),
                 'at' => self::dynamicArrayAt($receiver, $get(0)),
@@ -804,7 +804,13 @@ trait JsDynamic
         throw new JsError($name . ' is not a function', 'TypeError');
     }
 
-    private static function dynamicCallback(mixed $callback): \Closure
+    /**
+     * A function value about to be called. Compiled JavaScript functions are always Closures; a
+     * value typed as a function only by an assertion or parsed JSON can still be a string or an
+     * array at run time, and PHP would call the PHP function it names. Typed code wraps every
+     * function value it did not build itself in this check (src/compile.rs, `checked_function`).
+     */
+    public static function callback(mixed $callback): \Closure
     {
         if (!$callback instanceof \Closure) { throw new JsError('Callback is not a function', 'TypeError'); }
         return $callback;
@@ -864,7 +870,7 @@ trait JsDynamic
     private static function dynamicCollectionForEach(JsMap|JsSet $collection, mixed $callback, mixed $thisArg): JsUndefined
     {
         if ($thisArg !== JsUndefined::Value) { throw new JsError('forEach thisArg is not supported', 'TypeError'); }
-        $collection->forEach(self::dynamicCallback($callback));
+        $collection->forEach(self::callback($callback));
         return JsUndefined::Value;
     }
 
@@ -891,7 +897,7 @@ trait JsDynamic
     private static function dynamicArrayFrom(mixed $source, mixed $mapper = JsUndefined::Value): JsArray
     {
         self::requirePresent($source);
-        $callback = $mapper === JsUndefined::Value ? null : self::dynamicCallback($mapper);
+        $callback = $mapper === JsUndefined::Value ? null : self::callback($mapper);
         $result = new JsArray();
         if ($source instanceof JsArray) {
             for ($i = 0; $i < count($source->a); $i++) { $value = $source->a[$i]; $result->a[] = $callback === null ? $value : $callback($value, $i); }

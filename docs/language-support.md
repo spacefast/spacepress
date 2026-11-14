@@ -1092,9 +1092,25 @@ SVG `animate`/`set` can rewrite their target's attributes: they never target URL
 
 Status: **supported**.
 
-A .tsx file under first/components/ that starts with "use client" (after comments and other directives such as "use strict") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState and server action calls compile; lists and reactive conditionals are refused for now.
+A .tsx file under first/components/ that starts with "use client" (after comments and other directives such as "use strict") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState, server action calls, keyed lists (`items.map((item) => <li key={item.id}>…</li>)`) and reactive `&&` and `?:` over elements compile; the browser re-renders lists and conditionals from `<template>`s.
 
 [Evidence](../tests/app_router.rs) (`client_components_compile_to_interactivity_stores`)
+
+## jsx-comments
+
+Status: **supported**.
+
+`<Comments for={item} />` from "first/app" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props.
+
+[Evidence](../tests/app_router.rs) (`comments_follow_the_kind_policy_on_every_path`)
+
+## jsx-form-action
+
+Status: **supported**.
+
+`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from "first/app" reads the result or the error once. `method` and `encType` on such a form, and an action form inside a "use client" component, are build errors.
+
+[Evidence](../tests/app_router.rs) (`forms_work_without_javascript`)
 
 ## jsx-use-client-npm
 

@@ -48,6 +48,7 @@ final class Plugin
         self::$instance = $this;
         $this->mainFile = $mainFile;
         Hardening::apply($schema);
+        Sealed::apply($schema);
         add_action('init', [$this, 'registerPostTypes'], 0);
         add_action('acf/init', [$this, 'registerFields'], 5);
         add_action('acf/init', fn () => WpUserStore::registerFields($this->schema), 5);
@@ -106,14 +107,16 @@ final class Plugin
         });
         Facade::register($this);
         AppRouter::register($this);
+        Comments::register($this);
         // Code blocks: highlighted with their title and marked lines, grouped into tabs (no script).
         add_filter('render_block_core/code', [\First\Content\Code::class, 'render'], 10, 2);
         add_filter('the_content', [\First\Content\Code::class, 'groups'], 20);
         // Components content may use as blocks (first/components: `export const blocks`).
         add_action('init', [\First\Content\Blocks::class, 'register'], 5);
         ContentPages::register($this);
+        RoutePages::register($this);
         KindUrls::register($this);
-        MarkdownTwins::register();
+        MarkdownTwins::register($this->mainFile);
         Sitemap::register($this);
         Purges::register($this);
         Staged::register($this);
@@ -473,14 +476,18 @@ final class Plugin
     }
 
     /**
-     * Whether `schema.php` on disk is still the build this request loaded. A deploy that replaced it
-     * while this request ran makes this false; the next request loads the new one.
+     * Whether the build this request loaded is still the one the site runs: the build hash the last
+     * deploy recorded (migrateNow), read fresh. On a managed build store a deploy changes which
+     * build's directory is mounted and never rewrites the file this request loaded, so the recorded
+     * hash, not the file, says what is live. Also false when a deploy replaced the file in place.
      */
     public function buildIsCurrent(): bool
     {
+        wp_cache_delete('alloptions', 'options');
+        wp_cache_delete($this->schemaOption(), 'options');
         clearstatcache(true, $this->dir . '/first/app/schema.php');
 
-        return $this->schemaHash() === $this->loadedHash;
+        return get_option($this->schemaOption()) === $this->loadedHash && $this->schemaHash() === $this->loadedHash;
     }
 
     private function schemaOption(): string
@@ -530,7 +537,17 @@ final class Plugin
                 // A kind with a `url` has public items: WordPress resolves its URLs (KindUrls) and the
                 // theme renders them; access rules still decide who reads which item.
                 'publicly_queryable' => is_string($spec['url'] ?? null),
+                // Core's content abilities (core/content-query, WordPress 7.2) read a post type's posts
+                // directly, without the kind's access rules or field permissions. A kind's items reach
+                // agents through the app's own abilities only.
+                'show_in_abilities' => false,
             ]);
+            // Set after registration too: a register_post_type_args filter that exposes every post type
+            // must not expose a kind. Core resolves the exposure from this property on every call.
+            $object = get_post_type_object($type);
+            if ($object !== null) {
+                $object->show_in_abilities = false;
+            }
             PostMeta::register($spec);
         }
     }

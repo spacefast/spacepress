@@ -95,6 +95,9 @@ fn column(c: &Column, ctx: Ctx, indent: usize) -> String {
         if let Some(a) = r.on_delete {
             rp.push(format!("'onDelete' => {}", php_str(a.sql())));
         }
+        if let Some(join) = &r.join {
+            rp.push(format!("'join' => {}", php_str(join)));
+        }
         parts.push(format!("'references' => [{}]", rp.join(", ")));
     }
     if !c.rules.is_empty() {
@@ -241,9 +244,21 @@ fn collection(out: &mut String, c: &Collection) {
     let _ = writeln!(out, "            'relations' => [");
     for r in c.relations.values() {
         let kind = if r.kind == RelKind::One { "one" } else { "many" };
+        let through = r
+            .through
+            .as_ref()
+            .map(|(table, from, to)| {
+                format!(
+                    ", 'through' => ['table' => {}, 'from' => {}, 'to' => {}]",
+                    php_str(table),
+                    php_str(from),
+                    php_str(to)
+                )
+            })
+            .unwrap_or_default();
         let _ = writeln!(
             out,
-            "                {} => ['kind' => '{kind}', 'collection' => {}, 'from' => {}, 'to' => {}, 'optional' => {}],",
+            "                {} => ['kind' => '{kind}', 'collection' => {}, 'from' => {}, 'to' => {}, 'optional' => {}{through}],",
             php_str(&r.name),
             php_str(&r.collection),
             php_str(&r.from),
@@ -301,6 +316,15 @@ pub fn render(schema: &Schema) -> String {
     let _ = writeln!(out, "    'runtime' => '{}',", crate::platform::SERIES);
     let _ = writeln!(out, "    'name' => {},", php_str(&schema.name));
     let _ = writeln!(out, "    'admin' => {},", schema.admin);
+    // The complete allow-list (docs/sealed.md), the same one the build's manifests carry: the runtime
+    // reads it here and decides nothing itself.
+    if let Some(slugs) = crate::bundle::sealed_plugins(schema, crate::app_plugin::first_plugins(schema)) {
+        let slugs: Vec<String> = slugs.iter().map(|slug| php_str(slug)).collect();
+        let _ = writeln!(out, "    'sealed' => ['plugins' => [{}]],", slugs.join(", "));
+    }
+    if schema.public_authors {
+        out.push_str("    'publicAuthors' => true,\n");
+    }
     match &schema.frontend {
         None => {}
         Some(crate::kind_url::Frontend::Off) => out.push_str("    'frontend' => false,\n"),
@@ -381,18 +405,22 @@ pub fn render(schema: &Schema) -> String {
                 None => "null".into(),
             };
             format!(
-                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}], 'kind' => {kind}]",
+                "['id' => {}, 'pattern' => {}, 'page' => {}, 'handler' => {}, 'layouts' => [{}], 'error' => {}, 'styles' => [{}], 'kind' => {kind}{}]",
                 php_str(&r.id),
                 php_str(&r.pattern),
                 opt(&r.page),
                 opt(&r.handler),
                 r.layouts.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", "),
                 opt(&r.error),
-                r.styles.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", ")
+                r.styles.iter().map(|l| php_str(l)).collect::<Vec<_>>().join(", "),
+                if r.prerender { ", 'prerender' => true" } else { "" }
             )
         };
         if app.legacy_routes {
             out.push_str("        'legacyRoutes' => true,\n");
+        }
+        if schema.output == crate::schema::Output::Static {
+            out.push_str("        'output' => 'static',\n");
         }
         out.push_str("        'routes' => [\n");
         for r in &app.routes {
@@ -426,7 +454,7 @@ pub fn render(schema: &Schema) -> String {
                 .join(", ");
             let _ = writeln!(
                 out,
-                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'access' => {}, 'signature' => {}, 'search' => {}, 'methods' => [{methods}]],",
+                "            {} => ['component' => {}, 'metadata' => {}, 'guard' => {}, 'access' => {}, 'signature' => {}, 'search' => {}, 'methods' => [{methods}]{}],",
                 php_str(path),
                 opt(&f.component),
                 f.metadata.as_ref().map(php_json).unwrap_or_else(|| "null".into()),
@@ -437,6 +465,10 @@ pub fn render(schema: &Schema) -> String {
                     .as_ref()
                     .map(|s| fields_block(&s.fields, 3))
                     .unwrap_or_else(|| "null".into()),
+                f.static_params
+                    .as_ref()
+                    .map(|n| format!(", 'staticParams' => {}", php_str(n)))
+                    .unwrap_or_default(),
             );
         }
         out.push_str("        ],\n");

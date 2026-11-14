@@ -25,9 +25,20 @@ try {
   // Home, then the docs, by clicking the way a reader would.
   await page.goto(`${site}/`, { waitUntil: "networkidle" });
   out.home = await page.textContent("h1");
+  // The router region went through core's directive pass: core/router's state.url is the page's
+  // own URL from the server, as a block theme's page has it.
+  out.serverUrl = await page.$eval("script[id='wp-script-module-data-@wordpress/interactivity']", (s) => JSON.parse(s.textContent).state?.["core/router"]?.url ?? null);
+  await page.evaluate(() => { window.firstSameDocument = true; });
   await page.click("text=Read the docs");
   await page.waitForSelector("article.doc h1");
   out.intro = { path: new URL(page.url()).pathname, title: await page.title(), h1: await page.textContent("article.doc h1") };
+  // A <Link> click is a region swap, not a document load: the router's state.url follows it, and
+  // core's loading bar is on the page with its styles.
+  out.navigation = {
+    sameDocument: await page.evaluate(() => window.firstSameDocument === true),
+    url: await page.evaluate(async () => (await import("@wordpress/interactivity-router")).state.url),
+    loadingBar: await page.$$eval(".wp-interactivity-router-loading-bar", (bars) => bars.map((b) => [b.dataset.wpInteractive, getComputedStyle(b).position])),
+  };
   out.tree = await page.$$eval(".sidebar > ul > li", (items) => items.map((li) => [li.querySelector(":scope > a").textContent, li.className, [...li.querySelectorAll(":scope > ul > li > a")].map((a) => a.textContent)]));
   out.toc = await page.$$eval(".toc a", (as) => as.map((a) => [a.textContent, a.getAttribute("href"), !!document.getElementById(a.getAttribute("href").slice(1))]));
   out.badge = await page.textContent(".doc .badge");

@@ -62,7 +62,7 @@ export const settings = global("settings", {
 }, { label: "Portfolio settings", access: { read: "anyone", update: "editor" } });
 
 export default defineConfig({
-  name: "portfolio", admin: true,
+  name: "portfolio",
   collections: { projects, pages }, globals: { settings },
   media: { sizes: { card: { width: 960, height: 720, fit: "cover" } } },
 });

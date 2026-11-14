@@ -164,8 +164,10 @@ Method:
 - The site ran on the WordPress test stack (`tests/wp/harness.sh up`, port 8874): Apache with PHP
   8.5 and OPcache, MariaDB 11.4, WordPress 7.1.4 and the pinned platform plugins, in Docker on one
   host (Intel Core i7-13700, 24 threads).
-- Batcache 1.5 ran on an APCu object cache. Its `max-age` match was pointed at `s-maxage`, because
-  First's cacheable header carries `max-age=0` for browsers and `s-maxage=300` for shared caches.
+- Batcache 1.5 ran on an APCu object cache. Batcache takes its window from the last `max-age` in
+  `Cache-Control`. When this was measured, First's header put `max-age=0` last, so the benchmark
+  pointed Batcache at `s-maxage`. Main now orders the header so Batcache reads `s-maxage` unchanged
+  (#390).
 - The client opened a new connection for each GET, from the same host, with no cookies. It took
   the time from sending the request to the first byte of the response.
 - Each case had 20 warm-up requests, then three runs of 200 sequential requests. Below is the

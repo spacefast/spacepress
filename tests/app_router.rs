@@ -1112,7 +1112,7 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
         json!([
             200,
             true,
-            "public, s-maxage=300, max-age=0, must-revalidate",
+            "public, max-age=0, s-maxage=300, must-revalidate",
             true,
             true
         ])

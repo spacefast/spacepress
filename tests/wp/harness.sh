@@ -119,6 +119,13 @@ PINS
       && apache2ctl -k graceful" >/dev/null
     url="$url/$subdir"
   fi
+  if [[ -n ${FIRST_WP_CORE_ZIP:-} ]]; then
+    # A WordPress build other than the image's (.github/workflows/wordpress-ahead.yml: nightly or a pre-release):
+    # its files replace the image's core, wp-content and wp-config stay. The ZIP is under ./cache.
+    compose exec -T --user "$FIRST_WP_UID:$FIRST_WP_GID" wordpress sh -c "cd /tmp && rm -rf core-swap && mkdir core-swap && cd core-swap \
+      && php -r '\$z = new ZipArchive(); exit(\$z->open(\$argv[1]) === true && \$z->extractTo(\".\") ? 0 : 1);' /first-cache/${FIRST_WP_CORE_ZIP} \
+      && rm -rf wordpress/wp-content && cp -a wordpress/. /var/www/html/ && cd / && rm -rf /tmp/core-swap" >/dev/null
+  fi
   if ! wp core is-installed >/dev/null 2>&1; then
     wp core install --url="$url" --title="First Test" --admin_user=admin --admin_password=first-test-admin \
       --admin_email=admin@example.test --skip-email >/dev/null

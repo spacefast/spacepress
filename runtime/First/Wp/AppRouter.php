@@ -812,6 +812,7 @@ final class AppRouter
         }
         \First\Assets::enqueue($this->styles);
         Navigation::enqueue(plugins_url('first/Render/client/router.js', Runtime::file()));
+        \First\Islands::registerClient();
         \First\Islands::enqueue();
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'HEAD') {
             exit;

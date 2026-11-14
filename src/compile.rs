@@ -944,6 +944,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 self.use_wordpress(WordPressKind::Hook, &hook.hook, root.closure.func.span);
             }
+            if let Slot::AppStaticParams { file } = &root.slot {
+                let ret = match self.helper_types.get(&key) {
+                    Some(Ty::Fn(_, ret)) => match &**ret {
+                        Ty::Promise(t) => (**t).clone(),
+                        t => t.clone(),
+                    },
+                    _ => Ty::Unknown,
+                };
+                let Ty::Obj(props) = self.app_props(file) else {
+                    unreachable!()
+                };
+                let params = props["params"].0.clone();
+                if !assignable(&ret, &Ty::Array(Box::new(params.clone()))) {
+                    return err_help(
+                        root.closure.func.span,
+                        format!(
+                            "staticParams in {file} returns {}, not a list of {}",
+                            ret.describe(),
+                            params.describe()
+                        ),
+                        "return one object per page to build, with a string for each `[name]` folder and a string[] for each `[...name]`",
+                    );
+                }
+            }
             if let Slot::AppHandler { file, method } = &root.slot {
                 let ret = match self.helper_types.get(&key) {
                     Some(Ty::Fn(_, ret)) => match &**ret {
@@ -1012,6 +1036,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Slot::AppGuard { .. } => vec![types::hook_ctx()],
             Slot::AppAccess { .. } => vec![types::access_ctx(Ty::Map(Box::new(Ty::Unknown)))],
             Slot::AppHandler { .. } => vec![types::route_request(), ctx],
+            Slot::AppStaticParams { .. } => vec![],
             Slot::ActionHandler { action } => vec![
                 types::action_input(&self.schema.actions[action].input, &types::json_ty),
                 ctx,

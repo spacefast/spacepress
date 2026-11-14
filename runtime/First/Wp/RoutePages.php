@@ -74,8 +74,12 @@ final class RoutePages
             return;
         }
         $self = self::$instance = new self($plugin, $routes);
-        // After the app's post types (0) and its migrations (1), beside ContentPages (2).
-        add_action('init', [$self, 'reconcile'], 2);
+        // After the app's post types (0) and its migrations (1), beside ContentPages (2). A managed
+        // build reconciles from initialize ({@see install()}); its edit protection below is registered
+        // on every request either way.
+        if (!Runtime::managed()) {
+            add_action('init', [$self, 'reconcile'], 2);
+        }
         add_filter('page_link', [$self, 'link'], 10, 2);
         add_filter('get_canonical_url', [$self, 'canonicalUrl'], 10, 2);
         add_filter('map_meta_cap', [$self, 'lock'], 10, 4);
@@ -147,6 +151,63 @@ final class RoutePages
     }
 
     // ------------------------------------------------------------------ reconciling
+
+    /** Reconciles now, for a managed build's initialize; nothing without route Pages. */
+    public static function install(): void
+    {
+        self::$instance?->reconcile();
+    }
+
+    /**
+     * What {@see install()} would write, read without writing: one step per Page {@see apply()} would
+     * create, change, restore from the trash or trash, and one for the front-page options when they
+     * would change. Empty when the Pages match this build. A Page apply() would leave alone (another
+     * Page holds the address) is no step.
+     *
+     * @return list<array{step: string, route?: string, post?: int}>
+     */
+    public static function plan(): array
+    {
+        $self = self::$instance;
+        if ($self === null || $self->current(true)) {
+            return [];
+        }
+        $mapped = $self->state(true)['pages'];
+        $steps = [];
+        $root = null;
+        foreach ($self->routes as $id => $route) {
+            $post = isset($mapped[$id]) ? get_post($mapped[$id]) : null;
+            if (!$post instanceof \WP_Post || $post->post_type !== 'page') {
+                $post = $self->adopt((string) $id);
+            }
+            if ($self->foreignOwner($route['pattern'], $post?->ID) !== null) {
+                continue;
+            }
+            $wanted = ['post_status' => $route['status'], 'post_title' => $route['title'], 'post_content' => '',
+                'post_name' => $route['pattern'] === '/' ? 'first-home' : basename($route['pattern']), 'post_parent' => 0];
+            if (!$post instanceof \WP_Post) {
+                $steps[] = ['step' => 'page.create', 'route' => (string) $id];
+            } elseif ($post->post_status === 'trash') {
+                $steps[] = ['step' => 'page.restore', 'route' => (string) $id, 'post' => $post->ID];
+            } elseif (!isset($mapped[$id]) || get_post_meta($post->ID, self::OWNER, true) !== '1'
+                || array_diff_assoc(array_map('strval', $wanted), array_map('strval', array_intersect_key(get_object_vars($post), $wanted))) !== []) {
+                $steps[] = ['step' => 'page.update', 'route' => (string) $id, 'post' => $post->ID];
+            }
+            if ($route['pattern'] === '/' && $route['status'] === 'publish') {
+                $root = $post?->ID ?? 0;
+            }
+        }
+        foreach ($mapped as $id => $post) {
+            if (!isset($self->routes[$id]) && get_post($post) instanceof \WP_Post && get_post_status($post) !== 'trash') {
+                $steps[] = ['step' => 'page.trash', 'route' => (string) $id, 'post' => $post];
+            }
+        }
+        if ($root !== null && ($root === 0 || get_option('show_on_front') !== 'page' || (int) get_option('page_on_front') !== $root)) {
+            $steps[] = ['step' => 'front-page'];
+        }
+
+        return $steps;
+    }
 
     /** init: the Pages match this build's routes, once per build (or after something removed one). */
     public function reconcile(): void

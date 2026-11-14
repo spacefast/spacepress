@@ -36,11 +36,16 @@ final class Guests
                 self::prune();
             }
         });
-        add_action('action_scheduler_init', static function (): void {
-            if (Runtime::plugin() !== null && !as_has_scheduled_action(self::HOOK, [], 'first')) {
-                as_schedule_recurring_action(time() + 3600, DAY_IN_SECONDS, self::HOOK, [], 'first');
-            }
-        });
+        // Installing, not serving: a managed build schedules it from initialize.
+        add_action('action_scheduler_init', static fn () => Runtime::managed() ? null : self::install());
+    }
+
+    /** The daily guest pruning. */
+    public static function install(): void
+    {
+        if (Runtime::plugin() !== null && !as_has_scheduled_action(self::HOOK, [], 'first')) {
+            as_schedule_recurring_action(time() + 3600, DAY_IN_SECONDS, self::HOOK, [], 'first');
+        }
     }
 
     /** @return array{pruned: list<int>, kept: list<array{id: int, reason: string}>} */

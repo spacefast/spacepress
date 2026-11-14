@@ -44,6 +44,9 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	expect(cookies.some((c) => /^wordpress_(?:sec_)?[a-f0-9]+$/.test(c.name))).toBe(true);
 	const sidebar = page.locator('.first-admin-sidebar__content');
 	await expect(sidebar.getByRole('link', { name: 'All collections', exact: true })).toBeVisible();
+	// wp-admin's menu (which this page reads, as a wp-admin page) lists First's post types too; the
+	// sidebar shows each collection once, under Collections.
+	await expect(sidebar.getByRole('link', { name: 'Events', exact: true })).toHaveCount(1);
 	await sidebar.getByRole('link', { name: 'Posts', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/new/collections/posts`);
 	await expect(

@@ -581,7 +581,11 @@ fn the_admin_plugin_ships_by_default_and_admin_false_removes_it() {
 
     p.config_with(&plugins, ", admin: true");
     p.build();
-    assert_eq!(manifest()["plugins"]["first-admin"], version, "admin: true is the default, spelled out");
+    assert_eq!(
+        manifest()["plugins"]["first-admin"],
+        version,
+        "admin: true is the default, spelled out"
+    );
 }
 
 /// The flag is a boolean; anything else is refused before any output exists.

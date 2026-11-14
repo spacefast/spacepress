@@ -161,7 +161,7 @@ journal/
         │       ├── assets/*.css|*.js             # hashed
         │       ├── theme/                        # optional immutable theme payload (§4.6)
         │       └── agents/manifest.php           # §4.10
-        ├── plugins/first-admin/                   # only with admin: true
+        ├── plugins/first-admin/                   # unless admin: false
         └── themes/first-journal/                  # stable stylesheet path; theme-mode only
             ├── style.css
             ├── theme.json

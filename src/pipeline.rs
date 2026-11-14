@@ -332,6 +332,9 @@ pub fn build(
             .map_err(|d| d.phase(diag::Code::Compile))?;
         schema.blocks.push(block);
     }
+    if let Some(app) = &schema.app {
+        self::app::viewer_calls(program, app, &wordpress_uses).map_err(|d| d.phase(diag::Code::Compile))?;
+    }
     schema.wp_views =
         !wordpress_uses.is_empty() && wordpress_uses.iter().any(|u| u.kind != compile::WordPressKind::Ability);
     // Hooks run in a fixed order per collection; sort for stable output.

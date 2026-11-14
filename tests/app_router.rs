@@ -974,6 +974,22 @@ fn refuses_prebuilt_pages_that_depend_on_the_request() {
         "app/form/page.tsx has HTTP handlers, and a static site has no server to answer them",
         "first/app/form/page.tsx",
     );
+    // Through an imported helper too: the check follows the page's imports.
+    rejects(
+        &dir,
+        &[
+            (
+                "first/app/_lib/who.ts",
+                "import { is_user_logged_in } from \"php/wordpress\";\nexport function who(): string { return is_user_logged_in() ? \"you\" : \"guest\"; }\n",
+            ),
+            (
+                "first/app/hello/page.tsx",
+                "import { who } from \"../_lib/who\";\nexport const prerender = true;\nexport default function P() { return <p>{who()}</p>; }\n",
+            ),
+        ],
+        "app/hello/page.tsx is prebuilt, and `is_user_logged_in` asks who the visitor is",
+        "first/app/_lib/who.ts:2:",
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 

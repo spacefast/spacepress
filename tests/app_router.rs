@@ -1768,6 +1768,26 @@ fn comments_follow_the_kind_policy_on_every_path() {
         "{seen}"
     );
     assert_eq!(seen["memo"], 403, "a kind without comments takes none: {seen}");
+    // The page cache: a comment event that changes what visitors see of the thread purges the
+    // item's URL, its twin and its comments feed; a held or spam submission purges nothing.
+    let note = serde_json::json!(["/notes/open-note/", "/notes/open-note.md", "/notes/open-note/feed/"]);
+    let none = serde_json::json!([]);
+    for (event, want) in [
+        ("held", &none),
+        ("spam", &none),
+        ("approved", &note),
+        ("edited", &note),
+        ("unapproved", &note),
+        ("edited while held", &none),
+        ("approved again", &note),
+        ("deleted", &note),
+        ("approved then spammed", &note),
+        ("approved then trashed", &note),
+        ("control: a note edit", &note),
+        ("approved on insert", &note),
+    ] {
+        assert_eq!(&seen["purges"][event], want, "{event}: {seen}");
+    }
 }
 
 /// `<Comments for>` on a kind without `comments`, or on something that isn't an item, is a build

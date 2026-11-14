@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { watch } from 'node:fs';
 import { once } from 'node:events';
-import { access, cp, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { access, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -278,8 +279,78 @@ export async function watchSources(project, onChange, onError) {
   return { close };
 }
 
+// `first export` from local content: a throwaway WordPress on SQLite, in a temporary directory, with
+// the build's plugins active and first/content/ seeded as a publish seeds a Space. Prints one JSON
+// line ({url, credential}) once it serves, keeps serving until its standard input closes, then stops
+// and removes the site. The site is never a project's dev site and holds nothing but the export's input.
+async function exportSite(content, seed) {
+  const work = await mkdtemp(join(tmpdir(), 'first-export-'));
+  const site = join(work, 'wordpress');
+  const studio = await studioBinary();
+  const run = (args, options) => execute(process.execPath, [studio, ...args, '--path', site], options);
+  const port = await new Promise((done, fail) => {
+    const server = createServer();
+    server.once('error', fail);
+    server.listen(0, '127.0.0.1', () => { const { port: free } = server.address(); server.close(() => done(free)); });
+  });
+  let created = false;
+  let printed = false;
+  // Ctrl-C or a stop signal reaches this process too: the site is removed before it exits.
+  let stopping = null;
+  const stop = () => { stopping ??= cleanup().finally(() => process.exit(130)); return stopping; };
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
+  process.once('SIGHUP', stop);
+  // `first` closes this pipe when it is done or gone: from then on, the site has no reason to live.
+  const released = new Promise((done) => { process.stdin.once('end', done); process.stdin.once('close', done); });
+  process.stdin.resume();
+  released.then(() => { if (!printed) stop(); });
+  async function cleanup() {
+    if (created) {
+      await run(['stop'], { capture: true }).catch(() => {});
+      await execute(process.execPath, [studio, 'delete', site, '--no-files'], { capture: true }).catch(() => {});
+      created = false;
+    }
+    await rm(work, { recursive: true, force: true });
+  }
+  try {
+    await run(['create', '--name', `First export ${randomUUID().slice(0, 8)}`, '--wp', WORDPRESS_VERSION, '--php', '8.4',
+      '--admin-username', 'admin', '--admin-password', randomUUID(), '--skip-browser', '--skip-log-details'],
+      { capture: true, timeout: 600000, env: { ...process.env, STUDIO_BASE_PORT: String(port) } });
+    created = true;
+    const manifest = await json(join(content, 'first-manifest.json'));
+    const plugins = Object.keys(manifest.plugins);
+    if (!plugins.every((slug) => /^[a-z0-9][a-z0-9-]*$/.test(slug))) throw new Error('Invalid plugin slug in build manifest.');
+    for (const slug of plugins) await cp(join(content, 'plugins', slug), join(site, 'wp-content/plugins', slug), { recursive: true, dereference: true });
+    const activate = [...manifest.dependencies.map((d) => d.slug), 'first-runtime'];
+    for (const slug of ['first-identity', `first-app-${manifest.app}`]) if (plugins.includes(slug)) activate.push(slug);
+    for (const slug of activate) await run(['wp', 'plugin', 'activate', slug], { capture: true });
+    const spec = join(work, 'setup.json');
+    await atomicJson(spec, { site, wordpress: '7.1', sqlite: '3.1.2', localized: manifest.locales !== null });
+    await run(['wp', 'eval-file', join(here, 'setup.php'), spec, '--use-include'], { capture: true });
+    // WordPress's sample post, page and comment are not the project's content: gone before First
+    // stores anything of its own.
+    await run(['wp', 'post', 'delete', '1', '2', '3', '--force'], { capture: true }).catch(() => {});
+    await run(['wp', 'first', 'migrate'], { capture: true });
+    if (seed && await exists(seed)) {
+      const records = join(site, 'wp-content/first-export-seed');
+      await cp(seed, records, { recursive: true });
+      await run(['wp', 'first', 'seed', `--records=${records}`], { capture: true });
+    }
+    const password = (await run(['wp', 'user', 'application-password', 'create', 'admin', 'first export', '--porcelain'], { capture: true })).trim();
+    const status = JSON.parse(await run(['status', '--format', 'json'], { capture: true }));
+    process.stdout.write(JSON.stringify({ url: status.siteUrl.replace(/\/$/, ''), credential: `admin:${password}` }) + '\n');
+    printed = true;
+    await released;
+  } finally {
+    if (stopping) await stopping;
+    else await cleanup();
+  }
+}
+
 async function main() {
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('first dev requires Node.js 22 or newer.');
+  if (process.argv[2] === 'export') return exportSite(resolve(process.argv[3]), process.argv[4] ? resolve(process.argv[4]) : null);
   const [mode, directory, first, output, requestedPort = '8787', ...flags] = process.argv.slice(2);
   const noWatch = flags.includes('--no-watch');
   const project = await realpath(directory);
@@ -433,7 +504,7 @@ async function main() {
     const response = await fetch(`${url}/__first/api/v1`, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`First application is not ready: HTTP ${response.status}. Run first doctor --site ${url}`);
     const summary = [`\nWebsite:   ${url}/\nWordPress: ${url}/wp-admin/\nPlugins:   ${url}/wp-admin/plugins.php`];
-    if (await exists(join(project, 'public/index.html'))) summary.push(`App:       ${url}/wp-content/plugins/first-app-${encodeURIComponent(managed.owner.app)}/public/index.html`);
+    if (await exists(join(project, 'public/index.html'))) summary.push(`App:       ${url}/index.html`);
     if (managed.owner.generated.includes('first-admin')) summary.push(`First Admin: ${url}/first-admin/`);
     summary.push('Initial login: admin / first-test-admin (local development only; unchanged if you edited it)\n');
     summary.push(`Data persists in ${managed.owner.site}\nStop: first dev stop ${JSON.stringify(project)}`);

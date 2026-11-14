@@ -44,7 +44,7 @@ export const members = userProjection({
   access: { read: (ctx) => ctx.user?.role === "admin" ? true : { id: ctx.user?.id ?? -1 }, update: "self", create: "admin", delete: "admin" },
 });
 
-export const site = global("site", {
+export const site = global({
   motto: text().default("Write it down").max(80),
   perPage: integer().default(10).min(1).max(50),
 }, { label: "Site options" });

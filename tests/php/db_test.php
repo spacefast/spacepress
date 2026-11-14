@@ -855,6 +855,35 @@ $r = http('DELETE', "/items/{$widget['id']}");
 eq('DELETE returns the deleted row', [$r['status'], $r['json']['data']['name'] ?? null, $r['json']['data']['qty'] ?? null], [200, 'Widget', 12]);
 $isProblem('deleted row is gone', http('GET', "/items/{$widget['id']}"), 404, 'not_found');
 
+// ================================================================ afterPublish (spec §2.8)
+
+// A collection's item became published: created published, updated from a draft, or its scheduled
+// time came. Updating an already-published item, or a draft, doesn't run it.
+(static function (): void {
+    $id = ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true];
+    $status = ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true];
+    $seen = [];
+    $raw = ['version' => 3, 'runtime' => \First\Schema::SERIES, 'collections' => [
+        'bulletins' => ['primaryKey' => 'id', 'drafts' => true, 'editor' => false, 'table' => 'first_ap_bulletins',
+            'hooks' => ['afterPublish' => static function (array $row) use (&$seen): void { $seen[] = $row['title']; }],
+            'columns' => ['id' => $id, 'title' => ['type' => 'text', 'notNull' => true], 'status' => $status, 'publishedAt' => ['type' => 'timestamp', 'system' => true]]],
+    ]];
+    $schema = new \First\Schema($raw);
+    $wp = $GLOBALS['wp'];
+    $wp->exec('CREATE TABLE {prefix}first_ap_bulletins (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `title` LONGTEXT NOT NULL, `status` VARCHAR(191) NOT NULL, `publishedAt` CHAR(24), PRIMARY KEY (`id`)) ENGINE=InnoDB');
+    $db = new \First\Db(\First\Wp\CompositeStore::create($schema, $wp->connection()), $schema, \First\db()->media());
+    $db->insert('bulletins', ['title' => 'live']);
+    $draft = $db->insert('bulletins', ['title' => 'draft', 'status' => 'draft'], true)[0];
+    $db->update('bulletins', ['title' => 'draft, edited'], ['id' => $draft['id']]);
+    $db->update('bulletins', ['status' => 'published'], ['id' => $draft['id']]);
+    $db->update('bulletins', ['title' => 'published, edited'], ['id' => $draft['id']]);
+    $later = $db->insert('bulletins', ['title' => 'later', 'status' => 'scheduled', 'publishedAt' => gmdate('Y-m-d\\TH:i:s.000\\Z', time() + 3600)], true)[0];
+    $db->promoteDue();
+    $wp->exec("UPDATE {prefix}first_ap_bulletins SET `publishedAt` = '" . gmdate('Y-m-d\\TH:i:s.000\\Z', time() - 60) . "' WHERE `id` = " . (int) $later['id']);
+    $db->promoteDue();
+    eq('afterPublish runs once per item that became published, scheduled ones when they come due', $seen, ['live', 'draft, edited', 'later']);
+})();
+
 // ================================================================ relation filters respect the target's read access
 
 // A relation filter is an oracle over the target's columns, so it may only see target rows a direct

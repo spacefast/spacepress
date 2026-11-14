@@ -17,7 +17,7 @@ function first_admin_navigation() {
 }
 add_action( 'first_admin_init', static function () {
     first_admin_register_menu_item( 'collections', array( 'parent_type' => 'dropdown', 'label' => __( 'Collections', 'first-admin' ), 'icon' => 'dashicons-database' ) );
-    first_admin_register_menu_item( 'all-collections', array( 'to' => '/', 'label' => __( 'All collections', 'first-admin' ), 'parent' => 'collections' ) );
+    first_admin_register_menu_item( 'all-collections', array( 'to' => '/collections', 'label' => __( 'All collections', 'first-admin' ), 'parent' => 'collections' ) );
     foreach ( first_admin_navigation() as $name ) {
         $collection = \First\Wp\Runtime::plugin()->schema->collection( $name );
         first_admin_register_menu_item( 'collection-' . $name, array( 'to' => '/collections/' . rawurlencode( $name ), 'label' => $collection['label'] ?? $name, 'parent' => 'collections' ) );

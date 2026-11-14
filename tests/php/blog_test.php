@@ -435,19 +435,39 @@ eq('onDelete cascade', $db->findMany('comments', ['where' => ['postId' => $pub['
 
 \First\SystemTables::register('seam', [
     'CREATE TABLE IF NOT EXISTS `{prefix}first__seam` (`id` BIGINT NOT NULL AUTO_INCREMENT, `event` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB',
-    static function (\First\Store $store): void {
+    \First\SystemTables::step(1, static function (\First\Store $store): void {
         $db = $store instanceof \First\Wp\CompositeStore ? $store->db : throw new \LogicException('the upgrade needs the WordPress store');
         $have = $db->run('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$db->prefix() . 'first__seam', 'extra']);
         if ($have === []) {
             $store->applySystemStatements(['ALTER TABLE `{prefix}first__seam` ADD COLUMN `extra` LONGTEXT']);
         }
-    },
+    }),
 ]);
 \First\SystemTables::apply($db->store());
 $wp->exec('INSERT INTO {prefix}first__seam (`id`, `event`, `extra`) VALUES (1, ?, ?)', ['kept', 'upgraded']);
 \First\SystemTables::apply($db->store());
 eq('idempotent system DDL and guarded ALTER preserve data', $wp->sql('SELECT `event`, `extra` FROM {prefix}first__seam')[0], ['event' => 'kept', 'extra' => 'upgraded']);
 problem('system DDL rejects request transactions', fn () => $db->transaction(fn () => \First\SystemTables::apply($db->store())), 500, 'internal');
+
+// A site records the fingerprint of the set it applied (`first_runtime_tables`); before guarded steps
+// had versions it was computed with every step written as the word `step`. With every step at
+// version 1 the fingerprint is that same value, so a site already up to date runs nothing again.
+$recordedByOlderRuntime = static function (): string {
+    $parts = [];
+    foreach (\First\SystemTables::plan() as $table => $steps) {
+        $parts[$table] = ['mysql' => array_map(static fn (string $s): string => preg_match('/\Astep@\d+\z/', $s) === 1 ? 'step' : $s, $steps)];
+    }
+    ksort($parts);
+
+    return substr(hash('sha256', (string) \First\Json::encode($parts)), 0, 16);
+};
+eq('every guarded step of this runtime is at version 1', array_values(array_filter(array_merge(...array_values(\First\SystemTables::plan())), static fn (string $s): bool => str_starts_with($s, 'step@') && $s !== 'step@1')), []);
+eq('the fingerprint is the one runtimes before step versions recorded', \First\SystemTables::fingerprint(), $recordedByOlderRuntime());
+$before = \First\SystemTables::fingerprint();
+\First\SystemTables::register('seam_v2', [\First\SystemTables::step(2, static fn () => null)]);
+eq('the plan names a guarded step by its version', \First\SystemTables::plan()['seam_v2'], ['step@2']);
+check('a raised step version changes the fingerprint, so sites run the steps again', \First\SystemTables::fingerprint() !== $recordedByOlderRuntime());
+problem('a guarded step without a version is refused', fn () => \First\SystemTables::register('seam_bare', [static fn () => null]), 500, 'internal');
 
 $transformMutationRows = false;
 \First\Extensions::onRead(static function (array $rows, string $c) use (&$transformMutationRows): array {

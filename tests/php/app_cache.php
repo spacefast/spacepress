@@ -43,6 +43,7 @@ $site = wpSite('app-cache', ['wpContent' => $argv[1], 'users' => ['chief' => 'ed
 wp_set_current_user(1);
 $hello = \First\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published'], true)[0];
 $other = \First\db()->insert('notes', ['title' => 'Other', 'slug' => 'other', 'status' => 'published'], true)[0];
+$third = \First\db()->insert('notes', ['title' => 'Third', 'slug' => 'third', 'status' => 'published'], true)[0];
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
@@ -105,6 +106,15 @@ wp_cache_delete('test_purges', 'options');
 $out['purged'] = get_option('test_purges', []);
 wp_cache_delete('test_cleared', 'options');
 $out['cleared'] = str_replace($url, '', get_option('test_cleared', []));
+// A twin a page cache kept before its HTML page was ever rendered: fetched alone, then its row
+// changes. The twin is a shared answer too, so its URL is purged with the page's.
+$out['twin only'] = fetch("$url/notes/third.md");
+$out['twin index'] = array_map(static fn ($r) => "{$r['kind']} " . ($r['item'] === (string) $third['id'] ? 'third' : $r['item']) . " {$r['url']}", $wpdb->get_results("SELECT kind, item, url FROM {$wpdb->prefix}first__app_reads WHERE url LIKE '/notes/third%' ORDER BY url, kind, item", ARRAY_A));
+delete_option('test_purges');
+wp_set_current_user(1);
+\First\db()->update('notes', ['title' => 'Third again'], ['id' => (int) $third['id']]);
+wp_cache_delete('test_purges', 'options');
+$out['twin purged'] = get_option('test_purges', []);
 // A whole-host purge bans the VIP site and reaches Boost's clear-all; Batcache has none.
 delete_option('test_cleared');
 add_action('jetpack_boost_clear_page_cache_all', static fn () => first_test_cleared('boost', '*'));

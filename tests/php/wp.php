@@ -55,6 +55,8 @@ final class WpSite
     /** @var resource|null the php -S child that stands in for the web server (private-file probes) */
     private $server = null;
     private int $port = 0;
+    /** The path the site lives under (`/blog` for a subdirectory install), or '' at the server's root. */
+    private string $base = '';
 
     private function __construct(string $dir)
     {
@@ -70,7 +72,9 @@ final class WpSite
      *   migration: MySQL DDL for the app's `editor: false` tables ({prefix} replaced);
      *   identity: install first-identity too; users: extra WordPress users (name => role);
      *   server: start a php -S that answers the private-files probe (needed for file buckets);
-     *   akismet: activate the Akismet core ships (Jetpack's), with no key unless the suite sets one.
+     *   akismet: activate the Akismet core ships (Jetpack's), with no key unless the suite sets one;
+     *   base: a path such as `/blog` the site lives under (WordPress in a subdirectory); the web
+     *   server answers only below it.
      */
     public static function create(string $label, array $fixture): self
     {
@@ -149,7 +153,8 @@ final class WpSite
         $users = ['editor' => 'editor', 'author' => 'author', 'subscriber' => 'subscriber'] + ($fixture['users'] ?? []);
         // The site's URL is where its php -S would listen, so WordPress never redirects a client elsewhere.
         $site->port = wpFreePort();
-        file_put_contents("$dir/site.json", json_encode(['core' => $core, 'activate' => $activate, 'users' => $users, 'url' => $site->url()], JSON_THROW_ON_ERROR));
+        $site->base = rtrim((string) ($fixture['base'] ?? ''), '/');
+        file_put_contents("$dir/site.json", json_encode(['core' => $core, 'activate' => $activate, 'users' => $users, 'url' => $site->url(), 'base' => $site->base], JSON_THROW_ON_ERROR));
         if ($fixture['server'] ?? false) {
             $site->startServer();
         }
@@ -227,7 +232,7 @@ final class WpSite
     /** The site's URL (WP_HOME); `startServer()` makes it answer. */
     public function url(): string
     {
-        return "http://127.0.0.1:$this->port";
+        return "http://127.0.0.1:$this->port$this->base";
     }
 
     /**
@@ -828,7 +833,7 @@ function wpTemplate(string $file, array $fixture): string
     $vars = ['name' => $name, 'slug' => "first-app-$name", 'label' => ucfirst($name), 'Name' => ucfirst($name), 'requires' => $requires, 'runtimeRequires' => implode(', ', $runtimeRequires),
         'wpVersion' => $platform['wordpress'], 'phpVersion' => $platform['php'], 'runtimeSeries' => wpConstant("$repo/runtime/First/Schema.php", 'SERIES'),
         'firstVersion' => wpConstant("$repo/runtime/First/Wp/Runtime.php", 'VERSION'), 'version' => wpConstant("$repo/runtime/First/Wp/Runtime.php", 'VERSION'),
-        'schemaHash' => substr(hash('sha256', json_encode($fixture['schema'])), 0, 16)];
+        'schemaHash' => substr(hash('sha256', json_encode($fixture['schema'])), 0, 16), 'runtimeHash' => 'tests'];
     $out = (string) file_get_contents($file);
     foreach ($vars as $k => $v) {
         $out = str_replace('{{' . $k . '}}', (string) $v, $out);

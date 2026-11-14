@@ -86,7 +86,10 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "id"
+      ]
     },
     "reads": {
       "editor": false,
@@ -153,7 +156,11 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "bookId",
+        "ownerId"
+      ]
     }
   }
 }

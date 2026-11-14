@@ -9,6 +9,9 @@ on:
   schedule:
     - cron: '17 5 * * 1'
   workflow_dispatch:
+  # TEMPORARY, removed before merge: a workflow can be dispatched only once it is on main.
+  push:
+    branches: [first/wordpress-ahead]
 
 permissions:
   contents: read

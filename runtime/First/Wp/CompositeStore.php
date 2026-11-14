@@ -12,8 +12,9 @@ use First\Store;
 
 /**
  * The plugin's Store (§4.9): routes each collection to WpPostStore (`editor: true`) or WpTableStore
- * (`editor: false`). Both share one Connection, so one transaction spans posts, meta, custom
- * tables and options. Globals always go to the options-backed WpTableStore.
+ * (`editor: false`), and each taxonomy to WpTermStore. All share one Connection, so one transaction
+ * spans posts, terms, meta, custom tables and options. Globals always go to the options-backed
+ * WpTableStore.
  */
 final class CompositeStore implements Store, Links
 {
@@ -23,6 +24,7 @@ final class CompositeStore implements Store, Links
         public readonly WpPostStore $posts,
         public readonly WpTableStore $tables,
         public readonly ?WpUserStore $users = null,
+        public readonly ?WpTermStore $terms = null,
     ) {
     }
 
@@ -31,7 +33,7 @@ final class CompositeStore implements Store, Links
         $dialect = $db->sqlite() ? Dialect::mysqlOnSqlite() : Dialect::mysql($db->ciCollation());
         $tables = new WpTableStore($db, $schema, $dialect);
 
-        return new self($schema, $db, new WpPostStore($db, $schema, $dialect), $tables, new WpUserStore($db, $schema, $dialect, $tables));
+        return new self($schema, $db, new WpPostStore($db, $schema, $dialect), $tables, new WpUserStore($db, $schema, $dialect, $tables), new WpTermStore($db, $schema, $dialect));
     }
 
     public function isPostBacked(string $collection): bool
@@ -46,6 +48,9 @@ final class CompositeStore implements Store, Links
         // The auth collection's rows are WordPress users (§6.2).
         if ($this->users !== null && $collection === ($this->schema->auth()['collection'] ?? null)) {
             return $this->users;
+        }
+        if (isset($this->schema->taxonomies()[$collection])) {
+            return $this->terms ?? throw new \LogicException('No term store');
         }
 
         return $this->isPostBacked($collection) ? $this->posts : $this->tables;
@@ -136,25 +141,31 @@ final class CompositeStore implements Store, Links
         return $this->tables->mapError($e);
     }
 
-    // Join tables are First's own tables, whatever stores their two sides.
+    // Join tables are First's own tables, whatever stores their two sides; a `terms` field's links
+    // (`term:<taxonomy>`) are core's term relationships.
+
+    private function linksFor(string $join): Links
+    {
+        return str_starts_with($join, 'term:') ? ($this->terms ?? throw new \LogicException('No term store')) : $this->tables;
+    }
 
     public function linkTable(string $join): string
     {
-        return $this->tables->linkTable($join);
+        return $this->linksFor($join)->linkTable($join);
     }
 
     public function links(string $join, string $by, array $ids): array
     {
-        return $this->tables->links($join, $by, $ids);
+        return $this->linksFor($join)->links($join, $by, $ids);
     }
 
     public function setLinks(string $join, int|string $owner, array $targets): void
     {
-        $this->tables->setLinks($join, $owner, $targets);
+        $this->linksFor($join)->setLinks($join, $owner, $targets);
     }
 
     public function unlink(string $join, string $by, int|string $id): void
     {
-        $this->tables->unlink($join, $by, $id);
+        $this->linksFor($join)->unlink($join, $by, $id);
     }
 }

@@ -118,7 +118,7 @@ When the app sets `sealed: true`, the hosted manifest and the build manifest car
 
 ### Table prefix
 
-First puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}first_<table>`, system tables `{prefix}first__<name>`, identity tables `{prefix}first_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads. The longest name First adds after it is 29 characters, so a prefix may be at most 35 characters.
+First puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}first_<table>`, system tables `{prefix}first__<name>`, identity tables `{prefix}first_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads. An app's `existingTable` must be under that prefix (and not WordPress's, First's or Action Scheduler's own table), or the Space's own Zero 0.8 table `sf_<space>_<table>_<10 hex>`: the Space is the one a `sfz_<24 hex of SHA-256(space id)>_` prefix was made from, or the `FIRST_SPACE_ID` constant a host defines before WordPress loads; with neither, no 0.8 table binds. The longest name First adds after it is 29 characters, so a prefix may be at most 35 characters.
 
 ### Manifest `host` object
 

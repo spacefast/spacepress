@@ -445,7 +445,7 @@ registered once.
 | option | default | meaning |
 |---|---|---|
 | `storageName` | registry key in snake_case | explicit physical resource name without `wp_` / `first_` prefixes; retain existing storage on upgrade |
-| `existingTable` | none | `table()` only; exact pre-existing SQL table name, with no added prefixes. The first migration checks columns and declared index/foreign-key names without creating or copying the table. |
+| `existingTable` | none | `table()` only; exact pre-existing SQL table name, with no added prefixes: one under this site's table prefix, or this Space's own Zero 0.8 table. The first migration checks columns and declared index/foreign-key names without creating or copying the table. See [Tables First didn't create](#tables-first-didnt-create). |
 | `was` | none | `table()` only; the name this table was stored under. The deploy renames it and keeps its rows. See [Schema changes at deploy](#schema-changes-at-deploy). |
 | `label` | title-cased physical name | wp-admin menus, client docs |
 | `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
@@ -1005,6 +1005,21 @@ filters cannot probe them. Media and private file references work on both kinds.
 ### Tables First didn't create
 
 An `existingTable` binding accepts an ASCII SQL identifier of at most 64 characters.
+Several sites can share one database, each under its own table prefix
+([host contract](host-contract.md#table-prefix)), so the runtime checks the name
+before the first migration reads the table and on every request that uses it
+(`409 existing_table_refused` otherwise). It must be either:
+
+- a table under this site's `$wpdb->prefix` that is not WordPress's own (`posts`,
+  `users`, `options`, ...), First's (`{prefix}first_*`), Action Scheduler's
+  (`{prefix}actionscheduler_*`) or another network site's (`{prefix}2_*`); or
+- this Space's own Zero 0.8 table, `sf_<space>_<table>_<10 hex>` as
+  [`first migrate app --space`](migrating-from-zero.md#application-source-migration)
+  writes it. The Space is the one the table prefix was made from on Spacefast
+  (`sfz_` + 24 hex digits of SHA-256 of the Space id), or the host's
+  `FIRST_SPACE_ID` constant elsewhere. A host that defines neither binds no 0.8
+  table, and no Space binds another's.
+
 It is distinct from `storageName`, which still identifies the logical resource's
 migration history. The binding is committed in the snapshot and cannot change
 on later builds. Later column, index and foreign-key migrations use the exact
@@ -1762,8 +1777,8 @@ return post === null ? "" : esc_html(post.post_title);
 
 | Function | TypeScript |
 |---|---|
-| `get_option(option)` | `unknown` (a missing option is `false`) |
-| `update_option(option, value)`, `delete_option(option)` | `boolean` |
+| `get_option(option)` | `unknown` (a missing option is `false`); refuses secret options |
+| `update_option(option, value)`, `delete_option(option)` | `boolean`; refuses protected options |
 | `get_post(post_id)` | `WP_Post \| null` |
 | `wp_insert_post({ post_title?, post_content?, post_excerpt?, post_status?, post_type?, post_name?, post_author?, post_parent?, menu_order? })` | `number`; throws on failure |
 | `current_user_can(capability)`, `is_user_logged_in()` | `boolean` |
@@ -1791,6 +1806,18 @@ return post === null ? "" : esc_html(post.post_title);
   and First clears WordPress's cache of every option and post the call wrote.
 - A call is a direct PHP function call through First's value conversions,
   never a PHP string or `eval`.
+- Site settings that load code, move sign-in or decide roles (`active_plugins`,
+  `template`, `stylesheet`, `siteurl`, `home`, `admin_email`,
+  `users_can_register`, `default_role`, `{prefix}user_roles`, `cron`, First's
+  `first_*` options and the rest of [`guard.json`](../runtime/First/Wp/guard.json))
+  can't be written or deleted, and options holding secrets (salts, tokens,
+  passwords, `jetpack_private_options`) can't be read. A literal name fails the
+  build with `F4301`; a name built at runtime throws `HttpError(403,
+  "protected_option")`. Names compare case-insensitively. Keep app settings in a
+  [global](#globals), a table, or an option named for the app.
+  [Sealed mode](sealed.md#the-wordpress-guard) lists them with the reasons.
+- `wp_insert_post` takes `post`, `page` or another plugin's public post type;
+  any other `post_type` throws `HttpError(403, "protected_post_type")`.
 
 ## WordPress hooks
 

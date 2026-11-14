@@ -10,6 +10,8 @@ target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
 export FIRST_WP_PROJECT="${FIRST_WP_PROJECT:-first-wp-schema-check}"
 export FIRST_WP_PORT="${FIRST_WP_PORT:-8902}"
+# The Space whose 0.8 tables the app binds (existingTable); First refuses any other Space's.
+export FIRST_WP_SPACE_ID=spc_schema_check
 work="$(mktemp -d)"
 cleanup() { "$wp/harness.sh" down >/dev/null; rm -rf "$work"; }
 trap cleanup EXIT
@@ -30,8 +32,8 @@ rsync -a --delete "$work/content/initial/" "$work/live/"
 "$wp/harness.sh" sql "CREATE TABLE sf_spc_schema_check_tasks_0123456789 (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, title LONGTEXT NOT NULL, note LONGTEXT, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
 "$wp/harness.sh" sql "INSERT INTO sf_spc_schema_check_tasks_0123456789 (title, note) VALUES ('kept', 'from 0.8'), ('also kept', NULL)"
 # A second table the app didn't create, for the adopted retype step: rank holds no values.
-"$wp/harness.sh" sql "CREATE TABLE sf_spc_schema_check_retype (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, name LONGTEXT, rank BIGINT, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-"$wp/harness.sh" sql "INSERT INTO sf_spc_schema_check_retype (name) VALUES ('from 0.8')"
+"$wp/harness.sh" sql "CREATE TABLE sf_spc_schema_check_retype_0123456789 (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, name LONGTEXT, rank BIGINT, PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+"$wp/harness.sh" sql "INSERT INTO sf_spc_schema_check_retype_0123456789 (name) VALUES ('from 0.8')"
 "$wp/harness.sh" up --wp-content "$work/live" > "$work/harness.json"
 FIRST_WP_HARNESS="$work/harness.json" FIRST_SCHEMA_CHECK_CONTENT="$work/content" FIRST_SCHEMA_CHECK_LIVE="$work/live" \
   node --test "$here/schema-check.test.ts"

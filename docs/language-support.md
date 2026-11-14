@@ -696,6 +696,14 @@ Allowlisted WordPress functions compile to First\Wp\Functions::call(name, [args]
 
 [Evidence](../tests/compiler_contracts.rs) (`wordpress_functions_run_as_the_signed_in_user`)
 
+## wordpress-protected-option
+
+Status: **refused**. Diagnostic: `F4301`.
+
+get_option, update_option and delete_option refuse WordPress's site settings that load code, move sign-in or change roles (active_plugins, template, stylesheet, siteurl, home, admin_email, users_can_register, default_role, {prefix}user_roles, cron, upload paths, jetpack_* and the others in runtime/First/Wp/guard.json), First's own first_* options and transients; options whose names hold secrets (salts, tokens, passwords, jetpack_private_options) can't be read either. A literal name is refused here; a name built at runtime is refused by First\Wp\Guard with 403 protected_option. Names compare case-insensitively, and a name outside printable ASCII is refused. wp_insert_post takes post, page or another plugin's public post type only. Keep app settings in a global, a table or an option name of the app's own.
+
+[Evidence](../tests/fixtures/reject-wp-protected-option)
+
 ## plugin-narrowed-write
 
 Status: **refused**. Diagnostic: `F4201`.

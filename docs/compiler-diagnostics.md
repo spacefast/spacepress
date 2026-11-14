@@ -59,6 +59,7 @@ format.
 - `F1210`: app source imports a file outside `first/` (`first.config.ts` and modules under `first/` load app code only from `first/`).
 - `F1221`: an export name is taken twice (two exports, or an export and a `defineConfig` entry), one definition is exported under two names, or a kind, action or job is a default export.
 - `F4201`: a plugin's compiled code needs a capability its `first/_generated/plugins.lock.json` entry doesn't grant.
+- `F4301`: app or plugin code names, as a literal, a WordPress option the runtime guard protects (`runtime/First/Wp/guard.json`): writing or deleting a site setting that loads code, moves sign-in or decides roles, or reading one that holds a secret.
 
 Specific, fixture-backed codes take precedence over phase codes. The growing
 [tested compatibility inventory](language-support.md) lists those codes and

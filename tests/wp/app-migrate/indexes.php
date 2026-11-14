@@ -11,7 +11,7 @@ $dir = '/tmp/first-app-migrate-indexes/first/app/migrations';
 // create: the schema check refuses that until the deploy confirms it, as a real one would.
 $migrator = new \First\Wp\Migrator($db, $dir, $schema, drops: \First\Wp\SchemaCheck::drops(['contacts.parentId=0']));
 $ledger = $db->prefix() . 'first__migrations';
-$table = 'sf_migrate_index_contacts';
+$table = 'adopt_legacy_contacts';
 $otherDatabase = 'first_adopt_other';
 $check = static function (bool $ok, string $message): void {
     if (!$ok) { throw new \RuntimeException($message); }
@@ -38,7 +38,7 @@ try {
         $migrator->migrate();
         throw new \LogicException('adoption accepted an index name absent from its snapshot');
     } catch (\RuntimeException $e) {
-        $check(str_contains($e->getMessage(), 'Cannot adopt sf_migrate_index_contacts: index email_unique'), $e->getMessage());
+        $check(str_contains($e->getMessage(), 'Cannot adopt adopt_legacy_contacts: index email_unique'), $e->getMessage());
     }
     $check($db->run("SHOW CREATE TABLE `$table`") === $ddl, 'refused adoption changed the table');
     $check(!$migrator->keyed(), 'refused adoption created a migration ledger');

@@ -8191,6 +8191,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "the type comes from WordPress's own documentation of the function",
                 );
             }
+            if i == 0
+                && let Some(access) = crate::wordpress::option_access(name)
+            {
+                protected_option_literal(name, access, &v.ty, e.span)?;
+            }
             php.push(v.php);
         }
         php.extend(f.fixed.iter().map(php_json));
@@ -11291,6 +11296,33 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
 }
 
 /// Is a value of type `a` usable where `b` is expected?
+/// A protected option named by a literal (or a union of literals) is refused at the call; a name
+/// built at runtime meets the same list in `First\Wp\Guard` (runtime/First/Wp/guard.json).
+fn protected_option_literal(function: &str, access: &str, name: &Ty, span: Span) -> Result<()> {
+    let literals: Vec<&str> = match name {
+        Ty::StrLit(s) | Ty::FreshStrLit(s) => vec![s.as_str()],
+        Ty::Union(parts) => parts
+            .iter()
+            .filter_map(|t| match t {
+                Ty::StrLit(s) | Ty::FreshStrLit(s) => Some(s.as_str()),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    for option in literals {
+        if let Some((why, readable)) = crate::wordpress::protected_option(option)
+            && !(access == "read" && readable)
+        {
+            let verb = if access == "read" { "read" } else { "change" };
+            return Err(Diag::new(span, format!("`{function}` can't {verb} the WordPress option `{option}`: {why}"))
+                .code(crate::diag::Code::ProtectedWordPress)
+                .help("keep app settings in a global or a table, or under an option name of the app's own; site settings like this one belong to the site's administrator"));
+        }
+    }
+    Ok(())
+}
+
 pub fn assignable(a: &Ty, b: &Ty) -> bool {
     if a == b || *b == Ty::Unknown || *b == Ty::Dynamic || *a == Ty::Never {
         return true;

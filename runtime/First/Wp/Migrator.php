@@ -75,6 +75,12 @@ final class Migrator
     /** @return list<string> ids applied by this call */
     public function migrate(): array
     {
+        // A table the app binds but didn't create must be this site's, before anything reads it.
+        foreach ($this->schema->collections() as $spec) {
+            if (isset($spec['existingTable'])) {
+                Guard::table((string) $spec['existingTable'], $this->db->prefix());
+            }
+        }
         $this->requireCompatibleTables();
         $app = $this->schema->name();
         $files = glob($this->dir . '/*.sql') ?: [];
@@ -206,6 +212,7 @@ final class Migrator
         }
         $expected = json_decode(explode("\n", substr($statement, strlen('-- first-adopt ')), 2)[0], true, flags: JSON_THROW_ON_ERROR);
         $table = $expected['table'];
+        Guard::table((string) $table, $this->db->prefix());
         $indexes = [];
         foreach ($this->db->run('SELECT INDEX_NAME AS n, NON_UNIQUE AS u, COLUMN_NAME AS c, SUB_PART AS p FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY INDEX_NAME, SEQ_IN_INDEX', [$table]) as $row) {
             $indexes[$row['n']][] = $row;

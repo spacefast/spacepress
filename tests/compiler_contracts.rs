@@ -3585,7 +3585,7 @@ fn wordpress_functions_run_as_the_signed_in_user() {
                 'editor' => $run('Fish & <chips>', 'editor'),
                 'subscriber' => $run('Nope', 'subscriber'),
                 'empty' => $run('', 'editor'),
-                'option' => get_option('first_last_note'),
+                'option' => get_option('fns_last_note'),
             ]), "\n";
             "#,
         )

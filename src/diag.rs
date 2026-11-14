@@ -67,6 +67,9 @@ pub enum Code {
     /// A plugin's compiled code uses a capability its `first/_generated/plugins.lock.json` entry doesn't grant.
     #[serde(rename = "F4201")]
     PluginCapability,
+    /// App code names a WordPress option the runtime guard protects (runtime/First/Wp/guard.json).
+    #[serde(rename = "F4301")]
+    ProtectedWordPress,
 }
 
 impl Code {

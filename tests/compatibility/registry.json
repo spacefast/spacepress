@@ -648,6 +648,14 @@
       "guidance": "Allowlisted WordPress functions compile to First\\Wp\\Functions::call(name, [args]): a direct PHP call through the value conversions. WP_Post and WP_User results become the same read-only views hook arguments are, and a WP_Error result throws an HttpError with its own status (422 when it has none)."
     },
     {
+      "id": "wordpress-protected-option",
+      "status": "refused",
+      "code": "F4301",
+      "fixture": "tests/fixtures/reject-wp-protected-option",
+      "message": "`update_option` can't change the WordPress option `default_role`",
+      "guidance": "get_option, update_option and delete_option refuse WordPress's site settings that load code, move sign-in or change roles (active_plugins, template, stylesheet, siteurl, home, admin_email, users_can_register, default_role, {prefix}user_roles, cron, upload paths, jetpack_* and the others in runtime/First/Wp/guard.json), First's own first_* options and transients; options whose names hold secrets (salts, tokens, passwords, jetpack_private_options) can't be read either. A literal name is refused here; a name built at runtime is refused by First\\Wp\\Guard with 403 protected_option. Names compare case-insensitively, and a name outside printable ASCII is refused. wp_insert_post takes post, page or another plugin's public post type only. Keep app settings in a global, a table or an option name of the app's own."
+    },
+    {
       "id": "plugin-narrowed-write",
       "status": "refused",
       "code": "F4201",

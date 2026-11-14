@@ -91,6 +91,57 @@ pub fn function(name: &str) -> Option<Function> {
     })
 }
 
+/// What app and plugin code may not do through "php/wordpress": the list `First\Wp\Guard` enforces
+/// at runtime, read here so a literal option name is refused at build time with the same reason.
+const GUARD: &str = include_str!("../../runtime/First/Wp/guard.json");
+
+fn guard() -> &'static Value {
+    static PARSED: OnceLock<Value> = OnceLock::new();
+    PARSED.get_or_init(|| serde_json::from_str(GUARD).expect("runtime/First/Wp/guard.json is JSON"))
+}
+
+/// `"read"` or `"write"` for a catalog function that takes an option name first, else None.
+pub fn option_access(function: &str) -> Option<&'static str> {
+    guard()["functions"][function]
+        .as_str()
+        .filter(|k| matches!(*k, "read" | "write"))
+}
+
+/// Why `name` is a protected option, and whether it may still be read; None for an ordinary
+/// option. Compared as `First\Wp\Guard::protects` does: trimmed, lowercased, printable ASCII only.
+pub fn protected_option(name: &str) -> Option<(&'static str, bool)> {
+    let name = name.trim_matches([' ', '\t', '\n', '\r', '\0', '\x0b']);
+    if name.bytes().any(|b| !(0x21..=0x7e).contains(&b)) {
+        return Some((
+            "an option name outside printable ASCII can match a protected one in MySQL",
+            false,
+        ));
+    }
+    let name = name.to_ascii_lowercase();
+    let hits: Vec<&Value> = guard()["options"]
+        .as_array()
+        .expect("options")
+        .iter()
+        .filter(|rule| {
+            let want = rule["name"].as_str().expect("name");
+            match rule["match"].as_str().expect("match") {
+                "exact" => name == want,
+                "prefix" => name.starts_with(want),
+                "suffix" => name.ends_with(want),
+                "contains" => name.contains(want),
+                other => panic!("guard.json match `{other}`"),
+            }
+        })
+        .collect();
+    // The first rule gives the reason; any secret rule among them makes the option unreadable.
+    let first = hits.first()?;
+    let secret = hits.iter().find(|rule| rule["read"] != true);
+    Some(match secret {
+        Some(rule) if first["read"] == true => (rule["why"].as_str().expect("why"), false),
+        _ => (first["why"].as_str().expect("why"), first["read"] == true),
+    })
+}
+
 /// The admitted public properties of a catalog class, for the runtime's read-only views.
 pub fn class_fields(name: &str) -> Vec<&'static str> {
     catalog()["classes"][name]
@@ -211,5 +262,31 @@ mod tests {
         let content = hook("the_content").unwrap();
         assert_eq!(content.returns, Ty::Str);
         assert!(matches!(&hook("pre_get_posts").unwrap().params[0].1, Ty::Obj(f) if f.contains_key("set")));
+    }
+
+    #[test]
+    fn the_guard_covers_every_option_function_and_no_refused_one_is_admitted() {
+        for name in function_names() {
+            let takes_option = function(name)
+                .unwrap()
+                .params
+                .first()
+                .is_some_and(|(p, _)| p == "option");
+            assert_eq!(takes_option, option_access(name).is_some(), "{name}");
+        }
+        for name in guard()["neverAdmitted"].as_array().unwrap() {
+            assert!(
+                function(name.as_str().unwrap()).is_none(),
+                "{name} is in the catalog: guard it first"
+            );
+        }
+        assert!(protected_option("active_plugins").is_some_and(|(_, read)| read));
+        assert!(protected_option(" Active_Plugins ").is_some());
+        assert!(protected_option("wp_user_roles").is_some() && protected_option("sfz_0123_user_roles").is_some());
+        assert!(protected_option("jetpack_private_options").is_some_and(|(_, read)| !read));
+        assert!(protected_option("first_runtime_secret").is_some_and(|(_, read)| !read));
+        assert!(protected_option("activ\u{e9}_plugins").is_some());
+        assert_eq!(protected_option("fns_last_note"), None);
+        assert_eq!(protected_option("blogname"), None);
     }
 }

@@ -9,10 +9,10 @@ export default defineConfig({
       access: "anyone",
       handler(input) {
         if (!current_user_can("edit_posts")) return { allowed: false };
-        update_option("first_last_note", input.title);
+        update_option("fns_last_note", input.title);
         const id = wp_insert_post({ post_title: input.title, post_status: "draft" });
         const post = get_post(id);
-        return { allowed: true, id, title: post === null ? "" : esc_html(post.post_title), last: get_option("first_last_note") };
+        return { allowed: true, id, title: post === null ? "" : esc_html(post.post_title), last: get_option("fns_last_note") };
       },
     }),
   },

@@ -331,6 +331,7 @@ const variantNames: Record<string, string> = {
 	AccessQuery: "An access rule can't be compiled to a query",
 	PluginIsolation: "A plugin package imports code it may not import",
 	PluginCapability: "A plugin uses a capability its lock entry doesn't grant",
+	ProtectedWordPress: "App code changes or reads a protected WordPress option",
 	SyncFilesTooLarge: "The content files to sync are too large",
 	SourceNeedsLocalCapture: "The host can't capture this source; publish from your machine",
 	ImportFence: "App code imports a file outside `first/`",

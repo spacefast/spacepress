@@ -54,7 +54,10 @@ contract. The compiled app tree's `manifest.json` (under `app/<hash>/`) is the m
    pending migrations forward only, schedules identity maintenance, seeds content, and writes the ready
    marker. A ready build returns its receipt and changes nothing.
 3. Rollback is selecting an older ready build: no migration runs, and the older build reads the newer
-   schema's data.
+   schema's data. Interim limit: a request never installs anything, and `Loader::initialize` on a ready
+   build changes nothing, so the stored rewrite rules and the app's Pages stay those of the build
+   initialized last until a new build initializes; builds selected per request must share URL patterns
+   and page records with the build initialized last.
 4. Run `wp first jobs tick` on a schedule. It does one bounded pass of the site's background work and
    prints `{processed, failures, outboxDispatched, requeued, receiptsExpired, remaining}`
    (`outboxDispatched` is always 0: jobs reach Action Scheduler in the transaction that queues them;

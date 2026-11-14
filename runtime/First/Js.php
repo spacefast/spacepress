@@ -709,6 +709,54 @@ final class Js
         return (string) mb_convert_encoding($u, 'UTF-8', 'UTF-16LE');
     }
 
+    /**
+     * `String.fromCharCode(...codes)`: each code ToUint16, read as one UTF-16 code unit. A result
+     * that pairs every surrogate is the JavaScript string; one that leaves a lone surrogate throws,
+     * as slicing one does (see fromUnits).
+     */
+    public static function fromCharCode(mixed ...$codes): string
+    {
+        $u = '';
+        foreach ($codes as $code) {
+            $n = self::toNumber($code);
+            $unit = is_finite((float) $n) ? ((int) fmod(self::toInteger($n), 65536) + 65536) % 65536 : 0;
+            $u .= pack('v', $unit);
+        }
+        return self::wellFormed($u);
+    }
+
+    /** `String.fromCodePoint(...points)`: a RangeError for anything but an integer 0..0x10FFFF. */
+    public static function fromCodePoint(mixed ...$points): string
+    {
+        $u = '';
+        foreach ($points as $point) {
+            $n = self::toNumber($point);
+            if (!is_finite((float) $n) || floor((float) $n) !== (float) $n || $n < 0 || $n > 0x10FFFF) {
+                throw new JsError('Invalid code point ' . self::str($point), 'RangeError');
+            }
+            $cp = (int) $n;
+            $u .= $cp < 0x10000 ? pack('v', $cp) : pack('vv', 0xD800 + (($cp - 0x10000) >> 10), 0xDC00 + (($cp - 0x10000) & 0x3FF));
+        }
+        return self::wellFormed($u);
+    }
+
+    /** UTF-16LE units to UTF-8, refusing any unpaired surrogate anywhere in them. */
+    private static function wellFormed(string $u): string
+    {
+        $n = intdiv(strlen($u), 2);
+        for ($i = 0; $i < $n; $i++) {
+            $unit = ord($u[2 * $i]) | (ord($u[2 * $i + 1]) << 8);
+            if ($unit >= 0xD800 && $unit <= 0xDBFF) {
+                $next = $i + 1 < $n ? (ord($u[2 * $i + 2]) | (ord($u[2 * $i + 3]) << 8)) : -1;
+                if ($next < 0xDC00 || $next > 0xDFFF) { self::loneSurrogate(); }
+                $i++;
+            } elseif ($unit >= 0xDC00 && $unit <= 0xDFFF) {
+                self::loneSurrogate();
+            }
+        }
+        return (string) mb_convert_encoding($u, 'UTF-8', 'UTF-16LE');
+    }
+
     /** A result would hold a lone surrogate: see loneSurrogate(). */
     public static function splitsPair(): never
     {

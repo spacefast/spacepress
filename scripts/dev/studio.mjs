@@ -294,6 +294,25 @@ async function exportSite(content, seed) {
     server.listen(0, '127.0.0.1', () => { const { port: free } = server.address(); server.close(() => done(free)); });
   });
   let created = false;
+  let printed = false;
+  // Ctrl-C or a stop signal reaches this process too: the site is removed before it exits.
+  let stopping = null;
+  const stop = () => { stopping ??= cleanup().finally(() => process.exit(130)); return stopping; };
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
+  process.once('SIGHUP', stop);
+  // `first` closes this pipe when it is done or gone: from then on, the site has no reason to live.
+  const released = new Promise((done) => { process.stdin.once('end', done); process.stdin.once('close', done); });
+  process.stdin.resume();
+  released.then(() => { if (!printed) stop(); });
+  async function cleanup() {
+    if (created) {
+      await run(['stop'], { capture: true }).catch(() => {});
+      await execute(process.execPath, [studio, 'delete', site, '--no-files'], { capture: true }).catch(() => {});
+      created = false;
+    }
+    await rm(work, { recursive: true, force: true });
+  }
   try {
     await run(['create', '--name', `First export ${randomUUID().slice(0, 8)}`, '--wp', WORDPRESS_VERSION, '--php', '8.4',
       '--admin-username', 'admin', '--admin-password', randomUUID(), '--skip-browser', '--skip-log-details'],
@@ -321,14 +340,11 @@ async function exportSite(content, seed) {
     const password = (await run(['wp', 'user', 'application-password', 'create', 'admin', 'first export', '--porcelain'], { capture: true })).trim();
     const status = JSON.parse(await run(['status', '--format', 'json'], { capture: true }));
     process.stdout.write(JSON.stringify({ url: status.siteUrl.replace(/\/$/, ''), credential: `admin:${password}` }) + '\n');
-    process.stdin.resume();
-    await once(process.stdin, 'end');
+    printed = true;
+    await released;
   } finally {
-    if (created) {
-      await run(['stop'], { capture: true }).catch(() => {});
-      await execute(process.execPath, [studio, 'delete', site, '--no-files'], { capture: true }).catch(() => {});
-    }
-    await rm(work, { recursive: true, force: true });
+    if (stopping) await stopping;
+    else await cleanup();
   }
 }
 

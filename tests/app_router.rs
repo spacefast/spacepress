@@ -3134,11 +3134,26 @@ fn docs_example_exports_to_a_static_site() {
         intro.contains(r#"<link rel="canonical" href="https://docs.example.test/docs/introduction">"#),
         "{intro}"
     );
-    // Nothing points back at the WordPress that rendered it: no host, no feed, no REST link.
+    // Nothing points back at the WordPress that rendered it: no host, no feed, no REST link, in any
+    // file (the export refuses to finish otherwise, so this checks every page and asset).
+    for file in files
+        .iter()
+        .filter(|f| f.ends_with(".html") || f.ends_with(".md") || f.ends_with(".css"))
+    {
+        let text = read(file);
+        assert!(!text.contains("localhost:") && !text.contains("127.0.0.1"), "{file}");
+    }
     for page in ["index.html", "docs/introduction.html", "404.html"] {
         let html = read(page);
-        assert!(!html.contains("localhost") && !html.contains("127.0.0.1"), "{page}");
         assert!(!html.contains("/feed") && !html.contains("wp-json"), "{page}");
+    }
+    // JSON in a script element can never close it: `<` stays escaped as WordPress wrote it.
+    for page in ["index.html", "docs/introduction.html"] {
+        let html = read(page);
+        for block in html.split("type=\"application/json\">").skip(1) {
+            let json = block.split("</script>").next().unwrap();
+            assert!(!json.contains('<'), "{page}: {json}");
+        }
     }
     let mut server = Command::new("node")
         .arg(root().join("tests/differential/client/serve-static.mjs"))
@@ -3156,6 +3171,40 @@ fn docs_example_exports_to_a_static_site() {
     let _ = server.kill();
     let _ = server.wait();
     docs_read_as_published(&seen, &url, "https://docs.example.test");
+    // Below a path, as a GitHub Pages project site serves it: every same-site URL starts with it.
+    let base = work.path().join("base");
+    let out = first()
+        .args([
+            "export".as_ref(),
+            project.as_os_str(),
+            "--base".as_ref(),
+            "/docs-site".as_ref(),
+            "--out".as_ref(),
+            base.as_os_str(),
+        ])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let intro = std::fs::read_to_string(base.join("docs/introduction.html")).unwrap();
+    assert!(intro.contains(r#"href="/docs-site/docs/guides""#), "{intro}");
+    assert!(
+        intro.contains(r#""@wordpress/interactivity":"/docs-site/wp-includes/"#),
+        "{intro}"
+    );
+    assert!(!intro.contains(r#"href="/docs/"#), "a link without the base: {intro}");
+    // A second export replaces the first (it carries the export marker).
+    let again = first()
+        .args([
+            "export".as_ref(),
+            project.as_os_str(),
+            "--base".as_ref(),
+            "/docs-site".as_ref(),
+            "--out".as_ref(),
+            base.as_os_str(),
+        ])
+        .output()
+        .unwrap();
+    assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
 }
 
 /// `first export --site` (docs/decisions/2026-11-13-static-output.md): WordPress as the CMS somewhere
@@ -3256,10 +3305,12 @@ fn static_export_from_a_hosted_site() {
     let _ = server.wait();
     // The count is stored on the hosted site.
     let counted = call("GET", "/cheers", serde_json::json!({}));
-    // A checkout that differs from what the site runs is refused before anything is written.
+    // A checkout that differs from what the site runs is refused before anything is written, even
+    // when only markup changed (the schema is the same; the compiled page is not).
+    let page = std::fs::read_to_string(project.join("first/app/page.tsx")).unwrap();
     std::fs::write(
         project.join("first/app/page.tsx"),
-        "export default function Home() { return <p>changed</p>; }\n",
+        page.replace("className=\"notes\"", "className=\"notes changed\""),
     )
     .unwrap();
     let stale = export(&site);
@@ -3328,7 +3379,7 @@ fn static_export_refuses_what_needs_a_server() {
         !project.join("first/dist/static").exists(),
         "a refused export writes nothing"
     );
-    // A page that asks WordPress who the visitor is.
+    // A link to a page the export doesn't contain.
     write(
         "first/app/page.tsx",
         "import { Link } from \"first/app\";\nexport default function Home() { return <main><Link href=\"/elsewhere\">x</Link></main>; }\n",
@@ -3340,6 +3391,59 @@ fn static_export_refuses_what_needs_a_server() {
         stderr.contains("/: it links to /elsewhere, which isn't in the export"),
         "{stderr}"
     );
+    // A page that asks WordPress who the visitor is: refused at build, at the call.
+    write(
+        "first/app/page.tsx",
+        "import { is_user_logged_in } from \"php/wordpress\";\nexport default function Home() { return <main>{is_user_logged_in() ? \"you\" : \"guest\"}</main>; }\n",
+    );
+    let out = first().arg("export").arg(project).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("`is_user_logged_in` asks who the visitor is"),
+        "{stderr}"
+    );
+    // A page that redirects.
+    write(
+        "first/app/page.tsx",
+        "import { redirect } from \"first/app\";\nexport default function Home() { redirect(\"/elsewhere\"); }\n",
+    );
+    let out = first().arg("export").arg(project).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("/ (app//) redirects to"), "{stderr}");
+    // --out never replaces the project, its sources, or a folder that isn't an export.
+    for (out_dir, message) in [
+        (project.to_path_buf(), "holds the project"),
+        (project.join("first"), "is inside the project"),
+        (project.join("first/dist"), "is where `first build` writes"),
+    ] {
+        let out = first()
+            .arg("export")
+            .arg(project)
+            .arg("--out")
+            .arg(&out_dir)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{stderr}");
+        assert!(stderr.contains(message), "{message}: {stderr}");
+    }
+    let elsewhere = tempfile::tempdir().unwrap();
+    std::fs::write(elsewhere.path().join("notes.txt"), "mine").unwrap();
+    let out = first()
+        .arg("export")
+        .arg(project)
+        .arg("--out")
+        .arg(elsewhere.path())
+        .output()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&out.stderr).contains("already holds files that aren't an export"));
+    assert_eq!(
+        std::fs::read_to_string(elsewhere.path().join("notes.txt")).unwrap(),
+        "mine"
+    );
+    assert!(project.join("first.config.ts").is_file() && project.join("first/app").is_dir());
     // `output: "server"` is told what export is for.
     write(
         "first.config.ts",

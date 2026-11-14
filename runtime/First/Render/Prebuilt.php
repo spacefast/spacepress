@@ -291,7 +291,29 @@ final class Prebuilt
             }
             return $seen[$u['path']] = true;
         }));
-        return ['urls' => $urls, 'redirects' => $redirects, 'build' => $plugin->buildHash()];
+        return ['urls' => $urls, 'redirects' => $redirects, 'build' => $plugin->buildHash(), 'app' => self::appHash($plugin)];
+    }
+
+    /**
+     * The app plugin's compiled code as `first export --site` compares it with the checkout's: the
+     * SHA-256 of each file below `first/app/` (its path, a NUL, its bytes, a NUL), in path order.
+     * Any change to a page, a component, an action or the schema changes it.
+     */
+    public static function appHash(Plugin $plugin): string
+    {
+        $root = $plugin->dir . '/first/app';
+        $files = [];
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)) as $f) {
+            if ($f->isFile()) {
+                $files[] = substr($f->getPathname(), strlen($root) + 1);
+            }
+        }
+        sort($files, SORT_STRING);
+        $hash = hash_init('sha256');
+        foreach ($files as $file) {
+            hash_update($hash, $file . "\0" . (string) file_get_contents("$root/$file") . "\0");
+        }
+        return hash_final($hash);
     }
 
     /**

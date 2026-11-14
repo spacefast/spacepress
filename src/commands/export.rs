@@ -123,10 +123,7 @@ fn run(flags: Flags) -> Result<(), String> {
     if built.schema.app.as_ref().is_none_or(|a| a.routes.is_empty()) {
         return Err("first export renders first/app/, and this project has no pages: add first/app/page.tsx".into());
     }
-    let out = flags.out.clone().unwrap_or_else(|| project.join(OUT));
-    if project.starts_with(&out) {
-        return Err("--out can't contain the project".into());
-    }
+    let out = output_dir(&project, flags.out.as_deref())?;
     // The build the pages render from. Local: this checkout's, written as `first build` writes it.
     let (site, credential, _local) = match &flags.site {
         Some(site) => {
@@ -162,15 +159,30 @@ fn run(flags: Flags) -> Result<(), String> {
         _ => format!("{site}: {}", p.message()),
     })?;
     if flags.site.is_some() {
-        let local = crate::schema_php::render(&built.schema);
+        // The checkout's compiled app plugin, hashed as the site hashes its own (Prebuilt::appHash):
+        // every file below first/app/, so a change to any page, component or action counts.
+        let schema_php = crate::schema_php::render(&built.schema);
+        let mut files: Vec<(String, Vec<u8>)> = crate::app_plugin::files(&built, &schema_php, Vec::new(), Vec::new())
+            .into_iter()
+            .filter_map(|(path, bytes)| {
+                let rest = path.split_once('/')?.1.strip_prefix("first/app/")?;
+                // Migrations are the site's ledger, not code a page renders with.
+                (!rest.starts_with("migrations/")).then(|| (rest.to_string(), bytes))
+            })
+            .collect();
+        files.sort();
         let hash = {
             use sha2::Digest;
-            sha2::Sha256::digest(local.as_bytes())
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect::<String>()
+            let mut hash = sha2::Sha256::new();
+            for (path, bytes) in &files {
+                hash.update(path.as_bytes());
+                hash.update([0]);
+                hash.update(bytes);
+                hash.update([0]);
+            }
+            hash.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>()
         };
-        if listing["build"].as_str() != Some(hash.as_str()) {
+        if listing["app"].as_str() != Some(hash.as_str()) {
             return Err(format!(
                 "{site} runs another build of this app: export renders the checkout's pages, so deploy this checkout to the site first (or check out what the site runs)"
             ));
@@ -213,6 +225,11 @@ impl Local {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        // Its own process group: a Ctrl-C in the terminal stops `first` only. The runner then reads
+        // the end of its standard input, which closes whenever `first` exits for any reason, and
+        // removes the site, as on a normal exit.
+        #[cfg(unix)]
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
         eprintln!("starting a local WordPress for the export…");
         let mut child = command
             .spawn()
@@ -278,13 +295,20 @@ struct Export<'a> {
     name: String,
     /// Public actions by name: a client component may call them on `--site`.
     public_actions: BTreeMap<String, bool>,
-    islands: Vec<(String, Vec<String>)>,
 }
 
 impl<'a> Export<'a> {
     fn new(site: &str, flags: &'a Flags, schema: &crate::schema::Schema, listing: &'a Value) -> Result<Self, String> {
+        // Every page and file is fetched from the site that was asked: a listing naming another
+        // origin as its home is refused, not followed.
+        let asked = url::Url::parse(site).map_err(|e| format!("{site}: {e}"))?;
         let home = url::Url::parse(listing["home"].as_str().unwrap_or(site)).map_err(|e| e.to_string())?;
         let origin = home.origin().ascii_serialization();
+        if origin != asked.origin().ascii_serialization() || !home.username().is_empty() {
+            return Err(format!(
+                "{site} says its pages are at {home}, another origin; export from the site's own address"
+            ));
+        }
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(120)))
             .http_status_as_error(false)
@@ -302,11 +326,6 @@ impl<'a> Export<'a> {
                 .as_object()
                 .map(|m| m.iter().map(|(k, v)| (k.clone(), v == true)).collect())
                 .unwrap_or_default(),
-            islands: schema
-                .islands
-                .iter()
-                .map(|(ns, i)| (ns.clone(), i.actions.clone()))
-                .collect(),
         })
     }
 
@@ -345,6 +364,12 @@ impl<'a> Export<'a> {
             let route = url["route"].as_str().unwrap_or_default();
             let full = format!("{}{}", self.home, if path == "/" { "/" } else { &path });
             let (status, headers, body) = self.get(&full, url["token"].as_str())?;
+            if status == 200 && headers.get("x-first-prerendered").map(String::as_str) != Some("1") {
+                return Err(format!(
+                    "{path}: the answer wasn't rendered for the export (a cache in front of {}?). Export from an address that reaches WordPress directly",
+                    self.origin
+                ));
+            }
             if let Some(function) = headers.get("x-first-prerender-refused") {
                 return Err(format!(
                     "{path} (app/{route}): the page calls `{function}`, which asks who the visitor is, and a static page is one file for everyone. Move that into a client component, or leave it out"
@@ -372,8 +397,9 @@ impl<'a> Export<'a> {
             let twin = &url["twin"];
             let markdown = match twin["path"].as_str() {
                 Some(twin_path) => {
-                    let (status, _, body) = self.get(twin_path, twin["token"].as_str())?;
-                    (status == 200).then(|| String::from_utf8_lossy(&body).into_owned())
+                    let (status, headers, body) = self.get(twin_path, twin["token"].as_str())?;
+                    (status == 200 && headers.get("x-first-prerendered").map(String::as_str) == Some("1"))
+                        .then(|| String::from_utf8_lossy(&body).into_owned())
                 }
                 None => None,
             };
@@ -390,10 +416,15 @@ impl<'a> Export<'a> {
         let pages = self.pages()?;
         let exported: BTreeSet<String> = pages.iter().map(|p| p.path.clone()).collect();
         let nf = &self.listing["notFound"];
-        let (_, _, not_found) = self.get(
+        let (status, _, not_found) = self.get(
             nf["path"].as_str().unwrap_or("/__first-not-found"),
             nf["token"].as_str(),
         )?;
+        if status != 404 {
+            return Err(format!(
+                "the not-found page answered {status}, not 404; not-found.tsx (or the error it hit) needs fixing before 404.html can be written"
+            ));
+        }
         let not_found = String::from_utf8_lossy(&not_found).into_owned();
         let redirects: Vec<(String, String)> = self.listing["redirects"]
             .as_array()
@@ -423,10 +454,10 @@ impl<'a> Export<'a> {
                 );
                 html = html.replacen("</head>", &format!("{link}</head>"), 1);
             }
-            write(&stage.path().join(file_of(&page.path, "html")), html.as_bytes())?;
+            write(&stage.path().join(file_of(&page.path, "html")?), html.as_bytes())?;
             if let Some(md) = &page.markdown {
                 write(
-                    &stage.path().join(file_of(&page.path, "md")),
+                    &stage.path().join(file_of(&page.path, "md")?),
                     self.rewrite_markdown(md).as_bytes(),
                 )?;
             }
@@ -462,7 +493,7 @@ impl<'a> Export<'a> {
                 }
                 body = self.relink(&text).into_bytes();
             }
-            write(&stage.path().join(path.trim_start_matches('/')), &body)?;
+            write(&stage.path().join(asset_file(&path)?), &body)?;
             files += 1;
         }
         // Redirects: a `_redirects` file, and a refresh page at each old URL for hosts without rules.
@@ -474,7 +505,7 @@ impl<'a> Export<'a> {
                 "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>Moved</title><link rel=\"canonical\" href=\"{}\"><meta http-equiv=\"refresh\" content=\"0; url={target}\"></head><body><p><a href=\"{target}\">This page has moved.</a></p></body></html>\n",
                 self.absolute(to)
             );
-            write(&stage.path().join(file_of(from, "html")), page.as_bytes())?;
+            write(&stage.path().join(file_of(from, "html")?), page.as_bytes())?;
         }
         if !rules.is_empty() {
             write(&stage.path().join("_redirects"), rules.as_bytes())?;
@@ -489,14 +520,40 @@ impl<'a> Export<'a> {
         }
         write(&stage.path().join("llms.txt"), self.llms(&pages).as_bytes())?;
         write(&stage.path().join("robots.txt"), robots.as_bytes())?;
+        // No written file may still point at the WordPress that rendered it.
+        let mut leftovers = Vec::new();
+        leftover(stage.path(), stage.path(), &self.origin, &mut leftovers);
+        if !leftovers.is_empty() {
+            leftovers.sort();
+            return Err(format!(
+                "these files still name {}, which the static site won't have; the URL is in a place the export doesn't rewrite:\n{}",
+                self.origin,
+                leftovers
+                    .iter()
+                    .take(20)
+                    .map(|f| format!("  {f}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ));
+        }
+        write(
+            &stage.path().join(MARKER),
+            b"written by first export; first export replaces this folder\n",
+        )?;
         let stage = stage.keep();
         if out.exists() {
             let old = out.with_extension(format!("old-{}", std::process::id()));
             std::fs::rename(out, &old).map_err(|e| e.to_string())?;
-            std::fs::rename(&stage, out).map_err(|e| e.to_string())?;
+            if let Err(e) = std::fs::rename(&stage, out) {
+                // The new export couldn't take its place: the previous one goes back.
+                let _ = std::fs::rename(&old, out);
+                let _ = std::fs::remove_dir_all(&stage);
+                return Err(format!("couldn't put the export at {}: {e}", out.display()));
+            }
             let _ = std::fs::remove_dir_all(old);
-        } else {
-            std::fs::rename(&stage, out).map_err(|e| e.to_string())?;
+        } else if let Err(e) = std::fs::rename(&stage, out) {
+            let _ = std::fs::remove_dir_all(&stage);
+            return Err(format!("couldn't put the export at {}: {e}", out.display()));
         }
         Ok(Report {
             pages: pages.len(),
@@ -514,21 +571,44 @@ impl<'a> Export<'a> {
         )
     }
 
-    /// A same-site URL as a path below the home path, or None for another site's URL.
+    /// A same-site URL as a path below the home path (with its query and fragment), or None for any
+    /// other URL. Same-site is the rendering site's origin exactly (scheme, host, port, no userinfo)
+    /// and a path at or below its home path, on a segment boundary.
     fn local_path(&self, url: &str) -> Option<String> {
-        let rest = if let Some(rest) = url.strip_prefix(&self.origin) {
-            rest
-        } else if url.starts_with('/') && !url.starts_with("//") {
-            url
+        let full = if url.starts_with('/') && !url.starts_with("//") {
+            format!("{}{url}", self.origin)
         } else {
+            url.to_string()
+        };
+        let parsed = url::Url::parse(&full).ok()?;
+        if parsed.origin().ascii_serialization() != self.origin
+            || !parsed.username().is_empty()
+            || parsed.password().is_some()
+        {
             return None;
-        };
+        }
+        let path = parsed.path();
         let rest = if self.home.is_empty() {
-            rest
+            path
+        } else if path == self.home {
+            ""
         } else {
-            rest.strip_prefix(&self.home)?
+            path.strip_prefix(&self.home).filter(|r| r.starts_with('/'))?
         };
-        Some(if rest.is_empty() { "/".into() } else { rest.to_string() })
+        let mut out = if rest.is_empty() {
+            "/".to_string()
+        } else {
+            rest.to_string()
+        };
+        if let Some(q) = parsed.query() {
+            out.push('?');
+            out.push_str(q);
+        }
+        if let Some(f) = parsed.fragment() {
+            out.push('#');
+            out.push_str(f);
+        }
+        Some(out)
     }
 
     /// Rewrites a page: same-site URLs become root-relative under `--base`, files go on the asset
@@ -542,6 +622,8 @@ impl<'a> Export<'a> {
         assets: &mut BTreeSet<String>,
         refusals: &mut Vec<String>,
     ) -> String {
+        let html = &self.srcsets(html, assets);
+        let html = &self.meta_urls(html, page);
         let attribute = regex::Regex::new(r#"(?i)\b(href|src|action|content)=("([^"]*)"|'([^']*)')"#).expect("regex");
         let mut out = String::with_capacity(html.len());
         let mut last = 0;
@@ -613,6 +695,75 @@ impl<'a> Export<'a> {
         self.import_map(&out, assets)
     }
 
+    /// `srcset` and `imagesrcset`: each candidate's same-site URL is a file of the export.
+    fn srcsets(&self, html: &str, assets: &mut BTreeSet<String>) -> String {
+        let re = regex::Regex::new(r#"(?i)\b(srcset|imagesrcset)=("([^"]*)"|'([^']*)')"#).expect("regex");
+        re.replace_all(html, |c: &regex::Captures| {
+            let quote = if c.get(3).is_some() { '"' } else { '\'' };
+            let value = c.get(3).or(c.get(4)).expect("value").as_str();
+            let candidates: Vec<String> = value
+                .split(',')
+                .map(|candidate| {
+                    let candidate = candidate.trim();
+                    let (url, descriptor) = candidate.split_once(char::is_whitespace).unwrap_or((candidate, ""));
+                    match self.local_path(&url.replace("&#038;", "&").replace("&amp;", "&")) {
+                        Some(local) => {
+                            let (path, suffix) = split_suffix(&local);
+                            assets.insert(path.to_string());
+                            format!("{}{path}{} {descriptor}", self.flags.base, version_suffix(suffix))
+                                .trim_end()
+                                .to_string()
+                        }
+                        None => candidate.to_string(),
+                    }
+                })
+                .collect();
+            format!("{}={quote}{}{quote}", &c[1], candidates.join(", "))
+        })
+        .into_owned()
+    }
+
+    /// `<link rel="canonical">` and Open Graph and Twitter URLs name where the export is served:
+    /// `--site-url` and the page's path. Without `--site-url` they are left out (a relative one is
+    /// not a valid canonical), so no page names the WordPress that rendered it.
+    fn meta_urls(&self, html: &str, page: &str) -> String {
+        let canonical = regex::Regex::new(r#"(?i)<link[^>]*\brel=["']canonical["'][^>]*>\s*"#).expect("regex");
+        let meta = regex::Regex::new(r#"(?i)<meta[^>]*\b(?:property|name)=["'](?:og:url|og:image|og:image:url|og:image:secure_url|twitter:image|twitter:url)["'][^>]*>\s*"#).expect("regex");
+        let content = regex::Regex::new(r#"(?i)\bcontent=("([^"]*)"|'([^']*)')"#).expect("regex");
+        let html = match &self.flags.site_url {
+            Some(_) => canonical
+                .replace_all(
+                    html,
+                    format!("<link rel=\"canonical\" href=\"{}\">\n", xml(&self.absolute(page))).as_str(),
+                )
+                .into_owned(),
+            None => canonical.replace_all(html, "").into_owned(),
+        };
+        meta.replace_all(&html, |c: &regex::Captures| {
+            let tag = &c[0];
+            let Some(m) = content.captures(tag) else {
+                return tag.to_string();
+            };
+            let value = m
+                .get(2)
+                .or(m.get(3))
+                .expect("value")
+                .as_str()
+                .replace("&#038;", "&")
+                .replace("&amp;", "&");
+            match (self.local_path(&value), &self.flags.site_url) {
+                (Some(local), Some(site)) => tag.replacen(
+                    m.get(0).expect("m").as_str(),
+                    &format!("content=\"{}\"", xml(&format!("{site}{}{local}", self.flags.base))),
+                    1,
+                ),
+                (Some(_), None) => String::new(),
+                (None, _) => tag.to_string(),
+            }
+        })
+        .into_owned()
+    }
+
     /// `<style>` blocks (core's font faces, block styles): their `url(...)` files are exported too.
     fn inline_styles(&self, html: &str, assets: &mut BTreeSet<String>) -> String {
         let re = regex::Regex::new(r#"(?s)(<style[^>]*>)(.*?)(</style>)"#).expect("regex");
@@ -641,7 +792,7 @@ impl<'a> Export<'a> {
                     }
                 }
             }
-            format!("{}{}{}", &c[1], map, &c[3])
+            format!("{}{}{}", &c[1], script_json(&map), &c[3])
         })
         .into_owned()
     }
@@ -658,7 +809,7 @@ impl<'a> Export<'a> {
             let Ok(mut data) = serde_json::from_str::<Value>(&c[3]) else { return c[0].to_string() };
             let mut changed = false;
             // core/router's server URL: the page's address where the export is served.
-            if let Some(url) = data["state"]["core/router"]["url"].as_str()
+            if let Some(url) = data.pointer("/state/core~1router/url").and_then(Value::as_str)
                 && let Some(local) = self.local_path(url)
             {
                 let (path, suffix) = split_suffix(&local);
@@ -666,7 +817,7 @@ impl<'a> Export<'a> {
                 data["state"]["core/router"]["url"] = Value::String(format!("{served}{path}{suffix}"));
                 changed = true;
             }
-            if let Some(namespaces) = data["config"].as_object_mut() {
+            if let Some(namespaces) = data.get_mut("config").and_then(Value::as_object_mut) {
                 for (namespace, config) in namespaces.iter_mut() {
                     let Some(actions) = config["actions"].as_object_mut() else { continue };
                     for (action, url) in actions.iter_mut() {
@@ -688,9 +839,8 @@ impl<'a> Export<'a> {
                     }
                 }
             }
-            let _ = &self.islands;
             if changed {
-                format!("{}\n{}\n{}", &c[1], data, &c[4])
+                format!("{}\n{}\n{}", &c[1], script_json(&data), &c[4])
             } else {
                 c[0].to_string()
             }
@@ -841,27 +991,54 @@ fn normalize(path: &str) -> String {
 }
 
 /// The file a page path is written to: `/` → `index.html`, `/a/b` → `a/b.html`. Each segment is the
-/// percent-decoded name a static server maps the URL to.
-fn file_of(path: &str, extension: &str) -> PathBuf {
+/// percent-decoded name a static server maps the URL to. A segment that would leave the export (`..`,
+/// `.`, empty, a decoded `/`, `\` or NUL, a drive or root) is refused: paths come from the site.
+fn file_of(path: &str, extension: &str) -> Result<PathBuf, String> {
     if path == "/" {
-        return PathBuf::from(format!("index.{extension}"));
+        return Ok(PathBuf::from(format!("index.{extension}")));
     }
-    let segments: Vec<String> = path
-        .trim_matches('/')
-        .split('/')
-        .map(|s| {
-            url::form_urlencoded::parse(format!("x={}", s.replace('+', "%2B")).as_bytes())
-                .next()
-                .map(|(_, v)| v.into_owned())
-                .unwrap_or_default()
-        })
-        .collect();
     let mut file = PathBuf::new();
-    for s in &segments[..segments.len() - 1] {
-        file.push(s);
+    let segments = segments_of(path)?;
+    for (i, s) in segments.iter().enumerate() {
+        if i + 1 == segments.len() {
+            file.push(format!("{s}.{extension}"));
+        } else {
+            file.push(s);
+        }
     }
-    file.push(format!("{}.{extension}", segments[segments.len() - 1]));
-    file
+    Ok(file)
+}
+
+/// The file an asset path is written to: its decoded segments, refused as for a page.
+fn asset_file(path: &str) -> Result<PathBuf, String> {
+    Ok(segments_of(path)?.iter().collect())
+}
+
+fn segments_of(path: &str) -> Result<Vec<String>, String> {
+    let raw: Vec<&str> = path.strip_prefix('/').unwrap_or(path).split('/').collect();
+    let mut out = Vec::new();
+    for s in raw {
+        let decoded = percent_decode(s);
+        if decoded.is_empty()
+            || decoded == "."
+            || decoded == ".."
+            || decoded.contains(['/', '\\', '\0'])
+            || (decoded.len() >= 2 && decoded.as_bytes()[1] == b':')
+        {
+            return Err(format!(
+                "{path} isn't a path the export can write: a segment is `{decoded}`"
+            ));
+        }
+        out.push(decoded);
+    }
+    Ok(out)
+}
+
+fn percent_decode(s: &str) -> String {
+    url::form_urlencoded::parse(format!("x={}", s.replace('+', "%2B")).as_bytes())
+        .next()
+        .map(|(_, v)| v.into_owned())
+        .unwrap_or_default()
 }
 
 fn write(path: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -872,15 +1049,137 @@ fn write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     file.write_all(bytes).map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// Text files below `dir` that still contain `origin`, by path below `root`.
+fn leftover(root: &Path, dir: &Path, origin: &str, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            leftover(root, &path, origin, out);
+        } else if matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("html" | "md" | "css" | "js" | "txt" | "xml" | "json")
+        ) && std::fs::read_to_string(&path).is_ok_and(|t| t.contains(origin))
+        {
+            out.push(path.strip_prefix(root).unwrap_or(&path).display().to_string());
+        }
+    }
+}
+
+/// The marker an export folder carries: only a folder that has it is ever replaced.
+const MARKER: &str = ".first-export";
+
+/// Where the export goes, refused when replacing it could lose anything else: it may not be the
+/// project or hold it, sit inside the project outside `first/dist/`, or be a folder that isn't an
+/// earlier export.
+fn output_dir(project: &Path, out: Option<&Path>) -> Result<PathBuf, String> {
+    let out = match out {
+        None => project.join(OUT),
+        Some(out) => {
+            let absolute = if out.is_absolute() {
+                out.to_path_buf()
+            } else {
+                std::env::current_dir().map_err(|e| e.to_string())?.join(out)
+            };
+            let name = absolute
+                .file_name()
+                .filter(|n| *n != "." && *n != "..")
+                .ok_or("--out names a folder, like dist/static")?
+                .to_owned();
+            let parent = normalize_path(absolute.parent().ok_or("--out needs a parent folder")?);
+            let parent = parent.canonicalize().unwrap_or(parent);
+            parent.join(name)
+        }
+    };
+    let dist = project.join(crate::layout::DIST);
+    if project.starts_with(&out) {
+        return Err(format!(
+            "--out {} holds the project; choose a folder outside it, or leave --out out for {OUT}",
+            out.display()
+        ));
+    }
+    if out.starts_with(project) && !out.starts_with(&dist) {
+        return Err(format!(
+            "--out {} is inside the project; put the export below {} or outside the project",
+            out.display(),
+            crate::layout::DIST
+        ));
+    }
+    if out == dist || out == project.join(crate::layout::WP_CONTENT) {
+        return Err(format!(
+            "--out {} is where `first build` writes; choose a folder of its own, like {OUT}",
+            out.display()
+        ));
+    }
+    if out.exists() {
+        let empty = std::fs::read_dir(&out).map(|mut d| d.next().is_none()).unwrap_or(false);
+        if !out.is_dir() || (!empty && !out.join(MARKER).is_file()) {
+            return Err(format!(
+                "--out {} already holds files that aren't an export; first export replaces only its own output, so choose an empty or new folder",
+                out.display()
+            ));
+        }
+    }
+    Ok(out)
+}
+
+/// `a/./b/../c` without touching the disk (the folder may not exist yet).
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for part in path.components() {
+        match part {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// JSON safe inside a `<script>` element, as WordPress writes it (`JSON_HEX_TAG | JSON_HEX_AMP`):
+/// editor text in state can never close the element.
+fn script_json(value: &Value) -> String {
+    value
+        .to_string()
+        .replace('<', "\\u003C")
+        .replace('>', "\\u003E")
+        .replace('&', "\\u0026")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn page_paths_map_to_the_files_static_hosts_serve() {
-        assert_eq!(file_of("/", "html"), PathBuf::from("index.html"));
-        assert_eq!(file_of("/docs/intro", "html"), PathBuf::from("docs/intro.html"));
-        assert_eq!(file_of("/tags/lab%20notes", "md"), PathBuf::from("tags/lab notes.md"));
+        assert_eq!(file_of("/", "html").unwrap(), PathBuf::from("index.html"));
+        assert_eq!(
+            file_of("/docs/intro", "html").unwrap(),
+            PathBuf::from("docs/intro.html")
+        );
+        assert_eq!(
+            file_of("/tags/lab%20notes", "md").unwrap(),
+            PathBuf::from("tags/lab notes.md")
+        );
+        // A path from the site that would leave the export is refused, however it is spelled.
+        for bad in [
+            "/a/../../x",
+            "/a/%2e%2e/x",
+            "/a/%2Fetc%2Fpasswd",
+            "/a/%5C..%5Cx",
+            "/a//b",
+            "/a/%00",
+            "/C:%5Cx",
+        ] {
+            assert!(file_of(bad, "html").is_err(), "{bad}");
+            assert!(asset_file(bad).is_err(), "{bad}");
+        }
+        assert_eq!(
+            asset_file("/wp-content/a b.css").unwrap(),
+            PathBuf::from("wp-content/a b.css")
+        );
         assert_eq!(normalize("/a/b/../c/./d.woff2"), "/a/c/d.woff2");
         assert_eq!(split_suffix("/x.js?ver=1#y"), ("/x.js", "?ver=1#y"));
         assert_eq!(version_suffix("?ver=6a43"), "?ver=6a43");

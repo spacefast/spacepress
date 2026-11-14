@@ -309,7 +309,6 @@ $out['purges'] = [
         \First\Wp\Purges::flush();
         return $purged(static fn () => wp_update_comment(['comment_ID' => $id, 'comment_content' => 'Edited and approved', 'comment_approved' => 1]));
     })(),
-    'control: a note edit' => $purged(static fn () => wp_update_post(['ID' => $note, 'post_title' => 'Open note'])),
     'approved on insert' => $purged(static fn () => wp_insert_comment(['comment_post_ID' => $note, 'comment_content' => 'Straight in', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1])),
 ];
 

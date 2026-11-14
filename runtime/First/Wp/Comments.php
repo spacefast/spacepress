@@ -138,7 +138,7 @@ final class Comments
             // only WordPress's query-string permalink, which no page is cached at. Pages that only
             // listed the kind keep their copy (a comment count there updates within the window).
             $collection = self::collection($post->ID);
-            $urls = array_map('home_url', $collection === null ? [] : \First\Render\Cache::itemUrls($collection, $post->ID));
+            $urls = $collection === null ? [] : \First\Render\Cache::itemUrls($collection, $post->ID);
             $link = get_permalink($post);
             if (is_string($link)) {
                 $urls[] = $link;

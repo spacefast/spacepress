@@ -1957,7 +1957,6 @@ fn comments_follow_the_kind_policy_on_every_path() {
         ("approved then spammed", &note),
         ("approved then trashed", &note),
         ("edited and approved at once", &note),
-        ("control: a note edit", &note),
         ("approved on insert", &note),
     ] {
         assert_eq!(&seen["purges"][event], want, "{event}: {seen}");
@@ -2200,15 +2199,20 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         .map(|v| v.as_str().unwrap().to_string())
         .collect();
     assert!(index.contains(&"notes * /".to_string()), "{index:?}");
+    // Recorded under the address WordPress links (`/notes/hello/`), though the visit had no slash.
     assert_eq!(
-        index.iter().filter(|r| r.ends_with(" /notes/hello")).count(),
+        index.iter().filter(|r| r.ends_with(" /notes/hello/")).count(),
         1,
         "{index:?}"
     );
-    assert!(!index.iter().any(|r| r.ends_with(" /about")), "{index:?}");
+    assert!(
+        !index.iter().any(|r| r.ends_with(" /about") || r.ends_with(" /about/")),
+        "{index:?}"
+    );
+    // The router answers the bare spelling too, so a host cache can hold both: both are purged.
     assert_eq!(
         seen["purged"],
-        serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])
+        serde_json::json!([["/", "/index.md", "/notes/hello/", "/notes/hello.md", "/notes/hello"]])
     );
     // The runtime's own listener cleared those paths in Batcache (keyed as `http://`, no query),
     // the VIP edge and Jetpack Boost; `/*` reaches Boost's clear-all.
@@ -2222,7 +2226,7 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     // Boost clears a URL recursively, so the home page goes to its home action instead.
     let mut want = vec!["boost home".to_string()];
     for cache in ["batcache", "boost", "vip"] {
-        for path in ["/", "/index.md", "/notes/hello", "/notes/hello.md"] {
+        for path in ["/", "/index.md", "/notes/hello/", "/notes/hello.md", "/notes/hello"] {
             if !(cache == "boost" && path == "/") {
                 want.push(format!("{cache} {path}"));
             }
@@ -2244,6 +2248,87 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     assert_eq!(
         seen["without batcache drop-in"],
         serde_json::json!(["vip /about", "boost /about"])
+    );
+}
+
+/// One committed write, one announcement (docs/runtime-contract.md, "Purges"): a kind with a `url` is
+/// purged from two sources, the post hooks and the page cache's read index, and a write names the
+/// union once on `first_purge_urls` and once to the prebuilt pages, under the address WordPress
+/// serves the page at, whichever spelling a visitor fetched. A row recorded under the old spelling
+/// still purges; a rolled-back write announces nothing; over the limit across both is one `/*`.
+#[test]
+fn one_write_announces_its_purges_once() {
+    let project = fixture("app-purges", "once");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_purges.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    use serde_json::json;
+    // The router answers both spellings itself (no canonical redirect): two host cache keys.
+    assert_eq!(
+        seen["spellings"],
+        json!({ "slash": [200, null], "bare": [200, null], "same html": true }),
+        "{seen}"
+    );
+    // Recorded once, under the address WordPress links: the bare fetch and the slashed one are one row.
+    assert_eq!(
+        seen["index"],
+        json!(["/", "/notes/hello.md", "/notes/hello/"]),
+        "{seen}"
+    );
+    let once = |key: &str| {
+        let calls = seen[key]["calls"].as_array().unwrap_or_else(|| panic!("{key}: {seen}"));
+        assert_eq!(calls.len(), 1, "{key}: one call per write: {seen}");
+        let paths: Vec<&str> = calls[0]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p.as_str().unwrap())
+            .collect();
+        let mut unique = paths.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), paths.len(), "{key}: each path once: {paths:?}");
+        // Prebuilt::stale ran once, with that list: one rebuild of the note's prebuilt page.
+        assert_eq!(seen[key]["rebuilds"], 1, "{key}: {seen}");
+        paths
+    };
+    for key in ["edit", "old row"] {
+        let paths = once(key);
+        // The item under both spellings, its twin once, its comments feed (the post hooks' part).
+        let mut item: Vec<&str> = paths
+            .iter()
+            .copied()
+            .filter(|p| p.starts_with("/notes/hello"))
+            .collect();
+        item.sort();
+        assert_eq!(
+            item,
+            ["/notes/hello", "/notes/hello.md", "/notes/hello/", "/notes/hello/feed/"],
+            "{key}: {paths:?}"
+        );
+        for want in ["/", "/index.md", "/llms.txt"] {
+            assert!(paths.contains(&want), "{key}: {want} in {paths:?}");
+        }
+    }
+    assert_eq!(seen["rolled back"], json!({ "calls": [], "rebuilds": 0 }), "{seen}");
+    assert_eq!(
+        seen["limit"],
+        json!({ "index alone": true, "union over": true, "calls": [["/*"]], "rebuilds": 0 }),
+        "{seen}"
     );
 }
 

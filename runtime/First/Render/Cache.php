@@ -22,10 +22,10 @@ use function First\db;
  *   `private, no-store`, and calls `batcache_cancel()` where Batcache runs.
  *
  * Purges: each cacheable render records the rows it read in `first__app_reads` (kind, id or `*`
- * for a listing, URL path with its query). On a committed write to a kind, the URLs that read that
- * row, and every URL that listed the kind, are announced on the host's `first_purge_urls` action
- * with their `.md` twins (`Wp\Purges::paths`), the same channel WordPress content writes use.
- * A write that touches more than PURGE_LIMIT URLs announces `/*` instead: a whole-host purge.
+ * for a listing, URL path with its query), under the address WordPress serves the page at
+ * (`user_trailingslashit`), whichever spelling the visitor typed. On a write to a kind, the URLs
+ * that read that row, and every URL that listed the kind, join the write's other purges
+ * (`Wp\Purges::recorded`): one `first_purge_urls` call after the commit, with their `.md` twins.
  * Nothing is recorded or announced when no host listens (`has_action('first_purge_urls')`); the
  * runtime listens itself where Batcache, the VIP edge cache or Jetpack Boost runs (`Wp\PageCaches`).
  */
@@ -33,14 +33,8 @@ final class Cache
 {
     /** The edge window for a cacheable page, in seconds; `first_app_cache_window` changes it. */
     public const WINDOW = 300;
-    /** Above this many URLs, one write purges the whole host. */
-    public const PURGE_LIMIT = 200;
     /** Rows recorded per render; a page that reads more records its kinds as listings. */
     public const MAX_IDS = 500;
-
-    /** @var array<string, true> paths this request's writes changed */
-    private static array $pending = [];
-    private static bool $armed = false;
 
     public static function register(): void
     {
@@ -109,7 +103,7 @@ final class Cache
         }
     }
 
-    /** Extensions::onWritten: inside the write's transaction; announces after commit. */
+    /** Extensions::onWritten: inside the write's transaction; Wp\Purges announces after commit. */
     public static function written(string $op, string $collection, array $row, ?array $previous): void
     {
         if (!self::listening()) {
@@ -125,21 +119,7 @@ final class Cache
             'SELECT DISTINCT "url" FROM {reads} WHERE "kind" = ? AND ("item" = ? OR "item" = ?)',
             [$collection, '*', (string) $id],
         );
-        foreach ($found as $r) {
-            self::$pending[(string) $r['url']] = true;
-        }
-        if (self::$armed || self::$pending === []) {
-            return;
-        }
-        self::$armed = true;
-        $store = db()->store();
-        if ($store instanceof CompositeStore) {
-            $store->db->onRollback(static function (): void {
-                self::$pending = [];
-                self::$armed = false;
-            });
-        }
-        Extensions::afterCommit(self::flush(...));
+        \First\Wp\Purges::recorded(array_merge(...array_map(static fn (array $r): array => self::spellings((string) $r['url']), $found)));
     }
 
     /**
@@ -147,33 +127,48 @@ final class Cache
      * pages that listed the kind (`*`). For a change that only shows where the item is shown (its
      * thread), not in a listing.
      *
-     * @return list<string> home-relative paths with their queries, as recorded
+     * @return list<string> absolute URLs, each recorded page under both its spellings
      */
     public static function itemUrls(string $collection, int|string $id): array
     {
         if (!self::listening()) {
             return [];
         }
+        $found = self::run('SELECT DISTINCT "url" FROM {reads} WHERE "kind" = ? AND "item" = ?', [$collection, (string) $id]);
 
-        return array_map(static fn (array $r): string => (string) $r['url'], self::run('SELECT DISTINCT "url" FROM {reads} WHERE "kind" = ? AND "item" = ?', [$collection, (string) $id]));
+        return array_merge(...array_map(static fn (array $r): array => self::spellings((string) $r['url']), $found));
     }
 
-    public static function flush(): void
+    /**
+     * The addresses a recorded URL is cached under, absolute: the page as WordPress links it, and the
+     * same path without its trailing slash, which the router answers too (it serves the page there
+     * rather than redirecting, so a host cache can hold both). A row recorded before addresses were
+     * stored canonically has the bare spelling, and gives the same two. A `.md` twin is one address.
+     *
+     * @return list<string>
+     */
+    private static function spellings(string $url): array
     {
-        $urls = array_keys(self::$pending);
-        self::$pending = [];
-        self::$armed = false;
-        if ($urls === [] || !self::listening()) {
-            return;
+        $path = (string) (wp_parse_url($url, PHP_URL_PATH) ?? '/');
+        $query = (string) (wp_parse_url($url, PHP_URL_QUERY) ?? '');
+        $query = $query !== '' ? '?' . $query : '';
+        if ($path === '/' || str_ends_with($path, '.md')) {
+            return [home_url($path . $query)];
         }
-        $paths = count($urls) > self::PURGE_LIMIT ? ['/*'] : \First\Wp\Purges::paths(array_map('home_url', $urls));
-        Prebuilt::stale($paths);
-        if (has_action('first_purge_urls') !== false) {
-            do_action('first_purge_urls', $paths);
-        }
+        $bare = rtrim($path, '/');
+        return array_values(array_unique([home_url(self::canonical($bare) . $query), home_url($bare . $query)]));
     }
 
-    /** A request URI as stored: the path below the home path, with its query string. */
+    /** A page path as WordPress links it: the permalink structure decides the trailing slash. */
+    private static function canonical(string $path): string
+    {
+        return $path === '/' || $path === '' || str_ends_with($path, '.md') ? ($path ?: '/') : user_trailingslashit($path);
+    }
+
+    /**
+     * A request URI as stored: the path below the home path as WordPress links it (`/notes/a/` for a
+     * visit to `/notes/a`), with its query string. A `.md` twin keeps its own address.
+     */
     private static function path(string $uri): string
     {
         $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
@@ -182,7 +177,7 @@ final class Cache
         if ($base !== '' && str_starts_with($path, $base)) {
             $path = substr($path, strlen($base)) ?: '/';
         }
-        return substr($path . ($query !== '' ? '?' . $query : ''), 0, 512);
+        return substr(self::canonical($path) . ($query !== '' ? '?' . $query : ''), 0, 512);
     }
 
     /** @param list<int|float|string|null> $params @return list<array<string, mixed>> */

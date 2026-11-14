@@ -287,7 +287,7 @@ export declare function slug(config?: { source?: undefined }): ColumnBuilder<"sl
 /** With `source`, an omitted slug is derived, so it may be left out on create. */
 export declare function slug(config: { source: string }): ColumnBuilder<"slug", string, true, true>;
 /** A private-file id in the named bucket. */
-export declare function file(config: { bucket: string }): ColumnBuilder<"file", number, true, false>;
+export declare function file(bucket: FileBucket): ColumnBuilder<"file", number, true, false>;
 
 /** HTML. On WordPress the `content`-designated richText is the block editor's post_content. */
 export declare function richText(): ColumnBuilder<"richText", string, true, false>;
@@ -1113,19 +1113,18 @@ export interface Global<TName extends string = string, TFields extends FieldsCon
 export type AnyGlobal = Global<string, FieldsConfig>;
 
 /**
- * Defines a global. Fields use the column builders with the sub-field restrictions, and no
- * `.unique()`/`slug()`/`blocks()`; a required field needs a default. Default access:
- * `read: "anyone"`, `update: "editor"`.
+ * Defines a global, named by its export: `export const settings = global({ ... })`. Fields use the
+ * column builders with the sub-field restrictions, and no `.unique()`/`slug()`/`blocks()`; a
+ * required field needs a default. Default access: `read: "anyone"`, `update: "editor"`.
  */
-export declare function global<const TName extends string, TFields extends FieldsConfig>(
-  name: TName,
+export declare function global<TFields extends FieldsConfig>(
   fields: TFields,
   options?: {
     label?: string;
     agents?: boolean;
     access?: { read?: GateRule<never>; update?: GateRule<Partial<SelectShape<TFields>>> };
   },
-): Global<TName, TFields>;
+): Global<string, TFields>;
 
 export interface ConfigInput<
   TSchema extends Schema,
@@ -1326,7 +1325,8 @@ export type WebhookEvent = `${string}.created` | `${string}.updated` | `${string
 export type FileRule = AccessShorthand | "owner" | ((ctx: AccessCtx) => boolean);
 export interface FileBucket { readonly [fileBucketBrand]: true }
 export type AnyFileBucket = FileBucket;
-export declare function files(name: string, options: {
+/** A private file bucket, named by its export: `export const decks = files({ accept, maxBytes })`. */
+export declare function files(options: {
   accept: string[];
   maxBytes: number;
   access?: { read?: FileRule; create?: FileRule; delete?: FileRule };

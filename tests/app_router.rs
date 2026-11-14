@@ -183,6 +183,44 @@ fn app_router_serves_pages_on_wordpress() {
     let _ = std::fs::remove_dir_all(project);
 }
 
+/// WordPress in a subdirectory (tests/php/app_router_subdirectory.php): examples/full-site served under
+/// `/blog`, as WordPress Playground serves every site under `/scope:<id>/`. A note's page (`url:
+/// "/notes/:slug"`) answers at its own URL; the request path starts with the home path and the
+/// item's path does not, so the two are compared without it.
+#[test]
+fn app_router_serves_item_pages_under_a_subdirectory() {
+    let project = std::env::temp_dir().join(format!("first-full-site-subdir-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&project);
+    copy(&root().join("examples/full-site"), &project);
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_router_subdirectory.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    let url = seen["url"].as_str().unwrap();
+    assert!(url.ends_with("/blog"), "{url}");
+    assert_eq!(seen["link"], format!("{url}/notes/dawn-on-the-ridge/"));
+    assert_eq!(seen["notes"], serde_json::json!([200, "Notes"]));
+    assert_eq!(seen["note"], serde_json::json!([200, "Dawn on the ridge"]));
+    assert_eq!(seen["note slash"], serde_json::json!([200, "Dawn on the ridge"]));
+    // Still a 404: a draft for a signed-out visitor, and a slug no note has.
+    assert_eq!(seen["draft"], serde_json::json!([404, "Not found"]));
+    assert_eq!(seen["missing"], serde_json::json!([404, "Not found"]));
+    assert_eq!(seen["about"], serde_json::json!([200, "About"]));
+    let _ = std::fs::remove_dir_all(project);
+}
+
 /// `first build` writes `first/_generated/routes.d.ts`; with it, TypeScript checks every `<Link href>`
 /// and `PageProps<"route">` against the app's own routes.
 #[test]
@@ -2329,6 +2367,69 @@ fn api_reference_renders_openapi_as_pages() {
             "curl": "curl -g -X GET 'https://h.example/a'\\''b/x/{id}' \\\n  -H 'Accept: application/json'"
         })
     );
+}
+
+/// The project's `public/` folder at the site root (spec §1: "static files, served as-is"), on
+/// WordPress over HTTP (tests/php/public_root.php): each file at its path with its type; the app's
+/// own page over a file of the same name; never a dotfile, PHP, a path out of the folder or one
+/// WordPress owns.
+#[test]
+fn public_files_serve_at_the_site_root() {
+    let project = fixture("public-root", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/public_root.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        seen["served"],
+        serde_json::json!({
+            "/compiler.wasm": [200, "application/wasm", 8],
+            "/logo.svg": [200, "image/svg+xml", 41],
+            "/files/blog.json": [200, "application/json", 11],
+            "/files/blobs/0a1b.txt": [200, "text/plain; charset=utf-8", 9],
+            "/files/": [200, "text/html; charset=utf-8", 35],
+            "/og/index.png": [200, "image/png", 8],
+            "/.well-known/ai.json": [200, "application/json", 13],
+            "/notes.md": [200, "text/markdown; charset=utf-8", 15],
+            "/robots-extra.txt": [200, "text/plain; charset=utf-8", 14],
+            "/index.html": [200, "text/html; charset=utf-8", 21],
+            "/it's.txt": [200, "text/plain; charset=utf-8", 1]
+        })
+    );
+    // robots.txt, llms.txt, feeds and First Identity's discovery document stay WordPress's.
+    for (path, kept) in seen["wordpress"].as_object().unwrap() {
+        assert_eq!(kept, true, "{path}");
+    }
+    // A `[slug]` route at the root doesn't take a file's path.
+    assert_eq!(seen["beside a dynamic route"], 200);
+    assert_eq!(seen["home"], false);
+    // `first/app/about/page.tsx` wins over `public/about`.
+    assert_eq!(seen["about"], serde_json::json!([200, true, false]));
+    // Never a file's bytes for a dotfile, PHP (as Windows would read `run.php.`, `run.php `,
+    // `run.php::$DATA`, or in capitals), a path out of the folder, or a link that leaves it.
+    for (path, answer) in seen["refused"].as_object().unwrap() {
+        assert_eq!(answer, &serde_json::json!([true, false]), "{path}");
+    }
+    assert_eq!(seen["refused"].as_object().unwrap().len(), 15);
+    assert_eq!(seen["head"], serde_json::json!([200, "", "11"]));
+    // A matching ETag, its weak form, or one of a list: 304; another: 200.
+    assert_eq!(seen["not modified"], serde_json::json!([304, 304, 304, 200]));
+    assert_eq!(seen["svg policy"], true);
+    assert_eq!(seen["cache"], "public, max-age=300");
+    // A POST isn't served a file; the `[slug]` page answers it as pages do (405).
+    assert_eq!(seen["post"], 405);
 }
 
 /// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection

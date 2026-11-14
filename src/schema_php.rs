@@ -328,6 +328,17 @@ pub fn render(schema: &Schema) -> String {
     let _ = writeln!(out, "    'runtime' => '{}',", crate::platform::SERIES);
     let _ = writeln!(out, "    'name' => {},", php_str(&schema.name));
     let _ = writeln!(out, "    'admin' => {},", schema.admin);
+    // WordPress's and First's own first path segments: the `public/` folder at the site root
+    // (First\Wp\PublicFiles) never answers for them, whatever it holds.
+    let _ = writeln!(
+        out,
+        "    'reserved' => [{}],",
+        crate::kind_url::RESERVED_FIRST_SEGMENTS
+            .iter()
+            .map(|r| php_str(r))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     // The complete allow-list (docs/sealed.md), the same one the build's manifests carry: the runtime
     // reads it here and decides nothing itself.
     if let Some(slugs) = crate::bundle::sealed_plugins(schema, crate::app_plugin::first_plugins(schema)) {

@@ -140,7 +140,8 @@ export async function siteJourney(env: SiteJourneyEnv, t: Steps): Promise<void> 
     await env.editor.publish(feature);
 
     const read = await anon.posts.get(feature, { with: { authorId: true, cover: true, comments: true } });
-    const { cover: media, authorId: byline, comments: thread, updatedAt, publishedAt, uid, ...row } = read;
+    const { cover: media, authorId: byline, comments: thread, updatedAt, publishedAt, uid, _rev, ...row } = read;
+    assert.equal(typeof _rev, "string", "a kind with staged versions reads with its revision token");
     assert.match(uid, /^zr_[0-9a-f]{20}$/, "synced posts carry a stable uid");
     const { cover: _, authorId: __, ...rest } = fields;
     assert.deepEqual(row, { ...rest, id: feature, status: "published", slug: `feature-${run}`, locale: "en", translations: { en: feature } }, "readers see every public field");

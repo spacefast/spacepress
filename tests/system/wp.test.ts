@@ -305,7 +305,11 @@ test("an agent works the site over MCP with each user's REST permissions", async
   const drafted = await editor("tools/call", { name: "site-posts-create", arguments: { title: "Agent draft", status: "draft", topics: ["tech"] } });
   assert.equal(drafted.isError, false, JSON.stringify(drafted));
   const { id } = drafted.structuredContent;
-  assert.deepEqual(await client("editor").posts.get(id), drafted.structuredContent);
+  // Both carry the row's revision token; it names the read, so the two differ only there.
+  const { _rev: readRev, ...readBack } = await client("editor").posts.get(id) as Record<string, unknown>;
+  const { _rev: draftedRev, ...draftedRow } = drafted.structuredContent;
+  assert.deepEqual([typeof readRev, typeof draftedRev], ["string", "string"]);
+  assert.deepEqual(readBack, draftedRow);
   await assertRejects(() => client("anonymous").posts.get(id), 404);
   // A subscriber's agent gets the subscriber's answer: no draft, no writes.
   const subscriber = await mcp("subscriber");

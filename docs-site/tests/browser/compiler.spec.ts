@@ -131,8 +131,9 @@ test("Run in WordPress says so when an edited config needs a plugin this WordPre
   const source = page.getByRole("textbox", { name: "Source code", exact: true });
   await expect(status).toHaveAttribute("data-state", "ok", { timeout: 30_000 });
   await expect(page.getByRole("combobox", { name: "Example", exact: true })).toHaveValue("pantry");
+  expect(await source.inputValue()).toContain("export default defineConfig({});");
   // Pantry's lock has no hello-dolly, so the published WordPress can't install it.
-  await source.fill((await source.inputValue()).replace("export default defineConfig({\n", 'export default defineConfig({\n  plugins: { "hello-dolly": "1.7.2" },\n'));
+  await source.fill((await source.inputValue()).replace("export default defineConfig({});", 'export default defineConfig({ plugins: { "hello-dolly": "1.7.2" } });'));
   await expect(status).toHaveAttribute("data-state", "ok");
   await page.getByRole("button", { name: "Run in WordPress" }).click();
   await expect(page.locator("#wordpress-note")).toContainText("hello-dolly 1.7.2");

@@ -167,7 +167,8 @@ test("the migration keeps every record, field, status, date and author, read thr
   const r = migrate();
   assert.equal(r.code, 0, JSON.stringify(r.out));
   const published = (id: number) => site.posts.find((p: any) => Number(p.ID) === id).post_date_gmt.replace(" ", "T") + ".000Z";
-  const projects = await ok("GET", "/projects" + q({ orderBy: "id" }), { as: "admin" });
+  // `_rev` is each row's revision token (staged versions), not a migrated field.
+  const projects = (await ok("GET", "/projects" + q({ orderBy: "id" }), { as: "admin" })).map(({ _rev, ...row }: any) => row);
   assert.deepEqual(projects, [
     { id: ids.apollo, title: "Apollo 11", budget: 25, active: true, kickoff: "2026-03-01T10:00:00.000Z", reviewedAt: "2026-03-01T10:00:00.000Z", stage: "live", tags: ["red", "blue"], cover: ids.media[0], gallery: ids.media, status: "published", publishedAt: published(ids.apollo) },
     // Saved through the SCF form (wp-admin's path), as a draft.

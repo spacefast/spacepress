@@ -451,7 +451,7 @@ registered once.
 | `drafts` | `true` for collections, `false` for tables | adds `status` and `publishedAt`; collections always have native drafts |
 | `revisions` | `true` for collections, `false` for tables | collections always keep native revisions; tables may opt in |
 | `staged` | `true` for collections | collections only; [staged versions](staged.md): a change saved beside the live item, then compared, promoted or discarded. `false` turns them off |
-| `comments` | `false` | collections only; WordPress comments on the post type. Comments are closed on every kind that doesn't set it ([opinionated WordPress](#opinionated-wordpress)) |
+| `comments` | `false` | collections only; WordPress comments on the post type: `true`, or `{ guests?, moderation?, threaded?, closeAfterDays? }` (see [Comments](#comments)). Comments are closed on every kind that doesn't set it ([opinionated WordPress](#opinionated-wordpress)) |
 | `title` | a `title: text()` column | WordPress post title; must be a required `text()` for collections |
 | `content` | a `content: richText()` column | WordPress post content |
 | `access` | read `"anyone"`, writes `"editor"` | see below |
@@ -465,6 +465,23 @@ Collections need a title and physical names of at most 14 characters (WordPress
 prefixes `first_`). Built-in route names are reserved (`media`, `files`,
 `globals`, `actions`, `me`, `auth`, `services`, `search`). User projections retain
 WordPress identity storage; see [Sign-in](#sign-in).
+
+<a id="comments"></a>`comments: true` turns WordPress comments on for a collection with these
+defaults; an object changes any of them:
+
+| option | default | meaning |
+|---|---|---|
+| `guests` | `false` | anonymous visitors may comment, with a name and email; otherwise signed-in users only |
+| `moderation` | `"first-time"` | `"none"` approves at once; `"first-time"` holds a commenter's first comment until one is approved; `"all"` holds every comment |
+| `threaded` | `true` (3 levels) | reply depth: `false` is flat, or a number from 1 to 10 |
+| `closeAfterDays` | never | comments close this many days after the item was published |
+
+```ts
+export const posts = collection({ title: text() }, { comments: { guests: true, moderation: "all" } });
+```
+
+An unknown option or an impossible value fails the build and names the fix. `types` is
+reserved for comment types and refused until they exist.
 
 ### Files that moved into `first/_generated/`
 
@@ -771,6 +788,30 @@ scripts. It never fetches other sites or WordPress's own paths (`/wp-admin`, `/w
 Content edited in wp-admin, synced Markdown and TSX pages are checked the same way, so run it
 against `first dev` before a release and against the published site after one.
 
+### Astro's `src/content.config.ts`
+
+An Astro project's content collections are kinds as they stand
+([decision](decisions/2026-11-14-astro-content-config.md)). Each `glob()` collection in
+`src/content.config.ts` syncs its folder of Markdown, `**/*.md` as a folder tree (a hierarchical
+kind; the path is the slug) and `*.md` as the folder alone, with its Zod schema read as fields:
+
+| Zod | First field |
+| --- | --- |
+| `z.string()`, `.url()`, `.email()` | `text()`, `url()`, `email()` |
+| `z.number()`, `.int()` | `number()`, `integer()` |
+| `z.boolean()` | `boolean()` |
+| `z.date()`, `z.coerce.date()` | `date()` (front matter `YYYY-MM-DD`) |
+| `z.enum([...])` | `select([...])` |
+| `z.array(z.string())`, `z.array(z.number())` | `json<string[]>()`, `json<number[]>()` |
+| `z.array(z.enum([...]))` | `select([...]).many()` |
+
+`.optional()`, `.nullable()`, `.default(<literal>)`, `.min()`, `.max()`, `.nonnegative()` and
+`.positive()` on an `.int()` carry over. The collection needs a required `title` (or `name`)
+string, and its name is the kind's (an identifier of at most 14 characters). A field First can't
+map (`z.object()`, a union, `image()`, `reference()`, a transform, a list of objects) is a build
+error at the field in `src/content.config.ts`: declare that collection in `first/` instead.
+Collections with another loader, or imported from another file, stay Astro's.
+
 ### Components in Markdown
 
 A component in `first/components/` can be used in synced Markdown as a block
@@ -1023,11 +1064,21 @@ keeps its TEXT/DOUBLE storage and string response IDs.
 
 ### Schema changes at deploy
 
-`first check --json` lists each SQL index the deploy keeps, and why it exists,
-under `indexes`: `{ table, name, unique, columns, reason }`. The reasons are
-the primary key, `.unique()`, a reference (MySQL indexes a foreign key),
-drafts (status and publish date) and locales (one row per locale in a
-translation group). Post-backed kinds use WordPress's own indexes.
+Indexes on a SQL table come from the schema and from your code:
+
+- the primary key, `.unique()`, a reference (MySQL indexes a foreign key),
+  drafts (status and publish date) and locales (one row per locale in a
+  translation group);
+- every field a compiled `where` or `orderBy` names (in actions, hooks, jobs,
+  routes and pages), unless an index already starts with it. A long text
+  field (more than 191 characters, no `.max()`), a list or a JSON value gets
+  none;
+- compound ones you declare: `table({ ... }).index(["post", "author"], { unique: true })`.
+
+`first check --json` lists each index under `indexes`:
+`{ table, name, unique, columns, reason }`. A new index is an additive change:
+`first build` writes it as a migration. Post-backed kinds use WordPress's own
+indexes on `wp_posts` and its meta.
 
 `first build` writes the SQL for each schema change to `first/_generated/migrations/`.
 You don't edit or review it. The deploy (`wp first migrate`, the first request after
@@ -1359,7 +1410,14 @@ There are no CPU or memory limits.
 
 ## Hooks
 
-`hooks.<collectionKey>` in `defineConfig`:
+`.on({ ... })` on the kind, in the file that declares it:
+
+```ts
+export const items = table({ name: text(), quantity: integer().default(1) }).on({
+  beforeCreate(data) { data.name = data.name.trim(); },
+  async afterUpdate(row) { if (row.quantity === 0) await restock(row.id); },
+});
+```
 
 | hook | arguments | notes |
 |---|---|---|
@@ -1368,6 +1426,13 @@ There are no CPU or memory limits.
 | `beforeUpdate` | `(patch: Partial<Insert>, existing: Row, ctx)` | mutate `patch` or return a replacement |
 | `afterUpdate` | `(row: Row, previous: Row, ctx)` | |
 | `beforeDelete` / `afterDelete` | `(row: Row, ctx)` | throw to abort |
+| `afterPublish` | `(row: Row, ctx)` | collections only: the item was created published, updated into published, or its scheduled time came |
+
+`.on()` returns the kind, so calls chain, and several handlers for one event run in
+order. Each handler is typed by its own kind. `.on()` on a kind imported from another
+file is a build error; handler functions themselves may come from anywhere.
+`hooks.<kind>` in `defineConfig` still works until the registries go; its handlers run
+before the kind's `.on()` handlers.
 
 `ctx` is `{ user: { id, name, role } | null }`.
 

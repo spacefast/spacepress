@@ -2880,3 +2880,225 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
         let _ = std::fs::remove_dir_all(dir);
     }
 }
+
+/// An Astro project's `src/content.config.ts` (docs/astro.md): its `glob()` collections are kinds
+/// whose files sync like any synced kind's. Built, synced to a real site and back: the fields keep
+/// their types, a file's path is its slug and its folder its parent, an edit on the site comes back
+/// to the same file, and a collection with another loader stays Astro's.
+#[test]
+fn astro_content_collections_are_synced_kinds() {
+    let project = std::env::temp_dir().join(format!("first-astro-content-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&project);
+    copy_dir(&root().join("tests/fixtures/astro-content"), &project);
+    let out = first().arg("build").arg(&project).output().unwrap();
+    assert!(out.status.success(), "build: {}", String::from_utf8_lossy(&out.stderr));
+    let db = std::fs::read_to_string(project.join("first/_generated/db.d.ts")).unwrap();
+    assert!(
+        db.contains("'blog'") && db.contains("'authors'") && !db.contains("'remote'"),
+        "{db}"
+    );
+
+    let mut child = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("serve")
+        .arg(project.join("first/dist/wp-content"))
+        .arg("ed=editor")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .expect("php");
+    let mut line = String::new();
+    std::io::BufReader::new(child.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    let served: serde_json::Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("serve: {line}"));
+    let token = served["users"]["ed"]["appPassword"].as_str().unwrap().to_string();
+    let port: u16 = served["url"]
+        .as_str()
+        .unwrap()
+        .rsplit(':')
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let site = Site {
+        child,
+        port,
+        dir: PathBuf::from(served["dir"].as_str().unwrap()),
+        token: token.clone(),
+        author: token.clone(),
+        admin: token.clone(),
+    };
+    git(&project, &["init", "-q"]);
+    git(
+        &project,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.test",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "start",
+        ],
+    );
+
+    let pushed = sync(&project, &site, &[]);
+    assert_eq!(
+        pushed.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&pushed.stdout)
+    );
+    let (_, posts) = http_call(port, &token, "GET", "/blog?orderBy=title&limit=10", None);
+    let rows: Vec<&serde_json::Value> = posts["data"].as_array().unwrap().iter().collect();
+    let titles: Vec<&str> = rows.iter().map(|r| r["title"].as_str().unwrap()).collect();
+    assert_eq!(titles, ["First post", "In a folder", "The year"], "{posts}");
+    let first_post = rows[0];
+    assert_eq!(
+        (
+            &first_post["slug"],
+            &first_post["pubDate"],
+            &first_post["tags"],
+            &first_post["topics"],
+            &first_post["rank"],
+            &first_post["category"],
+            &first_post["draft"]
+        ),
+        (
+            &serde_json::json!("first-post"),
+            &serde_json::json!("2022-07-08"),
+            &serde_json::json!(["a", "b"]),
+            &serde_json::json!(["first"]),
+            &serde_json::json!(2),
+            &serde_json::json!("news"),
+            &serde_json::json!(false)
+        ),
+        "{first_post}"
+    );
+    // A folder is the parent of the files in it, as Astro names them (`2024/nested`).
+    assert_eq!(rows[1]["parent"], rows[2]["id"], "{posts}");
+    let (_, authors) = http_call(port, &token, "GET", "/authors", None);
+    assert_eq!(authors["data"][0]["slug"], "ada", "{authors}");
+    assert_eq!(authors["data"][0]["email"], "ada@example.test", "{authors}");
+
+    // Edited on the site, it comes back to the same file with the same front matter keys.
+    let id = first_post["id"].as_i64().unwrap();
+    let (status, _) = http_call(
+        port,
+        &token,
+        "PATCH",
+        &format!("/blog/{id}"),
+        Some(serde_json::json!({ "description": "Edited on the site" })),
+    );
+    assert_eq!(status, 200);
+    let pulled = sync(&project, &site, &["--no-commit"]);
+    assert_eq!(
+        pulled.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&pulled.stdout)
+    );
+    let file = read(&project, "src/content/blog/first-post.md");
+    assert!(file.contains("description: Edited on the site"), "{file}");
+    assert!(
+        file.contains("pubDate: 2022-07-08") || file.contains("pubDate: \"2022-07-08\""),
+        "{file}"
+    );
+    drop(site);
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+/// A schema First can't make a field of is a build error at the field, with what to do instead.
+#[test]
+fn astro_content_fields_first_cant_map_are_build_errors_naming_the_field() {
+    let base = std::fs::read_to_string(root().join("tests/fixtures/astro-content/src/content.config.ts")).unwrap();
+    let project = std::env::temp_dir().join(format!("first-astro-refusals-{}", std::process::id()));
+    for (from, to, message, help) in [
+        (
+            "    draft: z.boolean().default(false),",
+            "    seo: z.object({ title: z.string() }),",
+            "field `seo`: `z.object()` has no First field type",
+            "group()",
+        ),
+        (
+            "    draft: z.boolean().default(false),",
+            "    author: z.union([z.string(), z.number()]),",
+            "field `author`: `z.union()` has no First field type",
+            "pick it",
+        ),
+        (
+            "    heroImage: z.string().optional(),",
+            "    heroImage: image().optional(),",
+            "field `heroImage`: `image()` has no First field type",
+            "media library",
+        ),
+        (
+            "    pubDate: z.coerce.date(),",
+            "    pubDate: z.string().transform((s) => new Date(s)),",
+            "field `pubDate`: `.transform()` on `z.string()` has no First field type",
+            "transforms",
+        ),
+        (
+            "    tags: z.array(z.string()).default([]),",
+            "    tags: z.array(z.object({ a: z.string() })),",
+            "field `tags`: a list of `z.object()` has no First field type",
+            "repeater()",
+        ),
+        (
+            "    draft: z.boolean().default(false),",
+            "    slug: z.string(),",
+            "field `slug` of `blog` can't be a First field",
+            "its slug",
+        ),
+        (
+            "    title: z.string(),",
+            "    headline: z.string(),",
+            "collection `blog` without a title",
+            "title: z.string()",
+        ),
+        (
+            "pattern: \"**/*.md\" }",
+            "pattern: \"**/*.{md,mdx}\" }",
+            "the loader of `blog` can't be read as a First kind's files",
+            ".mdx",
+        ),
+    ] {
+        let _ = std::fs::remove_dir_all(&project);
+        copy_dir(&root().join("tests/fixtures/astro-content"), &project);
+        assert!(base.contains(from), "{from}");
+        let source = base.replacen(from, to, 1);
+        std::fs::write(project.join("src/content.config.ts"), &source).unwrap();
+        let out = first().arg("check").arg(&project).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{to}: {stderr}");
+        assert!(stderr.contains(message) && stderr.contains(help), "{to}: {stderr}");
+        // At the line that holds the change; a missing title, at the schema that lacks it.
+        let at = if message.contains("without a title") {
+            "z.object("
+        } else {
+            to.trim().split(':').next().unwrap()
+        };
+        let line = source.lines().position(|l| l.contains(at)).unwrap() + 1;
+        assert!(
+            stderr.contains(&format!("--> src/content.config.ts:{line}:")),
+            "{to}: line {line}: {stderr}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &to.join(entry.file_name()));
+        } else {
+            std::fs::copy(entry.path(), to.join(entry.file_name())).unwrap();
+        }
+    }
+}

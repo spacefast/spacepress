@@ -709,6 +709,29 @@ deep. `headings()` gives the ids the page renders its headings with. An id follo
 as READMEs and most docs tools spell it: `## What's \`first/app/\`?` is `#whats-firstapp`, and a
 second `## Why` on the page is `#why-1`. A heading with its own id keeps it.
 
+### Astro's `src/content.config.ts`
+
+An Astro project's content collections are kinds as they stand
+([decision](decisions/2026-11-14-astro-content-config.md)). Each `glob()` collection in
+`src/content.config.ts` syncs its folder of Markdown like `sync: "<base>/**/*.md"` on a
+hierarchical kind, with its Zod schema read as fields:
+
+| Zod | First field |
+| --- | --- |
+| `z.string()`, `.url()`, `.email()` | `text()`, `url()`, `email()` |
+| `z.number()`, `.int()` | `number()`, `integer()` |
+| `z.boolean()` | `boolean()` |
+| `z.date()`, `z.coerce.date()` | `date()` (front matter `YYYY-MM-DD`) |
+| `z.enum([...])` | `select([...])` |
+| `z.array(z.string())`, `z.array(z.number())` | `json<string[]>()`, `json<number[]>()` |
+| `z.array(z.enum([...]))` | `select([...]).many()` |
+
+`.optional()`, `.nullable()`, `.default(<literal>)`, `.min()`, `.max()`, `.positive()` and
+`.nonnegative()` carry over. The collection needs a `title` (or `name`) string. A field First
+can't map (`z.object()`, a union, `image()`, `reference()`, a transform, a list of objects) is a
+build error at the field: declare that collection in `first/` instead. Collections with another
+loader stay Astro's.
+
 ### Components in Markdown
 
 A component in `first/components/` can be used in synced Markdown as a block

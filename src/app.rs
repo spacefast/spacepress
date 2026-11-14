@@ -559,6 +559,7 @@ pub const EXPORTS: &[&str] = &[
     "Content",
     "Html",
     "Link",
+    "Pagination",
     "Search",
     "SearchResults",
 ];

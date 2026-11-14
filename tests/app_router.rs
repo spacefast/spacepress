@@ -1577,6 +1577,16 @@ fn client_components_compile_to_interactivity_stores() {
     );
     // The server HTML carries the directives the store answers to.
     let functions = std::fs::read_to_string(plugin.join("first/app/functions.php")).unwrap();
+    // A server component a client component renders stays a server component: Badge (in a file
+    // that sorts before Switch.tsx) binds none of the Switch's state, though both have an `on`.
+    let badge = functions
+        .split("function component__components_badge__Badge(")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}\n").next())
+        .unwrap_or_else(|| panic!("no Badge in functions.php"));
+    assert!(!badge.contains("data-wp-"), "{badge}");
+    assert!(islands.get("clients/Badge").is_none(), "{islands}");
+    assert!(islands["clients/Switch"]["file"].is_string(), "{islands}");
     for directive in [
         "'data-wp-interactive' => 'clients/LikeButton'",
         "'data-wp-bind--disabled' => 'context.busy'",

@@ -308,6 +308,16 @@ export function CheerButton({ noteId, count: initial }: { noteId: number; count:
 
 - `useState`, values derived from state and props, handlers, `useEffect`,
   `useMount`, `useEvent`, `useRef` and `sharedState` come from `"first/client"`.
+- `useLive(kind, query, { enabled })` is a list read the page keeps current, as
+  `{ data, error, loading }`. The server answers it in the first render as the
+  visitor (`First\Live\Module::evaluate`, with its token), and the page
+  subscribes to the same read through the app's typed client (`@first/client`),
+  so another visitor's write shows with no reload: within the client's poll (2
+  to 30 seconds) without a push transport, at once with one. The query reads
+  props and literals, which both sides have; a query that follows state is a
+  build error for now. There is no `seed` option: the server's answer is the
+  seed. The names match the generated client's React `useQuery`, for external
+  React frontends.
 - Calling an imported action posts to its endpoint with the REST nonce, as the
   visitor.
 - A list over state or props, `items.map((item) => <li key={item.id}>…</li>)`,

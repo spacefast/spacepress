@@ -10,7 +10,7 @@ const notes = collection({
   cover: media({ accept: "image" }).optional(),
 }, { title: "title", revisions: true, sync: "content/notes/*.json" });
 const members = userProjection({ email: email().unique().max(191), name: text() }, {});
-const settings = global("settings", { tagline: text().optional() });
+const settings = global({ tagline: text().optional() });
 
 export default defineConfig({
   name: "own",

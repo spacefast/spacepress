@@ -82,6 +82,8 @@ final class Storage
         // Keys compare byte for byte: a PAD SPACE collation would make "k" and "k " collide.
         $bytes = 'VARBINARY(764)';
         $tail = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin';
+        // No longer written: runtimes before this one kept job tickets here until after commit. Kept, rows
+        // and all (data is never deleted automatically); ActionSchedulerQueue::prepare() queues what is left.
         \First\SystemTables::register('__first_outbox', [
             "CREATE TABLE IF NOT EXISTS `{prefix}first__outbox` (`id` CHAR(36) NOT NULL, `job` VARCHAR(191) $text NOT NULL, `input` LONGTEXT NOT NULL, `key` VARCHAR(191) $text NULL, `runAt` CHAR(24) NOT NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`id`)) $tail",
         ]);

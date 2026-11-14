@@ -1696,7 +1696,7 @@ impl Builder<'_> {
         if let Some(search) = services["search"].as_object() {
             self.tag(tag, description);
             let collections: Vec<&String> = search.keys().collect();
-            self.paths.add("/services/search", "get", Op::new(tag, "services.search", "Search published content", "Finds published rows of one kind whose search fields contain the text. At most 20 rows.")
+            self.paths.add("/services/search", "get", Op::new(tag, "services.search", "Search published content", "Finds published rows of one kind whose configured fields hold every word of the text, each at the start of a word, through the search index. At most 20 rows.")
                 .rule(&Access::anyone())
                 .params([
                     json!({ "name": "collection", "in": "query", "required": true, "description": "The kind to search.", "schema": { "type": "string", "enum": collections } }),
@@ -2021,7 +2021,7 @@ mod tests {
         let doc = document(
             "import { collection, global, text } from \"first\";\n\
              export const categories = collection({ title: text() }, { title: \"title\" });\n\
-             export const posts = global(\"posts\", { motto: text().default(\"x\") });\n",
+             export const posts = global({ motto: text().default(\"x\") });\n",
         );
         assert_eq!(dangling(&doc), Vec::<String>::new());
         assert_eq!(doc["paths"]["/tags"]["get"]["operationId"], "tags.list");

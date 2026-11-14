@@ -130,7 +130,7 @@ export declare function slug(config: { source: string }): ColumnBuilder<"slug", 
 A private-file id in the named bucket.
 
 ```ts
-export declare function file(config: { bucket: string }): ColumnBuilder<"file", number, true, false>;
+export declare function file(bucket: FileBucket): ColumnBuilder<"file", number, true, false>;
 ```
 
 ### `richText`
@@ -249,18 +249,17 @@ export declare function action<TInput extends ColumnsConfig, TResult>(definition
 
 ### `global`
 
-Defines a global. Fields use the column builders with the sub-field restrictions, and no `.unique()`/`slug()`/`blocks()`; a required field needs a default. Default access: `read: "anyone"`, `update: "editor"`.
+Defines a global, named by its export: `export const settings = global({ ... })`. Fields use the column builders with the sub-field restrictions, and no `.unique()`/`slug()`/`blocks()`; a required field needs a default. Default access: `read: "anyone"`, `update: "editor"`.
 
 ```ts
-export declare function global<const TName extends string, TFields extends FieldsConfig>(
-  name: TName,
+export declare function global<TFields extends FieldsConfig>(
   fields: TFields,
   options?: {
     label?: string;
     agents?: boolean;
     access?: { read?: GateRule<never>; update?: GateRule<Partial<SelectShape<TFields>>> };
   },
-): Global<TName, TFields>;
+): Global<string, TFields>;
 ```
 
 ### `defineConfig`
@@ -317,8 +316,10 @@ export declare function env(name: string): EnvValue;
 
 ### `files`
 
+A private file bucket, named by its export: `export const decks = files({ accept, maxBytes })`.
+
 ```ts
-export declare function files(name: string, options: {
+export declare function files(options: {
   accept: string[];
   maxBytes: number;
   access?: { read?: FileRule; create?: FileRule; delete?: FileRule };

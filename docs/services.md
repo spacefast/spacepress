@@ -40,7 +40,7 @@ export default defineConfig({
 
 The compiler rejects unknown options, duplicate declarations and invalid definitions at their source property. Form fields support `text`, `email`, `integer` and `boolean`, optional `notNull`, and integer `rules.min`/`rules.max` for text length or integer bounds. Boolean fields have no bounds. Omit unused sections; a supplied registry or form field map must be nonempty. Form and product ids are lowercase slugs of at most 80 characters. Products require a nonempty name of at most 160 UTF-8 bytes, an integer amount from 50 to 99,999,999 and three lowercase currency letters. Configure `products` and an absolute HTTP(S) `checkoutReturnUrl` together.
 
-Search keys name authored collections; the compiler binds them to the stored collection name. Each must enable `drafts: true` and list at least one existing text column without duplicates. HTTP queries use the stored name: the example above uses `posts`; the runnable example's `articles` key uses `storageName: "service_posts"`, so its request uses `collection=service_posts`. Runtime row and field access rules still apply.
+Search keys name authored collections; the compiler binds them to the stored collection name. Each must enable `drafts: true` and list at least one authored text column (not the system `status`) without duplicates. HTTP queries use the stored name: the example above uses `posts`; the runnable example's `articles` key uses `storageName: "service_posts"`, so its request uses `collection=service_posts`. Runtime row and field access rules still apply.
 
 Classic PHP plugins remain supported. The generated filter runs at priority 10 and merges `forms`, `search` and `products` by entry name. An authored entry replaces the whole same-name entry supplied by an earlier filter; unrelated entries and native options survive. A trusted filter at priority 20 can deliberately extend or override the result. Native plugins can use the runtime's broader schema validation features; the TypeScript bridge accepts only the documented subset.
 
@@ -74,7 +74,7 @@ Paths below follow `/__first/api/v1`. Successes use `{ "data": ... }`; failures 
 | --- | --- |
 | `POST /services/forms/contact` | `{ "website": "", "data": { "email": "visitor@example.test", "message": "Hello there" } }` → submission id and queued notification receipt |
 | `GET /services/submissions/{id}` | Editor-only saved values plus job state, attempt count and completion time |
-| `GET /services/search?collection=posts&q=workshop` | At most 20 published, accessible results, with explicit configured fields |
+| `GET /services/search?collection=posts&q=workshop` | At most 20 published, accessible results whose configured fields hold every word, with those fields |
 | `POST /services/checkout` | `{ "product": "workshop" }` → opaque status token, status path and `requested` state |
 | `GET /services/checkout/{token}` | Current payment state, server price, checkout URL when available and checkout-job status |
 | `POST /services/stripe/webhook` | Raw Stripe event body plus `Stripe-Signature`; authenticated receipt and duplicate indicator |
@@ -87,15 +87,15 @@ The supported form fields are text, email, integer and boolean. Schema validatio
 
 Only `REMOTE_ADDR` identifies the client. Forwarded headers are untrusted; configure the web server's trusted-proxy handling if it is behind a proxy. These controls reduce basic automated spam; they are not a CAPTCHA or a moderation service.
 
-The submission and mail job commit together. An aborted transaction removes both, along with the outbox ticket and replay receipt. The outbox schedules Action Scheduler only after commit. The native callable mail handler runs outside a database transaction. WordPress owns MIME and PHPMailer; without an SMTP override, existing WordPress mail plugins remain authoritative. Each send restores the mailer's previous message identity and any transport settings it overrides, including on failure.
+The submission and mail job commit together. An aborted transaction removes both, along with the job's Action Scheduler action and the replay receipt: the action is written in the same transaction. The native callable mail handler runs outside a database transaction. WordPress owns MIME and PHPMailer; without an SMTP override, existing WordPress mail plugins remain authoritative. Each send restores the mailer's previous message identity and any transport settings it overrides, including on failure.
 
 Job states distinguish `pending`, `running`, `failed`, `dead` and `done`. A mail job becoming `done` means the configured transport accepted the message. It does not prove inbox placement. Delivery is at least once: a worker crash after SMTP acceptance can cause another attempt. The submission supplies a stable Message-ID, but SMTP offers no universal deduplication guarantee. Submissions and mail job inputs remain private; no public submission-status lookup is provided.
 
 ## Search and native content changes
 
-Search uses viewer-bound `db()->findMany`, with an explicit `published` filter and a fixed list of text fields. Existing row and field access rules run before SQL; an unreadable search field is rejected rather than used to infer membership. An editor's draft privileges do not make draft content searchable here.
+Search is the same search as `posts.list({ search })` and `GET /search`, narrowed to the configured fields: a viewer-bound `db()->findMany` with `search` and `searchFields`, an explicit `published` filter, and the configured fields as the returned columns. A row matches when every word of `q` starts a word in one of those fields ([search index](decisions/2026-11-13-search-index.md)). Existing row and field access rules run before SQL; asking for a configured field the caller may not read is a 403, so a hidden field is never a membership oracle. An editor's draft privileges do not make draft content searchable here.
 
-Results come from current content, without a second index. Editing, unpublishing, republishing or deleting through WordPress takes effect on the next query. Search is bounded lexical matching, not semantic search, fuzzy ranking, an external search provider or a full-text index. It supports publication-enabled First collections with text columns.
+The index is kept in step inside every write's transaction, wp-admin and core REST saves included. Editing, unpublishing, republishing or deleting through WordPress takes effect on the next query. Search is word-prefix matching in the kind's own order (oldest first here), not semantic search, fuzzy ranking or an external search provider. It supports publication-enabled First collections; configured fields must be authored text fields (not `status`), the fields the index holds.
 
 ## Hosted checkout and webhook recovery
 

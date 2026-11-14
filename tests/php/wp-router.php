@@ -20,6 +20,16 @@ if ($path === '/__first_site') {
     echo $dir;
     exit;
 }
+// A site in a subdirectory (`base`) answers only below it, and the rules below read the path
+// inside it. REQUEST_URI keeps the full path, as a web server passes it to WordPress.
+$base = (string) ($site['base'] ?? '');
+if ($base !== '') {
+    if ($path !== $base && !str_starts_with($path, "$base/")) {
+        http_response_code(404);
+        exit;
+    }
+    $path = substr($path, strlen($base)) ?: '/';
+}
 if (str_starts_with($path, '/wp-content/uploads/first-private/')) {
     http_response_code(403);
     exit;
@@ -53,7 +63,7 @@ if (preg_match('#^/(wp-login\.php|wp-admin/(?:[a-z0-9-]+\.php)?)$#', $path, $m) 
     define('ABSPATH', "$root/");
     // Each script and stylesheet on its own URL, so a browser test's failed request names the file.
     define('CONCATENATE_SCRIPTS', false);
-    $_SERVER['SCRIPT_NAME'] = $_SERVER['PHP_SELF'] = "/$file";
+    $_SERVER['SCRIPT_NAME'] = $_SERVER['PHP_SELF'] = "$base/$file";
     $_SERVER['SCRIPT_FILENAME'] = "$root/$file";
     chdir(dirname("$root/$file"));
     require "$root/$file";
@@ -66,7 +76,7 @@ if (preg_match('#^/wp-json(/.*)?$#', $path, $m) === 1) {
 // wp-config.php for its wp-load.php to find, so the site's settings load first and the script runs
 // with them already in place (wp-load.php skips its own setup once ABSPATH's settings have run).
 if ($path === '/wp-comments-post.php') {
-    $_SERVER['SCRIPT_NAME'] = $_SERVER['PHP_SELF'] = $path;
+    $_SERVER['SCRIPT_NAME'] = $_SERVER['PHP_SELF'] = $base . $path;
     $_SERVER['SCRIPT_FILENAME'] = "$core/wp-comments-post.php";
     require __DIR__ . '/wp.php';
     wpDefine($dir, $site['url']);
@@ -77,8 +87,8 @@ if ($path === '/wp-comments-post.php') {
     eval('?>' . str_replace("require __DIR__ . '/wp-load.php';", '', $script));
     exit;
 }
-$_SERVER['SCRIPT_NAME'] = '/index.php';
-$_SERVER['PHP_SELF'] = '/index.php';
+$_SERVER['SCRIPT_NAME'] = "$base/index.php";
+$_SERVER['PHP_SELF'] = "$base/index.php";
 $_SERVER['SCRIPT_FILENAME'] = "$core/index.php";
 // What index.php → wp-blog-header.php does, with the site's constants in place of a wp-config.php.
 require __DIR__ . '/wp.php';

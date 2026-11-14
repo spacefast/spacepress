@@ -13,13 +13,12 @@ use function First\db;
  * on a schedule and again while `remaining` is true. It never spawns HTTP requests or processes.
  *
  * In order, each within what is left of `limit` (units of work) and `budgetMs` (wall time):
- * 1. hand committed outbox tickets to the queue, oldest first;
- * 2. re-queue jobs whose runner died (`running` longer than Runner::STUCK_MS);
- * 3. expire idempotency receipts older than Runner::RECEIPT_TTL_MS;
- * 4. run due jobs directly, at most half of what is left, so maintenance always gets a share;
- * 5. claim and run due Action Scheduler actions (uploads cleanup, guest pruning, identity dispatch,
+ * 1. re-queue jobs whose runner died (`running` longer than Runner::STUCK_MS);
+ * 2. expire idempotency receipts older than Runner::RECEIPT_TTL_MS;
+ * 3. run due jobs directly, at most half of what is left, so maintenance always gets a share;
+ * 4. claim and run due Action Scheduler actions (uploads cleanup, guest pruning, identity dispatch,
  *    deliveries the direct pass didn't reach), as Action Scheduler's own runners do;
- * 6. run due WP-Cron events (identity maintenance and the like), rescheduling recurring ones, under
+ * 5. run due WP-Cron events (identity maintenance and the like), rescheduling recurring ones, under
  *    core's `doing_cron` lock.
  *
  * Overlapping ticks, a tick beside wp-cron.php, and a tick beside Action Scheduler's own runner each
@@ -45,19 +44,13 @@ final class Tick
         $failures = 0;
         $remaining = false;
 
-        // 1. Outbox: one ticket is one unit.
-        $tickets = Storage::run('SELECT "id" FROM {outbox} ORDER BY "createdAt", "id" LIMIT ' . $limit);
-        $dispatched = $tickets === [] ? 0 : Outbox::dispatch(array_column($tickets, 'id'));
-        $failures += count($tickets) - $dispatched;
-        $remaining = $remaining || count($tickets) === $limit;
-
-        // 2 and 3. Recovery and expiry, bounded by the same limit.
+        // 1 and 2. Recovery and expiry, bounded by the same limit.
         $now = Js::now();
         [$requeued, $expired] = db()->transaction(static function () use ($limit, $now): array {
             $stuck = Storage::run('SELECT "id" FROM {jobs} WHERE "state" = \'running\' AND "lockedAt" < ? ORDER BY "lockedAt", "id" LIMIT ' . $limit . Storage::forUpdate(), [Js::iso($now - Runner::STUCK_MS)]);
             foreach ($stuck as $row) {
                 Storage::run('UPDATE {jobs} SET "state" = \'pending\', "lockedAt" = NULL, "runAt" = ? WHERE "id" = ?', [Js::iso($now), $row['id']]);
-                Outbox::queue()->schedule((string) $row['id'], Js::iso($now));
+                \First\Wp\Jobs\ActionSchedulerQueue::schedule((string) $row['id'], Js::iso($now));
             }
             Storage::run('DELETE FROM {receipts} WHERE "createdAt" < ? LIMIT ' . $limit, [Js::iso($now - Runner::RECEIPT_TTL_MS)]);
 
@@ -65,7 +58,7 @@ final class Tick
         });
         $remaining = $remaining || $requeued === $limit || $expired === $limit;
 
-        // 4. Due jobs, directly: at most half of what is left, and at least one.
+        // 3. Due jobs, directly: at most half of what is left, and at least one.
         $direct = max(1, intdiv($left($processed), 2));
         if ($left($processed) > 0) {
             $due = Storage::run('SELECT "id" FROM {jobs} WHERE "state" IN (\'pending\', \'failed\') AND "runAt" <= ? ORDER BY "runAt", "id" LIMIT ' . ($direct + 1), [Js::iso(Js::now())]);
@@ -83,7 +76,7 @@ final class Tick
             }
         }
 
-        // 5. Due Action Scheduler actions, claimed first as Action Scheduler's own runners do
+        // 4. Due Action Scheduler actions, claimed first as Action Scheduler's own runners do
         // (ActionScheduler_QueueRunner::do_batch): an action another tick or runner holds is not
         // ours to run, and one we hold no other runner starts. A job delivery whose job already ran
         // above finds it done and completes as a no-op (ActionSchedulerQueue's handler).
@@ -125,7 +118,7 @@ final class Tick
             }
         }
 
-        // 6. Due WP-Cron events, run in this process under core's `doing_cron` lock (wp-cron.php):
+        // 5. Due WP-Cron events, run in this process under core's `doing_cron` lock (wp-cron.php):
         // while another cron run holds it, this tick leaves the events to it; if another run takes it
         // over mid-way, this one stops. Action Scheduler's own queue hook is skipped: its actions were
         // run above, within the limit.
@@ -172,7 +165,9 @@ final class Tick
             }
         }
 
-        return ['processed' => $processed, 'failures' => $failures, 'outboxDispatched' => $dispatched,
+        // `outboxDispatched` stays in the output for hosts that read it: jobs reach Action Scheduler in
+        // the transaction that queues them, so a tick has no tickets to hand over.
+        return ['processed' => $processed, 'failures' => $failures, 'outboxDispatched' => 0,
             'requeued' => $requeued, 'receiptsExpired' => $expired, 'remaining' => $remaining];
     }
 

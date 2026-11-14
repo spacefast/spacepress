@@ -229,7 +229,8 @@ $out['sitemap']['briefs status after'] = fetch("$url/wp-sitemap-first-briefs-1.x
 // `publicAuthors: true` with a users kind: every author is in the sitemap, as WordPress ships it.
 $schemaFile = \First\Wp\Runtime::plugin()->dir . '/first/app/schema.php';
 $schemaPhp = (string) file_get_contents($schemaFile);
-file_put_contents($schemaFile, str_replace("    'admin' => false,\n", "    'admin' => false,\n    'publicAuthors' => true,\n", $schemaPhp));
+// Inserted after the `'admin'` line, whatever its value (#377 turned First Admin on by default).
+file_put_contents($schemaFile, preg_replace("/^    'admin' => (true|false),\n/m", "\$0    'publicAuthors' => true,\n", $schemaPhp, 1));
 $everyone = array_map($strip, $locs(fetch("$url/wp-sitemap-users-1.xml")['body']));
 sort($everyone);
 $out['authors']['public sitemap'] = $everyone;

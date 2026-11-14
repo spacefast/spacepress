@@ -89,6 +89,18 @@ a searchable field and an API list, as the caller, and returns the matching rows
 caller may not read is left out without a word, and `kinds=` naming a kind that doesn't exist or isn't
 searchable gives the same empty answer as one with no match.
 
+**The same search everywhere (2026-11-14).** The services module's `GET /services/search` ran its
+own `LIKE '%term%'` over its configured fields, outside the index. It now runs the index search on
+the kind's read, narrowed to the configured fields (`searchFields`), keeping its response. Core's
+`GET /wp/v2/search`, which the block editor's link picker calls with `type=post`, listed only public
+post types, and First's are not public. `Wp\SearchHandler` takes the place of the `post` handler
+on `wp_rest_search_handlers` (core keeps one handler per type, `WP_REST_Search_Controller`, so a
+type of First's own would never be asked by the editor). It keeps the previous handler's results
+and adds the published items of each kind with a `url` through the same read as the caller. An
+update that changes no searchable field leaves the row's entries as they are, as WooCommerce
+updates its product lookup table only when a looked-up property changed
+(`class-wc-product-data-store-cpt.php`, `update_lookup_table`).
+
 ## Not done
 
 The static JSON index of prerendered pages: static prerender into `first/dist/` is not on main yet

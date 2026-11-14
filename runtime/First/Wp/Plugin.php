@@ -117,6 +117,7 @@ final class Plugin
         KindUrls::register($this);
         MarkdownTwins::register();
         Sitemap::register($this);
+        SearchHandler::register($this);
         Purges::register($this);
         Staged::register($this);
         Hooks::register($this);

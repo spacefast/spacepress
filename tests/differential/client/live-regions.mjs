@@ -1,4 +1,4 @@
-// Usage: node live-regions.mjs <site url>
+// Usage: node live-regions.mjs <site url>   (served with FIRST_SERVE_MU=live-regions-mu.php)
 // `<Live>` regions in Chromium (tests/app_router.rs `live_regions_update_in_the_browser`): the page's
 // one first request to the subscription endpoint, an unchanged answer that touches nothing, another
 // visitor's write showing on the next poll without a reload, and a client component's state and an
@@ -54,6 +54,37 @@ try {
     reloaded: await page.evaluate(() => performance.getEntriesByType("navigation").length),
   };
   out.answers = answers;
+
+  // `<Live>` around `<Comments>`, with a realtime transport live (a fake one the page registers
+  // before any module runs, as a host's would be): a comment approved on the server shows at once
+  // on a notice naming `wp:comments`, well before the 60-second safety poll a live transport leaves.
+  const live2 = await browser.newPage();
+  live2.on("pageerror", (e) => out.errors.push(String(e)));
+  await live2.addInitScript(() => {
+    window.__notices = [];
+    const r = (window.__firstRealtime ??= { waiters: new Set() });
+    r.transport = {
+      connect(deliver, status) {
+        window.__deliver = deliver;
+        queueMicrotask(() => status("live"));
+        return () => {};
+      },
+    };
+  });
+  const requests2 = [];
+  live2.on("request", (r) => { if (r.url().endsWith("/__first/api/v1/_live")) requests2.push(Date.now()); });
+  out.note = (await fetch(`${url}/__first_test/note`, { method: "POST" })).status;
+  await live2.goto(`${url}/notes/one`, { waitUntil: "networkidle" });
+  if (requests2.length === 0) await live2.waitForResponse((r) => r.url().endsWith("/__first/api/v1/_live"), { timeout: 15000 });
+  const before = await live2.$$eval(".first-comment-body", (b) => b.map((x) => x.textContent.trim()));
+  const approve = await fetch(`${url}/__first_test/approve`, { method: "POST" });
+  out.approve = approve.status;
+  const sentBefore = requests2.length;
+  const noticeAt = Date.now();
+  await live2.evaluate(() => window.__deliver({ id: "t", at: new Date().toISOString(), changes: [{ collection: "wp:comments", ops: ["update"], ids: null }] }));
+  await live2.waitForFunction(() => [...document.querySelectorAll(".first-comment-body")].some((b) => b.textContent.includes("Approved live")), null, { timeout: 15000 })
+    .catch((e) => { throw new Error(`${e.message}\n${JSON.stringify({ before, errors: out.errors })}`); });
+  out.transport = { before, after: await live2.$$eval(".first-comment-body", (b) => b.map((x) => x.textContent.trim())), asked: requests2.length - sentBefore, ms: Date.now() - noticeAt };
   process.stdout.write(JSON.stringify(out));
 } finally {
   await browser.close();

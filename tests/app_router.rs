@@ -1932,7 +1932,8 @@ fn live_regions_answer_page_reads() {
             "a GET records": true,
             // `<Live>` around `<Comments>`: core's comment query has no counter, so the page renders
             // on every poll and a new approved comment shows on the next one.
-            "comments": { "0": "changed", "1": false, "2": "changed", "3": true, "rendered": 1 },
+            // Its kinds name `wp:comments`, so a notice for a comment's approval asks again at once.
+            "comments": { "0": "changed", "1": false, "2": "changed", "3": true, "rendered": 1, "kinds": ["notes", "wp:comments"] },
             // The visitor key includes the post-password cookie: a protected note shows only with
             // it, and neither visitor's token is "not modified" for the other.
             "password": {
@@ -1944,6 +1945,90 @@ fn live_regions_answer_page_reads() {
             // Same data, new build: the region renders again.
             "new build": ["changed", true],
         })
+    );
+}
+
+/// `<Live>` regions in Chromium (tests/differential/client/live-regions.mjs): after load exactly
+/// one request to the subscription endpoint, carrying the page's region and answered unchanged; another
+/// visitor's write shows on the next poll with no reload, and a client component's state, its node and
+/// an input's text inside the region survive the update. With a realtime transport live, a comment
+/// approved on the server shows at once on the `wp:comments` notice, not after the safety poll.
+#[test]
+fn live_regions_update_in_the_browser() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let project = fixture("live-regions", "browser");
+    build(&project);
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .env("FIRST_WP_SCRIPT_DEBUG", "1")
+        .env(
+            "FIRST_SERVE_MU",
+            root().join("tests/differential/client/live-regions-mu.php"),
+        )
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/live-regions.mjs"))
+        .arg(&url)
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    assert_eq!(
+        seen["first"],
+        serde_json::json!({ "requests": 1, "regions": ["board"], "answer": ["unchanged"], "beforePoll": true }),
+        "{seen}"
+    );
+    assert_eq!(
+        (&seen["write"], &seen["after"]),
+        (
+            &serde_json::json!(201),
+            &serde_json::json!({ "signatures": ["Grace"], "counter": "clicked 1", "sameCounterNode": "same node", "draft": "half a sentence", "reloaded": 1 })
+        ),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["answers"],
+        serde_json::json!([["unchanged"], ["changed"]]),
+        "an unchanged answer swaps nothing: {seen}"
+    );
+    let transport = &seen["transport"];
+    assert_eq!(
+        (&transport["before"], &transport["after"], &transport["asked"]),
+        (
+            &serde_json::json!([]),
+            &serde_json::json!(["Approved live"]),
+            &serde_json::json!(1)
+        ),
+        "{seen}"
+    );
+    assert!(
+        transport["ms"].as_u64().unwrap() < 10_000,
+        "on the notice, not the 60 s safety poll: {seen}"
     );
 }
 

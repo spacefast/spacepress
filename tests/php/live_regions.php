@@ -125,7 +125,7 @@ $noteId = (int) \First\db()->findFirst('notes', ['where' => ['title' => 'One']])
 wp_insert_comment(['comment_post_ID' => $noteId, 'comment_content' => 'Live hello', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1]);
 $was = $renders();
 [$thread2] = post($url, [$page("/notes/$slug", 'thread', $thread['token'])]);
-$out['comments'] = [$shape($thread), str_contains($thread['data']['html'] ?? '', 'Live hello'), $shape($thread2), str_contains($thread2['data']['html'] ?? '', 'Live hello'), 'rendered' => $renders() - $was];
+$out['comments'] = [$shape($thread), str_contains($thread['data']['html'] ?? '', 'Live hello'), $shape($thread2), str_contains($thread2['data']['html'] ?? '', 'Live hello'), 'rendered' => $renders() - $was, 'kinds' => $thread['data']['kinds'] ?? null];
 
 // The visitor key includes the post-password cookie: a password-protected note is in the region
 // only for a visitor holding its cookie, and a token issued to one visitor is never "not modified"

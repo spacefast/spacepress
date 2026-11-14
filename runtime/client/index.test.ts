@@ -167,6 +167,14 @@ test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSO
   await first.posts.revisions.list(1);
   await first.posts.revisions.get(1, 4);
   await first.posts.revisions.restore(1, 4);
+  await first.posts.stage(1, { title: "Staged" });
+  await first.posts.staged(1);
+  await first.posts.compare(1);
+  await first.posts.promote(1, { at: "2030-01-01T00:00:00Z" });
+  await first.posts.promote(1, { at: null });
+  await first.posts.promote(1);
+  await first.posts.discard(1);
+  await first.posts.previewLink(1, { ttl: 600 });
   await first.globals.settings.get();
   await first.globals.settings.update({ tagline: "x" });
   await first.actions.approveComment({ id: 3 });
@@ -182,6 +190,14 @@ test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSO
       "GET /__first/api/v1/posts/1/revisions ",
       "GET /__first/api/v1/posts/1/revisions/4 ",
       "POST /__first/api/v1/posts/1/revisions/4/restore ",
+      'PATCH /__first/api/v1/posts/1/staged {"title":"Staged"}',
+      "GET /__first/api/v1/posts/1/staged ",
+      "GET /__first/api/v1/posts/1/staged/compare ",
+      'POST /__first/api/v1/posts/1/staged/promote {"at":"2030-01-01T00:00:00Z"}',
+      'POST /__first/api/v1/posts/1/staged/promote {"at":null}',
+      "POST /__first/api/v1/posts/1/staged/promote {}",
+      "DELETE /__first/api/v1/posts/1/staged ",
+      'POST /__first/api/v1/posts/1/staged/preview {"ttl":600}',
       "GET /__first/api/v1/settings ",
       'PATCH /__first/api/v1/settings {"tagline":"x"}',
       'POST /__first/api/v1/actions/approveComment {"id":3}',

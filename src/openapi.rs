@@ -551,6 +551,100 @@ impl Builder<'_> {
         json!({ "type": "object", "properties": properties })
     }
 
+    /** A post kind's staged version (docs/staged.md): `/{id}/staged[/compare|/promote|/preview]`. */
+    #[allow(clippy::too_many_arguments)]
+    fn staged(
+        &mut self,
+        tag: &str,
+        key: &str,
+        table: &str,
+        item: &str,
+        id: &Value,
+        row: &Value,
+        patch: &str,
+        update: &Access,
+    ) {
+        let needs = "Needs the kind's update rule on the row; anyone else gets the 404 of a missing row, \
+            whether or not something is staged.";
+        let user = json!({ "type": ["object", "null"], "properties": { "id": { "type": "integer" }, "name": { "type": "string" } } });
+        let record = json!({
+            "id": { "type": "integer", "description": "The revision that holds the staged version." },
+            "by": user,
+            "at": { "type": "string", "format": "date-time" },
+            "promoteAt": { "type": ["string", "null"], "format": "date-time", "description": "When a scheduled promote runs." },
+        });
+        let mut version = json!({ "type": "object", "properties": {
+            "row": row, "fields": { "type": "array", "items": { "type": "string" }, "description": "The staged fields." },
+        }, "required": ["id", "row", "fields", "by", "at", "promoteAt"] });
+        let mut comparison = json!({ "type": "object", "properties": {
+            "changes": { "type": "array", "items": { "type": "object", "properties": {
+                "field": { "type": "string" }, "live": {}, "staged": {},
+            }, "required": ["field", "live", "staged"] } },
+        }, "required": ["id", "changes", "by", "at", "promoteAt"] });
+        for schema in [&mut version, &mut comparison] {
+            if let (Some(props), Some(extra)) = (schema["properties"].as_object_mut(), record.as_object()) {
+                props.extend(extra.clone());
+            }
+        }
+        let staged = format!("{item}/staged");
+        let op = |id_: &str, summary: String, description: &str| {
+            Op::new(tag, format!("{key}.{id_}"), summary, description)
+                .rule(update)
+                .note(needs)
+                .params([id.clone()])
+        };
+        self.paths.add(
+            &staged,
+            "get",
+            op("staged", format!("Staged version of {table}"), "The row as it would be once promoted, the fields that are staged, and who staged last. With `preview=<token>` it answers without signing in, through an anonymous visitor's field masks.")
+                .params([query("preview", "A preview token from the preview route.", json!({ "type": "string" }))])
+                .ok(200, envelope("The staged version.", version.clone()))
+                .errors(&[404]),
+        );
+        self.paths.add(
+            &staged,
+            "patch",
+            op("stage", format!("Stage a change to {table}"), "Saves the fields sent into the row's staged version. The live row stays as it is until the staged version is promoted. Checked as an update would be; no hook runs.")
+                .body(body("The fields to stage.", reference(patch)))
+                .ok(200, envelope("The staged version.", version.clone()))
+                .errors(&[403, 404, 409, 422]),
+        );
+        self.paths.add(
+            &staged,
+            "delete",
+            op("discard", format!("Discard the staged version of {table}"), "Ends the staged version. The live row is untouched; the discarded version stays in the row's revisions.")
+                .ok(200, envelope("The revision that held it.", json!({ "type": "object", "properties": { "revision": { "type": "integer" } }, "required": ["revision"] })))
+                .errors(&[404, 409]),
+        );
+        self.paths.add(
+            &format!("{staged}/compare"),
+            "get",
+            op("compare", format!("Compare staged and live {table}"), "The staged fields whose value differs from the live row, with both values, as the caller may read each side.")
+                .ok(200, envelope("The changes.", comparison))
+                .errors(&[404]),
+        );
+        self.paths.add(
+            &format!("{staged}/promote"),
+            "post",
+            op("promote", format!("Promote the staged version of {table}"), "Makes the staged version live, as an update of the row by the caller: its rules, hooks, unique checks and webhooks run. With `at` (a future time) the promote is scheduled instead, and `at: null` cancels a scheduled one; both answer with the staged version.")
+                .body(body("Empty, or `at`.", json!({ "type": "object", "properties": { "at": { "type": ["string", "null"], "format": "date-time" } } })))
+                .ok(200, envelope("The row after the promote, or the staged version when `at` was sent.", json!({ "oneOf": [row, version] })))
+                .errors(&[403, 404, 409, 422]),
+        );
+        self.paths.add(
+            &format!("{staged}/preview"),
+            "post",
+            op("previewLink", format!("Preview link for staged {table}"), "A signed link to the staged version that works without signing in until it expires (an hour by default, a day at most) or the staged version is promoted or discarded.")
+                .body(body("Empty, or `ttl` in seconds.", json!({ "type": "object", "properties": { "ttl": { "type": "integer", "minimum": 60, "maximum": 86400 } } })))
+                .ok(200, envelope("The link.", json!({ "type": "object", "properties": {
+                    "token": { "type": "string" }, "expiresAt": { "type": "string", "format": "date-time" },
+                    "api": { "type": "string", "description": "Reads the staged version without signing in." },
+                    "url": { "type": ["string", "null"], "description": "The row's own page showing the staged version, when the theme renders it." },
+                }, "required": ["token", "expiresAt", "api", "url"] })))
+                .errors(&[404]),
+        );
+    }
+
     fn kind(&mut self, c: &Collection) {
         let name = self.names.collections[&c.table].clone();
         let (insert, patch, filter_name) = (format!("{name}Insert"), format!("{name}Patch"), format!("{name}Filter"));
@@ -812,6 +906,9 @@ impl Builder<'_> {
                 .ok(200, envelope("The row after the restore.", row.clone()))
                 .errors(&[404, 409, 422]),
             );
+        }
+        if c.editor && c.revisions && c.staged && c.api.update {
+            self.staged(&tag, key, table, &item, &id, &row, &patch, &update);
         }
         if c.sync.is_some() {
             self.sync(c, &update, &delete);

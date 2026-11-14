@@ -5,7 +5,8 @@
 // - first/app/docs/[...path]/page.tsx: one page renders every doc, with "first/content"'s
 //   navigation, previous and next, and table of contents;
 // - first/components/Callout.tsx: components a Markdown file uses as blocks;
-// - code fences with titles, marked lines and tab groups, highlighted with no script.
+// - code fences with titles, marked lines and tab groups, highlighted with no script;
+// - `output: "static"`: `first export` writes the whole site as files that need no WordPress.
 import { defineConfig } from "first";
 
-export default defineConfig({ name: "docs" });
+export default defineConfig({ name: "docs", output: "static" });

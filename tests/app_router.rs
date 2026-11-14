@@ -2465,7 +2465,7 @@ fn docs_example_reads_in_the_browser() {
     docs_read_as_published(&seen, &url, &url);
 }
 
-/// `first export` (docs/decisions/2026-11-13-static-output.md): examples/docs with `output: "static"`,
+/// `first export` (docs/decisions/2026-11-13-static-output.md): examples/docs (`output: "static"`),
 /// its content from content/docs/, rendered by a throwaway WordPress on SQLite, written as files and
 /// read in Chromium from a plain static server: the same pages a visitor reads on WordPress, with no
 /// WordPress at all. The draft is in no file, Markdown twins sit beside their pages, and llms.txt,
@@ -2481,16 +2481,6 @@ fn docs_example_exports_to_a_static_site() {
     let work = tempfile::tempdir().unwrap();
     let project = work.path().join("docs");
     copy(&root().join("examples/docs"), &project);
-    let config = project.join("first.config.ts");
-    let source = std::fs::read_to_string(&config).unwrap();
-    std::fs::write(
-        &config,
-        source.replace(
-            "defineConfig({ name: \"docs\" })",
-            "defineConfig({ name: \"docs\", output: \"static\" })",
-        ),
-    )
-    .unwrap();
     let out = first()
         .args([
             "export".as_ref(),

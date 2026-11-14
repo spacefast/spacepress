@@ -2305,7 +2305,7 @@ fn docs_example_reads_in_the_browser() {
     let seen = read_docs(&url);
     let _ = Command::new("kill").arg(server.id().to_string()).output();
     let _ = server.wait();
-    docs_read_as_published(&seen);
+    docs_read_as_published(&seen, &url, &url);
 }
 
 /// `first export` (docs/decisions/2026-11-13-static-output.md): examples/docs with `output: "static"`,
@@ -2436,7 +2436,139 @@ fn docs_example_exports_to_a_static_site() {
     let seen = read_docs(&url);
     let _ = server.kill();
     let _ = server.wait();
-    docs_read_as_published(&seen);
+    docs_read_as_published(&seen, &url, "https://docs.example.test");
+}
+
+/// `first export --site` (docs/decisions/2026-11-13-static-output.md): WordPress as the CMS somewhere
+/// else. The hosted site (WordPress on SQLite, `tests/php/wp.php serve`) has a published and a draft
+/// note; the export renders its published content with an editor's application password, and the
+/// static page's client component calls the hosted site's public action across origins. The sign-in
+/// link points at the hosted site. A site running another build of the app is refused.
+#[test]
+fn static_export_from_a_hosted_site() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let project = fixture("app-export-site", "site");
+    build(&project);
+    let mut cms = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/wp.php"))
+        .arg("serve")
+        .arg(project.join("first/dist/wp-content"))
+        .arg("chief=editor")
+        .env("FIRST_WP_THEMES", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(cms.stdout.take().unwrap()), &mut line).unwrap();
+    let served: serde_json::Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("serve: {line}"));
+    let site = served["url"].as_str().unwrap().to_string();
+    let editor = served["users"]["chief"]["appPassword"].as_str().unwrap().to_string();
+    let call = |method: &str, path: &str, body: serde_json::Value| {
+        let out = Command::new("curl")
+            .args([
+                "-s",
+                "-X",
+                method,
+                "-u",
+                &editor,
+                "-H",
+                "content-type: application/json",
+                "-d",
+            ])
+            .arg(body.to_string())
+            .arg(format!("{site}/__first/api/v1{path}"))
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    call(
+        "POST",
+        "/notes",
+        serde_json::json!({ "title": "Hello", "status": "published" }),
+    );
+    call(
+        "POST",
+        "/notes",
+        serde_json::json!({ "title": "Secret", "status": "draft" }),
+    );
+    let export = |site_arg: &str| {
+        first()
+            .arg("export")
+            .arg(&project)
+            .args(["--site", site_arg])
+            .env("FIRST_APP_PASSWORD", &editor)
+            .output()
+            .unwrap()
+    };
+    let out = export(&site);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let dist = project.join("first/dist/static");
+    assert!(dist.join("notes/hello.html").is_file());
+    assert!(!dist.join("notes/secret.html").exists(), "the draft is never exported");
+    let mut server = Command::new("node")
+        .arg(root().join("tests/differential/client/serve-static.mjs"))
+        .arg(&dist)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap()["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let browsed = Command::new("node")
+        .arg(root().join("tests/differential/client/export-site.mjs"))
+        .arg(&url)
+        .output()
+        .unwrap();
+    let _ = server.kill();
+    let _ = server.wait();
+    // The count is stored on the hosted site.
+    let counted = call("GET", "/cheers", serde_json::json!({}));
+    // A checkout that differs from what the site runs is refused before anything is written.
+    std::fs::write(
+        project.join("first/app/page.tsx"),
+        "export default function Home() { return <p>changed</p>; }\n",
+    )
+    .unwrap();
+    let stale = export(&site);
+    let _ = Command::new("kill").arg(cms.id().to_string()).output();
+    let _ = cms.wait();
+    assert!(
+        browsed.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&browsed.stdout),
+        String::from_utf8_lossy(&browsed.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&browsed.stdout).unwrap();
+    assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    assert_eq!(seen["home"], serde_json::json!([["Hello", "/notes/hello"]]));
+    assert_eq!(seen["signIn"], format!("{site}/wp-login.php"));
+    assert_eq!(seen["note"], serde_json::json!(["/notes/hello", "Hello", "0 cheers"]));
+    assert_eq!(seen["cheered"], "2 cheers");
+    assert_eq!(
+        seen["actions"],
+        serde_json::json!([["POST", site, 200], ["POST", site, 200]])
+    );
+    assert!(counted.contains("\"count\":2"), "{counted}");
+    assert_eq!(stale.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&stale.stderr).contains("runs another build of this app"),
+        "{}",
+        String::from_utf8_lossy(&stale.stderr)
+    );
 }
 
 /// A static site has no server: an action call from a client component, a page that asks who the
@@ -2520,14 +2652,15 @@ fn read_docs(url: &str) -> serde_json::Value {
 
 /// What a visitor reads in examples/docs, wherever it is served: the same on WordPress and in its
 /// static export.
-fn docs_read_as_published(seen: &serde_json::Value) {
+/// `url` is where the browser read the site, `canonical` the address the pages name as their own.
+fn docs_read_as_published(seen: &serde_json::Value, url: &str, canonical: &str) {
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
     // Home → the docs, by the reader's click; the doc has its title and the published tree.
     assert_eq!(seen["home"], "First docs");
     // The router region is processed as core processes a block theme's: core/router's state.url
     // comes from the server, follows a <Link> click that swapped the region in the same document,
     // and core's loading bar is in the footer with its styles.
-    assert_eq!(seen["serverUrl"], format!("{url}/"), "{seen}");
+    assert_eq!(seen["serverUrl"], format!("{canonical}/"), "{seen}");
     assert_eq!(
         seen["navigation"],
         serde_json::json!({

@@ -30,6 +30,9 @@ use std::time::Duration;
 
 const USAGE: &str = "usage: first export [dir] [--out dir] [--site url] [--base /path] [--site-url https://example.com]\n       with --site: FIRST_APP_PASSWORD=<user:application-password> or FIRST_TOKEN=<bearer token> (an editor's)";
 
+/// WordPress endpoints a page may link or post to that stay on the hosted site with `--site`.
+const HOSTED: &[&str] = &["/wp-login.php", "/wp-comments-post.php", "/wp-admin", "/identity"];
+
 /// The default output, below the project.
 pub const OUT: &str = "first/dist/static";
 
@@ -555,7 +558,11 @@ impl<'a> Export<'a> {
                 continue;
             };
             let (path, suffix) = split_suffix(&local);
-            let file = path.rsplit('/').next().unwrap_or_default().contains('.') && !path.ends_with(".md");
+            // A file has an extension; a `.php` URL is a WordPress endpoint (sign-in, comments), a
+            // page as far as the export is concerned.
+            let file = path.rsplit('/').next().unwrap_or_default().contains('.')
+                && !path.ends_with(".md")
+                && !path.ends_with(".php");
             let new = if file {
                 let clean = path.to_string();
                 if name == "action" {
@@ -577,8 +584,19 @@ impl<'a> Export<'a> {
                     } else {
                         "it links to"
                     };
-                    if self.flags.site.is_some() && name == "action" {
-                        out.push_str(whole.as_str());
+                    // With --site, WordPress's own sign-in and comment endpoints stay on the hosted
+                    // site, where the visitor finishes signing in or commenting.
+                    if let Some(site) = &self.flags.site
+                        && HOSTED
+                            .iter()
+                            .any(|h| target == *h || target.starts_with(&format!("{h}/")))
+                    {
+                        out.push_str(&format!(
+                            "{}={quote}{}{}{suffix}{quote}",
+                            &m[1],
+                            site.trim_end_matches('/'),
+                            target
+                        ));
                         continue;
                     }
                     refusals.push(format!(
@@ -639,6 +657,15 @@ impl<'a> Export<'a> {
         re.replace_all(html, |c: &regex::Captures| {
             let Ok(mut data) = serde_json::from_str::<Value>(&c[3]) else { return c[0].to_string() };
             let mut changed = false;
+            // core/router's server URL: the page's address where the export is served.
+            if let Some(url) = data["state"]["core/router"]["url"].as_str()
+                && let Some(local) = self.local_path(url)
+            {
+                let (path, suffix) = split_suffix(&local);
+                let served = format!("{}{}", self.flags.site_url.as_deref().unwrap_or(""), self.flags.base);
+                data["state"]["core/router"]["url"] = Value::String(format!("{served}{path}{suffix}"));
+                changed = true;
+            }
             if let Some(namespaces) = data["config"].as_object_mut() {
                 for (namespace, config) in namespaces.iter_mut() {
                     let Some(actions) = config["actions"].as_object_mut() else { continue };

@@ -11,14 +11,18 @@ namespace First\RuntimeSchema;
  *
  * Secure Custom Fields stores a field named `seo` under the key `seo` and a group's sub-field
  * `title` under `seo_title`. A repeater or blocks field `links` keeps its row count under `links`
- * and each row's sub-field `href` under `links_<n>_href` for every row number n. (It also keeps a
+ * and each row's sub-field `href` under `links_<n>_href` for every row number n. Every key also has a
  * reference copy under the same key with a leading `_`, which collides exactly when the plain key
- * does, so it needs no pattern of its own.) A collection's keys carry the post type's meta prefix and
- * a global's its option prefix; both are the same for every field of one kind, so the check works on
- * the field names alone.
+ * does, so it needs no pattern of its own. A blocks field `page` also keeps a record of its layouts
+ * under `_page_layout_meta` alone, so `page_layout_meta` is one of its keys. A collection's keys
+ * carry the post type's meta prefix and a global's its option prefix; both are the same for every
+ * field of one kind, so the check works on the field names alone.
  *
- * A pattern is a list of parts: a string is literal text, and null stands for one row number (one
- * or more digits).
+ * Keys are compared without regard to case: MySQL compares meta keys and option names with
+ * WordPress's case-insensitive collation, so `Rating` and `rating` are one row.
+ *
+ * A pattern is a list of parts: a string is literal text, null stands for one row number (one or
+ * more digits), and true, always last, for any text at all.
  */
 final class StorageKeys
 {
@@ -26,6 +30,9 @@ final class StorageKeys
     public static function of(string $name, array $definition): array
     {
         $out = [[$name]];
+        if ($definition['type'] === 'blocks') {
+            $out[] = [$name . '_layout_meta'];
+        }
         foreach (self::nested($definition) as $sub => $subDefinition) {
             foreach (self::of((string) $sub, $subDefinition) as $pattern) {
                 $out[] = in_array($definition['type'], ['repeater', 'blocks'], true)
@@ -35,6 +42,18 @@ final class StorageKeys
         }
 
         return array_map(self::joined(...), $out);
+    }
+
+    /**
+     * The keys of a field known only by name and type: one a version removed, or one a build that
+     * ran on the site declared. A group, repeater or blocks field's sub-fields aren't recorded, so
+     * every key that starts with its name and `_` counts as its.
+     *
+     * @return list<list<?string|true>>
+     */
+    public static function ofType(string $name, string $type): array
+    {
+        return in_array($type, ['group', 'repeater', 'blocks'], true) ? [[$name], [$name . '_', true]] : [[$name]];
     }
 
     /** The sub-fields a field stores under its own key: a group's or repeater's fields, every layout's for blocks. */
@@ -89,15 +108,15 @@ final class StorageKeys
         return self::match(self::chars($left), self::chars($right), '');
     }
 
-    /** A pattern as single characters, with null for a row number. */
+    /** A pattern as single lower-case characters, with null for a row number and true for any text. */
     private static function chars(array $pattern): array
     {
         $out = [];
         foreach ($pattern as $part) {
-            if ($part === null) {
-                $out[] = null;
+            if ($part === null || $part === true) {
+                $out[] = $part;
             } else {
-                array_push($out, ...str_split($part));
+                array_push($out, ...str_split(strtolower($part)));
             }
         }
 
@@ -114,6 +133,10 @@ final class StorageKeys
             return null;
         }
         [$x, $y] = [$a[0], $b[0]];
+        if ($x === true || $y === true) {
+            // Any text: the other pattern's rest, with 0 for a row number.
+            return $so . implode('', array_map(static fn (mixed $c): string => is_string($c) ? $c : '0', $x === true ? $b : $a));
+        }
         if ($x === null && $y === null) {
             return self::match(array_slice($a, 1), array_slice($b, 1), $so . '0');
         }

@@ -515,6 +515,9 @@ pub struct Schema {
     /// `defineConfig({ publicAuthors: true })`: core's author archives, author routes and user
     /// listings stay public, as WordPress ships them (the users kind's read rule can also allow it).
     pub public_authors: bool,
+    /// `defineConfig({ sealed: true })`: the slugs of the config's `plugins`, which run as plugins with
+    /// First's own and the platform's (spec §6; docs/sealed.md). `None` when the site isn't sealed.
+    pub sealed: Option<Vec<String>>,
     /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
     /// while it runs. Holds what the build read from the lock `first pull` writes.
     pub runtime_schema: Option<RuntimeSchema>,
@@ -550,6 +553,7 @@ impl Default for Schema {
             admin: false,
             frontend: None,
             public_authors: false,
+            sealed: None,
             runtime_schema: None,
         }
     }
@@ -667,8 +671,10 @@ pub struct App {
 
 #[derive(Debug, Clone)]
 pub struct AppRoute {
-    /// The folder below `app/`, `/` for the root: stable across builds.
+    /// The folder below `app/`, `/` for the root, or the page's own `route.id`: stable across builds.
     pub id: String,
+    /// Where the page set its id itself (`export const route = { id }`, or `id:` in a `page.md`).
+    pub explicit_id: Option<crate::diag::Span>,
     /// `/blog/:slug`, `/docs/*rest` (one or more), `/docs/**rest` (zero or more).
     pub pattern: String,
     pub page: Option<String>,

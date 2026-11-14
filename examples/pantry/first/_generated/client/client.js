@@ -948,7 +948,22 @@ export function createClient(options = {}) {
 			update: (id, patch) => wrote(request("PATCH", one(id), { json: patch }), key),
 			delete: (id) => wrote(request("DELETE", one(id)), key),
 			revisions: {
-				list: (id) => request("GET", `${one(id)}/revisions`),
+				// Every revision, newest first: the API pages them ({ data, cursor }), this follows the cursor.
+				list: async (id) => {
+					const all = [];
+					let cursor = null;
+					do {
+						const query = new URLSearchParams({ limit: "100" });
+						if (cursor !== null) query.set("cursor", cursor);
+						const page = await request("GET", `${one(id)}/revisions`, {
+							query,
+							envelope: true
+						});
+						all.push(...page.rows);
+						cursor = page.cursor;
+					} while (cursor !== null);
+					return all;
+				},
 				get: (id, rid) => request("GET", `${one(id)}/revisions/${seg(rid)}`),
 				restore: (id, rid) => request("POST", `${one(id)}/revisions/${seg(rid)}/restore`)
 			},

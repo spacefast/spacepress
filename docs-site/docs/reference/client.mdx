@@ -192,13 +192,6 @@ refreshes its own subscriptions when it returns. `read.optimistic(update)` shows
 the server answers; call `settle()` when it succeeded or `rollback()` when it failed.
 See `docs/realtime.md` in the First repo.
 
-## React
-
-`react.ts`, beside this file, is optional: `createHooks(React)` gives `useQuery(read)` and
-`useMutation(write, { optimistic })` for a React frontend that runs outside First (Next.js,
-TanStack Start, an Astro island). It imports no React of its own. First's own pages don't run
-React. See `docs/realtime.md`.
-
 Server to server, or from a logged-in page: `nonce` (from `wpApiSettings.nonce`) uses the
 WordPress cookie, or pass `headers: { Authorization: "Basic " + btoa("user:application password") }`.
 `auth.session()` hands out the held tokens to forward elsewhere.

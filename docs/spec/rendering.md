@@ -248,6 +248,10 @@ TSX subset, so they are examples as well as product.
   rel="alternate"; type="text/markdown"` header and the `<link>` tag, and
   `Accept` negotiation is a convenience on top. Before relying on negotiation
   at the edge, verify whether it keys on `Accept`.
+- A site that also turns on WordPress/ai's Markdown Feeds experiment serves
+  Markdown twice (its `?output_format=markdown` and `/feed/markdown/` next to
+  the `.md` twins). The app plugin names itself on that plugin's
+  `wpai_markdown_feeds_conflicting_plugins` list, so its settings say so.
 - Items render to markdown from their stored content (`Markdown::fromBlocks`).
   Code pages render from their compiled output, as an anonymous visitor (built); prebuilt static
   twins wait for the build-time policy in §6.1.

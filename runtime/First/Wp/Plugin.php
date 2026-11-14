@@ -115,7 +115,7 @@ final class Plugin
         ContentPages::register($this);
         RoutePages::register($this);
         KindUrls::register($this);
-        MarkdownTwins::register();
+        MarkdownTwins::register($this->mainFile);
         Sitemap::register($this);
         Purges::register($this);
         Staged::register($this);

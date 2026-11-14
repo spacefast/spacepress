@@ -233,6 +233,12 @@ ob_start();
 do_action('wp_head');
 $head = (string) ob_get_clean();
 check('wp_head prints the matching <link rel="alternate">', str_contains($head, "<link rel=\"alternate\" type=\"text/markdown\" href=\"$url/hello-world.md\" />"), $head);
+// WordPress/ai's Markdown Feeds names the active plugins that also serve Markdown: the app is one.
+require_once ABSPATH . 'wp-admin/includes/plugin.php';
+$conflicting = apply_filters('wpai_markdown_feeds_conflicting_plugins', ['llm-markdown/llm-markdown.php' => 'LLM Markdown']);
+eq('the app names itself on WordPress/ai\'s list of plugins that serve Markdown', $conflicting,
+    ['llm-markdown/llm-markdown.php' => 'LLM Markdown', 'first-app-notes/first-app-notes.php' => 'Notes (First app)']);
+eq('WordPress/ai finds the app active under that key', array_values(array_filter($conflicting, 'is_plugin_active', ARRAY_FILTER_USE_KEY)), ['Notes (First app)']);
 add_filter('first_content_signal', static fn (): string => '');
 eq('first_content_signal set to "" sends no signal', MarkdownTwins::robots("User-agent: *\n"), "User-agent: *\n");
 

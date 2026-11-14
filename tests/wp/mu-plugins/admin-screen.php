@@ -11,7 +11,8 @@ add_action('first_admin_screens', static function (): void {
         'classic' => ['parent' => 'edit-comments.php'],
         'view' => [
             'ability' => 'blog/comments-list',
-            'input' => ['limit' => 100],
+            // Waiting comments, newest first: `where` and `orderBy` as the list ability takes them.
+            'input' => ['where' => ['approved' => false], 'orderBy' => ['createdAt' => 'desc'], 'limit' => 100],
             'items' => 'rows',
             'fields' => [
                 ['id' => 'name', 'label' => 'Name'],

@@ -81,6 +81,10 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 		const { body, id } = made.find( ( m ) => m.which === which )!;
 		await page.goto( `${ site }${ path }` );
 		if ( which === 'classic wp-admin' ) {
+			// Polylang sends the first wp-admin page after its activation to its setup wizard once.
+			if ( page.url().includes( 'page=mlang_wizard' ) ) {
+				await page.goto( `${ site }${ path }` );
+			}
 			// wp-admin's own chrome around it: the admin menu lists the page under Comments.
 			await expect( page.locator( '#adminmenu a[href$="page=first-screen-test-comments"]' ) ).toBeVisible();
 		} else {
@@ -97,6 +101,8 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 		await expect( page.locator( '[data-screen="test-comments"]' ).getByText( 'Approve: done.' ) ).toBeVisible();
 		const stored = await request.get( `${ site }/__first/api/v1/comments/${ id }`, { headers: auth( 'admin' ) } );
 		expect( ( await stored.json() ).data.approved ).toBe( true );
+		// The list reruns its ability: an approved comment is no longer waiting.
+		await expect( page.locator( '[data-screen="test-comments"]' ).getByRole( 'row' ).filter( { hasText: body } ) ).toHaveCount( 0 );
 	}
 	expect( seen[ 'classic wp-admin' ] ).toEqual( seen[ 'First Admin' ] );
 	expect( seen[ 'First Admin' ].actions ).toContain( 'Approve' );

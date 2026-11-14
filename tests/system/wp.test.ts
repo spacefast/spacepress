@@ -160,9 +160,9 @@ test("installing the artifact: activation order, platform requirements, doctor",
   wp("plugin", "activate", ...ORDER);
   assert.deepEqual(active().sort(), [...ORDER].sort());
 
-  // The runtime created the shared system tables; the app ran its first migration.
+  // The runtime created the shared system tables; the app ran its migrations.
   assert.equal(wp("option", "get", "first_runtime_tables"), wp("eval", "echo \\First\\Wp\\Runtime::tablesVersion();"));
-  assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init"]);
+  assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init", "0002_update"]);
   // Feature lanes add shared runtime tables of their own; the app's are these.
   const tables = sql("SHOW TABLES LIKE 'wp\\_first\\_%'");
   for (const table of ["wp_first__migrations", "wp_first__revisions", "wp_first_comments", "wp_first_subscribers"]) {
@@ -264,13 +264,13 @@ test("the site journey on WordPress", async (t) => {
         install(artifact);
         // The new plugin is on disk and nobody opens wp-admin: the next public API request migrates.
         // PHP's opcache revalidates files every couple of seconds, so poll that request.
-        assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init"]);
+        assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init", "0002_update"]);
         const deadline = Date.now() + 30_000;
-        while (sql("SELECT id FROM wp_first__migrations").length < 2) {
+        while (sql("SELECT id FROM wp_first__migrations").length < 3) {
           assert.ok(Date.now() < deadline, "the upgrade's migration never ran");
           assert.equal((await fetch(`${api}/comments?limit=1`)).status, 200, "the site serves throughout the upgrade");
         }
-        assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init", "0002_update"]);
+        assert.deepEqual(sql("SELECT id FROM wp_first__migrations"), ["0001_init", "0002_update", "0003_update"]);
         assert.deepEqual(failing(doctor(project, "--out", artifact, "--site", receipt.url)), []);
         return clientOf(project, (make, role) => make({ url: api, headers: headers(role) }));
       },
@@ -366,7 +366,7 @@ test("deactivate and reactivate keep every row; uninstall leaves content in plac
   assert.equal((await fetch(`${api}/posts`)).status, 404, "the app's routes go away with the plugin");
   wp("plugin", "activate", "first-runtime", "first-identity", "first-app-site");
   assert.deepEqual(await snapshot(), before);
-  assert.deepEqual(sql("SELECT CONCAT(app, '/', id) FROM wp_first__migrations"), ["site/0001_init", "site/0002_update"], "reactivation re-applies nothing");
+  assert.deepEqual(sql("SELECT CONCAT(app, '/', id) FROM wp_first__migrations"), ["site/0001_init", "site/0002_update", "site/0003_update"], "reactivation re-applies nothing");
 
   // Uninstall (delete in wp-admin): options, capabilities and scheduled actions go, content stays.
   const caps = () => JSON.parse(wp("eval", "echo wp_json_encode(array_map(fn ($r) => array_values(array_filter(array_keys($r->capabilities), fn ($c) => str_contains($c, 'first_') || $c === 'unrelated_cap')), wp_roles()->role_objects));"));

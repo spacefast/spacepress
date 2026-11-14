@@ -172,7 +172,11 @@ fn successful_json_check_and_the_reusable_recipe_write_nothing() {
 #[test]
 fn a_declared_index_is_created_and_listed() {
     let tmp = tempfile::tempdir().unwrap();
-    write_app(tmp.path().join("first.config.ts"), "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"likes\" });\n").unwrap();
+    write_app(
+        tmp.path().join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"likes\" });\n",
+    )
+    .unwrap();
     write_app(
         tmp.path().join("first/schema.ts"),
         "import { table, integer } from \"first\";\nexport const likes = table({ post: integer(), author: integer() }).index([\"post\", \"author\"], { unique: true });\n",
@@ -197,7 +201,10 @@ fn a_declared_index_is_created_and_listed() {
     let (out, report) = checked(tmp.path());
     assert!(!out.status.success());
     let diagnostic = &report["diagnostics"][0];
-    assert_eq!(diagnostic["message"], "`.index()` names `psot`, which is not a field of this kind", "{report}");
+    assert_eq!(
+        diagnostic["message"], "`.index()` names `psot`, which is not a field of this kind",
+        "{report}"
+    );
     assert_eq!(diagnostic["help"], "did you mean `post`?");
 }
 
@@ -243,7 +250,9 @@ fn json_check_lists_each_index_with_its_reason() {
     // `shopping_list.itemId` (filtered, and `.unique()`) and `items.id` (filtered, the primary key)
     // already lead an index: no second one.
     assert!(
-        !indexes.iter().any(|i| i["name"] == "itemId_queried" || i["name"] == "id_queried"),
+        !indexes
+            .iter()
+            .any(|i| i["name"] == "itemId_queried" || i["name"] == "id_queried"),
         "a field already leading an index gets no second one: {indexes:?}"
     );
     assert!(

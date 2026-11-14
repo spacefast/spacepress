@@ -77,7 +77,11 @@ pub fn snapshot_with(schema: &Schema, queried: &std::collections::BTreeSet<(Stri
             t["queried"] = json!(cols);
         }
         if !c.indexes.is_empty() {
-            t["indexes"] = c.indexes.iter().map(|(fields, unique)| json!({ "columns": fields, "unique": unique })).collect();
+            t["indexes"] = c
+                .indexes
+                .iter()
+                .map(|(fields, unique)| json!({ "columns": fields, "unique": unique }))
+                .collect();
         }
         tables.insert(c.table.clone(), t);
     }
@@ -99,7 +103,9 @@ fn indexable(c: &Json) -> bool {
     let max = c["max"].as_f64();
     match c["type"].as_str().unwrap_or("text") {
         "integer" | "media" | "file" | "real" | "boolean" | "timestamp" | "date" | "slug" => true,
-        "text" | "email" | "url" => c["unique"].as_bool() == Some(true) || max.is_some_and(|m| m <= 191.0) || c["enum"].is_array(),
+        "text" | "email" | "url" => {
+            c["unique"].as_bool() == Some(true) || max.is_some_and(|m| m <= 191.0) || c["enum"].is_array()
+        }
         _ => false,
     }
 }
@@ -342,11 +348,21 @@ pub fn index_report(snapshot: &Json) -> Json {
         }
         for (name, unique, ix_cols) in indexes(t, def) {
             let declared = def["indexes"].as_array().into_iter().flatten().any(|ix| {
-                ix["columns"].as_array().is_some_and(|c| c.iter().filter_map(Json::as_str).eq(ix_cols.iter().map(String::as_str)))
+                ix["columns"]
+                    .as_array()
+                    .is_some_and(|c| c.iter().filter_map(Json::as_str).eq(ix_cols.iter().map(String::as_str)))
                     && (ix["unique"].as_bool() == Some(true)) == unique
             });
             let reason = if declared {
-                format!("declared with .index([{}]{})", ix_cols.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", "), if unique { ", { unique: true }" } else { "" })
+                format!(
+                    "declared with .index([{}]{})",
+                    ix_cols
+                        .iter()
+                        .map(|c| format!("\"{c}\""))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    if unique { ", { unique: true }" } else { "" }
+                )
             } else if name.ends_with("_unique") {
                 format!("`{}` is .unique()", ix_cols[0])
             } else if name == "status_publishedAt" {
@@ -407,7 +423,12 @@ fn indexes(t: &str, def: &Json) -> Vec<(String, bool, Vec<String>)> {
     }
     // `.index(fields, { unique? })`: compound indexes the author declared, named by their columns.
     for ix in def["indexes"].as_array().into_iter().flatten() {
-        let fields: Vec<String> = ix["columns"].as_array().into_iter().flatten().filter_map(|c| c.as_str().map(str::to_owned)).collect();
+        let fields: Vec<String> = ix["columns"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|c| c.as_str().map(str::to_owned))
+            .collect();
         if !fields.is_empty() && fields.iter().all(|f| cols.get(f).is_some_and(indexable)) {
             let unique = ix["unique"].as_bool() == Some(true);
             let name = format!("idx_{}", fields.join("_"));
@@ -418,9 +439,14 @@ fn indexes(t: &str, def: &Json) -> Vec<(String, bool, Vec<String>)> {
     }
     // A column a compiled `where` or `orderBy` names (spec §2.9), unless an index already starts with
     // it: the primary key, `.unique()`, a reference (MySQL indexes a foreign key), or one above.
-    let pk = cols.iter().find(|(_, c)| c["primaryKey"].as_bool() == Some(true)).map(|(n, _)| n.clone());
+    let pk = cols
+        .iter()
+        .find(|(_, c)| c["primaryKey"].as_bool() == Some(true))
+        .map(|(n, _)| n.clone());
     let referenced = |n: &str| cols.get(n).is_some_and(|c| c["references"].is_object());
-    for col in def["queried"].as_array().into_iter().flatten().filter_map(Json::as_str) {
+    // A table First didn't create (`existingTable`) keeps the indexes it had: adoption checks them.
+    let queried = if adopted(def) { None } else { def["queried"].as_array() };
+    for col in queried.into_iter().flatten().filter_map(Json::as_str) {
         let Some(c) = cols.get(col) else { continue };
         let covered = pk.as_deref() == Some(col)
             || referenced(col)

@@ -3730,21 +3730,39 @@ impl<'p> Evaluator<'p> {
             }
             Value::Collection(c) if m == "index" => {
                 let fields = match args.first() {
-                    Some(Value::Array(a)) => a.borrow().iter().map(|v| match v {
-                        Value::Str(s) => Ok(s.to_string()),
-                        other => Err(other.describe()),
-                    }).collect::<Result<Vec<_>, _>>(),
+                    Some(Value::Array(a)) => a
+                        .borrow()
+                        .iter()
+                        .map(|v| match v {
+                            Value::Str(s) => Ok(s.to_string()),
+                            other => Err(other.describe()),
+                        })
+                        .collect::<Result<Vec<_>, _>>(),
                     _ => Err("no list".into()),
                 };
-                let Ok(fields) = fields.and_then(|f| if f.is_empty() { Err("an empty list".into()) } else { Ok(f) }) else {
-                    return err_help(span, "`.index()` takes a list of field names", "write `.index([\"post\", \"author\"], { unique: true })`");
+                let Ok(fields) = fields.and_then(|f| {
+                    if f.is_empty() {
+                        Err("an empty list".into())
+                    } else {
+                        Ok(f)
+                    }
+                }) else {
+                    return err_help(
+                        span,
+                        "`.index()` takes a list of field names",
+                        "write `.index([\"post\", \"author\"], { unique: true })`",
+                    );
                 };
                 let unique = match args.get(1) {
                     None | Some(Value::Undef) => false,
                     Some(Value::Object(o)) => {
                         let o = o.borrow();
                         if let Some(k) = o.keys().find(|k| k.as_str() != "unique") {
-                            return err_help(span, format!("`.index()` options have no `{k}`"), "the only option is `unique: true`");
+                            return err_help(
+                                span,
+                                format!("`.index()` options have no `{k}`"),
+                                "the only option is `unique: true`",
+                            );
                         }
                         match o.get("unique") {
                             None | Some(Value::Undef) => false,
@@ -3752,11 +3770,19 @@ impl<'p> Evaluator<'p> {
                             Some(_) => return err(span, "`unique` must be true or false"),
                         }
                     }
-                    Some(other) => return err(span, format!("`.index()` options must be an object, not {}", other.describe())),
+                    Some(other) => {
+                        return err(
+                            span,
+                            format!("`.index()` options must be an object, not {}", other.describe()),
+                        );
+                    }
                 };
                 for f in &fields {
                     if !c.columns.contains_key(f) {
-                        let mut d = Diag::new(span, format!("`.index()` names `{f}`, which is not a field of this kind"));
+                        let mut d = Diag::new(
+                            span,
+                            format!("`.index()` names `{f}`, which is not a field of this kind"),
+                        );
                         if let Some(s) = suggest(f, c.columns.keys().map(String::as_str)) {
                             d = d.help(format!("did you mean `{s}`?"));
                         }

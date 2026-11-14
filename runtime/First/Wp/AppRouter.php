@@ -603,6 +603,11 @@ final class AppRouter
     {
         $path = (string) (wp_parse_url($url, PHP_URL_PATH) ?? '/');
         $query = (string) (wp_parse_url($url, PHP_URL_QUERY) ?? '');
+        // Below a home URL in a subdirectory, the route is the path after it, as for a GET.
+        $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
+        if ($base !== '' && str_starts_with($path, $base . '/')) {
+            $path = substr($path, strlen($base)) ?: '/';
+        }
         $match = $this->reserved($path) ? null : self::match($this->app['routes'], $path);
         if ($match === null || ($match['route']['page'] ?? null) === null) {
             throw new \First\HttpError(404, 'not_found', 'No page at ' . $path);
@@ -642,6 +647,13 @@ final class AppRouter
             });
         } catch (Halt) {
             throw new \First\HttpError(404, 'not_found', 'Nothing is shown at ' . $path);
+        } catch (\First\HttpError | \First\JsError $error) {
+            throw $error;
+        } catch (\Throwable $error) {
+            // A page that fails renders its error page on a GET; here it is this read's 500, logged,
+            // and the batch's other reads still answer.
+            error_log('First live region ' . ($route['id'] ?? '?') . "#$region failed: " . $error::class . ': ' . $error->getMessage());
+            throw new \First\HttpError(500, 'internal', 'This live region failed to render');
         } finally {
             foreach (['QUERY_STRING', 'REQUEST_URI'] as $i => $key) {
                 if ($saved[$i] === null) {

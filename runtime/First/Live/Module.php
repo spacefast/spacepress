@@ -157,9 +157,9 @@ final class Module
                     $plans[$i] = ['error' => App::problem($e)];
                     continue;
                 }
-                // A page read is also bound to the build: a deploy that changes the page's code is a
-                // new question, never "not modified" by counter.
-                $plan['q'] = base64_encode(hash('sha256', (string) json_encode([$who, $plan['kind'], $plan['op'], $plan['id'], Js::jsonStringify($plan['args']), ...($plan['op'] === 'page' ? [self::build()] : [])]), true));
+                // Every read is bound to the build that answered it: a deploy that changes the code is
+                // a new question, never "not modified" by counter.
+                $plan['q'] = base64_encode(hash('sha256', (string) json_encode([$who, $plan['kind'], $plan['op'], $plan['id'], Js::jsonStringify($plan['args']), self::generation()]), true));
                 $claims = Token::open($plan['token']);
                 $plan['held'] = is_array($claims) && ($claims['q'] ?? null) === $plan['q'] ? $claims : null;
                 if ($plan['op'] === 'page') {
@@ -417,8 +417,12 @@ final class Module
         ], '$1', $json) ?? $json;
     }
 
-    /** The compiled build this site runs: its schema's hash. */
-    private static function build(): string
+    /**
+     * Which build of the app answered: every token's question includes it, so a new build never
+     * answers "not modified" for an old one's answer. The compiled schema's hash today; the one place
+     * that points at the deployment number once First numbers its deployments.
+     */
+    public static function generation(): string
     {
         return Plugin::instance()?->buildHash() ?? '';
     }

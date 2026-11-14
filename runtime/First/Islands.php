@@ -83,6 +83,25 @@ final class Islands
         return array_keys(self::$used);
     }
 
+    /** The script module id of the app's typed client in the browser. */
+    public const CLIENT = '@first/client';
+
+    /**
+     * Registers the app's typed client (`first/_generated/client/client.js`, built into the app
+     * plugin) as the script module `@first/client`, for modules that import it. Registering doesn't
+     * load it: a page loads it only when a module it enqueues depends on it.
+     */
+    public static function registerClient(): bool
+    {
+        $plugin = Wp\Runtime::plugin();
+        if ($plugin === null || !function_exists('wp_register_script_module') || !is_file($plugin->dir . '/first/app/client/first-client.js')) {
+            return false;
+        }
+        wp_register_script_module(self::CLIENT, $plugin->url('first/app/client/first-client.js'), [], null);
+
+        return true;
+    }
+
     /** Registers and enqueues each rendered component's store, with its action endpoints and a REST nonce. */
     public static function enqueue(): void
     {

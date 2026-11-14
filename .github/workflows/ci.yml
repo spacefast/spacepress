@@ -125,6 +125,15 @@ jobs:
         env:
           FIRST_BIN: ${{ github.workspace }}/target/debug/first
         run: node --test scripts/census-08/census.test.mjs scripts/census-08/usage.test.mjs
+      # @first/astro against a First site on WordPress-on-SQLite, and a real astro build.
+      - name: Astro loaders
+        if: matrix.shard == 'rest'
+        env:
+          FIRST_BIN: ${{ github.workspace }}/target/debug/first
+        run: |
+          npm ci --prefix packages/astro --ignore-scripts --no-audit --no-fund
+          tsc -p packages/astro
+          node --test packages/astro/test/loader.test.mjs
       - name: Docker-free local development acceptance
         if: matrix.shard == 'rest'
         run: node --test scripts/dev/acceptance.test.mjs

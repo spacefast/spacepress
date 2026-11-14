@@ -70,6 +70,7 @@ fn docs(dir: &Path, repo: &Path, recurse: bool, extensions: &[&str], out: &mut V
 const GUIDES: &[&str] = &[
     "admin.md",
     "agents.md",
+    "astro.md",
     "class-compilation.md",
     "compiler-diagnostics.md",
     "config-api.md",

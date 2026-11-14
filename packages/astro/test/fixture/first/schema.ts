@@ -1,0 +1,13 @@
+import { collection, text, slug, richText, media, integer, boolean } from "first";
+
+export const notes = collection({
+  title: text(),
+  slug: slug({ source: "title" }),
+  summary: text().optional(),
+  body: richText().optional(),
+  cover: media().optional(),
+  rank: integer().default(0),
+  featured: boolean().default(false),
+  // Only editors read it: anonymous readers get rows without it.
+  memo: text().optional().access({ read: "editor" }),
+}, { title: "title", content: "body", url: "/notes/:slug", access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });

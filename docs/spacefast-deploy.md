@@ -100,11 +100,10 @@ import { createClient } from "./first/_generated/client/index.ts";
 createClient().todos.list({ where: { done: false } }).subscribe((todos) => render(todos));
 ```
 
-Today they poll: Spacefast's Publisher and its Cast transport are written for
-the 0.3.0 runtime's names, so neither registers for a First build
-([host checklist](spacefast-host-checklist.md), item 7). Once they do, each
-commit's change notice goes to the Space's realtime room and subscriptions
-refresh as soon as it arrives. See [Live updates](realtime.md) for the API.
+For a First build, Spacefast's Publisher and Cast transport don't register yet:
+they use the 0.3.0 runtime's names ([host checklist](spacefast-host-checklist.md),
+item 7), so subscriptions poll. Once they do, each commit's change notice goes
+to the Space's realtime room and subscriptions refresh as soon as it arrives. See [Live updates](realtime.md) for the API.
 
 ## Connectors
 

@@ -222,7 +222,7 @@ This spec adds:
 - `useLive(kind, query)` inside client components: the result lives in
   context, and directives update when it changes.
 
-Both load Cast only on pages that use them, through the engine client.
+Both load the host's realtime transport only on pages that use them.
 Real-time co-editing uses the Gutenberg plugin's real-time collaboration
 ([decision record](../decisions/2026-11-14-api-direction.md), ruling 18).
 

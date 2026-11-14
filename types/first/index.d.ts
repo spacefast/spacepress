@@ -1049,8 +1049,9 @@ export type GateRule<TData = Record<string, unknown>> = AccessShorthand | ((ctx:
 
 /**
  * Throwing from any hook aborts the request and rolls back its writes. Hooks are trusted: `db` calls
- * inside them skip access rules and see every status, while the kind API (`posts.create`) runs as the
- * caller. On WordPress editor saves only the `after*` hooks run. Both rules change
+ * inside them skip access rules and see every status. The kind API (`posts.create`) runs as the caller
+ * only when the write came from an action or a route; on API, editor, CLI and job writes it is trusted
+ * too. On WordPress editor saves only the `after*` hooks run. Both rules change
  * (docs/decisions/2026-11-14-api-direction.md, rulings 3 and 4).
  */
 export interface CollectionHooks<T extends AnyCollection> {

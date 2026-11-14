@@ -53,9 +53,10 @@ lets that one request read drafts. Each adapter ships the handler.
 
 ## Realtime
 
-The Spacefast engine client (`/__spacefast/client.js`) owns live updates. First
-writes a change feed in the same transaction as each write and the engine fans
-it out through Cast. For external frontends this is exposed as a resumable SSE
+The host's realtime transport owns live updates; on Spacefast that is Cast, not
+yet wired for First builds ([host checklist](../spacefast-host-checklist.md),
+item 7). First writes a change feed in the same transaction as each write and
+the host fans it out. For external frontends this is exposed as a resumable SSE
 stream of tags, which the TanStack DB collection and a `useZeroQuery` hook
 consume. No Postgres-style logical replication promised (WordPress is MySQL).
 

@@ -42,8 +42,8 @@ front, with a typed client and cache purges that just work.
    `_generated/` and `dist/` inside. `first.config.ts` is always at the project
    root and imports only from `first/`.
 5. All in on the Interactivity API: every interactive behavior compiles to it.
-6. Live updates use Cast (existing work). Co-editing is out of scope (replaced
-   by decision 13).
+6. Live updates use Cast (existing work). Co-editing is out of scope. (Both
+   narrowed by decision 13: Cast is Spacefast's transport, and co-editing is in.)
 7. Every collection and taxonomy can define its URL pattern. With no `app/`,
    WordPress renders. Adding a page takes over its URL.
 8. First is opinionated about the WordPress it runs on. It can require any
@@ -70,10 +70,10 @@ Added 2026-11-13:
 Added 2026-11-14:
 
 13. Hooks are `kind.on(event, handler)` from any file; server functions are `query()` and
-    `mutation()`; hooks run as the caller; one error shape with field messages; endpoint files
-    beside `page.tsx`; realtime is the host's transport (Cast on Spacefast); co-editing uses the
-    Gutenberg plugin's real-time collaboration, which replaces decision 6's "co-editing is out of
-    scope". See [the decision record](../decisions/2026-11-14-api-direction.md).
+    `mutation()`; jobs are queued with `x.enqueue()`; hooks run as the caller; errors carry field
+    messages; endpoint files beside `page.tsx`; realtime is the host's transport (Cast on
+    Spacefast); co-editing uses the Gutenberg plugin's real-time collaboration. Spec §2.8's
+    `.on({ ... })` and §4's job call are replaced. See [the decision record](../decisions/2026-11-14-api-direction.md).
 
 ## Principles
 

@@ -181,7 +181,24 @@ final class Runtime
         global $wpdb;
         ZeroNames::upgrade(new Connection($wpdb));
         Migrator::locked(new Connection($wpdb), 'first_runtime_tables', [self::class, 'applySystemTables']);
-        return self::$plugin->initialize($drops);
+        $applied = self::$plugin->initialize($drops);
+        self::install();
+
+        return $applied;
+    }
+
+    /**
+     * What a plugin-installed site installs on requests and a managed build installs only here, once
+     * storage matches the build: each step is idempotent and checks whether it is already done.
+     */
+    private static function install(): void
+    {
+        \First\RuntimeSchema\Surfaces::grant();
+        Uploads::install();
+        if (function_exists('as_schedule_recurring_action')) {
+            Jobs\ActionSchedulerQueue::install();
+            Guests::install();
+        }
     }
 
     /**

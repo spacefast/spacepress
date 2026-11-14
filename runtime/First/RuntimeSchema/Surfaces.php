@@ -39,7 +39,8 @@ final class Surfaces
             return; // the runtime loaded outside WordPress (the pure PHP suites): nothing to serve
         }
         add_filter('first_ability_operations', [self::class, 'operations'], 10, 2);
-        add_action('init', [self::class, 'grant']);
+        // Installing, not serving: a managed build grants it from initialize (Runtime::initialize).
+        add_action('init', static fn () => Runtime::managed() ? null : self::grant());
         add_action('wp_create_application_password', [self::class, 'inheritDeny'], 10, 2);
         add_action('first_admin_screens', [self::class, 'screen']);
         // Outside the app's command transaction: applying takes the schema lock and commits its own.

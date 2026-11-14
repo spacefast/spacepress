@@ -81,15 +81,20 @@ final class ActionSchedulerQueue
                 Runner::maintain();
             }
         });
-        add_action('action_scheduler_init', static function (): void {
-            if (Runtime::plugin() === null) {
-                return;
-            }
-            self::prepare();
-            if (!as_has_scheduled_action(self::MAINTAIN, [], 'first')) {
-                as_schedule_recurring_action(time() + 3600, DAY_IN_SECONDS, self::MAINTAIN, [], 'first');
-            }
-        }, 0);
+        // Installing, not serving: a managed build prepares and schedules from initialize.
+        add_action('action_scheduler_init', static fn () => Runtime::managed() ? null : self::install(), 0);
+    }
+
+    /** First's Action Scheduler groups, the jobs left without an action, and the daily maintenance. */
+    public static function install(): void
+    {
+        if (Runtime::plugin() === null) {
+            return;
+        }
+        self::prepare();
+        if (!as_has_scheduled_action(self::MAINTAIN, [], 'first')) {
+            as_schedule_recurring_action(time() + 3600, DAY_IN_SECONDS, self::MAINTAIN, [], 'first');
+        }
     }
 
     /**

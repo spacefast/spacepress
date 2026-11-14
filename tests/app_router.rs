@@ -1288,12 +1288,29 @@ fn refuses_client_code_outside_the_subset() {
         ))
     };
     for (markup, refusal) in [
-        ("{xs.map((x) => <li>{x.t}</li>)}", "each item of a reactive list needs a `key`"),
-        ("{xs.map((x) => <><li key={x.id}/><li/></>)}", "each item of a reactive list is one element"),
-        ("{xs.map((x, i) => <li key={i}/>)}", "a reactive list's callback takes one item"),
-        ("{xs.length > 0 && <><li/><li/></>}", "a reactive `&&` renders one element"),
+        (
+            "{xs.map((x) => <li>{x.t}</li>)}",
+            "each item of a reactive list needs a `key`",
+        ),
+        (
+            "{xs.map((x) => <><li key={x.id}/><li/></>)}",
+            "each item of a reactive list is one element",
+        ),
+        (
+            "{xs.map((x, i) => <li key={i}/>)}",
+            "a reactive list's callback takes one item",
+        ),
+        (
+            "{xs.length > 0 && <><li/><li/></>}",
+            "a reactive `&&` renders one element",
+        ),
     ] {
-        rejects(&dir, &[("first/components/A.tsx", &shelf(markup))], refusal, "first/components/A.tsx:3:");
+        rejects(
+            &dir,
+            &[("first/components/A.tsx", &shelf(markup))],
+            refusal,
+            "first/components/A.tsx:3:",
+        );
     }
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -1368,9 +1385,7 @@ fn client_components_hydrate_in_the_browser() {
         "{seen}"
     );
     // A reactive list adds and drops items by key, and `&&` and `?:` switch their elements.
-    let step = |books: &[&str], open: u64, count: Option<&str>, empty: u64| {
-        serde_json::json!({ "books": books, "open": open, "count": count, "empty": empty })
-    };
+    let step = |books: &[&str], open: u64, count: Option<&str>, empty: u64| serde_json::json!({ "books": books, "open": open, "count": count, "empty": empty });
     assert_eq!(
         seen["shelfSteps"],
         serde_json::json!([
@@ -1382,7 +1397,10 @@ fn client_components_hydrate_in_the_browser() {
         ]),
         "{seen}"
     );
-    assert_eq!(seen["kept"], true, "the server-rendered item is kept, not re-created: {seen}");
+    assert_eq!(
+        seen["kept"], true,
+        "the server-rendered item is kept, not re-created: {seen}"
+    );
 }
 
 /// rendering.md §6.1 and §6.2 for `first/app/` pages, on WordPress with a stand-in host listening

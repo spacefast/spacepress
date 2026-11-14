@@ -270,9 +270,18 @@ fn clone_stmt(s: &Stmt) -> Stmt {
 /// `cond ? <a/> : <b/>`.
 pub(super) enum Reactive<'e> {
     /// `list.map((name) => <el/>)`: one `<el>` per item, keyed by its `key` attribute.
-    List { list: &'e Expr, item: &'e str, item_span: Span, body: &'e Expr },
+    List {
+        list: &'e Expr,
+        item: &'e str,
+        item_span: Span,
+        body: &'e Expr,
+    },
     /// `cond && <el/>`, `cond ? <a/> : <b/>` (an absent branch renders nothing).
-    Cond { test: &'e Expr, yes: Option<&'e Expr>, no: Option<&'e Expr> },
+    Cond {
+        test: &'e Expr,
+        yes: Option<&'e Expr>,
+        no: Option<&'e Expr>,
+    },
 }
 
 /// The element a branch or a list item renders: one intrinsic JSX element, else None.
@@ -305,18 +314,37 @@ impl Compiler<'_, '_> {
         };
         let a = &ctx.analysis;
         match &child.kind {
-            ExprKind::Call { callee, args, optional: false, .. } => {
-                let ExprKind::Member { obj, prop, optional: false, .. } = &callee.kind else {
+            ExprKind::Call {
+                callee,
+                args,
+                optional: false,
+                ..
+            } => {
+                let ExprKind::Member {
+                    obj,
+                    prop,
+                    optional: false,
+                    ..
+                } = &callee.kind
+                else {
                     return Ok(None);
                 };
                 if prop != "map" || !a.reactive(obj) {
                     return Ok(None);
                 }
                 let [ArrEl::Item(f)] = args.as_slice() else {
-                    return Err(refuse(child.span, "a list's `map` takes one callback", "write `items.map((item) => <li key={item.id}>…</li>)`"));
+                    return Err(refuse(
+                        child.span,
+                        "a list's `map` takes one callback",
+                        "write `items.map((item) => <li key={item.id}>…</li>)`",
+                    ));
                 };
                 let ExprKind::Func(f) = &f.kind else {
-                    return Err(refuse(f.span, "a list's `map` callback is an arrow written in place", "write `items.map((item) => <li key={item.id}>…</li>)`"));
+                    return Err(refuse(
+                        f.span,
+                        "a list's `map` callback is an arrow written in place",
+                        "write `items.map((item) => <li key={item.id}>…</li>)`",
+                    ));
                 };
                 let (item, item_span) = match f.params.as_slice() {
                     [p] if matches!(&p.pat, Pat::Id(..)) && p.default.is_none() && !p.rest => {
@@ -332,7 +360,11 @@ impl Compiler<'_, '_> {
                     }
                 };
                 let FnBody::Expr(body) = &f.body else {
-                    return Err(refuse(f.span, "a reactive list's callback returns its element directly", "write `(item) => <li key={item.id}>{item.title}</li>`"));
+                    return Err(refuse(
+                        f.span,
+                        "a reactive list's callback returns its element directly",
+                        "write `(item) => <li key={item.id}>{item.title}</li>`",
+                    ));
                 };
                 if element(body).is_none() {
                     return Err(refuse(
@@ -343,16 +375,33 @@ impl Compiler<'_, '_> {
                 }
                 // Another list's item of the same name is fine: each template binds its own.
                 if a.bindings.get(item).is_some_and(|b| !matches!(b, Binding::Item)) {
-                    return Err(refuse(f.span, format!("the item `{item}` hides a value of the component"), "name the item differently"));
+                    return Err(refuse(
+                        f.span,
+                        format!("the item `{item}` hides a value of the component"),
+                        "name the item differently",
+                    ));
                 }
-                Ok(Some(Reactive::List { list: obj, item, item_span, body }))
+                Ok(Some(Reactive::List {
+                    list: obj,
+                    item,
+                    item_span,
+                    body,
+                }))
             }
             // Only markup makes a conditional structural; `{on ? "on" : "off"}` is reactive text.
             ExprKind::Logical(LogOp::And, test, yes) if a.reactive(test) && has_jsx(yes) => {
                 if element(yes).is_none() {
-                    return Err(refuse(yes.span, "a reactive `&&` renders one element", "write `{open && <p>…</p>}`, or make the condition server-only"));
+                    return Err(refuse(
+                        yes.span,
+                        "a reactive `&&` renders one element",
+                        "write `{open && <p>…</p>}`, or make the condition server-only",
+                    ));
                 }
-                Ok(Some(Reactive::Cond { test, yes: Some(yes), no: None }))
+                Ok(Some(Reactive::Cond {
+                    test,
+                    yes: Some(yes),
+                    no: None,
+                }))
             }
             ExprKind::Cond(test, yes, no) if a.reactive(test) && (has_jsx(yes) || has_jsx(no)) => {
                 let branch = |b: &'e Expr| -> Result<Option<&'e Expr>> {
@@ -360,11 +409,19 @@ impl Compiler<'_, '_> {
                         return Ok(None);
                     }
                     if element(b).is_none() {
-                        return Err(refuse(b.span, "each branch of a reactive `?:` is one element or `null`", "write `{open ? <b>open</b> : <i>closed</i>}`"));
+                        return Err(refuse(
+                            b.span,
+                            "each branch of a reactive `?:` is one element or `null`",
+                            "write `{open ? <b>open</b> : <i>closed</i>}`",
+                        ));
                     }
                     Ok(Some(b))
                 };
-                Ok(Some(Reactive::Cond { test, yes: branch(yes)?, no: branch(no)? }))
+                Ok(Some(Reactive::Cond {
+                    test,
+                    yes: branch(yes)?,
+                    no: branch(no)?,
+                }))
             }
             _ => Ok(None),
         }
@@ -377,14 +434,23 @@ impl Compiler<'_, '_> {
     /// `[]` while it doesn't, so one directive covers both. A `?:` is two such lists.
     pub(super) fn client_reactive_php(&mut self, child: &Expr, reactive: Reactive<'_>) -> Result<String> {
         match reactive {
-            Reactive::List { list, item, item_span, body } => {
+            Reactive::List {
+                list,
+                item,
+                item_span,
+                body,
+            } => {
                 let jsx = element(body).expect("checked");
                 let key = jsx.attrs.iter().find_map(|a| match a {
                     JsxAttr::Named { name, value, .. } if name == "key" => Some(value),
                     _ => None,
                 });
                 let Some(key) = key else {
-                    return Err(refuse(body.span, "each item of a reactive list needs a `key`", "write `<li key={item.id}>`: the browser keeps each item's element by its key"));
+                    return Err(refuse(
+                        body.span,
+                        "each item of a reactive list needs a `key`",
+                        "write `<li key={item.id}>`: the browser keeps each item's element by its key",
+                    ));
                 };
                 let path = self.client_reference(list)?;
                 // The key, as the browser evaluates it: an expression on `context.<item>`.
@@ -393,7 +459,7 @@ impl Compiler<'_, '_> {
                 let ctx = self.client.as_mut().expect("client");
                 ctx.analysis.bindings.insert(item.to_string(), Binding::Item);
                 let key_ref = self.client_reference(key)?;
-                self.client_each(child, &path, item, key_ref.as_str(), list, item_span, body)
+                self.client_each(child, (&path, &key_ref), (list, item, item_span, body))
             }
             Reactive::Cond { test, yes, no } => {
                 let mut out = Vec::new();
@@ -401,9 +467,25 @@ impl Compiler<'_, '_> {
                     let Some(branch) = branch else { continue };
                     let shown = Expr {
                         kind: ExprKind::Cond(
-                            Box::new(if negate { Expr { kind: ExprKind::Unary(UnOp::Not, Box::new(test.clone())), span: test.span } } else { test.clone() }),
-                            Box::new(Expr { kind: ExprKind::Array(vec![ArrEl::Item(Expr { kind: ExprKind::Num(1.0), span: test.span })]), span: test.span }),
-                            Box::new(Expr { kind: ExprKind::Array(vec![]), span: test.span }),
+                            Box::new(if negate {
+                                Expr {
+                                    kind: ExprKind::Unary(UnOp::Not, Box::new(test.clone())),
+                                    span: test.span,
+                                }
+                            } else {
+                                test.clone()
+                            }),
+                            Box::new(Expr {
+                                kind: ExprKind::Array(vec![ArrEl::Item(Expr {
+                                    kind: ExprKind::Num(1.0),
+                                    span: test.span,
+                                })]),
+                                span: test.span,
+                            }),
+                            Box::new(Expr {
+                                kind: ExprKind::Array(vec![]),
+                                span: test.span,
+                            }),
                         ),
                         span: test.span,
                     };
@@ -452,7 +534,10 @@ impl Compiler<'_, '_> {
         // it is the browser's, so the template leaves it empty.
         self.fx().scopes.push(HashMap::new());
         let prelude = match &item {
-            Some((name, ty, span)) => format!("(static fn ({}) => ", self.declare_local(name, ty.clone(), false, *span)),
+            Some((name, ty, span)) => format!(
+                "(static fn ({}) => ",
+                self.declare_local(name, ty.clone(), false, *span)
+            ),
             None => String::new(),
         };
         let result = self.expr(body).and_then(|v| self.finish_value(v, body.span));
@@ -460,12 +545,21 @@ impl Compiler<'_, '_> {
         let ctx = self.client.as_mut().expect("client");
         ctx.template = was;
         let body = result?.wrapped();
-        Ok(if prelude.is_empty() { body } else { format!("{prelude}{body})(null)") })
+        Ok(if prelude.is_empty() {
+            body
+        } else {
+            format!("{prelude}{body})(null)")
+        })
     }
 
     /// A reactive list: the server renders every item now, marked as the template's children,
     /// then the template.
-    fn client_each(&mut self, child: &Expr, path: &str, item: &str, key: &str, list: &Expr, item_span: Span, body: &Expr) -> Result<String> {
+    fn client_each(
+        &mut self,
+        child: &Expr,
+        (path, key): (&str, &str),
+        (list, item, item_span, body): (&Expr, &str, Span, &Expr),
+    ) -> Result<String> {
         // Inside another template (a list in a list item) the browser renders the items too.
         let inner = self.client.as_ref().expect("client").template;
         let rendered = if inner {
@@ -480,14 +574,24 @@ impl Compiler<'_, '_> {
             Ty::Array(inner) | Ty::NonEmptyArray(inner) => (*inner).clone(),
             Ty::Tuple(items) | Ty::ArrayLiteral(items) => Ty::union(items.clone()),
             other => {
-                return Err(refuse(list.span, format!("a reactive list maps an array, not {}", other.describe()), "keep the list in state or a prop typed as an array"));
+                return Err(refuse(
+                    list.span,
+                    format!("a reactive list maps an array, not {}", other.describe()),
+                    "keep the list in state or a prop typed as an array",
+                ));
             }
         };
         let template = self.client_template(body, Some((item, item_ty, item_span)))?;
         let namespace = self.client.as_ref().expect("client").analysis.namespace.clone();
         let item_attr = item
             .chars()
-            .flat_map(|c| if c.is_ascii_uppercase() { vec!['-', c.to_ascii_lowercase()] } else { vec![c] })
+            .flat_map(|c| {
+                if c.is_ascii_uppercase() {
+                    vec!['-', c.to_ascii_lowercase()]
+                } else {
+                    vec![c]
+                }
+            })
             .collect::<String>();
         Ok(format!(
             "\\First\\Html::children(\\First\\Islands::eachChild({}, {}), \\First\\Islands::template({}, {}, {template}, {}))",

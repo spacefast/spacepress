@@ -6819,7 +6819,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                     .filter(|p| !matches!(p, Prop::KV(_, v) if ctx.analysis.reactive(v)))
                                     .cloned()
                                     .collect();
-                                &Expr { kind: ExprKind::Object(fixed), span: value.span }
+                                &Expr {
+                                    kind: ExprKind::Object(fixed),
+                                    span: value.span,
+                                }
                             }
                             _ => continue,
                         },

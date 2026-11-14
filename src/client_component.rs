@@ -528,7 +528,9 @@ impl Analysis {
         let mut ok = true;
         visit(e, &mut |x| match &x.kind {
             ExprKind::Ident(n) => match self.bindings.get(n) {
-                Some(Binding::State { .. } | Binding::Prop | Binding::Derived | Binding::Shared | Binding::Item) => reads = true,
+                Some(Binding::State { .. } | Binding::Prop | Binding::Derived | Binding::Shared | Binding::Item) => {
+                    reads = true
+                }
                 // A class map is the same on both sides: inlined into the store.
                 Some(Binding::Static(_)) | None => {}
                 Some(_) => ok = false,

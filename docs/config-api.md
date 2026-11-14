@@ -1089,7 +1089,8 @@ table rows, posts and post meta.
   of a collection each run in one transaction. A throw rolls back every write
   in it, to tables and to content alike.
 - A job enqueued from a hook or an action runs after the request commits,
-  never inside it.
+  never inside it. It is queued in the request's transaction: a rollback
+  leaves no job and nothing for Action Scheduler to run.
 - Handlers in `first/wp-hooks/` run wherever WordPress fires the hook. Outside
   a First write (a page view, cron, a save of a post type First doesn't own)
   there is no First transaction and each write commits on its own. When the

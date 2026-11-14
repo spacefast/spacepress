@@ -56,7 +56,9 @@ contract. The compiled app tree's `manifest.json` (under `app/<hash>/`) is the m
 3. Rollback is selecting an older ready build: no migration runs, and the older build reads the newer
    schema's data.
 4. Run `wp first jobs tick` on a schedule. It does one bounded pass of the site's background work and
-   prints `{processed, failures, outboxDispatched, requeued, receiptsExpired, remaining}`. Run it again
+   prints `{processed, failures, outboxDispatched, requeued, receiptsExpired, remaining}`
+   (`outboxDispatched` is always 0: jobs reach Action Scheduler in the transaction that queues them;
+   the key stays for hosts that read it). Run it again
    while `remaining` is true. It exits non-zero when it could not run. It takes the same locks as
    WordPress's own runners: it claims Action Scheduler actions before running them and runs WP-Cron
    events under core's `doing_cron` lock, so overlapping ticks, or a tick beside `wp-cron.php` or

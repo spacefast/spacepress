@@ -520,9 +520,13 @@ impl<'a> Export<'a> {
         }
         write(&stage.path().join("llms.txt"), self.llms(&pages).as_bytes())?;
         write(&stage.path().join("robots.txt"), robots.as_bytes())?;
-        // No written file may still point at the WordPress that rendered it.
+        // No written file may still point at the WordPress that rendered it. With --site, that
+        // WordPress is the hosted site the pages call on purpose (actions, sign-in, comments), so
+        // the check is for a local one, a throwaway site that is gone once the export is written.
         let mut leftovers = Vec::new();
-        leftover(stage.path(), stage.path(), &self.origin, &mut leftovers);
+        if self.flags.site.is_none() {
+            leftover(stage.path(), stage.path(), &self.origin, &mut leftovers);
+        }
         if !leftovers.is_empty() {
             leftovers.sort();
             return Err(format!(

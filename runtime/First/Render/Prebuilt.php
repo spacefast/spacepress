@@ -334,7 +334,8 @@ final class Prebuilt
 
     /**
      * The app plugin's compiled code as `first export --site` compares it with the checkout's: the
-     * SHA-256 of each file below `first/app/` (its path, a NUL, its bytes, a NUL), in path order.
+     * SHA-256 of each file below `first/app/` but its migrations (its path, a NUL, its bytes, a NUL),
+     * in path order.
      * Any change to a page, a component, an action or the schema changes it.
      */
     public static function appHash(Plugin $plugin): string
@@ -342,8 +343,10 @@ final class Prebuilt
         $root = $plugin->dir . '/first/app';
         $files = [];
         foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)) as $f) {
-            if ($f->isFile()) {
-                $files[] = substr($f->getPathname(), strlen($root) + 1);
+            $file = substr($f->getPathname(), strlen($root) + 1);
+            // Migrations are the site's ledger, not code a page renders with.
+            if ($f->isFile() && !str_starts_with($file, 'migrations/')) {
+                $files[] = $file;
             }
         }
         sort($files, SORT_STRING);

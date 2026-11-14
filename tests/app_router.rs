@@ -3194,9 +3194,11 @@ fn docs_example_exports_to_a_static_site() {
         .map(String::as_str)
         .filter(|f| !f.starts_with("wp-"))
         .collect();
+    // `.first-export` marks the folder as an export, the only kind of folder a later export replaces.
     assert_eq!(
         pages,
         [
+            ".first-export",
             "404.html",
             "about.html",
             "about.md",

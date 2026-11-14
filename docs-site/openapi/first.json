@@ -477,7 +477,7 @@
 				"operationId": "authors.revisions.list",
 				"summary": "Revisions of authors",
 				"x-first-access": "admin",
-				"description": "Each saved version of the row, with its time and who saved it.\n\nAccess: Users with the `admin` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+				"description": "Each saved version of the row, newest first, with its time and who saved it, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Users with the `admin` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
 				"parameters": [
 					{
 						"name": "id",
@@ -487,11 +487,20 @@
 						"schema": {
 							"type": "integer"
 						}
+					},
+					{
+						"$ref": "#/components/parameters/limit"
+					},
+					{
+						"$ref": "#/components/parameters/offset"
+					},
+					{
+						"$ref": "#/components/parameters/cursor"
 					}
 				],
 				"responses": {
 					"200": {
-						"description": "The revisions.",
+						"description": "One page of rows.",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -502,14 +511,24 @@
 											"items": {
 												"$ref": "#/components/schemas/RevisionSummary"
 											}
+										},
+										"cursor": {
+											"type": [
+												"string",
+												"null"
+											]
 										}
 									},
 									"required": [
-										"data"
+										"data",
+										"cursor"
 									]
 								}
 							}
 						}
+					},
+					"400": {
+						"$ref": "#/components/responses/Problem"
 					},
 					"401": {
 						"$ref": "#/components/responses/Problem"
@@ -1797,7 +1816,7 @@
 						"bearer": []
 					}
 				],
-				"description": "Each saved version of the row, with its time and who saved it.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+				"description": "Each saved version of the row, newest first, with its time and who saved it, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: A rule in the app's code decides who may do this, and for which rows.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
 				"parameters": [
 					{
 						"name": "id",
@@ -1815,11 +1834,20 @@
 								}
 							]
 						}
+					},
+					{
+						"$ref": "#/components/parameters/limit"
+					},
+					{
+						"$ref": "#/components/parameters/offset"
+					},
+					{
+						"$ref": "#/components/parameters/cursor"
 					}
 				],
 				"responses": {
 					"200": {
-						"description": "The revisions.",
+						"description": "One page of rows.",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -1830,14 +1858,24 @@
 											"items": {
 												"$ref": "#/components/schemas/RevisionSummary"
 											}
+										},
+										"cursor": {
+											"type": [
+												"string",
+												"null"
+											]
 										}
 									},
 									"required": [
-										"data"
+										"data",
+										"cursor"
 									]
 								}
 							}
 						}
+					},
+					"400": {
+						"$ref": "#/components/responses/Problem"
 					},
 					"401": {
 						"$ref": "#/components/responses/Problem"

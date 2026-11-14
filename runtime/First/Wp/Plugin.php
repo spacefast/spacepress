@@ -586,6 +586,50 @@ final class Plugin
             }
             PostMeta::register($spec);
         }
+        $this->registerTaxonomies();
+    }
+
+    /**
+     * `taxonomy()` kinds (docs/decisions/2026-11-11-authoring-surface.md, ruling 25): `first_<name>` for
+     * the kinds with its terms field, served by core at `/wp/v2/first_<name>` ({@see TermsController}),
+     * its fields as term meta. Every capability is answered from the taxonomy's rules
+     * ({@see CoreAccess::mapMetaCap()}); a `url` makes it public, so core's sitemap and template
+     * hierarchy serve its terms ({@see KindUrls}).
+     */
+    private function registerTaxonomies(): void
+    {
+        foreach ($this->schema->taxonomies() as $name => $spec) {
+            $label = (string) ($spec['label'] ?? $name);
+            $taxonomy = (string) $spec['wp']['taxonomy'];
+            $types = array_values(array_map(fn (string $kind): string => (string) $this->schema->collection($kind)['wp']['postType'], $spec['wp']['on'] ?? []));
+            $public = is_string($spec['url'] ?? null);
+            register_taxonomy($taxonomy, $types, [
+                'label' => $label,
+                'labels' => ['name' => $label, 'singular_name' => $label, 'menu_name' => $label],
+                'public' => $public,
+                'publicly_queryable' => $public,
+                'show_ui' => true,
+                'show_in_menu' => true,
+                'show_in_nav_menus' => $public,
+                'show_admin_column' => true,
+                'show_in_rest' => true,
+                'rest_base' => $taxonomy,
+                'rest_controller_class' => TermsController::class,
+                'hierarchical' => (bool) ($spec['hierarchical'] ?? false),
+                'rewrite' => false,
+                'query_var' => false,
+                // An item's terms keep the order they were written in (ruling 28).
+                'sort' => true,
+                'args' => ['orderby' => 'term_order'],
+                'capabilities' => [
+                    'manage_terms' => "manage_$taxonomy",
+                    'edit_terms' => "edit_$taxonomy",
+                    'delete_terms' => "delete_$taxonomy",
+                    'assign_terms' => "assign_$taxonomy",
+                ],
+            ]);
+            TermMeta::register($spec);
+        }
     }
 
     public function registerFields(): void

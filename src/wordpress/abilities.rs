@@ -348,7 +348,8 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
         fields.extend(extra.iter().cloned());
         opt(&fields)
     };
-    for c in schema.collections.values() {
+    // Taxonomies have no abilities yet (docs/decisions/2026-11-11-authoring-surface.md, deferrals).
+    for c in schema.collections.values().filter(|c| c.taxonomy.is_none()) {
         // As Register::collection: `with` when there is something to load, `locale` when localized.
         let mut extra = Vec::new();
         if !c.relations.is_empty()

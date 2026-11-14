@@ -298,6 +298,8 @@ pub enum Builtin {
     HttpError,
     /// `ref(kind)` from "first".
     Ref,
+    /// `terms(taxonomy)` from "first": an item's terms of one taxonomy.
+    Terms,
     /// `r.one.<key>` / `r.many.<key>` inside defineRelations.
     RelFn(RelKind, Rc<str>),
     // JavaScript globals
@@ -347,6 +349,8 @@ pub struct ColBuilder {
     pub references: Option<RefBuilder>,
     /// `.reverse("name")` on a `ref()`: the name of the many relation on the target.
     pub reverse: Option<String>,
+    /// `terms(taxonomy)`: the item's terms of that taxonomy, kept in core's term relationships.
+    pub terms: bool,
     pub ts_type: Option<(TyAnn, usize, Span)>,
     pub access: Option<Value>,
     pub show_if: Option<Value>,
@@ -409,6 +413,8 @@ pub enum StorageKind {
     Collection,
     Table,
     UserProjection,
+    /// `taxonomy()`: terms in core's term tables (docs/decisions/2026-11-11-authoring-surface.md, ruling 25).
+    Taxonomy,
 }
 
 impl StorageKind {
@@ -417,6 +423,7 @@ impl StorageKind {
             Self::Collection => "collection",
             Self::Table => "table",
             Self::UserProjection => "userProjection",
+            Self::Taxonomy => "taxonomy",
         }
     }
 
@@ -425,6 +432,7 @@ impl StorageKind {
             Self::Collection => "collections",
             Self::Table => "tables",
             Self::UserProjection => "users",
+            Self::Taxonomy => "taxonomies",
         }
     }
 }

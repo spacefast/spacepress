@@ -96,6 +96,24 @@ final class Schema
         return $this->raw['collections'] ?? [];
     }
 
+    /**
+     * `taxonomy()` kinds (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34): the same kind
+     * shape as a collection, with `taxonomy => true` and `wp.taxonomy`. They live in core's term tables,
+     * so they stay out of {@see collections()}; {@see collection()} resolves them by name like any kind.
+     *
+     * @return array<string, array>
+     */
+    public function taxonomies(): array
+    {
+        return $this->raw['taxonomies'] ?? [];
+    }
+
+    /** @return array<string, array> every kind with rows: collections, tables, users and taxonomies */
+    public function kinds(): array
+    {
+        return $this->collections() + $this->taxonomies();
+    }
+
     /** @return array<string, array> */
     public function globals(): array
     {
@@ -221,12 +239,12 @@ final class Schema
 
     public function hasCollection(string $name): bool
     {
-        return isset($this->raw['collections'][$name]);
+        return isset($this->raw['collections'][$name]) || isset($this->raw['taxonomies'][$name]);
     }
 
     public function collection(string $name): array
     {
-        return $this->raw['collections'][$name]
+        return $this->raw['collections'][$name] ?? $this->raw['taxonomies'][$name]
             ?? throw HttpError::notFound("Unknown collection '$name'");
     }
 
@@ -264,7 +282,7 @@ final class Schema
     public function describe(): array
     {
         $collections = [];
-        foreach ($this->collections() as $name => $c) {
+        foreach ($this->kinds() as $name => $c) {
             $collections[$name] = [
                 'key' => $c['key'] ?? $name,
                 'label' => $c['label'] ?? $name,
@@ -276,6 +294,7 @@ final class Schema
                 'auth' => $c['auth'] ?? false,
                 'agents' => $c['agents'] ?? true,
                 'localized' => $c['localized'] ?? false,
+            ] + (($c['taxonomy'] ?? false) ? ['taxonomy' => true, 'hierarchical' => (bool) ($c['hierarchical'] ?? false)] : []) + [
                 'title' => $c['title'] ?? null,
                 'content' => $c['content'] ?? null,
                 'slug' => $c['slug'] ?? null,
@@ -384,7 +403,8 @@ final class Schema
     /** True when a create must receive this column (no default, not generated). */
     public static function isRequired(array $col): bool
     {
-        return ($col['notNull'] ?? false) && !isset($col['default']) && !($col['autoIncrement'] ?? false);
+        return ($col['notNull'] ?? false) && !isset($col['default']) && !($col['autoIncrement'] ?? false) && !($col['readOnly'] ?? false)
+            && !($col['type'] === 'slug' && isset($col['source'])); // derived when left out
     }
 
     public static function isJsonType(string $type): bool

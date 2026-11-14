@@ -14,7 +14,7 @@ const ANY: [&str; 7] = ["object", "array", "string", "number", "integer", "boole
 
 /// `Schema::isRequired`: a create must receive the column (no default, not generated).
 pub fn required(c: &Column) -> bool {
-    c.not_null && c.default.is_none() && !c.auto_increment
+    !c.optional_on_insert()
 }
 
 fn number(n: f64) -> Value {
@@ -123,6 +123,7 @@ fn writable(c: &Collection, create: bool) -> impl Iterator<Item = &Column> {
     c.columns.values().filter(move |col| {
         !(col.hidden
             || col.derived
+            || col.read_only
             || col.auto_increment
             || !create && (col.primary_key || col.name == "uid" && col.system))
     })

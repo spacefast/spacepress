@@ -66,6 +66,24 @@ final class Scf
                 'active' => true,
             ]);
         }
+        // A taxonomy's term fields (ruling 25): `group_first_<name>` on its term screens.
+        foreach ($schema->taxonomies() as $name => $spec) {
+            $fields = [];
+            foreach (TermMeta::fields($spec) as $col => $def) {
+                $fields[] = ['first_top' => true] + self::field($schema, $spec['wp']['fieldKeyPrefix'] . $col, $spec['wp']['metaPrefix'] . $col, (string) $col, $def, $spec);
+            }
+            if ($fields === []) {
+                continue;
+            }
+            acf_add_local_field_group([
+                'key' => $spec['wp']['groupKey'],
+                'title' => $spec['label'] ?? $name,
+                'fields' => $fields,
+                'location' => [[['param' => 'taxonomy', 'operator' => '==', 'value' => $spec['wp']['taxonomy']]]],
+                'show_in_rest' => 1,
+                'active' => true,
+            ]);
+        }
         $menu = 'first-' . $schema->name();
         foreach ($schema->globals() as $name => $g) {
             $wp = $g['wp'];

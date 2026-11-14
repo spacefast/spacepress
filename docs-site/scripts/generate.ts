@@ -489,6 +489,7 @@ const defaultDocs: Record<string, string> = {
 	collections: "Editorial content stored as WordPress posts, with the WordPress editor. Build each one with `collection()`.",
 	tables: "App data in SQL tables of their own. Build each one with `table()`.",
 	users: "Fields on WordPress users. Build each one with `userProjection()`.",
+	taxonomies: "Terms in WordPress taxonomies of their own, attached to collections. Build each one with `taxonomy()`.",
 	hooks: "Functions that run before or after a create, update or delete.",
 	actions: "Named endpoints at `POST /__first/api/v1/actions/<name>`. Build each one with `action()`.",
 	jobs: "Background work that runs after the request, on Action Scheduler. Build each one with `job()`.",

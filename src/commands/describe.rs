@@ -141,7 +141,7 @@ fn kind(c: &Collection, schema: &Schema) -> Value {
     .filter_map(|(op, on)| on.then_some(op))
     .collect();
     let mut out = json!({
-        "type": if c.auth { "users" } else if c.editor { "collection" } else { "table" },
+        "type": if c.auth { "users" } else if c.editor { "collection" } else if c.taxonomy.is_some() { "taxonomy" } else { "table" },
         "label": c.label,
         // The path segment below the API prefix, and the name the site commands take.
         "path": c.table,

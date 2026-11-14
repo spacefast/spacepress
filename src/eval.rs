@@ -253,6 +253,8 @@ pub const FIRST_EXPORTS: &[&str] = &[
     "collection",
     "table",
     "userProjection",
+    "taxonomy",
+    "terms",
     "integer",
     "number",
     "text",
@@ -2732,6 +2734,7 @@ impl<'p> Evaluator<'p> {
             Builtin::DefineGlobal => Some("global"),
             Builtin::DefineRelations => Some("defineRelations"),
             Builtin::Ref => Some("ref"),
+            Builtin::Terms => Some("terms"),
             Builtin::DefineConfig => Some("defineConfig"),
             Builtin::Env => Some("env"),
             Builtin::Files => Some("files"),
@@ -2748,7 +2751,11 @@ impl<'p> Evaluator<'p> {
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         match b {
             Builtin::Collection(kind) => {
-                let cols_val = arg(0);
+                // `taxonomy(fields?, options)`: a taxonomy may declare no fields of its own.
+                let cols_val = match arg(0) {
+                    Value::Undef if *kind == StorageKind::Taxonomy => Value::object(IndexMap::new()),
+                    v => v,
+                };
                 let Value::Object(cols) = &cols_val else {
                     return err(span, format!("{}() needs an object of fields first", kind.builder()));
                 };
@@ -2865,6 +2872,30 @@ impl<'p> Evaluator<'p> {
                 };
                 let mut c = ColBuilder::new(ColType::Integer, span);
                 c.references = Some((target, None, None, span));
+                Ok(Value::Column(Rc::new(c)))
+            }
+            Builtin::Terms => {
+                let taxonomy = match arg(0) {
+                    k @ Value::Collection(_) if matches!(&k, Value::Collection(c) if c.kind == StorageKind::Taxonomy) => {
+                        RefTarget::Kind(k)
+                    }
+                    // A taxonomy declared later: checked once every kind is registered.
+                    Value::Closure(f) => RefTarget::Thunk(f),
+                    other => {
+                        let what = match &other {
+                            Value::Collection(c) => format!("a {}() kind", c.kind.builder()),
+                            other => other.describe(),
+                        };
+                        return err_help(
+                            span,
+                            format!("terms() takes a taxonomy() export, not {what}"),
+                            "declare `export const topics = taxonomy({}, { on: [posts] })` and write `terms(topics)`; core's categories and tags wait for the wp.* built-ins",
+                        );
+                    }
+                };
+                let mut c = ColBuilder::new(ColType::RefList, span);
+                c.references = Some((taxonomy, None, None, span));
+                c.terms = true;
                 Ok(Value::Column(Rc::new(c)))
             }
             Builtin::DefineRelations if !self.legacy => err_help(
@@ -4100,6 +4131,8 @@ fn first_export(name: &str, legacy: bool, span: Span) -> R<Value> {
         "collection" => Builtin::Collection(StorageKind::Collection),
         "table" => Builtin::Collection(StorageKind::Table),
         "userProjection" => Builtin::Collection(StorageKind::UserProjection),
+        "taxonomy" => Builtin::Collection(StorageKind::Taxonomy),
+        "terms" => Builtin::Terms,
         // Deleted builders still resolve, so the call says what replaces them.
         "id" => Builtin::Id,
         "real" => Builtin::Field("real"),
@@ -4545,6 +4578,18 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
     if let Some((message, fix)) = removed_modifier(m) {
         return err_help(span, message, fix);
     }
+    if c.terms && !matches!(m, "access" | "ui" | "reverse") {
+        return err_help(
+            span,
+            format!("`.{m}()` isn't valid on a `terms()` field"),
+            match m {
+                "many" => "a terms field is already a list of term ids; remove `.many()`",
+                "min" | "max" => "`.min()` and `.max()` on a terms field aren't built yet; check the count in a hook",
+                "optional" => "a terms field is never null: an item with no terms holds `[]`; remove `.optional()`",
+                _ => "a terms field takes `.access()`, `.ui()` and `.reverse()`; remove the modifier",
+            },
+        );
+    }
     if let Some(why) = modifier_invalid(&c, m) {
         return err_help(span, why.0, why.1);
     }
@@ -4834,6 +4879,7 @@ impl ColBuilder {
             on_update: None,
             references: None,
             reverse: None,
+            terms: false,
             ts_type: None,
             access: None,
             show_if: None,

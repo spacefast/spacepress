@@ -176,6 +176,102 @@ the earlier API becomes `.optional()`.
     dropped: reading the raw tree directly in the compile, which would be a second old-reading path
     beside the capture's. Delete with `src/zero_bundle.rs`.
 
+## Taxonomies
+
+Rulings for `taxonomy()` and `terms()` (spec §2.1, §2.4, §2.6, §2.7). They describe what the first PR ships; the deferrals are listed at the end. The list-relation operators (`has`, `[]`, a filter object) are the ones `ref(kind).many()` defines (ruling 3), so the first PR lands after that one.
+
+25. **Storage and registration.** A taxonomy's storage name is its export name in snake_case, or `storageName`, in the same namespace as collections and tables: two kinds can't share one. WordPress limits taxonomy names to 32 characters and First prefixes `first_`, so the storage name is at most 26 characters; longer is a build error that says so.
+    - It registers at `init` with `register_taxonomy('first_<name>', <post types>)`, `show_in_rest`, `rest_base` `first_<name>` (served by core at `/wp/v2/first_<name>`, and by First at `/__first/api/v1/<export name>`), `rewrite => false` and `query_var => false`.
+    - Fields are term meta under the key `first_<field>`, registered with `register_term_meta` the way post fields are (`auth_callback` false, so core's generic meta path never writes them).
+    - The SCF field group is `group_first_<name>` with field keys `field_first_<name>_<field>` and location `taxonomy == first_<name>`.
+    - `schema.php` gets a top-level `taxonomies` array, with `'wp' => ['taxonomy' => 'first_<name>', 'groupKey' => …, 'metaPrefix' => 'first_', 'fieldKeyPrefix' => …]`.
+    - Terms are read and written by a new term store behind the same query pipeline as every other kind, so `where`, `with`, access rules and field masks behave the same.
+
+    Cost: one more store to keep in step with the post store's meta handling, and six characters of every taxonomy name go to the prefix.
+
+26. **`on` and `terms()` are one attachment, declared from either side.** `on: [posts]` gives each listed kind a field named after the taxonomy's export (`topics`). `terms(topics)` is the same field written out, for when it needs another name or a modifier (`.access()`, `.ui()`, `.reverse()`). Neither needs the other: the taxonomy is registered for the union of its `on` and every kind with a `terms()` field for it.
+    - **Name.** Per ruling 1 the field name is the stored name, the relation name and the `with` key. The value is a list of term ids (`number[]`, `[]` when none), and `with: { topics: true }` replaces the ids with term rows.
+    - **Storage.** The links are core's `wp_term_relationships` rows. There is no join table and no meta.
+    - **Build errors.** A kind in `on` that also has a `terms()` field for that taxonomy keeps the one explicit field. Two `terms()` fields for one taxonomy on one kind is an error, because core keeps one term set per item and taxonomy. An `on` field that collides with an authored field is an error naming both.
+    - **Reverse.** Per ruling 2 the reverse relation on the taxonomy is named after the kind's export (`topics.list({ with: { posts: true } })`), `.reverse("name")` renames it, and a reverse named like a term field is an error.
+    - **Tables.** `terms()` on a `table()` kind, or a table in `on`, is a build error. `wp_term_relationships.object_id` carries no object type, so a table row and a post with the same id would share term sets, and core's counts and deletes assume posts.
+    - **Other refusals.** `terms()` takes a `taxonomy()` export only, takes no `.many()`, `.unique()`, default or `.onDelete()`, and isn't allowed in sub-fields, globals, or action and job inputs.
+
+    Cost: two spellings of one thing, and tables have no way to use a taxonomy in this PR.
+
+27. **Term rows.** A term row is `id` (the `term_id`), `name`, `slug`, `description`, `parent` (hierarchical taxonomies only), `count`, `url` (null without a `url` option), and the authored fields.
+    - **Writable:** `name` (required on create), `slug` (derived from the name when absent, unique within the taxonomy as core makes it), `description`, `parent`, and the authored fields under their own `.access()`.
+    - **Read-only:** `id`, `count` and `url`.
+    - **No `author`, `createdAt` or `updatedAt`.** Ruling 4 already says taxonomies have no author. Core stores no times for a term and First doesn't invent meta for them. The spec's "every kind with rows" line changes to say so.
+    - **Reserved names.** An authored field named after any implicit field, or `author`, `createdAt`, `updatedAt`, is a build error.
+    - **`count`** is core's stored count: published items across every attached kind, the same for every viewer.
+    - **Field builders in the first PR:** `text`, `number`, `integer`, `boolean`, `date`, `timestamp`, `select` (with `.many()`), `email`, `url`, `json`, `media` and a single `ref`.
+
+    Cost: `count` can include items a viewer can't read, and there is no "recently changed terms" query.
+
+28. **Queries.**
+    - **On a kind with the field:** `where: { topics: { has: 5 } }` matches items carrying term 5. `where: { topics: { slug: "x" } }` matches items where some term matches the filter. `where: { topics: [] }` matches items with none. `true` and `false` test for any or none.
+    - **Hierarchy.** A match is exact: `has` on a parent term doesn't match items that carry only its children.
+    - **Order.** `with: { topics: true }` returns the terms in the order they were written, the same rule as a many-ref's `position`. The taxonomy registers with `sort => true` and `args => ['orderby' => 'term_order']`, so core stores and reads that order too. Nested `orderBy`, `where` and `limit` apply per item.
+    - **On the taxonomy:** `where` and `orderBy` take the implicit and authored fields. The default order is `name`, then `id`, as core lists terms. `where: { posts: { status: "published" } }` and `with: { posts: true }` use the reverse relation, under the viewer's read rule for that kind.
+    - **`terms` is not an `orderBy` key** on the kind that has the field.
+
+    Cost: "everything under this topic" needs the child ids listed by the caller.
+
+29. **Access.** Defaults are the spec's: anyone reads, `editor` creates, updates and deletes. The `access` option takes the same keys and values as any kind (ruling 5).
+    - **Capabilities.** `manage_terms`, `edit_terms`, `delete_terms` and `assign_terms` are per-taxonomy primitives (`manage_first_<name>` and so on), answered from the taxonomy's rules in `CoreAccess::mapMetaCap`, never from roles.
+    - **Assigning terms** is a write to the item. It needs the item kind's `create` or `update` rule, the `terms` field's own `.access({ write })` if it has one, and read access to each term id sent. It doesn't need write access to the taxonomy. `assign_first_<name>` is granted to anyone whose rule may allow a write to some attached kind, and the item's rule decides the actual save.
+    - **Creating terms** always needs the taxonomy's `create` rule. Core lets `assign_terms` create terms in a flat taxonomy, so First refuses in `pre_insert_term` when the rule denies. Through First's API a `terms` field takes ids only; a name never creates a term.
+
+    Cost: an author can't add a tag while writing unless the taxonomy's `create` rule is widened to them.
+
+30. **Hierarchy, URLs and `on`.**
+    - **Hierarchy.** `hierarchical: true` registers a hierarchical taxonomy and adds `parent` (a term id of the same taxonomy, or null). Deleting a term moves its children to its parent and removes its links, as core does.
+    - **Pattern.** `url` takes `:slug`, `:id` and, on a hierarchical taxonomy, `:path` (the chain of ancestor slugs). Other placeholders are a build error.
+    - **Mechanism.** The pattern compiles to one rewrite rule, resolved in the request filter to a term of that taxonomy only. It also drives a `term_link` filter that builds the same URL, and the row's `url` field. Patterns are checked for overlap with every other kind's.
+    - **With a `url`** the taxonomy registers as public, so core's sitemap lists its terms and a URL without an `app/` route renders through the template hierarchy. The term's archive lists items of attached kinds that have a `url` of their own, under those kinds' rules.
+    - **Without a `url`** the taxonomy is not public and has no archive.
+    - **On the item side,** `:topics.slug` in a kind's `url` is the slug of the first term in write order. An item with no term has no URL until it gets one.
+    - **`on`** takes the app's collections only, until the `wp.*` built-ins exist. `on: [wp.posts]` then adds the core `post` type and gives `posts` rows the same field.
+
+    Cost: a term's URL can't use its own fields, and a slug or pattern change leaves no redirect yet (see deferrals).
+
+31. **Built-in `categories` and `tags`** stay core's. First registers nothing for them, and the facade keeps routing those two names to core's term routes. `terms(wp.categories)` on an app collection waits for the `wp.*` built-ins. `wp` isn't in the authoring surface yet, and attaching `category` to a First post type means deciding the core taxonomy's access and count behaviour for First kinds, which belongs with that work. Until then a `terms()` argument that isn't a `taxonomy()` export is a build error.
+
+    Cost: an app that wants core's categories on its own collection declares its own taxonomy for now.
+
+32. **Translations and sync.** Neither is built for taxonomies in the first PR, and each refusal is explicit so the later default changes nothing silently.
+    - **`locales` set:** a taxonomy must say `translations: false`. It is then one vocabulary shared by every locale, and First keeps it out of Polylang's taxonomy list. Without the option the build fails with "taxonomy translations aren't built yet; add `translations: false`". Ruling 7's default (translated) arrives with term translation groups.
+    - **Term set per translation:** each translation of an item has its own term set. `.shared()` on a `terms` field or on a taxonomy's field is a build error for now.
+    - **`sync` on a taxonomy** is a build error (the option is for collections and tables).
+    - **A synced kind** with a `terms` field, declared or through `on`, is a build error, as a many-ref on a synced kind is.
+
+    Cost: multilingual sites get untranslated term names, and synced content can't be classified yet.
+
+33. **The 0.8 converter emits nothing for taxonomies.** 0.8 had no taxonomy or term construct, and the converter has no match for either. The only taxonomy in the legacy code is `zero_collection`, a hidden storage tag the legacy migration removes when it moves posts to `first_<name>` post types. It is not an authoring construct and its name can't collide with a `first_` taxonomy. Cost: none.
+
+34. **Migrations and the snapshot.** A taxonomy creates no SQL table and no column. Terms, term meta and links live in core's tables.
+    - **Snapshot.** Nothing about a taxonomy enters the migration snapshot. A `terms` field is left out of its kind's snapshot columns and adds no join entry. A project without taxonomies produces the same snapshot as before, so existing ledgers gain no migration.
+    - **`was` is a build error** in the first PR. A rename has to move `wp_term_taxonomy.taxonomy`, and no post-type or taxonomy rename step exists to extend. The message names the alternative: `storageName` keeps the stored name under a new export, which moves nothing because term meta keys don't contain the taxonomy name.
+    - **Removal.** Removing a taxonomy from the schema leaves its terms and links in the database, unregistered. Declaring it again brings them back.
+
+    Cost: removing a taxonomy gives no deploy warning, and changing a stored name isn't possible yet.
+
+**Deferred, each a build error or absent until its own PR:**
+
+- `was` on a taxonomy.
+- Term translations and `.shared()` on term data.
+- `sync` for kinds with terms (front matter by slug).
+- `terms(wp.categories)`, `terms(wp.tags)` and `on: [wp.posts]`.
+- Terms on `table()` kinds, and `ref(taxonomy)` from any kind.
+- `.min()` and `.max()` on a `terms` field.
+- Create-by-name when assigning.
+- Matching descendants in `has`.
+- Containers, `richText`, `file()`, `ref().many()` and `.unique()` on term fields.
+- `.on()` hooks, `abilities` and `search` on a taxonomy.
+- Runtime schema changes to taxonomies (build-only for now).
+- The automatic 301 when a term's slug or a taxonomy's pattern changes. Core keeps old slugs for posts only, so spec §2.7's promise holds for post kinds until this is built.
+
 ## Stored-schema changes the cutover accepts
 
 The criterion "the authoring rewrite produces no data migration" holds except for exactly these:

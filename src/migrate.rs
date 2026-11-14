@@ -66,7 +66,8 @@ pub fn snapshot(schema: &Schema) -> Json {
 /// SQL table's `queried` list: the columns that get an inferred index (spec §2.9).
 pub fn snapshot_with(schema: &Schema, queried: &std::collections::BTreeSet<(String, String)>) -> Json {
     let mut tables = serde_json::Map::new();
-    for c in schema.collections.values() {
+    // A taxonomy lives in core's term tables: nothing about it enters the snapshot (ruling 34).
+    for c in schema.collections.values().filter(|c| c.taxonomy.is_none()) {
         let mut t = table_snapshot(c, schema);
         let cols: Vec<String> = queried
             .iter()
@@ -85,10 +86,11 @@ pub fn snapshot_with(schema: &Schema, queried: &std::collections::BTreeSet<(Stri
         }
         tables.insert(c.table.clone(), t);
     }
-    for c in schema.collections.values() {
+    for c in schema.collections.values().filter(|c| c.taxonomy.is_none()) {
         for col in c.columns.values() {
             if let Some(r) = &col.references
                 && let Some(join) = &r.join
+                && !crate::schema::is_term_join(join)
             {
                 tables.insert(join.clone(), join_snapshot(c, r, schema));
             }

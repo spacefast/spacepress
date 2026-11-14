@@ -659,10 +659,17 @@ impl Built {
     pub fn summary(&self) -> String {
         let s = &self.schema;
         format!(
-            "{} collections, {} tables, {} user projections, {} globals, {} hooks, {} actions",
+            "{} collections, {} tables, {} user projections, {}{} globals, {} hooks, {} actions",
             s.collections.values().filter(|c| c.editor).count(),
-            s.collections.values().filter(|c| !c.editor && !c.auth).count(),
+            s.collections
+                .values()
+                .filter(|c| !c.editor && !c.auth && c.taxonomy.is_none())
+                .count(),
             s.collections.values().filter(|c| c.auth).count(),
+            match s.collections.values().filter(|c| c.taxonomy.is_some()).count() {
+                0 => String::new(),
+                n => format!("{n} taxonomies, "),
+            },
             s.globals.len(),
             s.collections.values().map(|c| c.hooks.len()).sum::<usize>(),
             s.actions.len()

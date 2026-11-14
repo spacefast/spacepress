@@ -720,7 +720,8 @@ and on core `/wp/v2/<route>`) and `GET /__first/api/v1/search` read one index.
   pipeline with `search`. A kind the caller may not read is left out without a
   word; a row the rule hides is neither found nor counted (`X-WP-Total`); a
   title hidden from the caller comes back empty, and a kind whose `url` shows a
-  field the caller may not read is not searched. `subtype`, `include`,
+  field the caller may not read (or, for `:ref.slug`, the referenced item's
+  slug) is not searched; the sitemap applies the same check. `subtype`, `include`,
   `exclude`, `page` and `per_page` work as on core's posts. A site with
   `frontend: false` adds nothing.
 - **Updates that change no searchable field** leave the row's entries alone

@@ -88,8 +88,9 @@ final class SearchHandler extends \WP_REST_Search_Handler
 
         $ids = [];
         $total = 0;
-        $coreTypes = $this->core === null ? [] : ($any ? $this->core->get_subtypes() : array_values(array_intersect($asked, $this->core->get_subtypes())));
-        if ($coreTypes !== []) {
+        // `any` always reaches the previous handler: one may declare no subtypes and still answer it.
+        $coreTypes = $this->core === null ? [] : array_values(array_intersect($asked, $this->core->get_subtypes()));
+        if ($this->core !== null && ($any || $coreTypes !== [])) {
             $sub = clone $request;
             $sub->set_param(\WP_REST_Search_Controller::PROP_SUBTYPE, $any ? [\WP_REST_Search_Controller::TYPE_ANY] : $coreTypes);
             $result = $this->core->search_items($sub);

@@ -34,6 +34,25 @@ $notes['wp'] = ['postType' => 'first_notes', 'groupKey' => 'group_first_notes', 
 $notes['access']['read'] = ['fn' => 'notes__access__read'];
 $notes['columns']['name']['access'] = ['read' => ['role' => 'editor']];
 $schema['collections']['notes'] = $notes;
+// A kind whose address shows a referenced item's slug that only editors read (`/stories/:topic.slug/:id`).
+$topics = $schema['collections']['authors'];
+$topics['key'] = 'topics';
+$topics['label'] = 'Topics';
+$topics['relations'] = [];
+$topics['slug'] = 'slug';
+$topics['columns']['slug'] = ['type' => 'slug', 'source' => 'name', 'access' => ['read' => ['role' => 'editor']]];
+$topics['columns']['email']['unique'] = false;
+$topics['wp'] = ['postType' => 'first_topics', 'groupKey' => 'group_first_topics', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_topics_'];
+$schema['collections']['topics'] = $topics;
+$stories = $schema['collections']['authors'];
+$stories['key'] = 'stories';
+$stories['label'] = 'Stories';
+$stories['relations'] = [];
+$stories['url'] = '/stories/:topic.slug/:id';
+$stories['columns']['email']['unique'] = false;
+$stories['columns']['topic'] = ['type' => 'integer', 'references' => ['collection' => 'topics', 'column' => 'id', 'onDelete' => 'set null']];
+$stories['wp'] = ['postType' => 'first_stories', 'groupKey' => 'group_first_stories', 'metaPrefix' => 'first_', 'fieldKeyPrefix' => 'field_first_stories_'];
+$schema['collections']['stories'] = $stories;
 $wp = wpSite('search', [
     'schema' => $schema,
     'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
@@ -263,6 +282,35 @@ eq('page 1 holds core\'s result, page 2 the item, and both count 2', [[$hits($pa
 eq('a page past the end is core\'s 400', $pageOf(3)[0], 400);
 eq('exclude leaves an item out', $hits($coreSearch(['search' => 'green', 'exclude' => [$public['id']]], null)), ["post:$corePost"]);
 eq('include keeps only the items named', $hits($coreSearch(['search' => 'green', 'include' => [$public['id']]], null)), ["first_posts:{$public['id']}"]);
+// An address that would show a slug the reader may not read is not given: the kind isn't searched for them.
+wp_set_current_user(1);
+$topic = $db->insert('topics', ['name' => 'Secret topic', 'email' => 't@example.test', 'status' => 'published'], true)[0];
+$story = $db->insert('stories', ['name' => 'Oolong story', 'email' => 's@example.test', 'topic' => $topic['id'], 'status' => 'published'], true)[0];
+wp_set_current_user(0);
+// (A subscriber reads the kind, as `authors` it was cloned from; only editors read a topic's slug.)
+eq('a kind whose address shows a referenced slug hidden from the reader is not searched for them', $coreSearch(['search' => 'oolong'], 'sub')[1], []);
+eq('an editor, who reads that slug, finds the item', $hits($coreSearch(['search' => 'oolong'], 'ed')), ["first_stories:{$story['id']}"]);
+// Another plugin's handler of `post` that declares no subtypes still answers `subtype=any`.
+$plugin = new class extends \WP_REST_Search_Handler {
+    public function __construct() { $this->type = 'post'; }
+    public function search_items(\WP_REST_Request $request) { return [self::RESULT_IDS => [987654], self::RESULT_TOTAL => 1]; }
+    public function prepare_item($id, array $fields) { return ['id' => $id, 'title' => 'From a plugin', 'url' => '', 'type' => 'post', 'subtype' => 'plugin']; }
+    public function prepare_item_links($id) { return []; }
+};
+add_filter('wp_rest_search_handlers', $swap = static function (array $handlers) use ($plugin): array {
+    return array_map(static fn ($h) => $h instanceof \WP_REST_Post_Search_Handler ? $plugin : $h, $handlers);
+}, 10);
+$handlers = apply_filters('wp_rest_search_handlers', [new \WP_REST_Post_Search_Handler()]);
+remove_filter('wp_rest_search_handlers', $swap, 10);
+$wrapped = array_values(array_filter($handlers, static fn ($h) => $h->get_type() === 'post'))[0];
+$anyRequest = new \WP_REST_Request('GET', '/wp/v2/search');
+$anyRequest->set_query_params(['search' => 'green', 'subtype' => ['any'], 'page' => 1, 'per_page' => 10]);
+check('the plugin\'s handler is the one wrapped', $wrapped instanceof \First\Wp\SearchHandler);
+eq('its results for subtype=any are kept, before First\'s', $wrapped->search_items($anyRequest), ['ids' => [987654, $public['id']], 'total' => 2]);
+wp_set_current_user(1);
+$db->delete('stories', ['id' => $story['id']]);
+$db->delete('topics', ['id' => $topic['id']]);
+wp_set_current_user(0);
 $subtypes = rest_get_server()->get_routes()['/wp/v2/search'][0]['args']['subtype']['items']['enum'] ?? [];
 check('the kinds with addresses are subtypes of post, next to core\'s', array_intersect(['post', 'page', 'first_posts', 'first_authors', 'first_notes'], $subtypes) === ['post', 'page', 'first_posts', 'first_authors', 'first_notes'], $subtypes);
 wp_set_current_user(1);

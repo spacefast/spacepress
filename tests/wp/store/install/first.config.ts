@@ -21,8 +21,5 @@ export const notes = collection({
 
 export default defineConfig({
   name: "installlane",
-  collections: { notes },
-  users: { members },
-  files: { decks },
   runtimeSchema: true,
 });

@@ -164,5 +164,27 @@ update_option('prebuilt_drop', 'lab notes');
 $drain();
 $out['dropped value'] = [is_file(\First\Render\Prebuilt::dir() . '/tags/lab%20notes.html'), fetch("$url/tags/field")['prebuilt']];
 
+// Another spelling of a prebuilt path is not its URL: `/%61bout` renders per request.
+$out['encoded spelling'] = fetch("$url/%61bout")['prebuilt'];
+// A coming-soon site serves no file, whatever plugin does the hiding.
+update_option('wpcom_public_coming_soon', 1);
+do_action('init');
+$drain();
+$out['coming soon'] = fetch("$url/notes/hello")['prebuilt'];
+delete_option('wpcom_public_coming_soon');
+// A whole-site purge before any file exists is not an error.
+\First\Render\Prebuilt::forget();
+\First\Render\Prebuilt::stale(['/*']);
+$out['purge all, no files'] = true;
+// A render older than a write that named its path is dropped, even inside one batch.
+do_action('init');
+$drain();
+$before = fetch("$url/about")['prebuilt'];
+\First\Render\Prebuilt::stale(['/about']);
+$started = microtime(true) - 5; // as if the render began before the write
+$m = new ReflectionMethod(\First\Render\Prebuilt::class, 'write');
+$written = $m->invoke(null, \First\Render\Prebuilt::dir() . '/about.html', 'old', '/about', $started);
+$out['race'] = [$before, $written, is_file(\First\Render\Prebuilt::dir() . '/about.html')];
+
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

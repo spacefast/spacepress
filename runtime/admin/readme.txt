@@ -38,6 +38,6 @@ All collections to return to the overview. Classic admin opens the full native
 WordPress admin, including its sidebar and plugin screens. Choose First in the
 WordPress sidebar to return to First Admin. First Admin also includes the native Users, Settings, Plugins, Themes and Design
 routes. Classic admin remains available for every WordPress plugin screen.
-The upstream dashboard is at /wp-admin/new/dashboard; demonstration widgets
+The upstream dashboard is the home route, /wp-admin/new/; demonstration widgets
 explicitly label their example data. See docs/admin.md for provenance, build
 commands and external-service boundaries.

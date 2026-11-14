@@ -460,8 +460,10 @@ final class AppRouter
         $post = get_post((int) ($row->p[$spec['primaryKey']] ?? 0));
         $urls = KindUrls::instance();
         if ($post instanceof \WP_Post && $urls !== null) {
+            // Both sides without the home path: under a subdirectory install the request path
+            // starts with it (`/blog/notes/a`), and the item's path never does (`/notes/a`).
             $want = $urls->path($name, $post);
-            $have = '/' . trim((string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH), '/');
+            $have = '/' . trim((string) $this->path(), '/');
             if ($want !== null && rawurldecode($have) !== rawurldecode($want)) {
                 return null;
             }

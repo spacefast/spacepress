@@ -753,7 +753,7 @@
 		"/publishing/spacefast": {
 			"title": "Publish on Spacefast - First",
 			"h1": "Publish on Spacefast",
-			"description": "Put a First app online on Spacefast with sf publish.",
+			"description": "Putting a First app online on Spacefast with sf publish. Not available yet; no released CLI publishes a First app.",
 			"canonical": "/publishing/spacefast",
 			"markdown": "/publishing/spacefast.md",
 			"ogImage": "/og/publishing/spacefast.png",

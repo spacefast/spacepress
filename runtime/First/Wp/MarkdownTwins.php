@@ -168,6 +168,12 @@ final class MarkdownTwins
         return $answer;
     }
 
+    /** Whether a Markdown negotiation (negotiate()) is running its main query in this process. */
+    public static function negotiating(): bool
+    {
+        return self::$negotiated !== false;
+    }
+
     /** `/llms.txt` (llmstxt.org): the site, then each public kind's newest entries and terms, linking twins. */
     public static function llms(): string
     {
@@ -560,6 +566,11 @@ final class MarkdownTwins
     private static function headers(): array
     {
         $headers = ['Content-Type' => self::CONTENT_TYPE, 'X-Content-Type-Options' => 'nosniff'];
+        if (\First\Render\Prebuilt::prerendering()) {
+            // Rendered for the prebuild, which writes a twin file only from such an answer.
+            $headers['X-First-Prerendered'] = '1';
+            $headers['Cache-Control'] = 'private, no-store, max-age=0';
+        }
         $signal = self::contentSignal();
         if ($signal !== '') {
             $headers['Content-Signal'] = $signal;

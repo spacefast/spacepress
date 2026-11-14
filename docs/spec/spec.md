@@ -507,6 +507,8 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
   - changing the app's schema on the site: `first.config.ts` is the only way to
     change the field groups, post types, taxonomies, meta, roles and
     capabilities First generates (`docs/config-api.md`, "Schema lock");
+  - telling a visitor which accounts exist when they sign in or reset a
+    password: one error for an unknown account and a wrong password;
   - the theme front end when `app/` or `frontend` takes over.
 - **Sealed mode** (`sealed: true`, opt-in): only First's plugins, the pinned
   platform plugins, the `plugins` the config declares and `use` plugin packages

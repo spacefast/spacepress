@@ -45,6 +45,10 @@ pub struct BuildManifest {
     pub snapshot: String,
     /// The generated client directory, relative to the store root, when the app has one.
     pub client: Option<String>,
+    /// `sealed: true` in the config: the only plugin slugs a host lets load, so it can enforce the
+    /// list before any plugin loads (docs/sealed.md). Absent when the app isn't sealed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sealed: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug)]
@@ -256,6 +260,7 @@ pub fn compile_to_store(
         admin: compiled.admin,
         snapshot: format!("app/{app_hash}/snapshot.json"),
         client,
+        sealed: compiled.sealed,
     };
     let bytes = serde_json::to_vec_pretty(&manifest).expect("manifest serializes");
     let build_id = hex(Sha256::digest(&bytes));

@@ -395,8 +395,9 @@ final class AppRouter
         // Cache policy and purges (rendering.md §6.1, §6.2): an anonymous visitor's render of a
         // page no layout guards is shared; what it read decides which writes purge its URL.
         $guarded = array_filter($layouts, static fn (array $l): bool => ($l['guard'] ?? null) !== null) !== [];
-        // A page a form came back to (`?_flash=`) shows that visitor's result or error: never shared.
-        [$this->cacheControl, $shared] = \First\Render\Cache::policy($status, $viewer->user === null && !\First\Render\Forms::marked(), $guarded);
+        // A page a form came back to (`?_flash=`), or one that ran a search, shows that visitor's
+        // result: never shared, never recorded for purges.
+        [$this->cacheControl, $shared] = \First\Render\Cache::policy($status, $viewer->user === null && !\First\Render\Forms::marked() && !\First\Render\SearchView::marked(), $guarded);
         if ($shared) {
             \First\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         }
@@ -740,6 +741,11 @@ final class AppRouter
         remove_action('wp_head', '_block_template_render_title_tag', 1);
         remove_action('wp_head', 'rel_canonical');
         $robots = $head['robots'] ?? null;
+        if (\First\Render\SearchView::marked()) {
+            // A results page is no page to index: as the header and the meta tag.
+            $robots = ['index' => false] + (is_array($robots) ? $robots : []);
+            header('X-Robots-Tag: noindex');
+        }
         if (is_array($robots) || $status !== 200) {
             add_filter('wp_robots', static function (array $r) use ($robots, $status): array {
                 if ($status !== 200 || ($robots['index'] ?? true) === false) {

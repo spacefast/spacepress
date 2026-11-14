@@ -2564,6 +2564,150 @@ fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
     assert!(other.join("first.config.ts").is_file() && !other.join("AGENTS.md").exists());
 }
 
+/// `first init --github` writes the content sync workflow at the repository's root, with the
+/// project's synced folders as its push paths; reruns keep it in step until its header line is
+/// deleted. With `ACTIONLINT` set (a path to actionlint), the file is also linted.
+#[test]
+fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path();
+    let project = repo.join("site");
+    std::fs::create_dir_all(&project).unwrap();
+    let config = |dirs: &[&str]| {
+        let kinds: Vec<String> = dirs
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                format!("const k{i} = collection({{ title: text(), body: richText().optional() }}, {{ content: \"body\", sync: \"{d}/*.md\" }});\n")
+            })
+            .collect();
+        let names: Vec<String> = (0..dirs.len()).map(|i| format!("k{i}")).collect();
+        format!(
+            "import {{ defineConfig, collection, text, richText }} from \"first\";\n{}export default defineConfig({{ name: \"gh\", collections: {{ {} }} }});\n",
+            kinds.concat(),
+            names.join(", ")
+        )
+    };
+    std::fs::write(project.join("first.config.ts"), config(&["content/posts"])).unwrap();
+    // Outside a git repository there is no root for GitHub to read the workflow from: refused.
+    let out = init(&project, &["--github"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).contains("git repository"), "{}", text(&out.stderr));
+    let git = Command::new("git").args(["init", "-q"]).arg(repo).output().unwrap();
+    assert!(git.status.success());
+    let path = repo.join(".github/workflows/first-sync.yml");
+
+    // Without --github: no workflow.
+    let out = init(&project, &[]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(!path.exists());
+
+    let out = init(&project, &["--github"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stdout).contains(&format!(
+            "wrote {}",
+            std::path::Path::new("..")
+                .join(".github/workflows/first-sync.yml")
+                .display()
+        )),
+        "{}",
+        text(&out.stdout)
+    );
+    let workflow = std::fs::read_to_string(&path).unwrap();
+    for expected in [
+        "# Written by `first init --github` for site; delete this line to keep your own edits.\n",
+        "  push:\n    branches: [\"**\"]\n",
+        "    types: [first-content-changed]\n",
+        "  schedule:\n",
+        "      - \"site/content/posts/**\"\n",
+        "        working-directory: \"site\"\n",
+        "  contents: write\n  pull-requests: write\n",
+        "run: npx --no-install first sync --pr --site \"$FIRST_SITE_URL\"\n",
+        "FIRST_APP_PASSWORD: ${{ secrets.FIRST_APP_PASSWORD }}\n",
+    ] {
+        assert!(workflow.contains(expected), "{expected:?} in\n{workflow}");
+    }
+    // Every action is pinned by a full commit SHA.
+    for line in workflow.lines().filter(|l| l.contains("uses: ")) {
+        let pin = line.split('@').nth(1).unwrap().split_whitespace().next().unwrap();
+        assert!(pin.len() == 40 && pin.bytes().all(|b| b.is_ascii_hexdigit()), "{line}");
+    }
+    if let Some(actionlint) = std::env::var_os("ACTIONLINT") {
+        let lint = Command::new(actionlint).arg(&path).output().unwrap();
+        assert!(lint.status.success(), "{}{}", text(&lint.stdout), text(&lint.stderr));
+    }
+
+    // In step: --check passes, and a rerun without --github writes nothing.
+    assert!(init(&project, &["--check"]).status.success());
+    // A new synced folder: first check says so, --check fails, and a plain rerun updates the paths.
+    std::fs::write(project.join("first.config.ts"), config(&["content/posts", "docs"])).unwrap();
+    let checked = first().arg("check").arg(&project).output().unwrap();
+    assert!(
+        text(&checked.stderr).contains(".github/workflows/first-sync.yml is out of date"),
+        "{}",
+        text(&checked.stderr)
+    );
+    assert_eq!(init(&project, &["--check"]).status.code(), Some(1));
+    assert!(init(&project, &[]).status.success());
+    assert!(
+        std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("      - \"site/docs/**\"\n")
+    );
+
+    // Another project in the same repository: its plain first init and first check leave this
+    // project's workflow alone, and its --github refuses to take it.
+    let other = repo.join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    std::fs::write(other.join("first.config.ts"), config(&["notes"])).unwrap();
+    let ours = std::fs::read_to_string(&path).unwrap();
+    assert!(init(&other, &[]).status.success());
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        ours,
+        "another project's init never rewrites it"
+    );
+    let checked = first().arg("check").arg(&other).output().unwrap();
+    assert!(
+        !text(&checked.stderr).contains("first-sync.yml"),
+        "{}",
+        text(&checked.stderr)
+    );
+    let taken = init(&other, &["--github"]);
+    assert_eq!(taken.status.code(), Some(1));
+    assert!(
+        text(&taken.stderr).contains("written for the project at site"),
+        "{}",
+        text(&taken.stderr)
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), ours);
+    assert!(init(&project, &["--check"]).status.success());
+
+    // Its header line deleted, the file is the author's: never rewritten, never reported, and
+    // --github says so rather than replace it.
+    let mine = std::fs::read_to_string(&path)
+        .unwrap()
+        .replacen("# Written by", "# Adapted from", 1);
+    std::fs::write(&path, &mine).unwrap();
+    std::fs::write(project.join("first.config.ts"), config(&["content/posts"])).unwrap();
+    assert!(init(&project, &[]).status.success());
+    let refused = init(&project, &["--github"]);
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(
+        text(&refused.stderr).contains("is your own"),
+        "{}",
+        text(&refused.stderr)
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), mine);
+    let checked = first().arg("check").arg(&project).output().unwrap();
+    assert!(
+        !text(&checked.stderr).contains("first-sync.yml"),
+        "{}",
+        text(&checked.stderr)
+    );
+}
+
 /// What `first init` must leave alone: an author's prose that quotes a marker, the formatting of
 /// their `.mcp.json`, a link they made, the permissions of their files, a skills directory they
 /// removed, and anything outside the project.

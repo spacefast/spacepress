@@ -710,7 +710,8 @@ final class Facade
                 $parent = (int) ($args['post_parent'] ?? 0);
                 // wp_is_post_autosave(): a revision whose name holds "<parent>-autosave".
                 $ids = $wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'revision' AND post_parent = %d AND post_name LIKE %s", $parent, '%' . $wpdb->esc_like("$parent-autosave") . '%'));
-                return $ids === [] ? $args : $args + ['post__not_in' => array_map('intval', $ids)];
+                // Core already sets `post__not_in` from the route's `exclude` (default []): add to it.
+                return $ids === [] ? $args : ['post__not_in' => array_merge((array) ($args['post__not_in'] ?? []), array_map('intval', $ids))] + $args;
             };
             add_filter('rest_revision_query', $noAutosaves);
             try {

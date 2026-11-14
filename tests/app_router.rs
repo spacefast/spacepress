@@ -2064,12 +2064,20 @@ fn live_regions_update_in_the_browser() {
         "an unchanged answer swaps nothing: {seen}"
     );
     // A background tab costs nothing until it is shown; then one request carries its region and a
-    // stale region updates. (Needs the client's hidden-tab rule from the reactive lane's #427.)
+    // stale region updates.
     assert_eq!(
         seen["background"],
         serde_json::json!({ "whileHidden": 0, "afterShown": 1, "regions": 1 }),
         "{seen}"
     );
+    // A prerendered page asks nothing until activated; a page restored from the back/forward cache
+    // (the old HTML, the old seed) asks once on `pageshow` and its stale region updates.
+    assert_eq!(
+        seen["prerendered"],
+        serde_json::json!({ "beforeActivation": 0, "afterActivation": 1, "regions": 1 }),
+        "{seen}"
+    );
+    assert_eq!(seen["restored"], serde_json::json!({ "asked": 1 }), "{seen}");
     let transport = &seen["transport"];
     assert_eq!(
         (&transport["before"], &transport["after"], &transport["asked"]),

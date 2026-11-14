@@ -100,6 +100,40 @@ try {
   await background.waitForFunction(() => [...document.querySelectorAll(".signature")].some((li) => li.textContent === "Back"), null, { timeout: 15000 });
   out.background = { whileHidden, afterShown: hiddenRequests.length - whileHidden, regions: hiddenRequests[whileHidden] ?? null };
 
+  // A prerendered page (speculation rules, `document.prerendering`): nothing until it is activated,
+  // then one request for its regions.
+  const prerendered = await browser.newPage();
+  await prerendered.addInitScript(() => {
+    let pre = true;
+    Object.defineProperty(document, "prerendering", { configurable: true, get: () => pre });
+    window.__activate = () => {
+      pre = false;
+      document.dispatchEvent(new Event("prerenderingchange"));
+    };
+  });
+  const preRequests = [];
+  prerendered.on("request", (r) => { if (r.url().endsWith("/__first/api/v1/_live")) preRequests.push(JSON.parse(r.postData() ?? "{}").queries?.length ?? 0); });
+  await prerendered.goto(`${url}/board`, { waitUntil: "networkidle" });
+  const beforeActivation = preRequests.length;
+  await prerendered.evaluate(() => window.__activate());
+  await prerendered.waitForResponse((r) => r.url().endsWith("/__first/api/v1/_live"), { timeout: 15000 });
+  out.prerendered = { beforeActivation, afterActivation: preRequests.length - beforeActivation, regions: preRequests[beforeActivation] ?? null };
+  await prerendered.close();
+
+  // A page restored from the back/forward cache: its DOM is the old HTML with the old seed. It asks
+  // once on `pageshow` (`persisted`), and a region whose data changed meanwhile updates.
+  const restored = await browser.newPage();
+  const restoredRequests = [];
+  restored.on("request", (r) => { if (r.url().endsWith("/__first/api/v1/_live")) restoredRequests.push(Date.now()); });
+  await restored.goto(`${url}/board`, { waitUntil: "networkidle" });
+  if (restoredRequests.length === 0) await restored.waitForResponse((r) => r.url().endsWith("/__first/api/v1/_live"), { timeout: 15000 });
+  const beforeRestore = restoredRequests.length;
+  await fetch(`${url}/__first/api/v1/signatures`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Restored" }) });
+  await restored.evaluate(() => window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true })));
+  await restored.waitForFunction(() => [...document.querySelectorAll(".signature")].some((li) => li.textContent === "Restored"), null, { timeout: 15000 });
+  out.restored = { asked: restoredRequests.length - beforeRestore };
+  await restored.close();
+
   // `<Live>` around `<Comments>`, with a realtime transport live (a fake one the page registers
   // before any module runs, as a host's would be): a comment approved on the server shows at once
   // on a notice naming `wp:comments`, well before the 60-second safety poll a live transport leaves.

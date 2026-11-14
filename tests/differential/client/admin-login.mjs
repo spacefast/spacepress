@@ -15,11 +15,18 @@ const shell = readdirSync(cache).filter((n) => n.startsWith("chromium_headless_s
 const executablePath = process.env.FIRST_CHROMIUM ?? join(cache, shell, "chrome-headless-shell-linux64/chrome-headless-shell");
 const [url] = process.argv.slice(2);
 const browser = await chromium.launch({ executablePath });
-const out = { errors: [] };
+// `errors`: page errors and failed wp-admin responses. A page whose own script failed to load (the
+// single-worker test server drops connections under load) throws "X is not defined" for every script
+// that needed it: those errors are not the page's, and are counted in `ignored` instead, so a harness
+// that drops every script cannot pass silently.
+const out = { errors: [], ignored: 0 };
 const path = (u) => { const x = new URL(u); return x.pathname + x.search; };
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  page.on("pageerror", (e) => out.errors.push(String(e)));
+  let dropped = false; // a script of the current page failed to load
+  page.on("framenavigated", (f) => { if (f === page.mainFrame()) dropped = false; });
+  page.on("requestfailed", (r) => { if (r.resourceType() === "script" && r.frame() === page.mainFrame()) dropped = true; });
+  page.on("pageerror", (e) => (dropped ? out.ignored++ : out.errors.push(`${String(e)} at ${path(page.url())}`)));
   page.on("response", (r) => {
     if (r.status() >= 500 || (r.status() >= 400 && r.url().includes("/wp-admin/") && !r.url().endsWith("favicon.ico"))) out.errors.push(`${r.status()} ${path(r.url())}`);
   });

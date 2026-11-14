@@ -1288,6 +1288,7 @@ fn frontend_modes_on_wordpress() {
             seen["admin"],
             serde_json::json!({
                 "errors": [],
+                "ignored": 0,
                 "signedOut": { "at": "/wp-login.php", "redirectTo": true },
                 "loginForm": 1,
                 "signedIn": "first admin",

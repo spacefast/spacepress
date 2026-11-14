@@ -27,6 +27,47 @@ fn at(program: &loader::Program, module: usize) -> Span {
     }
 }
 
+/// Where a module exports `name` (`export const name = …`), for a diagnostic at the export.
+fn export_at(program: &loader::Program, module: usize, name: &str) -> Span {
+    use crate::ir::{Pat, Stmt};
+    for stmt in &program.modules[module].body {
+        if let Stmt::Exported(inner) = stmt
+            && let Stmt::Decl {
+                pat: Pat::Id(n, span), ..
+            } = inner.as_ref()
+            && n == name
+        {
+            return *span;
+        }
+    }
+    at(program, module)
+}
+
+/// `export const route = { id: "notes.show" }` on a page: an ID that stays when the file moves.
+fn route_id(v: &Value, span: Span) -> Result<String, Diag> {
+    let bad = || {
+        Diag::new(span, "`route` must be `{ id: \"…\" }` with a literal id")
+            .help("an id is letters, digits, `.`, `-` and `_`, e.g. `export const route = { id: \"notes.show\" }`")
+    };
+    let Value::Object(o) = v else { return Err(bad()) };
+    let o = o.borrow();
+    if o.len() != 1 {
+        return Err(bad());
+    }
+    match o.get("id") {
+        Some(Value::Str(id))
+            if !id.is_empty()
+                && id.len() <= 100
+                && id
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')) =>
+        {
+            Ok(id.to_string())
+        }
+        _ => Err(bad()),
+    }
+}
+
 /// The compiled-function name stem for a route file: `app/blog/[slug]/page.tsx` → `app__blog__slug__page`.
 fn stem(file: &str) -> String {
     let mut out = String::new();
@@ -45,6 +86,8 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         return Ok(());
     }
     let mut files = indexmap::IndexMap::new();
+    // Explicit route ids (`export const route = { id }`), by route file.
+    let mut ids: indexmap::IndexMap<String, (String, Span)> = indexmap::IndexMap::new();
     for (path, module) in &program.app_files {
         let span = at(program, *module);
         let exports = ev.run_module(*module)?;
@@ -65,6 +108,15 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
         let stem = stem(path);
         let mut file = AppFile::default();
         let handler = path.ends_with("route.ts");
+        if let Some(v) = exports.get("route") {
+            let span = export_at(program, *module, "route");
+            let id = route_id(v, span)?;
+            if let Some((other, _)) = ids.iter().find(|(_, (i, _))| *i == id) {
+                return Err(Diag::new(span, format!("route id `{id}` is already {other}'s"))
+                    .help("give each page its own id; an id keeps the page's WordPress Page when the file moves"));
+            }
+            ids.insert(path.clone(), (id, span));
+        }
         match exports.get("default") {
             Some(Value::Closure(c)) if !handler => {
                 file.component = Some(String::new());
@@ -229,7 +281,8 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
                 .filter_map(|f| module_of(f))
                 .collect::<Vec<_>>(),
         ),
-        id: r.id(),
+        id: ids.get(&r.file).map(|(id, _)| id.clone()).unwrap_or_else(|| r.id()),
+        explicit_id: ids.get(&r.file).map(|(_, span)| *span),
         pattern: r.pattern(),
         page: (r.kind == RouteKind::Page).then(|| r.file.clone()),
         handler: (r.kind == RouteKind::Handler).then(|| r.file.clone()),

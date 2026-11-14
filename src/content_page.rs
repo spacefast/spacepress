@@ -27,7 +27,7 @@ use sha2::{Digest, Sha256};
 /// The route file name of a content-owned page.
 pub const FILE: &str = "page.md";
 
-const KEYS: &[&str] = &["title", "description", "status", "canonical", "robots"];
+const KEYS: &[&str] = &["title", "description", "status", "canonical", "robots", "id"];
 
 /// One `page.md`, as the build read it.
 #[derive(Debug, Clone)]
@@ -115,6 +115,14 @@ fn leading_heading(body: &str) -> Option<(String, String)> {
 pub fn register(program: &loader::Program, ext: &mut extract::Extracted) -> Result<(), Diag> {
     let first = program.root.join(crate::layout::ROOT);
     let mut pages = Vec::new();
+    // One id space: the page.tsx `route` exports already in the table, then each page.md's `id:`.
+    let mut ids: Vec<(String, String, Span)> = ext
+        .schema
+        .app
+        .iter()
+        .flat_map(|a| &a.routes)
+        .filter_map(|r| Some((r.id.clone(), r.page.clone()?, r.explicit_id?)))
+        .collect();
     for route in &program.app.routes {
         if route.kind != RouteKind::Page || !route.file.ends_with(FILE) {
             continue;
@@ -217,6 +225,24 @@ pub fn register(program: &loader::Program, ext: &mut extract::Extracted) -> Resu
             }
         }
         let description = text_key("description")?;
+        // `id: notes.colophon` keeps the Page when the file moves to another URL.
+        let id = match text_key("id")? {
+            None => None,
+            Some(id)
+                if id.len() <= 100
+                    && id
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')) =>
+            {
+                Some((id, at(key_line(&text, "id"))))
+            }
+            Some(_) => {
+                return Err(
+                    Diag::new(at(key_line(&text, "id")), "`id` is letters, digits, `.`, `-` and `_`")
+                        .help("write `id: about.colophon`"),
+                );
+            }
+        };
         let slug = match route.segments.last() {
             Some(Segment::Literal(l)) => l.clone(),
             _ => "home".into(),
@@ -231,10 +257,22 @@ pub fn register(program: &loader::Program, ext: &mut extract::Extracted) -> Resu
                 .map(|b| format!("{b:02x}"))
                 .collect::<String>()
         );
-        // Keyed by URL: the Page stands for the address, so moving the file between route groups
-        // (`(site)/guide` → `(docs)/guide`) keeps its Page.
+        // Keyed by URL, or by its `id`: the Page stands for the address, so moving the file between
+        // route groups (`(site)/guide` → `(docs)/guide`) keeps its Page, and an `id` keeps it when
+        // the address changes too.
+        let key = match &id {
+            Some((id, span)) => {
+                if let Some(other) = ids.iter().find(|(i, _, _)| i == id) {
+                    return Err(Diag::new(*span, format!("id `{id}` is already {}'s", other.1))
+                        .help("give each page its own id; an id keeps the page's WordPress Page when the file moves"));
+                }
+                ids.push((id.clone(), route.file.clone(), *span));
+                format!("id:{id}")
+            }
+            None => route.pattern(),
+        };
         pages.push((
-            route.pattern(),
+            key,
             route.layouts.clone(),
             Page {
                 file: route.file.clone(),

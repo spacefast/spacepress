@@ -211,7 +211,7 @@ final class Facade
         if ($kind['type'] === 'post' && ($segments[2] ?? null) === 'revisions' && count($segments) <= 5) {
             self::gate($kind, 'update');
 
-            return self::revisions($kind, $method, self::id($kind, $segments[1]), array_slice($segments, 3));
+            return self::revisions($kind, $method, self::id($kind, $segments[1]), array_slice($segments, 3), $query);
         }
         if ($kind['type'] === 'post' && ($segments[2] ?? null) === 'staged' && count($segments) <= 4) {
             // A kind's staged versions ({@see Staged}): First's own, with no core route to map.
@@ -271,15 +271,16 @@ final class Facade
         return self::json(200, ['data' => Kinds::row($kind, $row)]);
     }
 
-    /** A list: First's `where`/`orderBy`/`with`/`search`, `limit` and an opaque `cursor` (the next page). */
-    private static function list(array $kind, array $query): array
+    /**
+     * A list request's page: `limit` (default 50, at most 100), then `offset` or the opaque `cursor` a
+     * previous page of this API returned. @return array{int, int} [limit, offset]
+     */
+    private static function paging(array $query): array
     {
         $limit = isset($query['limit']) ? (int) $query['limit'] : self::LIMIT;
         if ($limit < 1 || (string) $limit !== (string) ($query['limit'] ?? $limit)) {
             throw HttpError::invalidQuery('limit must be a positive integer', '/limit');
         }
-        $limit = min($limit, self::MAX_LIMIT);
-        // `offset` skips rows; `cursor` (opaque) is where the previous page of this API stopped.
         $offset = 0;
         if (isset($query['offset'])) {
             if (!preg_match('/^\d{1,9}$/D', (string) $query['offset'])) {
@@ -294,6 +295,20 @@ final class Facade
             }
             $offset = $decoded['offset'];
         }
+
+        return [min($limit, self::MAX_LIMIT), $offset];
+    }
+
+    /** The opaque cursor of the page starting at $next, or null when $next is past the last of $total. */
+    private static function cursor(int $next, int $total): ?string
+    {
+        return $next < $total ? rtrim(strtr(base64_encode((string) json_encode(['offset' => $next])), '+/', '-_'), '=') : null;
+    }
+
+    /** A list: First's `where`/`orderBy`/`with`/`search`, `limit` and an opaque `cursor` (the next page). */
+    private static function list(array $kind, array $query): array
+    {
+        [$limit, $offset] = self::paging($query);
         $paging = ['per_page' => $limit] + ($offset > 0 ? ['offset' => $offset] : []);
         if (Kinds::first($kind)) {
             // `where` is always First's (an empty filter when none was given): First's pipeline picks the
@@ -313,9 +328,7 @@ final class Facade
         }
         $response = self::run(self::request('GET', $kind['route'], $params));
         $rows = self::unwrap($response);
-        $total = (int) ($response->get_headers()['X-WP-Total'] ?? 0);
-        $next = $offset + $limit;
-        $cursor = $next < $total ? rtrim(strtr(base64_encode((string) json_encode(['offset' => $next])), '+/', '-_'), '=') : null;
+        $cursor = self::cursor($offset + $limit, (int) ($response->get_headers()['X-WP-Total'] ?? 0));
 
         $rows = array_values(array_filter(Kinds::rows($kind, $rows), static fn ($r) => $r !== null));
 
@@ -673,7 +686,7 @@ final class Facade
      * A restore is the revision's row as an update of the post through its core route, so the update
      * rule, validation and hooks decide it exactly as any other edit. Needs First's update rule.
      */
-    private static function revisions(array $kind, string $method, int|string $id, array $rest): array
+    private static function revisions(array $kind, string $method, int|string $id, array $rest, array $query = []): array
     {
         $collection = (string) $kind['name'];
         $spec = $kind['spec'];
@@ -698,17 +711,32 @@ final class Facade
         }
         if ($rest === []) {
             \First\App::allow($method, ['GET', 'HEAD']);
+            // A page of core's revisions route, newest first, as `{ data, cursor }` like every list.
+            // Autosaves are drafts in progress, not revisions: they are left out in the query, so the
+            // page counts and the cursor stay exact.
+            [$limit, $offset] = self::paging($query);
+            $noAutosaves = static function (array $args): array {
+                global $wpdb;
+                $parent = (int) ($args['post_parent'] ?? 0);
+                // wp_is_post_autosave(): a revision whose name holds "<parent>-autosave".
+                $ids = $wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'revision' AND post_parent = %d AND post_name LIKE %s", $parent, '%' . $wpdb->esc_like("$parent-autosave") . '%'));
+                // Core already sets `post__not_in` from the route's `exclude` (default []): add to it.
+                return $ids === [] ? $args : ['post__not_in' => array_merge((array) ($args['post__not_in'] ?? []), array_map('intval', $ids))] + $args;
+            };
+            add_filter('rest_revision_query', $noAutosaves);
+            try {
+                $response = self::run(self::request('GET', $route, ['context' => 'view', 'per_page' => $limit, '_fields' => 'id,author,date_gmt'] + ($offset > 0 ? ['offset' => $offset] : [])));
+            } finally {
+                remove_filter('rest_revision_query', $noAutosaves);
+            }
             $out = [];
-            foreach ((array) $hidden(fn () => self::dispatch('GET', $route, ['context' => 'view', 'per_page' => 100, '_fields' => 'id,author,date_gmt'])) as $r) {
-                if (wp_is_post_autosave((int) $r['id'])) {
-                    continue;
-                }
+            foreach ((array) $hidden(static fn () => self::unwrap($response)) as $r) {
                 $user = (int) ($r['author'] ?? 0) > 0 ? get_userdata((int) $r['author']) : null;
                 $out[] = ['id' => (int) $r['id'], 'at' => self::isoGmt((string) ($r['date_gmt'] ?? '')),
                     'user' => $user instanceof \WP_User ? ['id' => (int) $user->ID, 'name' => (string) $user->display_name] : null];
             }
 
-            return self::json(200, ['data' => $out]);
+            return self::json(200, ['data' => $out, 'cursor' => self::cursor($offset + $limit, (int) ($response->get_headers()['X-WP-Total'] ?? 0))]);
         }
         if (!preg_match('/^\d{1,18}$/D', $rest[0])) {
             throw HttpError::notFound("No revision {$rest[0]}");

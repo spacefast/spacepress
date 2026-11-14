@@ -291,7 +291,8 @@ fn emit_wp_content(project: &Path, root: &Path, built: &Built) -> std::io::Resul
     let mut manifest = serde_json::json!({"first":env!("CARGO_PKG_VERSION"),"runtime":platform::SERIES,"app":built.schema.name,"plugins":versions,"requires":requires,"dependencies":prepared.dependencies().collect::<Vec<_>>(),"locales":built.schema.locales});
     // Sealed mode (docs/sealed.md): the plugin slugs this site runs, for a host to enforce. No key
     // when the app isn't sealed.
-    if let Some(sealed) = crate::bundle::sealed_plugins(&built.schema, crate::app_plugin::first_plugins(&built.schema)) {
+    if let Some(sealed) = crate::bundle::sealed_plugins(&built.schema, crate::app_plugin::first_plugins(&built.schema))
+    {
         manifest["sealed"] = sealed.into();
     }
     write(

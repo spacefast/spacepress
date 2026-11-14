@@ -81,7 +81,9 @@ test("/wp-admin/new/ asks anonymous visitors to sign in and serves the committed
     const menu = await fetch(`${site}/wp-admin/admin.php?page=first-admin`, { headers: { cookie }, redirect: "manual" });
     assert.equal(menu.status, 302);
     assert.equal(menu.headers.get("location"), `${site}/wp-admin/new/`);
-    // Classic wp-admin is unchanged.
+    // Classic wp-admin is unchanged. (Polylang sends the first wp-admin load after its activation
+    // to its setup wizard; this asks for a page, so take that one-time redirect out of the way.)
+    wp("transient", "delete", "pll_activation_redirect");
     const classic = await fetch(`${site}/wp-admin/profile.php`, { headers: { cookie }, redirect: "manual" });
     assert.equal(classic.status, 200, `${role} keeps classic wp-admin`);
     assert.match(await classic.text(), /id="adminmenu"/);

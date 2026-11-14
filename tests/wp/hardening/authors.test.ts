@@ -86,7 +86,7 @@ test("a scoped agent credential without personal data sees no account details", 
 test("publicAuthors: true keeps them as WordPress ships them", async () => {
   const schema = wp("eval", "echo First\\Wp\\Runtime::plugin()->dir . '/first/app/schema.php';");
   const original = wp("eval", `echo base64_encode(file_get_contents('${schema}'));`);
-  wp("eval", `file_put_contents('${schema}', str_replace("    'admin' => false,\\n", "    'admin' => false,\\n    'publicAuthors' => true,\\n", file_get_contents('${schema}')));`);
+  wp("eval", `file_put_contents('${schema}', str_replace(["    'admin' => false,\\n", "    'admin' => true,\\n"], ["    'admin' => false,\\n    'publicAuthors' => true,\\n", "    'admin' => true,\\n    'publicAuthors' => true,\\n"], file_get_contents('${schema}')));`);
   try {
     assert.equal((await fetch(`${harness.url}/__first/api/v1`, { headers: auth("admin") }).then((r) => r.json())).data.runtime.wp.publicAuthors, true);
     assert.equal((await get("/wp-json/wp/v2/users")).status, 200);

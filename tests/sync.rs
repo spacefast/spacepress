@@ -2881,7 +2881,7 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
     }
 }
 
-/// An Astro project's `src/content.config.ts` (docs/astro.md): its `glob()` collections are kinds
+/// An Astro project's `src/content.config.ts` (docs/decisions/2026-11-14-astro-content-config.md): its `glob()` collections are kinds
 /// whose files sync like any synced kind's. Built, synced to a real site and back: the fields keep
 /// their types, a file's path is its slug and its folder its parent, an edit on the site comes back
 /// to the same file, and a collection with another loader stays Astro's.
@@ -2981,7 +2981,9 @@ fn astro_content_collections_are_synced_kinds() {
     );
     // A folder is the parent of the files in it, as Astro names them (`2024/nested`).
     assert_eq!(rows[1]["parent"], rows[2]["id"], "{posts}");
+    // A flat `*.md` collection: its slug follows the title, and a file in a folder below isn't read.
     let (_, authors) = http_call(port, &token, "GET", "/authors", None);
+    assert_eq!(authors["data"].as_array().unwrap().len(), 1, "{authors}");
     assert_eq!(authors["data"][0]["slug"], "ada", "{authors}");
     assert_eq!(authors["data"][0]["email"], "ada@example.test", "{authors}");
 
@@ -3065,6 +3067,60 @@ fn astro_content_fields_first_cant_map_are_build_errors_naming_the_field() {
             "pattern: \"**/*.{md,mdx}\" }",
             "the loader of `blog` can't be read as a First kind's files",
             ".mdx",
+        ),
+        (
+            "pattern: \"**/*.md\" }",
+            "pattern: \"[^_]*.md\" }",
+            "the loader of `blog` can't be read as a First kind's files",
+            "leave files out",
+        ),
+        (
+            "  blog,",
+            "  \"blog-posts\": blog,",
+            "collection `blog-posts` can't be a First kind's name",
+            "letters, digits",
+        ),
+        (
+            "  blog,",
+            "  media: blog,",
+            "collection `media` can't be a First kind's name",
+            "route of its own",
+        ),
+        (
+            "  blog,",
+            "  aVeryLongCollectionName: blog,",
+            "collection `aVeryLongCollectionName` can't be a First kind's name",
+            "at most 14",
+        ),
+        (
+            "    title: z.string(),",
+            "    title: z.string().optional(),",
+            "collection `blog` without a title",
+            "title: z.string()",
+        ),
+        (
+            "    draft: z.boolean().default(false),",
+            "    locale: z.string(),",
+            "field `locale` of `blog` can't be a First field",
+            "translations",
+        ),
+        (
+            "    draft: z.boolean().default(false),",
+            "    \"hero-image\": z.string(),",
+            "field `hero-image` of `blog` can't be a First field",
+            "letters, digits",
+        ),
+        (
+            "    rank: z.number().int().nonnegative().optional(),",
+            "    rank: z.number().default(\"x\"),",
+            "field `rank`: its default isn't a `z.number()` value",
+            "own type",
+        ),
+        (
+            "    rank: z.number().int().nonnegative().optional(),",
+            "    rank: z.number().positive(),",
+            "field `rank`: `.positive()` on `z.number()` has no First field type",
+            ".min()",
         ),
     ] {
         let _ = std::fs::remove_dir_all(&project);

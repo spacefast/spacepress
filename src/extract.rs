@@ -605,6 +605,13 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     if let Some(hooks_val) = cfg_map.get("hooks") {
         hooks(hooks_val, span_of(ev, config, "hooks", config_span), ev, &mut out, None)?;
     }
+    // `.on({ ... })` on each registered kind, in call order (spec §2.8, ruling 18).
+    for c in out.collections.clone() {
+        let calls = c.hooks.borrow().clone();
+        for (handlers, span) in calls {
+            kind_hooks(c.table(), &handlers, span, ev, &mut out, None)?;
+        }
+    }
     if let Some(actions_val) = cfg_map.get("actions") {
         actions(
             actions_val,
@@ -650,12 +657,30 @@ fn hooks(
             return Err(d);
         };
         let table = coll.table.clone();
-        let Value::Object(per_map) = per else {
+        let Value::Object(_) = per else {
             return Err(Diag::new(
                 kspan,
                 format!("`hooks.{key}` must be an object of hook functions"),
             ));
         };
+        kind_hooks(&table, per, kspan, ev, out, plugin)?;
+    }
+    Ok(())
+}
+
+/// One kind's hooks, from `hooks.<kind>` or a `.on({ ... })` call: each handler becomes a hook root,
+/// and several for one event run in registration order (plugins first, then the app).
+fn kind_hooks(
+    table: &str,
+    per: &Value,
+    kspan: Span,
+    ev: &mut Evaluator<'_>,
+    out: &mut Extracted,
+    plugin: Option<(usize, &str)>,
+) -> Result<()> {
+    let table = table.to_string();
+    let Value::Object(per_map) = per else { unreachable!() };
+    {
         for (hname, f) in per_map.borrow().iter() {
             let fspan = ev.key_span(per, hname).unwrap_or(kspan);
             let Some(kind) = HookKind::parse(hname) else {
@@ -671,6 +696,13 @@ fn hooks(
                     format!("`{hname}` must be a function, not {}", f.describe()),
                 ));
             };
+            if kind == HookKind::AfterPublish && !out.schema.collections[&table].drafts {
+                return Err(Diag::new(
+                    fspan,
+                    "`afterPublish` is for collections: a table() row is never published",
+                )
+                .help("use afterCreate or afterUpdate on a table()"));
+            }
             if kind == HookKind::BeforeCreate {
                 let coll = out.schema.collections.get_mut(&table).expect("collection");
                 // Plugin hooks run before the app's; any of them may fill a required column.

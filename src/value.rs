@@ -435,6 +435,8 @@ pub struct CollectionVal {
     pub columns: IndexMap<String, Rc<ColBuilder>>,
     pub options: Option<Value>,
     pub span: Span,
+    /// `.on({ ... })` calls in order: (the handlers object, where the call is).
+    pub hooks: RefCell<Vec<(Value, Span)>>,
 }
 
 impl CollectionVal {

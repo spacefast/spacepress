@@ -291,16 +291,20 @@ pub enum HookKind {
     AfterUpdate,
     BeforeDelete,
     AfterDelete,
+    /// A post kind's item became published (created published, updated into it, or a scheduled
+    /// item reached its time). Spec §2.8.
+    AfterPublish,
 }
 
 impl HookKind {
-    pub const ALL: [HookKind; 6] = [
+    pub const ALL: [HookKind; 7] = [
         HookKind::BeforeCreate,
         HookKind::AfterCreate,
         HookKind::BeforeUpdate,
         HookKind::AfterUpdate,
         HookKind::BeforeDelete,
         HookKind::AfterDelete,
+        HookKind::AfterPublish,
     ];
 
     pub fn name(self) -> &'static str {
@@ -311,6 +315,7 @@ impl HookKind {
             HookKind::AfterUpdate => "afterUpdate",
             HookKind::BeforeDelete => "beforeDelete",
             HookKind::AfterDelete => "afterDelete",
+            HookKind::AfterPublish => "afterPublish",
         }
     }
 

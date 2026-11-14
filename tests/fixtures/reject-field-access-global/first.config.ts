@@ -4,5 +4,5 @@ const notes = table({ body: text().optional() });
 
 export default defineConfig({
   tables: { notes },
-  globals: { settings: global("settings", { secret: text().access({ read: "editor" }).optional() }) },
+  globals: { settings: global({ secret: text().access({ read: "editor" }).optional() }) },
 });

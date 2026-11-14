@@ -5,7 +5,7 @@ import { defineConfig, files } from "first";
 export default defineConfig({
   name: "openapi",
   files: {
-    decks: files("decks", { accept: ["text/plain"], maxBytes: 100_000, access: { read: "owner", create: "author", delete: "owner" } }),
+    decks: files({ accept: ["text/plain"], maxBytes: 100_000, access: { read: "owner", create: "author", delete: "owner" } }),
   },
   services: { search: { notes: ["title"] } },
 });

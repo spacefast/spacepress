@@ -135,7 +135,7 @@ check('the owner gets the row with a fresh signed url', $s === 200 && $download(
 isProblem('wrong bucket in the path', call('GET', "/files/shared/{$deck['id']}", 'alice'), 404, 'not_found');
 isProblem('owner rule on delete', call('DELETE', "/files/decks/{$deck['id']}", 'ed'), 403, 'forbidden');
 
-// ================================================================ file({ bucket }) columns
+// ================================================================ file(bucket) columns
 
 $shared = $upload('shared', 'everyone', 'pub.txt', 'bob')[1];
 isProblem('file column: unknown id', call('POST', '/talks', 'alice', ['title' => 'x', 'deck' => 999999]), 422, 'invalid_input', '/deck');

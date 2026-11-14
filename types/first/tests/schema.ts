@@ -88,7 +88,7 @@ export const comments = table({
   approved: boolean().default(false),
 }, { access: { read: (ctx) => ctx.user ? true : { approved: true }, create: "anyone" } });
 
-export const settings = global("settings", {
+export const settings = global({
   siteTitle: text().default("My blog").max(80),
   postsPerPage: integer().default(10).min(1).max(50),
   website: url().optional(),

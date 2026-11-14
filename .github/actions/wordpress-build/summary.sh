@@ -5,6 +5,9 @@
 set -uo pipefail
 name=$1 version=$2 lane=$3 log=$4
 out=${GITHUB_STEP_SUMMARY:-/dev/stdout}
+# SUMMARY_FILE: a copy for the workflow's report job, which opens the tracking issue from it.
+copy=${SUMMARY_FILE:-/dev/null}
+[ "$copy" = /dev/null ] || mkdir -p "$(dirname "$copy")"
 {
   echo "### $lane on WordPress ${version:-?} ($name)"
   if [ ! -s "$log" ]; then
@@ -38,4 +41,4 @@ out=${GITHUB_STEP_SUMMARY:-/dev/stdout}
   fi
   echo
   echo "What First relies on in core, and what to check first: docs/wordpress-internals.md."
-} >> "$out"
+} | tee -a "$copy" >> "$out"

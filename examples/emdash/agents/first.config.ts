@@ -19,18 +19,17 @@ export const privateNotes = table({ note: text() }, {
   access: { read: "admin", create: "admin", update: "admin", delete: "admin" },
 });
 
-export const settings = global("settings", {
+export const settings = global({
   heading: text().default("The agent notebook"),
   description: text().default("Written by people and their tools. Published only when ready."),
 });
 
-export const privateSettings = global("privateSettings", {
+export const privateSettings = global({
   note: text().default("Operator notes"),
 }, { agents: false, access: { read: "admin", update: "admin" } });
 
 export default defineConfig({
   name: "agents",
-  admin: true,
   collections: { articles },
   tables: { privateNotes },
   globals: { settings, privateSettings },

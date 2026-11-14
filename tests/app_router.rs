@@ -183,6 +183,44 @@ fn app_router_serves_pages_on_wordpress() {
     let _ = std::fs::remove_dir_all(project);
 }
 
+/// WordPress in a subdirectory (tests/php/app_router_subdirectory.php): examples/full-site served under
+/// `/blog`, as WordPress Playground serves every site under `/scope:<id>/`. A note's page (`url:
+/// "/notes/:slug"`) answers at its own URL; the request path starts with the home path and the
+/// item's path does not, so the two are compared without it.
+#[test]
+fn app_router_serves_item_pages_under_a_subdirectory() {
+    let project = std::env::temp_dir().join(format!("first-full-site-subdir-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&project);
+    copy(&root().join("examples/full-site"), &project);
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_router_subdirectory.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    let url = seen["url"].as_str().unwrap();
+    assert!(url.ends_with("/blog"), "{url}");
+    assert_eq!(seen["link"], format!("{url}/notes/dawn-on-the-ridge/"));
+    assert_eq!(seen["notes"], serde_json::json!([200, "Notes"]));
+    assert_eq!(seen["note"], serde_json::json!([200, "Dawn on the ridge"]));
+    assert_eq!(seen["note slash"], serde_json::json!([200, "Dawn on the ridge"]));
+    // Still a 404: a draft for a signed-out visitor, and a slug no note has.
+    assert_eq!(seen["draft"], serde_json::json!([404, "Not found"]));
+    assert_eq!(seen["missing"], serde_json::json!([404, "Not found"]));
+    assert_eq!(seen["about"], serde_json::json!([200, "About"]));
+    let _ = std::fs::remove_dir_all(project);
+}
+
 /// `first build` writes `first/_generated/routes.d.ts`; with it, TypeScript checks every `<Link href>`
 /// and `PageProps<"route">` against the app's own routes.
 #[test]
@@ -655,6 +693,25 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &[("first/app/@modal/page.tsx", page)],
         "parallel route slot",
         "first/app/@modal",
+    );
+    // `apiReference()` reads a JSON file of the app's `public/`, named as a literal.
+    rejects(
+        &dir,
+        &[(
+            "first/app/api/page.tsx",
+            "import { apiReference } from \"first/content\";\nconst file = \"x.json\";\nexport default function P() { return <p>{apiReference(file).title}</p>; }\n",
+        )],
+        "`apiReference()` takes the path of a JSON file in `public/`, as a string literal",
+        "first/app/api/page.tsx:3",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/api/page.tsx",
+            "import { apiReference } from \"first/content\";\nexport default function P() { return <p>{apiReference(\"../secrets.json\").title}</p>; }\n",
+        )],
+        "`apiReference()` takes the path of a JSON file in `public/`",
+        "first/app/api/page.tsx:2",
     );
     rejects(
         &dir,
@@ -1201,7 +1258,14 @@ fn frontend_modes_on_wordpress() {
             "both ids": 404,
             "listed embed": [false, "/author/editor/"],
             "unlisted embed": [true, ""],
-            "core route": [401, 401]
+            "core route": [401, 401],
+            "api list": true,
+            "api listed": 200,
+            "api unlisted": 401,
+            "api missing": 401,
+            "purged": true,
+            "unlisted after": 404,
+            "public sitemap": ["/author/admin/", "/author/editor/"]
         }),
         "{theme}"
     );
@@ -1525,6 +1589,313 @@ fn refuses_client_code_outside_the_subset() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// Forms without JavaScript (rendering.md §4.2), as a browser with scripts off submits them: the
+/// form posts form-encoded to its action, the facade answers 303 back to the page with a sealed,
+/// read-once flash, and `useFormState` shows the result or the error. The page a form comes back
+/// to is never shared, a cross-site post is refused, and a signed-in form carries the REST nonce.
+#[test]
+fn forms_work_without_javascript() {
+    let project = fixture("forms", "serve");
+    build(&project);
+    // `useFormState(action)` is typed with the action's result.
+    let types = root().join("types/first");
+    std::fs::write(
+        project.join("tsconfig.json"),
+        serde_json::json!({
+            "compilerOptions": {
+                "target": "ES2022", "lib": ["ES2022", "DOM"], "module": "ESNext", "moduleResolution": "bundler",
+                "strict": true, "noEmit": true, "types": [], "jsx": "react-jsx", "jsxImportSource": "first",
+                "allowImportingTsExtensions": true,
+                "paths": { "first": [types.join("index.d.ts")], "first/*": [types.join("*.d.ts")] },
+            },
+            "include": ["first.config.ts", "first", "typed.ts"],
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("typed.ts"),
+        r#"import { useFormState } from "first/app";
+import { subscribe } from "./first/server";
+const state = useFormState(subscribe);
+export const seats: number | undefined = state.result?.seats;
+// @ts-expect-error: the result has no `nope`
+export const nope = state.result?.nope;
+"#,
+    )
+    .unwrap();
+    let tsc = Command::new("tsc")
+        .arg("-p")
+        .arg(&project)
+        .output()
+        .expect("tsc is required");
+    assert!(tsc.status.success(), "{}", String::from_utf8_lossy(&tsc.stdout));
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/forms.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        seen["form"],
+        serde_json::json!({
+            "method": "post",
+            "action": "/__first/api/v1/actions/subscribe",
+            "hidden": [["_first_return", "hidden", "/?ref=nav"]],
+            "page cache": "public, max-age=0, s-maxage=300, must-revalidate",
+        }),
+        "an anonymous page with a form stays shared and carries no nonce: {seen}"
+    );
+    assert_eq!(
+        seen["success"],
+        serde_json::json!({
+            "status": 303,
+            "location": "/?ref=nav&_flash=ID",
+            "cookie flags": ["Max-Age=120", "Path=/", "HttpOnly", "SameSite=Lax"],
+            "done": "Subscribed ada@example.test for 3 (weekly: true)",
+            "back cache": "private, no-store, max-age=0",
+            "cookie cleared": true,
+            "again": null,
+            "forged": null,
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["unchecked"],
+        serde_json::json!("Subscribed bo@example.test for 1 (weekly: false)")
+    );
+    assert_eq!(
+        seen["invalid"],
+        serde_json::json!({
+            "status": 303,
+            "error": "email must be an email address",
+            "field": "email must be an email address",
+            "refilled": "not an email",
+            "seats refilled": "2",
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["password"],
+        serde_json::json!(["Unknown field 'password'", "", "p@example.test"]),
+        "{seen}"
+    );
+    assert_eq!(seen["handler error"], serde_json::json!("Five seats at most"));
+    assert_eq!(seen["not a number"], serde_json::json!("seats must be an integer"));
+    assert_eq!(seen["open redirect"], serde_json::json!(true));
+    assert_eq!(
+        seen["cross site"],
+        serde_json::json!([303, "A form posts here only from this site's own pages", null])
+    );
+    assert_eq!(
+        seen["json"],
+        serde_json::json!([200, 1]),
+        "a JSON call to the same URL is unchanged"
+    );
+    assert_eq!(
+        seen["signed out"],
+        serde_json::json!(["Sign in to do run members", null])
+    );
+    let user = seen["signed in"]["user"].as_i64().unwrap();
+    assert_eq!(
+        seen["signed in"],
+        serde_json::json!({
+            "nonce": true,
+            "page cache": "private, no-store, max-age=0",
+            "member": format!("Ann by {user}"),
+            "user": user,
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["no nonce"],
+        serde_json::json!([303, "Sign in to do run members", null]),
+        "{seen}"
+    );
+}
+
+/// `<Comments for={item} />` and the policy behind it (docs/decisions/2026-11-14-comments.md), with
+/// comments arriving all three ways: the component's form with JavaScript off, the facade's
+/// `POST /comments`, and core's `wp-comments-post.php`. Each gets the same answer from the one
+/// enforcement point on core's hooks, whatever the Discussion settings say.
+#[test]
+fn comments_follow_the_kind_policy_on_every_path() {
+    let project = fixture("comments", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/comments.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    // Signed out: the approved thread and a sign-in link, no form; the page stays shared.
+    assert_eq!(
+        seen["signed out"],
+        serde_json::json!({
+            "status": 200, "thread": ["First!"], "forms": 0, "sign in": "Sign in to comment",
+            "cache": "public, max-age=0, s-maxage=300, must-revalidate",
+        }),
+        "{seen}"
+    );
+    // ...and every path refuses a signed-out comment, saving nothing.
+    assert_eq!(
+        seen["signed out posts"],
+        serde_json::json!({ "facade": 401, "form": [303, "Sorry, you must be logged in to comment."], "core": 401, "saved": 0 }),
+        "{seen}"
+    );
+    // A first-time commenter's comment is held and shown only to them, with the form's notice.
+    assert_eq!(
+        seen["first comment"],
+        serde_json::json!({
+            "status": 303, "stored": "unapproved", "notice": "Your comment is awaiting moderation.",
+            "ann sees": ["First!", "Hello from Ann (held)"], "others see": ["First!"], "bo sees": ["First!"],
+            "page cache": "private, no-store, max-age=0", "nonce": true,
+        }),
+        "{seen}"
+    );
+    // After one of theirs is approved, the next is approved at once, even with the site's
+    // "hold every comment" setting on; a first-timer through core's handler is held.
+    assert_eq!(seen["second comment"], serde_json::json!([201, "approved"]), "{seen}");
+    assert_eq!(seen["core path"], serde_json::json!([302, "unapproved"]), "{seen}");
+    // Threaded to depth 3: a fourth level is refused on every path (never flattened), and the page
+    // offers no reply form under a depth-3 comment.
+    let depth = &seen["depth"];
+    assert_eq!(
+        (&depth["form"], &depth["facade"], &depth["core"], &depth["saved"]),
+        (
+            &serde_json::json!("Replies go 3 levels deep here."),
+            &serde_json::json!(400),
+            &serde_json::json!(400),
+            &serde_json::json!(0)
+        ),
+        "{seen}"
+    );
+    assert_eq!(
+        depth["thread"],
+        serde_json::json!(["First!", ">depth two", ">>depth three", "Hello from Ann", "Ann again"])
+    );
+    assert!(
+        !depth["reply forms on"]
+            .as_array()
+            .unwrap()
+            .contains(&depth["depth three id"]),
+        "{seen}"
+    );
+    // A draft's thread isn't readable by a visitor who can't read the draft, nor commentable.
+    assert_eq!(
+        seen["draft"],
+        serde_json::json!({ "page": 404, "page shows": false, "list": 403, "post": 403 }),
+        "{seen}"
+    );
+    assert_eq!(seen["memo"], 403, "a kind without comments takes none: {seen}");
+}
+
+/// `<Comments for>` on a kind without `comments`, or on something that isn't an item, is a build
+/// error at the prop.
+#[test]
+fn refuses_comments_without_the_kind_option() {
+    let dir = std::env::temp_dir().join(format!("first-comments-reject-{}", std::process::id()));
+    let schema = (
+        "first/schema.ts",
+        "import { collection, text, slug } from \"first\";\nexport const memos = collection({ title: text(), slug: slug({ source: \"title\" }).optional() }, { title: \"title\", url: \"/memos/:slug\" });\n",
+    );
+    rejects(
+        &dir,
+        &[
+            schema,
+            (
+                "first/app/memos/[slug]/page.tsx",
+                "import { Comments, type PageProps } from \"first/app\";\nexport default function Memo({ item }: PageProps<\"memos/[slug]\">) {\n  return <Comments for={item} />;\n}\n",
+            ),
+        ],
+        "`memos` has comments off",
+        "first/app/memos/[slug]/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[
+            schema,
+            (
+                "first/app/page.tsx",
+                "import { Comments } from \"first/app\";\nexport default function Home() {\n  return <Comments for={{ id: 1 }} />;\n}\n",
+            ),
+        ],
+        "`<Comments for>` takes a row of a collection",
+        "first/app/page.tsx:3:",
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// What a form with an action can't be is a build error at the line, with the fix.
+#[test]
+fn refuses_forms_it_cannot_post() {
+    let dir = std::env::temp_dir().join(format!("first-forms-reject-{}", std::process::id()));
+    let server = (
+        "first/server.ts",
+        "import { action, text } from \"first\";\nexport const send = action({ input: { name: text() }, access: \"anyone\", async handler({ name }) { return name; } });\n",
+    );
+    let page = |body: &str| {
+        format!("import {{ useFormState }} from \"first/app\";\nimport {{ send }} from \"../server\";\n{body}\n")
+    };
+    rejects(
+        &dir,
+        &[
+            server,
+            (
+                "first/app/page.tsx",
+                &page("export default function Page() { return <form action={send} method=\"get\"><button/></form>; }"),
+            ),
+        ],
+        "a form with an action posts it form-encoded",
+        "first/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[
+            server,
+            (
+                "first/app/page.tsx",
+                &page(
+                    "const other = 1;\nexport default function Page() { const s = useFormState(other); return <b>{String(s.pending)}</b>; }",
+                ),
+            ),
+        ],
+        "`useFormState()` takes an action imported from your server code",
+        "first/app/page.tsx:4:",
+    );
+    rejects(
+        &dir,
+        &[
+            server,
+            (
+                "first/components/Box.tsx",
+                "\"use client\";\nimport { send } from \"../server\";\nexport function Box() { return <form action={send}><button/></form>; }\n",
+            ),
+        ],
+        "a \"use client\" component's form calls its action from a handler",
+        "first/components/Box.tsx:3:",
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// The record's browser check: compiled client components on a real WordPress page, in Chromium
 /// with `SCRIPT_DEBUG` (the Interactivity runtime's development build, the one that warns).
 /// Hydration changes nothing in the server HTML, the runtime logs no warnings, a click calls the
@@ -1692,15 +2063,24 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         .map(|v| v.as_str().unwrap().to_string())
         .collect();
     cleared.sort();
-    let mut want = Vec::new();
+    // Boost clears a URL recursively, so the home page goes to its home action instead.
+    let mut want = vec!["boost home".to_string()];
     for cache in ["batcache", "boost", "vip"] {
         for path in ["/", "/index.md", "/notes/hello", "/notes/hello.md"] {
-            want.push(format!("{cache} {path}"));
+            if !(cache == "boost" && path == "/") {
+                want.push(format!("{cache} {path}"));
+            }
         }
     }
     want.sort();
     assert_eq!(cleared, want);
-    assert_eq!(seen["cleared all"], serde_json::json!(["boost *"]));
+    assert_eq!(seen["cleared all"], serde_json::json!(["vip *", "boost *"]));
+    // Over VIP's 100 URLs a request: one site ban, and every path still for Batcache.
+    assert_eq!(seen["cleared many"], serde_json::json!([1, true, 101]));
+    assert_eq!(
+        seen["without batcache drop-in"],
+        serde_json::json!(["vip /about", "boost /about"])
+    );
 }
 
 /// Stylesheets and SVGs that pages, layouts and components import (docs/spec/tsx-to-php.md,
@@ -1771,6 +2151,270 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     assert!(image["type"].as_str().unwrap().starts_with("image/svg+xml"), "{image}");
     assert!(image["src"].as_str().unwrap().starts_with("compass-"), "{image}");
     assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
+}
+
+/// `first doctor --site <url> --links` on a served First site: every link and `#anchor` the docs
+/// pages make, from Markdown content, TSX and WordPress, is followed; the broken ones are reported
+/// with the page they are on.
+#[test]
+fn doctor_finds_broken_links_and_anchors_on_a_site() {
+    let project = fixture("docs-kind", "links");
+    // A doc whose links are good, broken, or point at a heading that isn't there.
+    std::fs::write(
+        project.join("content/docs/links.md"),
+        "---\ntitle: Links\norder: 9\n---\n\n\
+         - [Install](/docs/guides/install), [its heading](/docs/introduction#small-print) and [this page's](#links-here).\n\
+         - [A page that isn't there](/docs/nowhere).\n\
+         - [A heading that isn't there](/docs/introduction#no-such-heading).\n\
+         - [Another site](https://example.invalid/gone) is not fetched.\n\n\
+         ## Links here\n\nText.\n",
+    )
+    .unwrap();
+    build(&project);
+    let work = tempfile::tempdir().unwrap();
+    let (sources, compiled) = (work.path().join("sources"), work.path().join("compiled"));
+    for args in [
+        vec![
+            "sources".as_ref(),
+            project.as_os_str(),
+            "--out".as_ref(),
+            sources.as_os_str(),
+        ],
+        vec![
+            "compile-sources".as_ref(),
+            sources.as_os_str(),
+            compiled.as_os_str(),
+            project.as_os_str(),
+        ],
+    ] {
+        let out = first().args(&args).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .arg(compiled.join("seed"))
+        .env("FIRST_WP_THEMES", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = first()
+        .args(["doctor", "--json", "--links", "--site"])
+        .arg(&url)
+        .arg(&project)
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(&project);
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| {
+        panic!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    let links = report["data"]["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "links")
+        .unwrap()
+        .clone();
+    assert_eq!(links["ok"], false, "{report}");
+    assert!(!out.status.success());
+    // Exactly the two broken links, each on the page that makes it, from the doc's Markdown.
+    assert_eq!(
+        report["data"]["links"],
+        serde_json::json!([
+            { "on": "/docs/links", "href": "/docs/introduction#no-such-heading", "problem": "/docs/introduction has no element with id \"no-such-heading\"" },
+            { "on": "/docs/links", "href": "/docs/nowhere", "problem": "answers 404" },
+        ]),
+        "{report}"
+    );
+}
+
+/// `apiReference()` from "first/content": the app's own OpenAPI document, and one in `public/`,
+/// rendered by pages as an API reference, on WordPress over HTTP (tests/php/api_reference.php).
+#[test]
+fn api_reference_renders_openapi_as_pages() {
+    let project = fixture("api-reference", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/api_reference.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    // The index: the document's title, this site as its server, a section per tag in the
+    // document's order, and a link per operation named by its operationId.
+    let index = &seen["index"];
+    assert_eq!(index["status"], 200);
+    assert_eq!(index["h1"], serde_json::json!(["Apiref API"]));
+    assert!(
+        index["server"][0].as_str().unwrap().ends_with("/__first/api/v1"),
+        "{index}"
+    );
+    assert_eq!(index["tags"][0], "notes");
+    assert_eq!(index["tags"][1], "actions");
+    assert_eq!(index["tags"][2], "word-press");
+    assert_eq!(index["notes"][0], "/api/notes/notes-list");
+    assert_eq!(index["notes"][4], "/api/notes/notes-delete");
+    // The document's Markdown description, as HTML.
+    assert_eq!(index["description"], "apiref");
+    // One operation: the endpoint, who may call it, each parameter with where it goes and its
+    // constraints, the response's fields nested by depth, and a request sample.
+    let list = &seen["list"];
+    assert_eq!(list["endpoint"], serde_json::json!(["GET /notes"]));
+    assert_eq!(list["access"], serde_json::json!(["anyone"]));
+    assert_eq!(
+        list["limit"],
+        serde_json::json!(["integer", "in query", "min 1 · default: 50"])
+    );
+    assert_eq!(list["response"][0], "depth-0 data Note[]");
+    assert_eq!(list["response"][2], "depth-1 title string");
+    assert_eq!(list["response"][3], "depth-1 body string | null");
+    assert_eq!(
+        list["response"].as_array().unwrap().last().unwrap(),
+        "depth-0 cursor string | null"
+    );
+    assert!(
+        list["curl"][0].as_str().unwrap().starts_with("curl -g -X GET 'http://"),
+        "{list}"
+    );
+    // A write: its JSON body's fields, and samples that send the required ones.
+    let create = &seen["create"];
+    assert_eq!(create["body type"], serde_json::json!(["application/json"]));
+    assert_eq!(create["body"][0], "title string");
+    assert!(
+        create["curl"][0]
+            .as_str()
+            .unwrap()
+            .contains(r#"-d '{"title":"string"}'"#),
+        "{create}"
+    );
+    assert!(
+        create["fetch"][0]
+            .as_str()
+            .unwrap()
+            .contains(r#"body: JSON.stringify({"title":"string"})"#),
+        "{create}"
+    );
+    assert_eq!(seen["missing"], 404);
+    // A document in public/: path-level parameters, $refs followed, a schema that refers to
+    // itself shown once (the cycle stops), and nested fields one level deeper.
+    assert_eq!(
+        seen["partner"],
+        serde_json::json!({
+            "status": 200,
+            "h1": ["Partner API"],
+            "server": ["https://partner.example/v2"],
+            "params": ["id path string required"],
+            "fields": [
+                "200 d0 id: string required",
+                "200 d0 lines: Line[]",
+                "200 d1 sku: string (matches ^[A-Z]+$)",
+                "200 d1 qty: integer (min 1)",
+                "200 d0 parent: Order"
+            ],
+            "id": ["get-order"]
+        })
+    );
+    // What goes wrong in practice: a description's blocks are text, never the site's dynamic
+    // blocks; the operation's parameter replaces the path's; allOf and const; JSON over a form
+    // body; slugs that collide get -2; and a quote in the server is quoted in the curl sample.
+    assert_eq!(
+        seen["edge"],
+        serde_json::json!({
+            "status": 200,
+            "description": "Plain text.",
+            "renders blocks": false,
+            "sections": ["unicode--items-list", "unicode--items-list-2"],
+            "params": ["id: integer"],
+            "fields": ["count: Count min 1 required", "kind: \"fixed\" always \"fixed\""],
+            "body": ["application/json note!"],
+            "curl": "curl -g -X GET 'https://h.example/a'\\''b/x/{id}' \\\n  -H 'Accept: application/json'"
+        })
+    );
+}
+
+/// The project's `public/` folder at the site root (spec §1: "static files, served as-is"), on
+/// WordPress over HTTP (tests/php/public_root.php): each file at its path with its type; the app's
+/// own page over a file of the same name; never a dotfile, PHP, a path out of the folder or one
+/// WordPress owns.
+#[test]
+fn public_files_serve_at_the_site_root() {
+    let project = fixture("public-root", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/public_root.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        seen["served"],
+        serde_json::json!({
+            "/compiler.wasm": [200, "application/wasm", 8],
+            "/logo.svg": [200, "image/svg+xml", 41],
+            "/files/blog.json": [200, "application/json", 11],
+            "/files/blobs/0a1b.txt": [200, "text/plain; charset=utf-8", 9],
+            "/files/": [200, "text/html; charset=utf-8", 35],
+            "/og/index.png": [200, "image/png", 8],
+            "/.well-known/ai.json": [200, "application/json", 13],
+            "/notes.md": [200, "text/markdown; charset=utf-8", 15],
+            "/robots-extra.txt": [200, "text/plain; charset=utf-8", 14],
+            "/index.html": [200, "text/html; charset=utf-8", 21],
+            "/it's.txt": [200, "text/plain; charset=utf-8", 1]
+        })
+    );
+    // robots.txt, llms.txt, feeds and First Identity's discovery document stay WordPress's.
+    for (path, kept) in seen["wordpress"].as_object().unwrap() {
+        assert_eq!(kept, true, "{path}");
+    }
+    // A `[slug]` route at the root doesn't take a file's path.
+    assert_eq!(seen["beside a dynamic route"], 200);
+    assert_eq!(seen["home"], false);
+    // `first/app/about/page.tsx` wins over `public/about`.
+    assert_eq!(seen["about"], serde_json::json!([200, true, false]));
+    // Never a file's bytes for a dotfile, PHP (as Windows would read `run.php.`, `run.php `,
+    // `run.php::$DATA`, or in capitals), a path out of the folder, or a link that leaves it.
+    for (path, answer) in seen["refused"].as_object().unwrap() {
+        assert_eq!(answer, &serde_json::json!([true, false]), "{path}");
+    }
+    assert_eq!(seen["refused"].as_object().unwrap().len(), 15);
+    assert_eq!(seen["head"], serde_json::json!([200, "", "11"]));
+    // A matching ETag, its weak form, or one of a list: 304; another: 200.
+    assert_eq!(seen["not modified"], serde_json::json!([304, 304, 304, 200]));
+    assert_eq!(seen["svg policy"], true);
+    assert_eq!(seen["cache"], "public, max-age=300");
+    // A POST isn't served a file; the `[slug]` page answers it as pages do (405).
+    assert_eq!(seen["post"], 405);
 }
 
 /// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
@@ -2003,7 +2647,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // tags are stored as the app's blocks, their Markdown as inner blocks.
     assert_eq!(
         seen["blocks registered"],
-        serde_json::json!(["docskind/callout", "docskind/badge"])
+        serde_json::json!(["docskind/callout", "docskind/badge", "docskind/status"])
     );
     assert_eq!(
         seen["blocks stored"],
@@ -2026,6 +2670,10 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // Written back, the blocks are the file's tags again, and an editor's change to a prop is too.
     let file = "Run the installer.\n\n<Callout type=\"warning\" title=\"Before you start\">\nBack up the **database**.\n\n- Export it\n- Keep a copy\n</Callout>\n\n<Badge label=\"New\" count={3} />\n\nThen continue.\n";
     assert_eq!(seen["blocks back"], file);
+    assert_eq!(
+        seen["blocks cleared back"],
+        "<Status />\n\n<Badge label=\"x\" count={3} />\n"
+    );
     assert_eq!(
         seen["blocks edited back"],
         file.replace("type=\"warning\"", "type=\"note\"")
@@ -2309,6 +2957,11 @@ fn component_blocks_edit_in_the_block_editor() {
     assert_eq!(seen["badgeEdited"], "<span class=\"badge\">Fresh<b> 3</b></span>");
     assert_eq!(seen["calloutInner"], "Mind the gap.");
     assert_eq!(seen["calloutFields"], serde_json::json!([1, 1]), "{seen}");
+    // A block that renders nothing still has a box to select; an optional choice starts unset, and
+    // can be set and unset again; a cleared text field is empty.
+    assert_eq!(seen["statusEmpty"], "<Status />");
+    assert_eq!(seen["statusKind"], serde_json::json!(["", "live", ""]));
+    assert_eq!(seen["statusCleared"], "");
     let saved = seen["saved"].as_str().unwrap();
     assert!(
         saved.contains("<!-- wp:docskind/badge {\"label\":\"Fresh\",\"count\":3} /-->")

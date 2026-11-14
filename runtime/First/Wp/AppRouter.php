@@ -395,7 +395,8 @@ final class AppRouter
         // Cache policy and purges (rendering.md §6.1, §6.2): an anonymous visitor's render of a
         // page no layout guards is shared; what it read decides which writes purge its URL.
         $guarded = array_filter($layouts, static fn (array $l): bool => ($l['guard'] ?? null) !== null) !== [];
-        [$this->cacheControl, $shared] = \First\Render\Cache::policy($status, $viewer->user === null, $guarded);
+        // A page a form came back to (`?_flash=`) shows that visitor's result or error: never shared.
+        [$this->cacheControl, $shared] = \First\Render\Cache::policy($status, $viewer->user === null && !\First\Render\Forms::marked(), $guarded);
         if ($shared) {
             \First\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         }
@@ -454,8 +455,10 @@ final class AppRouter
         $post = get_post((int) ($row->p[$spec['primaryKey']] ?? 0));
         $urls = KindUrls::instance();
         if ($post instanceof \WP_Post && $urls !== null) {
+            // Both sides without the home path: under a subdirectory install the request path
+            // starts with it (`/blog/notes/a`), and the item's path never does (`/notes/a`).
             $want = $urls->path($name, $post);
-            $have = '/' . trim((string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH), '/');
+            $have = '/' . trim((string) $this->path(), '/');
             if ($want !== null && rawurldecode($have) !== rawurldecode($want)) {
                 return null;
             }

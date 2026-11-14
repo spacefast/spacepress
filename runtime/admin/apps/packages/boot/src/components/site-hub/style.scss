@@ -54,7 +54,7 @@
 .first-admin-site-hub__title-text {
 	color: var( --wpds-color-fg-content-neutral );
 	font-size: variables.$font-size-medium;
-	font-weight: 500;
+	font-weight: var(--wpds-typography-font-weight-emphasis, 499);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;

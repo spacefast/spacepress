@@ -883,7 +883,7 @@ async function check(saved) {
 
 function show(saved) {
   console.log(
-    `\nShowcase: ${saved.url}/wp-content/plugins/first-app-showcase/public/\nPantry:   ${saved.url}/wp-content/plugins/first-app-showcase/public/#pantry\nAdmin:    ${saved.url}/first-admin/\nWordPress: ${saved.url}/wp-admin/\nPlugins:   ${saved.url}/wp-admin/plugins.php\nSettings:  ${saved.url}/wp-admin/options-general.php\nLogin:     admin / first-test-admin\nEditor:    editor / first-test-editor\n\nCheck: ${invocation} check\nStop:  ${invocation} down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
+    `\nShowcase: ${saved.url}/wp-content/plugins/first-app-showcase/public/\nPantry:   ${saved.url}/wp-content/plugins/first-app-showcase/public/#pantry\nAdmin:    ${saved.url}/wp-admin/new/\nWordPress: ${saved.url}/wp-admin/\nPlugins:   ${saved.url}/wp-admin/plugins.php\nSettings:  ${saved.url}/wp-admin/options-general.php\nLogin:     admin / first-test-admin\nEditor:    editor / first-test-editor\n\nCheck: ${invocation} check\nStop:  ${invocation} down\n\nDisposable local credentials only. Stop removes the demo database.\n`,
   );
 }
 

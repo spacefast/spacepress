@@ -261,6 +261,11 @@ is also in `wp-admin` under Posts. Browser apps sign members in with
 `clientId` and `redirectUri`; see the client's generated README for sessions,
 guests and server-to-server auth.
 
+An Astro site reads a First app through content collections with
+[`@first/astro`](packages/astro/README.md): build-time collections that pull only what changed,
+live collections with cache tags, and a webhook endpoint that purges or rebuilds on write
+([Astro on First](docs/astro.md)).
+
 ## Requirements
 
 | | Minimum |
@@ -315,8 +320,8 @@ boot on a site that misses any of them and names each one;
 - **Access rules** per collection, per action and per field, as roles or
   functions; a collection's read, update and delete rules can return a filter
   instead of a boolean. `showIf` drives conditional fields in the editor.
-- **Jobs, webhooks and an outbox**: enqueue from a hook, run after the request
-  commits through Action Scheduler, retry with backoff.
+- **Jobs and webhooks**: enqueue from a hook, queued in the request's
+  transaction, run after it commits through Action Scheduler, retry with backoff.
 - **WordPress Abilities and MCP**: your collections' reads and writes, actions
   and globals are registered as Abilities and exposed on a named MCP server,
   so agents can use them. Jobs join with `agents: true`; `agents: false` opts
@@ -411,9 +416,10 @@ WordPress, and CI proves it on every change, but the config API, the wire
 format and the plugin layout will change before a first release. There are no
 binary releases yet; you build the compiler from source.
 
-In progress: First Admin, an optional admin plugin for First apps. Its source is
-in the repo under `runtime/admin/`, and `defineConfig({ admin: true })` ships
-it as a fourth plugin; its screens are still being completed.
+Every build ships First Admin, the default admin, at `/wp-admin/new/`; classic
+`/wp-admin/` stays complete beside it, and `defineConfig({ admin: false })`
+leaves First Admin out. Its source is under `runtime/admin/`; see
+[`docs/admin.md`](docs/admin.md).
 
 Pages are an optional TSX front end under `first/app/`: layouts, pages,
 `"use client"` components on the Interactivity API, stylesheets and HTTP

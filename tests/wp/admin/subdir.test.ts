@@ -24,19 +24,21 @@ test("the admin is installed below the site root and derives every URL from it",
   assert.equal(subdir, "/blog", "this lane runs WordPress at /blog");
   assert.equal(wp("plugin", "get", "first-admin", "--field=status"), "active");
 
+  // WP-CLI activated the plugin; the first web request writes its rule into this install's .htaccess.
+  assert.equal((await fetch(`${site}/`)).status, 200);
   // A direct route under the mount is the plugin's, and anonymous visitors go to this site's login.
-  const anon = await fetch(`${site}/first-admin/media`, { redirect: "manual" });
+  const anon = await fetch(`${site}/wp-admin/new/media`, { redirect: "manual" });
   assert.equal(anon.status, 302);
   assert.ok(anon.headers.get("location")!.startsWith(`${site}/wp-login.php?`), `login lives under the sub-path: ${anon.headers.get("location")}`);
 
   // Signed in, the same URL serves the app, and the payload tells it where it is mounted and
   // where wp-admin is, both under /blog/.
-  const page = await fetch(`${site}/first-admin/media`, { headers: { cookie: await loginCookie(site, "editor", `${site}/first-admin/media`) } });
+  const page = await fetch(`${site}/wp-admin/new/media`, { headers: { cookie: await loginCookie(site, "editor", `${site}/wp-admin/new/media`) } });
   assert.equal(page.status, 200);
   const html = await page.text();
   assert.ok(html.includes('id="first-admin-app"'));
   const { context, menuItems } = bootPayload(html);
-  assert.equal(context.mount_url, `${site}/first-admin/`);
+  assert.equal(context.mount_url, `${site}/wp-admin/new/`);
   assert.equal(context.admin_url, `${site}/wp-admin/`);
   assert.equal(context.logout_url && String(context.logout_url).startsWith(`${site}/wp-login.php?action=logout`), true);
   assert.ok(Array.isArray(menuItems));

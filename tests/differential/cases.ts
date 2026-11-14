@@ -852,7 +852,7 @@ export default defineConfig({
 });
 
 // ---- lane D: jobs, once(), process.env (phase 2 §6.1). The Node shim keeps once() receipts and pending
-// enqueue keys in memory; PHP keeps them in __first_receipts and the outbox. Keys are unique per case.
+// enqueue keys in memory; PHP keeps them in __first_receipts and __first_jobs. Keys are unique per case.
 function laneDJobs() {
   return { ping: job({ input: { note: text().optional() }, handler: async () => {} }) };
 }

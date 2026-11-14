@@ -107,6 +107,8 @@ final class Plugin
         });
         Facade::register($this);
         AppRouter::register($this);
+        PublicFiles::register($this);
+        Comments::register($this);
         // Code blocks: highlighted with their title and marked lines, grouped into tabs (no script).
         add_filter('render_block_core/code', [\First\Content\Code::class, 'render'], 10, 2);
         add_filter('the_content', [\First\Content\Code::class, 'groups'], 20);
@@ -117,6 +119,7 @@ final class Plugin
         KindUrls::register($this);
         MarkdownTwins::register($this->mainFile);
         Sitemap::register($this);
+        SearchHandler::register($this);
         Purges::register($this);
         Staged::register($this);
         Hooks::register($this);

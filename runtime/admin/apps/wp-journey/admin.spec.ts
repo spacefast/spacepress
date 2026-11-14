@@ -13,17 +13,20 @@ const harness = JSON.parse(
 const site: string = harness.url;
 const subdir = new URL(site).pathname !== '/';
 async function login(page: Page, role: 'admin' | 'editor' | 'subscriber') {
-	await page.goto(`${site}/first-admin/`);
+	await page.goto(`${site}/wp-admin/new/`);
 	await expect(page.locator('#user_login')).toBeVisible();
 	// WordPress focuses this field after its login page has loaded.
 	await expect(page.locator('#user_login')).toBeFocused();
 	await page.locator('#user_login').fill(role);
 	await page.locator('#user_pass').fill(`first-test-${role}`);
 	await page.locator('#wp-submit').click();
-	await expect(page).toHaveURL(`${site}/first-admin/`);
+	await expect(page).toHaveURL(`${site}/wp-admin/new/`);
+	// The upstream home route: the dashboard.
 	await expect(
-		page.getByRole('heading', { name: 'Collections', exact: true })
+		page.getByRole('heading', { name: 'Dashboard', exact: true })
 	).toBeVisible();
+	// Collections opens the app's collections in the sidebar.
+	await page.locator('.first-admin-sidebar__content').getByRole('button', { name: 'Collections', exact: true }).click();
 	await expect(
 		page.getByRole('link', { name: 'Posts', exact: true }).last()
 	).toBeVisible();
@@ -35,18 +38,20 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	page.on('pageerror', (e) => errors.push(e.message));
 	await login(page, 'editor');
 	await page.screenshot({
-		path: test.info().outputPath('collections.png'),
+		path: test.info().outputPath('dashboard.png'),
 		animations: 'disabled',
 	});
-	const cookies = await page.context().cookies(`${site}/first-admin/`);
+	// The app is a wp-admin page: WordPress's own admin session cookie signs it in.
+	const cookies = await page.context().cookies(`${site}/wp-admin/new/`);
 	expect(cookies.some((c) => /^wordpress_logged_in_/.test(c.name))).toBe(true);
-	expect(
-		cookies.filter((c) => /^wordpress_(?:sec_)?[a-f0-9]+$/.test(c.name))
-	).toEqual([]);
+	expect(cookies.some((c) => /^wordpress_(?:sec_)?[a-f0-9]+$/.test(c.name))).toBe(true);
 	const sidebar = page.locator('.first-admin-sidebar__content');
 	await expect(sidebar.getByRole('link', { name: 'All collections', exact: true })).toBeVisible();
+	// wp-admin's menu (which this page reads, as a wp-admin page) lists First's post types too; the
+	// sidebar shows each collection once, under Collections.
+	await expect(sidebar.getByRole('link', { name: 'Events', exact: true })).toHaveCount(1);
 	await sidebar.getByRole('link', { name: 'Posts', exact: true }).click();
-	await expect(page).toHaveURL(`${site}/first-admin/collections/posts`);
+	await expect(page).toHaveURL(`${site}/wp-admin/new/collections/posts`);
 	await expect(
 		page.getByRole('heading', { name: 'Posts', exact: true })
 	).toBeVisible();
@@ -68,19 +73,22 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await expect(wordpressMenu.getByRole('link', { name: 'Dashboard', exact: true })).toBeVisible();
 	await page.screenshot({ path: test.info().outputPath('classic-admin.png'), animations: 'disabled' });
 	await wordpressMenu.getByRole('link', { name: 'First', exact: true }).click();
-	await expect(page).toHaveURL(`${site}/first-admin/`);
+	await expect(page).toHaveURL(`${site}/wp-admin/new/`);
+	await sidebar.getByRole('button', { name: 'Collections', exact: true }).click();
 	await sidebar.getByRole('link', { name: 'Posts', exact: true }).click();
-	await expect(page).toHaveURL(`${site}/first-admin/collections/posts`);
+	await expect(page).toHaveURL(`${site}/wp-admin/new/collections/posts`);
 	await expect(page.getByRole('heading', { name: 'Posts', exact: true })).toBeVisible();
 	await sidebar.getByRole('link', { name: 'All collections', exact: true }).click();
+	await expect(page).toHaveURL(`${site}/wp-admin/new/collections`);
 	await expect(page.getByRole('heading', { name: 'Collections', exact: true })).toBeVisible();
+	await page.screenshot({ path: test.info().outputPath('collections.png'), animations: 'disabled' });
 	await page.getByRole('button', { name: 'Open command palette', exact: true }).click();
 	await page.getByRole('combobox').fill('Classic admin');
 	await page.getByRole('option', { name: 'Go to Classic admin Action', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/`);
 	await expect(page.locator('#adminmenu')).toBeVisible();
 	if (subdir) {
-		await page.goto(`${site}/first-admin/types/post/list/all`);
+		await page.goto(`${site}/wp-admin/new/types/post/list/all`);
 		await expect(page.getByRole('table')).toBeVisible();
 	}
 	expect(errors).toEqual([]);
@@ -213,7 +221,7 @@ if (!subdir) {
 			sections: [{ layout: 'hero', heading: 'Native structured fields' }],
 		});
 		// The table uses the First endpoint and a readable cross-kind relation picker.
-		await page.goto(`${site}/first-admin/collections/comments`);
+		await page.goto(`${site}/wp-admin/new/collections/comments`);
 		await page
 			.getByRole('button', { name: 'New comments', exact: false })
 			.click();
@@ -275,13 +283,13 @@ if (!subdir) {
 		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
 		expect((await refused).status()).toBe(422);
 		await expect(leave.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled();
-		await expect(page).toHaveURL(`${site}/first-admin/collections/comments/${commentId}`);
+		await expect(page).toHaveURL(`${site}/wp-admin/new/collections/comments/${commentId}`);
 		await leave.getByRole('button', { name: 'Close', exact: true }).click();
 		await expect(page.getByRole('textbox', { name: 'Body', exact: true })).toHaveValue('http://rejected.example');
 		await page.getByRole('textbox', { name: 'Body', exact: true }).fill('Corrected table record');
 		await page.getByRole('link', { name: 'Back to Comments', exact: true }).click();
 		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
-		await expect(page).toHaveURL(`${site}/first-admin/collections/comments`);
+		await expect(page).toHaveURL(`${site}/wp-admin/new/collections/comments`);
 		const corrected = await request.get(`${site}/__first/api/v1/comments/${commentId}`, { headers });
 		expect((await corrected.json()).data.body).toBe('Corrected table record');
 		expect(errors).toEqual([]);
@@ -302,7 +310,7 @@ if (!subdir) {
 		});
 		expect(event.status(), await event.text()).toBe(201);
 		const eventId = (await event.json()).data.id;
-		await page.goto(`${site}/first-admin/collections/dossier/${eventId}`);
+		await page.goto(`${site}/wp-admin/new/collections/dossier/${eventId}`);
 		const jsonFields = page.getByRole('button', { name: 'Fields', exact: true });
 		await expect(jsonFields).toBeVisible();
 		if ((await jsonFields.getAttribute('aria-expanded')) !== 'true') await jsonFields.click();
@@ -374,7 +382,7 @@ if (!subdir) {
 		});
 		expect(plain.status(), await plain.text()).toBe(201);
 		const plainId = (await plain.json()).data.id;
-		await page.goto(`${site}/first-admin/collections/events/${plainId}`);
+		await page.goto(`${site}/wp-admin/new/collections/events/${plainId}`);
 		const extra = page.locator('.first-schema-json').filter({ hasText: 'Extra' }).locator('textarea');
 		await extra.fill('plain invalid-only draft');
 		await expect(extra).toHaveAttribute('aria-invalid', 'true');
@@ -384,7 +392,7 @@ if (!subdir) {
 		expect(warning.type()).toBe('beforeunload');
 		await warning.dismiss();
 		await classicClick;
-		await expect(page).toHaveURL(`${site}/first-admin/collections/events/${plainId}`);
+		await expect(page).toHaveURL(`${site}/wp-admin/new/collections/events/${plainId}`);
 		await expect(extra).toHaveValue('plain invalid-only draft');
 		await page.getByRole('link', { name: 'Back to Events', exact: true }).click();
 		await expect(page.getByRole('dialog')).toContainText('Fix errors before leaving?');
@@ -392,14 +400,14 @@ if (!subdir) {
 		await expect(extra).toHaveValue('plain invalid-only draft');
 		await page.getByRole('link', { name: 'Back to Events', exact: true }).click();
 		await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
-		await expect(page).toHaveURL(`${site}/first-admin/collections/events`);
+		await expect(page).toHaveURL(`${site}/wp-admin/new/collections/events`);
 		await expect(page.getByRole('heading', { name: 'Events', exact: true })).toBeVisible();
 		await expect.poll(() => page.evaluate(() => {
 			const event = new Event('beforeunload', { cancelable: true });
 			window.dispatchEvent(event);
 			return event.defaultPrevented;
 		})).toBe(false);
-		await page.goto(`${site}/first-admin/collections/events/${plainId}`);
+		await page.goto(`${site}/wp-admin/new/collections/events/${plainId}`);
 		await expect(extra).toHaveValue(JSON.stringify({ saved: true }, null, 2));
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Plain saved on leave');
 		await page.getByRole('link', { name: 'Back to Events', exact: true }).click();
@@ -409,7 +417,7 @@ if (!subdir) {
 			r.request().method() === 'POST');
 		await page.getByRole('dialog').getByRole('button', { name: 'Save changes', exact: true }).click();
 		expect((await plainSaved).status()).toBe(200);
-		await expect(page).toHaveURL(`${site}/first-admin/collections/events`);
+		await expect(page).toHaveURL(`${site}/wp-admin/new/collections/events`);
 		const plainRead = await request.get(`${site}/__first/api/v1/events/${plainId}`, { headers: adminHeaders });
 		expect((await plainRead.json()).data).toMatchObject({ title: 'Plain saved on leave', extra: { saved: true } });
 		expect(errors).toEqual([]);
@@ -447,17 +455,17 @@ if (!subdir) {
 		await expect(
 			page.getByRole('link', { name: 'signups', exact: true })
 		).toHaveCount(0);
-		await page.goto(`${site}/first-admin/collections/signups`);
+		await page.goto(`${site}/wp-admin/new/collections/signups`);
 		await expect(page.getByRole('alert')).toContainText(
 			/access|permission|forbidden/i
 		);
 		await expect(
 			page.getByRole('button', { name: /New signups/i })
 		).toHaveCount(0);
-		await page.goto(`${site}/first-admin/collections/posts/${id}`);
+		await page.goto(`${site}/wp-admin/new/collections/posts/${id}`);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(postTitle);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toBeDisabled();
-		await page.goto(`${site}/first-admin/collections/dossier/${dossierId}`);
+		await page.goto(`${site}/wp-admin/new/collections/dossier/${dossierId}`);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true }))
 			.toHaveValue(title);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true }))
@@ -469,7 +477,7 @@ if (!subdir) {
 		).toHaveCount(0);
 		await page.context().clearCookies();
 		await login(page, 'editor');
-		await page.goto(`${site}/first-admin/collections/dossier/${dossierId}`);
+		await page.goto(`${site}/wp-admin/new/collections/dossier/${dossierId}`);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toBeEnabled();
 		await expect(page.getByRole('textbox', { name: 'Body', exact: true })).toHaveCount(0);
 		await page.getByRole('textbox', { name: 'Title', exact: true }).fill(`${title} edited`);
@@ -479,9 +487,9 @@ if (!subdir) {
 			headers: { Authorization: `Basic ${Buffer.from(`admin:${harness.users.admin.appPassword}`).toString('base64')}` },
 		});
 		expect((await readback.json()).data).toMatchObject({ title: `${title} edited`, body: '<p>Private original body</p>' });
-		await page.goto(`${site}/first-admin/collections/claims`);
+		await page.goto(`${site}/wp-admin/new/collections/claims`);
 		await page.getByRole('link', { name: claimTitle, exact: true }).first().click();
-		await expect(page).toHaveURL(`${site}/first-admin/collections/claims/${claimId}`);
+		await expect(page).toHaveURL(`${site}/wp-admin/new/collections/claims/${claimId}`);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(claimTitle);
 		await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toBeDisabled();
 		await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toBeDisabled();
@@ -563,7 +571,7 @@ if (!subdir) {
 		await expect(page.locator('.components-notice.is-error'))
 			.toContainText(/not allowed|invalid|file type|mime|upload/i);
 		await page.getByRole('link', { name, exact: true }).click();
-		await expect(page).toHaveURL(`${site}/first-admin/media/${mediaId}`);
+		await expect(page).toHaveURL(`${site}/wp-admin/new/media/${mediaId}`);
 		await page
 			.getByRole('textbox', { name: 'Alt text', exact: true })
 			.fill('Browser image description');
@@ -607,7 +615,7 @@ if (!subdir) {
 		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
 		expect((await failedCaption).status()).toBe(400);
 		await expect(leave.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled();
-		await expect(page).toHaveURL(`${site}/first-admin/media/${mediaId}`);
+		await expect(page).toHaveURL(`${site}/wp-admin/new/media/${mediaId}`);
 		await leave.getByRole('button', { name: 'Close', exact: true }).click();
 		await expect(caption).toHaveValue('Saved caption on leave');
 		const partial = await request.get(`${site}/__first/api/v1/media/${mediaId}`, { headers });
@@ -622,7 +630,7 @@ if (!subdir) {
 		await caption.fill('Saved caption on leave');
 		await page.getByRole('link', { name: 'Back to Media', exact: true }).click();
 		await leave.getByRole('button', { name: 'Save changes', exact: true }).click();
-		await expect(page).toHaveURL(`${site}/first-admin/media`);
+		await expect(page).toHaveURL(`${site}/wp-admin/new/media`);
 		const coreMedia = await request.get(`${site}/wp-json/wp/v2/media/${mediaId}?context=edit`, { headers });
 		expect((await coreMedia.json()).caption.raw).toBe('Saved caption on leave');
 		await expect.poll(() => page.evaluate(() => {
@@ -635,13 +643,13 @@ if (!subdir) {
 		await alt.fill('Discard this media draft');
 		await page.getByRole('link', { name: 'Back to Media', exact: true }).click();
 		await leave.getByRole('button', { name: 'Discard changes', exact: true }).click();
-		await expect(page).toHaveURL(`${site}/first-admin/media`);
+		await expect(page).toHaveURL(`${site}/wp-admin/new/media`);
 		await page.getByRole('link', { name, exact: true }).click();
 		await expect(alt).toHaveValue('Saved on media leave');
 		await page.screenshot({ path: test.info().outputPath('media-details.png') });
         // The complete native image editor remains available beside First details.
         await page.getByRole('link', { name: 'Edit image', exact: true }).click();
-        await expect(page).toHaveURL(`${site}/first-admin/types/attachment/edit/${mediaId}`);
+        await expect(page).toHaveURL(`${site}/wp-admin/new/types/attachment/edit/${mediaId}`);
         await page.reload();
         await page.getByRole('tab', { name: 'Edit', exact: true }).click();
         await page.getByRole('button', { name: 'Rotate 90° right', exact: true }).click();
@@ -654,9 +662,9 @@ if (!subdir) {
         const editedImage = await rotatedResponse.json();
         expect(editedImage.id).not.toBe(mediaId);
         expect(editedImage.media_details).toMatchObject({ width: 8, height: 16 });
-        await expect(page).toHaveURL(`${site}/first-admin/types/attachment/edit/${editedImage.id}`);
+        await expect(page).toHaveURL(`${site}/wp-admin/new/types/attachment/edit/${editedImage.id}`);
         expect((await request.get(editedImage.source_url)).status()).toBe(200);
-        await page.goto(`${site}/first-admin/media/${mediaId}`);
+        await page.goto(`${site}/wp-admin/new/media/${mediaId}`);
 		// Confirmed deletion retires even dirty drafts without a second leave prompt.
 		await alt.fill('Deleted media draft');
 		await page
@@ -665,9 +673,9 @@ if (!subdir) {
 		await page
 			.getByRole('button', { name: 'Confirm delete', exact: true })
 			.click();
-		await expect(page).toHaveURL(`${site}/first-admin/media`);
+		await expect(page).toHaveURL(`${site}/wp-admin/new/media`);
 		// The rotated copy retains the title; deletion targets the original ID.
-		await expect(page.locator(`a[href$="/first-admin/media/${mediaId}"]`)).toHaveCount(0);
+		await expect(page.locator(`a[href$="/wp-admin/new/media/${mediaId}"]`)).toHaveCount(0);
 		expect((await request.get(`${site}/__first/api/v1/media/${mediaId}`, { headers })).status()).toBe(404);
 		expect((await request.get(`${site}/__first/api/v1/media/${editedImage.id}`, { headers })).status()).toBe(200);
 	});
@@ -691,16 +699,18 @@ test('restored native WordPress routes persist settings and published content an
         quick_edit_form: { layout: { type: 'panel' } },
     });
     await login(page, 'admin');
-    await page.goto(`${site}/first-admin/types/post/list/all`);
+    await page.goto(`${site}/wp-admin/new/types/post/list/all`);
     await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('native-post-list.png') });
-    await page.goto(`${site}/first-admin/dashboard`);
+    // The dashboard's earlier address, /dashboard, goes to the home route.
+    await page.goto(`${site}/wp-admin/new/dashboard`);
+    await expect(page).toHaveURL(`${site}/wp-admin/new/`);
     await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Add widgets', exact: true }).click();
     await expect(page.getByRole('dialog').getByText('Quick Stats (example data)', { exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('native-dashboard-widgets.png') });
     await page.keyboard.press('Escape');
-    await page.goto(`${site}/first-admin/settings/general`);
+    await page.goto(`${site}/wp-admin/new/settings/general`);
     const description = `Saved through native settings ${Date.now()}`;
     await page.getByRole('textbox', { name: 'Site description', exact: true }).fill(description);
     const savedSettings = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/wp/v2/settings') && response.request().method() === 'POST');
@@ -712,23 +722,23 @@ test('restored native WordPress routes persist settings and published content an
     expect((await settings.json()).description).toBe(description);
     await page.screenshot({ path: test.info().outputPath('native-settings.png') });
 
-    await page.goto(`${site}/first-admin/users`);
+    await page.goto(`${site}/wp-admin/new/users`);
     await expect(page.getByRole('table').getByText('admin@example.test', { exact: true })).toBeVisible();
-    await page.goto(`${site}/first-admin/users/add`);
+    await page.goto(`${site}/wp-admin/new/users/add`);
     await expect(page.getByRole('textbox', { name: 'Username', exact: true })).toBeVisible();
-    await page.goto(`${site}/first-admin/plugins/list/all`);
+    await page.goto(`${site}/wp-admin/new/plugins/list/all`);
     await expect(page.getByRole('row').filter({ hasText: 'First Admin' })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('native-plugins.png') });
-    await page.goto(`${site}/first-admin/design/themes`);
+    await page.goto(`${site}/wp-admin/new/design/themes`);
     await expect(page.getByText('Twenty Twenty-Five', { exact: true }).first()).toBeVisible();
-    await page.goto(`${site}/first-admin/design/styles`);
+    await page.goto(`${site}/wp-admin/new/design/styles`);
     await expect(page.getByRole('button', { name: 'Typography', exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('native-design.png') });
-    await page.goto(`${site}/first-admin/design/navigation`);
+    await page.goto(`${site}/wp-admin/new/design/navigation`);
     await expect(page.getByRole('region', { name: 'Editor content', exact: true })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Template Part', exact: true })).toHaveAttribute('aria-selected', 'true');
 
-    await page.goto(`${site}/first-admin/types/post/edit/${post.id}`);
+    await page.goto(`${site}/wp-admin/new/types/post/edit/${post.id}`);
     const canvas = page.frameLocator('iframe[name="editor-canvas"]');
     await canvas.getByRole('textbox', { name: 'Add title', exact: true }).fill(`${title} saved`);
     const savedPost = page.waitForResponse(response => new URL(response.url()).pathname.endsWith(`/wp/v2/posts/${post.id}`) && ['POST', 'PUT'].includes(response.request().method()));
@@ -741,7 +751,7 @@ test('restored native WordPress routes persist settings and published content an
     expect(await publicPage.text()).toContain(`${title} saved`);
     await page.screenshot({ path: test.info().outputPath('native-wordpress-editor.png') });
 
-    await page.goto(`${site}/first-admin/`);
+    await page.goto(`${site}/wp-admin/new/`);
     await page.getByRole('link', { name: 'Classic admin', exact: true }).click();
     await expect(page.locator('#adminmenu')).toBeVisible();
     await page.goto(`${site}/wp-admin/options-general.php`);

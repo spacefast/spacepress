@@ -21,9 +21,13 @@ export const logs = collection({ title: text() }, { staged: false });
 - **Only the staged fields.** The staged version holds the fields that were staged. Promoting it
   changes those fields and no others, so a live edit to another field made in the meantime stays.
 - **A WordPress revision.** It is stored as one revision of the post, named
-  `<id>-autosave-staged-v1`. The name is in core's autosave family, so revision lists, revision
-  pruning and core's change detection pass over it, and it is separate from core's own per-user
-  autosave slot, which the editors overwrite and delete. Its fields are stored on the revision
+  `<id>-autosave-staged-v1`, with its own internal status `first-staged` where core's revisions
+  have `inherit`. Core reads revisions by that status, so its revision lists and count, the
+  `/autosaves` route the block editor takes the user's autosave from, wp-admin's revision screen
+  and its Restore, revision pruning, change detection and wp-admin's revision upgrade all pass
+  over it. It is separate from core's own per-user autosave slot, which the editors overwrite and
+  delete. A promote or discard gives it core's status and an ordinary revision's name. Staged
+  revisions saved before the status existed get it when the runtime updates. Its fields are stored on the revision
   under the same meta keys the post uses, as on every other revision of a First post.
   `_first_staged` on the revision records the staged fields and a scheduled promote.
 

@@ -80,7 +80,7 @@ final class FetchHeaders implements \JsonSerializable, \Stringable
     }
 
     /** `forEach((value, name, headers) => ...)`, sorted by name. */
-    public function forEach(callable $f): void
+    public function forEach(\Closure $f): void
     {
         foreach ($this->sorted() as $name => $value) {
             $f($value, $name, $this);

@@ -319,6 +319,8 @@ jobs:
         working-directory: runtime/admin/apps
       - run: pnpm exec playwright install --with-deps chromium
         working-directory: runtime/admin/apps
+      # The React hooks test (tests/wp/hooks.test.ts) drives the headless shell through playwright-core.
+      - run: npx --yes playwright-core@1.62.1 install chromium-headless-shell
       # Main suites and the native admin journey, on one stack. The migration and S3 lanes run as
       # their own jobs below: on one runner the three together reached the 40-minute limit.
       - run: tests/wp/run.sh

@@ -36,8 +36,12 @@ final class Changes
     /** WordPress keeps meta keys in 255 characters and cuts longer ones off without an error. */
     public const MAX_NAME = 64;
 
-    /** Names spec §2.4 gives every kind; a runtime field may not take one before the build does. */
-    private const RESERVED = ['id', 'author', 'createdAt', 'updatedAt', 'status', 'publishedAt', 'url', 'terms', 'uid', 'locale', 'translations'];
+    /**
+     * Names spec §2.4 gives every kind, which a runtime field may not take before the build does,
+     * and `system` and `staged`: their reference keys `_first_system` and `_first_staged` are where
+     * First keeps a revision's snapshot and a post's staged version.
+     */
+    private const RESERVED = ['id', 'author', 'createdAt', 'updatedAt', 'status', 'publishedAt', 'url', 'terms', 'uid', 'locale', 'translations', 'system', 'staged'];
     /** Kinds every site has (spec §2.1), and the names the API serves beside them. */
     private const BUILTIN_KINDS = ['users', 'comments', 'posts', 'pages', 'media', 'categories', 'tags', 'menus', 'settings', 'me', 'actions', 'globals', 'files', 'services', 'auth'];
 
@@ -116,7 +120,7 @@ final class Changes
                 $shape(['kind', 'field', 'definition']);
                 [$kind, $field] = [$name('kind'), $name('field')];
                 $stored = Validator::field($kind, $schema['collections'][$kind] ?? null, $field, $change['definition']);
-                self::addable($schema, $state, false, $kind, $field, $stored, $pointer, $declared);
+                self::addable($schema, $compiled, $state, false, $kind, $field, $stored, $pointer, $declared);
 
                 return ['op' => 'addField', 'kind' => $kind, 'field' => $field, 'definition' => $stored];
 
@@ -127,7 +131,7 @@ final class Changes
                     throw Refused::rule('F3001', $kind, 'this app declares no global with that name');
                 }
                 $stored = Validator::definition("$kind.$field", $field, $change['definition'], Validator::GLOBAL);
-                self::addable($schema, $state, true, $kind, $field, $stored, $pointer, $declared);
+                self::addable($schema, $compiled, $state, true, $kind, $field, $stored, $pointer, $declared);
 
                 return ['op' => 'addGlobalField', 'global' => $kind, 'field' => $field, 'definition' => $stored];
 
@@ -165,7 +169,7 @@ final class Changes
                 foreach ($stored['fields'] as $field => $definition) {
                     self::named($kind, (string) $field, $global ? [] : ['id', 'title', 'content'], "$pointer/definition/fields/$field");
                 }
-                self::storable($schema, $global, $kind, $global ? $stored['fields'] : array_diff_key($stored['fields'], ['title' => 1, 'content' => 1]), "$pointer/definition/fields");
+                self::storable($schema, $compiled, $state, $declared, $global, $kind, $global ? $stored['fields'] : array_diff_key($stored['fields'], ['title' => 1, 'content' => 1]), "$pointer/definition/fields");
 
                 return ['op' => $change['op'], $key => $kind, 'definition' => $stored];
 
@@ -249,7 +253,7 @@ final class Changes
     }
 
     /** The running site's own rules for a field joining a kind that exists. */
-    private static function addable(array $schema, array $state, bool $global, string $kind, string $field, array $stored, string $pointer, array $declared): void
+    private static function addable(array $schema, array $compiled, array $state, bool $global, string $kind, string $field, array $stored, string $pointer, array $declared): void
     {
         [$section, $inner] = $global ? ['globals', 'fields'] : ['collections', 'columns'];
         $spec = $schema[$section][$kind];
@@ -269,7 +273,7 @@ final class Changes
             }
         }
         self::named($kind, $field, [], "$pointer/field");
-        self::storable($schema, $global, $kind, [$field => $stored], "$pointer/field");
+        self::storable($schema, $compiled, $state, $declared, $global, $kind, [$field => $stored], "$pointer/field");
         $was = $state['removed'][$section][$kind]['fields'][$field] ?? null;
         if ($was !== null && $was !== $stored['type']) {
             throw new Refused('schema_retype', "$kind.$field: `$field` was removed as a $was field and its values are still stored. Add it as $was again, or use another name", null, "$pointer/definition/type");
@@ -288,25 +292,50 @@ final class Changes
     /**
      * New fields store under keys no other field uses (the compiler's rule, `storage_collision` in
      * src/runtime_schema.rs): a collection's fields share its posts' meta, and every global's options
-     * share one name space, `first_global_<global>_<field>`. Checked against the kind as the build and
-     * the state declare it, and among the new fields themselves.
+     * share one name space, `first_global_<global>_<field>`. Checked among the new fields themselves
+     * and against every field whose values may still be stored: the kind as the build and the state
+     * declare it, the build's fields the site hid, fields a version removed, and fields of every
+     * build that ran on the site. A name the new field shares exactly is the retype rules' to judge.
      *
      * @param array<string, array> $fields the new fields, by name
      */
-    private static function storable(array $schema, bool $global, string $kind, array $fields, string $pointer): void
+    private static function storable(array $schema, array $compiled, array $state, array $declared, bool $global, string $kind, array $fields, string $pointer): void
     {
         $existing = [];
+        $known = static function (string $owner, string $field, array $keys) use (&$existing, $fields, $kind): void {
+            if ($owner !== $kind || !array_key_exists($field, $fields)) {
+                $existing["$owner.$field"] ??= $keys;
+            }
+        };
         if ($global) {
-            foreach ($schema['globals'] ?? [] as $name => $spec) {
-                foreach ($spec['fields'] as $field => $definition) {
-                    $existing["$name.$field"] = self::prefixed("{$name}_", StorageKeys::of((string) $field, $definition));
+            foreach ([$schema, $compiled] as $source) {
+                foreach ($source['globals'] ?? [] as $name => $spec) {
+                    foreach ($spec['fields'] as $field => $definition) {
+                        $known((string) $name, (string) $field, self::prefixed("{$name}_", StorageKeys::of((string) $field, $definition)));
+                    }
+                }
+            }
+            $byType = array_merge_recursive(array_map(static fn (array $removed): array => $removed['fields'] ?? [], $state['removed']['globals'] ?? []), $declared['globals'] ?? []);
+            foreach ($byType as $name => $types) {
+                foreach ($types as $field => $type) {
+                    $known((string) $name, (string) $field, self::prefixed("{$name}_", StorageKeys::ofType((string) $field, is_array($type) ? $type[0] : $type)));
                 }
             }
         } else {
-            $spec = $schema['collections'][$kind] ?? ['columns' => []];
-            foreach ($spec['columns'] as $field => $definition) {
-                if (self::meta($spec, (string) $field, $definition)) {
-                    $existing["$kind.$field"] = StorageKeys::of((string) $field, $definition);
+            foreach ([$schema, $compiled] as $source) {
+                $spec = $source['collections'][$kind] ?? ['columns' => []];
+                foreach ($spec['columns'] as $field => $definition) {
+                    if (self::meta($spec, (string) $field, $definition)) {
+                        $known($kind, (string) $field, StorageKeys::of((string) $field, $definition));
+                    }
+                }
+            }
+            $byType = ($state['removed']['collections'][$kind]['fields'] ?? []) + ($declared['collections'][$kind] ?? []);
+            $own = $schema['collections'][$kind] ?? $compiled['collections'][$kind] ?? ['columns' => []];
+            foreach ($byType as $field => $type) {
+                // The post's own columns (its title, body, status) were never meta.
+                if (!isset($own['columns'][$field]) || self::meta($own, (string) $field, $own['columns'][$field])) {
+                    $known($kind, (string) $field, StorageKeys::ofType((string) $field, $type));
                 }
             }
         }
@@ -316,15 +345,15 @@ final class Changes
             foreach ($existing as $other => $otherKeys) {
                 $key = StorageKeys::shared($keys, $otherKeys);
                 if ($key !== null) {
-                    $where = $global ? "the option first_global_$key" : "the post meta key {$schema['collections'][$kind]['wp']['metaPrefix']}$key";
-                    throw new Refused('schema_invalid', "$kind.$field: `$field` would store values under $where, which $other already uses; give the field another name", 'F3001', $pointer);
+                    $where = $global ? "the option first_global_$key" : "the post meta key first_$key";
+                    throw new Refused('schema_invalid', "$kind.$field: `$field` would store values under $where, which $other already uses or kept; give the field another name", 'F3001', $pointer);
                 }
             }
             $existing["$kind.$field"] = $keys;
         }
     }
 
-    /** @param list<list<?string>> $keys */
+    /** @param list<list<?string|true>> $keys */
     private static function prefixed(string $prefix, array $keys): array
     {
         return array_map(static fn (array $key): array => is_string($key[0]) ? [$prefix . $key[0], ...array_slice($key, 1)] : [$prefix, ...$key], $keys);

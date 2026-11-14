@@ -367,6 +367,8 @@ test("astro build renders the collection, and a rebuild after an edit pulls only
   const out = join(work, "site");
   const build = () => {
     const run = spawnSync(process.execPath, [join(here, "../node_modules/astro/bin/astro.mjs"), "build", "--root", join(here, "site")], {
+      // Astro writes its prerender chunks below the working directory; they import its packages.
+      cwd: join(here, "site"),
       env: { ...process.env, FIRST_URL: site.url, ASTRO_TELEMETRY_DISABLED: "1", ASTRO_TEST_OUT: out },
       encoding: "utf8",
     });

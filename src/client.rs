@@ -1,6 +1,6 @@
 //! The typed client (§7): `first/_generated/client/types.ts` (generated interfaces),
 //! `first/_generated/client/schema.ts` (the `SCHEMA` descriptor the runtime reads), and
-//! the handwritten runtime from `runtime/client/` (`index.ts`, `README.md`).
+//! the handwritten runtime from `runtime/client/` (`index.ts`, `react.ts`, `README.md`).
 
 use crate::schema::{Access, ColType, Collection, Column, RelKind, Schema};
 use crate::types::Ty;
@@ -278,6 +278,8 @@ pub const RESERVED_TYPE_NAMES: &[&str] = &[
     "StatusQuery",
     "LocaleQuery",
     "ListQuery",
+    "Query",
+    "ReadCall",
     "CollectionClient",
     "MediaQuery",
     "MediaClient",
@@ -782,8 +784,9 @@ pub fn files(
         out.push(("client.js".into(), javascript.into_bytes()));
         out.push(("client.d.ts".into(), declarations.into_bytes()));
     }
-    // The copied runtime half of the client is MIT; its notice travels with it.
-    for f in ["index.ts", "README.md", "LICENSE"] {
+    // The copied runtime half of the client is MIT; its notice travels with it. `react.ts` is the
+    // optional hooks entry point: it imports no React, so it type-checks in a project without one.
+    for f in ["index.ts", "react.ts", "README.md", "LICENSE"] {
         if let Some(bytes) = runtime(&format!("client/{f}")) {
             let text = String::from_utf8_lossy(bytes).replace("{{name}}", &schema.name);
             out.push((f.to_string(), text.into_bytes()));

@@ -146,7 +146,7 @@ Build the compiler from source
 with Rust 1.96 (the checkout pins it). Local development needs Node 22+ and
 npm; it needs neither Docker nor a host PHP installation. First automatically
 runs pinned [WordPress Studio CLI](https://github.com/Automattic/studio/tree/trunk/apps/cli)
-2.1.1 to provide WordPress 7.1.4, PHP 8.4 and SQLite Database Integration 3.1.2.
+2.2.0 to provide WordPress 7.1.4, PHP 8.4 and SQLite Database Integration 3.1.3.
 The first start downloads the local environment and required plugins.
 
 ```sh
@@ -416,9 +416,10 @@ WordPress, and CI proves it on every change, but the config API, the wire
 format and the plugin layout will change before a first release. There are no
 binary releases yet; you build the compiler from source.
 
-In progress: First Admin, an optional admin plugin for First apps. Its source is
-in the repo under `runtime/admin/`, and `defineConfig({ admin: true })` ships
-it as a fourth plugin; its screens are still being completed.
+Every build ships First Admin, the default admin, at `/wp-admin/new/`; classic
+`/wp-admin/` stays complete beside it, and `defineConfig({ admin: false })`
+leaves First Admin out. Its source is under `runtime/admin/`; see
+[`docs/admin.md`](docs/admin.md).
 
 Pages are an optional TSX front end under `first/app/`: layouts, pages,
 `"use client"` components on the Interactivity API, stylesheets and HTTP

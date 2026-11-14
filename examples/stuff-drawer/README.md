@@ -11,7 +11,7 @@ A personal inventory for cables, adapters, chargers, tools, books, and other sma
 | People | WordPress collection, wp-admin and First Admin | name, contact, ownerId |
 | Loans | SQL table, First Admin lending log | thingId, personId, lentOn, dueOn, returnedOn, overdueAt, ownerId |
 
-`admin: true` packages [First Admin](../../docs/admin.md) at `/first-admin/`. Classic WordPress lists and edit screens use Secure Custom Fields. The loan table uses First Admin's table forms and relation pickers. Photo fields use WordPress media.
+Every build includes [First Admin](../../docs/admin.md) at `/wp-admin/new/`. Classic WordPress lists and edit screens use Secure Custom Fields. The loan table uses First Admin's table forms and relation pickers. Photo fields use WordPress media.
 
 Each row belongs to the signed-in WordPress user. Read, update, and delete rules return an owner filter. `beforeCreate` stamps `ownerId` from that user; clients cannot supply or change it. Actions explicitly scope trusted database calls and validate that references belong to the same owner.
 
@@ -32,7 +32,7 @@ These commands currently stop at the diagnostic below. Once main supports this s
 
 The required plugins are Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, and MCP Adapter 0.7.1. First builds and installs their pinned packages. This app does not use locales or a second identity system.
 
-After a successful start, sign into `/wp-admin/` with Studio's disposable `admin` / `first-test-admin` account. Visit `/first-admin/` with the same account. Use the URL printed by Studio if the existing site has another port.
+After a successful start, sign into `/wp-admin/` with Studio's disposable `admin` / `first-test-admin` account. Visit `/wp-admin/new/` with the same account. Use the URL printed by Studio if the existing site has another port.
 
 Create an application password with WP-CLI. Capture it in your secret manager or environment, rather than committing it:
 
@@ -94,7 +94,7 @@ The other collection abilities use the same runtime contract, such as `stuff-dra
 | wp-admin Thing edit screen with SCF | Not captured for the same reason. Native owner stamping also has the limitation below. |
 | First Admin inventory and lending log | Not captured. There is no generated app or working local site to display. |
 
-These screenshots are not done. Once main can build this source, run the HTTP verifier to create demo data, then capture the real list, SCF editor, and `/first-admin/` screens. No mock screens or unrelated screenshots are included.
+These screenshots are not done. Once main can build this source, run the HTTP verifier to create demo data, then capture the real list, SCF editor, and `/wp-admin/new/` screens. No mock screens or unrelated screenshots are included.
 
 ## Customize it
 

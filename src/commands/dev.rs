@@ -2,7 +2,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-const STUDIO: &str = "wp-studio@2.1.1";
+const STUDIO: &str = "wp-studio@2.2.0";
 const TOOLS: &[(&str, &str)] = &[
     ("studio.mjs", include_str!("../../scripts/dev/studio.mjs")),
     ("setup.php", include_str!("../../scripts/dev/setup.php")),

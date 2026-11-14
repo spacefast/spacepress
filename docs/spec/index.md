@@ -60,6 +60,11 @@ Added 2026-11-13:
     anything declared in source except its label and field presentation. See [spec.md](spec.md) §2.10 and
     [the decision record](../decisions/2026-11-13-runtime-schema.md), which
     reverses "DB as schema source" for this subset only.
+12. First Admin (the vendored next-admin) is the default admin, at its upstream
+    address `/wp-admin/new/`; classic `/wp-admin/` stays complete beside it, with
+    a link each way, and login lands on First Admin. `admin: false` opts out.
+    This reverses "classic wp-admin is the default; the custom admin stays behind
+    `admin: true`". See [docs/admin.md](../admin.md).
 
 ## Principles
 

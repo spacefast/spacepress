@@ -37,3 +37,16 @@ add_filter( 'first_admin_native_post_types', static function ( $types ) {
     }
     return $types;
 } );
+
+// Inside wp-admin, the classic menu lists First's post types and its globals page; First Admin
+// has its own entries for both (Collections, Globals), so the copied plugin menu leaves them out.
+add_filter( 'first_admin_legacy_menu_items_exclude', static function ( $slugs ) {
+    $plugin = \First\Wp\Runtime::plugin();
+    foreach ( $plugin->schema->collections() as $collection ) {
+        if ( isset( $collection['wp']['postType'] ) ) {
+            $slugs[] = 'edit.php?post_type=' . $collection['wp']['postType'];
+        }
+    }
+    $slugs[] = 'first-' . $plugin->schema->name();
+    return $slugs;
+} );

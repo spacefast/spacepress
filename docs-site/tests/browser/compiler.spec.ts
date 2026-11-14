@@ -114,8 +114,8 @@ test("Run in WordPress runs the config in the editor", async ({ page }) => {
   expect(plugin.resource).toBe("literal:directory");
   const appFiles = plugin.files as { first: { app: { "schema.php": string; migrations: Record<string, string> } } };
   expect(appFiles.first.app["schema.php"]).toContain("'note'");
-  expect(Object.keys(appFiles.first.app.migrations)).toEqual(["0001_init.sql", "0002_update.sql", "0003_update.sql"]);
-  expect(appFiles.first.app.migrations["0003_update.sql"]).toMatch(/note/);
+  expect(Object.keys(appFiles.first.app.migrations)).toEqual(["0001_init.sql", "0002_update.sql", "0003_update.sql", "0004_update.sql"]);
+  expect(appFiles.first.app.migrations["0004_update.sql"]).toMatch(/note/);
   // The schema changed, so the seed written for the committed schema stays out.
   expect(edited.steps.some((step) => step.step === "runPHP")).toBe(false);
   // First's shared plugins come from this site; the order is the activation order.

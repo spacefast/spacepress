@@ -22,6 +22,7 @@ use First\Js;
  *   GET/PATCH /__first/api/v1/<global>      → the global's get/update Ability, through the same run route
  *   GET/PATCH /__first/api/v1/settings      → GET /wp/v2/settings (public fields from the index for others)
  *   GET    /__first/api/v1/menus[/<loc>]    → /wp/v2/menu-locations + /wp/v2/menu-items, public locations only
+ *   POST   /__first/api/v1/_live           → subscribed reads: "not modified" or fresh results (Live\Module)
  *   GET    /__first/api/v1                 → the app's schema: kinds, fields, actions (`first pull`)
  *   …/<kind>/<id>/staged[/compare|/promote|/preview] → a post kind's staged version ({@see Staged})
  *
@@ -169,6 +170,9 @@ final class Facade
         }
         if ($name === 'actions' && count($segments) === 2) {
             return self::action($plugin, $method, $segments[1], $query, $body);
+        }
+        if ($name === \First\Live\Module::ROUTE && count($segments) === 1) {
+            return \First\Live\Module::serve($plugin, $method, $body); // reactive queries: its own file
         }
         if (isset($plugin->schema->globals()[$name]) && count($segments) === 1) {
             return self::global($plugin, $method, $name, $body);

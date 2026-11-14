@@ -70,6 +70,17 @@ async function queries() {
   const plain = await db.query.items.findFirst();
   expectType<Equal<NonNullable<typeof plain>["locationId"], number | null>>();
 
+  // A many-ref holds its ids; `with` loads the rows in their place; filters take `has` or the rows'.
+  const post = await db.query.posts.findFirst({ where: { related: { has: 3 } } });
+  expectType<Equal<NonNullable<typeof post>["related"], number[] | null>>();
+  const withRelated = await db.query.posts.findFirst({
+    where: { related: { title: "x" }, relatedFrom: { status: "published" } },
+    with: { related: { columns: { title: true }, limit: 3 }, relatedFrom: true },
+  });
+  expectType<Equal<NonNullable<typeof withRelated>["related"], { title: string }[]>>();
+  expectType<Equal<NonNullable<typeof withRelated>["relatedFrom"][number]["related"], number[] | null>>();
+  await db.update(posts).set({ related: [1, 2] }).where({ id: 1 });
+
   // A required ref -> not nullable once loaded.
   const comment = await db.query.comments.findFirst({ with: { postId: true } });
   expectType<Equal<NonNullable<typeof comment>["postId"]["id"], number>>();

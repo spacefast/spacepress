@@ -977,6 +977,25 @@ fn frontend_modes_on_wordpress() {
     assert_eq!(external["note status"], 308);
     assert_eq!(external["post"][0], 308);
 
+    // Authors: the users kind's read rule gives a visitor the editor's row only. The editor is a
+    // public author, as WordPress ships one; the admin, who also has a published post, is closed
+    // like a login nobody has. Core's own users route stays closed for both.
+    assert_eq!(
+        theme["authors"],
+        serde_json::json!({
+            "listed": 200,
+            "unlisted": 404,
+            "unknown": 404,
+            "listed by id": [301, "/author/editor/"],
+            "unlisted by id": 404,
+            "both ids": 404,
+            "listed embed": [false, "/author/editor/"],
+            "unlisted embed": [true, ""],
+            "core route": [401, 401]
+        }),
+        "{theme}"
+    );
+
     // One sitemap, through core's (`wp-sitemap.xml`): core's own files for posts, pages, terms and
     // authors, and First's provider with a file per kind that has a `url` and readable items. Only
     // what a signed-out visitor may read is in it: no draft, no private or password-protected item,
@@ -2037,4 +2056,162 @@ fn docs_example_reads_in_the_browser() {
     assert_eq!(seen["twins"]["draft"][0], 404);
     let llms = seen["llms"].as_str().unwrap();
     assert!(llms.contains("/about.md") && !llms.contains("Roadmap"), "{llms}");
+}
+
+/// Issue #311: every read a `first/app/` page can make runs as the visitor, on WordPress over
+/// HTTP. A collection whose read rule shows drafts to staff only, read through each path a page
+/// has (tests/php/page_reads.php): a page's and a layout's `db.query`, the `"first:db"` kind API,
+/// the Markdown twin, a `route.ts` handler, and the two kinds of read in an action a `"use client"`
+/// component calls. A signed-out visitor never sees the draft; an editor does. An editor's render
+/// is never shared, so the anonymous page after it is still the anonymous one.
+#[test]
+fn page_reads_run_as_the_visitor() {
+    let project = fixture("page-reads", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/page_reads.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let public = serde_json::json!(["Public one"]);
+    let both = serde_json::json!(["Public one", "Secret draft"]);
+    for surface in ["page", "kind api", "route"] {
+        assert_eq!(seen["anonymous"][surface], public, "{surface}: {seen}");
+        assert_eq!(seen["editor"][surface], both, "{surface}: {seen}");
+    }
+    assert_eq!(
+        (&seen["anonymous"]["layout"], &seen["editor"]["layout"]),
+        (&serde_json::json!(1), &serde_json::json!(2))
+    );
+    // The twin renders as an anonymous visitor for everyone (rendering.md §5).
+    assert_eq!(
+        (&seen["anonymous"]["twin"], &seen["editor"]["twin"]),
+        (&public, &public)
+    );
+    // An action reached from a client component: the kind API reads as its caller, `db` is trusted.
+    assert_eq!(
+        seen["anonymous"]["action kind api"],
+        serde_json::json!([200, ["Public one"]])
+    );
+    assert_eq!(
+        seen["editor"]["action kind api"],
+        serde_json::json!([200, ["Public one", "Secret draft"]])
+    );
+    assert_eq!(
+        seen["anonymous"]["action db"],
+        serde_json::json!([200, ["Public one", "Secret draft"]])
+    );
+    // Only the anonymous render is shared; an editor's is private, and doesn't replace it.
+    assert_eq!(
+        seen["anonymous"]["page cache"],
+        "public, s-maxage=300, max-age=0, must-revalidate"
+    );
+    assert_eq!(seen["editor"]["page cache"], "private, no-store, max-age=0");
+    assert_eq!(seen["anonymous after editor"], public);
+}
+
+/// docs/spec/rendering.md §7, "Kept from today": each static `page.tsx` route has a hidden,
+/// code-owned WordPress Page (tests/php/route_pages.php). WordPress, menus and SEO plugins see a
+/// normal Page whose link is the route URL; wp-admin, its counts and REST edit lists don't list it;
+/// nobody may edit or delete it; WordPress's own addresses for it redirect to the route.
+#[test]
+fn static_routes_have_code_owned_pages() {
+    let project = fixture("app-router", "route-pages");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/route_pages.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let seen: serde_json::Value = serde_json::from_str(
+        stdout
+            .lines()
+            .skip_while(|l| !l.starts_with('{'))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .as_str(),
+    )
+    .unwrap_or_else(|_| panic!("{stdout}"));
+    let url = |path: &str| -> String {
+        let link = seen["pages"]["/"]["link"].as_str().unwrap();
+        format!("{}{path}", link.trim_end_matches('/'))
+    };
+    // One Page per static page.tsx route: `page.md` routes own their own, parameterised routes none.
+    let routes: Vec<&String> = seen["pages"].as_object().unwrap().keys().collect();
+    assert_eq!(routes, ["(site)/about", "/", "account", "broken", "notes"], "{seen}");
+    for (route, path) in [("(site)/about", "/about"), ("/", "/"), ("notes", "/notes")] {
+        let page = &seen["pages"][route];
+        assert_eq!(
+            (page["status"].as_str(), page["link"].as_str(), page["meta"].as_str()),
+            (Some("publish"), Some(url(path).as_str()), Some(route)),
+            "{route}"
+        );
+    }
+    // A route under a guard stores its Page private; the root is the front page.
+    assert_eq!(seen["pages"]["account"]["status"], "private");
+    assert_eq!(seen["pages"]["/"]["title"], "Home");
+    assert_eq!(seen["front"], serde_json::json!(["page", true]));
+    assert_eq!(seen["canonical"], url("/notes"));
+    // Hidden from wp-admin, its counts and REST edit lists; a public REST list has them like any page.
+    for title in ["Home", "Notes", "About", "Account", "Broken"] {
+        assert!(
+            !seen["admin list"].as_array().unwrap().iter().any(|t| t == title),
+            "{title}: {seen}"
+        );
+        assert!(
+            !seen["rest edit"].as_array().unwrap().iter().any(|t| t == title),
+            "{title}: {seen}"
+        );
+    }
+    assert!(
+        seen["rest view"].as_array().unwrap().iter().any(|t| t == "About"),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["admin count publish"], 4,
+        "Native, Colophon, Field guide, Sample Page"
+    );
+    // Locked: no edit or delete, and a write that skips capability checks changes nothing.
+    assert_eq!(seen["can edit"], serde_json::json!([false, false, true]));
+    assert_eq!(seen["after bypass"], serde_json::json!(["Notes", "publish"]));
+    // Menus link the route; a lost record finds the same Pages again, so menu items keep working.
+    assert_eq!(seen["menu"], serde_json::json!([url("/about")]));
+    assert_eq!(seen["adopted"], true);
+    // WordPress's own addresses for a code Page go to the route; a site's own Page is untouched.
+    assert_eq!(seen["page_id redirect"], serde_json::json!([301, url("/about")]));
+    assert_eq!(seen["slug redirect"], serde_json::json!([301, url("/")]));
+    assert_eq!(
+        (&seen["about"], &seen["native"]),
+        (&serde_json::json!(200), &serde_json::json!(200))
+    );
+    // The route renders with its Page as the queried object, as the page template would have it.
+    assert_eq!(
+        (&seen["body class"], &seen["home body class"]),
+        (&serde_json::json!(true), &serde_json::json!(true))
+    );
+    // The sitemap lists the route once, from the app's pages; core's page sitemap leaves code Pages out.
+    assert_eq!(
+        (&seen["sitemap pages"], &seen["sitemap app"]),
+        (&serde_json::json!(4), &serde_json::json!(3))
+    );
 }

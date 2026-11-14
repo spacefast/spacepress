@@ -1,7 +1,7 @@
 // Negative checks: each @ts-expect-error must be consumed by a real mistake.
 import {
   action, blocks, boolean, collection, db, defineConfig, global, HttpError, integer, media, repeater, richText, select, text, url,
-  table,
+  table, ref,
 } from "first";
 import { authors, comments, items, locations, posts, entities, settings, shoppingList, UNITS } from "./schema";
 import type { AppRelations } from "./register";
@@ -250,3 +250,7 @@ void v1Queries; void authors; void comments; void settings;
 export { fetch } from "first";
 // @ts-expect-error "first" has no crypto
 export { crypto } from "first";
+// @ts-expect-error a many-ref's links go with a deleted target, or refuse it: no setNull
+ref(locations).many().onDelete("setNull");
+// @ts-expect-error a many-ref takes no default
+ref(locations).many().default([1]);

@@ -66,6 +66,7 @@ export type ColumnKind =
   | "file"
   | "mediaList"
   | "select"
+  | "refList"
   | "group"
   | "repeater"
   | "blocks";
@@ -78,13 +79,13 @@ type GeneratedValue<TKind extends ColumnKind, TData> =
 // Which modifiers each kind allows (design §1.2). Enforced here through `this` parameters, and by
 // the compiler regardless ("`.max()` isn't valid on a boolean column").
 /** `.min/.max`: numeric bounds, string length in code points, or item count. */
-type BoundedKind = "integer" | "number" | "text" | "email" | "url" | "slug" | "richText" | "mediaList" | "select" | "repeater" | "blocks";
+type BoundedKind = "integer" | "number" | "text" | "email" | "url" | "slug" | "richText" | "mediaList" | "select" | "refList" | "repeater" | "blocks";
 /** `.pattern`: strings only. */
 type PatternKind = "text" | "email" | "url" | "slug";
 /** `.unique()`. */
 type UniqueKind = "id" | "integer" | "number" | "text" | "email" | "url" | "slug" | "boolean" | "date" | "timestamp";
 /** `.default()` and friends: every kind but media. */
-type DefaultKind = Exclude<ColumnKind, "media">;
+type DefaultKind = Exclude<ColumnKind, "media" | "refList">;
 
 /** What `.validate` sees besides the value. */
 export interface ValidateCtx {
@@ -149,12 +150,17 @@ export interface ColumnBuilder<
 
   /** The value may be null or left out. Fields are required otherwise. */
   optional(): ColumnBuilder<TKind, TData, false, THasDefault, TLocalized, TPrimary>;
-  /** A list: any number of distinct `select()` options, or of `media()` ids. */
+  /**
+   * A list: any number of distinct `select()` options, of `media()` ids, or of `ref()` targets. A
+   * many-ref holds the target ids in write order; writes replace the whole list.
+   */
   many(
-    this: ColumnBuilder<"text" | "media", TData, TNotNull, THasDefault, TLocalized, TPrimary>,
+    this: ColumnBuilder<"text" | "media" | "integer", TData, TNotNull, THasDefault, TLocalized, TPrimary>,
   ): TKind extends "media"
     ? ColumnBuilder<"mediaList", number[], TNotNull, THasDefault, TLocalized, TPrimary>
-    : ColumnBuilder<"select", TData[], TNotNull, THasDefault, TLocalized, TPrimary>;
+    : TKind extends "integer"
+      ? ColumnBuilder<"refList", number[], TNotNull, THasDefault, TLocalized, TPrimary>
+      : ColumnBuilder<"select", TData[], TNotNull, THasDefault, TLocalized, TPrimary>;
   /** Declares a rename: this field was stored as `old`. The deploy renames the column and keeps its values. */
   was(old: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** SQL `DEFAULT value` (a constant; arrays/objects for list and structured columns). */
@@ -191,8 +197,14 @@ export interface ColumnBuilder<
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /** Unique text columns also need `.max(n)` with n ≤ 191 (MySQL index limit). Not allowed on sub-fields or globals. */
   unique(this: ColumnBuilder<UniqueKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
-  /** What deleting the referenced row does: `restrict` (the default when required), `setNull` (the default when optional) or `cascade`. `ref()` fields only. */
-  onDelete(action: "cascade" | "restrict" | "setNull"): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
+  /**
+   * What deleting the referenced row does: `restrict` (the default when required), `setNull` (the
+   * default when optional) or `cascade`. On `ref().many()`: `cascade` (the default) removes the link,
+   * `restrict` refuses the delete while links exist. `ref()` fields only.
+   */
+  onDelete(
+    action: TKind extends "refList" ? "cascade" | "restrict" : "cascade" | "restrict" | "setNull",
+  ): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** The name of the list of referencing rows on the target. Default: the referencing kind's name. `ref()` fields only. */
   reverse(name: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
 
@@ -639,7 +651,7 @@ export interface JsonOperators<T> {
 
 /** The filter one column accepts, by kind (design §3.5). */
 type ColumnFilter<C> = C extends { readonly [columnBrand]: { kind: infer K; data: infer D } }
-  ? K extends "mediaList" | "select"
+  ? K extends "mediaList" | "select" | "refList"
     ? ListOperators<D extends readonly (infer I)[] ? I : never>
     : K extends "json" | "group" | "repeater" | "blocks"
       ? JsonOperators<NonNullable<D>>
@@ -676,7 +688,7 @@ export type RelationsFilter<
 
 /** Columns that can be ordered: everything but list and JSON-valued columns. */
 type OrderableKeys<TCols> = {
-  [K in keyof TCols]: ColumnKindOf<TCols[K]> extends "mediaList" | "select" | "json" | "group" | "repeater" | "blocks" ? never : K;
+  [K in keyof TCols]: ColumnKindOf<TCols[K]> extends "mediaList" | "select" | "refList" | "json" | "group" | "repeater" | "blocks" ? never : K;
 }[keyof TCols];
 
 export type OrderBy<T extends AnyCollection> = {
@@ -1130,6 +1142,20 @@ export interface ConfigInput<
   plugins?: Readonly<Record<string, WordPressPlugin>>;
   /** Ship the optional admin screens (`first-admin`) with the build. Default `false`. */
   admin?: boolean;
+  /**
+   * Keep the site's authors public as WordPress ships them: author archives, `?author=N`, the users
+   * sitemap, author names in oEmbed and unauthenticated `/wp/v2/users`. Default `false`: closed, unless
+   * the users kind's read rule lets anyone read users.
+   */
+  publicAuthors?: boolean;
+  /**
+   * Sealed mode: the only code that runs as a plugin is First's own plugins, the platform plugins,
+   * the `plugins` declared here (exact versions, checksums in the committed lock) and `use` plugin
+   * packages. Activating anything else is refused; anything else already loaded is reported. A host
+   * that mounts First through the build store can enforce the list before any plugin loads.
+   * Default `false`. See docs/sealed.md for what is and isn't guaranteed.
+   */
+  sealed?: boolean;
   /**
    * Let the running site add collections, globals and fields, each change stored there as a numbered
    * schema version. The build declares the changes listed in `first/_generated/runtime-schema.json`. Default `false`.

@@ -4,7 +4,7 @@
 import {
   blocks, boolean, collection, date, email, global, group, integer, json, media,
   repeater, richText, select, slug, text, timestamp, url,
-  table, ref,
+  table, ref, type AnyCollection,
 } from "first";
 
 export const UNITS = ["pcs", "g", "kg"] as const;
@@ -59,6 +59,8 @@ export const posts = collection({
   tags: select(["news", "guide", "release"]).many().default([]),
   kind: select(["article", "note"]).default("article"),
   authorId: ref(authors).optional(),
+  // A many-ref: the related posts' ids in write order; `with: { related: true }` loads the rows.
+  related: ref((): AnyCollection => posts).many().optional().reverse("relatedFrom"),
   seo: group({
     metaTitle: text().max(70).optional(),
     noindex: boolean().default(false),

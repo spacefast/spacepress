@@ -132,6 +132,13 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
     let mut request = agent.get(url.as_str());
     if let Some(token) = token {
         request = request.header("Authorization", format!("Bearer {token}"));
+    } else if let Some(password) = std::env::var("FIRST_APP_PASSWORD").ok().filter(|p| !p.is_empty()) {
+        // As the other site commands take it: `user:application-password`. `FIRST_TOKEN` wins when
+        // both are set, as it did before this was accepted.
+        request = request.header(
+            "Authorization",
+            format!("Basic {}", crate::sync::client::base64(password.as_bytes())),
+        );
     }
     let mut response = request
         .call()
@@ -202,6 +209,58 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
                 "off: Akismet is not active (set it up through Jetpack); comments are not spam-checked".to_string()
             },
         );
+        // Sealed mode (docs/sealed.md). An active plugin the config doesn't list fails doctor. Must-use
+        // plugins, drop-ins and theme PHP can't be listed in any config (a host's own are among
+        // them), so they are shown and never fail. The site reports; First stops and removes nothing.
+        let sealed = &versions["sealed"];
+        let names = |key: &str| -> Option<Vec<String>> {
+            sealed[key]
+                .as_array()
+                .map(|list| list.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        };
+        match (names("plugins"), names("networkPlugins")) {
+            (Some(plugins), Some(network)) => {
+                let unlisted: Vec<String> = plugins.into_iter().chain(network).collect();
+                let enforced = sealed["enforced"].as_str().unwrap_or("report");
+                check(
+                    checks,
+                    "sealed",
+                    unlisted.is_empty(),
+                    if unlisted.is_empty() {
+                        format!("every active plugin is listed (enforced by {enforced})")
+                    } else {
+                        format!("active but not in first.config.ts: {}", unlisted.join(", "))
+                    },
+                );
+                let also: Vec<String> = ["muPlugins", "dropins", "theme"]
+                    .iter()
+                    .flat_map(|key| names(key).unwrap_or_default())
+                    .collect();
+                check(
+                    checks,
+                    "sealed: other code WordPress loads",
+                    true,
+                    if also.is_empty() {
+                        "no must-use plugin, drop-in or theme PHP".to_string()
+                    } else {
+                        also.join(", ")
+                    },
+                );
+            }
+            _ if sealed.is_object() => check(
+                checks,
+                "sealed",
+                false,
+                "sign in as an administrator (FIRST_TOKEN or FIRST_APP_PASSWORD) to see what the site loads",
+            ),
+            _ if manifest["sealed"].is_array() => check(
+                checks,
+                "sealed",
+                false,
+                "this build is sealed, but the site doesn't report it: deploy this build",
+            ),
+            _ => {}
+        }
         let incompatible = versions["incompatibleTables"].as_array();
         check(
             checks,
@@ -253,7 +312,26 @@ fn remote(site: &str, token: Option<&str>, manifest: &Value, checks: &mut Vec<Va
             pending.map_or("missing diagnostics".to_string(), |pending| pending.len().to_string()),
         );
     }
+    runtime_schema(&description["data"], checks);
     Ok(())
+}
+
+/// With `runtimeSchema`: whether the site serves its newest schema version. A version table whose
+/// chain doesn't check out, or an option written outside apply, makes it serve less, and says why.
+fn runtime_schema(description: &Value, checks: &mut Vec<Value>) {
+    let Some(runtime) = description.get("runtimeSchema") else {
+        return;
+    };
+    let version = runtime["version"].as_u64().unwrap_or(0);
+    match runtime["problem"].as_str() {
+        Some(problem) => check(
+            checks,
+            "site runtime schema",
+            false,
+            format!("version {version}: {problem}"),
+        ),
+        None => check(checks, "site runtime schema", true, format!("version {version}")),
+    }
 }
 
 /// Locales as Polylang stores them: lowercase slugs (`pt-BR` → `pt-br`), sorted for comparison.
@@ -265,6 +343,26 @@ fn language_slugs(list: &[Value]) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::runtime_schema;
+
+    #[test]
+    fn a_runtime_schema_problem_fails_the_check_and_says_why() {
+        let mut checks = Vec::new();
+        runtime_schema(&serde_json::json!({ "name": "app" }), &mut checks);
+        assert!(checks.is_empty(), "an app without runtimeSchema reports nothing");
+        runtime_schema(&serde_json::json!({ "runtimeSchema": { "version": 4 } }), &mut checks);
+        runtime_schema(
+            &serde_json::json!({ "runtimeSchema": { "version": 3, "problem": "schema version 2 does not match its hash" } }),
+            &mut checks,
+        );
+        assert_eq!(checks[0]["ok"], true, "{checks:?}");
+        assert_eq!(checks[1]["ok"], false, "{checks:?}");
+        assert_eq!(
+            checks[1]["detail"],
+            "version 3: schema version 2 does not match its hash"
+        );
+    }
+
     #[test]
     fn regional_locales_match_polylang_slugs() {
         let configured = [serde_json::json!("pt-BR"), serde_json::json!("en")];

@@ -135,3 +135,92 @@ fn a_failed_compile_leaves_the_store_unchanged() {
         assert_eq!(entries(&root.join(dir)), Vec::<String>::new(), "{dir}");
     }
 }
+
+/// Sealed mode (docs/sealed.md): a sealed app's build manifest lists the plugin directory slugs a
+/// host lets load, so the host can enforce them before any plugin loads; an unsealed one has none.
+#[test]
+fn a_sealed_build_lists_the_plugins_a_host_lets_load() {
+    let work = tempfile::tempdir().unwrap();
+    let root = work.path().join("store");
+    let plain = capture(work.path(), "plain");
+    let built = first::host::compile_to_store(&plain, &root, &plain, None).unwrap();
+    assert_eq!(built.manifest.sealed, None);
+    let manifest = fs::read_to_string(root.join("build").join(format!("{}.json", built.build_id))).unwrap();
+    assert!(
+        !manifest.contains("sealed"),
+        "an unsealed build's manifest has no sealed key"
+    );
+    // Nor does the hosted manifest inside the app tree, so an unsealed app hashes as it did before.
+    let hosted = fs::read_to_string(root.join("app").join(&built.app_hash).join("manifest.json")).unwrap();
+    assert!(!hosted.contains("\"sealed\""), "{hosted}");
+
+    let project = work.path().join("sealed").join("pantry");
+    copy(Path::new("examples/pantry"), &project);
+    let config = project.join("first.config.ts");
+    let text = fs::read_to_string(&config).unwrap();
+    let sealed = text.replacen("defineConfig({", "defineConfig({\n  sealed: true,", 1);
+    assert_ne!(text, sealed, "the fixture edit applies");
+    fs::write(&config, sealed).unwrap();
+    let sources = work.path().join("sources-sealed");
+    first::host::sources(&project, &sources).unwrap();
+    let built = first::host::compile_to_store(&sources, &root, &sources, None).unwrap();
+    let listed = built.manifest.sealed.expect("a sealed build lists its plugins");
+    // Exactly the plugins this host mounts for this app, plus First's admin (always listed): no
+    // identity (no users kind), no pages, no Polylang (no locales).
+    assert_eq!(
+        listed,
+        [
+            "action-scheduler",
+            "first-admin",
+            "first-app-pantry",
+            "first-runtime",
+            "mcp-adapter",
+            "secure-custom-fields",
+            "two-factor"
+        ]
+    );
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("build").join(format!("{}.json", built.build_id))).unwrap())
+            .unwrap();
+    assert_eq!(manifest["sealed"], serde_json::json!(listed));
+    // The hosted manifest in the app tree carries the same list.
+    let hosted: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("app").join(&built.app_hash).join("manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(hosted["sealed"], serde_json::json!(listed));
+    // The build loader accepts this manifest and a host reads the list from it; a manifest whose
+    // list isn't plugin directory names is refused, like any other malformed manifest.
+    let loader = root
+        .join("runtime")
+        .join(&built.runtime_revision)
+        .join("first-loader.php");
+    let php = |code: &str| {
+        let out = std::process::Command::new("php")
+            .args(["-r", code])
+            .arg(&loader)
+            .arg(&root)
+            .arg(&built.build_id)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let read = php(
+        "define('ABSPATH', '/'); require $argv[1]; echo json_encode(First\\Loader\\Loader::sealed($argv[2], $argv[3]));",
+    );
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&read).unwrap(),
+        serde_json::json!(listed)
+    );
+    let kept = php(
+        "define('ABSPATH', '/'); require $argv[1]; $l = First\\Loader\\Loader::sealed($argv[2], $argv[3]);
+         echo json_encode([First\\Loader\\Loader::allowedPlugins(['akismet/akismet.php', 'two-factor/two-factor.php', 'two-factor.php', 'two-factor/x/y.php', 'two-factor/../akismet/akismet.php', 7], $l),
+            First\\Loader\\Loader::keepUnlisted(['two-factor/two-factor.php'], ['akismet/akismet.php', 'two-factor/two-factor.php', 'first-runtime/first-runtime.php'], $l)]);",
+    );
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&kept).unwrap(),
+        serde_json::json!([
+            ["two-factor/two-factor.php"],
+            ["akismet/akismet.php", "two-factor/two-factor.php"]
+        ])
+    );
+}

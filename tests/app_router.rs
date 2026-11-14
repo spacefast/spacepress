@@ -1613,7 +1613,7 @@ export const nope = state.result?.nope;
             "method": "post",
             "action": "/__first/api/v1/actions/subscribe",
             "hidden": [["_first_return", "hidden", "/?ref=nav"]],
-            "page cache": "public, s-maxage=300, max-age=0, must-revalidate",
+            "page cache": "public, max-age=0, s-maxage=300, must-revalidate",
         }),
         "an anonymous page with a form stays shared and carries no nonce: {seen}"
     );
@@ -2425,7 +2425,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // tags are stored as the app's blocks, their Markdown as inner blocks.
     assert_eq!(
         seen["blocks registered"],
-        serde_json::json!(["docskind/callout", "docskind/badge"])
+        serde_json::json!(["docskind/callout", "docskind/badge", "docskind/status"])
     );
     assert_eq!(
         seen["blocks stored"],
@@ -2448,6 +2448,10 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // Written back, the blocks are the file's tags again, and an editor's change to a prop is too.
     let file = "Run the installer.\n\n<Callout type=\"warning\" title=\"Before you start\">\nBack up the **database**.\n\n- Export it\n- Keep a copy\n</Callout>\n\n<Badge label=\"New\" count={3} />\n\nThen continue.\n";
     assert_eq!(seen["blocks back"], file);
+    assert_eq!(
+        seen["blocks cleared back"],
+        "<Status />\n\n<Badge label=\"x\" count={3} />\n"
+    );
     assert_eq!(
         seen["blocks edited back"],
         file.replace("type=\"warning\"", "type=\"note\"")
@@ -2731,6 +2735,11 @@ fn component_blocks_edit_in_the_block_editor() {
     assert_eq!(seen["badgeEdited"], "<span class=\"badge\">Fresh<b> 3</b></span>");
     assert_eq!(seen["calloutInner"], "Mind the gap.");
     assert_eq!(seen["calloutFields"], serde_json::json!([1, 1]), "{seen}");
+    // A block that renders nothing still has a box to select; an optional choice starts unset, and
+    // can be set and unset again; a cleared text field is empty.
+    assert_eq!(seen["statusEmpty"], "<Status />");
+    assert_eq!(seen["statusKind"], serde_json::json!(["", "live", ""]));
+    assert_eq!(seen["statusCleared"], "");
     let saved = seen["saved"].as_str().unwrap();
     assert!(
         saved.contains("<!-- wp:docskind/badge {\"label\":\"Fresh\",\"count\":3} /-->")

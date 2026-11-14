@@ -2253,6 +2253,79 @@ fn content_blocks_refuse_props_a_tag_cannot_write() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Components in Markdown in the block editor, in Chromium: a component without `children` is
+/// registered by core's `autoRegister` support (a server-rendered preview, a sidebar field per
+/// prop), one with `children` by the runtime's script (inner blocks edited in place, props in the
+/// sidebar); both save as the app's blocks and render through their components
+/// (tests/differential/client/editor-blocks.mjs).
+#[test]
+fn component_blocks_edit_in_the_block_editor() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let project = fixture("docs-kind", "editor");
+    build(&project);
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/editor-blocks.mjs"))
+        .arg(&url)
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    // Core marks the Badge's props for its own fields; the Callout's are the runtime's.
+    assert_eq!(
+        seen["types"],
+        serde_json::json!({ "docskind/badge": ["count", "label"], "docskind/callout": [] }),
+        "{seen}"
+    );
+    assert_eq!(seen["badgePreview"], "<span class=\"badge\">New<b> 3</b></span>");
+    assert_eq!(seen["badgeFields"], serde_json::json!([1, 1]), "{seen}");
+    assert_eq!(seen["badgeEdited"], "<span class=\"badge\">Fresh<b> 3</b></span>");
+    assert_eq!(seen["calloutInner"], "Mind the gap.");
+    assert_eq!(seen["calloutFields"], serde_json::json!([1, 1]), "{seen}");
+    let saved = seen["saved"].as_str().unwrap();
+    assert!(
+        saved.contains("<!-- wp:docskind/badge {\"label\":\"Fresh\",\"count\":3} /-->")
+            && saved.contains("<!-- wp:docskind/callout {\"type\":\"warning\"} -->")
+            && saved.contains("<p>Mind the gap.</p>"),
+        "{saved}"
+    );
+    assert_eq!(
+        seen["rendered"],
+        serde_json::json!([
+            "<span class=\"badge\">Fresh<b> 3</b></span>",
+            "<aside class=\"callout callout-warning\" role=\"note\"><div class=\"callout-body\"> <p class=\"wp-block-paragraph\">Mind the gap.</p> </div></aside>"
+        ]),
+        "{seen}"
+    );
+}
+
 /// The docs example (examples/docs), every content feature at once, read in Chromium as an
 /// anonymous visitor: the site is the example as built, seeded from the records a hosted compile
 /// writes for its content/docs/ folder tree (tests/differential/client/docs.mjs).

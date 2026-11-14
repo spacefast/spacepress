@@ -365,6 +365,8 @@ pub struct Compiler<'a, 'p> {
     pub schema: &'a Schema,
     ev: &'a mut Evaluator<'p>,
     collections: &'a [Rc<CollectionVal>],
+    /// Each registered action's allocation → its registered name (`Extracted::action_values`).
+    action_values: &'a HashMap<usize, String>,
     type_aliases: HashMap<(usize, String), (Vec<TypeParam>, TyAnn)>,
     duplicate_type_aliases: HashSet<(usize, String)>,
     annotation_depth: usize,
@@ -474,6 +476,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             schema,
             ev,
             collections: &ext.collections,
+            action_values: &ext.action_values,
             type_aliases,
             duplicate_type_aliases,
             annotation_depth: 0,
@@ -5143,7 +5146,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return err(e.span, format!("expected a function, got {}", v.ty.describe()));
         };
         check_callback_parameters(params, declared, e.span)?;
-        Ok(v)
+        Ok(checked_function(v))
     }
 
     /// An object-literal method that reads `this`, compiled with `this` typed as the literal.
@@ -6695,7 +6698,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => props.php,
                 };
                 Ok(Out::atom(
-                    format!("\\First\\Html::component({}, {props})", f.php),
+                    format!("\\First\\Html::component({}, {props})", checked_function(f).php),
                     Ty::Html,
                 ))
             }
@@ -6809,6 +6812,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let mut entries = Vec::new();
         let mut spread = false;
+        let mut form_action: Option<String> = None;
         for attr in &jsx.attrs {
             match attr {
                 JsxAttr::Named { name, value, span } => {
@@ -6834,6 +6838,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             format!("`{name}` is a directive First writes"),
                             "use state, props and handlers; the compiler adds the directives",
                         );
+                    }
+                    // `<form action={subscribe}>`: a form that posts to the action, with or without
+                    // JavaScript (docs/spec/rendering.md §4.2).
+                    if folded_tag == "form"
+                        && name == "action"
+                        && let Some(action) = self.action_named(value)?
+                    {
+                        if self.client.is_some() {
+                            return err_help(
+                                value.span,
+                                "a \"use client\" component's form calls its action from a handler",
+                                "write `onSubmit` and call the action there, or move the form into a server component",
+                            );
+                        }
+                        form_action = Some(action);
+                        continue;
                     }
                     self.jsx_attribute_rule(&folded_tag, name, literal, value, *span)?;
                     // In a list's or conditional's `<template>`, a value the browser computes is
@@ -6921,6 +6941,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         }
         entries.extend(self.client_directives(jsx)?);
+        if let Some(action) = &form_action {
+            if jsx.attrs.iter().any(|a| matches!(a, JsxAttr::Named { name, .. } if name.eq_ignore_ascii_case("method") || name.eq_ignore_ascii_case("encType")))
+            {
+                return err_help(
+                    span,
+                    "a form with an action posts it form-encoded",
+                    "remove `method` and `encType`; First sets them",
+                );
+            }
+            entries.push(format!("...\\First\\Render\\Forms::attributes({})", php_str(action)));
+            spread = true;
+        }
         // A client element's dynamic text: `data-wp-text` on the element when it is the only
         // child, otherwise a compiler `<span>` around it (generator B).
         let mut client_children = None;
@@ -6975,6 +7007,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             folded_tag.clone()
         };
         let mut args = vec![php_str(&output_tag), attrs];
+        // The return path and, for a signed-in render, the REST nonce, after the author's fields.
+        let form_fields = form_action
+            .as_ref()
+            .map(|action| format!("\\First\\Render\\Forms::fields({})", php_str(action)));
         // A literal string child stays a string, so `Html::element` can apply React's rules that
         // depend on it (the doubled leading newline in `<pre>`).
         match (jsx.children.as_slice(), client_children) {
@@ -6990,6 +7026,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             (_, Some(children)) => args.extend(children),
             (children, None) => args.extend(self.jsx_children(children)?),
         }
+        args.extend(form_fields);
         Ok(Out::atom(
             format!("\\First\\Html::element({})", args.join(", ")),
             Ty::Html,
@@ -8351,7 +8388,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     open
                 }
             ),
-            None => format!("({})({argv})", f.php),
+            None => format!("{}({argv})", checked_function(f).php),
         };
         Ok(Out::new(
             php,
@@ -9267,7 +9304,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let rep = self.expr(rep_e)?;
                 if let Ty::Fn(declared, _) = &rep.ty {
                     check_callback_parameters(&parameters(declared.len()), declared, rep_e.span)?;
-                    Out::atom(format!("\\Closure::fromCallable({})", rep.php), rep.ty)
+                    checked_function(rep)
                 } else if !rep.ty.is_str() {
                     return err(rep_e.span, "a replacement must be a string or a function");
                 } else {
@@ -10867,6 +10904,14 @@ fn logical_result_type(op: LogOp, left: &Ty, right: &Ty) -> Ty {
     } else {
         Ty::union([retained, right.clone()])
     }
+}
+
+/// A function value the compiler did not build itself, checked to be a JavaScript function before
+/// it is called. The type checker says it is a function, but a type assertion or parsed JSON can
+/// make it a string or an array at run time, and PHP would call the PHP function a string names
+/// (`"system"`, `"First\\Db::..."`) with the arguments the program passes.
+fn checked_function(f: Out) -> Out {
+    Out::atom(format!("\\First\\Js::callback({})", f.php), f.ty)
 }
 
 /// The global `Boolean` read as a value: one shared closure that returns ToBoolean of its

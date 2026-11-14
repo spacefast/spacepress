@@ -179,7 +179,10 @@ components defined inside render.
 ```
 
 - Without JavaScript, the form POSTs to the action endpoint and redirects back
-  to the page, with errors in a flash.
+  to the page, with errors in a flash. As built: form-encoded to
+  `/__first/api/v1/actions/<name>`, `303` to the hidden `_first_return` path
+  with `?_flash=<id>`, the flash a sealed read-once cookie; the marked render
+  is `private, no-store` ([pages.md](../pages.md#forms)).
 - With JavaScript, an Interactivity store submits it with `fetch`, keeps
   `pending`, `error` and `result` in context, and updates in place.
 - `useFormState()` reads those values.

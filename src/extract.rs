@@ -10,6 +10,7 @@ use crate::schema::*;
 use crate::value::*;
 use indexmap::IndexMap;
 use serde_json::Value as Json;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Where a compiled function's PHP name goes once it's known.
@@ -95,6 +96,9 @@ pub struct Extracted {
     pub collections: Vec<Rc<CollectionVal>>,
     /// Non-fatal advice printed by `first build` (§3.5.1 postmeta hint).
     pub hints: Vec<String>,
+    /// Each registered action's value (its allocation) → its registered name, so a page's
+    /// `<form action={subscribe}>` and `useFormState(subscribe)` name the action they were given.
+    pub action_values: HashMap<usize, String>,
     pub plugins: Option<crate::wp_plugins::Config>,
     /// `defineConfig({ use })`: plugin packages, in registration order.
     pub uses: Vec<crate::plugins::Plugin>,
@@ -234,6 +238,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         roots: Vec::new(),
         collections: Vec::new(),
         hints: Vec::new(),
+        action_values: HashMap::new(),
         refs: Vec::new(),
         plugins: None,
         uses: Vec::new(),
@@ -321,6 +326,17 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .flat_map(|config| config.plugins.iter().map(|plugin| plugin.slug.clone()))
             .collect();
         declared.sort();
+        if let Some(denied) = declared
+            .iter()
+            .find(|slug| crate::bundle::SEALED_DENIED.contains(&slug.as_str()))
+        {
+            return Err(Diag::new(
+                span_of(ev, config, "plugins", config_span),
+                format!(
+                    "a sealed site can't run {denied}: it serves stored content around First's read rules. Remove it from plugins, or turn sealed mode off."
+                ),
+            ));
+        }
         out.schema.sealed = Some(declared);
     }
 
@@ -775,6 +791,7 @@ fn actions(
                 access_rule(v, sp, &owner, "access", format!("action__{name}__access"), out)?
             }
         };
+        out.action_values.insert(Rc::as_ptr(a) as usize, name.clone());
         out.roots.push(Root {
             closure: handler.clone(),
             slot: Slot::ActionHandler { action: name.clone() },

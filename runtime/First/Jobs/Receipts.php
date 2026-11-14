@@ -41,7 +41,7 @@ final class Receipts
     }
 
     /** `once(key, fn)`: scope 'fn', keyed per calling user, bound to the current operation's input. */
-    public static function once(string $scope, mixed $key, callable $fn): mixed
+    public static function once(string $scope, mixed $key, \Closure $fn): mixed
     {
         if (!is_string($key)) {
             throw new \First\JsError('once key must be a string', 'TypeError');

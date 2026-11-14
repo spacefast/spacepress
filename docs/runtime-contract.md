@@ -760,9 +760,12 @@ listens and purges those URLs from Batcache and the edge. With no listener
   (`batcache_clear_url()`), the VIP edge cache (`wpvip_purge_edge_cache_for_url()`,
   or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins) or Jetpack
   Boost (`jetpack_boost_clear_page_cache_url`) is loaded, the runtime listens on
-  `first_purge_urls` and clears each path in each of them. `/*` bans the VIP
-  site and clears Boost's whole cache; Batcache has no whole-site clear, so its
-  entries run out with the window. A host's own listener runs beside these.
+  `first_purge_urls` and clears each path in each of them. Batcache counts only
+  while its drop-in runs (`$batcache` is set). `/*` bans the VIP site and clears
+  Boost's whole cache; a list longer than VIP queues in one request (100) bans
+  the VIP site once instead of each URL. Boost clears a URL recursively, so `/`
+  goes to its home action. Batcache has no whole-site clear, so its entries run
+  out with the window. A host's own listener runs beside these.
 
 ## Reactive queries (`Live\Module`)
 

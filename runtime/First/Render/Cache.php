@@ -66,6 +66,11 @@ final class Cache
      */
     public static function policy(int $status, bool $anonymous, bool $guarded): array
     {
+        // A prerender (Prebuilt) is recorded like a cacheable render, and kept by no shared cache:
+        // the file it becomes is the copy that is served.
+        if ($status === 200 && $anonymous && !$guarded && Prebuilt::prerendering()) {
+            return ['private, no-store, max-age=0', true];
+        }
         if ($status === 200 && $anonymous && !$guarded) {
             $window = max(0, (int) apply_filters('first_app_cache_window', self::WINDOW));
             return ["public, max-age=0, s-maxage=$window, must-revalidate", true];
@@ -80,8 +85,9 @@ final class Cache
      */
     public static function record(string $uri, array $reads): void
     {
-        // A prerender records what it read, so a write knows which prebuilt URLs it changed.
-        if (!self::listening() && !Prebuilt::prerendering()) {
+        // A prerender records what it read, so a write knows which prebuilt URLs it changed; other
+        // renders only where a host's page cache listens for purges.
+        if (!(function_exists('has_action') && has_action('first_purge_urls') !== false) && !Prebuilt::prerendering()) {
             return;
         }
         $url = self::path($uri);

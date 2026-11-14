@@ -5,6 +5,8 @@ import { defineConfig, collection, text, slug } from "first";
 export const notes = collection({
   title: text(),
   slug: slug({ source: "title" }),
+  // Stored as post meta, not a core post field: an edit to it reaches no core post hook.
+  summary: text().optional(),
 }, { title: "title", url: "/notes/:slug", access: { read: (ctx) => (ctx.user ? true : { status: "published" }), create: "editor", update: "editor", delete: "editor" } });
 
 export default defineConfig({ name: "prebuilt", collections: { notes } });

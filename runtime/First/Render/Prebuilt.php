@@ -27,7 +27,11 @@ use First\Wp\WpFiles;
  * - In `output: "server"`, the `first_prebuild` Action Scheduler action renders URLs into
  *   `wp-content/cache/first-prebuilt/<build>/` and `serve()` answers from there before the request
  *   is parsed. A write that would purge a prebuilt URL deletes its files and schedules the action
- *   for it (on-demand regeneration); until it has run, the URL renders per request.
+ *   for it (on-demand regeneration); until it has run, the URL renders per request. A file is never
+ *   served past MAX_AGE, and the action rebuilds every file that often, so what no write announces
+ *   (an option, a menu, the time) is never older than that. Site-wide settings drop every file.
+ * - The `<build>` directory is named by the app's compiled files, the runtime's content hash, and
+ *   the WordPress, theme and plugin versions that write the page's head and assets.
  * - `GET /__first/api/v1/prerender` lists the URLs for `first export`, to an editor.
  */
 final class Prebuilt
@@ -38,6 +42,18 @@ final class Prebuilt
     public const ROUTE = 'prerender';
     /** URLs one action renders; the rest go to a following action. */
     public const BATCH = 50;
+    /**
+     * A file older than this is not served; the next full build replaces it. What a page shows that
+     * no write announces (an option, a menu, another plugin's data, the time) is never older.
+     */
+    public const MAX_AGE = 3600;
+    /** How long a prerender token is valid, in seconds: one build, not forever. */
+    public const TOKEN_TTL = 3600;
+    /**
+     * The cookie the loopback sends: Batcache and edge caches skip any request with a `wordpress_`
+     * cookie, so a prerender always reaches PHP and is never answered from a stored copy.
+     */
+    public const COOKIE = 'wordpress_first_prerender';
 
     private static ?Plugin $plugin = null;
     /** @var ?string the viewer function this prerender request called, reported in REFUSED */
@@ -69,14 +85,43 @@ final class Prebuilt
         }
         add_action('plugins_loaded', self::serve(...), PHP_INT_MAX);
         add_action(self::ACTION, self::build(...), 10, 1);
-        // After a build is initialized (first request, migrate, activation) the files are made.
+        // After a build is initialized (first request, migrate, activation) the files are made, and
+        // made again every MAX_AGE by the same stock Action Scheduler action.
         add_action('init', static function (): void {
-            if (!get_option(self::option()) && self::$plugin?->unavailable() === null && function_exists('as_enqueue_async_action')
-                && !as_has_scheduled_action(self::ACTION, null, 'first')) {
-                update_option(self::option(), 'scheduled', false);
+            if (self::$plugin?->unavailable() !== null || !function_exists('as_enqueue_async_action')) {
+                return;
+            }
+            $state = get_option(self::option());
+            $due = !is_array($state) || ($state['state'] === 'built' && $state['at'] + self::MAX_AGE <= time())
+                || ($state['state'] === 'failed' && $state['at'] + $state['retry'] <= time())
+                // A build that never finished (its action was killed) is tried again after MAX_AGE.
+                || ($state['state'] === 'scheduled' && $state['at'] + self::MAX_AGE <= time());
+            if ($due && !as_has_scheduled_action(self::ACTION, [[]], 'first')) {
+                update_option(self::option(), ['state' => 'scheduled', 'at' => time(), 'retry' => (int) ($state['retry'] ?? 60)], false);
                 as_enqueue_async_action(self::ACTION, [[]], 'first');
             }
         }, 20);
+        // Site-wide settings every page shows, which no content write announces: every file goes.
+        foreach (['blogname', 'blogdescription', 'blog_public', 'blog_charset', 'WPLANG', 'permalink_structure', 'home', 'siteurl', 'site_icon', 'theme_mods_' . get_option('stylesheet')] as $option) {
+            add_action("update_option_$option", self::forget(...), 10, 0);
+        }
+        add_action('wp_update_nav_menu', self::forget(...), 10, 0);
+        add_action('switch_theme', self::forget(...), 10, 0);
+        add_action('upgrader_process_complete', self::forget(...), 10, 0);
+        add_action('activated_plugin', self::forget(...), 10, 0);
+        add_action('deactivated_plugin', self::forget(...), 10, 0);
+    }
+
+    /** Every prebuilt file goes, and the next request schedules a full build. */
+    public static function forget(): void
+    {
+        if (self::$plugin === null) {
+            return;
+        }
+        if (is_dir(self::dir())) {
+            self::remove(self::dir());
+        }
+        delete_option(self::option());
     }
 
     /** Prebuilt files are served here and kept current: the build is `output: "server"` with a prebuilt page. */
@@ -118,21 +163,32 @@ final class Prebuilt
             $path = self::$plugin->dir . '/first/app/' . $file;
             hash_update($hash, $file . ':' . (is_file($path) ? (string) hash_file('sha256', $path) : '-') . "\n");
         }
-        // The runtime renders the document around the page: its own files' identity is part of it.
-        $runtime = dirname(__DIR__);
-        hash_update($hash, \First\Wp\Runtime::VERSION . ':' . $runtime . ':' . (string) @filemtime($runtime . '/Wp/AppRouter.php') . ':' . (string) @filemtime($runtime . '/Render/Prebuilt.php'));
+        // The runtime renders the document around the page (its files by content, stamped by the
+        // build), and WordPress, the theme and the active plugins write its head and its assets.
+        hash_update($hash, 'runtime:' . (defined('FIRST_RUNTIME_HASH') ? FIRST_RUNTIME_HASH : \First\Wp\Runtime::VERSION) . "\n");
+        hash_update($hash, 'wp:' . get_bloginfo('version') . ':' . get_option('stylesheet') . ':' . (string) wp_get_theme()->get('Version') . "\n");
+        $plugins = (array) get_option('active_plugins', []);
+        sort($plugins);
+        foreach ($plugins as $plugin) {
+            $data = function_exists('get_file_data') && is_file(WP_PLUGIN_DIR . '/' . $plugin) ? get_file_data(WP_PLUGIN_DIR . '/' . $plugin, ['v' => 'Version']) : ['v' => ''];
+            hash_update($hash, 'plugin:' . $plugin . ':' . $data['v'] . "\n");
+        }
         return $id = hash_final($hash);
     }
 
     // ------------------------------------------------------------------ the prerender request
 
-    /** The header value that proves a request comes from this site's own prebuild or `first export`. */
-    public static function token(string $path): string
+    /**
+     * The header value that proves a request comes from this site's own prebuild or `first export`:
+     * `<expiry>.<HMAC of path and expiry>`, valid for TOKEN_TTL.
+     */
+    public static function token(string $path, ?int $expires = null): string
     {
-        return hash_hmac('sha256', 'first-prerender:' . $path, WpFiles::ensureSecret());
+        $expires ??= time() + self::TOKEN_TTL;
+        return $expires . '.' . hash_hmac('sha256', 'first-prerender:' . $expires . ':' . $path, WpFiles::ensureSecret());
     }
 
-    /** This request carries a valid prerender header for its own path. */
+    /** This request carries a valid, unexpired prerender header for its own path. */
     public static function prerendering(): bool
     {
         static $answer = null;
@@ -140,11 +196,15 @@ final class Prebuilt
             return $answer;
         }
         $given = $_SERVER['HTTP_X_FIRST_PRERENDER'] ?? null;
-        if (!is_string($given) || $given === '' || !function_exists('get_option')) {
+        if (!is_string($given) || preg_match('/\A(\d{1,12})\.[0-9a-f]{64}\z/', $given, $m) !== 1 || !function_exists('get_option')) {
+            return $answer = false;
+        }
+        $expires = (int) $m[1];
+        if ($expires < time() || $expires > time() + self::TOKEN_TTL + 60) {
             return $answer = false;
         }
         $path = (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
-        return $answer = hash_equals(self::token($path), $given);
+        return $answer = hash_equals(self::token($path, $expires), $given);
     }
 
     /** A viewer function ran while prerendering: the page can't be one file for everyone. */
@@ -303,7 +363,7 @@ final class Prebuilt
         }
         unset($url);
         $answer['notFound'] = ['path' => '/__first-not-found', 'token' => self::token(self::full('/__first-not-found'))];
-        return [200, ['data' => $answer]];
+        return [200, $answer];
     }
 
     /** A path below the home URL as the request will carry it (with the home path in front). */
@@ -352,13 +412,23 @@ final class Prebuilt
             return;
         }
         $path = substr($uri, strlen($base)) ?: '/';
+        // `/index` is not the home page's URL; only its twin `/index.md` is.
+        if ($path === '/index' || $path === '/index/') {
+            return;
+        }
         $markdown = str_ends_with($path, '.md');
         $html = $markdown ? (substr($path, 0, -3) === '/index' ? '/' : substr($path, 0, -3)) : $path;
         if ($html !== '/' && (str_ends_with($html, '/') || str_contains(rawurldecode($html), '..') || str_contains(rawurldecode($html), "\0") || str_contains(rawurldecode($html), '\\'))) {
             return;
         }
         $file = self::files($html)[$markdown ? 1 : 0];
-        if (!is_file($file)) {
+        $mtime = @filemtime($file);
+        if ($mtime === false || $mtime + self::MAX_AGE < time()) {
+            return;
+        }
+        // A plugin that gates the site (a private site, coming soon, a membership wall) says no here,
+        // and the request reaches WordPress, where its gate runs as before.
+        if (!apply_filters('first_prebuilt_serve', true, $html)) {
             return;
         }
         [$control] = Cache::policy(200, true, false);
@@ -396,21 +466,36 @@ final class Prebuilt
             return;
         }
         $all = $paths === [];
+        $listed = array_column(self::urls($plugin)['urls'], 'path');
         if ($all) {
             self::sweep();
-            $paths = array_column(self::urls($plugin)['urls'], 'path');
+            self::prune($listed);
+            $paths = $listed;
+        } else {
+            // A path no longer listed (an unpublished item, a value staticParams dropped) loses
+            // its files and is not built again.
+            foreach (array_diff($paths, $listed) as $gone) {
+                foreach (self::files((string) $gone) as $file) {
+                    @unlink($file);
+                }
+            }
+            $paths = array_values(array_intersect($paths, $listed));
         }
         $rest = array_slice($paths, self::BATCH);
         if ($rest !== []) {
             as_enqueue_async_action(self::ACTION, [$rest], 'first');
         }
-        $reached = true;
         foreach (array_slice($paths, 0, self::BATCH) as $path) {
-            $reached = self::render((string) $path) && $reached;
+            if (!self::render((string) $path)) {
+                // The site can't reach itself: stop, and back off before the whole build runs again.
+                $state = get_option(self::option());
+                $retry = min(self::MAX_AGE, 2 * (int) (is_array($state) ? ($state['retry'] ?? 30) : 30));
+                update_option(self::option(), ['state' => 'failed', 'at' => time(), 'retry' => $retry], false);
+                return;
+            }
         }
         if ($all) {
-            // Unreachable: the next request's init schedules the whole build again.
-            $reached ? update_option(self::option(), 'built', false) : delete_option(self::option());
+            update_option(self::option(), ['state' => 'built', 'at' => time(), 'retry' => 60], false);
         }
     }
 
@@ -423,9 +508,11 @@ final class Prebuilt
     private static function render(string $path): bool
     {
         [$html, $md] = self::files($path);
+        $started = microtime(true);
         $fetch = static fn (string $url, string $signed) => wp_remote_get((string) apply_filters('first_prebuild_url', $url), [
             'timeout' => 30, 'redirection' => 0, 'sslverify' => false,
             'headers' => [self::HEADER => self::token($signed)],
+            'cookies' => [new \WP_Http_Cookie(['name' => self::COOKIE, 'value' => '1'])],
         ]);
         $page = $fetch(home_url($path), self::full($path));
         if (is_wp_error($page)) {
@@ -440,6 +527,16 @@ final class Prebuilt
             if ($refused !== '') {
                 error_log("First: $path is prebuilt, and its render called $refused; it renders per request instead");
             }
+            return true;
+        }
+        // Only a response the router rendered for this prerender becomes a file: a shared cache's
+        // stored copy carries no echo.
+        if (wp_remote_retrieve_header($page, 'x-first-prerendered') !== '1') {
+            error_log("First: prebuilding $path got an answer the site didn't render for it (a cache in front of the loopback?); route it with first_prebuild_url");
+            return false;
+        }
+        // A write that named this path after the render started makes this render old.
+        if (self::staleSince($path) >= $started) {
             return true;
         }
         $twin = MarkdownTwins::twin(home_url($path));
@@ -466,6 +563,33 @@ final class Prebuilt
         } else {
             @unlink($tmp);
         }
+    }
+
+    /** Removes the files of paths the build no longer lists. */
+    private static function prune(array $listed): void
+    {
+        $dir = self::dir();
+        if (!is_dir($dir)) {
+            return;
+        }
+        $keep = [];
+        foreach ($listed as $path) {
+            foreach (self::files((string) $path) as $file) {
+                $keep[$file] = true;
+            }
+        }
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)) as $f) {
+            if ($f->isFile() && !isset($keep[$f->getPathname()])) {
+                @unlink($f->getPathname());
+            }
+        }
+    }
+
+    /** When a write last named this path (`stale()`), as a Unix time; 0 for never. */
+    private static function staleSince(string $path): float
+    {
+        $marks = get_transient('first_prebuilt_stale');
+        return is_array($marks) ? (float) ($marks[$path] ?? 0) : 0.0;
     }
 
     /** Removes other builds' directories: files from another build are never served, and are a cache. */
@@ -522,10 +646,16 @@ final class Prebuilt
             delete_option(self::option());
             return;
         }
+        $marks = get_transient('first_prebuilt_stale');
+        $marks = is_array($marks) ? $marks : [];
         foreach (array_keys($hit) as $path) {
             foreach (self::files($path) as $file) {
                 @unlink($file);
             }
+            $marks[$path] = microtime(true);
+        }
+        if ($hit !== []) {
+            set_transient('first_prebuilt_stale', array_slice($marks, -500, null, true), self::MAX_AGE);
         }
         if ($hit !== [] && function_exists('as_enqueue_async_action')) {
             as_enqueue_async_action(self::ACTION, [array_keys($hit)], 'first');

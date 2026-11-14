@@ -63,13 +63,17 @@ What the export refuses when it renders, with the page's URL and route file:
 ### How pages are rendered: over HTTP, through the router
 
 Both the hybrid's regeneration and the export fetch each URL from a running WordPress with one
-extra request header, `X-First-Prerender`, whose value is an HMAC of the URL keyed by the site's
-runtime secret. The router answers such a request:
+extra request header, `X-First-Prerender`. Its value is `<expiry>.<HMAC of the path and expiry>`,
+keyed by the site's runtime secret and valid for an hour. The hybrid's loopback also sends a
+`wordpress_`-prefixed cookie, which Batcache and edge caches pass through, so a stored copy never
+answers it. The router answers such a request:
 
-- as a signed-out visitor, whatever cookies arrive;
-- bypassing the prebuilt-file lane and Batcache;
-- recording the rows the render read (the cache's `first__app_reads` index), whether or not a host
-  listens for purges, so a later write knows which prebuilt URLs it changed;
+- as a signed-out visitor, whatever cookies arrive, `private, no-store`;
+- recording the rows the render read in the cache's `first__app_reads` index, so a later write
+  knows which prebuilt URLs it changed. That includes the item a kind URL names, so a write to any
+  of its fields counts, not only to the fields core's post hooks see;
+- with `X-First-Prerendered: 1`. A response without it, such as a cache's stored copy, is never
+  written to a file;
 - with `X-First-Prerender-Refused` naming a viewer function the render called.
 
 `GET /__first/api/v1/prerender` lists the URLs to build, as the site sees them now. Its answer
@@ -94,19 +98,39 @@ It needs the same credentials as `first sync` and `first pull`: an editor's appl
 - The runtime serves a file when the app plugin loads, before `init`, before rewrite rules, the
   query and the theme. It does that only for a GET or HEAD with no query string and no signed-in,
   comment-author or preview cookie, and with the cacheable policy's `Cache-Control`. Anything else
-  falls through to the router, as before. A host whose web server can serve files before PHP may
-  serve the same directory, since its layout is the URL's path.
+  falls through to the router, as before.
+  - A plugin that gates the site (private site, coming soon, membership) says no through the
+    `first_prebuilt_serve` filter.
+  - A host whose web server can serve files before PHP may serve the same directory, since its
+    layout is the URL's path. It must then apply its own access gates first.
 - **On-demand regeneration (ISR).** A committed write that would purge a prebuilt URL deletes that
-  URL's files at once and schedules `first_prebuild` for it. Such a write is a First write that
-  read the row or listed the kind, or a WordPress post or term write whose purge list names the URL.
-  Until the action has run, the URL falls through to SSR under the cache policy, so a visitor never
-  sees stale content after the write commits.
+  URL's files at once and schedules `first_prebuild` for it.
+  - Such a write is a First write that read the row or listed the kind, or a WordPress post or term
+    write whose purge list names the URL.
+  - Until the action has run, the URL falls through to SSR under the cache policy, so a visitor
+    doesn't see content older than such a write.
+  - A render that started before the write is not written.
+- **What no write announces.** An option a page reads, a menu, another plugin's data or the time can
+  change without naming any URL.
+  - A file is never served past an hour (`MAX_AGE`), and the action rebuilds every file that often,
+    so such content is at most an hour old. Batcache's window is five minutes.
+  - Site-wide settings drop every file at once: the site's name and tagline, `blog_public`, the
+    language, permalinks, the theme and its settings, menus, and plugin or core updates.
+- **Paths that stop being listed.** A path `staticParams` stops listing, or an item that is
+  unpublished, loses its files at the next build.
 - Markdown twins: the `.md` file is written with the HTML and served from the same lane, so
   `/about.md` stays correct. The sitemap and `llms.txt` stay the router's: they list the same URLs
   whether or not a page is prebuilt.
-- A new build hash starts an empty directory, so files from an older build are never served. The
-  first `first_prebuild` run under a new hash removes the other hashes' directories. These files
-  are a cache, not data.
+- **The build directory.** It is named by a hash of:
+  - the app's compiled files;
+  - the runtime's content hash, stamped into `first-runtime.php` at build time;
+  - the WordPress, theme and active-plugin versions that write the page's head and asset URLs.
+
+  A new hash starts an empty directory, so files from an older build or an older WordPress are
+  never served. The first `first_prebuild` run under a new hash removes the other directories.
+  These files are a cache, not data.
+- **A site that can't reach its own address.** The action stops at the first failed fetch and
+  backs off (60 s, doubling up to an hour) before the full build runs again.
 - Dynamic pages that don't say `prerender = true` are unchanged: SSR under the cache policy.
 
 ### (2) and (3) The static export: `first export`

@@ -1139,6 +1139,26 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     assert_eq!(seen["published later"], true);
     assert_eq!(seen["unpublished"], json!([404, false]));
     assert_eq!(seen["unpublished after rebuild"], json!([404, false]));
+    // A field stored as post meta, which reaches no core post hook: the page read its item, so the
+    // write still names the URL.
+    assert_eq!(seen["meta field"], json!([false, "Fresh summary"]));
+    assert_eq!(seen["meta field rebuilt"], json!([true, "Fresh summary"]));
+    // A site-wide setting drops every file; the next build has the new value.
+    assert_eq!(seen["renamed"], json!([false, false]));
+    assert_eq!(seen["renamed rebuilt"], true);
+    // A file is never served past its maximum age; `/index` is not the home page; a gate vetoes.
+    for key in ["too old", "index", "gated"] {
+        assert_eq!(seen[key], false, "{key}");
+    }
+    // A prerender token expires: an old one is an ordinary (cacheable) render, a fresh one a prerender
+    // no shared cache keeps.
+    assert_eq!(
+        seen["expired token"],
+        "public, max-age=0, s-maxage=300, must-revalidate"
+    );
+    assert_eq!(seen["fresh token"], "private, no-store, max-age=0");
+    // A value staticParams stops listing loses its file.
+    assert_eq!(seen["dropped value"], json!([false, true]));
 }
 
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.

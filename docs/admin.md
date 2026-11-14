@@ -93,6 +93,7 @@ underneath it, the change is the smallest one that keeps that look:
 | `@first-admin/theme` passes the `bg` seed also as `background` | the pinned `@wordpress/theme` renamed it |
 | The site hub wraps its title in a `<span>` | the upstream stylesheet sizes the link's first span, which the pinned `@wordpress/ui` Link no longer adds |
 | `style` on design-system popups and primitives | the pinned Base UI types moved it |
+| The page opts in to view transitions (`@view-transition`) | the router starts one on each navigation; without the opt-in the browser aborts it with an error |
 
 Everything else that differs from the retained originals is behaviour: the
 mount and subdirectory URLs, First's schema screens, and the AI chat button,

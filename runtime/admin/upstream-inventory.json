@@ -1522,7 +1522,7 @@
       "sha256": "4ee77e2840097e35aaf3e71552ec27f95995df31fca41766e9fadf05cc155c84",
       "path": "lib/pages/admin.php",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "2dcad5cee5ee88ba742004e2dca1e0ca4b06ca69db1ff9b772a82b7125bce829",
+      "adaptedSha256": "8749559baa17cec6f66f7fdb89e2ef86ddd1ac572fc7865e70b10b0af55fe748",
       "normalizedSha256": "a52a5f84bd89933a49bbfcac90a69d8fee37d8a47c3eb2f23ca073e3aa09c81f",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/pages/admin.php"
     },

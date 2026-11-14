@@ -572,3 +572,32 @@ export default defineConfig({ tables: { notes }, relations: {} });"#,
         );
     }
 }
+
+/// A raw 0.3.0 project as a client released before the rename uploads it: the app directory
+/// (`zero.config.ts`, its relative modules, its ledger, `public/`), copied without `node_modules`.
+fn raw(work: &Path, fixture: &str) -> PathBuf {
+    let project = work.join("raw");
+    copy_dir(&Path::new(FIXTURE).join(fixture), &project);
+    let _ = fs::remove_dir_all(project.join("node_modules"));
+    project
+}
+
+/// The host captures a raw 0.3.0 project into exactly the bundle the 0.3.0 compiler captured from
+/// it, so it compiles, migrates and is refused exactly as that capture is.
+#[test]
+fn a_raw_zero_project_is_captured_as_the_0_3_compiler_captured_it() {
+    for (fixture, sources) in [("app", "sources"), ("routes/app", "routes/sources")] {
+        let work = tempfile::tempdir().unwrap();
+        let project = raw(work.path(), fixture);
+        let captured = work.path().join("captured");
+        first::host::sources(&project, &captured).unwrap();
+        let expected = Path::new(FIXTURE).join(sources);
+        for name in ["app.zero.json", "vendor.zero.json", "manifest.json"] {
+            assert_eq!(
+                String::from_utf8(fs::read(captured.join(name)).unwrap()).unwrap(),
+                String::from_utf8(fs::read(expected.join(name)).unwrap()).unwrap(),
+                "{fixture}: {name}"
+            );
+        }
+    }
+}

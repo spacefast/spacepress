@@ -48,7 +48,7 @@ fn io(error: std::io::Error) -> Diag {
     failure(error.to_string())
 }
 
-fn relative(root: &Path, path: &Path) -> std::io::Result<String> {
+pub(crate) fn relative(root: &Path, path: &Path) -> std::io::Result<String> {
     let mut normalized = PathBuf::new();
     for component in path.components() {
         match component {
@@ -76,6 +76,17 @@ struct Recording {
 impl Fs for Recording {
     fn allow_packages(&self) -> bool {
         self.packages
+    }
+    // How the sources are read is the wrapped tree's: a raw 0.3 project (`crate::zero_bundle`) is
+    // captured with the reading its capture is compiled with.
+    fn frozen_capture(&self) -> bool {
+        self.fs.frozen_capture()
+    }
+    fn module_alias(&self) -> Option<&'static str> {
+        self.fs.module_alias()
+    }
+    fn legacy_fields(&self) -> bool {
+        self.fs.legacy_fields()
     }
     fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
         self.fs.read_dir(path)
@@ -172,19 +183,14 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
     }
     let app = serde_json::to_string(&app).map_err(|e| failure(e.to_string()))?;
     let vendor = serde_json::to_string(&vendor).map_err(|e| failure(e.to_string()))?;
-    let manifest = Manifest {
-        format: "first.source-bundle.v1".into(),
-        name: built.schema.name.clone(),
-        app_sha256: hash(app.as_bytes()),
-        vendor_sha256: hash(vendor.as_bytes()),
-    };
+    let manifest = manifest_for("first.source-bundle.v1", &built.schema.name, &app, &vendor);
     let mut public_files = Vec::new();
     capture_assets(&*fs, &project.join("public"), &project, &mut public_files)?;
     public_files.sort();
     Ok(Capture {
         app,
         vendor,
-        manifest: serde_json::to_string(&manifest).unwrap(),
+        manifest,
         public_files,
     })
 }
@@ -253,12 +259,40 @@ pub fn sources(project: &Path, destination: &Path) -> Result<Manifest, Diag> {
 #[cfg(feature = "host")]
 pub(crate) fn write_sources(project: &Path, destination: &Path, packages: bool) -> Result<Manifest, Diag> {
     let captured = capture(Rc::new(loader::Disk), project, packages)?;
+    write_capture(
+        project,
+        destination,
+        [(APP_FILE, &captured.app), (VENDOR_FILE, &captured.vendor)],
+        &captured.manifest,
+    )
+}
+
+/// A capture's two bundles and manifest, and the project's `public/`, into a new directory.
+#[cfg(feature = "host")]
+pub(crate) fn write_capture(
+    project: &Path,
+    destination: &Path,
+    bundles: [(&str, &String); 2],
+    manifest: &str,
+) -> Result<Manifest, Diag> {
     std::fs::create_dir(destination).map_err(io)?;
-    std::fs::write(destination.join(APP_FILE), &captured.app).map_err(io)?;
-    std::fs::write(destination.join(VENDOR_FILE), &captured.vendor).map_err(io)?;
-    std::fs::write(destination.join(MANIFEST_FILE), &captured.manifest).map_err(io)?;
+    for (name, text) in bundles {
+        std::fs::write(destination.join(name), text).map_err(io)?;
+    }
+    std::fs::write(destination.join(MANIFEST_FILE), manifest).map_err(io)?;
     public_assets(&project.join("public"), Some(&destination.join("public")))?;
-    serde_json::from_str(&captured.manifest).map_err(|e| failure(e.to_string()))
+    serde_json::from_str(manifest).map_err(|e| failure(e.to_string()))
+}
+
+/// The manifest of a capture whose bundles are `app` and `vendor`.
+pub(crate) fn manifest_for(format: &str, name: &str, app: &str, vendor: &str) -> String {
+    serde_json::to_string(&Manifest {
+        format: format.into(),
+        name: name.into(),
+        app_sha256: hash(app.as_bytes()),
+        vendor_sha256: hash(vendor.as_bytes()),
+    })
+    .unwrap()
 }
 
 fn is_vendor(path: &str) -> bool {

@@ -20,6 +20,8 @@ const SCHEMA_TS = `export const SCHEMA = {
       relations: { author: { kind: "one", collection: "authors", optional: true } }, media: ["cover"], mediaList: [], files: ["deck"] },
     authors: { path: "authors", primaryKey: "id", drafts: true, revisions: true, relations: {}, media: [], mediaList: [], files: [] },
     shoppingList: { path: "shopping_list", primaryKey: "id", drafts: false, revisions: false, relations: {}, media: [], mediaList: [], files: [] },
+    comments: { path: "comments", primaryKey: "id", drafts: false, revisions: false,
+      relations: { post: { kind: "one", collection: "posts", optional: false } }, media: [], mediaList: [], files: [] },
   },
   globals: ["settings"],
   actions: ["approveComment", "publishedCount"],
@@ -1190,11 +1192,11 @@ test("a hidden tab does not poll, and asks once when it is shown again", async (
     await settle();
     transport.push(notice("posts"));
     await settle();
-    assert.equal(asked, 2, "going live asks once; a notice to a hidden tab waits");
+    assert.equal(asked, 1, "a reconnect and a notice to a hidden tab wait");
     page.visibilityState = "visible";
     for (const fn of [...listeners]) fn();
     await settle();
-    assert.equal(asked, 3, "shown again: asked at once, including what the notice named");
+    assert.equal(asked, 2, "shown again: asked once, for everything that waited");
     stop();
     assert.equal(listeners.size, 0, "the last subscriber removes the listener");
   } finally {
@@ -1303,6 +1305,197 @@ test("a server-rendered answer seeds a subscription: its data at once, its token
   assert.deepEqual(got, [["fresh"]], "delivered once, from the seed");
   assert.equal(server.requests[0][0].token, JSON.stringify(["fresh"]), "and the first request is not modified");
   stop();
+});
+
+test("other requests don't restart the interval poll, so every subscription is still asked", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(Math, "random", () => 0.5);
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+  };
+  const asked: string[][] = [];
+  const first = mod.createClient({
+    url,
+    fetch: async (_input: unknown, init: { body: string }) => {
+      const queries = JSON.parse(init.body).queries;
+      asked.push(queries.map((q: { kind: string }) => q.kind));
+      return new Response(JSON.stringify({ data: { results: queries.map(() => ({ changed: false, token: "t" })), poll: { minMs: 2000, maxMs: 30000 } } }), { status: 200 });
+    },
+    realtime: { transport: false, pollMs: 1000 },
+  });
+  const stop = first.posts.list().subscribe(() => {});
+  await settle();
+  // Another component subscribes and unsubscribes every 400 ms: each one asks at once, for itself.
+  for (let i = 0; i < 6; i++) {
+    const other = first.authors.list({ limit: i + 1 }).subscribe(() => {});
+    await settle();
+    other();
+    t.mock.timers.tick(400);
+    await settle();
+  }
+  assert.ok(asked.filter((kinds) => kinds.includes("posts")).length >= 3, `posts asked on the interval: ${JSON.stringify(asked)}`);
+  stop();
+});
+
+test("a subscriber that throws doesn't fail the request for the others", async (t) => {
+  let rows = ["p1"];
+  liveServer((q) => (q.kind === "posts" ? rows : ["a"]));
+  const reported: unknown[] = [];
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "reportError");
+  Object.defineProperty(globalThis, "reportError", { configurable: true, value: (e: unknown) => reported.push(e) });
+  t.after(() => {
+    if (saved) Object.defineProperty(globalThis, "reportError", saved);
+    else delete (globalThis as Record<string, unknown>).reportError;
+  });
+  const first = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const got: unknown[] = [];
+  const errors: string[] = [];
+  const stops = [
+    first.authors.list().subscribe(() => {
+      throw new Error("render failed");
+    }),
+    first.posts.list().subscribe((d: unknown) => got.push(d), (e: { code: string }) => errors.push(e.code)),
+  ];
+  await tick();
+  rows = ["p1", "p2"];
+  await first.actions.approveComment({ id: 1 }); // asks for every read again
+  await tick();
+  assert.deepEqual(got.at(-1), ["p1", "p2"], "the other read's answer is applied");
+  assert.deepEqual(errors, [], "and it is not told the request failed");
+  assert.ok(reported.some((e) => e instanceof Error && e.message === "render failed"), "the subscriber's own error is reported as uncaught");
+  for (const s of stops) s();
+});
+
+test("an optimistic update is taken off when the write's refresh answers pending, then not modified", async () => {
+  // The reviewed case, request by request: the poll that shows the saved row was answered before
+  // the update was settled; the write's own refresh answers pending; the retry is "not modified".
+  // Settling must drop the update on that pending answer, with nothing new to deliver after it.
+  const token = (rows: string[]) => JSON.stringify(rows);
+  const answers: unknown[] = [
+    { changed: true, token: token(["one"]), data: ["one"] }, // the first answer
+    { changed: true, token: token(["one", "two"]), data: ["one", "two"] }, // a poll: already saved
+    { pending: true }, // the write's refresh
+    { changed: false, token: token(["one", "two"]) }, // the retry
+  ];
+  const first = mod.createClient({
+    url,
+    fetch: async (input: unknown) => {
+      if (!String(input).endsWith("/_live")) return new Response('{"data":{"id":2}}', { status: 201 });
+      const result = answers.shift() ?? { changed: false, token: token(["one", "two"]) };
+      return new Response(JSON.stringify({ data: { results: [result], poll: { minMs: 2000, maxMs: 30000 } } }), { status: 200 });
+    },
+    realtime: { transport: false, pollMs: false },
+  });
+  const frames: string[][] = [];
+  const read = first.posts.list();
+  const stop = read.subscribe((d: string[]) => frames.push(d));
+  await tick();
+  const saving = read.optimistic((current: string[]) => [...current, "two (saving)"]);
+  await first.actions.approveComment({ id: 1 }); // asks again: the poll that shows the saved row
+  await tick();
+  assert.deepEqual(frames.at(-1), ["one", "two", "two (saving)"], "not settled yet: the update still applies");
+  await first.posts.create({ title: "two" }); // its refresh answers pending, then not modified
+  saving.settle();
+  await tick();
+  await tick();
+  assert.equal(answers.length, 0, "every scripted answer was used");
+  assert.deepEqual(frames.at(-1), ["one", "two"], `the update is gone: ${JSON.stringify(frames)}`);
+  stop();
+});
+
+test("settle() waits for an answer to this read, not to another read's request", async () => {
+  let authors = ["ann"];
+  let release: () => void = () => {};
+  let hold: Promise<void> | null = null;
+  liveServer((q) => (q.op === "http" ? { id: 9 } : q.kind === "authors" ? authors : ["p"]));
+  // Holds the next subscription request only; writes and other calls go straight through.
+  const slow: typeof fetch = async (input, init) => {
+    const held = String(input).endsWith("/_live") ? hold : null;
+    if (held) hold = null;
+    if (held) await held;
+    return fetch(input, init);
+  };
+  const first = mod.createClient({ url, fetch: slow, realtime: { transport: false, pollMs: false } });
+  const frames: string[][] = [];
+  const read = first.authors.list();
+  const stops = [read.subscribe((d: string[]) => frames.push(d)), first.posts.list().subscribe(() => {})];
+  await tick();
+  const saving = read.optimistic((current: string[]) => [...current, "bob (saving)"]);
+  authors = ["ann", "bob"];
+  // A write to posts returns; its refresh asks for posts only, and that request is held open.
+  hold = new Promise<void>((r) => (release = r));
+  await first.posts.create({ title: "x" });
+  await Promise.resolve();
+  saving.settle();
+  assert.deepEqual(frames.at(-1), ["ann", "bob (saving)"], "kept: the request that is out is for posts, not authors");
+  release();
+  await tick();
+  await tick();
+  assert.deepEqual(frames.at(-1), ["ann", "bob"], "authors is asked for, and its answer replaces the update");
+  for (const s of stops) s();
+});
+
+test("an optimistic update made before the first answer applies to it", async () => {
+  liveServer(() => ["a"]);
+  const first = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const frames: string[][] = [];
+  const read = first.posts.list();
+  const stop = read.subscribe((d: string[]) => frames.push(d));
+  const early = read.optimistic((current: string[]) => [...current, "b (saving)"]);
+  await tick();
+  assert.deepEqual(frames.at(-1), ["a", "b (saving)"]);
+  early.rollback();
+  assert.deepEqual(frames.at(-1), ["a"]);
+  stop();
+});
+
+test("a subscription depends on the kinds its where filters through, and paginate sends no offset", async () => {
+  const server = liveServer((q) => (q.op === "count" ? 1 : q.op === "paginate" ? { rows: [], cursor: null } : []));
+  const transport = fakeTransport();
+  const first = mod.createClient({ url, realtime: { transport, pollMs: false, livePollMs: false } });
+  const stops = [
+    first.posts.list({ where: { OR: [{ author: { name: "ann" } }] } }).subscribe(() => {}),
+    first.comments.count({ where: { NOT: { post: { title: "x" } } } }).subscribe(() => {}),
+    first.posts.paginate({ limit: 2, offset: 4 }).subscribe(() => {}),
+  ];
+  await tick();
+  transport.set("live");
+  await tick();
+  assert.equal("offset" in server.requests[0][2].args, false, "paginate's args carry no offset");
+  server.requests.length = 0;
+  transport.push(notice("authors"));
+  await tick();
+  assert.deepEqual(server.requests.map((r) => r.map((q) => q.kind)), [["posts"]], "a notice for authors asks the read filtering through author");
+  server.requests.length = 0;
+  transport.push(notice("posts"));
+  await tick();
+  assert.ok(server.requests[0].some((q) => q.kind === "comments"), "and one for posts asks the count filtering through post");
+  for (const s of stops) s();
+});
+
+test("a sign-out asks every subscription again, without the old visitor's tokens", async () => {
+  const server = liveServer(() => ["row"]);
+  const first = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const stop = first.posts.list().subscribe(() => {});
+  await tick();
+  await tick();
+  server.requests.length = 0;
+  await first.auth.signOut();
+  await tick();
+  assert.equal(server.requests.length, 1, "asked again at once");
+  assert.equal(server.requests[0][0].token, undefined, "with no token: it was the previous visitor's");
+  stop();
+});
+
+test("batches stay under the endpoint's body limit", async () => {
+  const server = liveServer(() => []);
+  const first = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const big = "x".repeat(4000);
+  const stops = Array.from({ length: 12 }, (_, i) => first.posts.list({ where: { title: `${big}${i}` } }).subscribe(() => {}));
+  await tick();
+  assert.ok(server.requests.length >= 2, `split by size, not only by count: ${server.requests.map((r) => r.length)}`);
+  for (const r of server.requests) assert.ok(JSON.stringify({ queries: r }).length <= 32_768);
+  for (const s of stops) s();
 });
 
 test("the exported watch() still re-runs an arbitrary read on a notice or the fixed interval", async () => {

@@ -30,6 +30,9 @@ first.todos.get(42).subscribe((todo) => show(todo), (error) => error.status === 
   continues. A `get` whose row is missing, or which the visitor may not read, is a 404.
 - A write made through the same client (`create`, `update`, `delete`, an action) refreshes the
   subscriptions that read that kind as soon as it returns.
+- A sign-in or sign-out refreshes every subscription, as the new visitor.
+- A subscriber whose callback throws doesn't stop the others: the error is reported as uncaught
+  (`reportError`), and the subscription continues.
 - `first.todos.watch(query, onRows, onError?)` is `first.todos.list(query).subscribe(onRows, onError)`.
 
 For a read that isn't a kind query, such as an action's result or a global, use the exported
@@ -57,8 +60,9 @@ try {
 }
 ```
 
-The update applies to what subscribers of that read are shown. It changes nothing on the server,
-and it does nothing when no one is subscribed to the read.
+The update applies to what subscribers of that read are shown, and to the read's first answer
+when it hasn't arrived yet. It changes nothing on the server, and it does nothing when no one is
+subscribed to the read.
 
 ## How fresh
 

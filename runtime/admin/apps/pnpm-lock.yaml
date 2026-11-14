@@ -1271,15 +1271,6 @@ importers:
         specifier: 0.20.1-next.v.202608281122.0
         version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
-  routes/collection-index:
-    dependencies:
-      '@first-admin/schema':
-        specifier: workspace:*
-        version: link:../../packages/schema
-      '@wordpress/route':
-        specifier: 0.20.1-next.v.202608281122.0
-        version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-
   routes/collection-list:
     dependencies:
       '@first-admin/schema':
@@ -1355,6 +1346,12 @@ importers:
       '@testing-library/react':
         specifier: 'catalog:'
         version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.27))(@types/react@18.3.27)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+
+  routes/dashboard-redirect:
+    dependencies:
+      '@wordpress/route':
+        specifier: 0.20.1-next.v.202608281122.0
+        version: 0.20.1-next.v.202608281122.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
   routes/design-navigation:
     dependencies:

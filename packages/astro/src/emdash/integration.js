@@ -22,6 +22,9 @@ export function firstEmdash(options = {}) {
           vite: {
             define: { __FIRST_EMDASH_PAGES_AT__: JSON.stringify(options.pagesAt ?? "/pages/") },
             resolve: {
+              // This package's own dependency, resolved from the site's node_modules too: a linked
+              // (`file:`) install has no node_modules beside the package's real path.
+              dedupe: ["linkedom"],
               alias: [
                 { find: /^emdash\/ui\/comments$/, replacement: here("./comments.js") },
                 { find: /^emdash\/ui\/search$/, replacement: here("./LiveSearch.astro") },

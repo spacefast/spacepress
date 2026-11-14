@@ -445,7 +445,8 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
   the raw body.
   It can also be called from a form (rendering.md).
 - **`job`** runs on Action Scheduler after the request commits. A plain call
-  becomes an async action. `every` compiles to a recurring action and `cron`
+  becomes an async action, written in the request's transaction, so it commits
+  or rolls back with the request. `every` compiles to a recurring action and `cron`
   to a cron action; both are unique and re-registered on
   `action_scheduler_ensure_recurring_actions`.
 - Handlers get the globals `fetch`, `crypto`, `process.env`, `mail`, `once` and `HttpError`.

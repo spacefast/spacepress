@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace First\Services;
 
-/** Native job definitions: the existing outbox, runner and Action Scheduler own delivery. */
+/** Native job definitions: the jobs runner and Action Scheduler own delivery. */
 final class Definition
 {
     public static function jobs(): array

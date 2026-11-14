@@ -441,6 +441,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     revisions: true,
                     staged: true,
                     comments: false,
+                    comment_policy: None,
                     title: None,
                     content: None,
                     slug: None,
@@ -456,6 +457,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     localized: false,
                     url: None,
                     hierarchical: false,
+                    indexes: Vec::new(),
                     api: Api {
                         list: true,
                         get: true,
@@ -492,7 +494,8 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.drafts = opts.drafts;
         coll.revisions = opts.revisions;
         coll.staged = opts.staged;
-        coll.comments = opts.comments;
+        coll.comments = opts.comment_policy.is_some();
+        coll.comment_policy = opts.comment_policy;
         coll.title = opts.title;
         coll.content = opts.content;
         coll.slug = opts.slug;
@@ -501,6 +504,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.uid = opts.uid;
         coll.sync = opts.sync;
         coll.hierarchical = opts.hierarchical;
+        coll.indexes = c.indexes.borrow().iter().map(|(f, u, _)| (f.clone(), *u)).collect();
         coll.auth = opts.auth;
         coll.agents = opts.agents;
         let key = coll.key.clone();
@@ -967,7 +971,7 @@ struct CollOpts {
     drafts: bool,
     revisions: bool,
     staged: bool,
-    comments: bool,
+    comment_policy: Option<crate::schema::CommentPolicy>,
     title: Option<String>,
     content: Option<String>,
     slug: Option<String>,
@@ -1121,15 +1125,9 @@ fn collection_options(
         Some(on) => on,
         None => editor,
     };
-    // spec.md §6: comments are off on every kind that doesn't turn them on.
-    let comments = match flag("comments")? {
-        Some(true) if !editor => {
-            return Err(Diag::new(span("comments"), "only collection() kinds take comments")
-                .help("comments are WordPress comments on a post; use a table() with a ref for other threads"));
-        }
-        Some(on) => on,
-        None => false,
-    };
+    // spec.md §2.3: `comments: true | { guests?, moderation?, threaded?, closeAfterDays?, types? }`;
+    // comments are off on every kind that doesn't turn them on.
+    let comment_policy = comment_policy(o.get("comments"), ev, span("comments"), editor)?;
 
     if editor && c.table().len() > MAX_POST_TYPE_TABLE {
         return Err(Diag::new(
@@ -1414,7 +1412,7 @@ fn collection_options(
         drafts,
         revisions,
         staged,
-        comments,
+        comment_policy,
         title,
         content,
         slug,
@@ -2701,6 +2699,103 @@ fn reads_key(e: &crate::ir::Expr, param: &str, key: &str) -> bool {
 
 // Phase-2 config is normalized once here. Feature modules consume this metadata;
 // they do not reinterpret builders or apply policy during schema loading.
+/// A kind's `comments` option (spec §2.3): `true` is the defaults, an object overrides them.
+fn comment_policy(
+    v: Option<&Value>,
+    ev: &Evaluator<'_>,
+    span: Span,
+    editor: bool,
+) -> Result<Option<crate::schema::CommentPolicy>> {
+    let mut policy = crate::schema::CommentPolicy::default();
+    let fields = match v {
+        None | Some(Value::Undef) | Some(Value::Bool(false)) => return Ok(None),
+        Some(Value::Bool(true)) => None,
+        Some(o @ Value::Object(_)) => Some(o),
+        Some(other) => {
+            return Err(Diag::new(
+                span,
+                format!(
+                    "`comments` is true, false or an options object, not {}",
+                    other.describe()
+                ),
+            )
+            .help("write `comments: true`, or `comments: { guests: true, moderation: \"all\" }`"));
+        }
+    };
+    if !editor {
+        return Err(Diag::new(span, "only collection() kinds take comments")
+            .help("comments are WordPress comments on a post; use a table() with a ref for other threads"));
+    }
+    let Some(fields) = fields else {
+        return Ok(Some(policy));
+    };
+    let Value::Object(o) = fields else { unreachable!() };
+    for (k, val) in o.borrow().iter() {
+        let at = ev.key_span(fields, k).unwrap_or(span);
+        match (k.as_str(), val) {
+            (_, Value::Undef) => {}
+            ("guests", Value::Bool(b)) => policy.guests = *b,
+            ("guests", other) => {
+                return Err(Diag::new(
+                    at,
+                    format!("`comments.guests` is true or false, not {}", other.describe()),
+                ));
+            }
+            ("moderation", Value::Str(m)) => {
+                policy.moderation = match &**m {
+                    "none" => "none",
+                    "first-time" => "first-time",
+                    "all" => "all",
+                    other => {
+                        return Err(Diag::new(at, format!("`comments.moderation` can't be {other:?}"))
+                            .help("use \"none\" (approve at once), \"first-time\" (hold a commenter's first comment) or \"all\""));
+                    }
+                };
+            }
+            ("moderation", other) => {
+                return Err(Diag::new(
+                    at,
+                    format!("`comments.moderation` is a string, not {}", other.describe()),
+                )
+                .help("use \"none\", \"first-time\" or \"all\""));
+            }
+            ("threaded", Value::Bool(b)) => policy.threaded = if *b { 3 } else { 1 },
+            ("threaded", Value::Num(n)) if n.fract() == 0.0 && (1.0..=10.0).contains(n) => policy.threaded = *n as u8,
+            ("threaded", other) => {
+                return Err(
+                    Diag::new(at, format!("`comments.threaded` can't be {}", other.describe()))
+                        .help("use true (3 levels), false (flat) or a depth from 1 to 10"),
+                );
+            }
+            ("closeAfterDays", Value::Null) => policy.close_after_days = None,
+            ("closeAfterDays", Value::Num(n)) if n.fract() == 0.0 && *n >= 1.0 && *n <= 36_500.0 => {
+                policy.close_after_days = Some(*n as u32);
+            }
+            ("closeAfterDays", other) => {
+                return Err(
+                    Diag::new(at, format!("`comments.closeAfterDays` can't be {}", other.describe()))
+                        .help("use a whole number of days from 1, or leave it out to never close"),
+                );
+            }
+            ("types", Value::Array(items)) if items.borrow().is_empty() => {}
+            ("types", _) => {
+                return Err(Diag::new(at, "comment types aren't built yet")
+                    .help("leave `types` out; `wp.comments.type()` adds them"));
+            }
+            (other, _) => {
+                let mut d = Diag::new(at, format!("`comments` has no option `{other}`"));
+                if let Some(s) = suggest(other, ["guests", "moderation", "threaded", "closeAfterDays", "types"]) {
+                    d = d.help(format!("did you mean `{s}`?"));
+                } else {
+                    d = d.help("the options are guests, moderation, threaded, closeAfterDays and types");
+                }
+                return Err(d);
+            }
+        }
+    }
+    Ok(Some(policy))
+}
+
 fn object(v: &Value, span: Span, what: &str) -> Result<IndexMap<String, Value>> {
     match v {
         Value::Object(o) => Ok(o.borrow().clone()),

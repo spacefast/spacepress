@@ -41,6 +41,12 @@ return [
                 'title' => ['type' => 'text', 'notNull' => true],
                 'body' => ['type' => 'richText'],
                 'rating' => ['type' => 'integer'],
+                'seo' => ['type' => 'group', 'fields' => [
+                        'title' => ['type' => 'text'],
+                    ]],
+                'links' => ['type' => 'repeater', 'fields' => [
+                        'href' => ['type' => 'text', 'notNull' => true],
+                    ]],
                 'status' => ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true],
                 'publishedAt' => ['type' => 'timestamp', 'system' => true],
             ],
@@ -95,6 +101,15 @@ return [
         ],
     ],
     'globals' => [
+        'site' => [
+            'label' => 'Site',
+            'agents' => true,
+            'fields' => [
+                'meta_title' => ['type' => 'text'],
+            ],
+            'access' => ['read' => ['role' => 'anyone'], 'update' => ['role' => 'editor']],
+            'wp' => ['postId' => 'first_global_site', 'menuSlug' => 'first-global-site', 'groupKey' => 'group_first_global_site', 'fieldKeyPrefix' => 'field_first_global_site_', 'optionPrefix' => 'first_global_site_'],
+        ],
     ],
     'actions' => [
     ],

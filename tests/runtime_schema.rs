@@ -454,7 +454,7 @@ fn a_site_changes_its_schema_the_project_pulls_it_and_the_next_build_contains_it
     let why = why["problem"].as_str().unwrap_or_default();
     assert!(
         why.contains(
-            "articles.subtitle is a text field on this site (a runtime schema change) and a integer field in this build"
+            "articles.subtitle is stored on this site as text (a runtime schema change) and declared in this build as integer"
         ) && why.contains("first pull"),
         "{why}"
     );

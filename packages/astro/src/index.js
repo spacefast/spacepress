@@ -64,8 +64,10 @@ const connections = new Map();
 export function connect(options = {}) {
   const site = siteUrl(options.site);
   const headers = { accept: "application/json", ...options.headers };
-  const password = options.appPassword ?? env("FIRST_APP_PASSWORD");
-  const token = options.token ?? env("FIRST_TOKEN");
+  // `anonymous: true` never reads credentials from the environment: a server that renders pages
+  // for visitors must read as a visitor, whatever FIRST_APP_PASSWORD the build uses.
+  const password = options.anonymous ? undefined : options.appPassword ?? env("FIRST_APP_PASSWORD");
+  const token = options.anonymous ? undefined : options.token ?? env("FIRST_TOKEN");
   if (!Object.keys(headers).some((h) => h.toLowerCase() === "authorization")) {
     if (password) headers.authorization = `Basic ${base64(password)}`;
     else if (token) headers.authorization = `Bearer ${token}`;

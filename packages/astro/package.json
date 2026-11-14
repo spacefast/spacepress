@@ -29,6 +29,9 @@
     "first",
     "wordpress"
   ],
+  "dependencies": {
+    "linkedom": "0.18.12"
+  },
   "peerDependencies": {
     "astro": ">=7.4.0 <8"
   },

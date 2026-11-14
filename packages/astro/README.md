@@ -164,8 +164,16 @@ Anything the app leaves out reads as empty. The integration also answers `/_emda
 wp-admin), `/wp-comments-post.php` (forwarded to WordPress) and `/api/search` (the live search), and
 reads a draft through a staged-version preview token (`?preview=`).
 
-Not covered: `Astro.locals.user` stays unset, so the templates' admin link doesn't show. Core
-accepts a cookie only with a REST nonce, which a page served elsewhere doesn't have.
+Not covered:
+
+- `Astro.locals.user` stays unset, so the templates' admin link doesn't show. Core accepts the login
+  cookie only with a REST nonce, which a page served elsewhere doesn't have.
+- WordPress sees every comment the form forwards as coming from the Astro server's IP, so its
+  per-IP flood and spam checks treat all visitors as one.
+- A draft preview shows the staged version's block markup as saved; WordPress doesn't render a
+  staged version, so dynamic blocks and shortcodes don't run in it.
+- The site's description (its kinds and fields) is read once per server process: restart the Astro
+  server after a schema change.
 
 ## Hosting
 

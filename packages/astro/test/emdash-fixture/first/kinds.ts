@@ -10,7 +10,7 @@ export const posts = collection({
   cover: media({ accept: "image" }).optional(),
   seoTitle: text().optional(),
   seoDescription: text({ multiline: true }).optional(),
-}, { title: "title", content: "body", comments: true, access: { read: (ctx) => ["admin", "editor"].includes(ctx.user?.role ?? "") ? true : { status: "published" }, create: "editor", update: "editor", delete: "editor" } });
+}, { title: "title", content: "body", comments: { guests: true }, access: { read: (ctx) => ["admin", "editor"].includes(ctx.user?.role ?? "") ? true : { status: "published" }, create: "editor", update: "editor", delete: "editor" } });
 
 export const pages = collection({ title: text(), slug: slug({ source: "title" }), body: richText().optional() }, { title: "title", content: "body", access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
 

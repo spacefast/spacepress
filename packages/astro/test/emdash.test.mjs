@@ -54,7 +54,9 @@ before(async () => {
   wp("option", "update", "blogdescription", "Notes from the field");
   // A primary menu location (the templates' `getMenuWithCacheHint("primary")`), as a theme registers it.
   mkdirSync(join(site.dir, "content/mu-plugins"), { recursive: true });
-  writeFileSync(join(site.dir, "content/mu-plugins/menu.php"), "<?php add_action('after_setup_theme', static fn () => register_nav_menu('primary', 'Primary'));\n");
+  // Every comment here comes from 127.0.0.1, as every comment forwarded from an Astro server comes
+  // from its IP: WordPress's per-IP flood check is turned off for this test site (README: gaps).
+  writeFileSync(join(site.dir, "content/mu-plugins/menu.php"), "<?php add_action('after_setup_theme', static fn () => register_nav_menu('primary', 'Primary'));\nremove_action('check_comment_flood', 'check_comment_flood_db', 10);\n");
   wp("eval", "$m = wp_create_nav_menu('Main'); wp_update_nav_menu_item($m, 0, ['menu-item-title' => 'Home', 'menu-item-url' => home_url('/'), 'menu-item-type' => 'custom', 'menu-item-status' => 'publish']); set_theme_mod('nav_menu_locations', ['primary' => $m]);");
 
   const first = await api("POST", "/posts", {
@@ -69,6 +71,8 @@ before(async () => {
   await api("POST", "/wp-json/wp/v2/comments", { post: first.id, content: "Held.", author_name: "Spam", author_email: "s@example.test", status: "hold" });
   ids = { first: first.id, second: second.id, draft: draft.id };
   process.env.FIRST_URL = site.url;
+  // A server that builds with an editor's credentials still renders pages as a visitor.
+  process.env.FIRST_APP_PASSWORD = site.users.admin.appPassword;
   emdash = await import("../src/emdash/client.js");
 });
 
@@ -102,7 +106,9 @@ test("getEmDashCollection and getEmDashEntry read published posts in the templat
   assert.equal(paragraph.children[0].text, "Up at last & early.");
   assert.match(paragraph._html, /<strong>last<\/strong>/);
 
-  assert.equal((await emdash.getEmDashEntry("posts", "unfinished")).entry, null, "a draft without a preview token is no entry");
+  assert.equal((await emdash.getEmDashEntry("posts", "unfinished")).entry, null, "a draft without a preview token is no entry, whatever FIRST_APP_PASSWORD holds");
+  assert.equal((await emdash.getEmDashCollection("posts", { cursor: "NaN" })).nextCursor, undefined, "a cursor that isn't one reads the first page");
+  assert.equal((await emdash.getEmDashCollection("posts", { limit: 1, cursor: "9999999999" })).entries.length, 1, "nor does an out-of-range one fail");
   assert.equal((await emdash.getEmDashEntry("posts", "no-such-post")).entry, null);
   assert.equal((await emdash.getEmDashEntry("pages", "about")).entry.data.title, "About");
 });
@@ -122,11 +128,27 @@ test("site settings, the menu, widgets, terms and search come from WordPress", a
   assert.deepEqual((await emdash.search("unfinished", { collections: ["posts"], limit: 5 })).items, []);
 });
 
+test("rendered HTML splits into one block per top-level node, with nothing lost", () => {
+  const html = '<p>a &amp; b &#x2014; &hellip; &#99999999;</p><hr class="wp-block-separator"/><h2>Later</h2><div><div><p>A</p></div><p>B</p></div><ul><li>x<ul><li>y</li></ul></li><li>c</li></ul>tail text<figure><img src="i.png" alt=""></figure>';
+  const blocks = emdash.blocksFromHtml(html);
+  assert.deepEqual(blocks.map((b) => b.style), ["normal", "normal", "h2", "normal", "normal", "normal", "normal"]);
+  assert.equal(blocks[0].children[0].text.startsWith("a & b \u2014 \u2026"), true, blocks[0].children[0].text);
+  assert.equal(blocks[2].children[0].text, "Later");
+  assert.match(blocks[3]._html, /^<div><div><p>A<\/p><\/div><p>B<\/p><\/div>$/);
+  assert.match(blocks[4]._html, /<li>c<\/li><\/ul>$/);
+  assert.equal(blocks[5].children[0].text, "tail text");
+  assert.equal(blocks.map((b) => b._html).join(""), html.replace("&#99999999;", "\uFFFD").replace(/&amp;|&#x2014;|&hellip;/g, (e) => ({ "&amp;": "&amp;", "&#x2014;": "\u2014", "&hellip;": "\u2026" })[e]).replace(' class="wp-block-separator"/>', ' class="wp-block-separator">').replace('alt="">', 'alt="">'));
+});
+
 test("comments are the approved ones, threaded by parent; open follows the post", async () => {
   const { open, items } = await emdash.getComments(String(ids.first));
   assert.equal(open, true);
   assert.deepEqual(items.map((c) => [c.author, c.parent]), [["Reader", "0"]]);
-  assert.match(items[0].html, /Lovely\./);
+  assert.equal(items[0].html, "<p>Lovely.</p>");
+  // Markup in a comment is shown as text, whoever wrote it.
+  const raw = await api("POST", "/wp-json/wp/v2/comments", { post: ids.second, content: "<p>Hi <img src=x onerror=alert(1)> there</p>", author_name: "Admin", author_email: "a@example.test", status: "approved" });
+  const shown = (await emdash.getComments(String(ids.second))).items.find((c) => c.id === String(raw.id));
+  assert.equal(/<img|onerror/.test(shown.html), false, shown.html);
   await api("POST", `/wp-json/wp/v2/first_posts/${ids.first}`, { comment_status: "closed" });
   assert.equal((await emdash.getComments(String(ids.first))).open, false);
 });
@@ -143,9 +165,37 @@ test("a draft reads through a signed preview link, and only with it", async () =
   assert.equal((await requestContext.run({ preview: link.token }, () => emdash.getComments(String(ids.draft)))).open, false);
 });
 
-test("the session is the signed-in WordPress user, from the visitor's cookie", async () => {
-  assert.deepEqual(await emdash.getSession(undefined), { user: null });
+test("the session is never read from a cookie: a page served elsewhere has no WordPress nonce", async () => {
   assert.deepEqual(await emdash.getSession("wordpress_logged_in_x=forged"), { user: null });
+});
+
+test("the middleware: admin redirect, comment forwarding, preview headers, prerendered pages untouched", async () => {
+  const { onRequest } = await import("../src/emdash/middleware.js");
+  const context = (path, init = {}) => ({
+    url: new URL(`http://astro.test${path}`), request: new Request(`http://astro.test${path}`, init), isPrerendered: false,
+    redirect: (to) => new Response(null, { status: 302, headers: { location: to } }),
+  });
+  const page = () => Promise.resolve(new Response("page", { headers: { "content-type": "text/html" } }));
+  assert.equal((await onRequest(context("/_emdash/admin"), page)).headers.get("location"), `${site.url}/wp-admin/`);
+  assert.equal((await onRequest(context("/wp-comments-post.php"), page)).status, 405, "a GET is refused, not proxied");
+  const posted = await onRequest(context("/wp-comments-post.php", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ comment_post_ID: String(ids.second), author: "Visitor", email: "v@example.test", comment: "Through Astro." }) }), page);
+  assert.equal(posted.status, 302, await posted.text());
+  const held = await api("GET", `/wp-json/wp/v2/comments?post=${ids.second}&status=hold`);
+  assert.ok(held.some((c) => c.author_name === "Visitor"), "the comment reached WordPress, held for moderation");
+  const previewed = await onRequest(context("/posts/x?preview=t"), page);
+  assert.deepEqual([previewed.headers.get("cache-control"), previewed.headers.get("referrer-policy"), previewed.headers.get("x-robots-tag")], ["private, no-store", "no-referrer", "noindex"]);
+  let reached = false;
+  await onRequest({ ...context("/_emdash/admin"), isPrerendered: true }, () => { reached = true; return page(); });
+  assert.equal(reached, true, "a prerendered page is not handled");
+});
+
+test("/api/search answers the templates' live search", async () => {
+  globalThis.__FIRST_EMDASH_PAGES_AT__ = "/pages/";
+  const { GET } = await import("../src/emdash/search-route.js");
+  const answer = await (await GET({ url: new URL("http://astro.test/api/search?q=about") })).json();
+  assert.deepEqual(answer, { items: [{ title: "About", path: "/pages/about" }] });
+  assert.deepEqual(await (await GET({ url: new URL("http://astro.test/api/search?q=") })).json(), { items: [] });
 });
 
 test("astro build of a page written against \"emdash\" renders the site", { timeout: 300_000 }, () => {

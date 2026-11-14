@@ -435,13 +435,13 @@ eq('onDelete cascade', $db->findMany('comments', ['where' => ['postId' => $pub['
 
 \First\SystemTables::register('seam', [
     'CREATE TABLE IF NOT EXISTS `{prefix}first__seam` (`id` BIGINT NOT NULL AUTO_INCREMENT, `event` LONGTEXT NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB',
-    static function (\First\Store $store): void {
+    \First\SystemTables::step(1, static function (\First\Store $store): void {
         $db = $store instanceof \First\Wp\CompositeStore ? $store->db : throw new \LogicException('the upgrade needs the WordPress store');
         $have = $db->run('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$db->prefix() . 'first__seam', 'extra']);
         if ($have === []) {
             $store->applySystemStatements(['ALTER TABLE `{prefix}first__seam` ADD COLUMN `extra` LONGTEXT']);
         }
-    },
+    }),
 ]);
 \First\SystemTables::apply($db->store());
 $wp->exec('INSERT INTO {prefix}first__seam (`id`, `event`, `extra`) VALUES (1, ?, ?)', ['kept', 'upgraded']);

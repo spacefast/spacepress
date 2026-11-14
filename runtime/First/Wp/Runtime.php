@@ -31,7 +31,7 @@ final class Runtime
         self::$runtimeFile = $runtimeFile;
         // A guarded upgrade step, not a table: staged revisions written before they had their own
         // status get it (WpPostStore::upgradeStagedStatus), once per site with the other steps.
-        \First\SystemTables::register('__first_staged_status', [WpPostStore::upgradeStagedStatus(...)]);
+        \First\SystemTables::register('__first_staged_status', [\First\SystemTables::step(1, WpPostStore::upgradeStagedStatus(...))]);
         // First's API (/__first/api/v1) is a REST request outside /wp-json: Polylang must set itself up
         // as for one (every language, the API's own `locale`), not as a front-end page whose language
         // would filter every internal query. Its context is chosen on plugins_loaded, after this file.

@@ -769,11 +769,10 @@ pub fn files(
         ("types.ts".to_string(), types_ts(schema, results).into_bytes()),
         ("schema.ts".to_string(), schema_ts(schema).into_bytes()),
     ];
-    if let Some(source) = browser_source(schema, results, &runtime) {
-        out.push(("client.js".into(), browser_javascript(&source).into_bytes()));
-        #[cfg(feature = "host")]
-        out.push(("client.d.ts".into(), browser_declarations(&source).into_bytes()));
-    }
+    let source = browser_source(schema, results);
+    out.push(("client.js".into(), browser_javascript(&source).into_bytes()));
+    #[cfg(feature = "host")]
+    out.push(("client.d.ts".into(), browser_declarations(&source).into_bytes()));
     // The copied runtime half of the client is MIT; its notice travels with it.
     for f in ["index.ts", "README.md", "LICENSE"] {
         if let Some(bytes) = runtime(&format!("client/{f}")) {
@@ -789,27 +788,21 @@ pub(crate) fn registry_value(c: &Column) -> String {
     value_ts_with(c, false, &crate::types::json_authored_ty)
 }
 
+/// The runtime half of the typed client, compiled in, so the browser compiler (which carries no
+/// embedded runtime) writes the same `client.js` as `first build`.
+const CLIENT_RUNTIME: &str = include_str!("../runtime/client/index.ts");
+
 /// The canonical client as one TypeScript module: the app's types and schema, then the runtime
 /// half without its imports (`runtime/client/index.ts`).
-fn browser_source(
-    schema: &Schema,
-    results: &HashMap<String, Ty>,
-    runtime: &impl Fn(&str) -> Option<&'static [u8]>,
-) -> Option<String> {
-    let runtime = String::from_utf8_lossy(runtime("client/index.ts")?);
-    let body = runtime
+fn browser_source(schema: &Schema, results: &HashMap<String, Ty>) -> String {
+    let body = CLIENT_RUNTIME
         .lines()
         .filter(|line| {
             !line.starts_with("import ") && !line.starts_with("export type *") && *line != "export { SCHEMA };"
         })
         .collect::<Vec<_>>()
         .join("\n");
-    Some(format!(
-        "{}\n{}\n{}",
-        types_ts(schema, results),
-        schema_ts(schema),
-        body
-    ))
+    format!("{}\n{}\n{}", types_ts(schema, results), schema_ts(schema), body)
 }
 
 /// The declarations matching [`browser_javascript`], for TypeScript projects that import `client.js`.

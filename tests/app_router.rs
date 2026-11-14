@@ -1481,6 +1481,58 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
 
 /// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
 /// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
+/// The project's `public/` folder at the site root (spec §1: "static files, served as-is"), on
+/// WordPress over HTTP (tests/php/public_root.php): each file at its path with its type; the app's
+/// own page over a file of the same name; never a dotfile, PHP, a path out of the folder or one
+/// WordPress owns.
+#[test]
+fn public_files_serve_at_the_site_root() {
+    let project = fixture("public-root", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/public_root.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        seen["served"],
+        serde_json::json!({
+            "/compiler.wasm": [200, "application/wasm", 8],
+            "/logo.svg": [200, "image/svg+xml", 41],
+            "/files/blog.json": [200, "application/json", 11],
+            "/files/blobs/0a1b.txt": [200, "text/plain; charset=utf-8", 9],
+            "/files/": [200, "text/html; charset=utf-8", 35],
+            "/og/index.png": [200, "image/png", 8],
+            "/.well-known/ai.json": [200, "application/json", 13],
+            "/notes.md": [200, "text/markdown; charset=utf-8", 15],
+            "/robots-extra.txt": [200, "text/plain; charset=utf-8", 14],
+            "/index.html": [200, "text/html; charset=utf-8", 21]
+        })
+    );
+    assert_eq!(seen["home"], false);
+    // `first/app/about/page.tsx` wins over `public/about`.
+    assert_eq!(seen["about"], serde_json::json!([200, true, false]));
+    for (path, answer) in seen["refused"].as_object().unwrap() {
+        assert_eq!(answer, &serde_json::json!([404, false]), "{path}");
+    }
+    assert_eq!(seen["refused"].as_object().unwrap().len(), 9);
+    assert_eq!(seen["head"], serde_json::json!([200, "", "11"]));
+    assert_eq!(seen["not modified"], 304);
+    assert_eq!(seen["svg policy"], true);
+    assert_eq!(seen["cache"], "public, max-age=300");
+    assert_eq!(seen["post"], 404);
+}
+
 /// `nav`, `pager` and `headings` from "first/content", on WordPress over HTTP (tests/php/docs_kind.php).
 #[test]
 fn docs_kind_serves_a_folder_tree_with_navigation() {

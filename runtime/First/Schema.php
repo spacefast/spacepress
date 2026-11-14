@@ -75,6 +75,17 @@ final class Schema
         return (string) ($this->raw['name'] ?? 'app');
     }
 
+    /**
+     * WordPress's and First's own first path segments (`wp-admin`, `wp-json`, `__first`, `feed`, …),
+     * lowercased: what the app's files never answer for.
+     *
+     * @return list<string>
+     */
+    public function reserved(): array
+    {
+        return array_map('strtolower', (array) ($this->raw['reserved'] ?? []));
+    }
+
     /** @return array<string, array> */
     public function collections(): array
     {

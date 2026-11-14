@@ -4996,7 +4996,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let saved_out = std::mem::take(&mut self.output);
         let saved_fx = self.fx.take();
         let saved_this = std::mem::replace(&mut self.implicit_this, this);
+        // A helper is compiled once and reused by every caller, so it never takes on its first
+        // caller's `"use client"` analysis: a server component a client component renders stays
+        // a server component.
+        let saved_client = self.client.take();
         let r = self.compile_function(c, name, None, None, no_db);
+        self.client = saved_client;
         self.implicit_this = saved_this;
         self.fx = saved_fx;
         let helper_src = std::mem::replace(&mut self.output, saved_out);

@@ -72,6 +72,8 @@ consume. No Postgres-style logical replication promised (WordPress is MySQL).
 
 1. Official EmDash `blog` Astro template running on `@first/astro` with no
    adapter code in the template (replaces `examples/emdash/official-sites` bridge).
+   Built: `firstEmdash()` from `@first/astro/emdash`; blank, starter and blog run
+   unchanged apart from `astro.config.mjs`, checked by `verify-upstream.mjs`.
 2. A Next.js 16 example: edit a post in wp-admin, the page updates without a
    redeploy; preview shows a draft.
 3. A TanStack Start example with a live list updated by another browser's write.

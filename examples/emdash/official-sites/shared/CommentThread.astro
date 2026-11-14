@@ -1,9 +1,0 @@
----
-import type { getComments } from './client';
-interface Props { items: Awaited<ReturnType<typeof getComments>>['items']; parent: string }
-const { items, parent } = Astro.props;
-const children = items.filter(item => item.parent === parent);
----
-{children.length > 0 && <ol class={parent === '0' ? 'ec-comment-list' : 'ec-comment-replies'}>{children.map(comment => <li class="ec-comment" id={`comment-${comment.id}`}><div class="ec-comment-header"><strong class="ec-comment-author">{comment.author}</strong></div><div class="ec-comment-body" set:html={comment.html} /><button type="button" data-comment-reply={comment.id}>Reply to {comment.author}</button><Astro.self items={items} parent={comment.id} /></li>)}</ol>}
-
-<style>ol {list-style:none; padding:0} li {margin-block:1.5rem} button {font:inherit; font-size:.85em; text-decoration:underline; margin-block:.5rem}</style>

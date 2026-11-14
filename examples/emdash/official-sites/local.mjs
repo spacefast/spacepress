@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cleanup as cleanupBackend, command, wp } from '../starter/local.mjs';
+import { seed } from './seed.mjs';
 const execute = promisify(execFile);
 export const root = dirname(fileURLToPath(import.meta.url));
 export const repository = resolve(root, '../../..');
@@ -21,51 +22,42 @@ export async function makeProject(mode) {
   if (!['blank','starter','blog'].includes(mode)) throw new Error('Unknown official source template.');
   const project = await mkdtemp(join(tmpdir(), `first-official-${mode}-`));
   await cp(join(root, ...(mode === 'blank' ? ['blank','first.config.ts'] : ['first.config.ts'])), join(project, 'first.config.ts'));
-  if (mode !== 'blank') await cp(join(root, 'backend'), join(project, 'backend'), { recursive: true });
+  if (mode !== 'blank') await cp(join(root, 'first'), join(project, 'first'), { recursive: true });
   await writeFile(join(project, 'official-owner.json'), JSON.stringify({ project, mode, kind: 'first-official-source' }));
   return project;
 }
 export async function start(project, mode, { onProcess = () => {} } = {}) {
   const owned = JSON.parse(await readFile(join(project, 'official-owner.json'), 'utf8'));
   if (owned.project !== await realpath(project) || owned.mode !== mode || owned.kind !== 'first-official-source') throw new Error('Not an owned official-source project.');
+  // The frontend's port is chosen first, so the app is built with it as its `frontend`: WordPress's
+  // links and preview links point at the Astro site.
+  const port = await freePort();
+  const config = join(project, 'first.config.ts');
+  await writeFile(config, (await readFile(config, 'utf8')).replace('defineConfig({', `defineConfig({\n  frontend: "http://localhost:${port}",`));
   await command(['dev', project, '--port', String(await freePort()), '--no-watch']);
   const owner = JSON.parse(await readFile(join(project, '.first/dev/owner.json'), 'utf8'));
   const site = join(project, '.first/dev/wordpress');
   if (owner.project !== project || owner.site !== site) throw new Error('Native Studio ownership mismatch.');
-  let entries = [];
-  if (mode !== 'blank') {
-    await mkdir(join(site, 'wp-content/mu-plugins'), { recursive: true });
-    await cp(join(root, 'bridge.php'), join(site, 'wp-content/mu-plugins/first-official.php'));
-    const seeded = await wp(project, 'eval-file', join(root, 'seed.php'), mode, join(root, mode, 'seed/seed.json'), site);
-    entries = JSON.parse(seeded);
-  }
-  const pendingMedia = [];
-  for (const entry of entries) if (entry.image) {
-    const response = await fetch(entry.image.url, { signal: AbortSignal.timeout(45000) });
-    if (!response.ok) throw new Error(`Official seed media failed: ${response.status} ${entry.image.url}`);
-    const bytes = Buffer.from(await response.arrayBuffer());
-    const imageFile = join(project, entry.image.filename);
-    await writeFile(imageFile, bytes);
-    pendingMedia.push({ path: imageFile, post: entry.id, source: entry.image.url, alt: entry.image.alt, bytes: bytes.length });
-  }
-  let media = [];
-  if (pendingMedia.length) {
-    const ids = (await wp(project, 'media', 'import', ...pendingMedia.map(image => image.path), '--porcelain')).split(/\s+/).map(Number);
-    if (ids.length !== pendingMedia.length || ids.some(id => !Number.isSafeInteger(id) || id <= 0)) throw new Error('Native media import did not return the expected IDs.');
-    const importFile = join(project, 'media-imports.json');
-    await writeFile(importFile, JSON.stringify(pendingMedia.map((image, index) => ({ ...image, id: ids[index] }))));
-    media = JSON.parse(await wp(project, 'eval-file', join(root, 'media.php'), importFile, site));
-  }
   const status = JSON.parse(await command(['dev','status',project]));
   if (!status.isOnline || typeof status.siteUrl !== 'string') throw new Error('Native Studio did not report online.');
   const backend = status.siteUrl.replace(/\/$/, '');
-  const port = await freePort();
-  const frontend = `http://${new URL(backend).hostname}:${port}`;
-  await wp(project, 'option', 'update', 'first_official_frontend', frontend);
+  let entries = [];
+  let media = [];
+  if (mode !== 'blank') {
+    // The templates' menu location: the one piece of WordPress setup First can't declare yet.
+    await mkdir(join(site, 'wp-content/mu-plugins'), { recursive: true });
+    await cp(join(root, 'menus.php'), join(site, 'wp-content/mu-plugins/first-official-menus.php'));
+    const password = await wp(project, 'user', 'application-password', 'create', 'admin', 'official-seed', '--porcelain');
+    const seeded = await seed({ backend, authorization: `Basic ${Buffer.from(`admin:${password}`).toString('base64')}`, mode,
+      seedFile: join(root, mode, 'seed/seed.json'), wp: (...args) => wp(project, ...args) });
+    entries = seeded.entries.map((entry) => ({ ...entry, image: entry.image && { ...entry.image } }));
+    media = seeded.media;
+  }
+  const frontend = `http://localhost:${port}`;
   const { openSync, closeSync } = await import('node:fs');
   const out = openSync(join(project, 'frontend.log'), 'a');
   const child = spawn(process.execPath, [join(root, mode, 'dist/server/entry.mjs')], { cwd: join(root, mode),
-    env: { ...process.env, FIRST_BACKEND_URL: backend, HOST: '127.0.0.1', PORT: String(port) }, stdio: ['ignore', out, out] });
+    env: { ...process.env, FIRST_URL: backend, HOST: '127.0.0.1', PORT: String(port) }, stdio: ['ignore', out, out] });
   onProcess(child);
   await new Promise((done, fail) => { child.once('spawn', done); child.once('error', fail); });
   closeSync(out);

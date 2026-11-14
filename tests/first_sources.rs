@@ -123,3 +123,52 @@ fn every_kept_source_matches_its_manifest() {
         }
     }
 }
+
+/// Indexes the compiler infers from queries are not storage (they follow the code): a build whose only
+/// change is a new filter plans an index, and stores the same as the build before it.
+#[test]
+fn a_new_filter_plans_an_inferred_index_and_stores_the_same() {
+    let fixture = Path::new(FIXTURES).join("head/pantry");
+    let work = tempfile::tempdir().unwrap();
+    // The captured pantry, with one action that also filters on `opened` (which has no index).
+    let sources = work.path().join("sources");
+    fs::create_dir_all(&sources).unwrap();
+    let mut app = json(&fixture.join("sources/app.first.json"));
+    let config = app["files"]["first.config.ts"].as_str().unwrap();
+    let filtered = config.replace(
+        "findFirst({ where: { id: itemId } })",
+        "findFirst({ where: { id: itemId, opened: false } })",
+    );
+    assert_ne!(config, filtered, "the fixture edit applies");
+    app["files"]["first.config.ts"] = filtered.into();
+    let bytes = serde_json::to_vec(&app).unwrap();
+    let mut manifest = json(&fixture.join("sources/manifest.json"));
+    use sha2::{Digest, Sha256};
+    manifest["app_sha256"] = Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>()
+        .into();
+    fs::write(sources.join("app.first.json"), bytes).unwrap();
+    fs::write(sources.join("manifest.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
+    fs::copy(
+        fixture.join("sources/vendor.first.json"),
+        sources.join("vendor.first.json"),
+    )
+    .unwrap();
+    let output = work.path().join("compiled");
+    first::bundle::compile(&sources, &output, &sources, Some(&fixture.join("baseline"))).unwrap();
+    let added: Vec<String> = migrations(&output.join("migrations"))
+        .into_iter()
+        .filter(|(file, _)| !fixture.join("baseline/migrations").join(file).exists())
+        .map(|(_, sql)| sql)
+        .collect();
+    assert_eq!(
+        added,
+        ["ALTER TABLE `{prefix}first_items` ADD INDEX `opened_queried` (`opened`);\n"]
+    );
+    assert_eq!(
+        json(&output.join("storage.json")),
+        json(&fixture.join("baseline/storage.json"))
+    );
+}

@@ -559,6 +559,7 @@ pub const EXPORTS: &[&str] = &[
     "Content",
     "Html",
     "Link",
+    "Live",
 ];
 /// Type-only exports of `"first/app"`: importable, erased.
 pub const TYPES: &[&str] = &[

@@ -119,6 +119,8 @@ final class Builtins
         'Array.from' => [1, 2],
         'Array.of' => [0, PHP_INT_MAX],
         'String.raw' => [1, PHP_INT_MAX],
+        'String.fromCharCode' => [0, PHP_INT_MAX],
+        'String.fromCodePoint' => [0, PHP_INT_MAX],
         'Number.isInteger' => [0, 1],
         'Number.isFinite' => [0, 1],
         'Number.isNaN' => [0, 1],

@@ -541,6 +541,12 @@ changes nothing. Core reads apply the read rule and field access; core writes
 and editor saves apply the create, update and field rules, and are authorized
 on the saved data before they commit.
 
+Core's own content abilities (`core/content-query`, WordPress 7.2) read a post
+type's posts without these rules, so they never see a kind: First registers its
+post types with `show_in_abilities` set to `false` and keeps it `false` when
+another plugin's `register_post_type_args` filter turns it on. Agents reach a
+kind through the app's own abilities, which apply the rules.
+
 Core `/wp/v2/<post type>` speaks First's fields and queries too:
 
 - Every field is registered post meta (`register_post_meta`, `show_in_rest`,

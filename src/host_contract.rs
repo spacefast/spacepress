@@ -25,8 +25,12 @@ pub const RESERVED_PATHS: &[(&str, &str)] = &[
     ),
     ("/wp-json/first-identity/v1/*", "First Identity's REST API"),
     (
+        "/wp-admin/new/*",
+        "First Admin, unless the app sets `admin: false`: served by wp-admin's `admin.php?page=first-admin`. Apache applies the plugin's `.htaccess` rule; any other server must send a path that is not a file to WordPress's `index.php`, which redirects it to `admin.php?page=first-admin&p=<route>`",
+    ),
+    (
         "/first-admin/*",
-        "the optional admin screens, when the app sets `admin: true`",
+        "the admin's earlier address, redirected to `/wp-admin/new/*`",
     ),
 ];
 

@@ -19,7 +19,7 @@ const expandedItems = new Set();
 
 function editLink(collection, id, label) {
   const link = node("a", "", label);
-  link.href = `/first-admin/collections/${collection}/${encodeURIComponent(id)}`;
+  link.href = `/wp-admin/new/collections/${collection}/${encodeURIComponent(id)}`;
   return link;
 }
 

@@ -8,7 +8,7 @@ return [
     'version' => 3,
     'runtime' => '0.3',
     'name' => 'rtschema',
-    'admin' => false,
+    'admin' => true,
     'runtimeSchema' => ['version' => 0, 'hash' => ''],
     'site' => ['uidPrefix' => 'zr_'],
     'locales' => null,

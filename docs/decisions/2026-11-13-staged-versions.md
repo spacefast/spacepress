@@ -16,6 +16,11 @@ nothing a reader could not see.
   revision pruning and `wp_save_post_revision`'s change check all pass over it. It is not core's
   own autosave slot (`<id>-autosave-v1`): the editors keep one of those per user and delete it when
   they find it older than the post, and a staged version is shared and outlives any edit session.
+  It has its own internal post status, `first-staged` (added 2026-11-14): every revision query of
+  core's asks for `inherit`, and with the name alone the staged revision was listed by the
+  `/autosaves` route (the block editor offered it to its author as their newer autosave), shown on
+  wp-admin's revision screen with Restore, and could make a wp-admin save run core's revision
+  upgrade (`_wp_get_post_revision_version()` reads no version from the name).
   Its fields live on the revision under the post's own meta keys, written the way every First
   revision is (`acf_copy_metadata`, `_first_system`). There is no new table.
 - **What is staged.** `_first_staged` on the revision names the staged fields. A promote is an

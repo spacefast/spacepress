@@ -1718,7 +1718,7 @@ export const nope = state.result?.nope;
             "method": "post",
             "action": "/__first/api/v1/actions/subscribe",
             "hidden": [["_first_return", "hidden", "/?ref=nav"]],
-            "page cache": "public, s-maxage=300, max-age=0, must-revalidate",
+            "page cache": "public, max-age=0, s-maxage=300, must-revalidate",
         }),
         "an anonymous page with a form stays shared and carries no nonce: {seen}"
     );
@@ -1761,7 +1761,7 @@ export const nope = state.result?.nope;
     assert_eq!(seen["open redirect"], serde_json::json!(true));
     assert_eq!(
         seen["cross site"],
-        serde_json::json!([303, "A form posts to an action only from this site's own pages", null])
+        serde_json::json!([303, "A form posts here only from this site's own pages", null])
     );
     assert_eq!(
         seen["json"],
@@ -1788,6 +1788,127 @@ export const nope = state.result?.nope;
         serde_json::json!([303, "Sign in to do run members", null]),
         "{seen}"
     );
+}
+
+/// `<Comments for={item} />` and the policy behind it (docs/decisions/2026-11-14-comments.md), with
+/// comments arriving all three ways: the component's form with JavaScript off, the facade's
+/// `POST /comments`, and core's `wp-comments-post.php`. Each gets the same answer from the one
+/// enforcement point on core's hooks, whatever the Discussion settings say.
+#[test]
+fn comments_follow_the_kind_policy_on_every_path() {
+    let project = fixture("comments", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/comments.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    // Signed out: the approved thread and a sign-in link, no form; the page stays shared.
+    assert_eq!(
+        seen["signed out"],
+        serde_json::json!({
+            "status": 200, "thread": ["First!"], "forms": 0, "sign in": "Sign in to comment",
+            "cache": "public, max-age=0, s-maxage=300, must-revalidate",
+        }),
+        "{seen}"
+    );
+    // ...and every path refuses a signed-out comment, saving nothing.
+    assert_eq!(
+        seen["signed out posts"],
+        serde_json::json!({ "facade": 401, "form": [303, "Sorry, you must be logged in to comment."], "core": 401, "saved": 0 }),
+        "{seen}"
+    );
+    // A first-time commenter's comment is held and shown only to them, with the form's notice.
+    assert_eq!(
+        seen["first comment"],
+        serde_json::json!({
+            "status": 303, "stored": "unapproved", "notice": "Your comment is awaiting moderation.",
+            "ann sees": ["First!", "Hello from Ann (held)"], "others see": ["First!"], "bo sees": ["First!"],
+            "page cache": "private, no-store, max-age=0", "nonce": true,
+        }),
+        "{seen}"
+    );
+    // After one of theirs is approved, the next is approved at once, even with the site's
+    // "hold every comment" setting on; a first-timer through core's handler is held.
+    assert_eq!(seen["second comment"], serde_json::json!([201, "approved"]), "{seen}");
+    assert_eq!(seen["core path"], serde_json::json!([302, "unapproved"]), "{seen}");
+    // Threaded to depth 3: a fourth level is refused on every path (never flattened), and the page
+    // offers no reply form under a depth-3 comment.
+    let depth = &seen["depth"];
+    assert_eq!(
+        (&depth["form"], &depth["facade"], &depth["core"], &depth["saved"]),
+        (
+            &serde_json::json!("Replies go 3 levels deep here."),
+            &serde_json::json!(400),
+            &serde_json::json!(400),
+            &serde_json::json!(0)
+        ),
+        "{seen}"
+    );
+    assert_eq!(
+        depth["thread"],
+        serde_json::json!(["First!", ">depth two", ">>depth three", "Hello from Ann", "Ann again"])
+    );
+    assert!(
+        !depth["reply forms on"]
+            .as_array()
+            .unwrap()
+            .contains(&depth["depth three id"]),
+        "{seen}"
+    );
+    // A draft's thread isn't readable by a visitor who can't read the draft, nor commentable.
+    assert_eq!(
+        seen["draft"],
+        serde_json::json!({ "page": 404, "page shows": false, "list": 403, "post": 403 }),
+        "{seen}"
+    );
+    assert_eq!(seen["memo"], 403, "a kind without comments takes none: {seen}");
+}
+
+/// `<Comments for>` on a kind without `comments`, or on something that isn't an item, is a build
+/// error at the prop.
+#[test]
+fn refuses_comments_without_the_kind_option() {
+    let dir = std::env::temp_dir().join(format!("first-comments-reject-{}", std::process::id()));
+    let schema = (
+        "first/schema.ts",
+        "import { collection, text, slug } from \"first\";\nexport const memos = collection({ title: text(), slug: slug({ source: \"title\" }).optional() }, { title: \"title\", url: \"/memos/:slug\" });\n",
+    );
+    rejects(
+        &dir,
+        &[
+            schema,
+            (
+                "first/app/memos/[slug]/page.tsx",
+                "import { Comments, type PageProps } from \"first/app\";\nexport default function Memo({ item }: PageProps<\"memos/[slug]\">) {\n  return <Comments for={item} />;\n}\n",
+            ),
+        ],
+        "`memos` has comments off",
+        "first/app/memos/[slug]/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[
+            schema,
+            (
+                "first/app/page.tsx",
+                "import { Comments } from \"first/app\";\nexport default function Home() {\n  return <Comments for={{ id: 1 }} />;\n}\n",
+            ),
+        ],
+        "`<Comments for>` takes a row of a collection",
+        "first/app/page.tsx:3:",
+    );
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 /// What a form with an action can't be is a build error at the line, with the fix.
@@ -2530,7 +2651,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // tags are stored as the app's blocks, their Markdown as inner blocks.
     assert_eq!(
         seen["blocks registered"],
-        serde_json::json!(["docskind/callout", "docskind/badge"])
+        serde_json::json!(["docskind/callout", "docskind/badge", "docskind/status"])
     );
     assert_eq!(
         seen["blocks stored"],
@@ -2553,6 +2674,10 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     // Written back, the blocks are the file's tags again, and an editor's change to a prop is too.
     let file = "Run the installer.\n\n<Callout type=\"warning\" title=\"Before you start\">\nBack up the **database**.\n\n- Export it\n- Keep a copy\n</Callout>\n\n<Badge label=\"New\" count={3} />\n\nThen continue.\n";
     assert_eq!(seen["blocks back"], file);
+    assert_eq!(
+        seen["blocks cleared back"],
+        "<Status />\n\n<Badge label=\"x\" count={3} />\n"
+    );
     assert_eq!(
         seen["blocks edited back"],
         file.replace("type=\"warning\"", "type=\"note\"")
@@ -2836,6 +2961,11 @@ fn component_blocks_edit_in_the_block_editor() {
     assert_eq!(seen["badgeEdited"], "<span class=\"badge\">Fresh<b> 3</b></span>");
     assert_eq!(seen["calloutInner"], "Mind the gap.");
     assert_eq!(seen["calloutFields"], serde_json::json!([1, 1]), "{seen}");
+    // A block that renders nothing still has a box to select; an optional choice starts unset, and
+    // can be set and unset again; a cleared text field is empty.
+    assert_eq!(seen["statusEmpty"], "<Status />");
+    assert_eq!(seen["statusKind"], serde_json::json!(["", "live", ""]));
+    assert_eq!(seen["statusCleared"], "");
     let saved = seen["saved"].as_str().unwrap();
     assert!(
         saved.contains("<!-- wp:docskind/badge {\"label\":\"Fresh\",\"count\":3} /-->")

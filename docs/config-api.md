@@ -15,7 +15,7 @@ nothing else chooses storage: not a field, not an option.
 |---|---|---|
 | Builders | `collection()`, `userProjection()`, `global()`, and the media library | `table()` |
 | Stored as | WordPress's own objects: posts and post meta, users and user meta, attachments, options | one SQL table per kind, `wp_first_<name>` |
-| Edited in | wp-admin and the WordPress editor; a collection has drafts and revisions | your app, through the API and the typed client (and the optional `admin: true` screens) |
+| Edited in | wp-admin and the WordPress editor; a collection has drafts and revisions | your app, through the API and the typed client (and First Admin's screens) |
 | Other plugins | work on the same posts, users and media | don't know these tables |
 | Field types | a collection's fields are post meta: text, cast to the field's type when read | typed columns (`BIGINT`, `DOUBLE`, `VARCHAR`, ...) |
 | References | checked by First when it writes | a SQL foreign key between two tables; checked by First when the target is content |
@@ -165,6 +165,7 @@ isn't changed either. None of these switches can be turned off in
 | `comments` | comments closed on every post type except collections with `comments: true` |
 | `authors` | the site's users aren't listed to the public: core's user routes, author archives, `?author=N`, the users sitemap and oEmbed's author fields (see [Authors](#authors)) |
 | `schemaLock` | the app's schema is changed in `first.config.ts` and nowhere on the site (see [Schema lock](#schema-lock)) |
+| `loginErrors` | signing in doesn't tell a visitor which accounts exist: an unknown username or email answers as a wrong password (`wp-login.php` shows one message and keeps the typed username either way), lost password answers "check your email" either way, an unknown user costs the same password hash as a wrong password, and a REST application password for an unknown user or a guest gets the wrong-password error. An imported account whose password hash is older than the site's (MD5, phpass) can still be told apart by timing on `wp-login.php` until it signs in once; First Identity's own sign-in times every stored hash type alike. With `first-identity`, an account with a second factor says so only once the password is right. Adapted from VIP's `security/login-error.php` (GPL-2.0-or-later) |
 | `permalinks` | pretty permalinks (`/%postname%/`), with their rewrite rules kept apart from the site's own |
 | `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
 | `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
@@ -1127,8 +1128,9 @@ These are build errors with the same message the runtime returns.
 `defineConfig({ name?, collections?, tables?, users?, globals?, hooks?, actions?,
 jobs?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend?, runtimeSchema? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `first-app-<name>`.
-`admin: true` ships the optional admin screens as a fourth plugin,
-`first-admin`; by default the build emits none. `frontend` says who renders the
+Every build ships First Admin, the default admin at `/wp-admin/new/`, as a fourth
+plugin, `first-admin`; `admin: false` leaves it out and keeps only classic wp-admin
+([docs/admin.md](admin.md)). `frontend` says who renders the
 public site: leave it out for the theme (or `first/app` when it exists), `false`
 for backend only, or an external site's `https://` address (`http://` only on
 localhost) so links, previews and feeds point there.

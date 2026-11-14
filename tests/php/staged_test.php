@@ -226,6 +226,24 @@ eq('one staged revision exists for the item', $stagedPosts($pid), [$staged['id']
 eq('staging ran no hook and queued no webhook', [$notes($pid), $webhooks()], $hooksBefore);
 eq('core\'s own autosave slot is untouched', wp_get_post_autosave($pid), false);
 
+// The staged version is nobody's autosave and no revision of core's. The block editor loads
+// GET /wp/v2/<type>/<id>/autosaves and takes the entry whose author is the current user as their
+// newer autosave (core-data getAutosave), and wp-admin's revision screen offers every revision to
+// restore: the staged version must be in neither.
+$site->actAs('ed');
+$listedAutosaves = rest_do_request(new \WP_REST_Request('GET', "/wp/v2/first_posts/$pid/autosaves"))->get_data();
+wp_set_current_user(0);
+eq('the autosaves route lists no staged version', array_column((array) $listedAutosaves, 'id'), []);
+eq('… so the editor finds no autosave of the last stager\'s to offer', array_values(array_filter((array) $listedAutosaves, static fn (array $a): bool => (int) $a['author'] === $users['alice']['id'])), []);
+require_once ABSPATH . 'wp-admin/includes/revision.php';
+$site->actAs('ed');
+$restorable = wp_prepare_revisions_for_js($pid, 0)['revisionIds'];
+wp_set_current_user(0);
+check('wp-admin\'s revision screen offers no staged version to restore', !in_array($staged['id'], $restorable, true), $restorable);
+eq('… nor does core\'s revision list', in_array($staged['id'], array_keys(wp_get_post_revisions($pid, ['check_enabled' => false])), true), false);
+eq('… nor a query for children of any status', in_array($staged['id'], array_keys(get_children(['post_parent' => $pid])), true), false);
+
+
 $after = $public();
 foreach ($before as $surface => $value) {
     eq("staging changes nothing a reader of the item gets: $surface", $after[$surface], $value);
@@ -617,5 +635,43 @@ api('PATCH', "/posts/$quiet/staged", ['title' => 'Quiet staged'], 'ed');
 eq('staging announces no URL purge', $announced, []);
 eq('… and every post hook it fires is for the revision post, never the live item', array_values(array_unique($livePosts)), ['revision']);
 remove_action('first_purge_urls', $purge);
+
+// wp-admin's save (edit_post) runs core's revision upgrade when the oldest revision core lists has
+// no version it reads; an item that has no revision of its own yet (one made by an import) has
+// only the staged one.
+$bare = $db->insert('posts', ['title' => 'Bare', 'slug' => 'bare'], true)[0]['id'];
+foreach (array_column($site->sql("SELECT ID FROM {prefix}posts WHERE post_parent = ? AND post_type = 'revision'", [$bare]), 'ID') as $rev) {
+    wp_delete_post_revision((int) $rev);
+}
+api('PATCH', "/posts/$bare/staged", ['title' => 'Bare staged'], 'ed');
+$oldest = current(wp_get_post_revisions($bare, ['order' => 'ASC', 'posts_per_page' => 1]));
+check('the oldest revision wp-admin checks is never the staged one', $oldest === false || _wp_get_post_revision_version($oldest) >= 1, $oldest);
+$upgrades = [];
+$spy = static function (string $option) use (&$upgrades): void {
+    if (str_starts_with($option, 'revision-upgrade-')) {
+        $upgrades[] = $option;
+    }
+};
+add_action('update_option', $spy);
+require_once ABSPATH . 'wp-admin/includes/post.php';
+$site->actAs('admin');
+edit_post(['post_ID' => $bare, 'post_title' => 'Bare', 'post_type' => 'first_posts', 'post_status' => 'publish']);
+wp_set_current_user(0);
+remove_action('update_option', $spy);
+eq('a wp-admin save of the item runs no revision upgrade', $upgrades, []);
+eq('… and the staged version is as it was', api('GET', "/posts/$bare/staged", as: 'ed')[1]['row']['title'] ?? null, 'Bare staged');
+
+// A staged revision written before staged revisions had their own status is `inherit`: the runtime
+// upgrade step gives it the staged status, keeps everything else, and leaves other revisions alone.
+$old = $db->insert('posts', ['title' => 'Old', 'slug' => 'old'], true)[0]['id'];
+[, $oldStaged] = api('PATCH', "/posts/$old/staged", ['title' => 'Old staged'], 'ed');
+$site->sql("UPDATE {prefix}posts SET post_status = 'inherit' WHERE ID = ?", [$oldStaged['id']]);
+clean_post_cache($oldStaged['id']);
+$statuses = static fn (): array => array_column($site->sql("SELECT ID, post_status FROM {prefix}posts WHERE post_type = 'revision' ORDER BY ID"), 'post_status', 'ID');
+$before = $statuses();
+\First\Wp\WpPostStore::upgradeStagedStatus($db->store());
+\First\Wp\WpPostStore::upgradeStagedStatus($db->store());
+eq('the upgrade gives an old staged revision the staged status, and changes no other revision', array_diff_assoc($statuses(), $before), [$oldStaged['id'] => 'first-staged']);
+eq('… which still reads as the staged version', api('GET', "/posts/$old/staged", as: 'ed')[1]['row']['title'] ?? null, 'Old staged');
 
 finish('staged');

@@ -116,7 +116,7 @@ test("the plugins the app runs on can't be deactivated from wp-admin or REST, so
 });
 
 test("First's admin is First's own: a sealed site activates it though the build doesn't ship it, and it saves through REST", async () => {
-  // Installed beside the build (sealed-run.sh), not declared, and `admin: true` isn't set.
+  // Installed beside the build (sealed-run.sh), which is built with `admin: false`.
   assert.equal(active().includes("first-admin"), false);
   const on = await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/first-admin/first-admin", { status: "active" });
   assert.equal(on.status, 200, await on.text());
@@ -141,9 +141,10 @@ test("First's admin is First's own: a sealed site activates it though the build 
     assert.equal((await viaApi.json()).data.mood, "steady");
     const global = await json(auth("admin"), "PATCH", "/__first/api/v1/banner", { motto: "From the admin" });
     assert.equal((await global.json()).data.motto, "From the admin");
-    // The admin's page is served.
-    const cookie = await loginCookie(site, "admin", `${site}/first-admin/`);
-    const page = await fetch(`${site}/first-admin/`, { headers: { cookie }, redirect: "manual" });
+    // The admin's page is served at its mount.
+    const url = `${site}/wp-admin/new/`;
+    const cookie = await loginCookie(site, "admin", url);
+    const page = await fetch(url, { headers: { cookie }, redirect: "manual" });
     assert.equal(page.status, 200, String(page.headers.get("location")));
     // It isn't one of the plugins the site can't run without: it deactivates, classic wp-admin stays.
     const off = await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/first-admin/first-admin", { status: "inactive" });

@@ -1088,6 +1088,14 @@ A .tsx file under first/components/ that starts with "use client" (after comment
 
 [Evidence](../tests/app_router.rs) (`client_components_compile_to_interactivity_stores`)
 
+## jsx-form-action
+
+Status: **supported**.
+
+`<form action={subscribe}>` in a page or server component posts to the imported action and works without JavaScript: the form is sent form-encoded to the action's endpoint, fields read as the action's input types them, and the visitor comes back to the page with a 303. `useFormState(subscribe)` from "first/app" reads the result or the error once. `method` and `encType` on such a form, and an action form inside a "use client" component, are build errors.
+
+[Evidence](../tests/app_router.rs) (`forms_work_without_javascript`)
+
 ## jsx-use-client-npm
 
 Status: **refused**. Diagnostic: `F1003`.

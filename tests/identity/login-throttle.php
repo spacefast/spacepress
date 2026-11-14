@@ -16,6 +16,13 @@ $limits = static fn (): int => (int) $db->row("SELECT COUNT(*) AS n FROM {$db->p
 $clear = static function () use ($db): void { $db->run("DELETE FROM {$db->prefix}limits"); };
 $from = static function (string $address): void { $_SERVER['REMOTE_ADDR'] = $address; };
 $code = static fn (mixed $result): string => is_wp_error($result) ? (string) $result->get_error_code() : ($result instanceof WP_User ? 'signed-in' : 'none');
+// Time is the limiter's own clock, set here, so nothing below depends on when the suite runs. The
+// epoch is a multiple of the 300-second window: a limit that reset on the clock would reset at it.
+$epoch = 2_000_000_100;
+check($epoch % 300 === 0, 'the test epoch is a multiple of the window');
+$at = static function (int $seconds) use ($epoch): void { Security::$clock = static fn (): int => $epoch + $seconds; };
+$rows = static fn (): array => array_map(static fn (array $r): array => [(int) $r['hits'], (int) $r['expires_at']], $db->rows("SELECT hits, expires_at FROM {$db->prefix}limits ORDER BY id"));
+$at(100);
 
 // Ten wrong passwords for one login from one address are answered as core answers them; the next is
 // refused before the password is checked, and so is the right password.
@@ -123,15 +130,65 @@ try {
 }
 check($code($failed) === 'storage_unavailable', 'when the counters can\'t be read, no sign-in (' . $code($failed) . ')');
 
-// The limit is by window: a new window starts fresh.
+// A window starts at the first failure, not on the clock. Ten failures one second before a multiple of
+// the window, then an attempt two seconds later, on the other side of it, are one window.
 $clear();
 $from('203.0.113.50');
-for ($i = 0; $i < 11; $i++) {
+$at(299);
+for ($i = 0; $i < 10; $i++) {
     wp_authenticate($login, 'wrong');
 }
-check($code(wp_authenticate($login, $password)) === 'rate_limited', 'limited in this window');
-$db->run("DELETE FROM {$db->prefix}limits WHERE id IN (%s,%s)", Security::hash('wp-password:203.0.113.50:' . intdiv(time(), 300)), Security::hash('wp-password-account:' . $login . ':' . intdiv(time(), 300)));
-check($code(wp_authenticate($login, $password)) === 'signed-in', 'and not once those two counters are gone');
+check($rows() === [[10, $epoch + 599], [10, $epoch + 599]], 'ten failures at 299 seconds: both counters full until 599');
+$at(301);
+check($code(wp_authenticate($login, $password)) === 'rate_limited', 'at 301 seconds, across the multiple of the window, still limited');
+check($code(wp_authenticate($login, 'wrong')) === 'rate_limited', 'a wrong password too');
+// Later failures in the window don't move its end: it began at the first one.
+$clear();
+$at(299);
+wp_authenticate($login, 'wrong');
+$at(450);
+for ($i = 0; $i < 9; $i++) {
+    wp_authenticate($login, 'wrong');
+}
+check($rows() === [[10, $epoch + 599], [10, $epoch + 599]], 'nine more failures at 450 seconds leave the end at 599');
+$at(599);
+check($code(wp_authenticate($login, $password)) === 'rate_limited', 'limited through the last second of the window');
+
+// The window restarts once it has ended: the right password signs in, and the next failure is the
+// first of a new window.
+$at(600);
+check($code(wp_authenticate($login, $password)) === 'signed-in', 'at 600 seconds the window is over');
+wp_authenticate($login, 'wrong');
+check($rows() === [[1, $epoch + 900], [1, $epoch + 900]], 'the next failure starts a window of its own, counted from one');
+for ($i = 0; $i < 9; $i++) {
+    wp_authenticate($login, 'wrong');
+}
+check($code(wp_authenticate($login, $password)) === 'rate_limited', 'which fills like the first');
+$at(900);
+check($code(wp_authenticate($login, $password)) === 'rate_limited', 'and holds through its own last second');
+$at(901);
+check($code(wp_authenticate($login, $password)) === 'signed-in', 'and ends');
+check(count($rows()) === 2, 'one row per counter, reused across windows');
+
+// The same for the limiter that counts every attempt and refuses (Identity's own endpoints use it).
+$clear();
+$limit = static function () use ($tag): string {
+    try {
+        Plugin::$security->limit("probe-$tag", 3);
+        return 'ok';
+    } catch (\First\Identity\Failure $e) {
+        return $e->kind;
+    }
+};
+$at(299);
+check([$limit(), $limit(), $limit(), $limit()] === ['ok', 'ok', 'ok', 'rate_limited'], 'three attempts, then a refusal');
+$at(301);
+check($limit() === 'rate_limited', 'not reset by the clock passing a multiple of the window');
+$at(599);
+check($limit() === 'rate_limited', 'nor before the window that began at 299 ends');
+$at(600);
+check([$limit(), $rows()] === ['ok', [[1, $epoch + 900]]], 'the first attempt after it starts the next window');
+$at(100);
 
 // Identity's own password sign-in keeps its own two counters: filling WordPress's doesn't close it,
 // and it doesn't go through WordPress's filter, so it isn't counted twice.
@@ -154,6 +211,7 @@ check($limits() === $before + 2, 'and counts its own two counters, once');
 check($db->rows("SELECT hits FROM {$db->prefix}limits WHERE hits > 10") === [], 'nothing WordPress counted went past its limit');
 
 $clear();
+Security::$clock = null;
 require_once ABSPATH . 'wp-admin/includes/user.php';
 wp_delete_user($uid);
 echo "PASS failed WordPress password sign-ins are limited per address and per login, like Identity's own\n";

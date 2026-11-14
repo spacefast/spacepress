@@ -63,16 +63,39 @@ final class Security
         }
         do_action("first_identity_session_event", $type, $uid, $id);
     }
+    /** @var (\Closure(): int)|null the limiter's clock, for tests; null is `time()` */
+    public static ?\Closure $clock = null;
+    private static function now(): int
+    {
+        return self::$clock === null ? time() : (self::$clock)();
+    }
+    /**
+     * Count one attempt in a bucket, and refuse it when the bucket holds more than $max.
+     *
+     * A bucket is one row, and its window starts at the first attempt: `expires_at` is set then and
+     * stays until it has passed, when the next attempt starts a new window from one. A window that
+     * followed the clock (every multiple of $window seconds) would let $max attempts through just
+     * before a multiple and $max more just after.
+     *
+     * One statement, so two requests at once both count. Both assignments read the stored
+     * `expires_at`: MariaDB and MySQL apply them left to right, so `hits` comes first; SQLite reads
+     * the stored row for every expression. Rows from before this change have other ids and expire
+     * unread ({@see Maintenance::run()} deletes them).
+     */
     public function limit(
         string $bucket,
         int $max = 10,
         int $window = 300,
     ): void {
-        $id = self::hash($bucket . ":" . intdiv(time(), $window));
+        $id = self::hash($bucket);
+        $now = self::now();
         $this->db->run(
-            "INSERT INTO {$this->db->prefix}limits (id,hits,expires_at) VALUES (%s,1,%d) ON DUPLICATE KEY UPDATE hits=hits+1",
+            "INSERT INTO {$this->db->prefix}limits (id,hits,expires_at) VALUES (%s,1,%d) ON DUPLICATE KEY UPDATE hits=IF(expires_at<%d,1,hits+1), expires_at=IF(expires_at<%d,%d,expires_at)",
             $id,
-            time() + $window,
+            $now + $window,
+            $now,
+            $now,
+            $now + $window,
         );
         $row = $this->db->row(
             "SELECT hits FROM {$this->db->prefix}limits WHERE id=%s",
@@ -86,15 +109,16 @@ final class Security
             );
         }
     }
-    /** Whether a bucket has reached its limit in this window. Counts nothing ({@see limit()} does). */
-    public function limited(
-        string $bucket,
-        int $max = 10,
-        int $window = 300,
-    ): bool {
+    /**
+     * Whether a bucket has reached $max in its current window. Counts nothing ({@see limit()} does);
+     * a window that has ended holds nothing.
+     */
+    public function limited(string $bucket, int $max = 10): bool
+    {
         $row = $this->db->row(
-            "SELECT hits FROM {$this->db->prefix}limits WHERE id=%s",
-            self::hash($bucket . ":" . intdiv(time(), $window)),
+            "SELECT hits FROM {$this->db->prefix}limits WHERE id=%s AND expires_at>=%d",
+            self::hash($bucket),
+            self::now(),
         );
         return $row !== null && (int) $row["hits"] >= $max;
     }

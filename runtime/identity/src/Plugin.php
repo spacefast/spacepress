@@ -34,12 +34,14 @@ final class Plugin
 
     /**
      * Everything identity writes to be ready on this site: the stored-name upgrade from before the
-     * rename, the schema, the password-check material and its inventory schedule. What a plugin-installed
-     * site does on every boot; a managed build runs it from `Loader::initialize`.
+     * rename, the schema, the signing key, the password-check material and its inventory schedule.
+     * What a plugin-installed site does on activation and boot; a managed build runs it from
+     * `Loader::initialize`.
      */
     public static function install(): void
     {
         self::installStorage();
+        Keys::current();
         Accounts::provisionPasswordHash();
     }
 

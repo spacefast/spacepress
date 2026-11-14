@@ -109,11 +109,31 @@ final class KindUrls
             add_rewrite_rule('^' . $regex . '/?$', 'index.php?' . implode('&', $vars), 'top');
         }
         add_rewrite_tag('%first_kind%', '([^&]+)');
-        // The rules come from the build: flush once whenever the set of patterns changes.
-        $digest = md5((string) json_encode(array_column($this->kinds, 'pattern')));
-        if (get_option('first_kind_urls') !== $digest) {
+        // The rules come from the build: flush once whenever the set of patterns changes. A managed
+        // build flushes from initialize instead (Runtime::flushRewrites), never on a request.
+        if (!Runtime::managed() && !self::recorded()) {
             flush_rewrite_rules(false);
-            update_option('first_kind_urls', $digest, true);
+            self::record();
+        }
+    }
+
+    /** The patterns of this build's kinds, as `first_kind_urls` records them. */
+    private static function digest(): string
+    {
+        return md5((string) json_encode(array_column(self::$instance?->kinds ?? [], 'pattern')));
+    }
+
+    /** Whether the stored rules were built for this build's patterns. */
+    public static function recorded(): bool
+    {
+        return self::$instance === null || self::$instance->kinds === [] || get_option('first_kind_urls') === self::digest();
+    }
+
+    /** Records that the stored rules were just built for this build's patterns. */
+    public static function record(): void
+    {
+        if (self::$instance !== null && self::$instance->kinds !== []) {
+            update_option('first_kind_urls', self::digest(), true);
         }
     }
 

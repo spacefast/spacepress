@@ -3371,6 +3371,26 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
     let _ = std::fs::remove_dir_all(tmp);
 }
 
+/// tests/php/taxonomy_test.php runs on tests/fixtures/taxonomy/schema.php and functions.php: they are
+/// what `first build` emits for that fixture's sources.
+#[test]
+fn the_taxonomy_suite_runs_on_what_the_compiler_emits() {
+    let tmp = std::env::temp_dir().join(format!("first-taxonomy-fixture-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/taxonomy"), &tmp);
+    let out = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let built = tmp.join("first/dist/wp-content/plugins/first-app-taxo/first/app");
+    for file in ["schema.php", "functions.php"] {
+        assert_eq!(
+            std::fs::read_to_string(built.join(file)).unwrap(),
+            std::fs::read_to_string(root().join("tests/fixtures/taxonomy").join(file)).unwrap(),
+            "tests/fixtures/taxonomy/{file} drifted: copy {file} from a build of the fixture"
+        );
+    }
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
 /// A request to the facade with any body and headers: (status, content type, body text).
 fn api(
     server: &Server,

@@ -636,7 +636,8 @@ function wpDdl(array $schema): string
             continue;
         }
         foreach ($spec['columns'] ?? [] as $def) {
-            if (($def['type'] ?? null) === 'refList') {
+            // A `terms` field's links are core's term relationships (`term:<taxonomy>`): no table.
+            if (($def['type'] ?? null) === 'refList' && !str_starts_with($def['references']['join'], 'term:')) {
                 $join = $def['references']['join'];
                 $joins[] = "CREATE TABLE `{prefix}first_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
                     . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";

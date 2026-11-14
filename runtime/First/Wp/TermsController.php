@@ -146,7 +146,7 @@ final class TermsController extends \WP_REST_Terms_Controller
         if ($term instanceof \WP_Error) {
             return $term;
         }
-        if (!($request['force'] ?? false)) {
+        if (!($request['force'] ?? false) && !Facade::dispatching()) {
             return parent::delete_item($request); // core's answer: terms aren't trashed
         }
         $request->set_param('context', 'view');
@@ -167,8 +167,10 @@ final class TermsController extends \WP_REST_Terms_Controller
     private function write(\WP_REST_Request $request, ?int $id): mixed
     {
         $data = [];
+        // Only what the request sent: core fills its own defaults into params it never received.
+        $sent = (array) ($request->get_json_params() ?? []) + (array) $request->get_body_params();
         foreach (['name', 'slug', 'description', 'parent'] as $field) {
-            if ($request->has_param($field) && ($field !== 'parent' || isset(\First\db()->schema()->collection($this->collection)['columns']['parent']))) {
+            if (array_key_exists($field, $sent) && ($field !== 'parent' || isset(\First\db()->schema()->collection($this->collection)['columns']['parent']))) {
                 $data[$field] = $request->get_param($field);
             }
         }
@@ -181,8 +183,7 @@ final class TermsController extends \WP_REST_Terms_Controller
             $data += array_intersect_key($meta, TermMeta::fields($spec));
         }
         // The API's other fields (one the kind doesn't have, a read-only one): First refuses them.
-        $sent = $request->get_json_params();
-        if (is_array($extra = $sent['first'] ?? null)) {
+        if (is_array($extra = \First\Seam::container($sent['first'] ?? null))) {
             $data += $extra;
         }
         $row = $this->pipeline(fn (\First\Db $db, \First\Viewer $viewer) => $id === null

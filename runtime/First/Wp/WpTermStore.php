@@ -158,9 +158,19 @@ final class WpTermStore implements Store, Links
         return $args;
     }
 
+    /** A parent is a term of the same taxonomy (core checks only that some term has the id). */
+    private static function checkParent(string $taxonomy, array $values): void
+    {
+        $parent = (int) ($values['parent'] ?? 0);
+        if ($parent > 0 && !get_term($parent, $taxonomy) instanceof \WP_Term) {
+            throw new HttpError(409, 'reference_violation', 'No parent term with this id in this taxonomy', '/parent');
+        }
+    }
+
     public function insert(string $collection, array $values): int|string
     {
         $spec = $this->schema->collection($collection);
+        self::checkParent($spec['wp']['taxonomy'], $values);
         if (array_key_exists($spec['primaryKey'], $values)) {
             throw HttpError::invalidInput('A term\'s id is given by WordPress', HttpError::seg($spec['primaryKey']));
         }
@@ -181,6 +191,10 @@ final class WpTermStore implements Store, Links
     {
         $spec = $this->schema->collection($collection);
         $taxonomy = $spec['wp']['taxonomy'];
+        self::checkParent($taxonomy, $values);
+        if ((int) ($values['parent'] ?? 0) === (int) $pk) {
+            throw new HttpError(409, 'reference_violation', 'A term can\'t be its own parent', '/parent');
+        }
         $args = self::core($values) + (array_key_exists('name', $values) ? ['name' => (string) $values['name']] : []);
         if ($args !== []) {
             $done = $this->db->core(static fn () => wp_update_term((int) $pk, $taxonomy, wp_slash($args)));

@@ -27,6 +27,8 @@ final class KindUrls
 {
     /** @var array<string, array{type: string, pattern: string, segments: list<string>, slug: ?string}> */
     private array $kinds = [];
+    /** @var array<string, array{taxonomy: string, pattern: string, segments: list<string>}> taxonomies with a `url` (ruling 29) */
+    private array $terms = [];
     private static ?self $instance = null;
 
     public static function instance(): ?self
@@ -37,11 +39,13 @@ final class KindUrls
     public static function register(Plugin $plugin): void
     {
         $self = self::$instance = new self($plugin);
-        if ($self->kinds !== []) {
+        if ($self->kinds !== [] || $self->terms !== []) {
             add_action('init', [$self, 'rewrites'], 1);
             add_filter('post_type_link', [$self, 'link'], 10, 2);
             add_action('template_redirect', [$self, 'oldSlug'], 0);
             add_filter('request', [$self, 'request']);
+            add_filter('term_link', [$self, 'termLink'], 10, 3);
+            add_action('pre_get_posts', [$self, 'termArchive']);
         }
         $frontend = $plugin->schema->frontend();
         if ($frontend === false) {
@@ -67,6 +71,15 @@ final class KindUrls
                 'segments' => explode('/', trim($spec['url'], '/')),
                 'slug' => $spec['slug'] ?? null,
             ];
+        }
+        foreach ($plugin->schema->taxonomies() as $name => $spec) {
+            if (is_string($spec['url'] ?? null)) {
+                $this->terms[$name] = [
+                    'taxonomy' => (string) $spec['wp']['taxonomy'],
+                    'pattern' => $spec['url'],
+                    'segments' => explode('/', trim($spec['url'], '/')),
+                ];
+            }
         }
     }
 
@@ -103,9 +116,29 @@ final class KindUrls
             }
             add_rewrite_rule('^' . $regex . '/?$', 'index.php?' . implode('&', $vars), 'top');
         }
-        add_rewrite_tag('%first_kind%', '([^&]+)');
+        // A taxonomy's pattern: one rule, resolved to a term of that taxonomy only (request()).
+        foreach ($this->terms as $name => $kind) {
+            $regex = '';
+            $n = 0;
+            $vars = ['first_term=' . $name];
+            foreach ($kind['segments'] as $segment) {
+                $regex .= ($regex === '' ? '' : '/');
+                if (!str_starts_with($segment, ':')) {
+                    $regex .= preg_quote($segment, '#');
+                    continue;
+                }
+                $n++;
+                $field = substr($segment, 1);
+                $regex .= $field === 'path' ? '(.+?)' : '([^/]+)';
+                $vars[] = 'first_term_' . $field . '=$matches[' . $n . ']';
+            }
+            add_rewrite_rule('^' . $regex . '/?$', 'index.php?' . implode('&', $vars), 'top');
+        }
+        foreach (['first_kind', 'first_term', 'first_term_slug', 'first_term_id', 'first_term_path'] as $tag) {
+            add_rewrite_tag("%$tag%", '([^&]+)');
+        }
         // The rules come from the build: flush once whenever the set of patterns changes.
-        $digest = md5((string) json_encode(array_column($this->kinds, 'pattern')));
+        $digest = md5((string) json_encode([...array_column($this->kinds, 'pattern'), ...array_column($this->terms, 'pattern')]));
         if (get_option('first_kind_urls') !== $digest) {
             flush_rewrite_rules(false);
             update_option('first_kind_urls', $digest, true);
@@ -122,6 +155,10 @@ final class KindUrls
      */
     public function request(array $vars): array
     {
+        $term = $vars['first_term'] ?? null;
+        if (is_string($term) && isset($this->terms[$term])) {
+            return $this->termRequest($term, $vars);
+        }
         $name = $vars['first_kind'] ?? null;
         if (!is_string($name) || !isset($this->kinds[$name])) {
             return $vars;
@@ -142,6 +179,133 @@ final class KindUrls
         }
         // Fields other than slug/id/date are checked once the item is known (oldSlug runs then).
         return $vars;
+    }
+
+    /**
+     * A matched taxonomy URL queries that one term's archive: `:slug` and `:id` name it, `:path` names
+     * it with the chain of its ancestors' slugs, which must match. Anything else is a 404.
+     *
+     * @param array<string, mixed> $vars
+     * @return array<string, mixed>
+     */
+    private function termRequest(string $name, array $vars): array
+    {
+        $kind = $this->terms[$name];
+        $given = [];
+        foreach (['slug', 'id', 'path'] as $field) {
+            if (isset($vars["first_term_$field"])) {
+                $given[$field] = (string) $vars["first_term_$field"];
+            }
+            unset($vars["first_term_$field"]);
+        }
+        unset($vars['first_term']);
+        $term = null;
+        if (isset($given['id']) && ctype_digit($given['id'])) {
+            $term = get_term((int) $given['id'], $kind['taxonomy']);
+        } elseif (isset($given['slug'])) {
+            $term = get_term_by('slug', rawurldecode($given['slug']), $kind['taxonomy']);
+        } elseif (isset($given['path'])) {
+            $slugs = explode('/', trim(rawurldecode($given['path']), '/'));
+            $term = get_term_by('slug', (string) end($slugs), $kind['taxonomy']);
+            if ($term instanceof \WP_Term && $this->termChain($term) !== $slugs) {
+                $term = null;
+            }
+        }
+        if (!$term instanceof \WP_Term || (isset($given['slug']) && isset($given['id']) && $term->slug !== rawurldecode($given['slug']))) {
+            return ['error' => '404'];
+        }
+
+        return ['taxonomy' => $kind['taxonomy'], 'term' => $term->slug] + array_diff_key($vars, ['taxonomy' => 1, 'term' => 1]);
+    }
+
+    /**
+     * A First term's archive (ruling 29) lists the items of its attached kinds that have a `url` of
+     * their own, each kind's under its read rule for this viewer; core would list none of them, since
+     * First's post types are left out of searches.
+     */
+    public function termArchive(\WP_Query $query): void
+    {
+        if (is_admin() || !$query->is_main_query() || !$query->is_tax()) {
+            return;
+        }
+        $taxonomy = (string) $query->get('taxonomy');
+        $kind = null;
+        foreach ($this->terms as $n => $t) {
+            if ($t['taxonomy'] === $taxonomy) {
+                $kind = $n;
+            }
+        }
+        if ($kind === null) {
+            return;
+        }
+        $viewer = CoreAccess::viewer();
+        $types = $clauses = [];
+        foreach ($this->plugin->schema->collection($kind)['wp']['on'] ?? [] as $attached) {
+            if (!isset($this->kinds[$attached])) {
+                continue;
+            }
+            $keys = $viewer === null ? false : CoreAccess::keys($attached, 'read', $viewer);
+            if ($keys === false) {
+                continue;
+            }
+            $type = $this->kinds[$attached]['type'];
+            $types[] = $type;
+            if (is_array($keys)) {
+                $clauses[$type] = array_map('intval', $keys);
+            }
+        }
+        $query->set('post_type', $types === [] ? ['first__none'] : $types);
+        if ($clauses !== []) {
+            add_filter('posts_where', static function (string $where, \WP_Query $q) use ($query, $clauses): string {
+                global $wpdb;
+                if ($q !== $query) {
+                    return $where;
+                }
+                foreach ($clauses as $type => $ids) {
+                    $where .= $wpdb->prepare(" AND ({$wpdb->posts}.post_type <> %s", $type)
+                        . ' OR ' . ($ids === [] ? '0 = 1' : "{$wpdb->posts}.ID IN (" . implode(', ', $ids) . ')') . ')';
+                }
+
+                return $where;
+            }, 10, 2);
+        }
+    }
+
+    /** @return list<string> the slugs from the root down to $term */
+    private function termChain(\WP_Term $term): array
+    {
+        $slugs = [$term->slug];
+        foreach (get_ancestors($term->term_id, $term->taxonomy, 'taxonomy') as $ancestor) {
+            $parent = get_term($ancestor, $term->taxonomy);
+            if ($parent instanceof \WP_Term) {
+                array_unshift($slugs, $parent->slug);
+            }
+        }
+
+        return $slugs;
+    }
+
+    /** `term_link`: a term of a First taxonomy with a `url`, at the URL its pattern gives. */
+    public function termLink(string $link, mixed $term, string $taxonomy): string
+    {
+        foreach ($this->terms as $kind) {
+            if ($kind['taxonomy'] !== $taxonomy || !$term instanceof \WP_Term) {
+                continue;
+            }
+            $parts = [];
+            foreach ($kind['segments'] as $segment) {
+                $parts[] = match ($segment) {
+                    ':slug' => rawurlencode($term->slug),
+                    ':id' => (string) $term->term_id,
+                    ':path' => implode('/', array_map('rawurlencode', $this->termChain($term))),
+                    default => $segment,
+                };
+            }
+
+            return user_trailingslashit(home_url('/' . implode('/', $parts)));
+        }
+
+        return $link;
     }
 
     /** `post_type_link`: the item's URL from its kind's pattern. */
@@ -194,6 +358,14 @@ final class KindUrls
     private static function field(string $kind, \WP_Post $post, string $field): ?string
     {
         [$column, $through] = array_pad(explode('.', $field, 2), 2, null);
+        $def = Plugin::instance()?->schema->collection($kind)['columns'][$column] ?? [];
+        if ($through === 'slug' && PostMeta::terms($def)) {
+            // `:topics.slug`: the first of the item's terms in write order; none, no URL yet.
+            $taxonomy = (string) (Plugin::instance()?->schema->collection($def['references']['collection'])['wp']['taxonomy'] ?? '');
+            $terms = wp_get_object_terms($post->ID, $taxonomy, ['orderby' => 'term_order', 'order' => 'ASC']);
+
+            return is_array($terms) && ($terms[0] ?? null) instanceof \WP_Term ? $terms[0]->slug : null;
+        }
         $value = get_post_meta($post->ID, 'first_' . $column, true);
         if ($through === 'slug' && is_numeric($value)) {
             $target = get_post((int) $value);

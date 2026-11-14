@@ -35,6 +35,16 @@ final class Polylang
 
             return $types;
         }, 10, 2);
+        // A First taxonomy is one vocabulary for every locale (`translations: false`, ruling 31): never
+        // one of Polylang's translated taxonomies, nor offered on its settings screen.
+        add_filter('pll_get_taxonomies', static function (mixed $taxonomies): array {
+            $taxonomies = (array) $taxonomies;
+            foreach (Runtime::plugin()?->schema->taxonomies() ?? [] as $spec) {
+                unset($taxonomies[$spec['wp']['taxonomy']]);
+            }
+
+            return $taxonomies;
+        }, PHP_INT_MAX);
         // First syncs its own columns in the pipeline (hooks and revisions per row). Polylang's live
         // meta sync would update siblings first, behind the pipeline's back, so it never touches
         // First's fields; its one-time copy into a new translation (wp-admin "+") stays.

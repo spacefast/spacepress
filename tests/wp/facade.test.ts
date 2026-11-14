@@ -315,3 +315,45 @@ test("a list page costs the same number of queries for 5 rows as for 20: First's
   assert.ok(Number.isFinite(five) && Number.isFinite(twenty), `${five} ${twenty}`);
   assert.ok(twenty - five < 15, `15 more rows cost ${twenty - five} more queries (${five} for 5, ${twenty} for 20): not one per row`);
 });
+
+test("a revisions list pages like every list: { data, cursor }, nothing dropped past a page", async () => {
+  const post = first("insert", "posts", JSON.stringify({ title: `Many revs ${run}`, excerpt: "0" }))[0];
+  for (let i = 1; i <= 4; i++) first("update", "posts", JSON.stringify({ id: post.id }), JSON.stringify({ excerpt: String(i) }));
+  const all: number[] = [];
+  let cursor: string | null = null;
+  let pages = 0;
+  do {
+    const page = await f("GET", `/posts/${post.id}/revisions` + qs({ limit: "2", ...(cursor ? { cursor } : {}) }), { as: "editor" });
+    assert.equal(page.status, 200, JSON.stringify(page.json));
+    assert.ok(page.json.data.length <= 2);
+    all.push(...page.json.data.map((r: any) => r.id));
+    cursor = page.json.cursor;
+    pages++;
+  } while (cursor !== null && pages < 10);
+  assert.equal(all.length, 5, "one revision per write, every one reached through the cursor");
+  assert.deepEqual([...all].sort((a, b) => b - a), all, "newest first");
+  const whole = await f("GET", `/posts/${post.id}/revisions`, { as: "editor" });
+  assert.deepEqual([whole.json.data.length, whole.json.cursor], [5, null], "one page holds them all under the default limit");
+  assert.equal((await f("GET", `/posts/${post.id}/revisions` + qs({ cursor: "nonsense" }), { as: "editor" })).status, 400);
+});
+
+test("a restore puts back the whole revision, fields hidden from the caller included, and never returns them", async () => {
+  // payroll: editors update rows; salary is readable and settable by admins only.
+  const id = first("insert", "payroll", JSON.stringify({ title: `Restore pay ${run}`, salary: "1k" }))[0].id;
+  first("update", "payroll", JSON.stringify({ id }), JSON.stringify({ title: `Restore pay ${run} later`, salary: "2k" }));
+  const revisions = await f("GET", `/payroll/${id}/revisions`, { as: "editor" });
+  assert.equal(revisions.status, 200, JSON.stringify(revisions.json));
+  const oldest = revisions.json.data.at(-1).id;
+  const snapshot = await f("GET", `/payroll/${id}/revisions/${oldest}`, { as: "editor" });
+  assert.equal("salary" in snapshot.json.data, false, "the revision is masked for the editor");
+  const restored = await f("POST", `/payroll/${id}/revisions/${oldest}/restore`, { as: "editor" });
+  assert.equal(restored.status, 200, JSON.stringify(restored.json));
+  assert.equal(restored.json.data.title, `Restore pay ${run}`);
+  assert.equal("salary" in restored.json.data, false, "the answer is masked like every read");
+  const stored = first("find", "payroll", JSON.stringify({ where: { id } }))[0];
+  assert.deepEqual([stored.title, stored.salary], [`Restore pay ${run}`, "1k"], "the hidden field came back from the revision, not left at its later value");
+  // Sending a hidden field is still refused: a restore writes it only from the stored revision.
+  const direct = await f("PATCH", `/payroll/${id}`, { as: "editor", body: { salary: "3k" } });
+  assert.deepEqual([direct.status, direct.json.pointer], [403, "/salary"]);
+  assert.equal((await f("POST", `/payroll/${id}/revisions/${oldest}/restore`)).status, 404, "anonymous: no such row");
+});

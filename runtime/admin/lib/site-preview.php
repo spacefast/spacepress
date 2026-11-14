@@ -16,11 +16,17 @@ function first_admin_is_site_preview() {
 
 /**
  * Hide admin bar when in First Admin site preview mode.
+ *
+ * First: otherwise keep WordPress's own answer. Upstream returned true outside the preview, which
+ * showed the admin bar (and loaded its scripts) to anonymous visitors.
+ *
+ * @param bool $show Whether WordPress would show the admin bar.
+ * @return bool
  */
-function first_admin_hide_admin_bar() {
-	return ! first_admin_is_site_preview();
+function first_admin_hide_admin_bar( $show ) {
+	return $show && ! first_admin_is_site_preview();
 }
-add_action( 'show_admin_bar', 'first_admin_hide_admin_bar', 1 );
+add_filter( 'show_admin_bar', 'first_admin_hide_admin_bar', 1 );
 
 /**
  * Make the body inert for First Admin site preview.

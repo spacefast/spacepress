@@ -1,0 +1,12 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Partner API", "version": "2" },
+  "servers": [{ "url": "https://partner.example/v2" }],
+  "paths": {
+    "/orders/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": { "operationId": "getOrder", "tags": ["Orders"], "summary": "Get an order", "responses": { "200": { "description": "The order", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Order" } } } } } }
+    }
+  },
+  "components": { "schemas": { "Order": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" }, "lines": { "type": "array", "items": { "$ref": "#/components/schemas/Line" } }, "parent": { "$ref": "#/components/schemas/Order" } } }, "Line": { "type": "object", "properties": { "sku": { "type": "string", "pattern": "^[A-Z]+$" }, "qty": { "type": "integer", "minimum": 1 } } } } }
+}

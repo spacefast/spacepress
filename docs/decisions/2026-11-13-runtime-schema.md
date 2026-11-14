@@ -123,7 +123,9 @@ key is (app, version).
 
 **Concurrency.** Apply names the version it was validated against. Under the named lock a deploy
 holds while it migrates (`first_<app>_schema`), it checks that the build its request loaded is still
-the one on disk (otherwise 409 `schema_build_changed`), that its parent is still the newest version,
+the one the last deploy recorded in that option, and still the file on disk (otherwise 409
+`schema_build_changed`; on a managed build store a deploy mounts another build's directory and never
+rewrites the loaded file, so the recorded hash is what says a deploy happened), that its parent is still the newest version,
 and, in one transaction, inserts
 version + 1 and writes the option. A second apply on the same parent gets 409 `schema_conflict` and
 must propose again. The primary key refuses a duplicate even if the lock is lost. The table is the
@@ -250,11 +252,14 @@ both types and the fix.
 - Abilities `<app>/schema-read`, `<app>/schema-propose` (validates, returns the diff and effects,
   writes nothing) and `<app>/schema-apply`. Reading and proposing need `manage_options`. Apply needs
   its own capability, `first_apply_schema`. The administrator role is given it once (an option
-  records that it was), so removing it with `wp cap remove` holds. The option
-  `first_<app>_schema_apply_denied` denies a user one application password (and any password it
-  creates), all of their application passwords, or every First Identity access token they are
-  issued (`bearer`): an access token has no id of its own to name, so it is denied by kind. A user
-  without the capability, or signed in a denied way, can read and propose but not apply.
+  records that it was, and a role that already says `false` keeps it), so removing it with `wp cap
+  remove` holds. The option `first_<app>_schema_apply_denied` denies a user one application
+  password, all of their application passwords, or every First Identity access token they are
+  issued (`bearer`): an access token has no id of its own to name, so it is denied by kind. A
+  password a denied credential creates, for any user, is denied too. A deny does not bound an
+  administrator's unscoped password, which can act as other users through core; agents get scoped
+  passwords. A user without the capability, or signed in a denied way, can read and propose but not
+  apply.
 - Site command `first schema list | diff | apply | rollback`: one row in `commands.json`.
 - `GET /__first/api/v1` describes the active schema and its version; `first pull` regenerates the
   typed client's types from it.

@@ -120,7 +120,7 @@ test("Run in WordPress runs the config in the editor", async ({ page }) => {
   expect(edited.steps.some((step) => step.step === "runPHP")).toBe(false);
   // First's shared plugins come from this site; the order is the activation order.
   const installs = edited.steps.filter((step) => step.step === "installPlugin").map((step) => step.pluginData!.url ?? step.pluginData!.name);
-  expect(installs.slice(-3)).toEqual([expect.stringMatching(/\/files\/plugins\/first-runtime\.zip$/), expect.stringMatching(/\/files\/plugins\/first-identity\.zip$/), "first-app-pantry"]);
+  expect(installs.slice(-4)).toEqual([expect.stringMatching(/\/files\/plugins\/first-runtime\.zip$/), expect.stringMatching(/\/files\/plugins\/first-identity\.zip$/), "first-app-pantry", expect.stringMatching(/\/files\/plugins\/first-admin\.zip$/)]);
   await expect(page.locator("#wordpress-note")).toContainText("sample data isn't loaded");
 });
 

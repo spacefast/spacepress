@@ -10,6 +10,7 @@ use crate::schema::*;
 use crate::value::*;
 use indexmap::IndexMap;
 use serde_json::Value as Json;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Where a compiled function's PHP name goes once it's known.
@@ -67,6 +68,10 @@ pub enum Slot {
     AppGuard {
         file: String,
     },
+    /// `export async function staticParams()` in a dynamic `first/app/` page: the params to prebuild.
+    AppStaticParams {
+        file: String,
+    },
     /// `export async function POST(req, ctx)` in a `first/app/` page or `route.ts`.
     AppHandler {
         file: String,
@@ -91,6 +96,9 @@ pub struct Extracted {
     pub collections: Vec<Rc<CollectionVal>>,
     /// Non-fatal advice printed by `first build` (§3.5.1 postmeta hint).
     pub hints: Vec<String>,
+    /// Each registered action's value (its allocation) → its registered name, so a page's
+    /// `<form action={subscribe}>` and `useFormState(subscribe)` name the action they were given.
+    pub action_values: HashMap<usize, String>,
     pub plugins: Option<crate::wp_plugins::Config>,
     /// `defineConfig({ use })`: plugin packages, in registration order.
     pub uses: Vec<crate::plugins::Plugin>,
@@ -133,6 +141,7 @@ const CONFIG_KEYS: &[&str] = &[
     "services",
     "use",
     "frontend",
+    "output",
     "runtimeSchema",
 ];
 const COLLECTION_OPTIONS: &[&str] = &[
@@ -229,6 +238,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         roots: Vec::new(),
         collections: Vec::new(),
         hints: Vec::new(),
+        action_values: HashMap::new(),
         refs: Vec::new(),
         plugins: None,
         uses: Vec::new(),
@@ -248,7 +258,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .help("it becomes the WordPress plugin slug `first-<name>`"));
         }
     };
-    out.schema.admin = bool_option(&cfg_map, "admin", false, span_of(ev, config, "admin", config_span))?;
+    out.schema.admin = bool_option(&cfg_map, "admin", true, span_of(ev, config, "admin", config_span))?;
     out.schema.public_authors = bool_option(
         &cfg_map,
         "publicAuthors",
@@ -275,6 +285,25 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .help("leave it out for the default: the theme, or first/app when it exists"));
         }
     };
+    out.schema.output = match cfg_map.get("output") {
+        None | Some(Value::Undef) => crate::schema::Output::Server,
+        Some(Value::Str(s)) if s.as_ref() == "server" => crate::schema::Output::Server,
+        Some(Value::Str(s)) if s.as_ref() == "static" => crate::schema::Output::Static,
+        Some(other) => {
+            return Err(Diag::new(
+                span_of(ev, config, "output", config_span),
+                format!("`output` is \"server\" or \"static\", not {}", other.describe()),
+            )
+            .help("leave it out for \"server\": pages render on WordPress, and `export const prerender = true` prebuilds one; \"static\" prebuilds every page for `first export`"));
+        }
+    };
+    if out.schema.output == crate::schema::Output::Static && out.schema.frontend.is_some() {
+        return Err(Diag::new(
+            span_of(ev, config, "output", config_span),
+            "`output: \"static\"` renders the site from first/app/, and `frontend` hands it to another site",
+        )
+        .help("keep one: remove `frontend` to export first/app/, or remove `output` to keep the other frontend"));
+    }
     phase2_config(&cfg_map, ev, config_span, &mut out)?;
     if let Some((_, span)) = ev.duplicate_key(config, Some("plugins")) {
         return Err(Diag::new(span, "duplicate plugins declaration"));
@@ -297,6 +326,17 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .flat_map(|config| config.plugins.iter().map(|plugin| plugin.slug.clone()))
             .collect();
         declared.sort();
+        if let Some(denied) = declared
+            .iter()
+            .find(|slug| crate::bundle::SEALED_DENIED.contains(&slug.as_str()))
+        {
+            return Err(Diag::new(
+                span_of(ev, config, "plugins", config_span),
+                format!(
+                    "a sealed site can't run {denied}: it serves stored content around First's read rules. Remove it from plugins, or turn sealed mode off."
+                ),
+            ));
+        }
         out.schema.sealed = Some(declared);
     }
 
@@ -755,6 +795,7 @@ fn actions(
                 access_rule(v, sp, &owner, "access", format!("action__{name}__access"), out)?
             }
         };
+        out.action_values.insert(Rc::as_ptr(a) as usize, name.clone());
         out.roots.push(Root {
             closure: handler.clone(),
             slot: Slot::ActionHandler { action: name.clone() },
@@ -3578,6 +3619,7 @@ mod legacy {
             entry.methods.insert(method, String::new());
             table.files.insert(file.clone(), entry);
             table.routes.push(AppRoute {
+                explicit_id: None,
                 id: name,
                 pattern: path,
                 page: None,
@@ -3586,6 +3628,7 @@ mod legacy {
                 error: None,
                 kind: None,
                 styles: Vec::new(),
+                prerender: false,
             });
         }
         // The runtime takes the first match: most specific first, as the 0.3.0 runtime ranked them

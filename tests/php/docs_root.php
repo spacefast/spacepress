@@ -46,7 +46,8 @@ preg_match_all('#href="([^"]+)"#', $tree[1][0] ?? '', $links);
 $out['tree'] = array_map(static fn (string $h): ?string => parse_url($h, PHP_URL_PATH), $links[1]);
 preg_match('#href="([^"]+)"[^>]*rel="next"#', $doc, $next);
 $out['next'] = isset($next[1]) ? parse_url($next[1], PHP_URL_PATH) : null;
-// WordPress's own addresses and First's are untouched by a kind at the root.
+// WordPress's own addresses and First's are untouched by a kind at the root (the sign-in page
+// answers itself rather than redirecting since #411).
 foreach (['/wp-login.php', '/feed/', '/llms.txt', '/robots.txt', '/getting-started.md', '/reference/config.md'] as $path) {
     $out['wordpress'][$path] = get("$url$path")['status'];
 }

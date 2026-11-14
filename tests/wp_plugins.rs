@@ -521,10 +521,10 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
     assert!(out.status.success() && !String::from_utf8_lossy(&out.stderr).contains("warning:"));
 }
 
-/// `admin: true` ships the optional admin screens as a fourth plugin, complete and versioned like
-/// the generated ones; the default ships nothing, and a build that drops the flag removes it.
+/// Every build ships First Admin as a fourth plugin, complete and versioned like the generated ones;
+/// `admin: false` leaves it out, and a build that adds that opt-out removes it.
 #[test]
-fn admin_opt_in_emits_the_admin_plugin_and_opting_out_removes_it() {
+fn the_admin_plugin_ships_by_default_and_admin_false_removes_it() {
     let routes = routes();
     let server = Server::new(routes.clone());
     let p = Project::new();
@@ -532,14 +532,17 @@ fn admin_opt_in_emits_the_admin_plugin_and_opting_out_removes_it() {
     let manifest =
         || -> Value { serde_json::from_slice(&std::fs::read(p.out.join("first-manifest.json")).unwrap()).unwrap() };
     let admin = p.out.join("plugins/first-admin");
+    let schema_admin = || -> Value {
+        let schema = Command::new("php")
+            .args(["-r", "echo json_encode(require $argv[1]);"])
+            .arg(p.out.join("plugins/first-app-fixtures/first/app/schema.php"))
+            .output()
+            .unwrap();
+        assert!(schema.status.success(), "{}", String::from_utf8_lossy(&schema.stderr));
+        serde_json::from_slice::<Value>(&schema.stdout).unwrap()["admin"].clone()
+    };
 
     p.config(&plugins);
-    p.build();
-    assert!(!admin.exists(), "no admin without the opt-in");
-    assert!(!p.out.join("plugins/first-admin.zip").exists());
-    assert!(manifest()["plugins"].get("first-admin").is_none());
-
-    p.config_with(&plugins, ", admin: true");
     p.build();
     let version = env!("CARGO_PKG_VERSION");
     let header = std::fs::read_to_string(admin.join("first-admin.php")).unwrap();
@@ -558,29 +561,35 @@ fn admin_opt_in_emits_the_admin_plugin_and_opting_out_removes_it() {
         assert!(admin.join(rel).is_file(), "first-admin is missing {rel}");
     }
     assert!(!admin.join("apps").exists(), "the JS workspace never ships");
+    assert!(
+        !admin.join("upstream-metadata").exists(),
+        "the retained upstream inputs stay in the repository"
+    );
     let archive = std::fs::File::open(p.out.join("plugins/first-admin.zip")).unwrap();
     let mut archive = zip::ZipArchive::new(archive).unwrap();
     assert!(archive.by_name("first-admin/first-admin.php").is_ok());
     assert!(archive.by_name("first-admin/build/index.php").is_ok());
     assert_eq!(manifest()["plugins"]["first-admin"], version);
-    // schema.php records the flag as a value, read back by PHP like the runtime reads it.
-    let schema = Command::new("php")
-        .args(["-r", "echo json_encode(require $argv[1]);"])
-        .arg(p.out.join("plugins/first-app-fixtures/first/app/schema.php"))
-        .output()
-        .unwrap();
-    assert!(schema.status.success(), "{}", String::from_utf8_lossy(&schema.stderr));
-    let schema: Value = serde_json::from_slice(&schema.stdout).unwrap();
-    assert_eq!(schema["admin"], Value::Bool(true));
+    // schema.php records the setting as a value, read back by PHP like the runtime reads it.
+    assert_eq!(schema_admin(), Value::Bool(true));
     let before = tree(&p.out);
     p.build();
     assert_eq!(before, tree(&p.out), "the admin plugin is emitted deterministically");
 
-    p.config(&plugins);
+    p.config_with(&plugins, ", admin: false");
     p.build();
-    assert!(!admin.exists(), "opting out removes the admin plugin");
+    assert!(!admin.exists(), "admin: false removes the admin plugin");
     assert!(!p.out.join("plugins/first-admin.zip").exists());
     assert!(manifest()["plugins"].get("first-admin").is_none());
+    assert_eq!(schema_admin(), Value::Bool(false));
+
+    p.config_with(&plugins, ", admin: true");
+    p.build();
+    assert_eq!(
+        manifest()["plugins"]["first-admin"],
+        version,
+        "admin: true is the default, spelled out"
+    );
 }
 
 /// The flag is a boolean; anything else is refused before any output exists.

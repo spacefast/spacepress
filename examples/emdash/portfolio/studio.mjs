@@ -44,7 +44,7 @@ export async function startStudio() {
     await command(['dev', 'stop', project]);
     const status = JSON.parse(await command(['dev', 'status', project]));
     assert.equal(status.isOnline, false);
-    const deleted = await execute('npx', ['--yes', '--package', 'wp-studio@2.1.1', '--', 'studio', 'delete', '--path', site, '--no-files'], { cwd: repo, timeout: 120000 });
+    const deleted = await execute('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', 'delete', '--path', site, '--no-files'], { cwd: repo, timeout: 120000 });
     await writeFile(join(evidence, 'cleanup.txt'), `Stopped exact project: ${project}\nOnline: ${status.isOnline}\nDeleted exact Studio registration: ${site}\n${deleted.stdout}${deleted.stderr}`);
     receipt.state = 'deleted';
     await save();

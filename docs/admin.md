@@ -1,10 +1,11 @@
 # First Admin
 
-Set `admin: true` in `defineConfig`, then run `first build`. The generated
-WordPress artifact includes `plugins/first-admin` with compiled assets. Activate
-the artifact's declared dependencies, the First runtime and app, then First Admin.
-Enable pretty permalinks and visit `/first-admin/`. A subdirectory installation
-uses its own prefix, for example `/blog/first-admin/`.
+First Admin is the default admin of every First app. `first build` puts the
+`first-admin` plugin (compiled assets included) into the artifact next to
+`first-runtime` and `first-app-<name>`; activate it after the app. It runs at
+`/wp-admin/new/`, the address the upstream admin used, and classic
+`/wp-admin/` stays complete and unchanged beside it. A subdirectory installation
+uses its own prefix, for example `/blog/wp-admin/new/`.
 
 ```ts
 import { collection, defineConfig, richText, text } from "first";
@@ -19,18 +20,39 @@ const posts = collection({
   access: { read: "anyone", create: "editor", update: "editor", delete: "admin" },
 });
 
-export default defineConfig({
-  name: "my-app",
-  admin: true,
-  collections: { posts },
-});
+// No setting needed: First Admin ships. `admin: false` leaves only classic wp-admin.
+export default defineConfig({ name: "my-app", collections: { posts } });
 ```
 
-Editor asset URLs use WordPress's registered installation URL, including the
-subdirectory prefix. Use your normal WordPress account. WordPress owns authentication, capabilities,
+Use your normal WordPress account. WordPress owns authentication, capabilities,
 REST nonces, users, settings, plugins, themes, media and the block editor.
-`Classic admin` opens the complete `/wp-admin/`; its `First` menu item returns.
-Existing plugin settings and classic plugin screens remain accessible.
+
+### Addresses
+
+| URL | What it serves |
+|---|---|
+| `/wp-admin/new/<route>` | First Admin. Apache rewrites it to `wp-admin/admin.php?page=first-admin`; the route stays in the path. |
+| `/wp-admin/admin.php?page=first-admin&p=<route>` | The same page on any server. A server that does not read `.htaccess` (nginx) redirects `/wp-admin/new/<route>` here. |
+| `/wp-admin/` | Classic wp-admin, unchanged. Its `First` menu entry opens First Admin. |
+| `/first-admin/<route>` | The earlier address: a permanent redirect to `/wp-admin/new/<route>`. |
+
+The page is a wp-admin page: `admin.php` signs the visitor in (`auth_redirect`)
+and builds wp-admin's menus, so plugin menu entries appear in First Admin's
+sidebar. The plugin writes its rule into `.htaccess` on the first web request
+after it is activated or updated (WP-CLI never writes that file).
+
+After signing in, WordPress's default destination (`/wp-admin/`) becomes
+`/wp-admin/new/`. A page the visitor asked for (`redirect_to`) is kept.
+`Classic admin` in First Admin's sidebar and command palette opens
+`/wp-admin/`; `First` in wp-admin's menu returns. Existing plugin settings and
+classic plugin screens remain accessible in both.
+
+`admin: false` in `defineConfig` leaves the plugin out of the build, and a build
+that adds it removes the plugin from the output. Classic wp-admin is then the
+only admin and login lands there, as in WordPress.
+
+Editor asset URLs use WordPress's registered installation URL, including the
+subdirectory prefix.
 
 ## Source scope
 
@@ -65,7 +87,8 @@ SHA-256, its destination, and the adapter disposition. The input digest is:
 This digest covers the 1,094 distributable plugin source files; repository agent
 instruction files are excluded. It identifies the archive, not a Git commit.
 Upstream root configuration/bootstrap and PHP tests are retained under
-`upstream-metadata/` as reference material, outside the active plugin loader.
+`upstream-metadata/` as reference material, outside the active plugin loader; `first build` leaves
+that folder out of the plugin, as it leaves out the JS workspace `apps/`.
 For each adapted file, `upstream-metadata/adapter-originals/` retains its complete
 input after namespace and privacy normalization. `retainedSourcePath` and
 `normalizedSha256` identify that copy; unchanged inputs point to their active

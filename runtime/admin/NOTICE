@@ -6,8 +6,9 @@ contributors, distributed under GPL-2.0-or-later. The source archive has no
 verified upstream Git revision. upstream-inventory.json records its exact
 source hashes and the local adaptations. Upstream private tracker and service
 references in documentation have been redacted.
-Complete normalized inputs for adapted files remain under
-upstream-metadata/adapter-originals, outside the active plugin loader.
+Complete normalized inputs for adapted files are kept in the source
+repository under runtime/admin/upstream-metadata/adapter-originals; the
+built plugin does not ship them.
 
 The existing First WordPress integration and telemetry adapter derive from
 Spacefast's earlier admin work under the same license. Bundled WordPress

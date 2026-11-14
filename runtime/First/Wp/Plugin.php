@@ -532,7 +532,17 @@ final class Plugin
                 // A kind with a `url` has public items: WordPress resolves its URLs (KindUrls) and the
                 // theme renders them; access rules still decide who reads which item.
                 'publicly_queryable' => is_string($spec['url'] ?? null),
+                // Core's content abilities (core/content-query, WordPress 7.2) read a post type's posts
+                // directly, without the kind's access rules or field permissions. A kind's items reach
+                // agents through the app's own abilities only.
+                'show_in_abilities' => false,
             ]);
+            // Set after registration too: a register_post_type_args filter that exposes every post type
+            // must not expose a kind. Core resolves the exposure from this property on every call.
+            $object = get_post_type_object($type);
+            if ($object !== null) {
+                $object->show_in_abilities = false;
+            }
             PostMeta::register($spec);
         }
     }

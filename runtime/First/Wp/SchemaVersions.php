@@ -77,7 +77,13 @@ final class SchemaVersions
         }
         $app = $this->plugin->schema->name();
 
-        return Migrator::locked($db, Loader::option($app), function () use ($db, $app, $parent, $changeSet, $actor): array {
+        // The lock a deploy holds (Plugin::schemaLock): a change never lands half way through one.
+        return Migrator::locked($db, $this->plugin->schemaLock(), function () use ($db, $app, $parent, $changeSet, $actor): array {
+            if (!$this->plugin->buildIsCurrent()) {
+                // A deploy replaced the build while this request waited: the change was checked against
+                // the old one. The next request runs the new build; propose the change there.
+                throw new Refused('schema_build_changed', 'A new build was deployed while this change waited for the schema lock. Read the schema again and propose the change on the new build', null, '/changes', 409);
+            }
             $db->applySystemStatements(['CREATE TABLE IF NOT EXISTS `{prefix}' . self::TABLE . '` (`app` VARCHAR(191) NOT NULL, `version` BIGINT NOT NULL, `parent` BIGINT NOT NULL, `format` INT NOT NULL, `build` CHAR(64) NOT NULL, `actor` LONGTEXT NOT NULL, `changes` LONGTEXT NOT NULL, `hash` CHAR(64) NOT NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`app`, `version`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin']);
             $rows = $this->rows();
             $newest = $rows === [] ? ['version' => 0, 'hash' => ''] : end($rows);
@@ -192,11 +198,12 @@ final class SchemaVersions
     /**
      * What a build that is about to run on this site would do to the site's runtime changes.
      * Nothing is ever dropped: changes the build doesn't contain stay active and are listed in
-     * `kept`; names the site removed that the build's code uses are active again and listed in
+     * `kept`; fields both declare with the same stored shape but other rules or presentation are
+     * `changed` (the build's declaration is used); names the site removed that the build's code uses are active again and listed in
      * `restored`. `refusals` are the cases where the build and the site disagree about stored data: a
      * name both declare with different stored types.
      *
-     * @return array{site: array{version: int, hash: string}, build: array{version: int, hash: string}, kept: list<string>, restored: list<string>, refusals: list<array{code: string, name: string, message: string, fix: string}>}
+     * @return array{site: array{version: int, hash: string}, build: array{version: int, hash: string}, kept: list<string>, changed: list<string>, restored: list<string>, refusals: list<array{code: string, name: string, message: string, fix: string}>}
      */
     public function deployCheck(): array
     {
@@ -204,45 +211,7 @@ final class SchemaVersions
         $state = $rows === [] ? Loader::EMPTY : $this->replay($rows);
         $compiled = $this->compiled();
         $build = ['version' => (int) ($compiled['runtimeSchema']['version'] ?? 0), 'hash' => (string) ($compiled['runtimeSchema']['hash'] ?? '')];
-        $kept = $refusals = [];
-        $differs = static function (string $name, string $site, string $built) use (&$refusals): void {
-            $refusals[] = ['code' => 'runtime_type_differs', 'name' => $name,
-                'message' => "$name is a $site field on this site (a runtime schema change) and a $built field in this build; its stored values are {$site}s.",
-                'fix' => "Declare $name as $site in the project (run `first pull` to take the site's definition), or give the build's field another name."];
-        };
-        foreach (['collections' => 'columns', 'globals' => 'fields'] as $section => $inner) {
-            foreach ($state[$section] ?? [] as $kind => $entry) {
-                foreach ($entry[$inner] ?? [] as $field => $definition) {
-                    $built = $compiled[$section][$kind][$inner][$field] ?? null;
-                    if ($built === null) {
-                        $kept[] = "$kind.$field";
-                    } elseif ($built['type'] !== $definition['type']) {
-                        $differs("$kind.$field", $definition['type'], $built['type']);
-                    }
-                }
-            }
-            foreach ($state['added'][$section] ?? [] as $kind => $stored) {
-                if (!isset($compiled[$section][$kind])) {
-                    $kept[] = $kind;
-                    continue;
-                }
-                foreach ($stored['fields'] as $field => $definition) {
-                    $built = $compiled[$section][$kind][$inner][$field] ?? null;
-                    if ($built !== null && $built['type'] !== $definition['type']) {
-                        $differs("$kind.$field", $definition['type'], $built['type']);
-                    }
-                }
-            }
-            // A removed name keeps its values; a build that declares it again must read them as they were stored.
-            foreach ($state['removed'][$section] ?? [] as $kind => $removed) {
-                foreach ($removed['fields'] ?? [] as $field => $type) {
-                    $built = $compiled[$section][$kind][$inner][$field] ?? null;
-                    if ($built !== null && $built['type'] !== $type) {
-                        $differs("$kind.$field", $type, $built['type']);
-                    }
-                }
-            }
-        }
+        ['kept' => $kept, 'changed' => $changed, 'refusals' => $refusals] = \First\RuntimeSchema\Deploy::check($compiled, $state);
         // What the site removed and this build declares in a way that can't be hidden: active again.
         $restored = [];
         $references = Loader::references();
@@ -260,7 +229,7 @@ final class SchemaVersions
         }
         $newest = $rows === [] ? ['version' => 0, 'hash' => ''] : end($rows);
 
-        return ['site' => ['version' => $newest['version'], 'hash' => $newest['hash']], 'build' => $build, 'kept' => $kept, 'restored' => $restored, 'refusals' => $refusals];
+        return ['site' => ['version' => $newest['version'], 'hash' => $newest['hash']], 'build' => $build, 'kept' => $kept, 'changed' => $changed, 'restored' => $restored, 'refusals' => $refusals];
     }
 
     /**

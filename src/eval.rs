@@ -3541,6 +3541,48 @@ impl<'p> Evaluator<'p> {
                 Value::Bool(matches!(arg(0), Value::Num(n) if n.is_finite() && n.fract() == 0.0))
             }
             ("Number", "isFinite") => Value::Bool(matches!(arg(0), Value::Num(n) if n.is_finite())),
+            ("String", "fromCharCode" | "fromCodePoint") => {
+                let mut units: Vec<u16> = Vec::new();
+                for value in &args {
+                    require_static_coercion(value, span)?;
+                    let n = to_number(value);
+                    if m == "fromCharCode" {
+                        // ToUint16: truncate toward zero, then modulo 2^16.
+                        let n = if n.is_finite() {
+                            n.trunc().rem_euclid(65536.0)
+                        } else {
+                            0.0
+                        };
+                        units.push(n as u16);
+                    } else {
+                        if !n.is_finite() || n.fract() != 0.0 || !(0.0..=1_114_111.0).contains(&n) {
+                            return err_help(
+                                span,
+                                format!(
+                                    "String.fromCodePoint throws a RangeError for {}",
+                                    crate::num::js_number_to_string(n)
+                                ),
+                                "pass whole numbers from 0 to 0x10FFFF",
+                            );
+                        }
+                        let mut buf = [0u16; 2];
+                        match char::from_u32(n as u32) {
+                            Some(c) => units.extend_from_slice(c.encode_utf16(&mut buf)),
+                            None => units.push(n as u16),
+                        }
+                    }
+                }
+                match String::from_utf16(&units) {
+                    Ok(text) => Value::str(&text),
+                    Err(_) => {
+                        return err_help(
+                            span,
+                            "this makes a string with a lone UTF-16 surrogate, which First can't represent",
+                            "use complete characters; pair each high surrogate with a low one",
+                        );
+                    }
+                }
+            }
             ("Date", "now") => {
                 return Err(Ctl::Err(
                     Diag::new(

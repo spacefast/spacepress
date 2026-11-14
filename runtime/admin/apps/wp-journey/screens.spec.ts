@@ -5,6 +5,7 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { submitSignIn } from './sign-in';
 const harness = JSON.parse(
 	readFileSync(
 		process.env.FIRST_WP_HARNESS ??
@@ -39,9 +40,7 @@ async function comment( request: APIRequestContext, postId: number, body: string
 
 async function signIn( page: Page, role: 'admin' | 'subscriber' ) {
 	await page.goto( `${ site }/wp-login.php` );
-	await page.locator( '#user_login' ).fill( role );
-	await page.locator( '#user_pass' ).fill( `first-test-${ role }` );
-	await page.locator( '#wp-submit' ).click();
+	await submitSignIn( page, role, `first-test-${ role }` );
 	await expect( page ).toHaveURL( `${ site }/wp-admin/new/` );
 }
 

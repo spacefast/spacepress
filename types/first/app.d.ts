@@ -87,6 +87,12 @@ export interface FormState<TResult> {
  */
 export declare function Comments(props: { for: { id: number }; className?: string }): JSX.Element;
 /**
+ * Part of a server page the browser keeps current: `<Live id="notes">{rows.map(…)}</Live>`. When
+ * anything the page read for it changes, the region is rendered again as the visitor and swapped in
+ * place. `id` is a literal, unique on the page; it names the region to the server.
+ */
+export declare function Live(props: { id: string; children?: JSX.Children }): JSX.Element;
+/**
  * Numbered links to the other pages of a listing, as a `<nav>` that works without JavaScript:
  * `<Pagination page={search.page} pages={Math.ceil(total / 20)} />`. Each link is this URL with
  * only `param` (default `"page"`) changed; page 1 drops it. Many pages collapse around the current one.

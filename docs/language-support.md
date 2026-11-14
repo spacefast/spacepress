@@ -592,6 +592,22 @@ Imported JavaScript compiles crypto.subtle.digest(algorithm, data): SHA-1, SHA-2
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
+## string-from-char-code
+
+Status: **supported**.
+
+String.fromCharCode(...codes) (each ToUint16, one UTF-16 code unit, so surrogate pairs combine) and String.fromCodePoint(...points) (RangeError outside 0..0x10FFFF or for a fraction) compile in typed TypeScript, imported JavaScript and configuration evaluation. Evidence: tests/differential/language/char-codes.ts.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
+## lone-surrogate-char-code
+
+Status: **refused**. Diagnostic: `F2001`.
+
+Strings are stored as UTF-8, which has no lone surrogates. Pair each high surrogate with a low one, or build the character with String.fromCodePoint. At run time the same call throws a RangeError.
+
+[Evidence](../tests/fixtures/reject-lone-surrogate-char-code)
+
 ## optional-chains
 
 Status: **supported**.

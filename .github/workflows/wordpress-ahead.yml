@@ -1,0 +1,178 @@
+name: WordPress ahead
+
+# First against the WordPress that is coming, not only the floor it supports (7.1): the nightly build,
+# and the newest beta or release candidate when there is one. Weekly and by hand only, never on a PR:
+# a change in core must not turn every PR red. A failure names the build and each failing test in
+# the job summary; docs/wordpress-internals.md says what to look at in core.
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  XDEBUG_MODE: 'off'
+
+concurrency:
+  group: wordpress-ahead
+  cancel-in-progress: false
+
+jobs:
+  builds:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      # nightly: wordpress.org's nightly ZIP. next: the newest beta or RC while one is out
+      # (api.wordpress.org's `beta` channel offers it as `development`; between cycles it offers none).
+      - id: pick
+        run: |
+          set -euo pipefail
+          builds='[{"name":"nightly","url":"https://wordpress.org/nightly-builds/wordpress-latest.zip"}]'
+          offers=$(curl -fsS 'https://api.wordpress.org/core/version-check/1.7/?channel=beta')
+          next=$(jq -r '[.offers[] | select(.response == "development") | .download | select(test("/release/wordpress-[0-9.]+-(beta|RC)[0-9]+\\.zip$"))] | first // empty' <<<"$offers")
+          if [ -n "$next" ]; then
+            builds=$(jq -c --arg url "$next" '. + [{"name":"next","url":$url}]' <<<"$builds")
+          fi
+          echo "matrix=$builds" >> "$GITHUB_OUTPUT"
+          echo "Builds: $builds"
+
+  php:
+    needs: builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        build: ${{ fromJSON(needs.builds.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Install PHP extensions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php8.3-cli php8.3-sqlite3 php8.3-mbstring php8.3-gd php8.3-curl php8.3-zip
+          sudo update-alternatives --set php /usr/bin/php8.3
+      - name: Download ${{ matrix.build.name }}
+        id: core
+        uses: ./.github/actions/wordpress-build
+        with:
+          url: ${{ matrix.build.url }}
+          name: ${{ matrix.build.name }}
+      - name: In-process suites (tests/php)
+        run: tests/php/run.sh 2>&1 | tee "$RUNNER_TEMP/php.log"
+        env:
+          FIRST_WP_CORE_ZIP: ${{ steps.core.outputs.zip }}
+          FIRST_WP_CORE_SHA256: ${{ steps.core.outputs.sha256 }}
+      - name: Summary
+        if: always()
+        run: .github/actions/wordpress-build/summary.sh "${{ matrix.build.name }}" "${{ steps.core.outputs.version }}" php "$RUNNER_TEMP/php.log"
+
+  wp:
+    needs: builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        build: ${{ fromJSON(needs.builds.outputs.matrix) }}
+    env:
+      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync
+          rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+        working-directory: runtime/admin/apps
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: runtime/admin/apps
+      - run: npx --yes playwright-core@1.62.1 install chromium-headless-shell
+      - name: Download ${{ matrix.build.name }}
+        id: core
+        uses: ./.github/actions/wordpress-build
+        with:
+          url: ${{ matrix.build.url }}
+          name: ${{ matrix.build.name }}
+      # The main WordPress lane (the facade included) on this build of core.
+      - name: WordPress lane (tests/wp)
+        run: tests/wp/run.sh 2>&1 | tee "$RUNNER_TEMP/wp.log"
+        env:
+          FIRST_WP_SKIP_MIGRATE: '1'
+          FIRST_WP_CORE_ZIP: ${{ steps.core.outputs.zip }}
+      - name: Summary
+        if: always()
+        run: .github/actions/wordpress-build/summary.sh "${{ matrix.build.name }}" "${{ steps.core.outputs.version }}" wp "$RUNNER_TEMP/wp.log"
+
+  wp-schema:
+    needs: builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        build: ${{ fromJSON(needs.builds.outputs.matrix) }}
+    env:
+      FIRST_WP_PLUGIN_CACHE: ${{ github.workspace }}/.first/cache/plugins
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync
+          rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
+      - run: cargo build --locked --bin first
+      - name: Download ${{ matrix.build.name }}
+        id: core
+        uses: ./.github/actions/wordpress-build
+        with:
+          url: ${{ matrix.build.url }}
+          name: ${{ matrix.build.name }}
+      # The same lanes as ci.yml's wp-schema job, each on this build of core. Every lane runs even
+      # when one fails, so the summary lists them all.
+      - name: Schema, seed, fetch, abilities, hardening and sealed lanes
+        env:
+          FIRST_WP_CORE_ZIP: ${{ steps.core.outputs.zip }}
+        run: |
+          status=0
+          : > "$RUNNER_TEMP/wp-schema.log"
+          for lane in "schema-check/run.sh first-wp-schema-check 8902" "seed-run.sh first-wp-seed 8897" "fetch/run.sh first-wp-fetch 8899" \
+                      "wordpress/run.sh first-wp-wordpress 8898" "hardening/run.sh first-wp-hardening 8896" "hardening/sealed-run.sh first-wp-sealed 8895"; do
+            read -r script project port <<<"$lane"
+            echo "::group::tests/wp/$script"
+            FIRST_WP_PROJECT=$project FIRST_WP_PORT=$port "tests/wp/$script" 2>&1 | tee -a "$RUNNER_TEMP/wp-schema.log" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+      - name: Summary
+        if: always()
+        run: .github/actions/wordpress-build/summary.sh "${{ matrix.build.name }}" "${{ steps.core.outputs.version }}" wp-schema "$RUNNER_TEMP/wp-schema.log"

@@ -59,17 +59,26 @@ final class Authors
                 return;
             }
             unset(self::$seen[$id]);
-            self::$archiveUrl = true;
-            try {
-                $url = get_author_posts_url($id);
-            } finally {
-                self::$archiveUrl = false;
-            }
-            Purges::announce([$url]);
+            Purges::announce([self::archiveUrl($id)]);
         });
     }
 
-    /** True while the purge above asks for a user's real archive URL, whoever may see it. */
+    /**
+     * A user's real archive URL, whoever may see it: what a purge names. A page shows a hidden
+     * user's link as the home page ({@see apply()}), but a cache may still hold the archive itself
+     * from when the user was visible, or holds its 404.
+     */
+    public static function archiveUrl(int $user): string
+    {
+        self::$archiveUrl = true;
+        try {
+            return get_author_posts_url($user);
+        } finally {
+            self::$archiveUrl = false;
+        }
+    }
+
+    /** True while {@see archiveUrl()} asks for the real URL. */
     private static bool $archiveUrl = false;
     /** @var array<int, bool> {@see visible()} by user id, for this request */
     private static array $seen = [];

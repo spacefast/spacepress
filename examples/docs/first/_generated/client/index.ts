@@ -81,22 +81,43 @@ export type ListQuery<K extends CollectionKey, W = Collections[K]["with"]> = {
   with?: W;
 } & StatusQuery<K> & LocaleQuery<K>;
 
+/**
+ * A read. Await it for one answer, or `subscribe` to keep it current: the callback gets the result
+ * now and again whenever it changes, always as this client's visitor reads it.
+ */
+export interface Query<T> extends Promise<T> {
+  /** The same for the same call with the same arguments: what a cache or a hook keys on. */
+  readonly key: string;
+  /**
+   * Calls `onData` with the result, and again each time it changes. `onError` gets the problem of a
+   * read the server refuses (a `get` whose row is missing or unreadable is a 404) and network
+   * failures; the subscription continues. `seed` is an answer rendered on the server
+   * (`First\Live\Module::evaluate`): its data is delivered at once and its token sent with the
+   * first request. Returns a function that ends the subscription.
+   */
+  subscribe(onData: (data: T) => void, onError?: (error: FirstError) => void, seed?: { token: string; data: T }): () => void;
+  /**
+   * Shows subscribers `update(current)` at once, before the server has answered a write. Call
+   * `settle()` when the write succeeded (the change stays until the server's next answer replaces
+   * it) or `rollback()` when it failed (subscribers get the server's data back).
+   */
+  optimistic(update: (current: T) => T): { settle(): void; rollback(): void };
+}
+
 export interface CollectionClient<K extends CollectionKey> {
-  list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
+  list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Query<RowWith<K, W>[]>;
   /** One page and the `cursor` of the next (null on the last page): pass it back as `cursor`. */
   paginate<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
     q?: ListQuery<K, ExactWith<K, W>> & { cursor?: string | null },
-  ): Promise<{ rows: RowWith<K, W>[]; cursor: string | null }>;
+  ): Query<{ rows: RowWith<K, W>[]; cursor: string | null }>;
   /** With `locale`, the row of `id`'s translation group in that locale (or its fallback). */
-  get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Promise<RowWith<K, W>>;
+  get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Query<RowWith<K, W>>;
+  /** How many rows `list` with this filter would return without a limit. */
+  count(q?: { where?: Collections[K]["filter"] } & StatusQuery<K> & LocaleQuery<K>): Query<number>;
   create(data: Collections[K]["insert"]): Promise<Row<K>>;
   update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
   delete(id: IdOf<K>): Promise<Row<K>>;
-  /**
-   * Runs `list(q)` now and again whenever this collection (or a collection loaded through `with`)
-   * changes. Every refresh is the normal access-checked read; change notices carry no rows.
-   * Returns a function that stops watching.
-   */
+  /** `list(q).subscribe(onRows, onError)`. Returns a function that stops watching. */
   watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
     q: ListQuery<K, ExactWith<K, W>> | undefined,
     onRows: (rows: RowWith<K, W>[]) => void,
@@ -109,6 +130,54 @@ export interface CollectionClient<K extends CollectionKey> {
     /** Runs the update pipeline with the revision as the patch; returns the updated row. */
     restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
   };
+  /**
+   * Save `patch` as the item's staged version: the live row stays as it is until `promote`. One
+   * staged version per item, shared by everyone who may update it; each call adds to it. Post
+   * kinds only. Every staged call needs `update` access on the row, and answers 404 without it.
+   */
+  stage(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<StagedVersion<K>>;
+  /** The staged version: the row as it would be once promoted. 404 when nothing is staged. */
+  staged(id: IdOf<K>): Promise<StagedVersion<K>>;
+  /** The staged fields whose value differs from the live row, with both values. */
+  compare(id: IdOf<K>): Promise<StagedComparison<K>>;
+  /**
+   * Make the staged version live, as an update of the row by the caller. With `at` (a future ISO
+   * time) the promote is scheduled instead, and `at: null` cancels a scheduled one; both return
+   * the staged version.
+   */
+  promote(id: IdOf<K>): Promise<Row<K>>;
+  promote(id: IdOf<K>, options: { at: string | null }): Promise<StagedVersion<K>>;
+  /** End the staged version. It stays in the row's revisions, as `revision`. */
+  discard(id: IdOf<K>): Promise<{ revision: number }>;
+  /** A signed link to the staged version that works without signing in for `ttl` seconds (an hour by default). */
+  previewLink(id: IdOf<K>, options?: { ttl?: number }): Promise<StagedPreview>;
+}
+
+/** A staged version: the row once promoted, the fields that are staged, who staged last. */
+export interface StagedVersion<K extends CollectionKey> {
+  /** The revision holding it. */
+  id: number;
+  row: Row<K>;
+  fields: (keyof Row<K> & string)[];
+  by: { id: number; name: string } | null;
+  at: string;
+  /** When a scheduled promote runs, or null. */
+  promoteAt: string | null;
+  /** Why the last scheduled promote did not run. */
+  error?: { code: string; detail: string; at: string };
+}
+
+export interface StagedComparison<K extends CollectionKey> extends Omit<StagedVersion<K>, "row" | "fields"> {
+  changes: { [F in keyof Row<K> & string]: { field: F; live: Row<K>[F]; staged: Row<K>[F] } }[keyof Row<K> & string][];
+}
+
+export interface StagedPreview {
+  token: string;
+  expiresAt: string;
+  /** Reads the staged version without signing in. */
+  api: string;
+  /** The item's own page showing the staged version, when the kind has a public URL. */
+  url: string | null;
 }
 
 export interface MediaQuery {
@@ -206,8 +275,13 @@ export interface RealtimeTransport {
 export interface RealtimeOptions {
   /** The transport. Default: the one a host registered with `registerRealtimeTransport`; `false` = polling only. */
   transport?: RealtimeTransport | false;
-  /** Refresh watched reads this often while no transport is live. Default 30000; `false` turns polling off. */
-  pollMs?: number | false;
+  /**
+   * How often subscriptions ask the server while no transport is live. Default: adaptive, between
+   * the bounds the server gives (2 s after a change, growing by half up to 30 s while nothing
+   * changes, each wait jittered by 20%). `{ min, max }` sets the bounds, a number a fixed interval,
+   * and `false` turns polling off. A hidden tab doesn't poll; it asks once when it is shown again.
+   */
+  pollMs?: number | false | { min?: number; max?: number };
   /**
    * A slow safety refresh while the transport is live, covering a notice the transport lost.
    * Default 60000 with up to ±20% jitter per refresh; `false` turns it off.
@@ -245,7 +319,7 @@ export interface ClientOptions {
   headers?: Record<string, string>;
   /** Frontend sign-in (design §6.2). */
   auth?: AuthOptions;
-  /** Live updates for `watch`. */
+  /** Live updates for `subscribe` and `watch`. */
   realtime?: RealtimeOptions;
 }
 
@@ -368,6 +442,30 @@ function listParams(q: Json | undefined): URLSearchParams {
   const w = withParam(q.with);
   if (w) p.set("with", w);
   return p;
+}
+
+/** One subscribed read, as `POST /_live` takes it: the kind query API's call on a kind. */
+interface ReadCall {
+  kind: string;
+  op: "list" | "paginate" | "get" | "count";
+  args?: Json;
+  id?: string | number;
+}
+
+/** The client's query as that call's arguments: `status` folded into `where`, `orderBy` as an object. */
+function liveArgs(q: Json | undefined): Json {
+  const args: Json = {};
+  if (!q) return args;
+  const where = typeof q.status !== "string" ? q.where : q.where === undefined ? { status: q.status } : { AND: [q.where, { status: q.status }] };
+  if (where !== undefined) args.where = where;
+  const order = orderObject(q.orderBy);
+  if (isObject(order) && Object.keys(order).length > 0) args.orderBy = order;
+  if (typeof q.limit === "number") args.limit = q.limit;
+  if (typeof q.offset === "number") args.offset = q.offset;
+  if (typeof q.cursor === "string") args.cursor = q.cursor;
+  if (typeof q.locale === "string") args.locale = q.locale;
+  if (isObject(q.with) && Object.keys(withJson(q.with)).length > 0) args.with = withJson(q.with);
+  return args;
 }
 
 const seg = (v: string | number) => encodeURIComponent(String(v));
@@ -771,9 +869,13 @@ export function createClient(options: ClientOptions = {}): Client {
 
   // One transport connection per client while anything is watched; polling while it is not live.
   const rtOpts = options.realtime ?? {};
-  const pollMs = rtOpts.pollMs === undefined ? 30_000 : rtOpts.pollMs;
+  const pollOpt = rtOpts.pollMs;
+  // The exported watch() helper re-runs an arbitrary read on a fixed interval.
+  const pollMs = pollOpt === false ? false : typeof pollOpt === "number" ? pollOpt : pollOpt?.max ?? 30_000;
   const livePollMs = rtOpts.livePollMs === undefined ? 60_000 : rtOpts.livePollMs;
-  const listeners = new Set<{ collections: ReadonlySet<string>; onChange: (n: ChangeNotice | null) => void }>();
+  // `poll` listeners are refreshed by the interval above; subscriptions keep their own (see `subscriptions`).
+  const listeners = new Set<{ collections: ReadonlySet<string> | null; poll: boolean; onChange: (n: ChangeNotice | null) => void }>();
+  const statusListeners = new Set<() => void>();
   let disconnect: (() => void) | null = null;
   let live = false;
   // One timer: `pollMs` while down, `livePollMs` (jittered) while live. Rearmed after each refresh.
@@ -781,12 +883,12 @@ export function createClient(options: ClientOptions = {}): Client {
   let pollerLive = false;
   const dispatch = (notice: ChangeNotice | null) => {
     for (const l of [...listeners]) {
-      if (notice === null || notice.changes.some((c) => l.collections.has(c.collection))) l.onChange(notice);
+      if (notice === null ? l.poll : l.collections === null || notice.changes.some((c) => l.collections?.has(c.collection))) l.onChange(notice);
     }
   };
   const syncPolling = () => {
     const every = live ? livePollMs : pollMs;
-    const want = listeners.size > 0 && every !== false;
+    const want = [...listeners].some((l) => l.poll) && every !== false;
     if (poller !== null && (!want || pollerLive !== live)) {
       clearTimeout(poller);
       poller = null;
@@ -818,6 +920,7 @@ export function createClient(options: ClientOptions = {}): Client {
         syncPolling();
         // Back online: catch up on whatever changed while the transport was down.
         if (live && !was) dispatch(null);
+        if (live !== was) for (const changed of [...statusListeners]) changed();
       },
     );
     disconnect = () => {
@@ -827,8 +930,8 @@ export function createClient(options: ClientOptions = {}): Client {
     };
   };
   const realtime = {
-    subscribe(collections: readonly string[], onChange: (notice: ChangeNotice | null) => void): () => void {
-      const entry = { collections: new Set(collections), onChange };
+    subscribe(collections: readonly string[] | null, onChange: (notice: ChangeNotice | null) => void): () => void {
+      const entry = { collections: collections === null ? null : new Set(collections), poll: collections !== null, onChange };
       listeners.add(entry);
       registry().waiters.add(connect);
       connect();
@@ -845,30 +948,297 @@ export function createClient(options: ClientOptions = {}): Client {
     },
   };
 
+  // Subscriptions (docs/realtime.md). Every subscribed read of this client travels in one
+  // `POST /_live`, each with the token of its last answer; the server answers "not modified" or the
+  // fresh result. Without a live transport the requests repeat on an adaptive interval; with one, a
+  // notice asks at once for the reads it names and the interval becomes the slow safety poll.
+  interface Subscriber { onData: (data: unknown) => void; onError?: (error: FirstError) => void }
+  interface Subscription {
+    descriptor: ReadCall;
+    deps: ReadonlySet<string>;
+    token?: string;
+    has: boolean;
+    data: unknown;
+    error?: FirstError;
+    due: boolean;
+    subscribers: Set<Subscriber>;
+    /** Optimistic updates, oldest first. `after`: the last request sent before the write was known to be committed (null: not settled). */
+    overlays: { apply: (current: unknown) => unknown; after: number | null }[];
+  }
+  const subscriptions = new Map<string, Subscription>();
+  let serverWindow = { min: 2_000, max: 30_000 };
+  const bounds = () =>
+    typeof pollOpt === "number" ? { min: pollOpt, max: pollOpt } : { min: (pollOpt || {}).min ?? serverWindow.min, max: (pollOpt || {}).max ?? serverWindow.max };
+  let gap = bounds().min;
+  let liveTimer: ReturnType<typeof setTimeout> | null = null;
+  let asking = false;
+  let askAgain = false;
+  let kicked = false;
+  // Requests are numbered as they are sent. An answer to a request sent after a write committed holds that write.
+  let sent = 0;
+  let answered = 0;
+  let writes = 0;
+  let sentAtLastWrite = 0;
+  let stopNotices: (() => void) | null = null;
+  const page = () => (globalThis as { document?: { visibilityState?: string; addEventListener?(type: string, fn: () => void): void; removeEventListener?(type: string, fn: () => void): void } }).document;
+  const hidden = () => page()?.visibilityState === "hidden";
+  const markDue = (which: (s: Subscription) => boolean) => {
+    for (const s of subscriptions.values()) if (which(s)) s.due = true;
+  };
+  const deliver = (s: Subscription, to: Subscriber) => {
+    if (s.error) return to.onError?.(s.error);
+    if (!s.has) return;
+    // A `get` of a row that is missing, or that this visitor may not read, is the API's 404.
+    if (s.descriptor.op === "get" && s.data === null) return to.onError?.(new FirstError({ type: "about:blank", title: "Not found", status: 404, code: "not_found", detail: `No ${s.descriptor.kind} row` }));
+    to.onData(s.overlays.reduce((data, overlay) => overlay.apply(data), s.data));
+  };
+  const emit = (s: Subscription) => {
+    for (const to of [...s.subscribers]) deliver(s, to);
+  };
+  const reschedule = () => {
+    if (liveTimer !== null) clearTimeout(liveTimer);
+    liveTimer = null;
+    const every = live ? livePollMs : pollOpt === false ? false : gap;
+    if (subscriptions.size === 0 || every === false || hidden()) return;
+    // Jittered, so the tabs of a busy page don't all ask at once. A fixed interval is taken as given.
+    const jitter = !live && typeof pollOpt === "number" ? 1 : 0.8 + Math.random() * 0.4;
+    liveTimer = setTimeout(() => {
+      liveTimer = null;
+      markDue(() => true);
+      void ask();
+    }, Math.round(every * jitter));
+  };
+  /** One answer applied to its subscription; true when the result changed. */
+  const settle = (s: Subscription, result: unknown, request: number): boolean => {
+    const overlays = s.overlays.length;
+    s.overlays = s.overlays.filter((o) => o.after === null || request <= o.after);
+    const dropped = s.overlays.length !== overlays;
+    if (!isObject(result)) {
+      for (const to of [...s.subscribers]) to.onError?.(networkError("POST /_live: the answer has no result for this read"));
+      return false;
+    }
+    if (result.pending === true) {
+      s.due = askAgain = true; // the server ran out of time for this request; ask again at once
+      return false;
+    }
+    if (isObject(result.error)) {
+      s.token = undefined;
+      const error = toError(new Response(null, { status: typeof result.error.status === "number" && result.error.status >= 400 ? result.error.status : 500 }), result.error);
+      // A read that stays refused reports it once, not on every poll.
+      const same = s.error !== undefined && s.error.status === error.status && s.error.code === error.code && s.error.detail === error.detail;
+      s.error = error;
+      if (!same) emit(s);
+      return false;
+    }
+    if (typeof result.token === "string") s.token = result.token;
+    const changed = result.changed === true;
+    if (changed) {
+      s.has = true;
+      s.data = result.data;
+    }
+    const recovered = s.error !== undefined;
+    s.error = undefined;
+    if (changed || dropped || recovered) emit(s);
+    return changed;
+  };
+  async function ask(): Promise<void> {
+    if (asking) {
+      askAgain = true;
+      return;
+    }
+    asking = true;
+    try {
+      do {
+        askAgain = false;
+        const due = [...subscriptions.entries()].filter(([, s]) => s.due);
+        if (due.length === 0) break;
+        let changed = false;
+        let failed = false;
+        for (let i = 0; i < due.length; i += 20) {
+          const batch = due.slice(i, i + 20);
+          for (const [, s] of batch) s.due = false;
+          const number = ++sent;
+          try {
+            const out = await request<{ results?: unknown[]; poll?: { minMs?: unknown; maxMs?: unknown } }>("POST", "/_live", {
+              json: { queries: batch.map(([, s]) => (s.token === undefined ? s.descriptor : { ...s.descriptor, token: s.token })) },
+            });
+            const { minMs, maxMs } = out.poll ?? {};
+            if (typeof minMs === "number" && typeof maxMs === "number" && minMs > 0 && maxMs >= minMs) serverWindow = { min: minMs, max: maxMs };
+            // A subscription ended, or ended and started again, while the request was out has no use for its answer.
+            answered = Math.max(answered, number);
+            batch.forEach(([key, s], j) => {
+              if (subscriptions.get(key) === s) changed = settle(s, out.results?.[j], number) || changed;
+            });
+          } catch (e) {
+            failed = true;
+            const error = e instanceof FirstError ? e : networkError(String(e));
+            for (const [key, s] of batch) if (subscriptions.get(key) === s) for (const to of [...s.subscribers]) to.onError?.(error);
+          }
+        }
+        // Back off while nothing changes, further while the server fails; start over after a change.
+        const { min, max } = bounds();
+        gap = failed ? Math.min(300_000, Math.max(gap, min) * 2) : changed ? min : Math.min(max, Math.max(gap, min) * 1.5);
+      } while (askAgain);
+    } finally {
+      asking = false;
+      reschedule();
+    }
+  }
+  /** Ask soon: every subscription marked due in this turn travels in one request. */
+  const kick = () => {
+    if (kicked) return;
+    kicked = true;
+    queueMicrotask(() => {
+      kicked = false;
+      void ask();
+    });
+  };
+  /** A write through this client: the reads of that collection (every read when unknown) are asked for at once. */
+  const wrote = <T>(written: Promise<T>, collection?: string): Promise<T> =>
+    written.then((result) => {
+      writes++;
+      sentAtLastWrite = sent;
+      if (subscriptions.size > 0) {
+        markDue((s) => collection === undefined || s.deps.has(collection));
+        kick();
+      }
+      return result;
+    });
+  const shown = () => {
+    if (hidden()) return reschedule(); // stops the interval
+    gap = bounds().min;
+    markDue(() => true);
+    kick();
+  };
+  function subscribe(key: string, descriptor: ReadCall, deps: readonly string[], to: Subscriber, seed?: { token: string; data: unknown }): () => void {
+    let s = subscriptions.get(key);
+    if (!s) {
+      s = { descriptor, deps: new Set(deps), has: seed !== undefined, data: seed?.data, token: seed?.token, due: true, subscribers: new Set(), overlays: [] };
+      subscriptions.set(key, s);
+      if (subscriptions.size === 1) {
+        page()?.addEventListener?.("visibilitychange", shown);
+        const onStatus = () => {
+          if (live) markDue(() => true), kick(); // catch up on what changed while the transport was down
+          else reschedule();
+        };
+        statusListeners.add(onStatus);
+        const stop = realtime.subscribe(null, (notice) => {
+          markDue((sub) => notice === null || notice.changes.some((c) => sub.deps.has(c.collection)));
+          if (!hidden()) kick(); // a hidden tab asks when it is shown again
+        });
+        stopNotices = () => {
+          statusListeners.delete(onStatus);
+          stop();
+        };
+      }
+    }
+    const subscription = s;
+    subscription.subscribers.add(to);
+    // What an earlier subscriber of the same read already holds, at once.
+    if (subscription.has || subscription.error) queueMicrotask(() => subscription.subscribers.has(to) && deliver(subscription, to));
+    kick();
+    return () => {
+      subscription.subscribers.delete(to);
+      if (subscription.subscribers.size > 0 || subscriptions.get(key) !== subscription) return;
+      subscriptions.delete(key);
+      if (subscriptions.size > 0) return;
+      page()?.removeEventListener?.("visibilitychange", shown);
+      stopNotices?.();
+      stopNotices = null;
+      gap = bounds().min;
+      reschedule();
+    };
+  }
+  function optimistic(key: string, update: (current: unknown) => unknown): { settle(): void; rollback(): void } {
+    const s = subscriptions.get(key);
+    const overlay = { apply: update, after: null as number | null };
+    const since = writes;
+    if (s?.has) {
+      s.overlays.push(overlay);
+      emit(s);
+    }
+    const drop = () => {
+      if (!s || !s.overlays.includes(overlay)) return;
+      s.overlays = s.overlays.filter((o) => o !== overlay);
+      if (subscriptions.get(key) === s) emit(s);
+    };
+    return {
+      settle() {
+        if (!s || !s.overlays.includes(overlay)) return;
+        // Kept until an answer that holds the write arrives: one to a request sent after the write
+        // returned (a write through this client), or else to one sent from now on.
+        overlay.after = writes > since ? sentAtLastWrite : sent;
+        if (answered > overlay.after) return drop(); // that answer is already shown
+        if (sent > overlay.after || subscriptions.get(key) !== s) return; // it is on its way
+        s.due = true;
+        kick();
+      },
+      rollback: drop,
+    };
+  }
+  /** One answer to one read through `/_live`, for reads with no route of their own. */
+  async function once<T>(descriptor: ReadCall): Promise<T> {
+    const out = await request<{ results?: unknown[] }>("POST", "/_live", { json: { queries: [descriptor] } });
+    const result = out.results?.[0];
+    if (isObject(result) && isObject(result.error)) throw toError(new Response(null, { status: typeof result.error.status === "number" && result.error.status >= 400 ? result.error.status : 500 }), result.error);
+    if (!isObject(result) || !("data" in result)) throw networkError("POST /_live: the answer has no result");
+    return result.data as T;
+  }
+  function query<T>(descriptor: ReadCall, deps: readonly string[], run: () => Promise<T>): Query<T> {
+    const key = JSON.stringify([descriptor.kind, descriptor.op, descriptor.id ?? null, descriptor.args ?? {}]);
+    // Nothing is sent until the read is awaited or subscribed to.
+    let started: Promise<T> | undefined;
+    const promise = () => (started ??= run());
+    const read: Omit<Query<T>, typeof Symbol.toStringTag> & { [Symbol.toStringTag]: string } = {
+      key,
+      then: (onFulfilled, onRejected) => promise().then(onFulfilled, onRejected),
+      catch: (onRejected) => promise().catch(onRejected),
+      finally: (onFinally) => promise().finally(onFinally),
+      [Symbol.toStringTag]: "Query",
+      subscribe: (onData, onError, seed) => subscribe(key, descriptor, deps, { onData: onData as (data: unknown) => void, onError }, seed),
+      optimistic: (update) => optimistic(key, update as (current: unknown) => unknown),
+    };
+    return read as Query<T>;
+  }
+
   function collection(key: CollectionKey) {
     const desc: { path: string } = SCHEMA.collections[key];
     const path = `/${seg(desc.path)}`;
     const one = (id: string | number) => `${path}/${seg(id)}`;
-    const list = (q?: Json) => request("GET", path, { query: listParams(q) });
-    const paginate = (q?: Json) => {
-      const query = listParams(q);
-      if (typeof q?.cursor === "string") query.set("cursor", q.cursor);
-      return request("GET", path, { query, envelope: true });
-    };
+    const reads = (q: Json | undefined) => dependencies(key, q?.with);
+    const list = (q?: Json) => query({ kind: key, op: "list", args: liveArgs(q) }, reads(q), () => request("GET", path, { query: listParams(q) }));
+    const paginate = (q?: Json) =>
+      query({ kind: key, op: "paginate", args: liveArgs(q) }, reads(q), () => {
+        const params = listParams(q);
+        if (typeof q?.cursor === "string") params.set("cursor", q.cursor);
+        return request("GET", path, { query: params, envelope: true });
+      });
     return {
       list,
       paginate,
-      watch: (q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: FirstError) => void) =>
-        watchWith(realtime, dependencies(key, q?.with), () => list(q), onRows, onError),
-      get: (id: string | number, q?: Json) => request("GET", one(id), { query: listParams(q ? { with: q.with, locale: q.locale } : undefined) }),
-      create: (data: unknown) => request("POST", path, { json: data }),
-      update: (id: string | number, patch: unknown) => request("PATCH", one(id), { json: patch }),
-      delete: (id: string | number) => request("DELETE", one(id)),
+      watch: (q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: FirstError) => void) => list(q).subscribe(onRows, onError),
+      get: (id: string | number, q?: Json) =>
+        query({ kind: key, op: "get", id, args: liveArgs(q ? { with: q.with, locale: q.locale } : undefined) }, reads(q), () =>
+          request("GET", one(id), { query: listParams(q ? { with: q.with, locale: q.locale } : undefined) }),
+        ),
+      count: (q?: Json) => {
+        const descriptor: ReadCall = { kind: key, op: "count", args: liveArgs(q ? { where: q.where, status: q.status, locale: q.locale } : undefined) };
+        return query<number>(descriptor, [key], () => once(descriptor));
+      },
+      create: (data: unknown) => wrote(request("POST", path, { json: data }), key),
+      update: (id: string | number, patch: unknown) => wrote(request("PATCH", one(id), { json: patch }), key),
+      delete: (id: string | number) => wrote(request("DELETE", one(id)), key),
       revisions: {
         list: (id: string | number) => request("GET", `${one(id)}/revisions`),
         get: (id: string | number, rid: number) => request("GET", `${one(id)}/revisions/${seg(rid)}`),
         restore: (id: string | number, rid: number) => request("POST", `${one(id)}/revisions/${seg(rid)}/restore`),
       },
+      stage: (id: string | number, patch: unknown) => request("PATCH", `${one(id)}/staged`, { json: patch }),
+      staged: (id: string | number) => request("GET", `${one(id)}/staged`),
+      compare: (id: string | number) => request("GET", `${one(id)}/staged/compare`),
+      promote: (id: string | number, options?: { at: string | null }) => request("POST", `${one(id)}/staged/promote`, { json: options ?? {} }),
+      discard: (id: string | number) => request("DELETE", `${one(id)}/staged`),
+      previewLink: (id: string | number, options?: { ttl?: number }) => request("POST", `${one(id)}/staged/preview`, { json: options ?? {} }),
     };
   }
 
@@ -901,7 +1271,8 @@ export function createClient(options: ClientOptions = {}): Client {
       ]),
     ),
     actions: Object.fromEntries(
-      SCHEMA.actions.map((name: string) => [name, (input?: unknown) => request("POST", `/actions/${seg(name)}`, { json: input ?? {} })]),
+      // An action may write any kind: every subscribed read is asked for once it returns.
+      SCHEMA.actions.map((name: string) => [name, (input?: unknown) => wrote(request("POST", `/actions/${seg(name)}`, { json: input ?? {} }))]),
     ),
     globals: Object.fromEntries(
       SCHEMA.globals.map((name: string) => [
@@ -920,13 +1291,13 @@ export function createClient(options: ClientOptions = {}): Client {
   return client as unknown as Client;
 }
 
-type Hub = { subscribe(collections: readonly string[], onChange: (notice: ChangeNotice | null) => void): () => void };
+type Hub = { subscribe(collections: readonly string[] | null, onChange: (notice: ChangeNotice | null) => void): () => void };
 const hubs = new WeakMap<object, Hub>();
 
 /**
  * Runs `read` now and again whenever one of `collections` (schema keys) changes, while `client`'s
- * transport is live, or on its polling interval otherwise. For reads `watch` on a collection can't
- * express: an action's result, a `get`, a global. Returns a function that stops watching.
+ * transport is live, or on its polling interval otherwise. For reads a `subscribe` can't express:
+ * an action's result, a global. Returns a function that stops watching.
  */
 export function watch<T>(
   client: Client,

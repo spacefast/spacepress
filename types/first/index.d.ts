@@ -1149,6 +1149,14 @@ export interface ConfigInput<
    */
   publicAuthors?: boolean;
   /**
+   * Sealed mode: the only code that runs as a plugin is First's own plugins, the platform plugins,
+   * the `plugins` declared here (exact versions, checksums in the committed lock) and `use` plugin
+   * packages. Activating anything else is refused; anything else already loaded is reported. A host
+   * that mounts First through the build store can enforce the list before any plugin loads.
+   * Default `false`. See docs/sealed.md for what is and isn't guaranteed.
+   */
+  sealed?: boolean;
+  /**
    * Let the running site add collections, globals and fields, each change stored there as a numbered
    * schema version. The build declares the changes listed in `first/_generated/runtime-schema.json`. Default `false`.
    */

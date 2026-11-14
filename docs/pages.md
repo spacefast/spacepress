@@ -114,7 +114,8 @@ wp-admin, in the block editor, and the route shows what they saved.
   protects it, like a `page.tsx`. Its `<title>` and description come from the
   stored Page, so an editor's change to either shows.
 - Front matter: `title`, `description`, `status` (`published` or `draft`),
-  `canonical` and `robots: { index, follow }`. Without `title`, the first
+  `canonical`, `robots: { index, follow }` and `id` (keeps the Page when the
+  file moves to another URL). Without `title`, the first
   `# Heading` is the title. Any other key is a build error at its line: fields
   of your own belong to a kind with `sync`, where they have a type.
 - A later version of the file replaces the Page only while nobody edited the
@@ -191,6 +192,11 @@ WordPress Page**, so the rest of WordPress sees the page as one of its own.
 - The Page keeps its ID across builds, so a menu item that points at it keeps
   working. Its title is the page's literal `metadata.title`, else its folder
   name.
+- The route ID is the folder path (`notes/featured`). A page that sets its own
+  keeps its Page when the file moves: `export const route = { id: "notes.featured" }`
+  in a `page.tsx`, or `id: notes.featured` in a `page.md`'s front matter. The old
+  URL then redirects to the new one. Two pages with one ID are a build error
+  at the second.
 - A route under a layout `guard` stores its Page private, so search, feeds,
   the REST API and the sitemap never list it.
 - Code Pages are absent from the wp-admin Pages list, its counts and REST

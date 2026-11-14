@@ -62,7 +62,7 @@ versions, `scf`, `actionScheduler`, `mcpAdapter`, `twoFactor`, `polylang`, `iden
 Jetpack, and whether it has a key; never required), and `incompatibleTables`. `runtime.pendingMigrations` and
 `runtime.languages` report app migration and localization state. Identity is
 true only for a compatible implementation; the A3 placeholder does not enable it.
-`first doctor [--site URL]` (bearer token in `FIRST_TOKEN`) checks this data against the same
+`first doctor [--site URL]` (bearer token in `FIRST_TOKEN`, or `FIRST_APP_PASSWORD`) checks this data against the same
 platform policy used by runtime activation.
 
 ## schema.php
@@ -556,6 +556,10 @@ The v2 app plugin registers these. A WordPress without a First app is unchanged.
 - **HTML pages** with a twin send
   `Link: <twin>; rel="alternate"; type="text/markdown"` and the matching
   `<link>` in `wp_head`.
+- **WordPress/ai's Markdown Feeds.** The app plugin adds itself (its plugin
+  file and `Name` header) to the `wpai_markdown_feeds_conflicting_plugins`
+  list, so a site that also turns on that experiment is told in its settings
+  that two plugins answer Markdown requests and print Markdown `<link>` tags.
 - **`/llms.txt`** and **`Content-Signal`** (on HTML pages, twins,
   `/llms.txt`, and a `robots.txt` line). The `first_content_signal` filter
   changes the value; `''` sends none.

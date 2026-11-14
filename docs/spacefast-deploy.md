@@ -6,17 +6,21 @@ compiles the source on the host and initializes the candidate before making it
 ready. Each immutable version runs its own compiled code.
 
 Generated REST endpoints, actions, [HTTP routes](config-api.md#http-routes)
-and [live updates](#live-updates) work on the Space hostname. TSX pages are not
-hosted yet: keep your frontend in public assets or publish it separately.
-Static files in `public/` are published as they are.
+and [live updates](#live-updates) work on the Space hostname, and so do the
+pages and HTTP handlers under `first/app/` with the stylesheets and SVGs they
+import. Static files in `public/` are published as they are.
 
 ## Publish an app
+
+No released `spacefast` CLI captures a `first.config.ts` project yet. The
+current release, 0.9.0, captures a project only when it has `zero.config.ts`,
+and has no `sf first` commands; run the checks below with the `first` command.
 
 1. Install the `spacefast` CLI and authenticate with `sf login`.
 2. Check the project from its root:
 
    ```sh
-   sf first check
+   first check
    ```
 
 3. Publish to your Space:
@@ -54,9 +58,8 @@ upload. It compiles to the same tree as the app captured as First. A capture wit
 `src/zero_bundle.rs` holds all of it, to be deleted once no released client sends
 that format.
 
-Use `sf first build` to emit local WordPress plugins and `sf first dev` to run
-WordPress Studio. These two commands use the native optional platform package
-shipped with the CLI. See the [local development guide](../CONTRIBUTING.md#the-commands).
+Use `first build` to emit local WordPress plugins and `first dev` to run
+WordPress Studio. See the [local development guide](../CONTRIBUTING.md#the-commands).
 
 ## Call a REST endpoint, action or route
 

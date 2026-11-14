@@ -43,6 +43,10 @@ final class Module
     public const MAX_QUERIES = 20;
     /** Longest request body, in bytes. */
     public const MAX_BODY = 32_768;
+    /** The furthest `offset` a subscribed read may start at, as the API's lists allow. */
+    public const MAX_OFFSET = 999_999_999;
+    /** Levels of relations one subscribed read may load through `with`. */
+    public const MAX_WITH_DEPTH = 3;
     /** Rows a subscribed `list` returns by default, and at most: the API's own list limits. */
     public const LIST_LIMIT = 50;
     public const MAX_LIST_LIMIT = 100;
@@ -135,13 +139,14 @@ final class Module
             if (!$store instanceof CompositeStore) {
                 throw new \LogicException('Reactive queries need the WordPress store');
             }
-            $who = [$viewer->user['id'] ?? 0, $viewer->user['role'] ?? ''];
+            // Who the answer is for: the user, and a post-password cookie, which changes what a visitor reads.
+            $who = [$viewer->user['id'] ?? 0, $viewer->user['role'] ?? '', defined('COOKIEHASH') ? (string) ($_COOKIE['wp-postpass_' . COOKIEHASH] ?? '') : ''];
             $plans = [];
             $pairs = [];
             foreach ($queries as $i => $query) {
                 try {
                     $plan = self::plan($db, $viewer, $query, "/queries/$i");
-                } catch (HttpError $e) {
+                } catch (HttpError | \First\JsError $e) {
                     $plans[$i] = ['error' => App::problem($e)];
                     continue;
                 }
@@ -194,7 +199,10 @@ final class Module
                     $spent += (hrtime(true) - $started) / 1e6;
                 }
                 $json = Js::jsonStringify($data) ?? 'null';
-                $hash = base64_encode(hash('sha256', $json, true));
+                // A private file's signed link carries its expiry: two reads a second apart differ
+                // there alone. The hash leaves the signature out, so an unchanged row stays unchanged;
+                // a changed answer still sends the fresh links.
+                $hash = base64_encode(hash('sha256', preg_replace('#(/download[^"]*?[?&]exp=)\d+&sig=[0-9a-f]{64}#', '$1', $json) ?? $json, true));
                 $token = Token::seal(['q' => $plan['q'], 'c' => $counters, 'h' => $hash, 't' => $now]);
                 $results[] = $held !== null && ($held['h'] ?? null) === $hash
                     ? ['changed' => false, 'token' => $token]
@@ -261,6 +269,12 @@ final class Module
                 throw HttpError::invalidQuery("Unknown query option '$key'", "$ptr/args" . HttpError::seg((string) $key));
             }
         }
+        if (isset($args['offset']) && (!is_int($args['offset']) || $args['offset'] < 0 || $args['offset'] > self::MAX_OFFSET)) {
+            throw HttpError::invalidQuery('offset must be an integer from 0 to ' . self::MAX_OFFSET, "$ptr/args/offset");
+        }
+        if (self::depth($args['with'] ?? null) > self::MAX_WITH_DEPTH) {
+            throw HttpError::invalidQuery('with nests at most ' . self::MAX_WITH_DEPTH . ' levels', "$ptr/args/with");
+        }
         if ($op === 'list' || $op === 'paginate') {
             // The API's own limits (the facade's lists), so a subscribed page is the page `list()` returns.
             $limit = $args['limit'] ?? self::LIST_LIMIT;
@@ -272,11 +286,25 @@ final class Module
         $scopes = [];
         try {
             self::dependencies($db, $viewer, $collection, $args, $scopes);
-        } catch (HttpError) {
-            $scopes = null; // the read itself answers (its 401, 403 or 422)
+        } catch (HttpError | \First\JsError | \LogicException) {
+            $scopes = null; // the read itself answers (its 401, 403 or 422), every poll
         }
 
         return ['kind' => (string) $kind, 'collection' => $collection, 'op' => $op, 'args' => $args, 'id' => $id, 'token' => $query['token'] ?? null, 'scopes' => $scopes];
+    }
+
+    /** How many levels of relations a `with` loads. */
+    private static function depth(mixed $with): int
+    {
+        if (!is_array($with) || $with === []) {
+            return 0;
+        }
+        $deepest = 0;
+        foreach ($with as $o) {
+            $deepest = max($deepest, is_array($o) ? self::depth($o['with'] ?? null) : 0);
+        }
+
+        return 1 + $deepest;
     }
 
     /** The collection of a client schema key (`client.<key>`), or null. */
@@ -344,7 +372,9 @@ final class Module
                 }
             } elseif ($key === 'NOT') {
                 self::filterDependencies($db, $viewer, $collection, $value, $scopes);
-            } elseif (!isset($spec['columns'][$key]) && isset($spec['relations'][$key])) {
+            } elseif (\First\Schema::filtersRelation($spec, $key, $value)) {
+                // A relation filter, also through a `ref()` field, which is a column and a relation
+                // of one name: the read depends on the related kind's rows.
                 self::dependencies($db, $viewer, $spec['relations'][$key]['collection'], is_array($value) ? ['where' => $value] : [], $scopes);
             }
         }
@@ -378,8 +408,9 @@ final class Module
 
         return match (true) {
             $guards === [] => Versions::ALL,
-            // Only a kind with drafts keeps a `published` counter.
-            $guards === [['status' => 'published']] && ($spec['drafts'] ?? false) => Versions::PUBLISHED,
+            // Only a kind with drafts keeps a `published` counter. A localized kind's published rows
+            // also show their whole translation group, drafts included, which that counter misses.
+            $guards === [['status' => 'published']] && ($spec['drafts'] ?? false) && !($spec['localized'] ?? false) => Versions::PUBLISHED,
             default => null,
         };
     }

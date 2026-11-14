@@ -42,6 +42,8 @@ final class JsonSchema
             'media', 'file' => $output ? ['type' => ['integer', 'object']] : ['type' => 'integer'],
             'mediaList' => ['type' => 'array', 'items' => $output ? ['type' => ['integer', 'object']] : ['type' => 'integer']],
             'select' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => array_values($col['enum'] ?? [])], 'uniqueItems' => true],
+            // A many-ref's ids; `with` loads the rows in their place.
+            'refList' => ['type' => 'array', 'items' => $output ? ['type' => ['integer', 'object']] : ['type' => 'integer'], 'uniqueItems' => true],
             'group' => self::object($col['fields'] ?? [], $output, false),
             'repeater' => ['type' => 'array', 'items' => self::object($col['fields'] ?? [], $output, !$output)],
             'blocks' => ['type' => 'array', 'items' => self::blocks($col['layouts'] ?? [], $output)],
@@ -53,7 +55,7 @@ final class JsonSchema
         $rules = $col['rules'] ?? [];
         $bounds = match (true) {
             in_array($type, ['text', 'richText', 'email', 'url', 'slug'], true) => ['minLength', 'maxLength'],
-            in_array($type, ['mediaList', 'select', 'repeater', 'blocks'], true) => ['minItems', 'maxItems'],
+            in_array($type, ['mediaList', 'select', 'refList', 'repeater', 'blocks'], true) => ['minItems', 'maxItems'],
             in_array($type, ['integer', 'real'], true) => ['minimum', 'maximum'],
             default => null,
         };
@@ -293,6 +295,14 @@ final class JsonSchema
     private static function filter(array $col): ?array
     {
         $type = $col['type'];
+        if ($type === 'refList') {
+            // `{ has: id }`, `[]` / `{ eq: [] }` for no links, true/false, or a filter on the linked
+            // rows (validated against the target's fields at query time).
+            return ['type' => ['array', 'object', 'boolean'], 'items' => ['type' => 'integer'], 'properties' => [
+                'has' => ['type' => 'integer'],
+                'eq' => ['type' => 'array', 'items' => ['type' => 'integer'], 'maxItems' => 0],
+            ] + self::logic()];
+        }
         if (in_array($type, ['mediaList', 'select'], true)) {
             $item = $type === 'select' ? ['type' => 'string'] : ['type' => 'integer'];
 

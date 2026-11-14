@@ -12,6 +12,9 @@ namespace First\Live;
  */
 final class Token
 {
+    /** Plaintexts are padded to a multiple of this many bytes. */
+    private const PAD = 256;
+
     /** Longer tokens are not ones this site issued. */
     public const MAX_LENGTH = 2048;
 
@@ -19,7 +22,10 @@ final class Token
     public static function seal(array $claims): string
     {
         $nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
-        $box = sodium_crypto_secretbox((string) json_encode($claims, JSON_UNESCAPED_SLASHES), $nonce, self::key());
+        // Padded to a multiple of PAD bytes, so a token's length doesn't show how many digits a
+        // counter has (it would grow by a character at 10, 100, 1000 writes).
+        $plain = sodium_pad((string) json_encode($claims, JSON_UNESCAPED_SLASHES), self::PAD);
+        $box = sodium_crypto_secretbox($plain, $nonce, self::key());
 
         return rtrim(strtr(base64_encode($nonce . $box), '+/', '-_'), '=');
     }
@@ -35,6 +41,11 @@ final class Token
             return null;
         }
         $plain = sodium_crypto_secretbox_open(substr($raw, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES), substr($raw, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES), self::key());
+        try {
+            $plain = $plain === false ? false : sodium_unpad($plain, self::PAD);
+        } catch (\SodiumException) {
+            return null;
+        }
         $claims = $plain === false ? null : json_decode($plain, true);
 
         return is_array($claims) ? $claims : null;

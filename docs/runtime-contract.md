@@ -625,7 +625,9 @@ The site has one sitemap, WordPress core's (`/wp-sitemap.xml`, named in
   narrows them in two ways: a password-protected post is left out
   (`wp_sitemaps_posts_query_args`), and with a users kind an author is listed
   only when a signed-out visitor may read that user's row
-  (`wp_sitemaps_users_query_args`).
+  (`wp_sitemaps_users_query_args`). Without a users kind the users sitemap
+  is gone unless the config sets `publicAuthors`
+  ([Authors](config-api.md#authors)).
 - **First's provider** (`first`, registered on `wp_sitemaps_init` with
   `wp_register_sitemap_provider()`) adds a file per kind that has a `url`,
   `/wp-sitemap-first-<kind>-<n>.xml`, and one for `first/app/` pages,
@@ -758,7 +760,8 @@ Design and measurements: [the decision](decisions/2026-11-13-reactive-queries.md
   before or after the write). `Live\Versions` listens on `Extensions::onWritten` and writes the
   counters through `Connection::beforeCommit`, as the transaction's last statements. A rollback
   writes none. `Live\Versions::touch($connection, $collection, $published = false)` counts a write
-  that doesn't pass the write pipeline; scheduled promotion calls it.
+  that doesn't pass the write pipeline; scheduled promotion calls it, and so does a post moved to or
+  out of the trash (`transition_post_status`).
 - **`Connection::beforeCommit(callable)`** runs a callback just before `COMMIT` of the outermost
   transaction (at once when none is open). A throw rolls the transaction back.
 - **`POST /__first/api/v1/_live`** takes `{ queries: [{ kind, op, args?, id?, token? }] }`:
@@ -774,7 +777,8 @@ Design and measurements: [the decision](decisions/2026-11-13-reactive-queries.md
   | `{ error }` | the read's problem document (401, 403, 404, 405, 422) |
   | `{ pending: true }` | the request's time budget ran out first; ask again |
 
-  At most 20 queries and 32 KiB per request; a `list` or `paginate` is capped at 100 rows; after one
+  At most 20 queries and 32 KiB per request; a `list` or `paginate` is capped at 100 rows, `offset`
+  at 999999999 and `with` at three levels; after one
   second of reads the rest are `pending`. The response is `private, no-store`. The
   `first_live_poll` filter changes the `poll` window clients keep to.
 - **`Live\Module::evaluate(Db $db, Viewer $viewer, array $queries, int $budgetMs = 1000): array`**
@@ -783,7 +787,8 @@ Design and measurements: [the decision](decisions/2026-11-13-reactive-queries.md
 - **Tokens** are opaque and sealed with a key derived from the site's salt. A token answers only
   the query and visitor it was issued for.
 - A subscription is answered from the counters, without running the read, only when the visitor
-  may read every row and field of every kind the read depends on; otherwise the read runs on each
+  may read every row and field of every kind the read depends on (a localized kind's published
+  rows list their drafts as translations, so it is answered by hash); otherwise the read runs on each
   poll and its result hash decides. A counter is trusted for `Live\Module::TRUST_SECONDS` (300)
   after the read last ran, which bounds how long a write made outside the write pipeline can go
   unseen.

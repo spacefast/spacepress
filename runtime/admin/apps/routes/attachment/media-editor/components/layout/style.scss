@@ -116,4 +116,7 @@ $header-height: variables.$header-height;
 		--wpds-color-fg-content-neutral
 	); // Ensure icons use correct color.
 
+	&--cropper {
+		padding: 0;
+	}
 }

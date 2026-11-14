@@ -69,7 +69,12 @@ Plugin 'two-factor' activated.
 Plugin 'first-runtime' activated.
 Plugin 'first-identity' activated.
 Plugin 'first-app-my-app' activated.
+Plugin 'first-admin' activated.
+Website:   http://localhost:9187/
+WordPress: http://localhost:9187/wp-admin/
+Plugins:   http://localhost:9187/wp-admin/plugins.php
 App:       http://localhost:9187/wp-content/plugins/first-app-my-app/public/index.html
+First Admin: http://localhost:9187/first-admin/
 ```
 
 Your port can differ. The next line prints a local admin login. Use it only on your machine. Keep this terminal open. `dev` rebuilds the app when you save `first.config.ts`.
@@ -88,7 +93,7 @@ You should see the new row:
 {"data":[{"id":5,"title":"Hello","body":null,"status":"published","publishedAt":"2026-11-09T04:26:14.000Z"}]}
 ```
 
-You can also add notes in wp-admin. Sign in with the login that `dev` printed, then open **Notes**.
+You can also add notes in First Admin, the admin at `/wp-admin/new/`, or in classic wp-admin. Sign in with the login that `dev` printed, then open **Notes**.
 
 ## Read it through the API
 
@@ -113,7 +118,7 @@ curl -X POST http://localhost:9187/__first/api/v1/notes \
 The access rule refuses it:
 
 ```json
-{"type":"about:blank","title":"Unauthenticated","status":401,"code":"unauthenticated","detail":"Sign in to do create notes rows"}
+{"type":"about:blank","title":"Unauthenticated","status":401,"code":"unauthenticated","detail":"Sorry, you are not allowed to create posts as this user."}
 ```
 
 ## Stop the site

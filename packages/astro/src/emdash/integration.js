@@ -1,6 +1,7 @@
 // firstEmdash(): runs an official EmDash Astro template on a First site, with no code in the
 // template. `emdash`, `emdash/ui`, `emdash/page` and `emdash/runtime` resolve to this package, and
 // the middleware handles admin links, comment posts, the session and previews.
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const here = (file) => fileURLToPath(new URL(file, import.meta.url));
@@ -10,6 +11,10 @@ export function firstEmdash(options = {}) {
   return {
     name: "@first/astro/emdash",
     hooks: {
+      // The `emdash` modules' types, so a template type-checks with no EmDash package installed.
+      "astro:config:done": ({ injectTypes }) => {
+        injectTypes({ filename: "emdash.d.ts", content: readFileSync(here("./emdash.d.ts"), "utf8") });
+      },
       "astro:config:setup": ({ config, updateConfig, addMiddleware, injectRoute }) => {
         // The live search's endpoint, wherever the site has a server to answer it.
         if (config.output === "server" || config.adapter) injectRoute({ pattern: "/api/search", entrypoint: here("./search-route.js"), prerender: false });

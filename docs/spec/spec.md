@@ -21,7 +21,7 @@ my-project/                  # the project root: your app, if you have one
     ├── wp-hooks/            # WordPress actions/filters, one per hook name
     ├── content/             # markdown/JSON synced into kinds
     ├── public/              # static files, served as-is
-    ├── _generated/          # written by First, committed: db.d.ts, routes.d.ts, client, schema ledger, plugins.lock.json
+    ├── _generated/          # written by First, committed: db.d.ts, routes.d.ts, client, schema ledger, plugins.lock.json, runtime-schema.json (§2.10)
     └── dist/                # written by `first build`, gitignored: the deployable output (§7)
 ```
 
@@ -192,6 +192,11 @@ else fails the build (`F1220`), so there is never a second users table or a
 | `global(fields, opts?)` | `register_setting` group | anyone reads; `admin` writes |
 | `files(opts)` | private file bucket | the uploader and `editor` read |
 
+Storage is chosen only by the builder. `collection()` is always WordPress
+posts and `table()` is always a SQL table; no option moves a kind from one to
+the other. A new project has content only, and `first add db` adds example
+tables, a note on migrations and typed client calls.
+
 Fields every kind gets:
 
 | Kind | Fields |
@@ -241,8 +246,8 @@ Fields every kind gets:
 | `access` | all | the defaults above. Values: `"anyone"`, a role, `"author"`, `"org"`, a filter object, or `(ctx) => boolean \| filter` |
 | `comments` | post kinds | `false` for your collections; `true` for `posts` (core default) |
 | `search` | all with rows | text, richText and title fields |
-| `hierarchical` | collections, taxonomies | `false` |
-| `sync` | collections, tables | none; `"content/posts/*.md"` |
+| `hierarchical` | collections, taxonomies | `false`; on a collection it adds `parent` and `order` (built, [decision](../decisions/2026-11-13-docs-kind.md)) |
+| `sync` | collections, tables | none; `"content/posts/*.md"`, or `"content/docs/**/*.md"` for a hierarchical kind's folder tree |
 | `abilities` | all | tools for signed-in agents; `{ public: true }` for anonymous |
 | `label`, `icon` | all | from the name |
 | `storageName`, `was` | all with rows | snake_case name; rename |
@@ -296,6 +301,52 @@ first term (`:topics.slug`), and `:path` for hierarchical kinds.
   - Dropping a field or kind that holds data requires the count, e.g. `--drop=likes=1204`.
   - Renames use `.was()`. Changes only go forward.
 
+### 2.10 Runtime schema changes (opt-in)
+
+With `runtimeSchema: true` in `defineConfig`, an editor or an agent can change
+the content schema of a running site. Without it, the schema changes only by a
+build. The full design and what was measured are in
+[the decision record](../decisions/2026-11-13-runtime-schema.md).
+
+- **What can change at runtime:** fields on `collection()` kinds and globals,
+  new collections and globals (taxonomies once `taxonomy()` exists), labels and
+  `.ui()` presentation. All of it is post types, meta, terms and options, so no
+  SQL DDL runs.
+- **What stays build-only:** `table()` kinds, reference fields, hooks, actions,
+  jobs, pages, routes, file buckets, and any option that is a function.
+  Retyping or renaming anything, and removing something compiled code may use,
+  is build-only too. A refused change names the source edit to make.
+- **Versions.** Each accepted change is an append-only numbered version: who
+  made it, when, the change set, the build it was validated on, and its parent.
+  Versions are never deleted. Rollback is a new version that reverses an
+  earlier one. Removing a runtime field or kind hides it and keeps its data.
+- **Concurrency.** A change names the version it was made against. If another
+  change was applied first, it is refused with 409 and must be proposed again.
+- **Rules.** A runtime change passes the same rules as the compiler, with the
+  same diagnostic codes; a shared corpus of valid and invalid changes runs
+  against both. The site adds its own, for what a build can't hit: a field
+  added to an existing collection is optional or has a default, names that
+  carry a role in the compiler or that spec §2.4 reserves are not available,
+  and a name any build on the site declared keeps its stored type.
+- **Loading.** A request uses the compiled schema plus the active version's
+  additions, read from one autoloaded option. Nothing compiles or validates at
+  request time. Where a build and a version declare the same name, the build's
+  declaration is used; only a label and a field's presentation are replaced.
+- **Git.** `first pull` writes the site's newest version, resolved, to
+  `first/_generated/runtime-schema.json`. `first build` reads it and declares
+  those fields and kinds, so the next build contains them and the site's
+  additions become no-ops. Deploying a build that lacks the site's runtime
+  changes never drops them: the deploy-time check lists them and they stay
+  active. A deploy is refused only when the build declares a name the site
+  uses, or used and hid, with a different stored type.
+- **Surfaces.** Abilities `<app>/schema-read`, `<app>/schema-propose` (validate
+  and return the diff, apply nothing) and `<app>/schema-apply` (its own
+  capability, so a credential can be denied it); `first schema list | diff |
+  apply | rollback`; the active version in `GET /__first/api/v1`; a wp-admin
+  screen that lists versions with their diffs.
+- A runtime field or kind is registered by the same code as a compiled one,
+  so it gets the same protection from edits in wp-admin and over core REST.
+
 ## 3. Queries: one API everywhere
 
 The same calls work in hooks, server code, pages, client components and the
@@ -344,7 +395,8 @@ pagination in headers.
 | `GET /__first/api/v1/me` | `GET /wp/v2/users/me` | the user row with extended fields |
 | `GET/PATCH /__first/api/v1/settings`, `/__first/api/v1/<global>` | settings, or the read-only Ability for public fields | flat object |
 | `POST /__first/api/v1/actions/<name>` (`GET` if `readonly`) | `/wp-abilities/v1/abilities/<app>/<name>/run` | `{ data }` |
-| `GET /__first/api/v1` | `/wp-json` index + Abilities list | the app's schema: kinds, fields, actions (what `first pull` reads) |
+| `GET /__first/api/v1` | `/wp-json` index + Abilities list | the app's schema as the site runs it (the active runtime version included, §2.10): kinds, fields, actions (what `first pull` reads) |
+| `GET /__first/api/v1/openapi.json` | the build's `_generated/openapi.json` (§7) | the API as an OpenAPI 3.1 document, with the site's address |
 
 - **Errors:** RFC 9457 problem documents (`code`, `detail`, `pointer`), mapped
   from core's `WP_Error`.
@@ -407,6 +459,11 @@ export const digest = job(async () => { /* … */ }, { every: "1d" });     // or
 In every mode, wp-admin, login, First sign-in, `/wp-json`, Action Scheduler,
 media, the markdown versions of pages and `llms.txt` keep working.
 
+The sitemap is core's (`/wp-sitemap.xml`): core's providers for posts, terms and
+users, plus one First provider for `app/` pages and kinds with a `url`. It lists
+only what a signed-out visitor may read under First's access rules. `frontend:
+false` has no sitemap; with an external frontend its entries point there.
+
 ## 6. Config and the opinionated WordPress
 
 ```ts
@@ -423,6 +480,7 @@ export default defineConfig({
   images: { sizes: { card: { width: 600, height: 400, fit: "cover" } } },
   uploads: { backend: "s3", bucket: env("UPLOAD_BUCKET") },
   webhooks: [{ url: env("FRONTEND_HOOK_URL"), secret: env("FRONTEND_HOOK_SECRET") }],
+  runtimeSchema: true,                  // off by default: content kinds can change on the running site (§2.10)
 });
 ```
 
@@ -439,6 +497,9 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
   - core auto-updates;
   - the Customizer;
   - comments on kinds without `comments`;
+  - changing the app's schema on the site: `first.config.ts` is the only way to
+    change the field groups, post types, taxonomies, meta, roles and
+    capabilities First generates (`docs/config-api.md`, "Schema lock");
   - the theme front end when `app/` or `frontend` takes over.
 - **Spam checks:** First uses the Akismet a site sets up through Jetpack. While it
   has a key (Jetpack's connection or `WPCOM_API_KEY`), Akismet checks every
@@ -455,11 +516,11 @@ First's release pins the WordPress it runs on. Users cannot remove any of the fo
 | Output | At request time |
 |---|---|
 | Compiled PHP for kinds, hooks, actions, jobs and pages | OPcache'd files in the build store; no parsing or reflection |
-| Route table, URL patterns, post types, taxonomies, field groups and roles as PHP arrays | Registered from arrays; no JSON or database reads |
+| Route table, URL patterns, post types, taxonomies, field groups and roles as PHP arrays | Registered from arrays; no JSON or database reads. With `runtimeSchema`, the active version's additions come from one autoloaded option (§2.10) |
 | Pages with no request data, prerendered to HTML plus `.md` | Files served by the engine before WordPress boots |
 | Interactive component stores, CSS and assets, content-hashed | Immutable files, cached for a year |
 | `llms.txt` and the sitemap skeleton | Files |
-| `_generated/db.d.ts`, `routes.d.ts`, `openapi.json`, `spec.json` | Used by clients only |
+| `_generated/db.d.ts`, `routes.d.ts`, `openapi.json`, `spec.json` | Used by clients; the site also serves `openapi.json` (§3a) |
 
 Client bundling uses Rolldown. It is Rust, built on the same OXC family as
 First's parser, and powers Vite. That keeps the build free of Node, so it can
@@ -478,9 +539,9 @@ run on a box or in wasm. Check its crate API before depending on it.
   - `db.query`, `db.insert`, `db.update` and `db.delete`;
   - review of `first/_generated/migrations/*.sql`;
   - the generated `first/client/` source.
-- **Pages:** the `first_<name>` post types for kinds WordPress already has,
-  `@spacefast/first-pages`, `first/pages.json`, `load()`, `<Show>`, `orElse()`,
-  `count()`, `collectionPage()` and `<Island>`.
+- **Pages:** the `first_<name>` post types for kinds WordPress already has.
+  Deleted: `@spacefast/first-pages`, `first/pages.json`, `load()`, `<Show>`,
+  `orElse()`, `count()`, `collectionPage()` and `<Island>`.
 
 ## 9. Zero 0.8 and Lakebed → this
 

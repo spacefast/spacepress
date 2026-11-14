@@ -96,6 +96,20 @@ class ComposerStaticInitFirstRuntime
         ),
     );
 
+    public static $prefixesPsr0 = array (
+        'F' =>
+        array (
+            'First\\Vendor\\Highlight\\' =>
+            array (
+                0 => __DIR__ . '/..' . '/scrivo/highlight.php',
+            ),
+            'First\\Vendor\\HighlightUtilities\\' =>
+            array (
+                0 => __DIR__ . '/..' . '/scrivo/highlight.php',
+            ),
+        ),
+    );
+
     public static $classMap = array (
         'Attribute' => __DIR__ . '/..' . '/wp-php-toolkit/markdown/vendor-patched/symfony/polyfill-php80/Resources/stubs/Attribute.php',
         'First\\Vendor\\Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
@@ -414,6 +428,17 @@ class ComposerStaticInitFirstRuntime
         'First\\Vendor\\DiffMatchPatch\\PerformanceTest' => __DIR__ . '/..' . '/wp-php-toolkit/merge/vendor-patched/yetanotherape/diff-match-patch/tests/PerformanceTest.php',
         'First\\Vendor\\DiffMatchPatch\\Utils' => __DIR__ . '/..' . '/wp-php-toolkit/merge/vendor-patched/yetanotherape/diff-match-patch/src/Utils.php',
         'First\\Vendor\\DiffMatchPatch\\UtilsTest' => __DIR__ . '/..' . '/wp-php-toolkit/merge/vendor-patched/yetanotherape/diff-match-patch/tests/UtilsTest.php',
+        'First\\Vendor\\Highlight\\Autoloader' => __DIR__ . '/..' . '/scrivo/highlight.php/First/Vendor/Highlight/Autoloader.php',
+        'First\\Vendor\\Highlight\\HighlightResult' => __DIR__ . '/..' . '/scrivo/highlight.php/First/Vendor/Highlight/HighlightResult.php',
+        'First\\Vendor\\Highlight\\Highlighter' => __DIR__ . '/..' . '/scrivo/highlight.php/First/Vendor/Highlight/Highlighter.php',
+        'First\\Vendor\\Highlight\\JsonRef' => __DIR__ . '/..' . '/scrivo/highlight.php/First/Vendor/Highlight/JsonRef.php',
+        'First\\Vendor\\Highlight\\Language' => __DIR__ . '/..' . '/scrivo/highlight.php/First/Vendor/Highlight/Language.php',
+        'First\\Vendor\\Highlight\\Mode' => __DIR__ . '/..' . '/scrivo/highlight.php/First/Vendor/Highlight/Mode.php',
+        'First\\Vendor\\Highlight\\ModeDeprecations' => __DIR__ . '/..' . '/scrivo/highlight.php/First/Vendor/Highlight/ModeDeprecations.php',
+        'First\\Vendor\\Highlight\\RegEx' => __DIR__ . '/..' . '/scrivo/highlight.php/First/Vendor/Highlight/RegEx.php',
+        'First\\Vendor\\Highlight\\RegExMatch' => __DIR__ . '/..' . '/scrivo/highlight.php/First/Vendor/Highlight/RegExMatch.php',
+        'First\\Vendor\\Highlight\\RegExUtils' => __DIR__ . '/..' . '/scrivo/highlight.php/First/Vendor/Highlight/RegExUtils.php',
+        'First\\Vendor\\Highlight\\Terminators' => __DIR__ . '/..' . '/scrivo/highlight.php/First/Vendor/Highlight/Terminators.php',
         'First\\Vendor\\League\\CommonMark\\CommonMarkConverter' => __DIR__ . '/..' . '/wp-php-toolkit/markdown/vendor-patched/league/commonmark/src/CommonMarkConverter.php',
         'First\\Vendor\\League\\CommonMark\\ConverterInterface' => __DIR__ . '/..' . '/wp-php-toolkit/markdown/vendor-patched/league/commonmark/src/ConverterInterface.php',
         'First\\Vendor\\League\\CommonMark\\Delimiter\\Bracket' => __DIR__ . '/..' . '/wp-php-toolkit/markdown/vendor-patched/league/commonmark/src/Delimiter/Bracket.php',
@@ -1063,6 +1088,7 @@ class ComposerStaticInitFirstRuntime
         return \Closure::bind(function () use ($loader) {
             $loader->prefixLengthsPsr4 = ComposerStaticInitFirstRuntime::$prefixLengthsPsr4;
             $loader->prefixDirsPsr4 = ComposerStaticInitFirstRuntime::$prefixDirsPsr4;
+            $loader->prefixesPsr0 = ComposerStaticInitFirstRuntime::$prefixesPsr0;
             $loader->classMap = ComposerStaticInitFirstRuntime::$classMap;
 
         }, null, ClassLoader::class);

@@ -67,7 +67,9 @@ standalone in-place commands later in this guide target a different deployment.
 4. Resolve refusals and check the candidate's access rules. Conversion denies
    content writes by default. Native posts become a `posts` collection with
    their IDs and body intact. Auth or enabled Space Users adds a `members`
-   user projection. Retain `connector-roles.json` for the host; it carries role
+   user projection. Capsule connector roles move into the candidate's
+   `sf.jsonc` `connectors` under the same names, so the Space's bindings keep
+   serving them. Retain `connector-roles.json` for the host; it carries role
    mappings, never credentials or new grants.
 5. Start the real operation:
 
@@ -227,11 +229,11 @@ Everything else gets a `Z08_OMITTED_*` error:
 | `Z08_OMITTED_PUBLIC` | A file in the 0.8 project's `public/`, which 0.8 served at `/public/...`; v2 serves `public/` at the site root. |
 | `Z08_OMITTED_REDIRECTS` | `_redirects` and `_headers` rule files. Move redirects into `sf.jsonc` `redirects`, which carries over; port rewrites and headers to v2 routes. |
 | `Z08_OMITTED_SERVE` | `rewrites`, `headers`, `listing`, `fallback`, `serve` and `inject` in `sf.jsonc`. The engine checks a rewrite's path, and compiles a listing, against 0.8 pages only, so on v2 a catch-all rewrite or a root listing would take over the app's URLs; header rules reach only static files, not v2's WordPress-rendered pages. Move rewrites and headers into v2 routes. |
-| `Z08_OMITTED_CONFIG` | An `sf.jsonc` key the v2 app doesn't reproduce the same way, and `theme.json`, which 0.8 turned into the pages' `theme.css`. That covers `meta`, `theme`, `templates`, `superpowers`, `collab` and `markdownNegotiation`; path rules, because the app's data URLs move from 0.8's `/__zero/*` to First's `/__first/api/v1/*` (`cache`, `firewall`, and `access` with path patterns); `sell`, whose product file and paid assets would become public files; and the Space settings `network`, `dataSources` and `defaultDataSource`, which the file can't set. Set these again on the v2 Space. The keys that apply the same way travel unchanged in the candidate's `sf.jsonc`: `redirects` when every source is exactly `/` or starts with a plain literal segment that WordPress, Zero and the candidate don't use, `cleanUrls`, `index`, `analytics`, `system`, `build`, `placement`, `access` as `"public"`, and `crons` when every cron's `path` is a GET endpoint the candidate serves at the same path or a static file it carries (the Spacefast host keeps calling it with GET, with `x-spacefast-cron` and, when the Space sets `CRON_SECRET`, `Authorization: Bearer <CRON_SECRET>`, both in `req.headers`; a cron at any other path is refused with `Z08_OMITTED_CRON` at its entry). A redirect source counts as used when its first segment holds `:` or `*`, starts with `wp-`, is one WordPress or First reserves, or is a folder the candidate serves files from (`app/`, `first/`, a converted client's stylesheet folders and the carried static files): on v2 those answer the app, while 0.8 kept its own files out of the redirect stage. |
+| `Z08_OMITTED_CONFIG` | An `sf.jsonc` key the v2 app doesn't reproduce the same way, and `theme.json`, which 0.8 turned into the pages' `theme.css`. That covers `meta`, `theme`, `templates`, `superpowers`, `collab` and `markdownNegotiation`; path rules, because the app's data URLs move from 0.8's `/__zero/*` to First's `/__first/api/v1/*` (`cache`, `firewall`, and `access` with path patterns); `sell`, whose product file and paid assets would become public files; and the Space settings `network`, `dataSources` and `defaultDataSource`, which the file can't set. Set these again on the v2 Space. The keys that apply the same way travel unchanged in the candidate's `sf.jsonc`: `redirects` when every source is exactly `/` or starts with a plain literal segment that WordPress, Zero and the candidate don't use, `cleanUrls`, `index`, `analytics`, `system`, `build`, `placement`, `access` as `"public"`, `connectors` (see [Connectors](#connectors)), and `crons` when every cron's `path` is a GET endpoint the candidate serves at the same path or a static file it carries (the Spacefast host keeps calling it with GET, with `x-spacefast-cron` and, when the Space sets `CRON_SECRET`, `Authorization: Bearer <CRON_SECRET>`, both in `req.headers`; a cron at any other path is refused with `Z08_OMITTED_CRON` at its entry). A redirect source counts as used when its first segment holds `:` or `*`, starts with `wp-`, is one WordPress or First reserves, or is a folder the candidate serves files from (`app/`, `first/`, a converted client's stylesheet folders and the carried static files): on v2 those answer the app, while 0.8 kept its own files out of the redirect stage. |
 | `Z08_OMITTED_UNVERIFIED_CONFIG` | With `--manifest`, a Space config or `theme.json` the finalize manifest doesn't record. |
 | `Z08_OMITTED_UNVERIFIED` | With `--manifest`, a static file the finalize manifest doesn't record. |
 | `Z08_DENIED_SOURCE_FILE` | A credential file on the source deny list: SSH keys, `*.pem`, `*.key` and similar, `.env*`, `.dev.vars`, `.npmrc`, `.netrc`, `.pypirc`, `credentials.json`, `*private-key`, and anything under `.ssh/`, `.aws/` or a `.env/` directory. Put secret values in Space variables. `.git/`, `node_modules/`, `.spacefast/`, `.stattic/`, `.wrangler/`, `.vercel/`, `.netlify/`, `.turbo/`, `.cache/`, `.first/`, `.gitignore` and `_routes.json` at any depth, and OS metadata are skipped without an error, as 0.8 never published them. |
-| `Z08_OMITTED_CONNECTORS` | A connector role: its credentials and grants aren't migrated. |
+| `Z08_OMITTED_CONNECTORS` | A connector role the Space config can't declare as it is: one declared without a `connector` slug, a name that isn't camelCase, or more than 32 roles. Every other role is carried (see [Connectors](#connectors)). |
 | `Z08_OMITTED_POSTS` | Files under `content/posts/`: 0.8 rebuilt them into the Space's posts on every publish. |
 | `Z08_OMITTED_SYNC` | Content sync of native posts. |
 
@@ -323,10 +325,6 @@ account mappings and ownership transfer require a separate identity migration.
 Spacefast moves accounts and sessions in its scoped data migration.
 The command does not invent `wp:<id>` owners or install an identity framework.
 
-Connector declarations are refused with `Z08_OMITTED_CONNECTORS`: First has no
-connectors yet. Remove the connector, or keep the Space on 0.8. Connector calls
-in handlers are refused too.
-
 Realtime declarations map: v2 announces every committed write, so `realtime`
 and `ctx.invalidate(...)` (which named the live queries a mutation refreshed)
 are removed with a `mapped` entry. Old `useQuery` subscriptions are frontend code
@@ -336,7 +334,7 @@ Endpoints become [routes](config-api.md#http-routes) with 0.8's result rules
 becomes a keyset read with the same order and result shape; old cursors are
 refused, so clients restart from the first page. `ctx.env` reads `env()` and
 `ctx.log` writes to the PHP error log. Static pages and a static client
-`Layout` become TSX pages; run `first-pages build` before publishing.
+`Layout` become `first/app/` pages, compiled with the rest of the app.
 Interactive pages, layouts, islands, other context services, dynamic database
 builders, optional-field ranges, npm imports and executable schema factories
 require an explicit port. Row IDs above JavaScript's safe integer
@@ -360,6 +358,59 @@ rows and DDL across activation, and exercises the migrated actions, including
 boolean predicates, safe BIGINT IDs, rollback and native password/PKCE sign-in.
 It also refuses a mismatched
 unique-index name, then adopts and removes the correctly named index.
+
+### Connectors
+
+A First app uses [Spacefast connectors](https://spacefast.com/docs/connectors)
+like any other Space: it declares roles in the Spacefast config (`connectors` in
+`sf.jsonc` or `spacefast.config.ts`) and its pages call them with
+`@spacefast/client`. First has no connector API of its own.
+
+The converter moves each `capsule({ connectors })` role into the candidate's
+`sf.jsonc` `connectors`, exactly as Spacefast served it on 0.8: `owner` becomes
+`personal`, every tool (`"*"`), no pinned arguments, the default cache.
+
+```jsonc
+// sf.jsonc in the candidate
+{
+  "connectors": {
+    "crm": { "connector": "hubspot", "as": "team", "tools": "*", "cache": "30s" }
+  }
+}
+```
+
+Role names don't change, so the Space's existing bindings, and each visitor's
+own connection for a visitor role, keep serving them after the migration.
+Narrow `tools` and add `args` afterwards if the page doesn't need every tool.
+When the 0.8 config file already declared `connectors`, Spacefast served those
+instead of the capsule's, and the file's roles travel unchanged.
+
+A capsule role declared without a `connector` (`connector({ as: "team" })`)
+took the connector of whatever connection was bound to it. The converter can't
+see the binding, so it refuses the role with `Z08_OMITTED_CONNECTORS`. Add the
+slug to the capsule declaration (a 0.8 publish's `zero_connector_roles_move`
+notice names it) and convert again.
+
+Pages call a role the way any Space's pages do, on the engine's
+`/__spacefast/connectors/<role>/<tool>` route, which Spacefast answers before
+WordPress runs:
+
+```ts
+import { space } from "./spacefast.generated";
+
+const deals = await space.connectors.crm.list_deals({ stage: "won" });
+if (deals.state === "ok") render(deals.data);
+```
+
+`sf client` writes `spacefast.generated.ts` at the project root. Import it
+from a frontend you build yourself, such as a converted client app in
+`public/`. A page without a build imports `space` from
+`/__spacefast/client.js`. A `"use client"` component under `first/app/` can't
+import packages, so it calls the route with `window.fetch`.
+
+Server code can't call connectors on First yet. `ctx.connectors` in a query,
+mutation, action or endpoint is refused with `Z08_CTX_CONNECTORS`: call the
+role from the page with `@spacefast/client` instead, or keep the app on 0.8.
 
 ## Retire imported Spacefast sessions
 
@@ -579,12 +630,12 @@ before activating an app.
 | Users | Auth or Space Users adds a `members` user projection; copies user IDs, passwords, scoped role metadata, and verified primary email | Review permissions and legacy principal references; the converter does not invent owner IDs |
 | Sessions | Copies imported sessions with markers; accepts the old cookie and upgrades a valid legacy hash once, preserving expiry | Requires original auth salt and an explicitly scoped cookie alias; native v2 rows never get legacy fallback |
 | Google sign-in | Copies provider subject bindings to the same user IDs; host projects Google client values into managed identity configuration | Verify a fresh Google sign-in on the deployed host; never put provider secrets in source or reports |
-| Connector roles | Refused (`Z08_OMITTED_CONNECTORS`) | First has no connectors yet; remove them or keep the Space on 0.8 |
+| Connector roles | Carried into the candidate's `sf.jsonc` `connectors` under the same names: `owner` becomes `personal`, every tool, the default cache. Pages call them with [`@spacefast/client`](https://spacefast.com/docs/connectors) | A role declared without a `connector` slug is refused (`Z08_OMITTED_CONNECTORS`). `ctx.connectors` in server code is refused (`Z08_CTX_CONNECTORS`): call the role from the page |
 | REST endpoints and actions | `endpoints` become v2 [routes](config-api.md#http-routes) at the same method and path, with 0.8's result rules | A writing GET that never reads the visitor stays a GET route that writes. HEAD/OPTIONS, a `:splat` that is not last, a writing GET that reads `ctx.auth`, WordPress-owned paths and `request.url`/`bytes()` are refused with pointers; unsafe methods need `X-WP-Nonce` for a signed-in caller |
-| Browser client | Generates v2 client contracts; Spacefast serves the selected version at `/__spacefast/client.js` | Replace old hooks, envelopes, and API calls; old subscriptions have no transport |
+| Browser client | Generates v2 client contracts in `first/_generated/client/` | Replace old hooks, envelopes, and API calls; old subscriptions have no transport |
 | Realtime | Every committed write fires a change notice; Spacefast delivers it over Cast. Source conversion removes `realtime` and `ctx.invalidate` with a `mapped` entry | Replace `useQuery` subscriptions with [`watch`](realtime.md); notices name collections and ids, never rows |
 | Client app without pages | The 0.8 SPA (`client/index.tsx` exporting `App`, no `pages/`) becomes static files in `public/`, served by v2 as they are. Each module is compiled to a browser module; `@spacefast/zero/client` resolves to a generated bridge, `public/first/client.js`, that keeps the 0.8 hooks (`useQuery`, `useMutation`, `useAction`, `usePaginatedQuery`, `createClient`, `useAuth`, `signOut`, `Router`, `Routes`, `Route`, `Link`, `navigate`) and runs each call as the converted v2 action at `/__first/api/v1/actions/<name>`; Preact and the React names resolve to a vendored Preact | Reads refresh after this browser's own writes and on focus, not on other visitors' writes. Kit, charts, client storage, 0.8 sign-in, connector state and npm packages are refused with `Z08_CLIENT_*` codes at the import. The WebAssembly compiler converts it to the same files as the native CLI. 0.8 styled the app with a generated `zero.css` (Tailwind utilities on the platform theme) that the source does not hold: pass it with `--zero-css <file>` (`zeroCss` in wasm), or convert with `--manifest` from a payload that kept its bytes. It lands at `public/zero.css`, linked before the authored stylesheets; without it the app is refused with `Z08_CLIENT_STYLES` |
-| Pages, layouts, and islands | Static pages and a static client `Layout` become [TSX pages](pages.md) at the same URLs | Interactive pages, kit components, islands and parameterized routes are refused with what each uses; run `first-pages build` and commit `first/pages.json`. **Spacefast does not host TSX pages yet** (the host mounts no pages plugin), so a Space that needs its pages cannot cut over |
+| Pages, layouts, and islands | Static pages and a static client `Layout` become [`first/app/` pages](pages.md) at the same URLs, compiled into the app plugin | Interactive pages, kit components, islands and parameterized routes are refused with what each uses; port them to `first/app/` pages and `"use client"` components |
 | Content sync | Local `first sync` supports v2 projects | Legacy sync is not retained; hosted collection edits do not rebuild a static frontend |
 | Services and private storage | v2 has its own [services](services.md) and file contracts | Old service context calls, private file permissions, URLs, and credentials require an explicit port |
 | Publication and rollback | Spacefast migration commits a one-way transition to v2 | 0.8 publication and promotion are refused after commit; immutable 0.8 URLs return `410 first_legacy_retired`; older v2 code still shares the latest schema |
@@ -599,11 +650,10 @@ The original runtime served `pages/`, `layouts/`, `_pages/` system pages and
 `client/` islands (hydrated through a `first/component` block) itself, with
 `ZERO_DYNAMIC_BLOCKS` choosing between it and WordPress. v2 has no second
 renderer: WordPress serves every page. Port each page and layout to a
-[TSX page](pages.md) under `pages/` (`page.tsx`, `layout.tsx`, `not-found.tsx`)
-and each island to `<Island>` with an Interactivity API module. Item routes read
-the migrated collection's posts as the visitor. `_pages/` system pages have no
-counterpart; the host's own error pages replace them. Render with
-`first-pages build` and commit `first/pages.json` before publishing.
+[TSX page](pages.md) under `first/app/` (`page.tsx`, `layout.tsx`, `not-found.tsx`)
+and each island to a `"use client"` component. A page at a kind's `url` reads
+the migrated collection's row as the visitor. `_pages/` system pages have no
+counterpart; the host's own error pages replace them.
 
 ### Standalone WordPress commands
 

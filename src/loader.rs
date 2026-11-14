@@ -14,6 +14,8 @@ use std::rc::Rc;
 pub const FIRST_MODULE: &str = "first";
 /// Page and layout helpers for `first/app/` and components (docs/spec/rendering.md §2–§4).
 pub const APP_MODULE: &str = "first/app";
+/// Navigation for a hierarchical kind's pages: `nav`, `pager`, `headings` (src/compile/content.rs).
+pub const CONTENT_MODULE: &str = "first/content";
 /// Hooks for `"use client"` components (docs/decisions/2026-11-08-tsx-to-php.md, generator B).
 pub const CLIENT_MODULE: &str = "first/client";
 /// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
@@ -28,6 +30,7 @@ pub fn builtin_module(spec: &str) -> bool {
         || spec == WORDPRESS_MODULE
         || spec == DB_MODULE
         || spec == APP_MODULE
+        || spec == CONTENT_MODULE
         || spec == CLIENT_MODULE
         || crate::builtins::module(spec).is_some()
 }
@@ -177,6 +180,20 @@ pub fn load_from(fs: Rc<dyn Fs>, entry: &Path) -> std::result::Result<Program, V
             }
         }
         Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    }
+    // Pages beside first.config.ts are from before `first/app/`: refuse them rather than build a
+    // site without them. (A converted 0.8 capsule's `pages/` is read by `first migrate`, not here.)
+    if !fs.frozen_capture() && fs.is_dir(&program.root.join("pages")) {
+        let pages = program.root.join("pages");
+        let file = diag::register_file(&pages, "");
+        diagnostics.push(
+            Diag::new(
+                Span { file, start: 0, end: 0 },
+                "pages/ beside first.config.ts is from the old pages renderer; nothing serves it",
+            )
+            .help("TSX pages live in first/app/ now (docs/pages.md): move each pages/<path>/page.tsx to first/app/<path>/page.tsx, and replace load() with `await db.query…` in the page")
+            .code(diag::Code::Import),
+        );
     }
     // Handlers beside first.config.ts are from before `first/wp-hooks/`: refuse them rather than
     // build without them, which would drop every filter they register.

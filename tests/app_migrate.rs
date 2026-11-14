@@ -220,41 +220,82 @@ fn fresh_tables_for_a_new_space() {
 }
 
 #[test]
-fn reuses_content_importer_and_normalizes_roles_without_claiming_grants() {
+fn reuses_content_importer_and_carries_connector_roles_into_the_space_config() {
     let temp = tempfile::tempdir().unwrap();
-    // Connector roles normalize, but their credentials and grants stay behind, so each one is an
-    // omission: publishing the candidate would break calls through it.
-    let (ok, refused) = migrate(&fixture("content"), &temp.path().join("refused"), &["--dry-run"]);
-    assert!(!ok);
-    assert_eq!(refused["connector_roles"]["calendar"]["as"], "personal");
-    assert_eq!(refused["connector_roles"]["shared"]["as"], "team");
-    assert_eq!(refused["connector_roles"]["visitor"]["as"], "visitor");
-    let omitted: Vec<(&str, &str)> = refused["errors"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|e| (e["code"].as_str().unwrap(), e["pointer"].as_str().unwrap()))
-        .collect();
+    let out = temp.path().join("out");
+    let (ok, report) = migrate(&fixture("content"), &out, &[]);
+    assert!(ok, "{report:#}");
+    assert_eq!(report["connector_roles"]["calendar"]["as"], "personal");
+    assert_eq!(report["connector_roles"]["shared"]["as"], "team");
+    assert_eq!(report["connector_roles"]["visitor"]["as"], "visitor");
+    // Each role is what Spacefast froze for the 0.8 version (the monorepo's capsuleConnectorRoles):
+    // `owner` is `personal`, every tool, no pinned arguments, the default cache.
+    let config: Value = serde_json::from_slice(&std::fs::read(out.join("sf.jsonc")).unwrap()).unwrap();
+    let role = |connector: &str, kind: &str| serde_json::json!({"connector": connector, "as": kind, "tools": "*", "cache": "30s"});
     assert_eq!(
-        omitted,
-        [
-            ("Z08_OMITTED_CONNECTORS", "/connectors/calendar"),
-            ("Z08_OMITTED_CONNECTORS", "/connectors/shared"),
-            ("Z08_OMITTED_CONNECTORS", "/connectors/visitor"),
-        ]
+        config,
+        serde_json::json!({"connectors": {
+            "calendar": role("calendar", "personal"),
+            "shared": role("github", "team"),
+            "visitor": role("linear", "visitor"),
+        }})
     );
-    // Without them the content importer still converts and builds.
-    let root = temp.path().join("content");
+    // The host carries bindings over by role name, from connector-roles.json: the same names.
+    let carried: Value = serde_json::from_slice(&std::fs::read(out.join("connector-roles.json")).unwrap()).unwrap();
+    let names = |v: &Value| v.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+    assert_eq!(names(&carried), names(&config["connectors"]));
+    assert!(
+        report["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["pointer"] == "/connectors/shared" && e["outcome"] == "mapped"),
+        "{report:#}"
+    );
+    build(&out);
+
+    // A role declared without a connector took its binding's in 0.8; a config role names it, so
+    // the converter, which can't see the binding, refuses it at its declaration.
+    let root = temp.path().join("slugless");
     copy_tree(&fixture("content"), &root);
     let index = root.join("server/index.ts");
     let source = std::fs::read_to_string(&index).unwrap();
-    let start = source.find("  connectors: {").unwrap();
-    let end = start + source[start..].find("  },\n").unwrap() + "  },\n".len();
-    std::fs::write(&index, format!("{}{}", &source[..start], &source[end..])).unwrap();
-    let out = temp.path().join("out");
+    std::fs::write(
+        &index,
+        source.replace(r#"{ as: "team", connector: "github" }"#, r#"{ as: "team" }"#),
+    )
+    .unwrap();
+    let (ok, refused) = migrate(&root, &temp.path().join("slugless-out"), &["--dry-run"]);
+    assert!(!ok);
+    let errors = refused["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 1, "{refused:#}");
+    assert_eq!(
+        (&errors[0]["code"], &errors[0]["pointer"], &errors[0]["line"]),
+        (
+            &serde_json::json!("Z08_OMITTED_CONNECTORS"),
+            &serde_json::json!("/connectors/shared"),
+            &serde_json::json!(7)
+        )
+    );
+    assert!(
+        errors[0]["fix"].as_str().unwrap().contains("connector slug"),
+        "{refused:#}"
+    );
+
+    // A Space config that declares roles keeps them: Spacefast served those, not the capsule's.
+    let root = temp.path().join("declared");
+    copy_tree(&fixture("content"), &root);
+    let declared = serde_json::json!({"crm": {"connector": "hubspot", "tools": ["list_deals"]}});
+    std::fs::write(
+        root.join("sf.jsonc"),
+        serde_json::json!({"runtime": {"kind": "zero"}, "connectors": declared}).to_string(),
+    )
+    .unwrap();
+    let out = temp.path().join("declared-out");
     let (ok, report) = migrate(&root, &out, &[]);
     assert!(ok, "{report:#}");
-    build(&out);
+    let config: Value = serde_json::from_slice(&std::fs::read(out.join("sf.jsonc")).unwrap()).unwrap();
+    assert_eq!(config["connectors"], declared);
 }
 
 fn copy_tree(from: &Path, to: &Path) {
@@ -297,7 +338,6 @@ fn omissions_are_errors_and_static_files_carry_over() {
         errors,
         [
             ("Z08_PAGE_DOCUMENT", "/pages/about.md", "pages/about.md", 1),
-            ("Z08_OMITTED_CONNECTORS", "/connectors/calendar", "server/index.ts", 5),
             ("Z08_OMITTED_REDIRECTS", "/_redirects", "_redirects", 1),
             ("Z08_OMITTED_STATIC", "/assets/logo.png", "assets/logo.png", 1),
             ("Z08_OMITTED_CLIENT", "/client", "client/index.tsx", 1),
@@ -1511,18 +1551,18 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     let (ok, report) = migrate(&fixture("site"), &out, &["--space", "spc_migrate_test"]);
     assert!(ok, "{report:#}");
     for file in [
-        "pages/page.tsx",
-        "pages/pricing/page.tsx",
-        "pages/docs/page.tsx",
-        "pages/layout.tsx",
+        "first/app/page.tsx",
+        "first/app/pricing/page.tsx",
+        "first/app/docs/page.tsx",
+        "first/app/layout.tsx",
         "first/shared/plans.ts",
     ] {
         assert!(out.join(file).is_file(), "{file}");
     }
-    let pricing = std::fs::read_to_string(out.join("pages/pricing/page.tsx")).unwrap();
+    let pricing = std::fs::read_to_string(out.join("first/app/pricing/page.tsx")).unwrap();
     assert!(
-        pricing.contains("import { plans } from '../../first/shared/plans';"),
-        "a single-quoted relative import moves with the page and into the Zero root: {pricing}"
+        pricing.contains("import { plans } from '../../shared/plans';"),
+        "a single-quoted relative import moves with the page, one folder down, into first/: {pricing}"
     );
     // Only parsed import declarations move, side-effect imports included; a string, a comment or
     // JSX text that merely reads like one keeps its exact bytes.
@@ -1550,11 +1590,11 @@ fn static_pages_move_to_tsx_pages_and_interactive_ones_refuse() {
     let moved = temp.path().join("site-moved");
     let (ok, report) = migrate(&site, &moved, &["--space", "spc_migrate_test"]);
     assert!(ok, "{report:#}");
-    let about = std::fs::read_to_string(moved.join("pages/about/page.tsx")).unwrap();
-    assert!(about.contains("import '../../first/shared/setup';"), "{about}");
+    let about = std::fs::read_to_string(moved.join("first/app/about/page.tsx")).unwrap();
+    assert!(about.contains("import '../../shared/setup';"), "{about}");
     // A re-export moves with its module too.
     assert!(
-        about.contains("export { metadata } from '../../first/shared/meta';"),
+        about.contains("export { metadata } from '../../shared/meta';"),
         "{about}"
     );
     assert!(moved.join("first/shared/setup.ts").is_file());
@@ -1656,16 +1696,16 @@ fn query_names_map_one_to_one_and_nested_pages_keep_imports() {
     // RouteQuery keeps URLSearchParams names byte for byte, so `user.id` passes through unchanged.
     assert!(config.contains("req.query.get(\"user.id\")"), "{config}");
     assert!(
-        std::fs::read_to_string(out.join("pages/docs/page.tsx"))
+        std::fs::read_to_string(out.join("first/app/docs/page.tsx"))
             .unwrap()
             .contains("from \"./data\"")
     );
     assert!(
-        std::fs::read_to_string(out.join("pages/docs/guide/page.tsx"))
+        std::fs::read_to_string(out.join("first/app/docs/guide/page.tsx"))
             .unwrap()
             .contains("from \"../data\"")
     );
-    assert!(out.join("pages/docs/data.ts").is_file());
+    assert!(out.join("first/app/docs/data.ts").is_file());
 }
 
 /// Runs each named action of a built app in PHP with `inputs`, under `env`, and returns the results.
@@ -1822,7 +1862,7 @@ fn ctx_crypto_maps_to_node_crypto_with_the_original_results() {
     let root = temp.path().join("jwt");
     project(
         &root,
-        r#"{actions:{token:action(async (ctx) => ctx.jwt.sign({ key: "K", kid: "k1", claims: {} })),check:action(async (ctx, content: string) => (await ctx.spam.check({ content })).spam)}}"#,
+        r#"{actions:{token:action(async (ctx) => ctx.jwt.sign({ key: "K", kid: "k1", claims: {} })),check:action(async (ctx, content: string) => (await ctx.spam.check({ content })).spam),deals:action(async (ctx) => ctx.connectors.crm.list_deals({}))}}"#,
     );
     let source = std::fs::read_to_string(root.join("server/index.ts"))
         .unwrap()
@@ -1843,8 +1883,20 @@ fn ctx_crypto_maps_to_node_crypto_with_the_original_results() {
             )
         })
         .collect();
-    assert_eq!(errors.len(), 2, "{refused:#}");
+    assert_eq!(errors.len(), 3, "{refused:#}");
     let reason = |pointer: &str| errors.iter().find(|e| e.0 == pointer).map(|e| (e.1, e.2)).unwrap();
+    // A connector call moves to the page: the fix a publish shows says so.
+    let (code, _) = reason("/actions/deals/ctx/connectors");
+    assert_eq!(code, "Z08_CTX_CONNECTORS");
+    let fix = refused["errors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["pointer"] == "/actions/deals/ctx/connectors")
+        .unwrap()["fix"]
+        .as_str()
+        .unwrap();
+    assert!(fix.contains("from the page with @spacefast/client"), "{fix}");
     let (code, jwt) = reason("/actions/token/ctx/jwt");
     assert_eq!(code, "Z08_CTX_SERVICE");
     assert!(jwt.contains("Ed25519") && jwt.contains("owner ruling"), "{jwt}");
@@ -2042,7 +2094,10 @@ fn a_finalize_manifest_converts_with_its_published_source_and_refuses_without_it
         .unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
     assert!(out.join("first/server/index.ts").is_file());
-    assert!(!out.join("pages").exists(), "an unrecorded page reached the candidate");
+    assert!(
+        !out.join("first/app/added/page.tsx").exists(),
+        "an unrecorded page reached the candidate"
+    );
     std::fs::remove_dir_all(source.join("pages")).unwrap();
 
     // A real finalize manifest records the capsule's source, never the static files served beside

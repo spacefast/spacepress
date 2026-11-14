@@ -175,7 +175,7 @@ fn app_router_serves_pages_on_wordpress() {
         .lines()
         .map(|l| l.split(']').next().unwrap().trim_start_matches("- ["))
         .collect();
-    assert_eq!(titles, ["About", "Notes", "Home"], "{llms}");
+    assert_eq!(titles, ["About", "Field guide", "Colophon", "Notes", "Home"], "{llms}");
     // WordPress keeps its own URLs.
     assert_eq!(seen["rest"], 200);
     assert_eq!(seen["feed"], 200);
@@ -232,6 +232,299 @@ export function slug({ params }: PageProps<"notes/[slug]">): string {
         .expect("tsc is required");
     assert!(tsc.status.success(), "{}", String::from_utf8_lossy(&tsc.stdout));
     let _ = std::fs::remove_dir_all(project);
+}
+
+/// `page.md` is a real WordPress Page (rendering.md §2): the file is its first version, the route
+/// renders it inside its layouts, an editor changes it in wp-admin, and nothing of a draft or a
+/// guarded page reaches an anonymous visitor (tests/php/app_content.php).
+#[test]
+fn page_md_is_a_wordpress_page() {
+    let project = fixture("app-router", "content");
+    build(&project);
+    // A later build of the same app: one file changed in each of three ways, one removed, one added.
+    let second = fixture("app-router", "content-second");
+    let app = second.join("first/app");
+    std::fs::remove_dir_all(app.join("hidden")).unwrap();
+    std::fs::create_dir_all(app.join("news")).unwrap();
+    std::fs::write(app.join("news/page.md"), "# News\n\nNothing yet.\n").unwrap();
+    std::fs::write(app.join("colophon/page.md"), "# Colophon\n\nSet in a serif.\n").unwrap();
+    let guide = app.join("(site)/guide/page.md");
+    std::fs::write(
+        &guide,
+        std::fs::read_to_string(&guide)
+            .unwrap()
+            .replace("one per walk", "one per outing"),
+    )
+    .unwrap();
+    build(&second);
+    // A third build takes two pages away from visitors: one becomes a draft, one moves under a guard.
+    let third = fixture("app-router", "content-third");
+    let app = third.join("first/app");
+    std::fs::remove_dir_all(app.join("hidden")).unwrap();
+    std::fs::remove_dir_all(app.join("colophon")).unwrap();
+    std::fs::create_dir_all(app.join("account/colophon")).unwrap();
+    std::fs::write(
+        app.join("account/colophon/page.md"),
+        "# Members only colophon\n\nFor members.\n",
+    )
+    .unwrap();
+    let guide = app.join("(site)/guide/page.md");
+    std::fs::write(
+        &guide,
+        std::fs::read_to_string(&guide)
+            .unwrap()
+            .replace("title: Field guide", "title: Field guide\nstatus: draft"),
+    )
+    .unwrap();
+    build(&third);
+    // A fourth: the guide, still `status: draft`, moves to another route group (same URL) and
+    // gets a typo fixed; /colophon is now a page.tsx route.
+    let fourth = fixture("app-router", "content-fourth");
+    std::fs::remove_dir_all(fourth.join("first/app")).unwrap();
+    copy(&third.join("first/app"), &fourth.join("first/app"));
+    let app = fourth.join("first/app");
+    std::fs::create_dir_all(app.join("(docs)")).unwrap();
+    std::fs::rename(app.join("(site)/guide"), app.join("(docs)/guide")).unwrap();
+    let guide = app.join("(docs)/guide/page.md");
+    std::fs::write(
+        &guide,
+        std::fs::read_to_string(&guide)
+            .unwrap()
+            .replace("one per walk", "one per walk, again"),
+    )
+    .unwrap();
+    std::fs::create_dir_all(app.join("colophon")).unwrap();
+    std::fs::write(
+        app.join("colophon/page.tsx"),
+        "export default function Colophon() { return <h1>Colophon, now code</h1>; }\n",
+    )
+    .unwrap();
+    assert!(
+        std::fs::read_to_string(&guide).unwrap().contains("one per walk, again"),
+        "the fourth build changes the guide"
+    );
+    build(&fourth);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_content.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .arg(second.join("first/dist/wp-content"))
+        .arg(third.join("first/dist/wp-content"))
+        .arg(fourth.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    for dir in [&project, &second, &third, &fourth] {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    let text = |v: &serde_json::Value| v.as_str().unwrap_or_default().to_string();
+    let shared = "public, s-maxage=300, max-age=0, must-revalidate";
+    let private = "private, no-store, max-age=0";
+
+    // The file's Markdown is stored as blocks in a Page, and the route renders that Page inside
+    // its layout, with the front matter as its metadata and the anonymous cache policy.
+    let guide = &seen["guide"];
+    assert_eq!(guide["status"], 200);
+    assert_eq!(guide["title"], "Field guide · Field Notes");
+    assert_eq!(guide["description"], "How the notes are kept.");
+    assert!(text(&guide["canonical"]).ends_with("/guide"), "{guide}");
+    assert_eq!(guide["cache"], shared);
+    let body = text(&guide["body"]);
+    assert!(body.starts_with(r#"<div class="site"><nav>"#), "{body}");
+    assert!(
+        body.contains(
+            r#"<main><h1 class="wp-block-post-title">Field guide</h1><div class="entry-content wp-block-post-content">"#
+        ),
+        "{body}"
+    );
+    assert!(
+        body.contains("Notes are kept in <b>plain text</b>, one per walk."),
+        "{body}"
+    );
+    assert!(
+        body.contains(r#"<h2 class="wp-block-heading">What to carry</h2>"#),
+        "{body}"
+    );
+    assert!(body.contains(r#"<a href="https://example.com/map">map</a>"#), "{body}");
+    assert!(
+        // Rendered as First renders every code block (First\Content\Code).
+        body.contains(r#"<pre class="first-code language-sh"><code><span class="first-code-line">first build</span>"#),
+        "{body}"
+    );
+    let stored = &seen["guide stored"];
+    assert_eq!(
+        (
+            &stored["type"],
+            &stored["status"],
+            &stored["title"],
+            &stored["slug"],
+            &stored["excerpt"]
+        ),
+        (
+            &serde_json::json!("page"),
+            &serde_json::json!("publish"),
+            &serde_json::json!("Field guide"),
+            &serde_json::json!("guide"),
+            &serde_json::json!("How the notes are kept.")
+        )
+    );
+    assert!(
+        text(&stored["content"]).starts_with("<!-- wp:paragraph -->"),
+        "{stored}"
+    );
+    // The route's path is the Page's permalink, and WordPress's own address for it redirects there.
+    assert!(text(&stored["link"]).ends_with("/guide"), "{stored}");
+    assert_eq!(seen["by id"][0], 301);
+    assert!(text(&seen["by id"][1]).ends_with("/guide"), "{}", seen["by id"]);
+    // Its Markdown twin, advertised by the HTML page.
+    assert_eq!(
+        seen["guide twin"],
+        serde_json::json!([
+            200,
+            "# Field guide\n\nNotes are kept in **plain text**, one per walk.\n\n## What to carry\n\n- A pencil\n- A [map](https://example.com/map)\n\n```sh\nfirst build\n```\n",
+            "text/markdown; charset=UTF-8"
+        ])
+    );
+    assert!(text(&seen["guide twin link"][0]).contains("/guide.md>; rel=\"alternate\""));
+    // Without front matter the first heading is the title, shown once; HTML in the file is text.
+    let colophon = text(&seen["colophon"]["body"]);
+    assert_eq!(seen["colophon"]["title"], "Colophon · Field Notes");
+    assert_eq!(colophon.matches("Colophon").count(), 1, "{colophon}");
+    assert!(
+        colophon.contains("&lt;script&gt;alert(1)&lt;/script&gt;") && !colophon.contains("<script>alert"),
+        "{colophon}"
+    );
+    assert!(text(&seen["colophon"]["canonical"]).ends_with("/colophon"));
+
+    // A draft: stored for its editors, a 404 for everyone else, HTML and twin alike, and uncached.
+    assert_eq!(seen["hidden stored"]["status"], "draft");
+    assert_eq!(seen["hidden"]["status"], 404);
+    assert_eq!(seen["hidden"]["cache"], private);
+    assert!(!text(&seen["hidden"]["body"]).contains("ninth"));
+    assert_ne!(seen["hidden"]["description"], "Not for visitors yet.");
+    assert_eq!(seen["hidden as subscriber"], 404);
+    assert_eq!(seen["hidden as editor"]["status"], 200);
+    assert_eq!(seen["hidden as editor"]["cache"], private);
+    assert!(text(&seen["hidden as editor"]["body"]).contains("The launch is on the ninth."));
+    assert_eq!(
+        (&seen["hidden twin"], &seen["hidden twin as editor"]),
+        (&serde_json::json!(404), &serde_json::json!(404)),
+        "a twin is the same for everyone"
+    );
+    // Under a layout guard the Page is stored private: the guard decides who reads it, and it
+    // has no twin.
+    assert_eq!(seen["terms anonymous"], serde_json::json!([302, true]));
+    assert_eq!(seen["terms stored"]["status"], "private");
+    assert_eq!(seen["terms subscriber"]["status"], 200);
+    assert_eq!(seen["terms subscriber"]["cache"], private);
+    assert!(
+        text(&seen["terms subscriber"]["body"])
+            .contains(r#"<section class="account"><h1 class="wp-block-post-title">Member terms</h1>"#)
+    );
+    assert_eq!(seen["terms twin"], 404);
+    // WordPress's own public surfaces (REST, search, sitemap, feed, llms.txt) show neither.
+    assert_eq!(seen["leaks"], serde_json::json!([]));
+    // A public page is listed once in llms.txt, under the app's pages, linking the route's twin.
+    let llms = text(&seen["llms"]);
+    assert_eq!(llms.matches("[Field guide](").count(), 1, "{llms}");
+    assert!(llms.contains("/guide.md)"), "{llms}");
+
+    // An editor's change in wp-admin is what the route and its twin show, and it purges the URL.
+    let edited = &seen["guide edited"];
+    assert_eq!(edited["title"], "Field guide, revised · Field Notes");
+    assert_eq!(edited["description"], "Edited on the site.");
+    assert!(text(&edited["body"]).contains("<p class=\"wp-block-paragraph\">Edited in the block editor.</p>"));
+    assert_eq!(
+        seen["guide edited twin"],
+        "# Field guide, revised\n\nEdited in the block editor.\n"
+    );
+    let purged: Vec<String> = seen["purged"].as_array().unwrap().iter().map(text).collect();
+    for path in ["/guide", "/guide/", "/guide.md", "/llms.txt"] {
+        assert!(purged.contains(&path.to_string()), "{path} in {purged:?}");
+    }
+    // Unsaved changes show from the editor's own Preview link only.
+    assert!(text(&seen["preview as editor"]["body"]).contains("Not saved yet."));
+    assert_eq!(seen["preview as editor"]["cache"], private);
+    // WordPress refuses a preview link whose nonce isn't the viewer's own, before any page renders.
+    assert_eq!(seen["preview without nonce"], serde_json::json!([403, false]));
+    assert_eq!(seen["preview anonymous"], serde_json::json!([403, false]));
+    // A password locks the body for every visitor (the page is cached for all of them).
+    for key in ["locked", "locked with cookie"] {
+        let body = if key == "locked" {
+            text(&seen[key]["body"])
+        } else {
+            text(&seen[key])
+        };
+        assert!(
+            body.contains("This content is password protected.") && !body.contains("Edited in"),
+            "{key}: {body}"
+        );
+    }
+    assert_ne!(seen["locked"]["description"], "Edited on the site.");
+    assert_eq!(
+        seen["locked twin"],
+        "# Field guide, revised\n\nThis content is password protected.\n"
+    );
+    assert_eq!(seen["unpublished"], serde_json::json!([404, 404]));
+    assert_eq!(seen["republished"], 200);
+
+    // The next build: a changed file updates a Page nobody edited, a new file makes a Page, the
+    // Page an editor changed keeps their version, and a removed file leaves its Page on the site.
+    assert!(text(&seen["second colophon"]["body"]).contains("Set in a serif."));
+    assert_eq!(seen["second colophon stored"]["id"], seen["colophon stored"]["id"]);
+    assert!(text(&seen["second news"]["body"]).contains("Nothing yet."));
+    assert!(text(&seen["second guide"]["body"]).contains("Edited in the block editor."));
+    assert_eq!(seen["second hidden"], 404);
+    assert_eq!(seen["second hidden stored"]["id"], seen["hidden stored"]["id"]);
+    // The third build: a file that now says `status: draft` unpublishes its Page even though the
+    // site edited it (the editor's text stays), and the site having lost its record of the Pages
+    // changes nothing: each is found again, not overwritten and not duplicated.
+    assert_eq!(seen["third guide"], serde_json::json!([404, 404]));
+    assert_eq!(seen["third guide stored"]["id"], seen["guide stored"]["id"]);
+    assert_eq!(seen["third guide stored"]["status"], "draft");
+    assert_eq!(seen["third guide stored"]["title"], "Field guide, revised");
+    assert!(text(&seen["third guide stored"]["content"]).contains("Edited in the block editor."));
+    // A page moved under a guard is private from its first request.
+    assert_eq!(seen["third colophon anonymous"], 302);
+    assert_eq!(seen["third colophon stored"]["status"], "private");
+    assert!(text(&seen["third colophon subscriber"]["body"]).contains("For members."));
+    assert!(text(&seen["third old colophon"]["content"]).contains("Kept by the site."));
+    assert_eq!(seen["third leaks"], serde_json::json!([]));
+    // Storing happens once per build, under a lock. While a second process was in the middle of
+    // storing the second build, a request stored nothing: `/news` was not there yet and the
+    // colophon was still the first build's. The second process then finished normally.
+    assert_eq!(seen["holder"], serde_json::json!(["storing", "stored", 0]));
+    assert_eq!(seen["while locked"]["news"], 404, "{}", seen["while locked"]);
+    assert_eq!(seen["while locked"]["news stored"], serde_json::json!({ "count": 0 }));
+    assert!(text(&seen["while locked"]["colophon stored"]).contains("Set in a system font."));
+    // The fourth build: the guide page an editor published by hand stays published though its
+    // file still says draft and changed (only a page the file newly takes away is unpublished),
+    // and moving its file to another route group keeps the same Page.
+    // The record keeps what the last applied file said, so the next file is compared with it.
+    assert_eq!(seen["third record"], "draft");
+    assert_eq!(seen["fourth guide"], 200);
+    assert_eq!(seen["fourth guide stored"]["id"], seen["guide stored"]["id"]);
+    assert_eq!(seen["fourth guide stored"]["status"], "publish");
+    // WordPress's own address for the old colophon Page (slug `colophon`) never redirects away
+    // from the page.tsx route that serves /colophon now.
+    assert_eq!(seen["fourth colophon route"]["status"], 200);
+    assert!(text(&seen["fourth colophon route"]["body"]).contains("Colophon, now code"));
+    // A query string through WordPress's address arrives unslashed.
+    assert!(
+        text(&seen["fourth by id"]).ends_with("/guide?q=it%27s"),
+        "{}",
+        seen["fourth by id"]
+    );
+    // Six routes over the four builds, one Page each.
+    assert_eq!(seen["pages"], serde_json::json!([1, 1, 1, 1, 1, 1]));
 }
 
 fn rejects(dir: &Path, files: &[(&str, &str)], message: &str, at: &str) {
@@ -374,6 +667,46 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &[("first/app/wp-admin/page.tsx", page)],
         "would shadow /wp-admin",
         "first/app/wp-admin",
+    );
+    // page.md: one page with one URL, a title, and only the front matter keys it reads.
+    rejects(
+        &dir,
+        &[("first/app/docs/[slug]/page.md", "# Doc\n")],
+        "app/docs/[slug]/page.md is below `[slug]`: a page.md is one page with one URL",
+        "first/app/docs/[slug]/page.md:1:1",
+    );
+    rejects(
+        &dir,
+        &[("first/app/about/page.md", "---\ntitle: About\ndescripton: Us\n---\n")],
+        "page.md has no front matter key `descripton`",
+        "first/app/about/page.md:3:1",
+    );
+    rejects(
+        &dir,
+        &[("first/app/about/page.md", "Just text.\n")],
+        "app/about/page.md has no title",
+        "first/app/about/page.md:1:1",
+    );
+    rejects(
+        &dir,
+        &[("first/app/about/page.md", "---\ntitle: About\nstatus: private\n---\n")],
+        "`status` must be published or draft",
+        "first/app/about/page.md:3:1",
+    );
+    rejects(
+        &dir,
+        &[
+            ("first/app/about/page.md", "# About\n"),
+            ("first/app/about/page.tsx", page),
+        ],
+        "app/about has both page.tsx and page.md",
+        "first/app/about/page.md",
+    );
+    rejects(
+        &dir,
+        &[("first/app/about/page.mdx", "# About\n")],
+        "page.mdx isn't a route file",
+        "first/app/about/page.mdx",
     );
     rejects(
         &dir,
@@ -643,6 +976,131 @@ fn frontend_modes_on_wordpress() {
     );
     assert_eq!(external["note status"], 308);
     assert_eq!(external["post"][0], 308);
+
+    // One sitemap, through core's (`wp-sitemap.xml`): core's own files for posts, pages, terms and
+    // authors, and First's provider with a file per kind that has a `url` and readable items. Only
+    // what a signed-out visitor may read is in it: no draft, no private or password-protected item,
+    // no row a filter rule hides (`briefs`), no kind readers must sign in for (`drafts`), and no
+    // kind without a `url` (`memos`).
+    let sitemap = &theme["sitemap"];
+    assert_eq!(sitemap["status"], 200, "{sitemap}");
+    assert_eq!(
+        sitemap["files"],
+        serde_json::json!([
+            "/wp-sitemap-posts-post-1.xml",
+            "/wp-sitemap-posts-page-1.xml",
+            "/wp-sitemap-taxonomies-category-1.xml",
+            "/wp-sitemap-users-1.xml",
+            "/wp-sitemap-first-notes-1.xml",
+            "/wp-sitemap-first-journal-1.xml",
+            "/wp-sitemap-first-briefs-1.xml",
+            "/wp-sitemap-first-vault-1.xml"
+        ]),
+        "{sitemap}"
+    );
+    assert_eq!(
+        sitemap["urls"],
+        serde_json::json!({
+            "/wp-sitemap-posts-post-1.xml": ["/hello-world/", "/by-the-editor/"],
+            "/wp-sitemap-posts-page-1.xml": ["/", "/sample-page/"],
+            "/wp-sitemap-taxonomies-category-1.xml": ["/category/uncategorized/"],
+            // Both admin and the editor have a published post; the users kind's read rule shows a
+            // visitor the editor's row only, so only that author archive is listed.
+            "/wp-sitemap-users-1.xml": ["/author/editor/"],
+            "/wp-sitemap-first-notes-1.xml": ["/notes/renamed-note/"],
+            "/wp-sitemap-first-journal-1.xml": ["/journal/2026/day-one/"],
+            "/wp-sitemap-first-briefs-1.xml": ["/briefs/open-brief/"],
+            // With no app page in front of it, WordPress renders a vault item for anyone.
+            "/wp-sitemap-first-vault-1.xml": ["/members/vault/vault-item/"]
+        }),
+        "{sitemap}"
+    );
+    // The sitemap is one document for every caller: an editor, who reads the embargoed brief and
+    // the draft, is shown what a visitor is shown.
+    assert_eq!(sitemap["as editor"], serde_json::json!(["/briefs/open-brief/"]));
+    // Nor does a post password's cookie add the protected note or post: neither is listed at all.
+    assert_eq!(
+        sitemap["with a post password"],
+        serde_json::json!({
+            "/wp-sitemap-first-notes-1.xml": ["/notes/renamed-note/"],
+            "/wp-sitemap-posts-post-1.xml": ["/hello-world/", "/by-the-editor/"]
+        }),
+        "{sitemap}"
+    );
+    assert_eq!(sitemap["robots"], true);
+    // A kind with nothing to list has no file, and a page past the end is a 404, as in core.
+    assert_eq!(
+        (&sitemap["unknown kind"], &sitemap["past the end"]),
+        (&serde_json::json!(404), &serde_json::json!(404))
+    );
+    // A write purges the index and every file of the item's sub-sitemap, one more for a new file:
+    // which file lists it depends on rows other readers can't see.
+    let briefs_files = serde_json::json!([
+        "/wp-sitemap.xml",
+        "/wp-sitemap-first-briefs-1.xml",
+        "/wp-sitemap-first-briefs-2.xml"
+    ]);
+    assert_eq!(sitemap["purged"], briefs_files);
+    // So does a write that only changes who may read the row, and then the row is gone: the file
+    // that held only it is a 404, as core answers an empty one.
+    assert_eq!(sitemap["purged by a field"], briefs_files);
+    assert_eq!(
+        (&sitemap["briefs after"], &sitemap["briefs status after"]),
+        (&serde_json::json!([]), &serde_json::json!(404))
+    );
+    // Core dates the home entry from its own query, which counts protected posts; here it is the
+    // newest post the sitemap lists.
+    assert_eq!(sitemap["home lastmod"], sitemap["newest public post"], "{sitemap}");
+    // A kind whose `url` shows a field visitors may not read (`cases`: a slug only editors read) has no
+    // file, nor does one whose URL a guarded app page serves (`vault`, under `members/`).
+    assert_eq!(
+        app["sitemap"]["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|f| {
+                let f = f.as_str().unwrap();
+                f.contains("-cases-") || f.contains("-vault-")
+            })
+            .count(),
+        0,
+        "{}",
+        app["sitemap"]
+    );
+    // With first/app/, its public pages are listed too: not the guarded one, not the one whose
+    // metadata says `robots: { index: false }`, and not a route with parameters.
+    assert_eq!(
+        app["sitemap"]["urls"]["/wp-sitemap-first-app-pages-1.xml"],
+        serde_json::json!(["/about/"]),
+        "{}",
+        app["sitemap"]
+    );
+    assert_eq!(
+        app["sitemap"]["urls"]["/wp-sitemap-first-notes-1.xml"],
+        sitemap["urls"]["/wp-sitemap-first-notes-1.xml"]
+    );
+    // `frontend: false` has no public pages, so no sitemap; an external frontend's sitemap is
+    // answered here, with every entry at that site.
+    assert_eq!(off["sitemap"]["status"], 404, "{}", off["sitemap"]);
+    assert_eq!(off["sitemap"]["robots"], false);
+    assert_eq!(external["sitemap"]["status"], 200, "{}", external["sitemap"]);
+    let everywhere: Vec<&str> = external["sitemap"]["urls"]
+        .as_object()
+        .unwrap()
+        .values()
+        .flat_map(|urls| urls.as_array().unwrap())
+        .map(|url| url.as_str().unwrap())
+        .collect();
+    assert!(
+        everywhere.contains(&"https://front.example/notes/renamed-note/")
+            && everywhere.contains(&"https://front.example/hello-world/")
+            && everywhere.contains(&"https://front.example/"),
+        "{everywhere:?}"
+    );
+    assert!(
+        everywhere.iter().all(|url| url.starts_with("https://front.example/")),
+        "{everywhere:?}"
+    );
 
     for (name, mode) in [("theme", &theme), ("app", &app), ("off", &off), ("external", &external)] {
         assert_eq!(
@@ -971,6 +1429,10 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     // The layout's site.css first, then the page's module, then the client component's module.
     assert_eq!(files("about"), ["site", "page", "counter"], "{seen}");
     assert_eq!(files("plain"), ["site"], "{seen}");
+    // A page.md has no imports of its own: it links what the layouts above it import.
+    assert_eq!(seen["colophon"]["status"], 200, "{seen}");
+    assert_eq!(files("colophon"), ["site"], "{seen}");
+    assert_eq!(seen["colophon"]["classes"]["div"][0], "site", "{seen}");
     let css = |page: &str, i: usize| seen[page]["links"][i]["css"].as_str().unwrap().to_string();
     assert_eq!(
         css("about", 0),
@@ -996,4 +1458,583 @@ fn imported_stylesheets_and_images_serve_from_the_app_plugin() {
     assert!(image["type"].as_str().unwrap().starts_with("image/svg+xml"), "{image}");
     assert!(image["src"].as_str().unwrap().starts_with("compass-"), "{image}");
     assert!(image["body"].as_str().unwrap().contains("<circle"), "{image}");
+}
+
+/// A docs section as a kind (docs/decisions/2026-11-13-docs-kind.md): a hierarchical collection
+/// seeded from a folder of Markdown by a hosted compile, served by one catch-all page that reads
+/// `nav`, `pager` and `headings` from "first/content", on WordPress over HTTP (tests/php/docs_kind.php).
+#[test]
+fn docs_kind_serves_a_folder_tree_with_navigation() {
+    let project = fixture("docs-kind", "serve");
+    build(&project);
+    let work = tempfile::tempdir().unwrap();
+    let (sources, compiled) = (work.path().join("sources"), work.path().join("compiled"));
+    let step = |args: &[&std::ffi::OsStr]| {
+        let out = first().args(args).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    };
+    step(&[
+        "sources".as_ref(),
+        project.as_os_str(),
+        "--out".as_ref(),
+        sources.as_os_str(),
+    ]);
+    step(&[
+        "compile-sources".as_ref(),
+        sources.as_os_str(),
+        compiled.as_os_str(),
+        project.as_os_str(),
+    ]);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/docs_kind.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .arg(compiled.join("seed"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    // The folder tree is stored as WordPress stores Pages: parent and order on the post itself.
+    assert_eq!(seen["seed"]["docs"]["created"], 8);
+    assert_eq!(seen["type hierarchical"], true);
+    assert_eq!(
+        seen["stored"],
+        serde_json::json!({
+            "introduction": [null, 1, "publish"], "guides": [null, 2, "publish"], "reference": [null, 3, "publish"],
+            "install": ["guides", 1, "publish"], "setup": ["guides", 1, "publish"], "deploy": ["guides", 3, "publish"],
+            "roadmap": ["guides", 2, "draft"], "space": ["deploy", 0, "publish"],
+        })
+    );
+    // nav(): the published tree, siblings by order, the current item and its ancestors marked.
+    let tree = |current: &str, open: &[&str]| {
+        let mark = |name: &str, path: &str| {
+            let label = if name == current {
+                format!("{name} [current]")
+            } else if open.contains(&name) {
+                format!("{name} [open]")
+            } else {
+                name.to_string()
+            };
+            (label, serde_json::json!(path))
+        };
+        let leaf = |name: &str, path: &str| {
+            let (k, v) = mark(name, path);
+            serde_json::json!({ k: v })
+        };
+        let branch = |name: &str, path: &str, children: serde_json::Value| {
+            let (k, v) = mark(name, path);
+            serde_json::json!({ k: v, "children": children })
+        };
+        serde_json::json!([
+            leaf("Introduction", "/docs/introduction"),
+            branch(
+                "Guides",
+                "/docs/guides",
+                serde_json::json!([
+                    // Configure (setup.md, seeded after install.md) and Install share an order: by title.
+                    leaf("Configure", "/docs/guides/setup"),
+                    leaf("Install", "/docs/guides/install"),
+                    branch(
+                        "Deploy",
+                        "/docs/guides/deploy",
+                        serde_json::json!([leaf("To a Space", "/docs/guides/deploy/space")])
+                    ),
+                ])
+            ),
+            leaf("Reference", "/docs/reference"),
+        ])
+    };
+    assert_eq!(seen["introduction"]["tree"], tree("Introduction", &[]));
+    assert_eq!(seen["install"]["tree"], tree("Install", &["Guides"]));
+    assert_eq!(seen["space"]["tree"], tree("To a Space", &["Guides", "Deploy"]));
+    assert_eq!(seen["guides"]["tree"], tree("Guides", &[]));
+    // pager(): reading the tree top to bottom; none before the first or after the last.
+    let ends = |key: &str| (seen[key]["prev"].clone(), seen[key]["next"].clone());
+    assert_eq!(
+        ends("introduction"),
+        (serde_json::json!([]), serde_json::json!(["Guides /docs/guides"]))
+    );
+    assert_eq!(
+        ends("guides"),
+        (
+            serde_json::json!(["Introduction /docs/introduction"]),
+            serde_json::json!(["Configure /docs/guides/setup"])
+        )
+    );
+    assert_eq!(
+        ends("install"),
+        (
+            serde_json::json!(["Configure /docs/guides/setup"]),
+            serde_json::json!(["Deploy /docs/guides/deploy"])
+        )
+    );
+    assert_eq!(
+        ends("space"),
+        (
+            serde_json::json!(["Deploy /docs/guides/deploy"]),
+            serde_json::json!(["Reference /docs/reference"])
+        )
+    );
+    assert_eq!(
+        ends("reference"),
+        (
+            serde_json::json!(["To a Space /docs/guides/deploy/space"]),
+            serde_json::json!([])
+        )
+    );
+    // headings(): `##` and `###`, with ids unique in the page, and the rendered headings carry them.
+    assert_eq!(
+        seen["introduction"]["toc"],
+        serde_json::json!([
+            "#why Why depth-2",
+            "#small-print Small print depth-3",
+            "#why-2 Why depth-2"
+        ])
+    );
+    assert_eq!(
+        seen["introduction"]["anchors"],
+        serde_json::json!(["h2#why", "h3#small-print", "h2#why-2"])
+    );
+    assert_eq!(seen["introduction"]["title"], "Introduction · Docs");
+    assert_eq!(
+        seen["introduction"]["cache"],
+        "public, s-maxage=300, max-age=0, must-revalidate"
+    );
+    // The draft: a 404 and no twin for visitors; in nobody's tree or pager, an editor's included.
+    assert_eq!(seen["roadmap"], 404);
+    assert_eq!(seen["twin draft"], 404);
+    assert_eq!(seen["install as editor"]["tree"], tree("Install", &["Guides"]));
+    assert_eq!(seen["roadmap as editor"]["status"], 200);
+    assert_eq!(seen["roadmap as editor"]["cache"], "private, no-store, max-age=0");
+    // Only an item's own path serves it.
+    assert_eq!(seen["wrong parent"], 404);
+    assert_eq!(
+        seen["landing"], 404,
+        "`[[...path]]` with nothing after /docs finds no item"
+    );
+    assert_eq!(seen["missing"], 404);
+    assert_eq!(seen["slug alone"][0], 404);
+    assert_eq!(seen["permalink"], "/docs/guides/deploy/space/");
+    assert_eq!(seen["twin"][0], 200);
+    assert!(seen["twin"][1].as_str().unwrap().contains("Run the installer."));
+    // An editor moves Reference under Guides in wp-admin: its URL and the tree follow.
+    assert_eq!(seen["moved"]["status"], 200);
+    assert_eq!(
+        seen["moved"]["tree"][1]["children"][0],
+        serde_json::json!({ "Reference [current]": "/docs/guides/reference" })
+    );
+    assert_eq!(seen["moved old"], serde_json::json!([404]));
+    // A published page under a draft is as hidden as the draft: its path names an unpublished page.
+    assert_eq!(seen["under a draft"], serde_json::json!([404, 404]));
+    // A WordPress Page with a doc's slug doesn't take over the doc's URL.
+    assert_eq!(seen["page with a doc slug"], serde_json::json!([200, ["Introduction"]]));
+    // Slugs are unique among siblings: two pages named `install` under different parents each serve.
+    assert_eq!(
+        seen["same slug elsewhere"],
+        serde_json::json!([["Install again"], ["Install"]])
+    );
+    // A block that renders differently each time doesn't cost the headings their anchors.
+    assert_eq!(
+        seen["headings beside a gallery"],
+        serde_json::json!([
+            [
+                "#why Why depth-2",
+                "#small-print Small print depth-3",
+                "#why-2 Why depth-2"
+            ],
+            ["h2#why", "h3#small-print", "h2#why-2"]
+        ])
+    );
+    // Components in Markdown (docs/decisions/2026-11-13-components-in-markdown.md): the file's
+    // tags are stored as the app's blocks, their Markdown as inner blocks.
+    assert_eq!(
+        seen["blocks registered"],
+        serde_json::json!(["docskind/callout", "docskind/badge"])
+    );
+    assert_eq!(
+        seen["blocks stored"],
+        serde_json::json!([
+            ["core/paragraph", [], []],
+            ["docskind/callout", { "type": "warning", "title": "Before you start" }, ["core/paragraph", "core/list"]],
+            ["docskind/badge", { "label": "New", "count": 3 }, []],
+            ["core/paragraph", [], []],
+        ])
+    );
+    // The route renders each block through its component, the inner content as its children.
+    assert_eq!(
+        seen["blocks rendered"],
+        serde_json::json!([
+            200,
+            "<aside class=\"callout callout-warning\" role=\"note\"><p class=\"callout-title\">Before you start</p><div class=\"callout-body\"> <p class=\"wp-block-paragraph\">Back up the <b>database</b>.</p> <ul class=\"wp-block-list\"> <li>Export it</li> <li>Keep a copy</li> </ul> </div></aside>",
+            "<span class=\"badge\">New<b> 3</b></span>",
+        ])
+    );
+    // Written back, the blocks are the file's tags again, and an editor's change to a prop is too.
+    let file = "Run the installer.\n\n<Callout type=\"warning\" title=\"Before you start\">\nBack up the **database**.\n\n- Export it\n- Keep a copy\n</Callout>\n\n<Badge label=\"New\" count={3} />\n\nThen continue.\n";
+    assert_eq!(seen["blocks back"], file);
+    assert_eq!(
+        seen["blocks edited back"],
+        file.replace("type=\"warning\"", "type=\"note\"")
+    );
+    // The Markdown twin is what a reader sees: the components' text, never their tags.
+    let twin = seen["blocks twin"].as_str().unwrap();
+    assert!(
+        twin.contains("Before you start\n\nBack up the **database**.") && !twin.contains("<Callout"),
+        "{twin}"
+    );
+    // What a file can't say about a block is refused with the reason; a tag in a code fence is code.
+    assert_eq!(
+        seen["blocks refused"],
+        serde_json::json!({
+            "unknown tag": "<Tabs> isn't a block this site has; list it in its component file's `export const blocks`",
+            "unknown prop": "<Callout> has no prop `colour`; it takes type, title",
+            "enum": "<Callout type> takes \"note\" | \"warning\"",
+            "required": "<Callout> needs `type`",
+            "number": "<Badge count> takes number",
+            "unclosed": "<Callout> is never closed: put </Callout> on a line of its own",
+        })
+    );
+    assert!(seen["blocks fenced"].as_str().unwrap().starts_with("<!-- wp:code"));
+    // Code blocks: highlighted on the route, titled, line 2 marked, the `install` pair as tabs,
+    // plain text escaped and unhighlighted, one stylesheet with a dark theme, and no script.
+    let code = &seen["code"];
+    assert_eq!(code["status"], 200);
+    assert_eq!(code["titles"], serde_json::json!(["first.config.ts", "pnpm"]));
+    assert_eq!(
+        code["keywords"],
+        serde_json::json!(["import", "from", "export", "default"])
+    );
+    assert_eq!(
+        code["marked"],
+        serde_json::json!(["export default defineConfig({ name: \"docs\" });"])
+    );
+    assert_eq!(code["tabs"], serde_json::json!(["sh", "pnpm"]));
+    assert_eq!(code["tab inputs"], 2);
+    assert_eq!(
+        code["panels"],
+        serde_json::json!(["npm install first", "pnpmpnpm add first"])
+    );
+    assert_eq!(code["plain"], "plain <b>text</b>");
+    assert_eq!(code["plain spans"], 0);
+    assert_eq!(code["stylesheet"], 1);
+    assert_eq!(code["scripts"], serde_json::json!([]));
+    assert_eq!(seen["code css"], serde_json::json!([200, true, true]));
+    // Written back, each fence keeps its title, marked lines and group.
+    assert_eq!(
+        seen["code back"],
+        "Edit the config.\n\n```ts title=\"first.config.ts\" {2}\nimport { defineConfig } from \"first\";\nexport default defineConfig({ name: \"docs\" });\n```\n\n```sh group=\"install\"\nnpm install first\n```\n\n```sh title=\"pnpm\" group=\"install\"\npnpm add first\n```\n\n```text\nplain <b>text</b>\n```\n"
+    );
+    // The query API reads parent and order like any field.
+    assert_eq!(
+        seen["api"],
+        serde_json::json!([["introduction", null, 1], ["guides", null, 2]])
+    );
+}
+
+/// A folder-tree sync and a hierarchical kind refuse what they can't serve, at the line.
+#[test]
+fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
+    let dir = std::env::temp_dir().join(format!("first-docs-reject-{}", std::process::id()));
+    let kind = |fields: &str, options: &str| {
+        format!(
+            "import {{ collection, table, text, slug, richText }} from \"first\";\nexport const docs = collection({{ title: text(), body: richText().optional(), {fields} }}, {{ content: \"body\", {options} }});\n"
+        )
+    };
+    let cases = [
+        (kind("slug: slug({ source: \"title\" })", "sync: \"content/docs/**/*.md\""), "a `**` sync pattern needs a hierarchical kind"),
+        (kind("summary: text().optional()", "hierarchical: true, sync: \"content/docs/**/*.md\""), "a folder tree of files needs a slug field"),
+        (kind("parent: text().optional()", "hierarchical: true"), "`parent` is reserved: hierarchical kinds add `parent` and `order`"),
+        (kind("slug: slug({ source: \"title\" })", "url: \"/docs/:path\""), "`:path` in \"/docs/:path\" needs a hierarchical kind"),
+        (
+            "import { table, text } from \"first\";\nexport const docs = table({ title: text() }, { hierarchical: true });\n".to_string(),
+            "only collection() kinds can be hierarchical",
+        ),
+    ];
+    for (schema, message) in cases {
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("first")).unwrap();
+        std::fs::write(
+            dir.join("first.config.ts"),
+            "import { defineConfig } from \"first\";\nexport default defineConfig({});\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("first/schema.ts"), &schema).unwrap();
+        let out = first().arg("check").arg(&dir).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{message}: should fail:\n{stderr}");
+        assert!(stderr.contains(message), "expected {message:?} in:\n{stderr}");
+        assert!(stderr.contains("--> first/schema.ts:"), "{stderr}");
+    }
+    // At capture: two files with one slug, and a folder without its index file.
+    for (files, message) in [
+        (
+            &[
+                ("content/docs/a/install.md", "# A"),
+                ("content/docs/a/index.md", "# A"),
+                ("content/docs/b/install.md", "# B"),
+                ("content/docs/b/index.md", "# B"),
+            ][..],
+            "both have the slug `install`",
+        ),
+        (
+            &[("content/docs/guides/install.md", "Install")][..],
+            "its folder has no guides/index.md",
+        ),
+    ] {
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("first")).unwrap();
+        std::fs::write(
+            dir.join("first.config.ts"),
+            "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"docsreject\" });\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("first/schema.ts"),
+            kind(
+                "slug: slug({ source: \"title\" })",
+                "hierarchical: true, sync: \"content/docs/**/*.md\"",
+            ),
+        )
+        .unwrap();
+        for (path, text) in files {
+            let path = dir.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, format!("---\ntitle: {text}\n---\n")).unwrap();
+        }
+        let work = tempfile::tempdir().unwrap();
+        let sources = work.path().join("sources");
+        let out = first()
+            .arg("sources")
+            .arg(&dir)
+            .arg("--out")
+            .arg(&sources)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let out = first()
+            .arg("compile-sources")
+            .arg(&sources)
+            .arg(work.path().join("out"))
+            .arg(&dir)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !out.status.success() && stderr.contains(message),
+            "expected {message:?} in:\n{stderr}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A root catch-all answers every path of the app, and never one WordPress, First or the host
+/// owns: on Spacefast `/__spacefast/connectors/*` and `/__spacefast/client.js` are the host's.
+#[test]
+fn a_root_catch_all_leaves_reserved_paths_alone() {
+    let project = fixture("app-router-reserved", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_router_reserved.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    assert_eq!(seen["app path"], serde_json::json!([200, "app"]), "{seen}");
+    assert_eq!(seen["app path POST"], serde_json::json!([200, "app"]), "{seen}");
+    for reserved in [
+        "connector GET",
+        "connector POST",
+        "space client",
+        "first",
+        "zero",
+        "rest",
+    ] {
+        assert_eq!(seen[reserved][1], "not the app", "{reserved}: {seen}");
+    }
+}
+
+/// A component listed as a block must have props a Markdown tag can write, and the list must name
+/// the file's own components; each refusal is at the component file.
+#[test]
+fn content_blocks_refuse_props_a_tag_cannot_write() {
+    let dir = std::env::temp_dir().join(format!("first-blocks-reject-{}", std::process::id()));
+    for (component, message) in [
+        (
+            "export const blocks = [\"Card\"];\nexport function Card({ links }: { links: string[] }) { return <div>{links.length}</div>; }\n",
+            "<Card>'s prop `links` is string[], which a Markdown tag can't write",
+        ),
+        (
+            "export const blocks = [\"Missing\"];\nexport function Card() { return <div />; }\n",
+            "`blocks` names `Missing`, which components/Card.tsx doesn't export as a component",
+        ),
+        (
+            "export const blocks = \"Card\";\nexport function Card() { return <div />; }\n",
+            "`blocks` is a list of this file's component names",
+        ),
+    ] {
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("first/components")).unwrap();
+        std::fs::write(
+            dir.join("first.config.ts"),
+            "import { defineConfig } from \"first\";\nexport default defineConfig({});\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("first/components/Card.tsx"), component).unwrap();
+        let out = first().arg("check").arg(&dir).output().unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{message}: should fail:\n{stderr}");
+        assert!(stderr.contains(message), "expected {message:?} in:\n{stderr}");
+        assert!(stderr.contains("--> first/components/Card.tsx"), "{stderr}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The docs example (examples/docs), every content feature at once, read in Chromium as an
+/// anonymous visitor: the site is the example as built, seeded from the records a hosted compile
+/// writes for its content/docs/ folder tree (tests/differential/client/docs.mjs).
+#[test]
+fn docs_example_reads_in_the_browser() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path().join("docs");
+    copy(&root().join("examples/docs"), &project);
+    build(&project);
+    let (sources, compiled) = (work.path().join("sources"), work.path().join("compiled"));
+    for args in [
+        vec![
+            "sources".as_ref(),
+            project.as_os_str(),
+            "--out".as_ref(),
+            sources.as_os_str(),
+        ],
+        vec![
+            "compile-sources".as_ref(),
+            sources.as_os_str(),
+            compiled.as_os_str(),
+            project.as_os_str(),
+        ],
+    ] {
+        let out = first().args(&args).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .arg(compiled.join("seed"))
+        .env("FIRST_WP_THEMES", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/docs.mjs"))
+        .arg(&url)
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    // Home → the docs, by the reader's click; the doc has its title and the published tree.
+    assert_eq!(seen["home"], "First docs");
+    assert_eq!(
+        seen["intro"],
+        serde_json::json!({ "path": "/docs/introduction", "title": "Introduction · First docs", "h1": "Introduction" })
+    );
+    assert_eq!(
+        seen["tree"],
+        serde_json::json!([["Introduction", "current", []], ["Guides", "", ["Install", "Deploy"]]])
+    );
+    // The table of contents links land on the doc's headings; a component block renders.
+    assert_eq!(
+        seen["toc"],
+        serde_json::json!([
+            ["What you get", "#what-you-get", true],
+            ["How these docs work", "#how-these-docs-work", true]
+        ])
+    );
+    assert_eq!(seen["badge"], "New");
+    // Next, next: the pager walks the tree, and the open section follows the reader.
+    assert_eq!(
+        seen["install"],
+        serde_json::json!({ "path": "/docs/guides/install", "prev": "← Guides", "next": "Deploy →", "open": "Guides", "current": "Install" })
+    );
+    assert_eq!(seen["space"], serde_json::json!(["Guides", "Deploy", "To a Space"]));
+    assert_eq!(
+        seen["callout"],
+        serde_json::json!(["callout callout-tip", "Before you start", "Node 22"])
+    );
+    // A code group's tabs switch with no script; the code is highlighted in light and dark.
+    assert_eq!(seen["tabs"], serde_json::json!(["sh", "pnpm"]));
+    assert_eq!(
+        (&seen["tabsBefore"], &seen["tabsAfter"]),
+        (&serde_json::json!([true, false]), &serde_json::json!([false, true]))
+    );
+    assert_eq!(seen["title"], "pnpm");
+    assert_eq!(
+        seen["marked"],
+        serde_json::json!(["export default defineConfig({ name: \"docs\" });"])
+    );
+    assert_ne!(
+        seen["light"], seen["dark"],
+        "the keyword colour follows the colour scheme"
+    );
+    // The only scripts are the router's (the layout's links); code and components need none.
+    for script in seen["scripts"].as_array().unwrap() {
+        let script = script.as_str().unwrap();
+        assert!(
+            script.contains("interactivity") || script.contains("router.js") || script.contains("a11y"),
+            "{script}"
+        );
+    }
+    // The draft is a 404 and in no tree; the Markdown page is a page.
+    assert_eq!(seen["draft"], 404);
+    assert_eq!(seen["draftInTree"], false);
+    assert_eq!(seen["about"], serde_json::json!(["About · First docs", "First"]));
+    // Every page's Markdown twin; none for the draft, and it isn't listed.
+    assert_eq!(seen["twins"]["install"][0], 200);
+    assert!(
+        seen["twins"]["install"][2]
+            .as_str()
+            .unwrap()
+            .contains("You need **Node 22** and a WordPress site.")
+    );
+    assert_eq!(seen["twins"]["about"][0], 200);
+    assert_eq!(seen["twins"]["draft"][0], 404);
+    let llms = seen["llms"].as_str().unwrap();
+    assert!(llms.contains("/about.md") && !llms.contains("Roadmap"), "{llms}");
 }

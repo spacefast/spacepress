@@ -3,8 +3,7 @@
 // included.
 //
 // Each example is copied to .showcase/<name>/ first (its committed migrations come along; nothing
-// under examples/ is written) and built there. An example with TSX pages (pages/) is also built by
-// `first-pages build`, as `docs/pages.md` says, so its blueprint installs the pages plugin too. An example with npm dependencies gets its locked
+// under examples/ is written) and built there. An example with npm dependencies gets its locked
 // packages installed, since the compiler turns their code into PHP. Then public/files/ gets:
 //
 //   <name>.json        every path of the example, with the blob that holds each text file
@@ -62,19 +61,6 @@ const firstWrote = (file: string, published: Set<string>) => {
 const binary = path.join(target, "release", "first");
 if (!existsSync(binary)) run("cargo", ["build", "--locked", "--release"], repo);
 
-// `first-pages build` runs from the package's compiled output, which needs @spacefast/first-blocks
-// built first (the `pages` job in .github/workflows/ci.yml does the same).
-const firstPages = path.join(repo, "packages/pages/bin/first-pages.mjs");
-let pagesBuilt = false;
-function buildPagesPackage() {
-	if (pagesBuilt) return;
-	pagesBuilt = true;
-	for (const pkg of ["blocks", "pages"]) {
-		run("pnpm", ["install", "--frozen-lockfile"], path.join(repo, "packages", pkg));
-		run("pnpm", ["build"], path.join(repo, "packages", pkg));
-	}
-}
-
 /**
  * The records the runtime seeds a synced collection from, as the host compile writes them
  * (`seed/<collection>.json`): the same parser as `first sync` reads the content files with.
@@ -106,18 +92,8 @@ for (const { name, landing, seed } of siteExamples) {
 	if (existsSync(path.join(to, "package-lock.json"))) run("npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], to);
 	run(binary, ["build", to, "--quiet"], repo);
 	const plugins = path.join(to, "first/dist/wp-content/plugins");
-	// The pages plugin, built from the TSX pages against the schema `first build` just wrote.
-	// `first build` doesn't zip it, so this does, for the blueprint.
-	const pagesPlugins: string[] = [];
-	if (existsSync(path.join(to, "pages"))) {
-		buildPagesPackage();
-		run("node", [firstPages, "build", to], repo);
-		const app = (JSON.parse(readFileSync(path.join(to, "first/pages.json"), "utf8")) as { app: string }).app;
-		const slug = `first-pages-${app}`;
-		if (!existsSync(path.join(plugins, slug))) throw new Error(`examples/${name}: first-pages build wrote no ${slug}/`);
-		run("zip", ["-qrX", `${slug}.zip`, slug], plugins);
-		pagesPlugins.push(slug);
-	}
+	// `first/app/` pages route on the path (`/notes/`), so their site needs pretty permalinks.
+	const appPages = existsSync(path.join(to, "first/app"));
 	// A synced collection (`sync: "content/posts/*.md"`) starts with its content files' rows.
 	const syncSeed = syncRecords(to);
 
@@ -131,7 +107,7 @@ for (const { name, landing, seed } of siteExamples) {
 		files: [],
 		wordpressPlugins: lock.plugins.map(({ slug, version }) => ({ slug, version })),
 		syncSeed,
-		...(pagesPlugins[0] ? { pages: { slug: pagesPlugins[0], path: `files/plugins/${name}/${pagesPlugins[0]}.zip` } } : {}),
+		appPages,
 	};
 	for (const file of walk(to).filter((file) => !file.startsWith("node_modules/") && !file.startsWith(".first/"))) {
 		const bytes = readFileSync(path.join(to, file));
@@ -157,8 +133,7 @@ for (const { name, landing, seed } of siteExamples) {
 
 	// The Playground blueprint: the plugin zips this build wrote, and the WordPress.org plugins at
 	// the versions in the app's lock.
-	// The pages plugin requires the app plugin, so it activates last.
-	const generated = [...Object.keys(built.plugins).filter((slug) => !published.has(slug)), ...pagesPlugins];
+	const generated = Object.keys(built.plugins).filter((slug) => !published.has(slug));
 	for (const slug of generated) if (!existsSync(path.join(plugins, `${slug}.zip`))) throw new Error(`examples/${name}: first build wrote no ${slug}.zip`);
 	mkdirSync(path.join(filesRoot, "plugins", name), { recursive: true });
 	// Copied as built: the folder inside each zip is the plugin's name, so the zip keeps it.
@@ -173,7 +148,7 @@ for (const { name, landing, seed } of siteExamples) {
 	}
 	const zipBase = `${process.env.SITE_URL ?? "https://first-docs.space.fast"}/files/plugins/${name}/`;
 	const firstPlugins = generated.map((slug) => ({ slug, url: `${zipBase}${slug}.zip` }));
-	const print = blueprint({ platform: platformVersions(), firstPlugins, wordpressPlugins: lock.plugins, landingPage: landing, seed, syncSeed, prettyPermalinks: pagesPlugins.length > 0 });
+	const print = blueprint({ platform: platformVersions(), firstPlugins, wordpressPlugins: lock.plugins, landingPage: landing, seed, syncSeed, prettyPermalinks: appPages });
 	writeFileSync(path.join(filesRoot, `${name}.blueprint.json`), `${JSON.stringify(print, null, "\t")}\n`);
 	console.log(`${name}: ${manifest.files.length} files`);
 }

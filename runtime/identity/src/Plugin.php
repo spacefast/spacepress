@@ -14,9 +14,15 @@ final class Plugin
     public static Sessions $sessions;
     public static Security $security;
     public static Api $api;
+    /** What core's application-password check last answered on this request: the user, the error, or null. */
+    private static \WP_User|\WP_Error|null $applicationPassword = null;
+    public static function applicationPassword(): \WP_User|\WP_Error|null
+    {
+        return self::$applicationPassword;
+    }
     public static function authenticationError(): ?\WP_Error
     {
-        $application = $GLOBALS["wp_rest_application_password_status"] ?? null;
+        $application = self::$applicationPassword;
         return self::$authenticationError ?? (is_wp_error($application) && $application->get_error_code() === "storage_unavailable" ? $application : null);
     }
     private static function refusal(Failure $error): \WP_Error
@@ -339,6 +345,13 @@ final class Plugin
                 $errors->add("guest_account", "Add your email first to save this account.");
             }
         }, 10, 3);
+        // Core's own application-password actions (what rest_application_password_collect_status records).
+        add_action("application_password_did_authenticate", static function ($user): void {
+            self::$applicationPassword = $user instanceof \WP_User ? $user : null;
+        });
+        add_action("application_password_failed_authentication", static function ($error): void {
+            self::$applicationPassword = $error instanceof \WP_Error ? $error : null;
+        });
         // Access tokens on the REST API (`Authorization: Bearer`), after core's own resolvers.
         add_filter("determine_current_user", [Bearer::class, "resolve"], 20);
         add_filter("rest_authentication_errors", [Bearer::class, "errors"], 20);

@@ -34,6 +34,9 @@ final class CommentsView
             return Html::raw('');
         }
         $userId = (int) ($viewer->user['id'] ?? 0);
+        // The thread is core's comment query, which no First counter follows: a live region around
+        // it is rendered and compared on every poll, so a new approved comment shows on the next one.
+        Live::unseen();
         $rows = Comments::thread($id, $userId);
         $depth = Comments::policy($collection)['threaded'];
         $byParent = [];

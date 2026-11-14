@@ -2277,7 +2277,7 @@ fn one_write_announces_its_purges_once() {
         assert_eq!(seen[key]["rebuilds"], 1, "{key}: {seen}");
         paths
     };
-    for key in ["edit", "old row"] {
+    for key in ["edit", "editor edit", "old row"] {
         let paths = once(key);
         // The item under both spellings, its twin once, its comments feed (the post hooks' part).
         let mut item: Vec<&str> = paths

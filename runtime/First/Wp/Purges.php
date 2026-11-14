@@ -43,12 +43,14 @@ final class Purges
                 self::$before[$id] = self::postUrls(get_post($id));
             }
         }, 10, 1);
+        // Just before EditorSave commits a wp-admin or core REST save of a First post (PHP_INT_MAX), so
+        // these URLs join that transaction's one announcement with what First's write path adds.
         add_action('wp_after_insert_post', static function (int $id, \WP_Post $post) use ($plugin): void {
             if (self::listening()) {
                 self::add($plugin, [...(self::$before[$id] ?? []), ...self::postUrls($post)]);
                 unset(self::$before[$id]);
             }
-        }, PHP_INT_MAX, 2);
+        }, PHP_INT_MAX - 1, 2);
         // Trash, delete and status changes that don't go through wp_insert_post (wp_publish_post, cron).
         add_action('transition_post_status', static function (string $new, string $old, \WP_Post $post) use ($plugin): void {
             if (self::listening() && $new !== $old) {

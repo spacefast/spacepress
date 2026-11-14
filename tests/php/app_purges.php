@@ -65,6 +65,9 @@ $out['index'] = $wpdb->get_col("SELECT url FROM $reads ORDER BY url");
 // One edit of a note an anonymous visitor's pages read: one call, each path once.
 $out['edit'] = $announced($edit('Hello again'));
 
+// The same edit saved through WordPress (wp-admin, core REST): still one call.
+$out['editor edit'] = $announced(static fn () => wp_update_post(['ID' => $hello, 'post_title' => 'Hello from the editor']));
+
 // A row recorded before addresses were stored canonically (the bare spelling): still purged.
 $wpdb->query("DELETE FROM $reads WHERE url = '/notes/hello/'");
 $wpdb->insert($reads, ['kind' => 'notes', 'item' => (string) $hello, 'url' => '/notes/hello', 'seenAt' => gmdate('Y-m-d\TH:i:s.000\Z')]);

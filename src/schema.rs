@@ -512,6 +512,9 @@ pub struct Schema {
     pub admin: bool,
     /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `first/app`.
     pub frontend: Option<crate::kind_url::Frontend>,
+    /// `defineConfig({ publicAuthors: true })`: core's author archives, author routes and user
+    /// listings stay public, as WordPress ships them (the users kind's read rule can also allow it).
+    pub public_authors: bool,
     /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
     /// while it runs. Holds what the build read from the lock `first pull` writes.
     pub runtime_schema: Option<RuntimeSchema>,
@@ -546,6 +549,7 @@ impl Default for Schema {
             locales: None,
             admin: false,
             frontend: None,
+            public_authors: false,
             runtime_schema: None,
         }
     }

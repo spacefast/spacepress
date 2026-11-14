@@ -1143,6 +1143,12 @@ export interface ConfigInput<
   /** Ship the optional admin screens (`first-admin`) with the build. Default `false`. */
   admin?: boolean;
   /**
+   * Keep the site's authors public as WordPress ships them: author archives, `?author=N`, the users
+   * sitemap, author names in oEmbed and unauthenticated `/wp/v2/users`. Default `false`: closed, unless
+   * the users kind's read rule lets anyone read users.
+   */
+  publicAuthors?: boolean;
+  /**
    * Let the running site add collections, globals and fields, each change stored there as a numbered
    * schema version. The build declares the changes listed in `first/_generated/runtime-schema.json`. Default `false`.
    */

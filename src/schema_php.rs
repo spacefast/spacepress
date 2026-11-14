@@ -316,6 +316,9 @@ pub fn render(schema: &Schema) -> String {
     let _ = writeln!(out, "    'runtime' => '{}',", crate::platform::SERIES);
     let _ = writeln!(out, "    'name' => {},", php_str(&schema.name));
     let _ = writeln!(out, "    'admin' => {},", schema.admin);
+    if schema.public_authors {
+        out.push_str("    'publicAuthors' => true,\n");
+    }
     match &schema.frontend {
         None => {}
         Some(crate::kind_url::Frontend::Off) => out.push_str("    'frontend' => false,\n"),

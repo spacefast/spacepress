@@ -94,6 +94,10 @@ add_filter('first_app_cache_window', static fn () => 60);
 $out['batcache'][] = ['window 60', batcacheWindow(\First\Render\Cache::policy(200, true, false)[0])];
 remove_all_filters('first_app_cache_window');
 $out['batcache served'] = array_map(static fn (string $key) => batcacheWindow($out[$key]['cache']), ['home' => 'home', 'as editor' => 'as editor', 'missing' => 'missing']);
+// A count reads no rows, but what it answers changes with every write to the kind: the render
+// that counts records the kind as listed, as a list would.
+\First\Render\Reads::during(static fn () => \First\db()->count('notes'), $counted);
+$out['count reads'] = $counted;
 global $wpdb;
 $out['index'] = array_map(static fn ($r) => "{$r['kind']} {$r['item']} {$r['url']}", $wpdb->get_results("SELECT kind, item, url FROM {$wpdb->prefix}first__app_reads ORDER BY url, kind, item", ARRAY_A));
 // An edit to one note purges the URLs that read it and the ones that listed notes, nothing else.

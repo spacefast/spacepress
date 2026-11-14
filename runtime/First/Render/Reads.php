@@ -16,6 +16,19 @@ final class Reads
     private static bool $hooked = false;
 
     /**
+     * A read that returned no rows but depended on all of a kind's (a count): recorded as a listing,
+     * so any write to the kind counts as a change to what the render read.
+     */
+    public static function listed(string $collection): void
+    {
+        if (self::$current !== null) {
+            $entry = self::$current[$collection] ?? ['ids' => [], 'listed' => false];
+            $entry['listed'] = true;
+            self::$current[$collection] = $entry;
+        }
+    }
+
+    /**
      * Runs $fn and fills $reads with what it read.
      *
      * @param-out array<string, array{ids: list<int|string>, listed: bool}> $reads

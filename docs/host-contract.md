@@ -27,7 +27,6 @@ Besides `format`, `hostContract`, `compiler` and the platform versions (`wordpre
   and HEAD). Hand any request whose path matches to WordPress, whatever its method, after trimming one
   trailing `/` and treating HEAD as GET. Paths use `:name` for one segment and a final `*name` for the
   rest.
-- `pages`: the pages plugin's slug, or null.
 - `host`: the names below, as data.
 
 ## Lifecycle
@@ -40,7 +39,8 @@ builds only; a `compile-sources` tree is for hosts that mount it themselves and 
 contract. The compiled app tree's `manifest.json` (under `app/<hash>/`) is the manifest above.
 
 1. Select the build for the request, then call `Loader::load` before WordPress initializes. It mounts
-   the runtime, identity when the app needs it (or `users: true`), the app, the admin and pages plugins.
+   the runtime, identity when the app needs it (or `users: true`), the app and the admin plugin. `first/app/`
+   pages render from the app plugin.
 2. Before exposing a new version, call `Loader::initialize` once. (It does not take the schema check's
    `--drop` confirmations yet: a version that drops data is refused there until it does.) It brings this site's storage up to
    the build (including the one-time upgrade of a site that ran a build from before the rename), applies

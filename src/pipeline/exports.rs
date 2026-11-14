@@ -137,7 +137,16 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
     // an exported table's name. Names only listed in `defineConfig` keep that API's per-registry
     // namespaces (0.8 apps converted onto it name a query like its table) until it is removed.
     for (name, taken) in &taken {
-        for registry in ["collections", "tables", "users", "taxonomies", "globals", "files", "actions", "jobs"] {
+        for registry in [
+            "collections",
+            "tables",
+            "users",
+            "taxonomies",
+            "globals",
+            "files",
+            "actions",
+            "jobs",
+        ] {
             let Some(Value::Object(entries)) = cfg.borrow().get(registry).cloned() else {
                 continue;
             };

@@ -311,7 +311,7 @@ fn rejects_what_taxonomies_and_terms_do_not_build_yet() {
         (
             "reject-terms-global",
             "`terms()` isn't allowed on a global field (`featured`)",
-            "first.config.ts:4:83",
+            "first.config.ts:4:71",
         ),
         (
             "reject-terms-input",

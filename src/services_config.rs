@@ -189,8 +189,16 @@ fn search(at: &At<'_, '_>, schema: &Schema) -> Result<Json> {
             if names.contains(&name) {
                 return Err(at.error(&format!("duplicate search field `{name}`")));
             }
-            if !collection.columns.get(&name).is_some_and(|c| c.ty == ColType::Text) {
-                return Err(at.error(&format!("`{name}` must name a text column on `{key}`")));
+            // The search index holds authored text columns, not system ones such as `status` (runtime
+            // Search\Index::fields).
+            if !collection
+                .columns
+                .get(&name)
+                .is_some_and(|c| c.ty == ColType::Text && c.enum_values.is_none() && !c.hidden && !c.system)
+            {
+                return Err(at.error(&format!(
+                    "`{name}` must name a searchable text column on `{key}` (an authored text field)"
+                )));
             }
             names.push(name);
         }

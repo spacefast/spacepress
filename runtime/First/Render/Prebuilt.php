@@ -80,6 +80,9 @@ final class Prebuilt
             if (function_exists('batcache_cancel')) {
                 batcache_cancel();
             }
+            if (($_SERVER['HTTP_X_FIRST_EXPORT'] ?? '') === '1') {
+                self::forExport();
+            }
             return;
         }
         if (($app['output'] ?? 'server') !== 'server') {
@@ -135,6 +138,26 @@ final class Prebuilt
     public static function active(): bool
     {
         return self::$plugin !== null && !self::prerendering() && ((self::$plugin->schema->app()['output'] ?? 'server') === 'server');
+    }
+
+    /**
+     * `first export`: WordPress's head links to what a static site doesn't serve (feeds, the REST
+     * API, RSD, oEmbed, the shortlink, the generator, a DNS prefetch of the site's own host) are
+     * left out of the page.
+     */
+    private static function forExport(): void
+    {
+        add_action('wp_head', static function (): void {
+            remove_action('wp_head', 'feed_links', 2);
+            remove_action('wp_head', 'feed_links_extra', 3);
+            remove_action('wp_head', 'rsd_link');
+            remove_action('wp_head', 'rest_output_link_wp_head', 10);
+            remove_action('wp_head', 'wp_oembed_add_discovery_links');
+            remove_action('wp_head', 'wp_shortlink_wp_head', 10);
+            remove_action('wp_head', 'wp_generator');
+        }, 0);
+        add_filter('wp_resource_hints', static fn (array $urls, string $type): array => $type === 'dns-prefetch' ? [] : $urls, 10, 2);
+        add_filter('wp_speculation_rules_configuration', '__return_null');
     }
 
     /** Whether any route of the table is prebuilt. */
@@ -306,7 +329,32 @@ final class Prebuilt
             }
             return $seen[$u['path']] = true;
         }));
-        return ['urls' => $urls, 'redirects' => $redirects, 'build' => $plugin->buildHash()];
+        return ['urls' => $urls, 'redirects' => $redirects, 'build' => $plugin->buildHash(), 'app' => self::appHash($plugin)];
+    }
+
+    /**
+     * The app plugin's compiled code as `first export --site` compares it with the checkout's: the
+     * SHA-256 of each file below `first/app/` but its migrations (its path, a NUL, its bytes, a NUL),
+     * in path order.
+     * Any change to a page, a component, an action or the schema changes it.
+     */
+    public static function appHash(Plugin $plugin): string
+    {
+        $root = $plugin->dir . '/first/app';
+        $files = [];
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)) as $f) {
+            $file = substr($f->getPathname(), strlen($root) + 1);
+            // Migrations are the site's ledger, not code a page renders with.
+            if ($f->isFile() && !str_starts_with($file, 'migrations/')) {
+                $files[] = $file;
+            }
+        }
+        sort($files, SORT_STRING);
+        $hash = hash_init('sha256');
+        foreach ($files as $file) {
+            hash_update($hash, $file . "\0" . (string) file_get_contents("$root/$file") . "\0");
+        }
+        return hash_final($hash);
     }
 
     /**
@@ -398,9 +446,15 @@ final class Prebuilt
         // The header each render needs: the export fetches with it, and the site checks it.
         foreach ($answer['urls'] as &$url) {
             $url['token'] = self::token(self::full($url['path']));
+            $twin = (string) (wp_parse_url(MarkdownTwins::twin(home_url($url['path'])), PHP_URL_PATH) ?? '');
+            $url['twin'] = ['path' => $twin, 'token' => self::token($twin)];
         }
         unset($url);
-        $answer['notFound'] = ['path' => '/__first-not-found', 'token' => self::token(self::full('/__first-not-found'))];
+        $answer['home'] = home_url('/');
+        $answer['name'] = (string) get_bloginfo('name');
+        $answer['notFound'] = ['path' => self::full('/__first-not-found'), 'token' => self::token(self::full('/__first-not-found'))];
+        // Actions a page's client components may call from another origin: the public ones.
+        $answer['actions'] = array_map(static fn (array $a): bool => ($a['access'] ?? null) === ['role' => 'anyone'], $plugin->schema->actions());
         return [200, $answer];
     }
 

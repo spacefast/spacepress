@@ -1990,6 +1990,18 @@ fn docs_example_reads_in_the_browser() {
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
     // Home → the docs, by the reader's click; the doc has its title and the published tree.
     assert_eq!(seen["home"], "First docs");
+    // The router region is processed as core processes a block theme's: core/router's state.url
+    // comes from the server, follows a <Link> click that swapped the region in the same document,
+    // and core's loading bar is in the footer with its styles.
+    assert_eq!(seen["serverUrl"], format!("{url}/"), "{seen}");
+    assert_eq!(
+        seen["navigation"],
+        serde_json::json!({
+            "sameDocument": true,
+            "url": format!("{url}/docs/introduction"),
+            "loadingBar": [["core/router/private", "fixed"]]
+        })
+    );
     assert_eq!(
         seen["intro"],
         serde_json::json!({ "path": "/docs/introduction", "title": "Introduction · First docs", "h1": "Introduction" })

@@ -190,7 +190,8 @@ page.
   WordPress when it loads, then one per poll while the tab is visible (or on a
   notice), per open tab. That holds even when the page itself came from a page
   cache, and that first request is what brings a cached copy current. A tab
-  opened in the background costs nothing until it is shown. An unchanged region
+  opened in the background, or prerendered, costs nothing until it is shown;
+  a page restored with the browser's back button asks once. An unchanged region
   usually costs no render (the change counters answer). A region that reads
   something the counters can't follow, such as a comment thread, renders once
   per poll. Think about this before putting `<Live>` on a busy cached page.

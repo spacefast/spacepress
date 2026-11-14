@@ -81,7 +81,7 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 
 - `<Live id="board">` marks part of a server page the browser keeps current. When something the page read for it changes, it is rendered again as the visitor and updated in place; client components and form fields keep their state.
 - It updates on the next change notice or poll (2 to 30 seconds without a realtime transport), right after the visitor's own writes through the typed client, and, around `<Comments>`, when a comment's approval changes. Changes made outside First show within five minutes.
-- Cost: one uncached request when the page loads, then one per poll while the tab is visible, per open tab, even when the page came from a page cache. A background tab costs nothing until shown. Unchanged regions usually cost no render.
+- Cost: one uncached request when the page loads, then one per poll while the tab is visible, per open tab, even when the page came from a page cache. A background or prerendered tab costs nothing until shown. Unchanged regions usually cost no render.
 
 ### Markdown pages
 

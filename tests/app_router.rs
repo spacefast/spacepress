@@ -2078,6 +2078,17 @@ fn live_regions_update_in_the_browser() {
         "{seen}"
     );
     assert_eq!(seen["restored"], serde_json::json!({ "asked": 1 }), "{seen}");
+    // Signing in through WordPress's login: the region is the signed-in visitor's (a draft only an
+    // editor reads), and its first ask is answered for that visitor.
+    assert_eq!(
+        (&seen["draft"], &seen["signIn"]["out"], &seen["signIn"]["in"]),
+        (
+            &serde_json::json!(204),
+            &serde_json::json!(false),
+            &serde_json::json!(true)
+        ),
+        "{seen}"
+    );
     let transport = &seen["transport"];
     assert_eq!(
         (&transport["before"], &transport["after"], &transport["asked"]),

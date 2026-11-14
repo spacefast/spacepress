@@ -13,11 +13,14 @@ add_action('init', static function (): void {
         echo (int) get_option('test_live_renders', 0);
         exit;
     }
-    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !in_array($path, ['/__first_test/note', '/__first_test/approve'], true)) {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !in_array($path, ['/__first_test/note', '/__first_test/approve', '/__first_test/draft'], true)) {
         return;
     }
     wp_set_current_user(1);
-    if ($path === '/__first_test/note') {
+    if ($path === '/__first_test/draft') {
+        \First\Wp\Runtime::plugin()->app();
+        \First\db()->insert('notes', ['title' => 'Secret draft', 'slug' => 'secret-draft', 'status' => 'draft']);
+    } elseif ($path === '/__first_test/note') {
         \First\Wp\Runtime::plugin()->app();
         \First\db()->insert('notes', ['title' => 'One', 'slug' => 'one', 'status' => 'published']);
     } else {

@@ -27,7 +27,6 @@ try {
   page.on("response", async (r) => {
     if (r.url().endsWith("/__first/api/v1/_live")) answers.push((await r.json().catch(() => ({}))).data?.results?.map((x) => (x.pending ? "pending" : x.changed ? "changed" : x.error ? "error" : "unchanged")));
   });
-  const loaded = Date.now();
   // Renders are counted around the first `/_live` request only: the page's own render seeds the
   // region with one page read, which is the server render of the page, not the first poll.
   let rendersAtFirstAsk = null;
@@ -38,7 +37,10 @@ try {
   // The first request: one, carrying the region, answered unchanged. Waited for, not slept on.
   if (answers.length === 0) await page.waitForResponse((r) => r.url().endsWith("/__first/api/v1/_live"), { timeout: 15000 });
   await page.waitForFunction(() => true); // the response handler above has run
-  out.first = { requests: live.length, regions: live[0]?.body.queries?.map((q) => q.args?.region) ?? null, answer: answers[0] ?? null, beforePoll: live.length > 0 && live[0].at - loaded < 2000 };
+  // The first request is the subscription's own first ask, not a poll: it goes out as the page's
+  // modules run, well inside the shortest poll gap (2 s) after the document is ready.
+  const ready = await page.evaluate(() => performance.timeOrigin + performance.getEntriesByType("navigation")[0].domContentLoadedEventEnd);
+  out.first = { requests: live.length, regions: live[0]?.body.queries?.map((q) => q.args?.region) ?? null, answer: answers[0] ?? null, beforePoll: live.length > 0 && live[0].at - ready < 2000 };
   // A fresh page with nothing changed is answered by counter: no render ran for that first request.
   const rendersAfterFresh = Number(await (await fetch(`${url}/__first_test/renders`)).text());
   out.first.rendered = rendersAfterFresh - (await rendersAtFirstAsk);
@@ -133,6 +135,31 @@ try {
   await restored.waitForFunction(() => [...document.querySelectorAll(".signature")].some((li) => li.textContent === "Restored"), null, { timeout: 15000 });
   out.restored = { asked: restoredRequests.length - beforeRestore };
   await restored.close();
+
+  // Signing in: on a First page that is WordPress's own login, a full navigation, after which the
+  // region is the signed-in visitor's (a draft only editors read), and its first ask is answered
+  // unchanged for that visitor, not for the signed-out one whose page came before.
+  out.draft = (await fetch(`${url}/__first_test/draft`, { method: "POST" })).status;
+  const visitor = await browser.newPage();
+  const signedAnswers = [];
+  visitor.on("response", async (r) => {
+    if (r.url().endsWith("/__first/api/v1/_live")) signedAnswers.push((await r.json().catch(() => ({}))).data?.results?.map((x) => (x.changed ? "changed" : x.error ? "error" : "unchanged")));
+  });
+  await visitor.goto(`${url}/`, { waitUntil: "networkidle" });
+  const outView = await visitor.$$eval("[data-first-live='notes'] li.note", (li) => li.map((x) => x.textContent));
+  await visitor.goto(`${url}/wp-login.php?redirect_to=${encodeURIComponent(`${url}/`)}`);
+  await visitor.fill("#user_login", "admin");
+  await visitor.fill("#user_pass", "first-test-admin");
+  await Promise.all([visitor.waitForNavigation(), visitor.click("#wp-submit")]);
+  if (new URL(visitor.url()).pathname !== "/") await visitor.goto(`${url}/`);
+  const answered = signedAnswers.length;
+  await visitor.waitForResponse((r) => r.url().endsWith("/__first/api/v1/_live"), { timeout: 15000 }).catch(() => {});
+  out.signIn = {
+    out: outView.includes("Secret draft"),
+    in: (await visitor.$$eval("[data-first-live='notes'] li.note", (li) => li.map((x) => x.textContent))).includes("Secret draft"),
+    firstAnswerIn: signedAnswers[answered] ?? null,
+  };
+  await visitor.close();
 
   // `<Live>` around `<Comments>`, with a realtime transport live (a fake one the page registers
   // before any module runs, as a host's would be): a comment approved on the server shows at once

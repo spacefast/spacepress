@@ -51,11 +51,11 @@ writes `.github/workflows/first-sync.yml` at the root of the repository. It runs
 | Event | What it does |
 |---|---|
 | `schedule`, hourly | brings the site's edits back as the sync pull request |
-| `repository_dispatch` of type `first-content-changed` | the same, as soon as the site reports a saved record |
+| `repository_dispatch` of type `first-content-changed` | the same, on demand: anything that can call GitHub's API can send one to start a run |
 | `push` to the default branch that changes a file below a synced folder | sends those files to the site; site edits made meanwhile come back as the pull request |
 | `workflow_dispatch` | a run by hand, from the Actions tab |
 
-Its `paths` are the folders your kinds sync. When they change, `first check` says the workflow is out of date and `first init` writes it again. Delete its first line to make it yours; `first init` then leaves it alone.
+Its `paths` are the folders your kinds sync (only branch pushes count; tags start no run). When they change, `first check` says the workflow is out of date and `first init` writes it again. Its first line names the project it was written for: a repository has one sync workflow, so another project in the same repository leaves it alone, and its `first init --github` refuses rather than replace it. Delete that line to make the file yours; `first init` then leaves it alone too. `--github` needs the project in a git repository, since the file goes at the repository's root.
 
 It names its settings and never holds a value. Set them under **Settings → Secrets and variables → Actions**:
 
@@ -64,7 +64,7 @@ It names its settings and never holds a value. Set them under **Settings → Sec
 | `FIRST_SITE_URL` | variable | the site's URL |
 | `FIRST_APP_PASSWORD` | secret | `user:application-password` for sync ([permissions](#permissions)); or `FIRST_TOKEN` |
 
-The workflow grants its own `GITHUB_TOKEN` `contents: write` and `pull-requests: write`. In **Settings → Actions → General**, *Allow GitHub Actions to create and approve pull requests* must be on for it to open the pull request. Runs never overlap: one waits for the other (`concurrency: first-sync`). The actions it uses are pinned by commit.
+The workflow grants its own `GITHUB_TOKEN` `contents: write` and `pull-requests: write`. In **Settings → Actions → General**, *Allow GitHub Actions to create and approve pull requests* must be on for it to open the pull request. Runs never overlap (`concurrency: first-sync`): a run waits for the one in progress, and a newer waiting run replaces an older one, which loses nothing because each run syncs the latest state. The actions it uses are pinned by commit.
 
 ## Conflicts
 

@@ -399,15 +399,24 @@ fn pending(project: &Path, described: &Value, github: bool) -> Result<Vec<(PathB
         .flatten()
         .filter_map(|(_, kind)| kind["sync"]["dir"].as_str().map(String::from))
         .collect();
-    let (rel, text) = super::init_github::workflow(project, &dirs);
-    let current = read(&rel)?;
-    if super::init_github::managed(current.as_deref(), github) && current.as_deref() != Some(text.as_str()) {
-        out.push((rel, text));
+    match super::init_github::workflow(project, &dirs) {
+        None if github => {
+            return Err(
+                "first init --github writes .github/workflows/ at the root of the project's git repository, and this project is in none; run git init (or clone it) first".into(),
+            );
+        }
+        None => {}
+        Some((rel, text)) => match super::init_github::plan(read(&rel)?.as_deref(), &text, github) {
+            super::init_github::Plan::Write => out.push((rel, text)),
+            super::init_github::Plan::Keep => {}
+            super::init_github::Plan::Refuse(why) => return Err(why),
+        },
     }
     Ok(out)
 }
 
-/// Writes `rel` (a path `first init` owns) below `project`, and nowhere else.
+/// Writes `rel` (a path `first init` owns) below `project`, or for the sync workflow below the
+/// project's repository root, and nowhere else.
 ///
 /// - A directory on the way that is a symbolic link is refused: `.claude` pointing elsewhere would
 ///   put the skills outside the project.
@@ -497,9 +506,19 @@ pub(super) fn stale_hint(project: &Path, schema: &crate::schema::Schema) -> Opti
         stale.push("AGENTS.md and the agent skills no longer match this project or this compiler");
     }
     if pending.iter().any(workflow) {
-        stale.push(".github/workflows/first-sync.yml no longer matches this project's synced folders");
+        stale.push(".github/workflows/first-sync.yml is out of date");
     }
-    (!stale.is_empty()).then(|| format!("{}; run first init to update them", stale.join(", and ")))
+    (!stale.is_empty()).then(|| {
+        format!(
+            "{}; run first init to update {}",
+            stale.join(", and "),
+            if stale.len() == 1 && pending.iter().all(workflow) {
+                "it"
+            } else {
+                "them"
+            }
+        )
+    })
 }
 
 pub(crate) fn cli(args: &[String]) -> ExitCode {
@@ -547,7 +566,19 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
     };
     if check {
         if pending.is_empty() {
-            println!("ok: AGENTS.md, .mcp.json and the agent skills match this project");
+            println!(
+                "ok: AGENTS.md, .mcp.json{} the agent skills{} match this project",
+                if super::init_github::written(&project) {
+                    ","
+                } else {
+                    " and"
+                },
+                if super::init_github::written(&project) {
+                    " and the sync workflow"
+                } else {
+                    ""
+                }
+            );
             return ExitCode::SUCCESS;
         }
         for (path, _) in &pending {
@@ -569,7 +600,12 @@ pub(crate) fn cli(args: &[String]) -> ExitCode {
         println!("wrote {}", path.display());
     }
     if pending.is_empty() {
-        println!("AGENTS.md, .mcp.json and the agent skills are up to date");
+        let workflow = super::init_github::written(&project);
+        println!(
+            "AGENTS.md, .mcp.json{} the agent skills{} are up to date",
+            if workflow { "," } else { " and" },
+            if workflow { " and the sync workflow" } else { "" }
+        );
     }
     // Claude Code reads AGENTS.md only when the project has no CLAUDE.md of its own.
     if std::fs::read_to_string(project.join("CLAUDE.md")).is_ok_and(|text| !text.contains("AGENTS.md")) {

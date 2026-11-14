@@ -276,7 +276,9 @@ final class Schema
 
         return Extensions::describe(($runtimeSchema === null ? [] : [
             // The schema below is the build's plus this version of the site's own changes (spec §2.10).
-            'runtimeSchema' => ['version' => $runtimeSchema['active']['version'] ?? 0, 'hash' => $runtimeSchema['active']['hash'] ?? '', 'build' => ['version' => $runtimeSchema['version'] ?? 0, 'hash' => $runtimeSchema['hash'] ?? '']],
+            'runtimeSchema' => ['version' => $runtimeSchema['active']['version'] ?? 0, 'hash' => $runtimeSchema['active']['hash'] ?? '', 'build' => ['version' => $runtimeSchema['version'] ?? 0, 'hash' => $runtimeSchema['hash'] ?? '']]
+                // Why the site serves less than its newest version: a broken chain or an option written outside apply.
+                + (isset($runtimeSchema['active']['problem']) ? ['problem' => $runtimeSchema['active']['problem']] : []),
         ]) + [
             'name' => $this->name(),
             'runtime' => ['series' => $this->runtime()],

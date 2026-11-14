@@ -492,11 +492,9 @@ pub(crate) struct Compiled {
     pub sealed: Option<Vec<String>>,
 }
 
-/// `compile`, optionally without the schema-independent runtime plugins (a build store keeps
-/// those once per revision).
-#[cfg(feature = "host")]
 /// Each synced kind's files as seed records (`wp first seed --records`), as a publish seeds a Space:
 /// one `{collection, format, records}` document per kind, by kind name, parents before children.
+#[cfg(feature = "host")]
 pub(crate) fn seed_records(
     fs: &dyn Fs,
     root: &Path,
@@ -632,6 +630,9 @@ pub(crate) fn seed_records(
     Ok(seeds)
 }
 
+/// `compile`, optionally without the schema-independent runtime plugins (a build store keeps
+/// those once per revision).
+#[cfg(feature = "host")]
 pub(crate) fn compile_tree(
     source: &Path,
     output: &Path,

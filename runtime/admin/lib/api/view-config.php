@@ -106,10 +106,12 @@ function first_admin_compose_core_view_config( $config, $kind, $name ) {
 	}
 	$tabs = array();
 	foreach ( (array) ( $config['tabs'] ?? array() ) as $tab ) {
+		// The tab's other keys (a `default_view`, say) ride along and come back unchanged.
 		$tabs[] = array(
 			'slug'  => $tab['slug'] ?? '',
 			'title' => $tab['label'] ?? ( $tab['slug'] ?? '' ),
 			'view'  => array( 'filters' => $tab['filters'] ?? array() ),
+			'first' => array_diff_key( (array) $tab, array( 'slug' => 1, 'label' => 1, 'filters' => 1 ) ),
 		);
 	}
 	$data = new WP_View_Config_Data(
@@ -126,10 +128,15 @@ function first_admin_compose_core_view_config( $config, $kind, $name ) {
 	$config['default_layouts'] = $back( $core['default_layouts'] ?? array() );
 	$config['edit_form']       = $back( $core['form'] ?? array() );
 	$config['tabs']            = array_map(
-		static fn ( $item ) => array(
-			'slug'    => $item['slug'] ?? '',
-			'label'   => $item['title'] ?? ( $item['slug'] ?? '' ),
-			'filters' => $item['view']['filters'] ?? array(),
+		static fn ( $item ) => array_merge(
+			(array) ( $item['first'] ?? array() ),
+			// A view another plugin added through core keeps its own `view` (type, layout) beside it.
+			isset( $item['first'] ) ? array() : array( 'view' => $item['view'] ?? array() ),
+			array(
+				'slug'    => $item['slug'] ?? '',
+				'label'   => $item['title'] ?? ( $item['slug'] ?? '' ),
+				'filters' => $item['view']['filters'] ?? array(),
+			)
 		),
 		array_values( (array) ( $core['view_list'] ?? array() ) )
 	);

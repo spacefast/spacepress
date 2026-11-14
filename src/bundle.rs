@@ -490,6 +490,8 @@ pub(crate) struct Compiled {
     pub admin: bool,
     /// `sealed: true`: the plugin slugs a host lets load, First's own and the platform's.
     pub sealed: Option<Vec<String>>,
+    /// The names of the jobs the app declares, sorted.
+    pub jobs: Vec<String>,
 }
 
 /// `compile`, optionally without the schema-independent runtime plugins (a build store keeps
@@ -766,6 +768,7 @@ pub(crate) fn compile_tree(
         serde_json::to_vec(&built.snapshot).map_err(|e| failure(e.to_string()))?,
     )
     .map_err(io)?;
+    std::fs::write(output.join(crate::storage::FILE), crate::storage::bytes(&built.schema)).map_err(io)?;
     crate::emit::emit_generated(assets, &migrations, &output.join("plugins"), &built, runtime).map_err(io)?;
     let client = output.join("client");
     for (name, bytes) in &built.client_files {
@@ -864,6 +867,11 @@ pub(crate) fn compile_tree(
         identity: built.schema.collections.values().any(|c| c.auth),
         admin: built.schema.admin,
         sealed,
+        jobs: {
+            let mut jobs: Vec<String> = built.schema.jobs.keys().cloned().collect();
+            jobs.sort();
+            jobs
+        },
         name: built.schema.name,
     })
 }

@@ -184,6 +184,48 @@ final class Runtime
         return self::$plugin->initialize($drops);
     }
 
+    /**
+     * What {@see initialize()} would run on this site for the mounted managed build, computed without
+     * writing anything: the shared system steps when the site recorded another set, the stored-name
+     * upgrade from before the rename, the identity schema, the app's migrations and the runtime-schema
+     * comparison. Refusals (platform, schema check with `$drops`, runtime schema) are listed, all at
+     * once; nothing is thrown for them.
+     *
+     * @param array<string, int> $drops
+     * @return array{platform: list<string>, legacyNames: bool, systemTables: ?array{from: mixed, to: string, steps: array<string, list<string>>}, identitySchema: ?array{from: int, to: int}, migrations: list<array>, runtimeSchema: ?array, refusals: list<array>}
+     */
+    public static function inspect(array $drops = []): array
+    {
+        if (!self::$managed || self::$plugin === null) {
+            throw new \LogicException('Mount a managed app before inspecting it');
+        }
+        global $wpdb;
+        // Read past the object cache: another process may have written since this request started.
+        $option = static function (string $name) use ($wpdb): mixed {
+            $value = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $name));
+
+            return $value === null ? null : maybe_unserialize($value);
+        };
+        $platform = Platform::problems(self::$plugin->schema->locales() !== null);
+        $recorded = $option('first_runtime_tables');
+        $identity = null;
+        if (class_exists(\First\Identity\Schema::class)) {
+            $from = (int) ($option('first_identity_schema_version') ?? 0);
+            $identity = $from < \First\Identity\Schema::VERSION ? ['from' => $from, 'to' => \First\Identity\Schema::VERSION] : null;
+        }
+        $app = self::$plugin->inspect($drops);
+
+        return [
+            'platform' => $platform,
+            'legacyNames' => ZeroNames::pending(),
+            'systemTables' => $recorded === self::tablesVersion() ? null : ['from' => $recorded, 'to' => self::tablesVersion(), 'steps' => \First\SystemTables::plan()],
+            'identitySchema' => $identity,
+            'migrations' => $app['migrations'],
+            'runtimeSchema' => $app['runtimeSchema'],
+            'refusals' => array_merge(array_map(static fn (string $p): array => ['code' => 'platform', 'message' => $p], $platform), $app['refusals']),
+        ];
+    }
+
     public static function activate(): void
     {
         $problems = Platform::problems();

@@ -7,9 +7,9 @@
 	gap: 20px;
 	article {
 		padding: 20px;
-		border: 1px solid #ddd;
-		border-radius: 8px;
-		background: #fff;
+		border: 1px solid var(--wpds-color-stroke-surface-neutral, #ddd);
+		border-radius: var(--wpds-border-radius-lg, 8px);
+		background: var(--wpds-color-background-surface-neutral-strong, #fff);
 	}
 	h2 {
 		margin-top: 0;
@@ -26,7 +26,7 @@
 	margin-bottom: 24px;
 	fieldset {
 		min-width: 0;
-		border: 1px solid #ddd;
+		border: 1px solid var(--wpds-color-stroke-surface-neutral, #ddd);
 		border-radius: 6px;
 		padding: 16px;
 	}
@@ -36,7 +36,7 @@
 	}
 }
 .first-schema-repeat {
-	border-bottom: 1px solid #ddd;
+	border-bottom: 1px solid var(--wpds-color-stroke-surface-neutral, #ddd);
 	padding: 12px 0;
 	margin-bottom: 16px;
 }
@@ -58,7 +58,7 @@
 	margin-bottom: 24px;
 }
 .first-schema-caption-form {
-	border-top: 1px solid #ddd;
+	border-top: 1px solid var(--wpds-color-stroke-surface-neutral, #ddd);
 	margin-top: 32px;
 	padding-top: 24px;
 }

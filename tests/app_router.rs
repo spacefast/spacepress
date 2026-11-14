@@ -1222,6 +1222,8 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     assert_eq!(seen["purge all, no files"], true);
     // A render that began before a write named its path is not written.
     assert_eq!(seen["race"], json!([true, false, false]));
+    // `Accept: text/markdown` on the HTML URL is left to the Markdown negotiation, never the HTML file.
+    assert_eq!(seen["accept markdown"], json!([false, true]));
 }
 
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.

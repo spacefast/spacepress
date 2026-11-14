@@ -493,6 +493,11 @@ final class Prebuilt
         if (!in_array($_SERVER['REQUEST_METHOD'] ?? 'GET', ['GET', 'HEAD'], true) || (string) ($_SERVER['QUERY_STRING'] ?? '') !== '' || is_admin()) {
             return;
         }
+        // `Accept: text/markdown` on an HTML URL is the Markdown negotiation's (MarkdownTwins::negotiate,
+        // rendering.md §5): an HTML file would answer it with the wrong representation.
+        if (str_contains(strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? '')), 'text/markdown')) {
+            return;
+        }
         foreach (array_keys($_COOKIE) as $name) {
             if (preg_match('/^(wordpress_logged_in_|wordpress_sec_|wp-postpass_|comment_author_|wp_lang$|zi_session|__Host-zi_session)/', (string) $name) === 1) {
                 return;

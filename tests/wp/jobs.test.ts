@@ -1,4 +1,4 @@
-// Feature 3 on real WordPress (§6.1): a hook's enqueue reaches Action Scheduler only after commit,
+// Feature 3 on real WordPress (§6.1): a hook's enqueue and its Action Scheduler action commit together,
 // Action Scheduler runs the compiled handler, failures retry with backoff until dead, and once()
 // plus Idempotency-Key replay instead of re-running.
 import { test } from "node:test";
@@ -31,7 +31,6 @@ test("a hook's enqueue becomes an Action Scheduler action, and AS runs the handl
   assert.ok(id, "the hook enqueued a job");
   assert.equal(jobRow(id).state, "pending");
   assert.deepEqual(actions(id), ["pending"], "one pending AS action carries the job id");
-  assert.equal(sql("SELECT COUNT(*) AS n FROM wp_first__outbox")[0].n, "0", "the outbox drained after commit");
 
   runQueue();
   assert.deepEqual({ state: jobRow(id).state, attempts: jobRow(id).attempts }, { state: "done", attempts: "1" });
@@ -49,13 +48,21 @@ test("an action's nested JSON reaches the queued handler byte for byte", async (
   assert.equal(queued.sent, '{"0":2,"1":1,"empty":{}}');
 });
 
-test("a rolled-back request leaves no job, outbox row or AS action", async () => {
+test("a rolled-back request leaves no job or AS action", async () => {
   const before = sql("SELECT COUNT(*) AS n FROM wp_actionscheduler_actions WHERE hook = 'first_job'")[0].n;
   await problem("POST", "/job_notes", { as: "editor", body: { title: "Explode" } }, { status: 500, code: "boom", pointer: undefined });
   assert.deepEqual(sql("SELECT id FROM wp_first_job_notes WHERE title = 'Explode'"), []);
-  assert.deepEqual(sql("SELECT id FROM wp_first__outbox"), []);
   assert.deepEqual(sql("SELECT id FROM wp_first__jobs WHERE JSON_VALUE(input, '$.noteId') NOT IN (SELECT id FROM wp_first_job_notes)"), []);
   assert.equal(sql("SELECT COUNT(*) AS n FROM wp_actionscheduler_actions WHERE hook = 'first_job'")[0].n, before);
+});
+
+// The same cases tests/php/jobs_test.php runs on SQLite (tests/php/jobs_transaction_cases.php), here on MariaDB:
+// rollback, commit, a rolled-back group creation under a persistent-style object cache, a crash after commit.
+test("on MariaDB, a job and its Action Scheduler action commit or roll back together", () => {
+  const cases = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../php/jobs_transaction_cases.php"), "utf8").replace(/^<\?php\s*declare\(strict_types=1\);/, "");
+  const results: [string, unknown, unknown][] = JSON.parse(wp("eval", `${cases}\necho wp_json_encode(firstJobsTransactionCases('stamp', ['noteId' => 0]));`));
+  assert.equal(results.length, 5);
+  for (const [label, actual, expected] of results) assert.deepEqual(actual, expected, label);
 });
 
 test("a failing job is retried through Action Scheduler with backoff, then dead after `retries`", async () => {

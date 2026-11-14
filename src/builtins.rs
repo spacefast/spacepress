@@ -86,15 +86,15 @@ pub const ERROR_CONSTRUCTORS: &[&str] = &["Error", "TypeError", "RangeError", "S
 #[rustfmt::skip]
 pub const CONTRACTS: &[(&str, &[&str], Contract)] = &[
     ("first", &["collection", "table", "userProjection"], overload("fields: object, options?: object", arity(1, 2), None, None)),
-    ("first", &["global"], overload("name: string, fields: object, options?: object", arity(2, 3), None, None)),
+    ("first", &["global"], overload("fields: object, options?: object", arity(1, 3), None, None)),
     ("first", &["defineRelations"], overload("schema: object, relations: function", arity(2, 2), None, None)),
     ("first", &["ref"], overload("kind: Collection | () => Collection", arity(1, 1), None, None)),
     ("first", &["defineConfig", "action", "job", "route", "env"], overload("one configuration or environment name", arity(1, 1), None, None)),
-    ("first", &["files"], overload("name: string, options: object", arity(2, 2), None, None)),
+    ("first", &["files"], overload("options: object", arity(1, 2), None, None)),
     ("first", &["relation"], overload("options?: object", arity(0, 1), None, None)),
     ("field", &["text", "slug", "media"], overload("options?: object", arity(0, 1), None, None)),
     ("field", &["integer", "number", "boolean", "date", "timestamp", "json", "email", "url", "richText"], overload("no arguments", arity(0, 0), None, None)),
-    ("field", &["file"], overload("options: object", arity(1, 1), None, None)),
+    ("field", &["file"], overload("bucket: FileBucket", arity(1, 1), None, None)),
     ("field", &["select"], overload("options: string[]", arity(1, 1), None, None)),
     ("field", &["group", "repeater", "blocks"], overload("fields: object", arity(1, 1), None, None)),
     ("column", &["optional", "localized", "many", "unique", "defaultNow"], overload("no runtime arguments", arity(0, 0), None, None)),

@@ -114,6 +114,7 @@ test("the facade denies what core denies", async () => {
 
 test("the users kind: rows as First reads them, writes through First's rules, creates and permanent deletes", async () => {
   const sub = harness.users.subscriber.id;
+  first("update", "members", JSON.stringify({ id: sub }), JSON.stringify({ notes: { private: "admin only" } }));
   // A member reads their own row whole (email, role) without list_users; another's is not theirs.
   const own = await f("GET", `/members/${sub}`, { as: "subscriber" });
   const trusted = first("find", "members", JSON.stringify({ where: { id: sub } }))[0];

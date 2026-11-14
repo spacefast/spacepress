@@ -54,7 +54,7 @@ final class Bearer
 
     private static function appPassword(): bool
     {
-        return (bool) ($GLOBALS["wp_rest_application_password_status"] ?? false) && !is_wp_error($GLOBALS["wp_rest_application_password_status"]);
+        return Plugin::applicationPassword() instanceof \WP_User;
     }
 
     /** rest_authentication_errors: a failed Bearer becomes an error unless a consumer handles it. */

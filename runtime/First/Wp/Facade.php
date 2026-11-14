@@ -572,29 +572,42 @@ final class Facade
         return $data;
     }
 
-    /** RFC 9457 from core's `WP_Error`: First's own codes keep their name, core's keep theirs. */
+    /**
+     * RFC 9457 from core's `WP_Error`: First's own codes keep their name, and core's reach clients as
+     * First's. The codes core ships today map by name, as they always have. A `rest_*` code this list
+     * doesn't name (one a core release adds or renames) maps by the status core gives it, so it still
+     * reaches clients as First's: 401 or 403 is `unauthenticated` or `forbidden`, 404 `not_found`, 405
+     * `method_not_allowed`, 400 `invalid_input`. Any other code passes through.
+     */
     private static function fromWpError(\WP_Error $error, int $status): HttpError
     {
         $data = $error->get_error_data();
-        $code = (string) $error->get_error_code();
-        $code = str_starts_with($code, 'first_') ? substr($code, strlen('first_')) : $code;
+        $status = is_array($data) && is_int($data['status'] ?? null) ? $data['status'] : $status;
+        $wp = (string) $error->get_error_code();
+        $code = str_starts_with($wp, 'first_') ? substr($wp, strlen('first_')) : $wp;
+        $denied = get_current_user_id() === 0 ? 'unauthenticated' : 'forbidden';
         $code = match ($code) {
             'rest_forbidden', 'rest_cannot_create', 'rest_cannot_edit', 'rest_cannot_delete', 'rest_cannot_read', 'rest_forbidden_context',
             'rest_cannot_create_user', 'rest_user_cannot_delete', 'rest_user_cannot_view', 'rest_cannot_edit_roles',
-            'rest_ability_cannot_execute' => get_current_user_id() === 0 ? 'unauthenticated' : 'forbidden',
+            'rest_ability_cannot_execute' => $denied,
             'rest_post_invalid_id', 'rest_user_invalid_id', 'rest_no_route', 'rest_ability_not_found', 'rest_revision_parent_id_mismatch',
             'rest_term_invalid', 'rest_comment_invalid_id', 'rest_menu_location_invalid' => 'not_found',
             'rest_invalid_param', 'rest_missing_callback_param' => 'invalid_input',
             'rest_no_route_method', 'rest_ability_invalid_method' => 'method_not_allowed',
-            default => $code,
+            default => !str_starts_with($code, 'rest_') ? $code : match ($status) {
+                401, 403 => $denied,
+                404 => 'not_found',
+                405 => 'method_not_allowed',
+                400 => 'invalid_input',
+                default => $code,
+            },
         };
-        $status = is_array($data) && is_int($data['status'] ?? null) ? $data['status'] : $status;
         if ($code === 'unauthenticated') {
             $status = 401;
         }
         $pointer = is_array($data) && is_string($data['pointer'] ?? null) ? $data['pointer'] : null;
         // Core's role check refuses the `roles` the facade sent for First's `role`.
-        $pointer ??= match ((string) $error->get_error_code()) {
+        $pointer ??= match ($wp) {
             'rest_cannot_edit_roles', 'rest_user_invalid_role' => '/role',
             default => null,
         };

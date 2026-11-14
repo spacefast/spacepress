@@ -41,6 +41,8 @@ final class Runtime
         // the runtime loads, because a plugin (Polylang in its REST context) may resolve the current user
         // before the app's own plugin has booted.
         add_filter('application_password_is_api_request', static fn (bool $api): bool => $api || Facade::path() !== null);
+        RouteRequest::register();
+        AgentScope::trackCookie();
         // A scoped application password signs in only where an active app enforces its scope.
         add_action('wp_authenticate_application_password_errors', [AgentScope::class, 'authenticating'], 10, 3);
         add_filter('rest_authentication_errors', [AgentScope::class, 'unenforced'], 95);

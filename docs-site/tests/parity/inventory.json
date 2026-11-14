@@ -57,6 +57,55 @@
 			"next": "/publishing/spacefast",
 			"sidebar": true
 		},
+		"/changelog/astro": {
+			"title": "@first/astro - First",
+			"h1": "@first/astro",
+			"description": "Changes to @first/astro, from its CHANGELOG.md.",
+			"canonical": "/changelog/astro",
+			"markdown": "/changelog/astro.md",
+			"ogImage": "/og/changelog/astro.png",
+			"tab": "/",
+			"head": [
+				{
+					"rel": "ai-catalog",
+					"href": "/.well-known/ai-catalog.json",
+					"type": "application/ai-catalog+json"
+				},
+				{
+					"rel": "alternate",
+					"href": "/changelog/astro.md",
+					"type": "text/markdown"
+				},
+				{
+					"rel": "ard",
+					"href": "/.well-known/ard.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/agent-readability.json",
+					"type": "application/json"
+				},
+				{
+					"rel": "describedby",
+					"href": "/llms.txt",
+					"type": "text/plain"
+				}
+			],
+			"social": {
+				"title": "@first/astro - First",
+				"card": "summary_large_image"
+			},
+			"stops": [],
+			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/changelog/astro.mdx",
+			"toc": [
+				"unreleased",
+				"added"
+			],
+			"prev": "/changelog",
+			"next": "/changelog/blocks",
+			"sidebar": true
+		},
 		"/changelog/blocks": {
 			"title": "@spacefast/first-blocks - First",
 			"h1": "@spacefast/first-blocks",
@@ -102,7 +151,7 @@
 				"unreleased",
 				"added"
 			],
-			"prev": "/changelog",
+			"prev": "/changelog/astro",
 			"next": null,
 			"sidebar": true
 		},
@@ -149,7 +198,7 @@
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/changelog/index.mdx",
 			"toc": [],
 			"prev": "/publishing/content-in-git",
-			"next": "/changelog/blocks",
+			"next": "/changelog/astro",
 			"sidebar": true
 		},
 		"/compiler": {
@@ -752,7 +801,7 @@
 		"/publishing/spacefast": {
 			"title": "Publish on Spacefast - First",
 			"h1": "Publish on Spacefast",
-			"description": "Put a First app online on Spacefast with sf publish.",
+			"description": "Putting a First app online on Spacefast with sf publish. Not available yet; no released CLI publishes a First app.",
 			"canonical": "/publishing/spacefast",
 			"markdown": "/publishing/spacefast.md",
 			"ogImage": "/og/publishing/spacefast.png",
@@ -1129,7 +1178,7 @@
 			"toc": [
 				"compiles-50",
 				"compiles-and-differs-from-javascript-2",
-				"refused-92"
+				"refused-93"
 			],
 			"prev": "/reference/cli",
 			"next": "/reference/diagnostics",
@@ -6273,6 +6322,7 @@
 		"/.well-known/agent-skills/first/SKILL.md",
 		"/agents.md",
 		"/changelog.md",
+		"/changelog/astro.md",
 		"/changelog/blocks.md",
 		"/compiler.md",
 		"/examples.md",
@@ -6385,6 +6435,7 @@
 	"mdx": [
 		"/agents.mdx",
 		"/changelog.mdx",
+		"/changelog/astro.mdx",
 		"/changelog/blocks.mdx",
 		"/compiler.mdx",
 		"/examples.mdx",
@@ -6503,6 +6554,7 @@
 		"/api/docs/pages.json",
 		"/api/docs/pages/agents.json",
 		"/api/docs/pages/changelog.json",
+		"/api/docs/pages/changelog/astro.json",
 		"/api/docs/pages/changelog/blocks.json",
 		"/api/docs/pages/compiler.json",
 		"/api/docs/pages/examples.json",
@@ -6625,6 +6677,7 @@
 		"/logo.svg",
 		"/og/agents.png",
 		"/og/changelog.png",
+		"/og/changelog/astro.png",
 		"/og/changelog/blocks.png",
 		"/og/compiler.png",
 		"/og/examples.png",
@@ -6742,6 +6795,7 @@
 		"/",
 		"/agents",
 		"/changelog",
+		"/changelog/astro",
 		"/changelog/blocks",
 		"/compiler",
 		"/examples",
@@ -6861,6 +6915,7 @@
 		"/publishing/other-platforms",
 		"/publishing/content-in-git",
 		"/changelog",
+		"/changelog/astro",
 		"/changelog/blocks",
 		"/examples",
 		"/examples/blog",

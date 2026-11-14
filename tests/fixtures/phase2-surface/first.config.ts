@@ -90,9 +90,11 @@ function maybeDefault() { const { words = ["a"] } = { words: undefined }; words.
 function maybeFunction() { const predicates = [() => true]; predicates.unshift(() => false); const flag = predicates[0]!(); switch (flag) { case true: return true; } }
 const audit = table({ note: text() }, { agents: false });
 const authors = collection({ name: text(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }).optional(), avatar: media().access({ read: "authenticated" }).optional() }, { title: "name", uid: true });
+export const decks = files({ accept: ["application/pdf", "image/*"], maxBytes: 20000000, access: { read: "owner", create: ctx => ctx.user !== null, delete: "owner" } });
+
 const posts = collection({
   title: text().localized(), content: richText().localized().optional(), slug: slug({ source: "title" }).optional(),
-  authorId: ref(authors).optional().onDelete("restrict"), deck: file({ bucket: "decks" }).optional(),
+  authorId: ref(authors).optional().onDelete("restrict"), deck: file(decks).optional(),
   seo: group({ kind: select(["a", "b"]).optional(), enabled: boolean().optional(), label: text().access({ read: visibleField }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }).optional() }).showIf({ status: "published" }).optional(),
   items: repeater({ enabled: boolean().optional(), label: text().showIf({ enabled: true }).optional() }).optional(),
   sections: blocks({ hero: { kind: text().optional(), label: text().access({ update: ctx => { switch (ctx.op) { case "read": throw new Error("not an update"); case "create": return false; case "update": return visibleRole(ctx); } } }).showIf({ kind: { ne: "hidden" } }).optional() } }).optional(),
@@ -107,8 +109,8 @@ export default defineConfig({
   name: "phase2", collections, tables, users,
   uploads: { backend: "s3", bucket: env("UPLOAD_BUCKET"), region: "us-east-1", endpoint: env("UPLOAD_ENDPOINT"), pathStyle: true, prefix: "phase2", credentials: { accessKeyId: env("UPLOAD_KEY"), secretAccessKey: env("UPLOAD_SECRET") } },
   locales: { default: "en", all: ["en", "de"] }, media: { sizes: { thumb: { width: 300, height: 300, fit: "cover" }, wide: { width: 1600 } } },
-  files: { decks: files("decks", { accept: ["application/pdf", "image/*"], maxBytes: 20000000, access: { read: "owner", create: ctx => ctx.user !== null, delete: "owner" } }) },
-  globals: { settings: global("settings", { title: text().default("Hello").optional() }, { agents: false }) },
+  files: { decks },
+  globals: { settings: global({ title: text().default("Hello").optional() }, { agents: false }) },
   jobs: { sendWelcome: job({ input: { email: email(), payload: json<{ message: string }>(), data: group({ label: text().default("welcome").optional(), payload: json<{ suffix: string }>().optional() }).optional() }, retries: 5, agents: true, handler: async (input, ctx: JobCtx) => { let choose = yes; choose = no; if (visible(input.email) && !(await choose())) { await db.insert(audit).values({ note: input.payload.message + ":" + ctx.jobId + ":" + ctx.attempt + ":" + (input.data?.payload?.suffix ?? "") }); } } }) },
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted", "*"] }, { url: "https://example.com/hook", secret: env("OTHER_SECRET"), events: ["members.created"] }],
   actions: {

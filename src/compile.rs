@@ -7765,6 +7765,64 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
+    /// `f?.(args)` and `o.m?.(args)` in imported JavaScript: the callee is read once (with its
+    /// receiver bound for a member), and when it is null or undefined the call is skipped, its
+    /// arguments are not evaluated, and the value is undefined. Typed code keeps the refusal.
+    fn optional_call(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Out> {
+        if !self.javascript_module(self.fx.as_ref().expect("fn").module) {
+            return err_help(
+                span,
+                "optional calls (`f?.()`) aren't supported in TypeScript code yet",
+                "check the function first: `if (f) f(...)`",
+            );
+        }
+        let f = self.tmp_var();
+        let read = match &callee.kind {
+            ExprKind::Member {
+                obj, prop, optional, ..
+            } if !prop.starts_with('#') && !matches!(&obj.kind, ExprKind::Ident(n) if n == "super") => {
+                let recv = self.expr(obj)?;
+                let recv = self.finish_value(recv, obj.span)?;
+                let name = php_str(prop);
+                if *optional {
+                    let r = self.tmp_var();
+                    format!(
+                        "(\\First\\Js::isNullish({r} = {}) ? null : \\First\\Js::optionalMethod({r}, {name}))",
+                        recv.php
+                    )
+                } else {
+                    format!("\\First\\Js::optionalMethod({}, {name})", recv.php)
+                }
+            }
+            ExprKind::Index { obj, index, optional } => {
+                let recv = self.expr(obj)?;
+                let recv = self.finish_value(recv, obj.span)?;
+                let r = self.tmp_var();
+                let key = self.expr(index)?;
+                let key = self.finish_value(key, index.span)?;
+                if *optional {
+                    format!(
+                        "(\\First\\Js::isNullish({r} = {}) ? null : \\First\\Js::optionalMethod({r}, {}))",
+                        recv.php, key.php
+                    )
+                } else {
+                    format!("\\First\\Js::optionalMethod({}, {})", recv.php, key.php)
+                }
+            }
+            _ => {
+                let v = self.expr(callee)?;
+                let v = self.finish_value(v, callee.span)?;
+                let t = self.tmp_var();
+                format!("(\\First\\Js::isNullish({t} = {}) ? null : {t})", v.php)
+            }
+        };
+        let argv = self.javascript_args(args)?;
+        Ok(Out::atom(
+            format!("(({f} = {read}) === null ? \\First\\Js::undefined() : \\First\\Js::dynamicCall({f}, {argv}))"),
+            Ty::Dynamic,
+        ))
+    }
+
     fn call(&mut self, callee: &Expr, args: &[ArrEl], optional: bool, span: Span) -> Result<Out> {
         if let ExprKind::Member { obj, prop, .. } = &callee.kind
             && prop == "call"
@@ -7792,7 +7850,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(out);
         }
         if optional {
-            return err(span, "optional calls (`f?.()`) aren't supported");
+            return self.optional_call(callee, args, span);
         }
         if let Some(out) = self.host_call(callee, args, span)? {
             return Ok(out);

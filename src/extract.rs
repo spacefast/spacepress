@@ -1506,15 +1506,18 @@ fn access_rule(v: &Value, span: Span, owner: &Owner, op: &str, fn_name: String, 
 }
 
 fn global(key: &str, g: &GlobalVal, span: Span, ev: &mut Evaluator<'_>, out: &mut Extracted) -> Result<()> {
-    if g.name != key {
+    // The registry key (the export name) names the global; a 0.3.0 capture's own name must match it.
+    if let Some(named) = g.name.get()
+        && named != key
+    {
         return Err(Diag::new(
             span,
-            format!(
-                "`globals.{key}` holds global(\"{}\"); the key and the name must match",
-                g.name
-            ),
+            format!("`globals.{key}` holds global(\"{named}\"); the key and the name must match"),
         )
         .help(format!("write `{0}: global(\"{0}\", ...)`", key)));
+    }
+    if g.name.set(key.to_string()).is_err() && g.name.get().map(String::as_str) != Some(key) {
+        return Err(Diag::new(span, "a global can only be registered once"));
     }
     if !valid_ident(key) {
         return Err(Diag::new(g.span, format!("\"{key}\" isn't a valid global name")));
@@ -1723,7 +1726,14 @@ fn column(
         .as_ref()
         .map(|v| plain_json(v, b.span_of("showIf"), "showIf"))
         .transpose()?;
-    if let Some(bucket) = &b.bucket
+    let bucket_name = match &b.bucket {
+        None => None,
+        Some(bucket) => Some(bucket.name().map(str::to_string).ok_or_else(|| {
+            Diag::new(b.span, "file() refers to a files() bucket that isn't exported")
+                .help("export it by name: `export const decks = files({ ... })`")
+        })?),
+    };
+    if let Some(bucket) = &bucket_name
         && !out.schema.files.contains_key(bucket)
     {
         return Err(Diag::new(b.span, format!("unknown file bucket {bucket:?}"))
@@ -2038,7 +2048,7 @@ fn column(
         access,
         show_if,
         ui,
-        bucket: b.bucket.clone(),
+        bucket: b.bucket.as_ref().and_then(|r| r.name().map(str::to_string)),
         derived: false,
         hidden: false,
         ts_type: b.ts_type.clone(),
@@ -2917,13 +2927,16 @@ fn phase2_config(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, 
         for (name, value) in object(v, span, "files")? {
             let Value::FileBucket(bucket) = value else {
                 return Err(Diag::new(span, "files entries must use files()")
-                    .help("write files(\"decks\", { accept: [\"application/pdf\"], maxBytes: 20000000 })"));
+                    .help("write `export const decks = files({ accept: [\"application/pdf\"], maxBytes: 20000000 })` and list it as `files: { decks }`"));
             };
             let sp = bucket.span;
-            if name != bucket.name || !valid_ident(&name) || name == "media" {
+            // The export name (the registry key) names the bucket; a 0.3.0 capture's own name must match.
+            let named_differently = bucket.name.get().is_some_and(|n| *n != name);
+            if named_differently || !valid_ident(&name) || name == "media" {
                 return Err(Diag::new(sp, "file bucket name must match its key and cannot be media")
                     .help("use a distinct bucket name, such as decks"));
             }
+            let _ = bucket.name.set(name.clone());
             let o = object(&bucket.options, sp, "files options")?;
             keys(&o, &["accept", "maxBytes", "access"], sp, "files")?;
             let Some(Value::Array(accept)) = o.get("accept") else {

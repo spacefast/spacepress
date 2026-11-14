@@ -34,8 +34,8 @@ or a static Space built by Spacefast's build pipeline).
 
 | Framework | Package | What the user writes |
 |---|---|---|
-| Astro, build time | `@first/astro` | `posts: defineCollection({ loader: firstLoader("posts") })`. Pulls only changed entries (digest plus `meta` cursor), media as CDN URLs. |
-| Astro, live | `@first/astro` | one `defineLiveCollection({ loader: firstLiveLoader() })`; `getZeroEntry("posts", slug)` returns `cacheHint` with tags for `Astro.cache.set` |
+| Astro, build time | `@first/astro` | `posts: defineCollection({ loader: firstLoader("posts") })`. Pulls only changed entries (digest plus `meta` cursor), media as CDN URLs. Built: the cursor is one `_live` token per page of 100 rows ([docs/astro.md](../astro.md)). |
+| Astro, live | `@first/astro` | one `defineLiveCollection({ loader: firstLiveLoader() })`; `getLiveEntry("posts", slug)` returns `cacheHint` with tags for `Astro.cache.set`. Built, with `firstWebhook()` as the receiver. |
 | Next.js 16 | `@first/next` | `firstFetch` tags results with `cacheTag`; `app/api/first/route.ts` re-exports a handler that verifies the webhook and calls `revalidateTag(tag, { expire: 0 })`, and also handles draft mode |
 | TanStack Start | `@first/tanstack` | `postsQuery(params)` returns `queryOptions` usable in loaders and components; a TanStack DB collection on top of the change feed |
 | anything else | `first/client` + `openapi.json` | the typed client or plain REST |

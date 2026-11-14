@@ -392,4 +392,121 @@ $retry = $cli('jobs', 'tick')[1]['data'];
 check('once its backoff has passed, a tick retries it (and counts the failure again)', $retry['failures'] >= 1 && (int) $job($tickId(9))['attempts'] === 2, [$retry, $job($tickId(9))]);
 eq('a limit outside 1..100 is clamped, not refused', $cli('jobs', 'tick', '--limit', '0')[0], 0);
 
+// ---- overlapping ticks run each action and each cron event once --------------------------------------------------
+// A second tick starts while the first has checked an action is pending and is loading it to run: the window
+// in which two runners that don't claim both run the same action (Action Scheduler checks the status, then
+// fetches the action, then runs it). The second tick finds the actions claimed and the cron lock held, and
+// leaves both to the first.
+$wp->exec("UPDATE {prefix}actionscheduler_actions SET `status` = 'canceled' WHERE `status` = 'pending'");
+$ran = [];
+foreach (['one', 'two', 'three'] as $name) {
+    as_schedule_single_action(time() - 10, 'first_test_overlap', ['name' => $name], 'first-tests');
+    add_action('first_test_overlap', static function (string $which) use ($name, &$ran): void {
+        if ($which === $name) {
+            $ran[] = "action $name";
+        }
+    });
+}
+$nested = null;
+$overlap = static function () use (&$nested): void {
+    if ($nested === null) {
+        $nested = false;
+        $nested = \First\Jobs\Tick::run();
+    }
+};
+// Past the status check (`action_scheduler_begin_execute`), the next load of the action starts the second tick.
+$checked = false;
+$beginExecute = static function () use (&$checked): void {
+    $checked = true;
+};
+$loading = static function (string $class) use (&$checked, $overlap): string {
+    if ($checked) {
+        $checked = false;
+        $overlap();
+    }
+    return $class;
+};
+add_action('action_scheduler_begin_execute', $beginExecute);
+add_filter('action_scheduler_stored_action_class', $loading);
+$outer = \First\Jobs\Tick::run();
+remove_action('action_scheduler_begin_execute', $beginExecute);
+remove_filter('action_scheduler_stored_action_class', $loading);
+sort($ran);
+eq('two overlapping ticks run each action once', $ran, ['action one', 'action three', 'action two']);
+check('the tick that holds the claim ran them; the other ran none', $outer['processed'] === 3 && is_array($nested) && $nested['processed'] === 0, [$outer, $nested]);
+eq('no claim is left behind', (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}actionscheduler_actions WHERE `claim_id` <> 0 AND `status` = ?', ['pending']), 0);
+
+$ran = [];
+$nested = null;
+foreach (['first', 'second'] as $name) {
+    wp_schedule_single_event(time() - 10, "first_test_cron_$name");
+    add_action("first_test_cron_$name", static function () use ($name, &$ran, $overlap): void {
+        $ran[] = "event $name";
+        $overlap();
+    });
+}
+$outer = \First\Jobs\Tick::run();
+eq('two overlapping ticks run each WP-Cron event once', $ran, ['event first', 'event second']);
+check('the second tick found core\'s cron lock held and ran no event', $outer['processed'] === 2 && is_array($nested) && $nested['processed'] === 0, [$outer, $nested]);
+eq('the first tick releases the cron lock', get_transient('doing_cron'), false);
+set_transient('doing_cron', sprintf('%.22F', microtime(true)));
+wp_schedule_single_event(time() - 10, 'first_test_cron_first');
+$ran = [];
+$nested = false; // no nested tick this time
+check('while another cron run (wp-cron.php) holds the lock, a tick leaves its events to it', \First\Jobs\Tick::run()['processed'] === 0 && $ran === [], $ran);
+delete_transient('doing_cron');
+eq('once the lock is free, the next tick runs them', [\First\Jobs\Tick::run()['processed'], $ran], [1, ['event first']]);
+
+// Another run changes the database behind this process's options cache (filled when WordPress loaded):
+// a tick reads the lock and the due events from the database, not from that cache.
+global $wpdb;
+wp_schedule_single_event(time() - 10, 'first_test_cron_second');
+get_transient('doing_cron'); // cached as absent
+$wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->options} (option_name, option_value, autoload) VALUES ('_transient_doing_cron', %s, 'off')", sprintf('%.22F', microtime(true))));
+$ran = [];
+check('a lock another run took after this process loaded is respected', \First\Jobs\Tick::run()['processed'] === 0 && $ran === [], $ran);
+$wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = '_transient_doing_cron'");
+wp_cache_delete('alloptions', 'options');
+wp_cache_delete('notoptions', 'options');
+_get_cron_array(); // the event is in this process's cache
+$wpdb->query($wpdb->prepare("UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = 'cron'", serialize(['version' => 2])));
+check('an event another run already ran is not run again from a stale cache', \First\Jobs\Tick::run()['processed'] === 0 && $ran === [], $ran);
+
+// While a tick runs an action, Action Scheduler's fatal-error monitor holds its claim: a fatal error in
+// the action fails it and releases the claim, instead of leaving both for the 5-minute timeouts.
+$monitored = null;
+as_schedule_single_action(time() - 10, 'first_test_monitor', [], 'first-tests');
+add_action('first_test_monitor', static function () use (&$monitored): void {
+    global $wp_filter;
+    $monitored = false;
+    foreach ($wp_filter['shutdown']->callbacks ?? [] as $callbacks) {
+        foreach ($callbacks as $callback) {
+            $monitored = $monitored || (is_array($callback['function']) && $callback['function'][0] instanceof ActionScheduler_FatalErrorMonitor);
+        }
+    }
+});
+\First\Jobs\Tick::run();
+global $wp_filter;
+$left = false;
+foreach ($wp_filter['shutdown']->callbacks ?? [] as $callbacks) {
+    foreach ($callbacks as $callback) {
+        $left = $left || (is_array($callback['function']) && $callback['function'][0] instanceof ActionScheduler_FatalErrorMonitor);
+    }
+}
+eq('the fatal-error monitor watches the claim while an action runs, and is detached after', [$monitored, $left], [true, false]);
+
+// An older delivery of a job that a failed attempt moved later doesn't run it early: the backoff holds.
+$backoffId = $tickId(20);
+$wp->exec('INSERT INTO {prefix}first__jobs (`id`, `job`, `input`, `state`, `attempts`, `runAt`, `createdAt`) VALUES (?, ?, ?, ?, 1, ?, ?)',
+    [$backoffId, 'notify', json_encode(['postId' => $pid, 'note' => 'fail']), 'failed', $at(8 * 86400 + 3600), $at(0)]);
+as_schedule_single_action(time() - 10, \First\Wp\Jobs\ActionSchedulerQueue::HOOK, ['id' => $backoffId], 'first-tests', false);
+\First\Jobs\Tick::run();
+eq('a due delivery for a job whose retry is later leaves the job waiting', [(int) $job($backoffId)['attempts'], $job($backoffId)['state']], [1, 'failed']);
+// Its own delivery (scheduled for its retry time, as Runner::fail does), run early by hand with
+// `wp action-scheduler action run`, runs it.
+as_schedule_single_action((int) floor(\First\Js::date($at(8 * 86400 + 3600)) / 1000), \First\Wp\Jobs\ActionSchedulerQueue::HOOK, ['id' => $backoffId], 'first-tests', false);
+ActionScheduler_QueueRunner::instance()->process_action((int) $wp->scalar('SELECT `action_id` FROM {prefix}actionscheduler_actions WHERE `hook` = ? AND `args` = ? AND `status` = ? ORDER BY `action_id` DESC',
+    [\First\Wp\Jobs\ActionSchedulerQueue::HOOK, json_encode(['id' => $backoffId]), 'pending']), 'by hand');
+eq('the job\'s own delivery, run early by hand, runs it', (int) $job($backoffId)['attempts'], 2);
+
 finish('jobs');

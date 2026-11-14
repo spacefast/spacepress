@@ -1531,8 +1531,16 @@ fn refuses_client_code_outside_the_subset() {
     rejects(
         &dir,
         &[
-            ("first/schema.ts", "import { table, text } from \"first\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n"),
-            ("first/components/A.tsx", &live("const [k, setK] = useState(5); const xs = useLive(\"notes\", { limit: k }); return <b onClick={() => setK(1)}>{xs.loading ? 1 : 0}</b>;")),
+            (
+                "first/schema.ts",
+                "import { table, text } from \"first\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+            ),
+            (
+                "first/components/A.tsx",
+                &live(
+                    "const [k, setK] = useState(5); const xs = useLive(\"notes\", { limit: k }); return <b onClick={() => setK(1)}>{xs.loading ? 1 : 0}</b>;",
+                ),
+            ),
         ],
         "a `useLive` query reads props and literals only",
         "first/components/A.tsx:4:",
@@ -1540,8 +1548,14 @@ fn refuses_client_code_outside_the_subset() {
     rejects(
         &dir,
         &[
-            ("first/schema.ts", "import { table, text } from \"first\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n"),
-            ("first/components/A.tsx", &live("const xs = useLive(\"notes\", { limit: n }, { seed: 1 }); return <b>{xs.loading ? 1 : 0}</b>;")),
+            (
+                "first/schema.ts",
+                "import { table, text } from \"first\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+            ),
+            (
+                "first/components/A.tsx",
+                &live("const xs = useLive(\"notes\", { limit: n }, { seed: 1 }); return <b>{xs.loading ? 1 : 0}</b>;"),
+            ),
         ],
         "`useLive` options are `{ enabled }`",
         "first/components/A.tsx:4:",

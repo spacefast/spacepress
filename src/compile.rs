@@ -952,12 +952,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     },
                     _ => Ty::Unknown,
                 };
-                let Ty::Obj(props) = self.app_props(file) else { unreachable!() };
+                let Ty::Obj(props) = self.app_props(file) else {
+                    unreachable!()
+                };
                 let params = props["params"].0.clone();
                 if !assignable(&ret, &Ty::Array(Box::new(params.clone()))) {
                     return err_help(
                         root.closure.func.span,
-                        format!("staticParams in {file} returns {}, not a list of {}", ret.describe(), params.describe()),
+                        format!(
+                            "staticParams in {file} returns {}, not a list of {}",
+                            ret.describe(),
+                            params.describe()
+                        ),
                         "return one object per page to build, with a string for each `[name]` folder and a string[] for each `[...name]`",
                     );
                 }

@@ -1006,7 +1006,9 @@ fn prerender_and_static_params_reach_the_route_table() {
         "import type { PageProps, StaticParams } from \"first/app\";\nexport const prerender = true;\nexport async function staticParams(): Promise<StaticParams<\"tags/[tag]\">> { return [\"news\", \"notes\"].map((tag) => ({ tag })); }\nexport default function P({ params }: PageProps<\"tags/[tag]\">) { return <p>{params.tag}</p>; }\n",
     );
     build(project);
-    let schema = std::fs::read_to_string(project.join("first/dist/wp-content/plugins/first-app-hybrid/first/app/schema.php")).unwrap();
+    let schema =
+        std::fs::read_to_string(project.join("first/dist/wp-content/plugins/first-app-hybrid/first/app/schema.php"))
+            .unwrap();
     let route = |id: &str| {
         schema
             .lines()

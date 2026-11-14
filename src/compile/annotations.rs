@@ -180,11 +180,18 @@ impl Compiler<'_, '_> {
                 // one entry of that route's params per page to build.
                 if self.first_type_import(module, name).as_deref() == Some("StaticParams") {
                     let file = match args.as_slice() {
-                        [TyAnn::StrLit(id)] => self.schema.app.as_ref().and_then(|app| {
-                            app.routes.iter().find(|r| r.id == *id).and_then(|r| r.page.clone())
-                        }),
+                        [TyAnn::StrLit(id)] => self
+                            .schema
+                            .app
+                            .as_ref()
+                            .and_then(|app| app.routes.iter().find(|r| r.id == *id).and_then(|r| r.page.clone())),
                         [] => None,
-                        _ => return err(*span, "`StaticParams` takes the route's id, e.g. `StaticParams<\"blog/[slug]\">`"),
+                        _ => {
+                            return err(
+                                *span,
+                                "`StaticParams` takes the route's id, e.g. `StaticParams<\"blog/[slug]\">`",
+                            );
+                        }
                     };
                     let params = match file {
                         Some(file) => match self.app_props(&file) {
@@ -192,7 +199,12 @@ impl Compiler<'_, '_> {
                             _ => unreachable!("app props are an object"),
                         },
                         None if args.is_empty() => Ty::Map(Box::new(Ty::Str)),
-                        None => return err(*span, "`StaticParams` names no page route; use the route's id, e.g. `StaticParams<\"blog/[slug]\">`"),
+                        None => {
+                            return err(
+                                *span,
+                                "`StaticParams` names no page route; use the route's id, e.g. `StaticParams<\"blog/[slug]\">`",
+                            );
+                        }
                     };
                     return Ok(Ty::Array(Box::new(params)));
                 }

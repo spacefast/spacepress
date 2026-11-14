@@ -156,8 +156,10 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
                 });
             }
             Some(other) => {
-                return Err(Diag::new(span, format!("`staticParams` is {}, not a function", other.describe()))
-                    .help("write `export async function staticParams() { return [{ slug: \"hello\" }]; }`"));
+                return Err(
+                    Diag::new(span, format!("`staticParams` is {}, not a function", other.describe()))
+                        .help("write `export async function staticParams() { return [{ slug: \"hello\" }]; }`"),
+                );
             }
         }
         for method in app::METHODS {
@@ -248,9 +250,9 @@ pub fn register(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut e
     let output = ext.schema.output;
     let route = |r: &app::Route| AppRoute {
         prerender: r.kind == RouteKind::Page
-            && files
-                .get(&r.file)
-                .map_or(output == Output::Static, |f| f.prerender.unwrap_or(output == Output::Static)),
+            && files.get(&r.file).map_or(output == Output::Static, |f| {
+                f.prerender.unwrap_or(output == Output::Static)
+            }),
         styles: crate::assets::stylesheets(
             program,
             &r.layouts
@@ -319,16 +321,22 @@ fn prebuilt(
         let prerender = file.prerender.unwrap_or(output == Output::Static);
         if file.static_params.is_some() {
             if !dynamic {
-                return Err(Diag::new(at, format!("{path} exports `staticParams`, and its URL has no parameter"))
-                    .help("staticParams lists the values of a `[name]` folder; remove it from a page at one URL"));
+                return Err(Diag::new(
+                    at,
+                    format!("{path} exports `staticParams`, and its URL has no parameter"),
+                )
+                .help("staticParams lists the values of a `[name]` folder; remove it from a page at one URL"));
             }
             if serves_kind {
                 return Err(Diag::new(at, format!("{path} exports `staticParams`, and it serves a kind's `url`"))
                     .help("a page that serves a kind's url is prebuilt for every published item of that kind; remove staticParams"));
             }
             if !prerender {
-                return Err(Diag::new(at, format!("{path} exports `staticParams`, but it isn't prebuilt"))
-                    .help("add `export const prerender = true`, or remove staticParams to render the page per request"));
+                return Err(
+                    Diag::new(at, format!("{path} exports `staticParams`, but it isn't prebuilt")).help(
+                        "add `export const prerender = true`, or remove staticParams to render the page per request",
+                    ),
+                );
             }
         }
         if !prerender {
@@ -349,14 +357,24 @@ fn prebuilt(
                 .help(format!("export `async function staticParams() {{ return [{{ {}: \"…\" }}]; }}` with one entry per page to build, or {fix}", app::params_of(path).first().map(|(n, _)| n.as_str()).unwrap_or("slug"))));
         }
         if file.search.is_some() {
-            return Err(Diag::new(at, format!("{path} is prebuilt ({why}), and it reads `search`"))
-                .help(format!("a prebuilt page is one file with no query string: remove `export const search`, or {fix}")));
+            return Err(
+                Diag::new(at, format!("{path} is prebuilt ({why}), and it reads `search`")).help(format!(
+                    "a prebuilt page is one file with no query string: remove `export const search`, or {fix}"
+                )),
+            );
         }
         if !file.methods.is_empty() && output == Output::Static {
-            return Err(Diag::new(at, format!("{path} has HTTP handlers, and a static site has no server to answer them"))
-                .help("move the handler into an action the page's client component calls, or set `output: \"server\"`"));
+            return Err(Diag::new(
+                at,
+                format!("{path} has HTTP handlers, and a static site has no server to answer them"),
+            )
+            .help("move the handler into an action the page's client component calls, or set `output: \"server\"`"));
         }
-        if let Some(layout) = route.layouts.iter().find(|l| files.get(*l).is_some_and(|f| f.guard.is_some())) {
+        if let Some(layout) = route
+            .layouts
+            .iter()
+            .find(|l| files.get(*l).is_some_and(|f| f.guard.is_some()))
+        {
             return Err(Diag::new(at, format!("{path} is prebuilt ({why}), and {layout} guards it"))
                 .help(format!("a prebuilt page is the same file for every visitor: move the page out of the guarded section, or {fix}")));
         }

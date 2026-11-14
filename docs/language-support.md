@@ -592,6 +592,14 @@ Imported JavaScript compiles crypto.subtle.digest(algorithm, data): SHA-1, SHA-2
 
 [Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
 
+## builtin-instanceof
+
+Status: **supported**.
+
+In imported JavaScript, `value instanceof C` answers from the runtime class when C is RegExp, Map, Set, WeakMap, WeakSet, Date, URL, URLSearchParams, AbortController, AbortSignal, Promise or a stream class. None of these can be subclassed in compiled code, so the check is exact. Evidence: tests/differential/language/builtin-instanceof.ts.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
 ## optional-chains
 
 Status: **supported**.

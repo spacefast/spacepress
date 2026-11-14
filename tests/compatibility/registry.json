@@ -548,6 +548,13 @@
       "guidance": "Imported JavaScript compiles crypto.subtle.digest(algorithm, data): SHA-1, SHA-256, SHA-384 and SHA-512 by name in any case or as { name }, over an ArrayBuffer, typed array or DataView, resolving to an ArrayBuffer; an unknown algorithm rejects with NotSupportedError and non-binary data with TypeError. Evidence: tests/differential/language/subtle-digest.ts."
     },
     {
+      "id": "builtin-instanceof",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "language_constructs_match_node_through_generated_php",
+      "guidance": "In imported JavaScript, `value instanceof C` answers from the runtime class when C is RegExp, Map, Set, WeakMap, WeakSet, Date, URL, URLSearchParams, AbortController, AbortSignal, Promise or a stream class. None of these can be subclassed in compiled code, so the check is exact. Evidence: tests/differential/language/builtin-instanceof.ts."
+    },
+    {
       "id": "optional-chains",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",

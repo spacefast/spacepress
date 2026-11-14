@@ -3245,22 +3245,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let out = match &e.kind {
             ExprKind::Class(_) => return err(span, "class declarations must be at module scope"),
             ExprKind::Instanceof(left, right) => {
-                // Host classes First implements answer `instanceof` from imported JavaScript.
+                // Built-in classes First implements answer `instanceof` from imported JavaScript.
+                // None of them can be subclassed in compiled code, so the PHP class is exact.
                 if let ExprKind::Ident(name) = &right.kind
-                    && matches!(
-                        name.as_str(),
-                        "Promise" | "ReadableStream" | "WritableStream" | "TransformStream"
-                    )
+                    && let Some(class) = builtin_instance_class(name)
                     && self.javascript_module(self.fx.as_ref().expect("fn").module)
                     && matches!(self.resolve(name, right.span)?, Resolved::Global(_))
                 {
                     let left = self.expr(left)?;
-                    let class = match name.as_str() {
-                        "Promise" => "JsPromise",
-                        "ReadableStream" => "JsReadableStream",
-                        "WritableStream" => "JsWritableStream",
-                        _ => "JsTransformStream",
-                    };
                     return Ok(Out::atom(
                         format!("({} instanceof \\First\\{class})", left.php),
                         Ty::Bool,
@@ -11671,6 +11663,27 @@ fn collect_aliases(
 
 fn paren(s: &str) -> String {
     format!("({s})")
+}
+
+/// The runtime class behind a built-in global, for `value instanceof Global` in imported JavaScript.
+fn builtin_instance_class(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "Promise" => "JsPromise",
+        "ReadableStream" => "JsReadableStream",
+        "WritableStream" => "JsWritableStream",
+        "TransformStream" => "JsTransformStream",
+        "RegExp" => "RegExp",
+        "Map" => "JsMap",
+        "Set" => "JsSet",
+        "WeakMap" => "JsWeakMap",
+        "WeakSet" => "JsWeakSet",
+        "Date" => "JsDate",
+        "URL" => "JsUrl",
+        "URLSearchParams" => "JsUrlSearchParams",
+        "AbortController" => "JsAbortController",
+        "AbortSignal" => "JsAbortSignal",
+        _ => return None,
+    })
 }
 
 fn check_optional_chain(e: &Expr) -> Result<bool> {

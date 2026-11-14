@@ -437,6 +437,8 @@ pub struct CollectionVal {
     pub columns: IndexMap<String, Rc<ColBuilder>>,
     pub options: Option<Value>,
     pub span: Span,
+    /// `.index(fields, { unique? })` calls: compound indexes the author declared (spec §2.9).
+    pub indexes: std::cell::RefCell<Vec<(Vec<String>, bool, Span)>>,
 }
 
 impl CollectionVal {

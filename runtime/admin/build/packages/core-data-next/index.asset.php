@@ -1,1 +1,1 @@
-<?php return array('name' => '@first-admin/core-data-next', 'dependencies' => array('wp-api-fetch', 'wp-compose', 'wp-data', 'wp-element', 'wp-url'), 'moduleDependencies' => array('@first-admin/admin-toolkit'), 'version' => 'e69c1dba1776601a96a5');
+<?php return array('name' => '@first-admin/core-data-next', 'dependencies' => array('wp-api-fetch', 'wp-compose', 'wp-data', 'wp-element', 'wp-url'), 'moduleDependencies' => array('@first-admin/admin-toolkit'), 'version' => '90e0ae39d6f380c8015e');

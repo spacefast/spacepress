@@ -635,7 +635,9 @@ curl https://example.test/__first/api/v1/openapi.json
 ### An API reference on the site
 
 `apiReference()` from `"first/content"` gives a page the same document as data it maps over, so an
-app renders its own API reference with its own layout:
+app renders its own API reference with its own layout. `first add api-reference` writes a working
+one into the project, as files you own: `/api`, a page per operation at `/api/<tag>/<operation>`,
+and the component that lists fields. A smaller version of `/api`:
 
 ```tsx
 // first/app/api/page.tsx

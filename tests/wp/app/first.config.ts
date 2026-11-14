@@ -59,7 +59,6 @@ export default defineConfig({
   ...laneConfig,
   uploads,
   name: "blog",
-  admin: true, // the suite proves the opt-in path; examples/blog keeps proving the default
   collections: appCollections, tables: appTables, users: appUsers,
   globals: merge("global", [{ settings }, ...lanes.map((l) => l.globals)]),
   actions: merge("action", [blog.actions, {

@@ -2,7 +2,7 @@
     "version": 3,
     "runtime": "0.3",
     "name": "club",
-    "admin": false,
+    "admin": true,
     "site": {
         "uidPrefix": "zr_"
     },

@@ -3,11 +3,11 @@ Requires at least: 7.1
 Requires PHP: 8.2
 License: GPL-2.0-or-later
 
-Optional admin screens for First apps on WordPress. Emitted by `first build` when the config sets `admin: true`.
+The default admin for First apps on WordPress, at /wp-admin/new/. Emitted by `first build` unless the config sets `admin: false`; classic /wp-admin/ stays available.
 
 == Installation ==
 
-1. Set `admin: true` in your First config and run `first build`.
+1. Run `first build`.
 2. Install the plugins from the generated artifact. Use `first-manifest.json` for
    the required versions and dependency order. Building or declaring a plugin
    downloads and packages it; it does not activate it or complete its setup.
@@ -15,9 +15,10 @@ Optional admin screens for First apps on WordPress. Emitted by `first build` whe
 3. Activate the manifest's dependencies first, then `first-runtime`,
    `first-identity` when included, and `first-app-<name>`. Activate `first-admin`
    after the app. First Admin needs an active First app to register its screens.
-4. Enable a pretty permalink structure in WordPress, then open the site's
-   `/first-admin/` URL and sign in with a WordPress account. For a subdirectory
-   install, include that path, for example `/blog/first-admin/`.
+4. Sign in with a WordPress account: you land on `/wp-admin/new/`. For a
+   subdirectory install, include that path, for example `/blog/wp-admin/new/`.
+   On a server that does not read `.htaccess`, the same page is
+   `/wp-admin/admin.php?page=first-admin`.
 
 == WordPress integration ==
 
@@ -37,6 +38,6 @@ All collections to return to the overview. Classic admin opens the full native
 WordPress admin, including its sidebar and plugin screens. Choose First in the
 WordPress sidebar to return to First Admin. First Admin also includes the native Users, Settings, Plugins, Themes and Design
 routes. Classic admin remains available for every WordPress plugin screen.
-The upstream dashboard is at /first-admin/dashboard; demonstration widgets
+The upstream dashboard is at /wp-admin/new/dashboard; demonstration widgets
 explicitly label their example data. See docs/admin.md for provenance, build
 commands and external-service boundaries.

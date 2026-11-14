@@ -169,6 +169,13 @@ isn't changed either. None of these switches can be turned off in
 | `timezone` | the Space's timezone, when the host sets `FIRST_SITE_TIMEZONE` to an IANA name |
 | `blockTheme` | a block theme always renders: the active theme while it's installed, otherwise First's minimal default (`first-default`) |
 
+With `sealed: true` the only code that runs as a plugin is First's own plugins,
+the platform pins, the `plugins` the config declares and `use` plugin packages:
+other activations are refused, the plugins the app runs on can't be deactivated
+from wp-admin or REST, and unlisted active plugins are reported. See
+[sealed mode](sealed.md) for what that guarantees on a plain WordPress host and
+on a host that mounts the build store.
+
 `GET /__first/api/v1` lists the switches in `runtime.wp.hardening`. The object cache
 is whatever the host's `object-cache.php` drop-in provides. A plugin can't
 install a drop-in, so the host supplies it (on Spacefast, the box image does).
@@ -339,6 +346,7 @@ nullable with a default.
 | `richText()` | LONGTEXT (HTML) | `string` |
 | `media({ accept? })` | BIGINT media id | `number` (a media row with `with: { col: true }`) |
 | `media().many()` | LONGTEXT (JSON ids) | `number[]` |
+| `ref(kind).many()` | a join table (see [Relations](#relations)) | `number[]` |
 | `group({ ...fields })` | LONGTEXT (JSON) | `{ ...fields }` |
 | `repeater({ ...fields })` | LONGTEXT (JSON) | `{ ...fields }[]` |
 | `blocks({ a: { ...fields }, b: { ...fields } })` | LONGTEXT (JSON) | `({ layout: "a", ...a } \| { layout: "b", ...b })[]` |
@@ -348,7 +356,7 @@ sets are safe): `.optional()`, `.default(value)` (a literal), `.defaultNow()`
 (timestamp/date), `.$default(() => value)` / `.$defaultFn(...)` (runs in PHP on
 insert), `.$onUpdate(() => value)` / `.$onUpdateFn(...)` (runs in PHP on
 update; `() => new Date()` on a timestamp is recognized as "now"), `.many()`
-(select and media), `.unique()`, `.onDelete("cascade" | "restrict" | "setNull")` and
+(select, media and `ref()`), `.unique()`, `.onDelete("cascade" | "restrict" | "setNull")` and
 `.reverse("name")` (on `ref()`, see [Relations](#relations)),
 `.min(n)` / `.max(n)` (numbers: bounds; strings: length; lists: item count),
 `.pattern(/re/)` (strings), `.validate((value, ctx) => true | "message")`
@@ -896,6 +904,28 @@ the target is a build error. `.onDelete()` takes `"cascade"`, `"restrict"` or
 `"setNull"`; the default is `"restrict"` on a required ref and `"setNull"` on an
 optional one. `ref()` refers to `id` only: a kind that links by a natural key
 stores the value as a plain field and queries by it.
+
+`.many()` on `ref()` makes a list: the field holds the target ids in the order
+they were written (`[]` when none), and a write replaces the whole list. A list
+may not repeat an id, and each id must name a row the writer can read.
+`with: { tags: true }` replaces the ids with the rows, in that order; nested
+options sort, pick and limit them per row. `where: { tags: { has: 5 } }`
+matches rows linked to 5, `where: { tags: { name: "news" } }` rows where some
+linked row matches, `where: { tags: [] }` rows with none. The target gets the
+same reverse list, `first.tags.list({ with: { posts: true } })`.
+
+```ts
+const tags = table({ name: text() });
+const posts = collection({ title: text(), tags: ref(tags).many().optional() });
+```
+
+The links live in a table First owns, `first_<kind>_<field>` (`first_posts_tags`
+here), with `owner_id`, `target_id` and a 0-based `position`. Deleting either
+side deletes its links; `.onDelete("restrict")` instead refuses deleting a
+target that is still linked, and no other action is allowed. A many-ref takes
+no `.unique()`, default or `.localized()`, and isn't allowed in sub-fields,
+globals or action and job inputs. In the editor it is a multiple post picker
+when the target is post-backed, and a list of ids otherwise.
 
 One graph covers collection↔collection, table↔table and both directions across
 storage kinds. Relation filters and `with` loads use the same runtime machinery

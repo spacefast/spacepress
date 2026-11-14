@@ -51,6 +51,8 @@ pub fn column(c: &Column, output: bool) -> Value {
         ColType::Json => json!({ "type": ANY }),
         ColType::Media | ColType::File => media(),
         ColType::MediaList => json!({ "type": "array", "items": media() }),
+        // `ref(kind).many()`: target ids; a `with` load puts the rows in their place.
+        ColType::RefList => json!({ "type": "array", "items": media(), "uniqueItems": true }),
         ColType::Select => json!({
             "type": "array",
             "items": { "type": "string", "enum": c.enum_values.clone().unwrap_or_default() },
@@ -69,7 +71,9 @@ pub fn column(c: &Column, output: bool) -> Value {
         ColType::Text | ColType::RichText | ColType::Email | ColType::Url | ColType::Slug => {
             Some(("minLength", "maxLength"))
         }
-        ColType::MediaList | ColType::Select | ColType::Repeater | ColType::Blocks => Some(("minItems", "maxItems")),
+        ColType::MediaList | ColType::RefList | ColType::Select | ColType::Repeater | ColType::Blocks => {
+            Some(("minItems", "maxItems"))
+        }
         ColType::Integer | ColType::Real => Some(("minimum", "maximum")),
         _ => None,
     };

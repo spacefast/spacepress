@@ -576,6 +576,14 @@ Locale collation depends on the host and cannot be reproduced deterministically.
 
 [Evidence](../tests/fixtures/reject-locale-compare)
 
+## object-reflect-runtime
+
+Status: **supported**.
+
+Imported JavaScript runs Object.assign(target, ...sources) on an object or array target (own enumerable string keys, then symbols, null and undefined sources skipped, TypeError on a null target), Reflect.ownKeys on plain objects and arrays (integer keys ascending, then strings in insertion order, then symbols; arrays add length), and Object.prototype.toString.call(x) at request time. Evidence: tests/differential/language/object-reflect.ts. Typed code keeps Object.assign at build time only.
+
+[Evidence](../tests/compiler_contracts.rs) (`language_constructs_match_node_through_generated_php`)
+
 ## subtle-digest
 
 Status: **supported**.

@@ -88,14 +88,30 @@ final class Uploads
         self::store()->delete($key);
     }
 
+    /** With S3 active: the site's upload namespace and the hourly upload maintenance. */
+    public static function install(): void
+    {
+        if (self::active()) {
+            self::prefix();
+        }
+        if (did_action('action_scheduler_init')) {
+            self::schedule();
+        }
+    }
+
+    private static function schedule(): void
+    {
+        if (self::active() && !as_has_scheduled_action(self::MAINTAIN, [], 'first')) {
+            as_schedule_recurring_action(time() + HOUR_IN_SECONDS, HOUR_IN_SECONDS, self::MAINTAIN, [], 'first');
+        }
+    }
+
     public static function boot(): void
     {
         // App registration happens after the runtime loads. Decide inside each hook.
-        add_action('init', static function (): void {
-            if (self::active()) {
-                self::prefix(); // Install site identity before request transactions can begin.
-            }
-        }, 2);
+        // Install site identity before request transactions can begin; a managed build installs it
+        // from initialize ({@see install()}).
+        add_action('init', static fn () => Runtime::managed() ? null : self::install(), 2);
         add_filter('upload_dir', static function (array $dir): array {
             if (!self::active()) {
                 return $dir;
@@ -263,11 +279,7 @@ final class Uploads
             }
         });
         add_action(self::MAINTAIN, self::maintain(...));
-        add_action('action_scheduler_init', static function (): void {
-            if (self::active() && !as_has_scheduled_action(self::MAINTAIN, [], 'first')) {
-                as_schedule_recurring_action(time() + HOUR_IN_SECONDS, HOUR_IN_SECONDS, self::MAINTAIN, [], 'first');
-            }
-        });
+        add_action('action_scheduler_init', static fn () => Runtime::managed() ? null : self::schedule());
     }
 
     public static function scratch(): string

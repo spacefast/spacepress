@@ -228,6 +228,9 @@ impl Compiler<'_, '_> {
             } => {
                 match prop.as_str() {
                     "digest" => {
+                        if let Some(out) = self.subtle_digest(obj, args, span)? {
+                            return Ok(Some(out));
+                        }
                         if let Some(out) = self.digest(obj, args, span)? {
                             return Ok(Some(out));
                         }
@@ -620,6 +623,34 @@ impl Compiler<'_, '_> {
         let e = self.arg(args, 0, span, "text")?;
         let text = self.string_arg(e, "Buffer.byteLength()", "pass text")?;
         Ok(Out::atom(format!("strlen({text})"), Ty::Num))
+    }
+
+    /// `crypto.subtle.digest(algorithm, data)` in imported JavaScript: a promise of an ArrayBuffer,
+    /// as Web Crypto returns. files-sdk hashes upload bodies this way. Typed code keeps the
+    /// `node:crypto` hash, which the refusal on `crypto.subtle` names.
+    fn subtle_digest(&mut self, obj: &Expr, args: &[ArrEl], span: Span) -> Result<Option<Out>> {
+        let ExprKind::Member { obj: crypto, prop, .. } = &obj.kind else {
+            return Ok(None);
+        };
+        if prop != "subtle" || !self.is_global(crypto, "crypto") {
+            return Ok(None);
+        }
+        if !self.javascript_module(self.fx.as_ref().expect("fn").module) {
+            return err_help(
+                span,
+                "`crypto.subtle.digest` works in imported JavaScript only",
+                "hash with `createHash(\"sha256\").update(text).digest(\"hex\")` from \"node:crypto\"",
+            );
+        }
+        if args.len() != 2 || args.iter().any(|a| matches!(a, ArrEl::Spread(_))) {
+            return err(span, "crypto.subtle.digest takes an algorithm and the data to hash");
+        }
+        self.host_use(HostUse::Crypto("subtle.digest"), span)?;
+        let argv = self.javascript_args(args)?;
+        Ok(Some(Out::atom(
+            format!("\\First\\Crypto::subtleDigest(...({argv})->a)"),
+            Ty::Dynamic,
+        )))
     }
 
     fn web_crypto_call(&mut self, prop: &str, args: &[ArrEl], prop_span: Span, span: Span) -> Result<Out> {

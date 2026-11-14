@@ -24,7 +24,7 @@ final class Hardening
     private const RULES = 'first_rewrite_rules';
 
     /** In the order spec.md §6 lists them. */
-    public const SWITCHES = ['xmlrpc', 'pings', 'emoji', 'fileEditors', 'pluginAndThemeInstalls', 'autoUpdates', 'customizer', 'comments', 'schemaLock', 'permalinks', 'timezone', 'blockTheme'];
+    public const SWITCHES = ['xmlrpc', 'pings', 'emoji', 'fileEditors', 'pluginAndThemeInstalls', 'autoUpdates', 'customizer', 'comments', 'schemaLock', 'authors', 'permalinks', 'timezone', 'blockTheme'];
 
     private static bool $applied = false;
 
@@ -172,6 +172,15 @@ final class Hardening
     private static function schemaLock(\First\Schema $schema): void
     {
         SchemaLock::apply($schema);
+    }
+
+    /**
+     * The site's users aren't listed to the public: core's user routes, author archives, the users
+     * sitemap and oEmbed's author fields, unless the app makes authors public ({@see Authors}).
+     */
+    private static function authors(\First\Schema $schema): void
+    {
+        Authors::apply($schema);
     }
 
     // ================================================================ always configured

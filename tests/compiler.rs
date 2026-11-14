@@ -451,6 +451,12 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     );
     rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:15");
     rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:15");
+    // The client declares `Query<T>`: a global of that name would declare a second `Query` type.
+    rejects(
+        "reject-global-client-query",
+        "\"query\" is reserved by generated client types",
+        "first.config.ts:2:15",
+    );
     rejects(
         "reject-reserved-search",
         "\"search\" is reserved",

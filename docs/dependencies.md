@@ -97,6 +97,33 @@ The bundled Markdown code runs on WordPress's HTML API and calls core
 functions (`parse_blocks`, `serialize_block`, `esc_*`, `__`); First has no
 target without WordPress loaded.
 
+## Considered and not bundled: html-to-md
+
+`Sync\HtmlMarkdown` (the reader's HTML to Markdown converter behind
+`Markdown::renderPost()`, the `.md` twins and `/llms.txt`) stays First's own.
+[dmsnell/html-to-md](https://github.com/dmsnell/html-to-md) (GPL-2.0, also on
+core's HTML API, no release; `trunk` at `d525102b`, the commit WordPress/ai 1.5.0
+vendors under `includes/Vendor/Html_To_Markdown/`) was run against the markdown
+suite through an adapter (soft wrap off) on 2026-11-14 and failed 9 of 188 checks,
+mostly where its output is wrong rather than formatted differently:
+
+- links: without a base URL every relative, `#` or `mailto:` link loses its
+  target and becomes plain text (`[Sign up](/signup)` → `Sign up`); with one,
+  `mailto:a@b.c` becomes `https://site/a@b.c`;
+- no escaping of text a reader would take as structure (`# x`, `> x`, `- x`,
+  `1. x`, `---`, `***`, `~~~`, `` ``` ``), so plain paragraphs read back as
+  headings, quotes, lists and fences;
+- fenced code is indented four spaces, so a CommonMark reader shows the fence
+  backticks as literal code; a ```` ``` ```` line inside the code closes the fence;
+- tables have no `|---|` delimiter row, so they are not tables;
+- `<br>` is dropped (no hard break), `<del>`/`<s>` lose their strikethrough,
+  an image's `]` in `alt` breaks the image;
+- unsupported markup (`<font>` around a `<p>`) aborts the whole document to `''`,
+  where First keeps its text.
+
+Its other differences (`_em_` for `*em*`, ` * ` bullets, `javascript` for a
+`language-js` fence) are equally correct.
+
 ## URI helper provenance
 
 `First\Js::encodeURI` adapts ts2php's MIT reserved-character restoration table

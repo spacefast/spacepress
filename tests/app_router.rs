@@ -1614,12 +1614,27 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         serde_json::json!([
             "#why Why depth-2",
             "#small-print Small print depth-3",
-            "#why-2 Why depth-2"
+            "#whats-firstapp What's first/app/? depth-3",
+            "#why-1 Why depth-2",
+            "#step-1---install Step 1 - Install depth-3",
+            "#the---force-flag The --force flag depth-3",
+            "#why-1-1 Why 1 depth-2",
+            "#two--spaces Two spaces depth-2"
         ])
     );
+    // Ids follow GitHub's rule (github-slugger): punctuation goes, a repeat gets `-1`.
     assert_eq!(
         seen["introduction"]["anchors"],
-        serde_json::json!(["h2#why", "h3#small-print", "h2#why-2"])
+        serde_json::json!([
+            "h2#why",
+            "h3#small-print",
+            "h3#whats-firstapp",
+            "h2#why-1",
+            "h3#step-1---install",
+            "h3#the---force-flag",
+            "h2#why-1-1",
+            "h2#two--spaces"
+        ])
     );
     assert_eq!(seen["introduction"]["title"], "Introduction · Docs");
     assert_eq!(
@@ -1659,6 +1674,11 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         seen["same slug elsewhere"],
         serde_json::json!([["Install again"], ["Install"]])
     );
+    // Every id github-slugger gives the fixture's headings (tests/fixtures/docs-kind/heading-ids.json).
+    assert_eq!(seen["heading ids"], serde_json::json!([]));
+    assert_eq!(seen["heading id cases"], 17);
+    // `## Why`, `<h2 id="why">`, `## Why`: the own id stays, and the generated ones step around it.
+    assert_eq!(seen["own ids"], serde_json::json!(["why-1", "why", "why-2"]));
     // A block that renders differently each time doesn't cost the headings their anchors.
     assert_eq!(
         seen["headings beside a gallery"],
@@ -1666,9 +1686,23 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             [
                 "#why Why depth-2",
                 "#small-print Small print depth-3",
-                "#why-2 Why depth-2"
+                "#whats-firstapp What's first/app/? depth-3",
+                "#why-1 Why depth-2",
+                "#step-1---install Step 1 - Install depth-3",
+                "#the---force-flag The --force flag depth-3",
+                "#why-1-1 Why 1 depth-2",
+                "#two--spaces Two spaces depth-2"
             ],
-            ["h2#why", "h3#small-print", "h2#why-2"]
+            [
+                "h2#why",
+                "h3#small-print",
+                "h3#whats-firstapp",
+                "h2#why-1",
+                "h3#step-1---install",
+                "h3#the---force-flag",
+                "h2#why-1-1",
+                "h2#two--spaces"
+            ]
         ])
     );
     // Components in Markdown (docs/decisions/2026-11-13-components-in-markdown.md): the file's
@@ -1990,6 +2024,18 @@ fn docs_example_reads_in_the_browser() {
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
     // Home → the docs, by the reader's click; the doc has its title and the published tree.
     assert_eq!(seen["home"], "First docs");
+    // The router region is processed as core processes a block theme's: core/router's state.url
+    // comes from the server, follows a <Link> click that swapped the region in the same document,
+    // and core's loading bar is in the footer with its styles.
+    assert_eq!(seen["serverUrl"], format!("{url}/"), "{seen}");
+    assert_eq!(
+        seen["navigation"],
+        serde_json::json!({
+            "sameDocument": true,
+            "url": format!("{url}/docs/introduction"),
+            "loadingBar": [["core/router/private", "fixed"]]
+        })
+    );
     assert_eq!(
         seen["intro"],
         serde_json::json!({ "path": "/docs/introduction", "title": "Introduction · First docs", "h1": "Introduction" })

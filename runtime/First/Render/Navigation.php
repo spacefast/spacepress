@@ -25,6 +25,19 @@ final class Navigation
         self::$used = false;
     }
 
+    /** The router region's opening tag; the page's HTML follows it, then `</div>`. */
+    public static function region(): string
+    {
+        return '<div class="wp-site-blocks" data-wp-interactive="' . esc_attr(self::NAMESPACE) . '" data-wp-router-region="' . esc_attr(self::REGION) . '">';
+    }
+
+    /**
+     * On a page that renders a link: the store module, and core's processing of the router region.
+     * Core's directive pass runs over the region's empty wrapper only, so its router-region
+     * processor seeds `core/router`'s `state.url`, enqueues the navigation animation styles and
+     * prints the loading bar in the footer, as on a block theme's page. The page's HTML is final
+     * already (compiled components print their own values), so it is not processed again.
+     */
     public static function enqueue(string $url): void
     {
         if (!self::$used || !function_exists('wp_register_script_module')) {
@@ -32,5 +45,6 @@ final class Navigation
         }
         wp_register_script_module('first-router', $url, [['id' => '@wordpress/interactivity', 'import' => 'static'], ['id' => '@wordpress/interactivity-router', 'import' => 'dynamic']], null);
         wp_enqueue_script_module('first-router');
+        wp_interactivity_process_directives(self::region() . '</div>');
     }
 }

@@ -64,7 +64,7 @@ Stop only this project when finished:
 
 ```sh
 target/debug/first dev stop /absolute/path/to/notebook
-npx --yes --package wp-studio@2.1.1 -- studio delete --path /absolute/path/to/notebook/.first/dev/wordpress --no-files
+npx --yes --package wp-studio@2.2.0 -- studio delete --path /absolute/path/to/notebook/.first/dev/wordpress --no-files
 ```
 
 The second command unregisters the disposable Studio site. It leaves its files

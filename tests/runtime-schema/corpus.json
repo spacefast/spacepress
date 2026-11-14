@@ -1931,6 +1931,72 @@
       "runtime": "F3001"
     },
     {
+      "name": "a field stored under a compiled blocks field's layout record",
+      "kind": "articles",
+      "field": "page_layout_meta",
+      "definition": {
+        "type": "json"
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a field named like a compiled field in another case",
+      "kind": "articles",
+      "field": "Rating",
+      "definition": {
+        "type": "integer"
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a field stored under a compiled group sub-field's key in another case",
+      "kind": "articles",
+      "field": "SEO_title",
+      "definition": {
+        "type": "integer"
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a field stored under a compiled repeater's row keys in another case",
+      "kind": "articles",
+      "field": "Links_0_href",
+      "definition": {
+        "type": "text"
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a name First keeps a post's own records under: system",
+      "kind": "articles",
+      "field": "system",
+      "definition": {
+        "type": "text"
+      },
+      "compiler": "accept",
+      "runtime": "schema_reserved",
+      "stored": {
+        "type": "text"
+      }
+    },
+    {
+      "name": "a name First keeps a post's own records under: staged",
+      "kind": "articles",
+      "field": "staged",
+      "definition": {
+        "type": "text"
+      },
+      "compiler": "accept",
+      "runtime": "schema_reserved",
+      "stored": {
+        "type": "text"
+      }
+    },
+    {
       "name": "a field named like a compiled repeater's row prefix is stored under its own key",
       "kind": "articles",
       "field": "links_3",
@@ -2884,6 +2950,20 @@
       "definition": {
         "fields": {
           "title": {
+            "type": "text"
+          }
+        }
+      },
+      "compiler": "F3001",
+      "runtime": "F3001"
+    },
+    {
+      "name": "a global whose option keys overlap a compiled global's in another case",
+      "op": "addGlobal",
+      "name_": "Site",
+      "definition": {
+        "fields": {
+          "meta_title": {
             "type": "text"
           }
         }

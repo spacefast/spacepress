@@ -12,7 +12,7 @@ cd my-app
 npm run dev
 ```
 
-The creator installs the matching `@spacefast/first-cli` version and TypeScript. The compiler package downloads the exact version for your operating system and CPU and verifies the archive's SHA-256. `first dev` uses pinned WordPress Studio CLI 2.1.1 to supply native PHP, WordPress and SQLite.
+The creator installs the matching `@spacefast/first-cli` version and TypeScript. The compiler package downloads the exact version for your operating system and CPU and verifies the archive's SHA-256. `first dev` uses pinned WordPress Studio CLI 2.2.0 to supply native PHP, WordPress and SQLite.
 
 Open `/wp-content/plugins/first-app-my-app/public/index.html` on the WordPress URL printed in the terminal. Your public frontend, API, login and native WordPress admin share that origin. WordPress's theme retains its homepage. Add a note through “Write a note”; the example permits public reads and restricts writes to WordPress editors. Use the local admin credentials printed by First only for development.
 

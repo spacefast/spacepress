@@ -18,13 +18,17 @@ namespace First\Wp;
  *   `/llms.txt`, the sitemap index and the sitemap file that lists it, and each page
  *   URL's `.md` twin.
  * Older listing pages (`/page/7/`) fall back to the edge's `s-maxage` window. URLs are collected over
- * the request and announced once, after the outermost transaction commits (or at the end of the
- * request when there is none); a rolled-back transaction announces nothing.
+ * the request, with the `first/app/` pages the page cache's read index names (Render\Cache), and
+ * announced once, after the outermost transaction commits (or at the end of the request when there
+ * is none): one `first_purge_urls` call and one `Prebuilt::stale` with the same list. More than
+ * PURGE_LIMIT paths become `/*`, a whole-host purge. A rolled-back transaction announces nothing.
  */
 final class Purges
 {
     /** Listing pages purged after page 1. */
     public const LISTING_PAGES = 1;
+    /** Above this many paths, one announcement purges the whole host. */
+    public const PURGE_LIMIT = 200;
 
     /** @var array<string, true> paths this request's writes changed */
     private static array $paths = [];
@@ -128,13 +132,29 @@ final class Purges
         }
     }
 
+    /**
+     * `first/app/` pages whose recorded reads a write changed (Render\Cache, inside the write's
+     * transaction): announced with the rest. `/llms.txt` lists content, not pages, and isn't added.
+     *
+     * @param list<string> $urls
+     */
+    public static function recorded(array $urls): void
+    {
+        $plugin = Plugin::instance();
+        if ($plugin !== null && self::listening()) {
+            self::add($plugin, $urls, false);
+        }
+    }
+
     /** @param list<string> $urls */
-    private static function add(Plugin $plugin, array $urls): void
+    private static function add(Plugin $plugin, array $urls, bool $content = true): void
     {
         if ($urls === []) {
             return;
         }
-        $urls[] = home_url('/llms.txt');
+        if ($content) {
+            $urls[] = home_url('/llms.txt');
+        }
         foreach (self::paths($urls) as $path) {
             self::$paths[$path] = true;
         }
@@ -163,6 +183,7 @@ final class Purges
         self::$paths = [];
         self::$scheduled = false;
         if ($paths !== [] && self::listening()) {
+            $paths = count($paths) > self::PURGE_LIMIT ? ['/*'] : $paths;
             \First\Render\Prebuilt::stale($paths);
             if (has_action('first_purge_urls') !== false) {
                 do_action('first_purge_urls', $paths);

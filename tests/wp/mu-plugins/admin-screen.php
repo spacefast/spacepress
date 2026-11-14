@@ -27,3 +27,8 @@ add_action('first_admin_screens', static function (): void {
         'data' => ['Approving a comment publishes it.'],
     ]);
 });
+
+// A plugin that patches the users list with WordPress 7.1's own view config API.
+add_filter('get_entity_view_config_root_user', static function (WP_View_Config_Data $data): WP_View_Config_Data {
+    return $data->merge(['default_view' => ['perPage' => 37], 'view_list' => [['slug' => 'harness', 'title' => 'Harness tab', 'view' => ['filters' => []]]]], 1);
+});

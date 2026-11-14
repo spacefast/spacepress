@@ -221,7 +221,7 @@ test("with the schema lock on, the admin's controllers answer and its saves go t
   const json = (method: string, path: string, body?: unknown) =>
     fetch(`${site}${path}`, { method, headers: { ...auth("admin"), ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
   // The admin's own controllers.
-  for (const path of ["/wp-json/wp/v2/view-config?kind=postType&name=first_posts", "/wp-json/wp/v2/field-collections?kind=postType&name=first_posts", "/wp-json/wp/v2/editor/settings", "/wp-json/wp/v2/plugins"]) {
+  for (const path of ["/wp-json/first-admin/v1/view-config?kind=postType&name=first_posts", "/wp-json/wp/v2/field-collections?kind=postType&name=first_posts", "/wp-json/wp/v2/editor/settings", "/wp-json/wp/v2/plugins"]) {
     const res = await json("GET", path);
     assert.equal(res.status, 200, `${path}: ${(await res.text()).slice(0, 200)}`);
   }
@@ -243,4 +243,18 @@ test("with the schema lock on, the admin's controllers answer and its saves go t
   const on = await json("POST", "/wp-json/wp/v2/plugins/two-factor/two-factor", { status: "active" });
   assert.deepEqual([off.status, on.status], [200, 200]);
   await json("DELETE", `/wp-json/wp/v2/first_posts/${id}?force=true`);
+});
+
+test("WordPress's /wp/v2/view-config is core's, and core's filter reaches First Admin's view config", async () => {
+  // Core's route answers in core's shape (it was shadowed by First Admin's controller before).
+  const core = await (await fetch(`${site}/wp-json/wp/v2/view-config?kind=root&name=user`, { headers: auth("admin") })).json();
+  assert.deepEqual(Object.keys(core).sort(), ["default_layouts", "default_view", "form", "kind", "name", "version", "view_list"]);
+  assert.equal(core.default_view.perPage, 37, "the harness plugin's patch through core's filter");
+  // First Admin reads its own route, which runs the same filter over its configuration.
+  const first = await (await fetch(`${site}/wp-json/first-admin/v1/view-config?kind=root&name=user`, { headers: auth("admin") })).json();
+  assert.equal(first.default_view.perPage, 37);
+  assert.ok(first.tabs.some((t: { slug: string; label: string }) => t.slug === "harness" && t.label === "Harness tab"), JSON.stringify(first.tabs));
+  // First Admin's own entries are still there.
+  assert.ok(first.tabs.some((t: { slug: string }) => t.slug === "administrator"));
+  assert.ok(Array.isArray(first.edit_form?.fields), "the user edit form survives the round trip");
 });

@@ -78,5 +78,60 @@ function first_admin_get_entity_view_config( $kind, $name, $variant = null ) {
 		$config = apply_filters( "first_admin_entity_view_config_{$kind}_{$name}_{$variant}", $config, $kind, $name, $variant );
 	}
 
+	return first_admin_compose_core_view_config( $config, $kind, $name );
+}
+
+/**
+ * First: WordPress 7.1's view config filter (`get_entity_view_config_{kind}_{name}`, through
+ * WP_View_Config_Data) runs over First Admin's configuration, so a plugin that patches an entity's
+ * view with core's API changes it here too. The shapes map one to one where they overlap:
+ *
+ * | First Admin       | core                                        |
+ * |-------------------|---------------------------------------------|
+ * | `default_view`    | `default_view`                              |
+ * | `default_layouts` | `default_layouts`                           |
+ * | `tabs`            | `view_list` (`label` ↔ `title`, `filters` ↔ `view.filters`) |
+ * | `edit_form`       | `form`                                      |
+ *
+ * `quick_edit_form`, `add_form`, `labels` and `actions` have no core counterpart and pass through.
+ *
+ * @param array  $config First Admin's configuration.
+ * @param string $kind   Entity kind.
+ * @param string $name   Entity name.
+ * @return array
+ */
+function first_admin_compose_core_view_config( $config, $kind, $name ) {
+	if ( ! class_exists( 'WP_View_Config_Data' ) ) {
+		return $config;
+	}
+	$tabs = array();
+	foreach ( (array) ( $config['tabs'] ?? array() ) as $tab ) {
+		$tabs[] = array(
+			'slug'  => $tab['slug'] ?? '',
+			'title' => $tab['label'] ?? ( $tab['slug'] ?? '' ),
+			'view'  => array( 'filters' => $tab['filters'] ?? array() ),
+		);
+	}
+	$data = new WP_View_Config_Data(
+		array(
+			'default_view'    => (array) ( $config['default_view'] ?? array() ),
+			'default_layouts' => (array) ( $config['default_layouts'] ?? array() ),
+			'view_list'       => $tabs,
+			'form'            => (array) ( $config['edit_form'] ?? array() ),
+		)
+	);
+	$core = $data->apply_filters( $kind, $name );
+	$back = static fn ( $value ) => is_array( $value ) && array() === $value ? null : $value;
+	$config['default_view']    = $back( $core['default_view'] ?? array() );
+	$config['default_layouts'] = $back( $core['default_layouts'] ?? array() );
+	$config['edit_form']       = $back( $core['form'] ?? array() );
+	$config['tabs']            = array_map(
+		static fn ( $item ) => array(
+			'slug'    => $item['slug'] ?? '',
+			'label'   => $item['title'] ?? ( $item['slug'] ?? '' ),
+			'filters' => $item['view']['filters'] ?? array(),
+		),
+		array_values( (array) ( $core['view_list'] ?? array() ) )
+	);
 	return $config;
 }

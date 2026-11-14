@@ -58,3 +58,26 @@ Fields and actions map onto WordPress 7.2's server registries
 `firstAdminScreen`/`<id>` and reads them back; on 7.1 the declaration is the
 registry. Actions stay bound to Abilities, which core's action schema carries as
 extra properties, so a screen keeps working as core's action API grows in 7.3.
+
+## View config and field collections against core
+
+- **View config.** WordPress 7.1 serves `GET /wp/v2/view-config` and runs
+  `get_entity_view_config_{kind}_{name}` (`WP_View_Config_Data`). First Admin's
+  own controller registered the same route earlier and answered first, so core's
+  route and its filter did nothing on a First site. First Admin's controller now
+  lives at `/first-admin/v1/view-config` (its fields `quick_edit_form`,
+  `add_form`, `labels`, `actions` have no core counterpart). It runs core's
+  filter over its configuration, mapping `tabs` ↔ `view_list`, `edit_form` ↔
+  `form`, and `default_view`/`default_layouts` as is. `variant` stays: nothing
+  in the admin passes it today, and dropping it would change the upstream
+  route module. The user and taxonomy configurations upstream registered in its
+  bootstrap (and First had lost) are back, in `lib/view-configs.php`.
+- **Field collections.** First Admin's field collections
+  (`first_admin_register_field_collection()`, `/wp/v2/field-collections`) are
+  the model WordPress 7.2 adopts as `wp_register_entity_fields()` and
+  `/wp/v2/entity-fields`. Mapping: a collection's `kind`/`name` are the entity's;
+  each field definition is a DataViews field in both; the collection's
+  `fields_module` is core's `$script_module`. Declared screens already register
+  with core when it has the API. When First's floor moves to 7.2, the field
+  collections register through core too, and `lib/api/field-collections.php`
+  and its controller are deleted.

@@ -25,9 +25,10 @@ The loaders call the same API as the typed client, `/__first/api/v1`:
 - `GET /__first/api/v1` once per build, for the kinds and their fields. It gives each collection its
   Zod schema and the TypeScript type of `entry.data`.
 - `POST /__first/api/v1/_live` for build-time pages ([reactive queries](decisions/2026-11-13-reactive-queries.md)):
-  each page of up to 100 rows is a subscribed read whose token the content layer keeps between
-  builds, so an unchanged page costs no rows. The answer is the visitor's own access-checked read
-  either way.
+  each primary-key range of up to 100 rows is a subscribed read whose token the content layer keeps
+  between builds, so an unchanged range sends no rows. The answer is the visitor's own
+  access-checked read either way; whether the site skips running it depends on what the reader may
+  see.
 - `GET /__first/api/v1/<kind>` for live collections and for WordPress's own kinds.
 - Core's `/wp/v2/<type>` route, `_fields=id,content`, for the HTML WordPress renders from an entry's
   content field (`render(entry)` in Astro).
@@ -40,8 +41,9 @@ Drafts are left out unless the `drafts` option is set and the credentials may re
 One vocabulary everywhere ([external frontends](spec/external-frontends.md)): `<kind>` for a list,
 `<kind>:<id>` for a row, and `media:<id>` for a media item a row loaded. Live entries carry them in
 `cacheHint.tags`; webhook events name `<kind>` and `<kind>:<id>` of the written row. An on-demand
-page that calls `Astro.cache.set(cacheHint)` is purged by the next write to anything it showed, when
-the Astro site has a route cache configured.
+page that calls `Astro.cache.set(cacheHint)` is purged by the next write to a row it showed, when the
+Astro site has a route cache configured. Webhooks fire for the app's own kinds only, so a media edit
+alone purges nothing.
 
 ## Static sites and rebuilds
 

@@ -116,12 +116,15 @@ export function connect(options = {}) {
     /** What the loaders need to know about one kind. */
     async kind(name) {
       const app = await this.describe();
-      const kind = app.kinds?.[name];
-      if (!kind) {
-        const known = Object.keys(app.kinds ?? {}).filter((k) => k !== "settings");
+      const kinds = app.kinds ?? {};
+      // By the name the typed client uses (`fieldNotes`), or the storage name (`field_notes`).
+      const found = Object.entries(kinds).find(([storage, k]) => k.type !== "builtin" && (k.key ?? storage) === name)
+        ?? (kinds[name] ? [name, kinds[name]] : undefined);
+      if (!found) {
+        const known = Object.entries(kinds).filter(([k]) => k !== "settings").map(([storage, k]) => k.key ?? storage);
         throw new Error(`@first/astro: ${site} has no kind '${name}' (it has ${known.join(", ")})`);
       }
-      return kindInfo(name, kind);
+      return kindInfo(found[0], found[1]);
     },
   };
   if (!options.fetch) connections.set(key, connection);
@@ -134,7 +137,10 @@ function kindInfo(name, kind) {
   const columns = first ? kind.columns ?? {} : {};
   const media = Object.entries(columns).filter(([, c]) => c.type === "media" || c.type === "mediaList").map(([n]) => n);
   return {
+    /** The storage name: the facade path, and the name in cache tags and webhook events. */
     name,
+    /** The client key: what `_live` and the typed client name the kind by. */
+    key: first ? kind.key ?? name : name,
     first,
     route: kind.route,
     type: kind.type,
@@ -163,15 +169,25 @@ function withOf(info, options) {
   return { ...out, ...(options.with ?? {}) };
 }
 
-/** The `where` every read of the collection starts from: the options' own, published rows only by default. */
-function whereOf(info, options) {
-  const parts = [];
-  if (options.where !== undefined) parts.push(options.where);
-  if (info.drafts && !options.drafts && info.first) parts.push({ status: "published" });
+const nonEmpty = (o) => o && Object.keys(o).length > 0;
+
+/** Every filter given, ANDed: the loader's own `where` holds for every read. */
+function and(...filters) {
+  const parts = filters.filter(nonEmpty);
   return parts.length === 0 ? {} : parts.length === 1 ? parts[0] : { AND: parts };
 }
 
-const nonEmpty = (o) => o && Object.keys(o).length > 0;
+/** The `where` every read of the collection starts from: the options' own, published rows only by default. */
+function whereOf(info, options, extra) {
+  if (!info.first && (nonEmpty(options.where) || nonEmpty(extra))) throw builtinFilter(info);
+  return and(options.where, extra, info.drafts && !options.drafts && info.first ? { status: "published" } : null);
+}
+
+/** WordPress's own kinds are answered by core's routes, which ignore First's `where`, `orderBy` and `with`. */
+function builtinFilter(info) {
+  return new Error(`@first/astro: '${info.name}' is WordPress's own kind; its reads take core's filters, not where, orderBy or with. `
+    + "Filter it by id or slug (getLiveEntry), or with the `query` option (core's parameters, e.g. { categories: 3 })");
+}
 
 /** Facade list parameters (the generated client's `listParams`). */
 function listQuery(q) {
@@ -188,6 +204,7 @@ function listQuery(q) {
   if (typeof q.limit === "number") p.set("limit", String(q.limit));
   if (typeof q.offset === "number") p.set("offset", String(q.offset));
   if (nonEmpty(q.with)) p.set("with", JSON.stringify(q.with));
+  for (const [k, v] of Object.entries(q.core ?? {})) p.set(k, Array.isArray(v) ? v.join(",") : String(v));
   const s = p.toString();
   return s === "" ? "" : `?${s}`;
 }
@@ -251,6 +268,8 @@ export function firstLoader(kind, options = {}) {
     async load(context) {
       const connection = connect(options);
       const info = await connection.kind(kind);
+      if (!info.first && nonEmpty(options.with)) throw builtinFilter(info);
+      if (info.first && nonEmpty(options.query)) throw new Error("@first/astro: `query` is for WordPress's own kinds; a First kind takes `where`");
       const query = { where: whereOf(info, options), with: withOf(info, options) };
       const key = JSON.stringify([connection.site, kind, query, typeof options.id === "function" ? String(options.id) : options.id ?? null]);
       let saved = null;
@@ -261,12 +280,19 @@ export function firstLoader(kind, options = {}) {
       }
       const result = info.first
         ? await syncPages(connection, info, query, saved?.key === key ? saved.pages : null, context.store, options)
-        : { rows: await readAll(connection, info, query, options), pages: null, unchanged: 0, total: 0 };
+        : { rows: await readAll(connection, info, options), pages: null, unchanged: 0, total: 0 };
       const keep = new Set(result.kept);
       // What changed: rows whose digest differs from the stored entry's.
       const writes = [];
+      const owner = new Map(); // entry id → primary key, to catch two rows with one id
       for (const row of result.rows) {
         const id = entryId(info, options, row);
+        const pk = row[info.primaryKey];
+        if (owner.has(id) && owner.get(id) !== pk) {
+          throw new Error(`@first/astro: ${kind} rows ${owner.get(id)} and ${pk} both have the entry id '${id}'; pass an \`id\` option that is unique`);
+        }
+        if (owner.has(id)) continue;
+        owner.set(id, pk);
         keep.add(id);
         const digest = context.generateDigest(row);
         if (context.store.get(id)?.digest === digest) continue;
@@ -301,82 +327,98 @@ function pageSize(options) {
 }
 
 /** Every row of a kind the subscription endpoint doesn't answer (WordPress's own kinds), page by page. */
-async function readAll(connection, info, query, options) {
+async function readAll(connection, info, options) {
   const rows = [];
   const size = pageSize(options);
   for (let offset = 0; ; offset += size) {
-    const page = await connection.request("GET", `${API}/${encodeURIComponent(info.name)}${listQuery({ where: query.where, limit: size, offset, orderBy: { [info.primaryKey]: "asc" } })}`);
+    const page = await connection.request("GET", `${API}/${encodeURIComponent(info.name)}${listQuery({ limit: size, offset, core: { orderby: "id", order: "asc", ...options.query } })}`);
     rows.push(...(page.data ?? []));
     if (!page.cursor || (page.data ?? []).length === 0) return rows;
   }
 }
 
 /**
- * The collection as pages, each "the first `pageSize` rows after `lo`" in primary-key order (no `lo`
- * for the first), with the token of its last answer. A write to a row changes only the answer of the
- * page that holds it, and a new row with a higher key only that of the last page, which is never left
- * full: a full last page gets a page after it. Pages answered "not modified" keep their entries;
- * changed pages return their rows. A deleted row lets the next one into its page, so neighbouring
- * pages can overlap; a row inserted with a lower key can push a page's end below the next page's
- * start, and the gap gets a page of its own.
+ * The collection as pages: key ranges `lo < pk <= hi` (no `lo` for the first page, no `hi` for the
+ * last), each with the token of its last answer. A write changes only the answer of the range that
+ * holds the row, wherever its key is, and a delete never moves rows between pages. Pages answered
+ * "not modified" keep their entries; changed pages return their rows.
+ *
+ * A page that comes back full may hold more rows than one answer carries: it is split at its last
+ * row, and both halves are read, so each has a token of its own range. Two neighbours that together fill at most three quarters of a page are merged
+ * and read again. So every row is in exactly one page, and the number of pages follows the number
+ * of rows, not every row ever written.
  *
  * @returns {Promise<{ rows: object[], kept: string[], pages: object[], unchanged: number }>}
  */
 async function syncPages(connection, info, query, saved, store, options) {
   const pk = info.primaryKey;
   const size = pageSize(options);
-  const pages = Array.isArray(saved) && saved.length > 0 ? saved.map((p) => ({ ...p })) : [{ lo: null, token: null, ids: [] }];
+  const range = (lo, hi) => ({ lo, hi, token: null, ids: [] });
+  const valid = Array.isArray(saved) && saved.length > 0 && saved.every((p) => "lo" in p && "hi" in p) && saved[0].lo === null && saved.at(-1).hi === null;
+  let pages = valid ? saved.map((p) => ({ ...p })) : [range(null, null)];
   // A saved page whose entries are no longer stored (a cleared cache) is read again.
   for (const p of pages) if (p.token && !p.ids.every((id) => store.has(id))) p.token = null;
-  const args = (p) => {
-    const where = [query.where, p.lo === null ? null : { [pk]: { gt: p.lo } }].filter(nonEmpty);
-    return {
-      where: where.length === 0 ? {} : where.length === 1 ? where[0] : { AND: where },
-      orderBy: { [pk]: "asc" },
-      limit: size,
-      ...(nonEmpty(query.with) ? { with: query.with } : {}),
-    };
-  };
+  const args = (p) => ({
+    where: and(query.where, p.lo === null ? null : { [pk]: { gt: p.lo } }, p.hi === null ? null : { [pk]: { lte: p.hi } }),
+    orderBy: { [pk]: "asc" },
+    limit: size,
+    ...(nonEmpty(query.with) ? { with: query.with } : {}),
+  });
   /** @type {Map<object, object[]>} the rows of each page read in this build */
   const rows = new Map();
-  let unchanged = 0;
-  let todo = [...pages];
-  for (let requests = 0; todo.length > 0; requests++) {
-    if (requests > 10_000) throw new Error(`@first/astro: ${info.name} did not finish paging`);
-    const batch = todo.slice(0, BATCH);
-    todo = todo.slice(BATCH);
-    const answer = await connection.request("POST", `${API}/_live`, {
-      queries: batch.map((p) => ({ kind: info.name, op: "list", args: args(p), ...(p.token ? { token: p.token } : {}) })),
-    });
-    const results = answer?.data?.results ?? [];
-    for (const [n, page] of batch.entries()) {
-      const r = results[n] ?? { pending: true };
-      if (r.error) throw new FirstError(r.error.status ?? 0, r.error.code ?? "error", r.error.detail ?? "", r.error.pointer);
-      if (r.pending) {
-        todo.push(page);
-        continue;
-      }
-      page.token = r.token;
-      if (r.changed === false) {
-        unchanged++;
-        continue;
-      }
-      const data = Array.isArray(r.data) ? r.data : [];
-      rows.set(page, data);
-      page.ids = data.map((row) => entryId(info, options, row));
-      if (data.length < size) continue;
-      // Full: the rows after its last one belong to the next page, or to a new one.
-      const last = data[data.length - 1][pk];
-      const next = pages[pages.indexOf(page) + 1];
-      if (next === undefined || last < next.lo) {
-        const rest = { lo: last, token: null, ids: [] };
-        pages.splice(pages.indexOf(page) + 1, 0, rest);
-        todo.push(rest);
+  const answered = new Set();
+  let requests = 0;
+  for (;;) {
+    let todo = pages.filter((p) => !answered.has(p));
+    if (todo.length === 0) break;
+    while (todo.length > 0) {
+      if (++requests > 10_000) throw new Error(`@first/astro: ${info.name} did not finish paging`);
+      const batch = todo.slice(0, BATCH);
+      todo = todo.slice(BATCH);
+      const answer = await connection.request("POST", `${API}/_live`, {
+        queries: batch.map((p) => ({ kind: info.key, op: "list", args: args(p), ...(p.token ? { token: p.token } : {}) })),
+      });
+      const results = answer?.data?.results ?? [];
+      for (const [n, page] of batch.entries()) {
+        const r = results[n] ?? { pending: true };
+        if (r.error) throw new FirstError(r.error.status ?? 0, r.error.code ?? "error", r.error.detail ?? "", r.error.pointer);
+        if (r.pending) {
+          todo.push(page);
+          continue;
+        }
+        answered.add(page);
+        page.token = r.token;
+        if (r.changed === false) continue;
+        const data = Array.isArray(r.data) ? r.data : [];
+        rows.set(page, data);
+        page.ids = data.map((row) => entryId(info, options, row));
       }
     }
+    // Split full pages, merge small neighbours; the new pages are read in the next round.
+    const next = [];
+    for (const page of pages) {
+      const data = rows.get(page);
+      const last = data && data.length >= size ? data[data.length - 1][pk] : undefined;
+      if (last !== undefined && last !== page.hi) {
+        // Both halves are read: each gets a token of its own range, so the next build can be told
+        // "not modified" for each.
+        rows.delete(page);
+        next.push(range(page.lo, last), range(last, page.hi));
+        continue;
+      }
+      const prev = next.at(-1);
+      if (prev && answered.has(prev) && answered.has(page) && prev.ids.length + page.ids.length <= size - Math.ceil(size / 4)) {
+        rows.delete(prev);
+        rows.delete(page);
+        next[next.length - 1] = range(prev.lo, page.hi);
+        continue;
+      }
+      next.push(page);
+    }
+    pages = next;
   }
   const kept = pages.filter((p) => !rows.has(p)).flatMap((p) => p.ids);
-  return { rows: [...rows.values()].flat(), kept, pages, unchanged };
+  return { rows: pages.filter((p) => rows.has(p)).flatMap((p) => rows.get(p)), kept, pages, unchanged: pages.filter((p) => !rows.has(p)).length };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -527,13 +569,16 @@ export function firstLiveLoader(kindOrOptions, maybeOptions) {
         const { kind, rest } = pick(filter);
         const connection = connect(options);
         const info = await connection.kind(kind);
-        const { where, with: w, rendered, ...list } = rest;
-        const query = { ...list, where: whereOf(info, { ...options, where: where ?? options.where }), with: withOf(info, { ...options, with: w ?? options.with }) };
-        const page = await connection.request("GET", `${API}/${encodeURIComponent(kind)}${listQuery(query)}`);
+        const { where, with: w, rendered, query: core, ...list } = rest;
+        if (!info.first && (nonEmpty(w) || nonEmpty(options.with) || list.orderBy !== undefined)) throw builtinFilter(info);
+        const query = info.first
+          ? { ...list, where: whereOf(info, options, where), with: withOf(info, { ...options, with: { ...options.with, ...w } }) }
+          : { ...list, where: whereOf(info, options, where), core: { ...options.query, ...core } };
+        const page = await connection.request("GET", `${API}/${encodeURIComponent(info.name)}${listQuery(query)}`);
         const rows = page.data ?? [];
         const html = rendered ?? options.rendered === "always" ? await renderedHtml(connection, info, rows.map((r) => r[info.primaryKey])) : new Map();
         const entries = rows.map((row) => toEntry(info, row, html.get(row[info.primaryKey])));
-        return { entries, cacheHint: { tags: [kind, ...new Set(entries.flatMap((e) => e.cacheHint.tags))] } };
+        return { entries, cacheHint: { tags: [info.name, ...new Set(entries.flatMap((e) => e.cacheHint.tags))] } };
       } catch (e) {
         return fail(e);
       }
@@ -544,15 +589,26 @@ export function firstLiveLoader(kindOrOptions, maybeOptions) {
         const connection = connect(options);
         const info = await connection.kind(kind);
         const { id, where, with: w, ...fields } = rest;
-        let match = where ?? (Object.keys(fields).length > 0 ? fields : undefined);
-        if (match === undefined && id !== undefined) {
-          const field = typeof options.id === "string" ? options.id : info.slug ?? info.primaryKey;
-          const numeric = info.columns[field]?.type === "integer" || (field === info.primaryKey && !info.first);
-          match = { [field]: numeric && /^\d+$/.test(String(id)) ? Number(id) : String(id) };
+        const match = and(where, fields);
+        if (id === undefined && !nonEmpty(match)) throw new Error("@first/astro: loadEntry needs an id or a filter");
+        let query;
+        if (info.first) {
+          let byId = null;
+          if (id !== undefined) {
+            const field = typeof options.id === "string" ? options.id : info.slug ?? info.primaryKey;
+            const numeric = info.columns[field]?.type === "integer";
+            byId = { [field]: numeric && /^\d+$/.test(String(id)) ? Number(id) : String(id) };
+          }
+          query = { where: whereOf(info, options, and(byId, match)), with: withOf(info, { ...options, with: { ...options.with, ...w } }), limit: 1 };
+        } else {
+          // Core's own filters: `slug` or `include`, and the `query` option's.
+          if (nonEmpty(match) || nonEmpty(w)) throw builtinFilter(info);
+          const byId = /^\d+$/.test(String(id)) && (typeof options.id !== "string" || options.id === "id") && !info.slug
+            ? { include: String(id) }
+            : info.slug && options.id !== "id" ? { slug: String(id) } : { include: String(id) };
+          query = { where: whereOf(info, options), core: { ...options.query, ...byId }, limit: 1 };
         }
-        if (match === undefined) throw new Error("@first/astro: loadEntry needs an id or a filter");
-        const query = { where: whereOf(info, { ...options, where: match }), with: withOf(info, { ...options, with: w ?? options.with }), limit: 1 };
-        const page = await connection.request("GET", `${API}/${encodeURIComponent(kind)}${listQuery(query)}`);
+        const page = await connection.request("GET", `${API}/${encodeURIComponent(info.name)}${listQuery(query)}`);
         const row = (page.data ?? [])[0];
         if (row === undefined) return undefined;
         const html = options.rendered === "never" ? new Map() : await renderedHtml(connection, info, [row[info.primaryKey]]);

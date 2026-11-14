@@ -203,5 +203,28 @@
       "color": "it's",
       "on": false
     }
+  },
+  {
+    "component": "components/client.tsx#Shelf",
+    "props": {
+      "books": [
+        {
+          "id": 1,
+          "title": "Dune"
+        },
+        {
+          "id": 2,
+          "title": "<Emma> & co"
+        }
+      ],
+      "open": true
+    }
+  },
+  {
+    "component": "components/client.tsx#Shelf",
+    "props": {
+      "books": [],
+      "open": false
+    }
   }
 ]

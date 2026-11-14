@@ -1084,7 +1084,7 @@ SVG `animate`/`set` can rewrite their target's attributes: they never target URL
 
 Status: **supported**.
 
-A .tsx file under first/components/ that starts with "use client" (after comments and other directives such as "use strict") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState and server action calls compile; lists and reactive conditionals are refused for now.
+A .tsx file under first/components/ that starts with "use client" (after comments and other directives such as "use strict") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState, server action calls, keyed lists (`items.map((item) => <li key={item.id}>…</li>)`) and reactive `&&` and `?:` over elements compile; the browser re-renders lists and conditionals from `<template>`s.
 
 [Evidence](../tests/app_router.rs) (`client_components_compile_to_interactivity_stores`)
 

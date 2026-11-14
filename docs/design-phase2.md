@@ -945,8 +945,9 @@ headers `First-Event-Id`, `First-Event`, `First-Signature: t=<unix>,v1=<hex hmac
 non-2xx → retry with the job backoff (retries 8); HTTP via `curl`/`stream`
 standalone, `wp_safe_remote_post` on WP. Inbound: `signature` on an action
 replaces the access check: `scheme: "first"` verifies the format above (and
-rejects `t` older than 5 min); `"hmac-sha256"` compares `hex(hmac_sha256(secret,
-raw body))` to the header; failures → 401 `invalid_signature`. Replays are the
+rejects `t` older than 5 min); `"hmac-sha256"` compares `hmac_sha256(secret,
+raw body)` to the header, given in hex (optionally `sha256=`) or standard base64
+(WooCommerce, Shopify); failures → 401 `invalid_signature`. Replays are the
 caller's job (`idempotent: true` + a key from the payload).
 
 #### Rejected

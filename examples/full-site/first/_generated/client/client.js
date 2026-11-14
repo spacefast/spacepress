@@ -130,6 +130,21 @@ function listParams(q) {
 	if (w) p.set("with", w);
 	return p;
 }
+/** The client's query as that call's arguments: `status` folded into `where`, `orderBy` as an object. */
+function liveArgs(q) {
+	const args = {};
+	if (!q) return args;
+	const where = typeof q.status !== "string" ? q.where : q.where === undefined ? { status: q.status } : { AND: [q.where, { status: q.status }] };
+	if (where !== undefined) args.where = where;
+	const order = orderObject(q.orderBy);
+	if (isObject(order) && Object.keys(order).length > 0) args.orderBy = order;
+	if (typeof q.limit === "number") args.limit = q.limit;
+	if (typeof q.offset === "number") args.offset = q.offset;
+	if (typeof q.cursor === "string") args.cursor = q.cursor;
+	if (typeof q.locale === "string") args.locale = q.locale;
+	if (isObject(q.with) && Object.keys(withJson(q.with)).length > 0) args.with = withJson(q.with);
+	return args;
+}
 const seg = (v) => encodeURIComponent(String(v));
 const browser = () => globalThis;
 const PKCE_KEY = "first.auth.pkce";
@@ -508,9 +523,13 @@ export function createClient(options = {}) {
 	};
 	// One transport connection per client while anything is watched; polling while it is not live.
 	const rtOpts = options.realtime ?? {};
-	const pollMs = rtOpts.pollMs === undefined ? 3e4 : rtOpts.pollMs;
+	const pollOpt = rtOpts.pollMs;
+	// The exported watch() helper re-runs an arbitrary read on a fixed interval.
+	const pollMs = pollOpt === false ? false : typeof pollOpt === "number" ? pollOpt : pollOpt?.max ?? 3e4;
 	const livePollMs = rtOpts.livePollMs === undefined ? 6e4 : rtOpts.livePollMs;
+	// `poll` listeners are refreshed by the interval above; subscriptions keep their own (see `subscriptions`).
 	const listeners = new Set();
+	const statusListeners = new Set();
 	let disconnect = null;
 	let live = false;
 	// One timer: `pollMs` while down, `livePollMs` (jittered) while live. Rearmed after each refresh.
@@ -518,12 +537,12 @@ export function createClient(options = {}) {
 	let pollerLive = false;
 	const dispatch = (notice) => {
 		for (const l of [...listeners]) {
-			if (notice === null || notice.changes.some((c) => l.collections.has(c.collection))) l.onChange(notice);
+			if (notice === null ? l.poll : l.collections === null || notice.changes.some((c) => l.collections?.has(c.collection))) l.onChange(notice);
 		}
 	};
 	const syncPolling = () => {
 		const every = live ? livePollMs : pollMs;
-		const want = listeners.size > 0 && every !== false;
+		const want = [...listeners].some((l) => l.poll) && every !== false;
 		if (poller !== null && (!want || pollerLive !== live)) {
 			clearTimeout(poller);
 			poller = null;
@@ -553,6 +572,7 @@ export function createClient(options = {}) {
 			syncPolling();
 			// Back online: catch up on whatever changed while the transport was down.
 			if (live && !was) dispatch(null);
+			if (live !== was) for (const changed of [...statusListeners]) changed();
 		});
 		disconnect = () => {
 			current = false;
@@ -562,7 +582,8 @@ export function createClient(options = {}) {
 	};
 	const realtime = { subscribe(collections, onChange) {
 		const entry = {
-			collections: new Set(collections),
+			collections: collections === null ? null : new Set(collections),
+			poll: collections !== null,
 			onChange
 		};
 		listeners.add(entry);
@@ -579,32 +600,348 @@ export function createClient(options = {}) {
 			syncPolling();
 		};
 	} };
+	const subscriptions = new Map();
+	let serverWindow = {
+		min: 2e3,
+		max: 3e4
+	};
+	const bounds = () => typeof pollOpt === "number" ? {
+		min: pollOpt,
+		max: pollOpt
+	} : {
+		min: (pollOpt || {}).min ?? serverWindow.min,
+		max: (pollOpt || {}).max ?? serverWindow.max
+	};
+	let gap = bounds().min;
+	let liveTimer = null;
+	let asking = false;
+	let askAgain = false;
+	let kicked = false;
+	// Requests are numbered as they are sent. An answer to a request sent after a write committed holds that write.
+	let sent = 0;
+	let answered = 0;
+	let writes = 0;
+	let sentAtLastWrite = 0;
+	let stopNotices = null;
+	const page = () => globalThis.document;
+	const hidden = () => page()?.visibilityState === "hidden";
+	const markDue = (which) => {
+		for (const s of subscriptions.values()) if (which(s)) s.due = true;
+	};
+	const deliver = (s, to) => {
+		if (s.error) return to.onError?.(s.error);
+		if (!s.has) return;
+		// A `get` of a row that is missing, or that this visitor may not read, is the API's 404.
+		if (s.descriptor.op === "get" && s.data === null) return to.onError?.(new FirstError({
+			type: "about:blank",
+			title: "Not found",
+			status: 404,
+			code: "not_found",
+			detail: `No ${s.descriptor.kind} row`
+		}));
+		to.onData(s.overlays.reduce((data, overlay) => overlay.apply(data), s.data));
+	};
+	const emit = (s) => {
+		for (const to of [...s.subscribers]) deliver(s, to);
+	};
+	const reschedule = () => {
+		if (liveTimer !== null) clearTimeout(liveTimer);
+		liveTimer = null;
+		const every = live ? livePollMs : pollOpt === false ? false : gap;
+		if (subscriptions.size === 0 || every === false || hidden()) return;
+		// Jittered, so the tabs of a busy page don't all ask at once. A fixed interval is taken as given.
+		const jitter = !live && typeof pollOpt === "number" ? 1 : .8 + Math.random() * .4;
+		liveTimer = setTimeout(() => {
+			liveTimer = null;
+			markDue(() => true);
+			void ask();
+		}, Math.round(every * jitter));
+	};
+	/** One answer applied to its subscription; true when the result changed. */
+	const settle = (s, result, request) => {
+		const overlays = s.overlays.length;
+		s.overlays = s.overlays.filter((o) => o.after === null || request <= o.after);
+		const dropped = s.overlays.length !== overlays;
+		if (!isObject(result)) {
+			for (const to of [...s.subscribers]) to.onError?.(networkError("POST /_live: the answer has no result for this read"));
+			return false;
+		}
+		if (result.pending === true) {
+			s.due = askAgain = true;
+			return false;
+		}
+		if (isObject(result.error)) {
+			s.token = undefined;
+			const error = toError(new Response(null, { status: typeof result.error.status === "number" && result.error.status >= 400 ? result.error.status : 500 }), result.error);
+			// A read that stays refused reports it once, not on every poll.
+			const same = s.error !== undefined && s.error.status === error.status && s.error.code === error.code && s.error.detail === error.detail;
+			s.error = error;
+			if (!same) emit(s);
+			return false;
+		}
+		if (typeof result.token === "string") s.token = result.token;
+		const changed = result.changed === true;
+		if (changed) {
+			s.has = true;
+			s.data = result.data;
+		}
+		const recovered = s.error !== undefined;
+		s.error = undefined;
+		if (changed || dropped || recovered) emit(s);
+		return changed;
+	};
+	async function ask() {
+		if (asking) {
+			askAgain = true;
+			return;
+		}
+		asking = true;
+		try {
+			do {
+				askAgain = false;
+				const due = [...subscriptions.entries()].filter(([, s]) => s.due);
+				if (due.length === 0) break;
+				let changed = false;
+				let failed = false;
+				for (let i = 0; i < due.length; i += 20) {
+					const batch = due.slice(i, i + 20);
+					for (const [, s] of batch) s.due = false;
+					const number = ++sent;
+					try {
+						const out = await request("POST", "/_live", { json: { queries: batch.map(([, s]) => s.token === undefined ? s.descriptor : {
+							...s.descriptor,
+							token: s.token
+						}) } });
+						const { minMs, maxMs } = out.poll ?? {};
+						if (typeof minMs === "number" && typeof maxMs === "number" && minMs > 0 && maxMs >= minMs) serverWindow = {
+							min: minMs,
+							max: maxMs
+						};
+						// A subscription ended, or ended and started again, while the request was out has no use for its answer.
+						answered = Math.max(answered, number);
+						batch.forEach(([key, s], j) => {
+							if (subscriptions.get(key) === s) changed = settle(s, out.results?.[j], number) || changed;
+						});
+					} catch (e) {
+						failed = true;
+						const error = e instanceof FirstError ? e : networkError(String(e));
+						for (const [key, s] of batch) if (subscriptions.get(key) === s) for (const to of [...s.subscribers]) to.onError?.(error);
+					}
+				}
+				// Back off while nothing changes, further while the server fails; start over after a change.
+				const { min, max } = bounds();
+				gap = failed ? Math.min(3e5, Math.max(gap, min) * 2) : changed ? min : Math.min(max, Math.max(gap, min) * 1.5);
+			} while (askAgain);
+		} finally {
+			asking = false;
+			reschedule();
+		}
+	}
+	/** Ask soon: every subscription marked due in this turn travels in one request. */
+	const kick = () => {
+		if (kicked) return;
+		kicked = true;
+		queueMicrotask(() => {
+			kicked = false;
+			void ask();
+		});
+	};
+	/** A write through this client: the reads of that collection (every read when unknown) are asked for at once. */
+	const wrote = (written, collection) => written.then((result) => {
+		writes++;
+		sentAtLastWrite = sent;
+		if (subscriptions.size > 0) {
+			markDue((s) => collection === undefined || s.deps.has(collection));
+			kick();
+		}
+		return result;
+	});
+	const shown = () => {
+		if (hidden()) return reschedule();
+		gap = bounds().min;
+		markDue(() => true);
+		kick();
+	};
+	function subscribe(key, descriptor, deps, to, seed) {
+		let s = subscriptions.get(key);
+		if (!s) {
+			s = {
+				descriptor,
+				deps: new Set(deps),
+				has: seed !== undefined,
+				data: seed?.data,
+				token: seed?.token,
+				due: true,
+				subscribers: new Set(),
+				overlays: []
+			};
+			subscriptions.set(key, s);
+			if (subscriptions.size === 1) {
+				page()?.addEventListener?.("visibilitychange", shown);
+				const onStatus = () => {
+					if (live) markDue(() => true), kick();
+					else reschedule();
+				};
+				statusListeners.add(onStatus);
+				const stop = realtime.subscribe(null, (notice) => {
+					markDue((sub) => notice === null || notice.changes.some((c) => sub.deps.has(c.collection)));
+					if (!hidden()) kick();
+				});
+				stopNotices = () => {
+					statusListeners.delete(onStatus);
+					stop();
+				};
+			}
+		}
+		const subscription = s;
+		subscription.subscribers.add(to);
+		// What an earlier subscriber of the same read already holds, at once.
+		if (subscription.has || subscription.error) queueMicrotask(() => subscription.subscribers.has(to) && deliver(subscription, to));
+		kick();
+		return () => {
+			subscription.subscribers.delete(to);
+			if (subscription.subscribers.size > 0 || subscriptions.get(key) !== subscription) return;
+			subscriptions.delete(key);
+			if (subscriptions.size > 0) return;
+			page()?.removeEventListener?.("visibilitychange", shown);
+			stopNotices?.();
+			stopNotices = null;
+			gap = bounds().min;
+			reschedule();
+		};
+	}
+	function optimistic(key, update) {
+		const s = subscriptions.get(key);
+		const overlay = {
+			apply: update,
+			after: null
+		};
+		const since = writes;
+		if (s?.has) {
+			s.overlays.push(overlay);
+			emit(s);
+		}
+		const drop = () => {
+			if (!s || !s.overlays.includes(overlay)) return;
+			s.overlays = s.overlays.filter((o) => o !== overlay);
+			if (subscriptions.get(key) === s) emit(s);
+		};
+		return {
+			settle() {
+				if (!s || !s.overlays.includes(overlay)) return;
+				// Kept until an answer that holds the write arrives: one to a request sent after the write
+				// returned (a write through this client), or else to one sent from now on.
+				overlay.after = writes > since ? sentAtLastWrite : sent;
+				if (answered > overlay.after) return drop();
+				if (sent > overlay.after || subscriptions.get(key) !== s) return;
+				s.due = true;
+				kick();
+			},
+			rollback: drop
+		};
+	}
+	/** One answer to one read through `/_live`, for reads with no route of their own. */
+	async function once(descriptor) {
+		const out = await request("POST", "/_live", { json: { queries: [descriptor] } });
+		const result = out.results?.[0];
+		if (isObject(result) && isObject(result.error)) throw toError(new Response(null, { status: typeof result.error.status === "number" && result.error.status >= 400 ? result.error.status : 500 }), result.error);
+		if (!isObject(result) || !("data" in result)) throw networkError("POST /_live: the answer has no result");
+		return result.data;
+	}
+	function query(descriptor, deps, run) {
+		const key = JSON.stringify([
+			descriptor.kind,
+			descriptor.op,
+			descriptor.id ?? null,
+			descriptor.args ?? {}
+		]);
+		// Nothing is sent until the read is awaited or subscribed to.
+		let started;
+		const promise = () => started ??= run();
+		const read = {
+			key,
+			then: (onFulfilled, onRejected) => promise().then(onFulfilled, onRejected),
+			catch: (onRejected) => promise().catch(onRejected),
+			finally: (onFinally) => promise().finally(onFinally),
+			[Symbol.toStringTag]: "Query",
+			subscribe: (onData, onError, seed) => subscribe(key, descriptor, deps, {
+				onData,
+				onError
+			}, seed),
+			optimistic: (update) => optimistic(key, update)
+		};
+		return read;
+	}
 	function collection(key) {
 		const desc = SCHEMA.collections[key];
 		const path = `/${seg(desc.path)}`;
 		const one = (id) => `${path}/${seg(id)}`;
-		const list = (q) => request("GET", path, { query: listParams(q) });
-		const paginate = (q) => {
-			const query = listParams(q);
-			if (typeof q?.cursor === "string") query.set("cursor", q.cursor);
+		const reads = (q) => dependencies(key, q?.with);
+		const list = (q) => query({
+			kind: key,
+			op: "list",
+			args: liveArgs(q)
+		}, reads(q), () => request("GET", path, { query: listParams(q) }));
+		const paginate = (q) => query({
+			kind: key,
+			op: "paginate",
+			args: liveArgs(q)
+		}, reads(q), () => {
+			const params = listParams(q);
+			if (typeof q?.cursor === "string") params.set("cursor", q.cursor);
 			return request("GET", path, {
-				query,
+				query: params,
 				envelope: true
 			});
-		};
+		});
 		return {
 			list,
 			paginate,
-			watch: (q, onRows, onError) => watchWith(realtime, dependencies(key, q?.with), () => list(q), onRows, onError),
-			get: (id, q) => request("GET", one(id), { query: listParams(q ? {
+			watch: (q, onRows, onError) => list(q).subscribe(onRows, onError),
+			get: (id, q) => query({
+				kind: key,
+				op: "get",
+				id,
+				args: liveArgs(q ? {
+					with: q.with,
+					locale: q.locale
+				} : undefined)
+			}, reads(q), () => request("GET", one(id), { query: listParams(q ? {
 				with: q.with,
 				locale: q.locale
-			} : undefined) }),
-			create: (data) => request("POST", path, { json: data }),
-			update: (id, patch) => request("PATCH", one(id), { json: patch }),
-			delete: (id) => request("DELETE", one(id)),
+			} : undefined) })),
+			count: (q) => {
+				const descriptor = {
+					kind: key,
+					op: "count",
+					args: liveArgs(q ? {
+						where: q.where,
+						status: q.status,
+						locale: q.locale
+					} : undefined)
+				};
+				return query(descriptor, [key], () => once(descriptor));
+			},
+			create: (data) => wrote(request("POST", path, { json: data }), key),
+			update: (id, patch) => wrote(request("PATCH", one(id), { json: patch }), key),
+			delete: (id) => wrote(request("DELETE", one(id)), key),
 			revisions: {
-				list: (id) => request("GET", `${one(id)}/revisions`),
+				// Every revision, newest first: the API pages them ({ data, cursor }), this follows the cursor.
+				list: async (id) => {
+					const all = [];
+					let cursor = null;
+					do {
+						const query = new URLSearchParams({ limit: "100" });
+						if (cursor !== null) query.set("cursor", cursor);
+						const page = await request("GET", `${one(id)}/revisions`, {
+							query,
+							envelope: true
+						});
+						all.push(...page.rows);
+						cursor = page.cursor;
+					} while (cursor !== null);
+					return all;
+				},
 				get: (id, rid) => request("GET", `${one(id)}/revisions/${seg(rid)}`),
 				restore: (id, rid) => request("POST", `${one(id)}/revisions/${seg(rid)}/restore`)
 			},
@@ -639,7 +976,10 @@ export function createClient(options = {}) {
 			get: (id) => request("GET", `/files/${seg(bucket)}/${seg(id)}`),
 			delete: (id) => request("DELETE", `/files/${seg(bucket)}/${seg(id)}`)
 		}])),
-		actions: Object.fromEntries(SCHEMA.actions.map((name) => [name, (input) => request("POST", `/actions/${seg(name)}`, { json: input ?? {} })])),
+		actions: Object.fromEntries(
+			// An action may write any kind: every subscribed read is asked for once it returns.
+			SCHEMA.actions.map((name) => [name, (input) => wrote(request("POST", `/actions/${seg(name)}`, { json: input ?? {} }))])
+		),
 		globals: Object.fromEntries(SCHEMA.globals.map((name) => [name, {
 			get: () => request("GET", `/${seg(name)}`),
 			update: (patch) => request("PATCH", `/${seg(name)}`, { json: patch })
@@ -654,8 +994,8 @@ export function createClient(options = {}) {
 const hubs = new WeakMap();
 /**
 * Runs `read` now and again whenever one of `collections` (schema keys) changes, while `client`'s
-* transport is live, or on its polling interval otherwise. For reads `watch` on a collection can't
-* express: an action's result, a `get`, a global. Returns a function that stops watching.
+* transport is live, or on its polling interval otherwise. For reads a `subscribe` can't express:
+* an action's result, a global. Returns a function that stops watching.
 */
 export function watch(client, collections, read, onResult, onError) {
 	const hub = hubs.get(client) ?? (() => {

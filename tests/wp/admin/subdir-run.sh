@@ -16,7 +16,7 @@ mkdir -p "$content"
 rsync -a --delete --exclude 'plugins/first-admin' "$wp/.wp-content/" "$content/"
 plugin="$content/plugins/first-admin"
 rm -rf "$plugin"; mkdir -p "$plugin"
-for f in first-admin.php routes.js LICENSE NOTICE readme.txt; do cp "$repo/runtime/admin/$f" "$plugin/$f"; done
+for f in first-admin.php routes.js classic-screen.js LICENSE NOTICE readme.txt; do cp "$repo/runtime/admin/$f" "$plugin/$f"; done
 cp -r "$repo/runtime/admin/lib" "$plugin/lib"
 cp -r "$repo/runtime/admin/build" "$plugin/build"
 sed -i "s/{{firstVersion}}/$version/g; s/{{wpVersion}}/$wp_floor/g; s/{{phpVersion}}/$php_floor/g" "$plugin/first-admin.php"

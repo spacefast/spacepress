@@ -1271,8 +1271,12 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   <version> [--parent=<n>]` (`wp first schema …` on a server). `apply` takes a JSON list of changes
   (or a whole change set) and applies it on the newest version unless `--parent` says otherwise.
   `rollback` applies the reverse of a version as a new version.
-- **wp-admin.** Tools → Schema versions lists every version, newest first, with who made it and
-  each change in words, and says which runtime changes the running build doesn't contain yet.
+- **Both admins.** Schema versions (Tools in classic wp-admin, the sidebar in First Admin) lists
+  every version, newest first, with who made it and each change in words, and says which runtime
+  changes the running build doesn't contain yet. It is a screen declared once
+  ([admin-screens.md](admin-screens.md)) over `<app>/schema-read`, whose versions carry the same
+  `by` and `summary`. With `admin: false` there is no screen; `first schema list` and the
+  `<app>/schema-read` ability show the same.
 
 Taxonomies can't be added at runtime: `taxonomy()` is not in this First version.
 

@@ -2731,10 +2731,7 @@ fn comment_policy(
             }
             (other, _) => {
                 let mut d = Diag::new(at, format!("`comments` has no option `{other}`"));
-                if let Some(s) = suggest(
-                    other,
-                    ["guests", "moderation", "threaded", "closeAfterDays", "types"],
-                ) {
+                if let Some(s) = suggest(other, ["guests", "moderation", "threaded", "closeAfterDays", "types"]) {
                     d = d.help(format!("did you mean `{s}`?"));
                 } else {
                     d = d.help("the options are guests, moderation, threaded, closeAfterDays and types");

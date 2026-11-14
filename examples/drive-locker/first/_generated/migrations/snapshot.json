@@ -198,7 +198,15 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "id",
+        "label",
+        "ownerId",
+        "replacementNeededAt",
+        "status",
+        "warrantyUntil"
+      ]
     },
     "places": {
       "editor": false,
@@ -254,7 +262,12 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "id",
+        "name",
+        "ownerId"
+      ]
     },
     "health_readings": {
       "editor": false,
@@ -354,7 +367,13 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "driveId",
+        "id",
+        "ownerId",
+        "readOn"
+      ]
     },
     "contents": {
       "editor": false,
@@ -432,7 +451,11 @@
           "default": null,
           "references": null
         }
-      }
+      },
+      "queried": [
+        "driveId",
+        "ownerId"
+      ]
     },
     "members": {
       "editor": false,

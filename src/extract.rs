@@ -456,6 +456,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     localized: false,
                     url: None,
                     hierarchical: false,
+                    indexes: Vec::new(),
                     api: Api {
                         list: true,
                         get: true,
@@ -501,6 +502,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.uid = opts.uid;
         coll.sync = opts.sync;
         coll.hierarchical = opts.hierarchical;
+        coll.indexes = c.indexes.borrow().iter().map(|(f, u, _)| (f.clone(), *u)).collect();
         coll.auth = opts.auth;
         coll.agents = opts.agents;
         let key = coll.key.clone();

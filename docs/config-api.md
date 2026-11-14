@@ -1023,11 +1023,21 @@ keeps its TEXT/DOUBLE storage and string response IDs.
 
 ### Schema changes at deploy
 
-`first check --json` lists each SQL index the deploy keeps, and why it exists,
-under `indexes`: `{ table, name, unique, columns, reason }`. The reasons are
-the primary key, `.unique()`, a reference (MySQL indexes a foreign key),
-drafts (status and publish date) and locales (one row per locale in a
-translation group). Post-backed kinds use WordPress's own indexes.
+Indexes on a SQL table come from the schema and from your code:
+
+- the primary key, `.unique()`, a reference (MySQL indexes a foreign key),
+  drafts (status and publish date) and locales (one row per locale in a
+  translation group);
+- every field a compiled `where` or `orderBy` names (in actions, hooks, jobs,
+  routes and pages), unless an index already starts with it. A long text
+  field (more than 191 characters, no `.max()`), a list or a JSON value gets
+  none;
+- compound ones you declare: `table({ ... }).index(["post", "author"], { unique: true })`.
+
+`first check --json` lists each index under `indexes`:
+`{ table, name, unique, columns, reason }`. A new index is an additive change:
+`first build` writes it as a migration. Post-backed kinds use WordPress's own
+indexes on `wp_posts` and its meta.
 
 `first build` writes the SQL for each schema change to `first/_generated/migrations/`.
 You don't edit or review it. The deploy (`wp first migrate`, the first request after

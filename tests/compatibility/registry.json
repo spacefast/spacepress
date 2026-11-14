@@ -1033,6 +1033,13 @@
       "guidance": "A .tsx file under first/components/ that starts with \"use client\" (after comments and other directives such as \"use strict\") compiles to the WordPress Interactivity API: its server HTML from the server generator, plus a store module the page loads. useState, derived values, handlers, useEffect, useMount, useEvent, useRef, sharedState, server action calls, keyed lists (`items.map((item) => <li key={item.id}>…</li>)`) and reactive `&&` and `?:` over elements compile; the browser re-renders lists and conditionals from `<template>`s."
     },
     {
+      "id": "jsx-comments",
+      "status": "supported",
+      "evidence": "tests/app_router.rs",
+      "test": "comments_follow_the_kind_policy_on_every_path",
+      "guidance": "`<Comments for={item} />` from \"first/app\" renders the item's thread as the visitor may read it and a form that works without JavaScript. The item's kind must turn `comments` on; who may comment, moderation and reply depth are the kind's and enforced where comments are created, not props."
+    },
+    {
       "id": "jsx-pagination",
       "status": "supported",
       "evidence": "tests/app_router.rs",

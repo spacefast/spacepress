@@ -68,6 +68,14 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 - The page a form comes back to is never cached for anyone else. A page with a form stays cacheable for signed-out visitors. A signed-in page's form carries the REST nonce. Only your own pages may post.
 - To go somewhere else after success, call `redirect()` when `state.result` is set.
 
+### Comments
+
+<RepoFile path="tests/fixtures/comments/first/app/notes/[slug]/page.tsx" />
+
+- `<Comments for={item} />` shows the thread as the visitor may read it (approved comments, plus their own held ones) and a form that works without JavaScript.
+- The item's kind turns `comments` on; on a kind without it the build stops at the prop.
+- Who may comment, moderation and reply depth are the kind's, enforced wherever a comment is created: this form, `POST /__first/api/v1/comments` and WordPress's own comment form all get the same answer. For now: signed-in users only, a first comment waits for approval, replies go three levels deep.
+
 ### Markdown pages
 
 <RepoFile path="tests/fixtures/app-router/first/app/(site)/guide/page.md" />

@@ -124,7 +124,7 @@ pub(crate) fn emit_generated(
     let schema_php = schema_php::render(&built.schema);
     if runtime {
         for (rel, bytes) in runtime_tree() {
-            // The optional admin screens: only when the config opted in.
+            // First Admin: unless the config sets `admin: false`.
             if rel != "first-loader.php" && (built.schema.admin || !rel.starts_with("first-admin/")) {
                 write(&plugins.join(rel), bytes)?;
             }

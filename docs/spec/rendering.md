@@ -225,7 +225,8 @@ Real-time co-editing is out of scope.
 
 ### 4.5 Built-in interactive components
 
-`<Comments for>` (thread + form + moderation state), `<SignIn>`,
+`<Comments for>` (thread + form + moderation state; as built, see
+[the decision](../decisions/2026-11-14-comments.md)), `<SignIn>`,
 `<Search kind>`, `<Pagination>` (as built: `page`, `pages`, `param?`; see
 [pages.md](../pages.md#a-page)), `<Menu name>`. They are written in the same
 TSX subset, so they are examples as well as product.

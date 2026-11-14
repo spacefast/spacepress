@@ -81,6 +81,12 @@ export interface FormState<TResult> {
 }
 
 /**
+ * The thread on `for` (an item of a kind with `comments` on), as the visitor may read it, and a
+ * form that posts a comment without JavaScript. Who may comment, moderation and reply depth are
+ * the kind's comment options, enforced wherever a comment is created, never props.
+ */
+export declare function Comments(props: { for: { id: number }; className?: string }): JSX.Element;
+/**
  * Numbered links to the other pages of a listing, as a `<nav>` that works without JavaScript:
  * `<Pagination page={search.page} pages={Math.ceil(total / 20)} />`. Each link is this URL with
  * only `param` (default `"page"`) changed; page 1 drops it. Many pages collapse around the current one.

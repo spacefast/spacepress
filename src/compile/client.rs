@@ -10,12 +10,15 @@
 //! event attributes become `data-wp-on--*`. Generator A still prints every value, so the first
 //! render matches React byte for byte once the `data-wp-*` attributes are set aside.
 use super::*;
-use crate::client_component::{Analysis, Binding};
+use crate::client_component::{Analysis, Binding, refuse};
 
 /// The client component being compiled: its analysis, and whether the root element is still to come.
 pub(super) struct ClientCtx {
     pub analysis: Analysis,
     pub root_pending: bool,
+    /// Inside a `<template>` a reactive list or conditional renders from: values the browser
+    /// computes are left out (their directives fill them), and nothing reads a list item in PHP.
+    pub template: bool,
 }
 
 impl Compiler<'_, '_> {
@@ -127,7 +130,9 @@ impl Compiler<'_, '_> {
                 ));
                 continue;
             }
-            if name == "ref" {
+            // `key` keys React's reconciliation and never reaches the HTML; a list's key goes to
+            // its template's `data-wp-each-key`.
+            if name == "ref" || name == "key" {
                 continue;
             }
             if !ctx.analysis.reactive(value) {
@@ -219,6 +224,7 @@ impl Compiler<'_, '_> {
         if !ctx.analysis.reactive(child) {
             return Ok((php, None));
         }
+        let php = if ctx.template { "''".to_string() } else { php };
         let r = self.client_reference(child)?;
         if alone {
             return Ok((php, Some(r)));
@@ -256,5 +262,225 @@ fn clone_stmt(s: &Stmt) -> Stmt {
             ty: ty.clone(),
         },
         _ => unreachable!("analysis admits only declarations, hooks and the return"),
+    }
+}
+
+/// A list or conditional child of a client element that the browser re-renders when the state it
+/// reads changes (rendering.md §4.1): `items.map((item) => <li>…</li>)`, `cond && <el/>`,
+/// `cond ? <a/> : <b/>`.
+pub(super) enum Reactive<'e> {
+    /// `list.map((name) => <el/>)`: one `<el>` per item, keyed by its `key` attribute.
+    List { list: &'e Expr, item: &'e str, item_span: Span, body: &'e Expr },
+    /// `cond && <el/>`, `cond ? <a/> : <b/>` (an absent branch renders nothing).
+    Cond { test: &'e Expr, yes: Option<&'e Expr>, no: Option<&'e Expr> },
+}
+
+/// The element a branch or a list item renders: one intrinsic JSX element, else None.
+fn element(e: &Expr) -> Option<&Jsx> {
+    match &e.kind {
+        ExprKind::Jsx(j) if matches!(j.kind, JsxKind::Intrinsic(_)) => Some(j),
+        ExprKind::As(inner, _) | ExprKind::NonNull(inner) => element(inner),
+        _ => None,
+    }
+}
+
+/// Whether an expression holds JSX anywhere.
+fn has_jsx(e: &Expr) -> bool {
+    let mut found = false;
+    crate::client_component::visit(e, &mut |x| found |= matches!(x.kind, ExprKind::Jsx(_)));
+    found
+}
+
+/// A branch that renders nothing: `null`, `undefined` or `false`.
+fn nothing(e: &Expr) -> bool {
+    matches!(e.kind, ExprKind::Null | ExprKind::Undefined | ExprKind::Bool(false))
+}
+
+impl Compiler<'_, '_> {
+    /// Whether a child of a client element is a list or conditional the browser must re-render,
+    /// and its parts. Lists and conditionals that read nothing reactive render once, on the server.
+    pub(super) fn client_reactive<'e>(&self, child: &'e Expr) -> Result<Option<Reactive<'e>>> {
+        let Some(ctx) = self.client.as_ref() else {
+            return Ok(None);
+        };
+        let a = &ctx.analysis;
+        match &child.kind {
+            ExprKind::Call { callee, args, optional: false, .. } => {
+                let ExprKind::Member { obj, prop, optional: false, .. } = &callee.kind else {
+                    return Ok(None);
+                };
+                if prop != "map" || !a.reactive(obj) {
+                    return Ok(None);
+                }
+                let [ArrEl::Item(f)] = args.as_slice() else {
+                    return Err(refuse(child.span, "a list's `map` takes one callback", "write `items.map((item) => <li key={item.id}>…</li>)`"));
+                };
+                let ExprKind::Func(f) = &f.kind else {
+                    return Err(refuse(f.span, "a list's `map` callback is an arrow written in place", "write `items.map((item) => <li key={item.id}>…</li>)`"));
+                };
+                let (item, item_span) = match f.params.as_slice() {
+                    [p] if matches!(&p.pat, Pat::Id(..)) && p.default.is_none() && !p.rest => {
+                        let Pat::Id(n, span) = &p.pat else { unreachable!() };
+                        (n.as_str(), *span)
+                    }
+                    _ => {
+                        return Err(refuse(
+                            f.span,
+                            "a reactive list's callback takes one item",
+                            "write `items.map((item) => …)`; the browser re-renders it without the index",
+                        ));
+                    }
+                };
+                let FnBody::Expr(body) = &f.body else {
+                    return Err(refuse(f.span, "a reactive list's callback returns its element directly", "write `(item) => <li key={item.id}>{item.title}</li>`"));
+                };
+                if element(body).is_none() {
+                    return Err(refuse(
+                        body.span,
+                        "each item of a reactive list is one element",
+                        "return one element per item, e.g. `<li key={item.id}>…</li>`",
+                    ));
+                }
+                if a.bindings.contains_key(item) {
+                    return Err(refuse(f.span, format!("the item `{item}` hides a value of the component"), "name the item differently"));
+                }
+                Ok(Some(Reactive::List { list: obj, item, item_span, body }))
+            }
+            // Only markup makes a conditional structural; `{on ? "on" : "off"}` is reactive text.
+            ExprKind::Logical(LogOp::And, test, yes) if a.reactive(test) && has_jsx(yes) => {
+                if element(yes).is_none() {
+                    return Err(refuse(yes.span, "a reactive `&&` renders one element", "write `{open && <p>…</p>}`, or make the condition server-only"));
+                }
+                Ok(Some(Reactive::Cond { test, yes: Some(yes), no: None }))
+            }
+            ExprKind::Cond(test, yes, no) if a.reactive(test) && (has_jsx(yes) || has_jsx(no)) => {
+                let branch = |b: &'e Expr| -> Result<Option<&'e Expr>> {
+                    if nothing(b) {
+                        return Ok(None);
+                    }
+                    if element(b).is_none() {
+                        return Err(refuse(b.span, "each branch of a reactive `?:` is one element or `null`", "write `{open ? <b>open</b> : <i>closed</i>}`"));
+                    }
+                    Ok(Some(b))
+                };
+                Ok(Some(Reactive::Cond { test, yes: branch(yes)?, no: branch(no)? }))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// The PHP for a reactive list or conditional: what the server renders now, each top-level
+    /// element marked `data-wp-each-child`, followed by the `<template>` the browser renders from.
+    ///
+    /// A conditional is a list of zero or one items: `state.valueN` is `[1]` while it shows and
+    /// `[]` while it doesn't, so one directive covers both. A `?:` is two such lists.
+    pub(super) fn client_reactive_php(&mut self, child: &Expr, reactive: Reactive<'_>) -> Result<String> {
+        match reactive {
+            Reactive::List { list, item, item_span, body } => {
+                let jsx = element(body).expect("checked");
+                let key = jsx.attrs.iter().find_map(|a| match a {
+                    JsxAttr::Named { name, value, .. } if name == "key" => Some(value),
+                    _ => None,
+                });
+                let Some(key) = key else {
+                    return Err(refuse(body.span, "each item of a reactive list needs a `key`", "write `<li key={item.id}>`: the browser keeps each item's element by its key"));
+                };
+                let path = self.client_reference(list)?;
+                // The key, as the browser evaluates it: an expression on `context.<item>`.
+                // The item stays bound for the rest of the component: derived getters that read it
+                // (`state.value3` for `book.title`) are written into the store after the markup.
+                let ctx = self.client.as_mut().expect("client");
+                ctx.analysis.bindings.insert(item.to_string(), Binding::Item);
+                let key_ref = self.client_reference(key)?;
+                self.client_each(child, &path, item, key_ref.as_str(), list, item_span, body)
+            }
+            Reactive::Cond { test, yes, no } => {
+                let mut out = Vec::new();
+                for (branch, negate) in [(yes, false), (no, true)] {
+                    let Some(branch) = branch else { continue };
+                    let shown = Expr {
+                        kind: ExprKind::Cond(
+                            Box::new(if negate { Expr { kind: ExprKind::Unary(UnOp::Not, Box::new(test.clone())), span: test.span } } else { test.clone() }),
+                            Box::new(Expr { kind: ExprKind::Array(vec![ArrEl::Item(Expr { kind: ExprKind::Num(1.0), span: test.span })]), span: test.span }),
+                            Box::new(Expr { kind: ExprKind::Array(vec![]), span: test.span }),
+                        ),
+                        span: test.span,
+                    };
+                    let path = self.client_reference(&shown)?;
+                    // The server renders the branch the condition picks now, as the expression would.
+                    let php_test = {
+                        let v = self.expr(test)?;
+                        let v = self.finish_value(v, test.span)?;
+                        let t = self.truthy(&v);
+                        if negate { format!("!({t})") } else { t }
+                    };
+                    let v = self.expr(branch)?;
+                    let v = self.finish_value(v, branch.span)?;
+                    let template = self.client_template(branch, None)?;
+                    out.push(format!(
+                        "\\First\\Html::children(({php_test}) ? \\First\\Islands::eachChild({}, {}) : null, \\First\\Islands::template({}, {}, {template}, 'context.firstShown'))",
+                        v.php,
+                        php_str(&format!("{}::{}", self.client.as_ref().expect("client").analysis.namespace, path)),
+                        php_str("data-wp-each--first-shown"),
+                        php_str(&path),
+                    ));
+                }
+                Ok(format!("\\First\\Html::children({})", out.join(", ")))
+            }
+        }
+    }
+
+    /// The `<template>` content for a list item or a branch: the element compiled with every value
+    /// the browser computes left to its directive. `item` is the list item's name, bound for the
+    /// directives (`context.<item>`) while the template compiles.
+    fn client_template(&mut self, body: &Expr, item: Option<(&str, Ty, Span)>) -> Result<String> {
+        let ctx = self.client.as_mut().expect("client");
+        let was = std::mem::replace(&mut ctx.template, true);
+        if let Some((name, _, _)) = &item {
+            ctx.analysis.bindings.insert(name.to_string(), Binding::Item);
+        }
+        // The item is a PHP local of the list's element type, never read: every value that reads
+        // it is the browser's, so the template leaves it empty.
+        self.fx().scopes.push(HashMap::new());
+        let prelude = match &item {
+            Some((name, ty, span)) => format!("(static fn ({}) => ", self.declare_local(name, ty.clone(), false, *span)),
+            None => String::new(),
+        };
+        let result = self.expr(body).and_then(|v| self.finish_value(v, body.span));
+        self.fx().scopes.pop();
+        let ctx = self.client.as_mut().expect("client");
+        ctx.template = was;
+        let body = result?.wrapped();
+        Ok(if prelude.is_empty() { body } else { format!("{prelude}{body})(null)") })
+    }
+
+    /// A reactive list: the server renders every item now, marked as the template's children,
+    /// then the template.
+    fn client_each(&mut self, child: &Expr, path: &str, item: &str, key: &str, list: &Expr, item_span: Span, body: &Expr) -> Result<String> {
+        let v = self.expr(child)?;
+        let v = self.finish_value(v, child.span)?;
+        let l = self.expr(list)?;
+        let l = self.finish_value(l, list.span)?;
+        let item_ty = match l.ty.non_null() {
+            Ty::Array(inner) | Ty::NonEmptyArray(inner) => (*inner).clone(),
+            Ty::Tuple(items) | Ty::ArrayLiteral(items) => Ty::union(items.clone()),
+            other => {
+                return Err(refuse(list.span, format!("a reactive list maps an array, not {}", other.describe()), "keep the list in state or a prop typed as an array"));
+            }
+        };
+        let template = self.client_template(body, Some((item, item_ty, item_span)))?;
+        let namespace = self.client.as_ref().expect("client").analysis.namespace.clone();
+        let item_attr = item
+            .chars()
+            .flat_map(|c| if c.is_ascii_uppercase() { vec!['-', c.to_ascii_lowercase()] } else { vec![c] })
+            .collect::<String>();
+        Ok(format!(
+            "\\First\\Html::children(\\First\\Islands::eachChild({}, {}), \\First\\Islands::template({}, {}, {template}, {}))",
+            v.php,
+            php_str(&format!("{namespace}::{path}")),
+            php_str(&format!("data-wp-each--{item_attr}")),
+            php_str(path),
+            php_str(key),
+        ))
     }
 }

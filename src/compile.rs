@@ -881,6 +881,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.client = Some(client::ClientCtx {
                     analysis,
                     root_pending: true,
+                    template: false,
                 });
             }
             self.current = name.clone();
@@ -6878,6 +6879,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             for child in &jsx.children {
                 if let ExprKind::Str(text) = &child.kind {
                     out.push(format!("\\First\\Html::raw({})", php_str(&jsx_escape(text))));
+                    continue;
+                }
+                // A list or conditional over state: the server renders it now, and the browser
+                // re-renders it from a `<template>` when the state changes.
+                if let Some(reactive) = self.client_reactive(child)? {
+                    out.push(self.client_reactive_php(child, reactive)?);
                     continue;
                 }
                 let v = self.expr(child)?;

@@ -49,6 +49,14 @@ const hosts = {
 	'classic wp-admin': `/wp-admin/admin.php?page=first-screen-test-comments`,
 };
 
+/**
+ * The row's open actions menu. WordPress 7.2's toolbar has menus of its own (the account menu), so
+ * the last menu on the page is the row's only once the toolbar's are left out.
+ */
+function rowMenu( page: Page ) {
+	return page.locator( '[role="menu"]:not(#wpadminbar [role="menu"])' ).last();
+}
+
 /** What the screen shows: its title, column headings, the comment row and the row's actions. */
 async function shown( page: Page, body: string ) {
 	const screen = page.locator( '[data-screen="test-comments"]' );
@@ -58,7 +66,7 @@ async function shown( page: Page, body: string ) {
 	await expect( row ).toBeVisible();
 	const headings = await screen.getByRole( 'columnheader' ).allInnerTexts();
 	await row.getByRole( 'button', { name: 'Actions' } ).click();
-	const menu = page.getByRole( 'menu' ).last();
+	const menu = rowMenu( page );
 	await expect( menu.getByRole( 'menuitem' ).first() ).toBeVisible();
 	const actions = await menu.getByRole( 'menuitem' ).allInnerTexts();
 	await page.keyboard.press( 'Escape' );
@@ -93,7 +101,7 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 		// Approve runs blog/comments-update through core's run route, in this admin.
 		const ran = page.waitForResponse( ( r ) => r.url().includes( '/wp-abilities/v1/abilities/blog/comments-update/run' ) );
 		await row.getByRole( 'button', { name: 'Actions' } ).click();
-		await page.getByRole( 'menu' ).last().getByRole( 'menuitem', { name: 'Approve' } ).click();
+		await rowMenu( page ).getByRole( 'menuitem', { name: 'Approve' } ).click();
 		expect( ( await ran ).status() ).toBe( 200 );
 		await expect( page.locator( '[data-screen="test-comments"]' ).getByText( 'Approve: done.' ) ).toBeVisible();
 		const stored = await request.get( `${ site }/__first/api/v1/comments/${ id }`, { headers: auth( 'admin' ) } );
@@ -116,7 +124,7 @@ test( 'the server decides access, the same way in both admins', async ( { page, 
 		const { row } = await shown( page, body );
 		const ran = page.waitForResponse( ( r ) => r.url().includes( '/wp-abilities/v1/abilities/blog/comments-update/run' ) );
 		await row.getByRole( 'button', { name: 'Actions' } ).click();
-		await page.getByRole( 'menu' ).last().getByRole( 'menuitem', { name: 'Approve' } ).click();
+		await rowMenu( page ).getByRole( 'menuitem', { name: 'Approve' } ).click();
 		// The table's update rule is "editor": the ability refuses, and the screen says so.
 		expect( ( await ran ).status() ).toBe( 403 );
 		await expect( page.locator( '[data-screen="test-comments"]' ).locator( '.components-notice.is-error' ) ).toBeVisible();

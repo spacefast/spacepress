@@ -10,7 +10,7 @@ route reads:
 | The page reads | Policy |
 |---|---|
 | nothing request-dependent | prebuilt in `dist/` (HTML and `.md`), served before WordPress |
-| only content any visitor can read | cacheable: `public, s-maxage=<window>, max-age=0, must-revalidate` |
+| only content any visitor can read | cacheable: `public, max-age=0, s-maxage=<window>, must-revalidate` |
 | anything viewer-dependent | `private, no-store` |
 
 and `first check --json` prints each route's policy and the reason.
@@ -26,8 +26,10 @@ case. Access rules can be functions of the viewer, field masks depend on the rol
 The router decides the policy for each response, from what that response was:
 
 - an anonymous visitor's 200 render of a page that no layout guards is **cacheable**, with the
-  spec's header (`public, s-maxage=300, max-age=0, must-revalidate`; the window is the
-  `first_app_cache_window` filter);
+  spec's header (`public, max-age=0, s-maxage=300, must-revalidate`; the window is the
+  `first_app_cache_window` filter). `s-maxage` follows `max-age` on purpose: Batcache reads
+  its window with `/^Cache-Control:.*max-?age=(\d+)/i`, which takes the last `max-age=` in
+  the header, so the other order stored every page already expired (fixed 2026-11-14);
 - every other response (a signed-in visitor, a guarded section, an error, a 404) is
   `private, no-store`, and calls `batcache_cancel()` where Batcache runs.
 

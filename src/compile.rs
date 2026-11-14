@@ -5143,7 +5143,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return err(e.span, format!("expected a function, got {}", v.ty.describe()));
         };
         check_callback_parameters(params, declared, e.span)?;
-        Ok(v)
+        Ok(checked_function(v))
     }
 
     /// An object-literal method that reads `this`, compiled with `this` typed as the literal.
@@ -6695,7 +6695,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => props.php,
                 };
                 Ok(Out::atom(
-                    format!("\\First\\Html::component({}, {props})", f.php),
+                    format!("\\First\\Html::component({}, {props})", checked_function(f).php),
                     Ty::Html,
                 ))
             }
@@ -8385,7 +8385,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     open
                 }
             ),
-            None => format!("({})({argv})", f.php),
+            None => format!("{}({argv})", checked_function(f).php),
         };
         Ok(Out::new(
             php,
@@ -9301,7 +9301,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let rep = self.expr(rep_e)?;
                 if let Ty::Fn(declared, _) = &rep.ty {
                     check_callback_parameters(&parameters(declared.len()), declared, rep_e.span)?;
-                    Out::atom(format!("\\Closure::fromCallable({})", rep.php), rep.ty)
+                    checked_function(rep)
                 } else if !rep.ty.is_str() {
                     return err(rep_e.span, "a replacement must be a string or a function");
                 } else {
@@ -10899,6 +10899,14 @@ fn logical_result_type(op: LogOp, left: &Ty, right: &Ty) -> Ty {
     } else {
         Ty::union([retained, right.clone()])
     }
+}
+
+/// A function value the compiler did not build itself, checked to be a JavaScript function before
+/// it is called. The type checker says it is a function, but a type assertion or parsed JSON can
+/// make it a string or an array at run time, and PHP would call the PHP function a string names
+/// (`"system"`, `"First\\Db::..."`) with the arguments the program passes.
+fn checked_function(f: Out) -> Out {
+    Out::atom(format!("\\First\\Js::callback({})", f.php), f.ty)
 }
 
 /// The global `Boolean` read as a value: one shared closure that returns ToBoolean of its

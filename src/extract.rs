@@ -326,6 +326,17 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             .flat_map(|config| config.plugins.iter().map(|plugin| plugin.slug.clone()))
             .collect();
         declared.sort();
+        if let Some(denied) = declared
+            .iter()
+            .find(|slug| crate::bundle::SEALED_DENIED.contains(&slug.as_str()))
+        {
+            return Err(Diag::new(
+                span_of(ev, config, "plugins", config_span),
+                format!(
+                    "a sealed site can't run {denied}: it serves stored content around First's read rules. Remove it from plugins, or turn sealed mode off."
+                ),
+            ));
+        }
         out.schema.sealed = Some(declared);
     }
 

@@ -83,7 +83,7 @@ The checkout token is a bearer capability. Keep it in the browser session; do no
 
 ## Forms and email
 
-The supported form fields are text, email, integer and boolean. Schema validation rejects unknown fields and invalid values before any writes. Requests are limited to 32 KiB. A filled `website` honeypot is rejected. Fixed fifteen-minute rate windows use durable counters on the app connection: five accepted intents per address/form by default, configurable from 1 to 100. Valid receipt replays do not consume another slot. Stale address counters expire after one day.
+The supported form fields are text, email, integer and boolean. Schema validation rejects unknown fields and invalid values before any writes. Requests are limited to 32 KiB. A filled `website` honeypot is rejected. While Akismet has a key (the same rule as comments: Jetpack's connection or `WPCOM_API_KEY`), each submission is first sent to Akismet's comment-check as a `contact-form` comment, as Jetpack Forms does: the form's email field is the author's email, a `name` field the author, the other text the content. A submission Akismet calls spam is refused with `422 spam` before anything is written; an unreachable Akismet lets it through. Fixed fifteen-minute rate windows use durable counters on the app connection: five accepted intents per address/form by default, configurable from 1 to 100. Valid receipt replays do not consume another slot. Stale address counters expire after one day.
 
 Only `REMOTE_ADDR` identifies the client. Forwarded headers are untrusted; configure the web server's trusted-proxy handling if it is behind a proxy. These controls reduce basic automated spam; they are not a CAPTCHA or a moderation service.
 

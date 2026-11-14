@@ -37,8 +37,8 @@ need not list them. The current pins are SCF 6.9.7, Action Scheduler 4.2.0, MCP
 Adapter 0.7.1 and Two Factor 0.17.0, plus Polylang 3.9 when `locales` is
 configured. Users cannot remove them. Akismet isn't a platform plugin: spam
 checks use the Akismet a site sets up through Jetpack, only while it has a key
-(Jetpack's connection or `WPCOM_API_KEY`). Without one, comments aren't
-spam-checked and `first doctor` reports `spam checks: off`. Explicit overrides
+(Jetpack's connection or `WPCOM_API_KEY`); it checks comments and Services form
+submissions. Without one, neither is spam-checked and `first doctor` reports `spam checks: off`. Explicit overrides
 must satisfy the platform floor. `wp_plugins::version::at_least` owns comparison
 using PHP `version_compare` ordering, including WordPress beta/RC/pl suffixes.
 The exact header version is checked against the declaration; numeric trailing

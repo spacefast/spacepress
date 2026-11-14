@@ -59,4 +59,46 @@ $check = array_values(array_filter($checks, static fn (array $c): bool => str_en
 eq('with a key a create is spam-checked with that key and the comment', [count($check), $check[0]['body']['api_key'] ?? null, $check[0]['body']['comment_content'] ?? null], [1, 'first-test-akismet-key', 'Buy cheap things now.']);
 eq('Akismet\'s spam answer marks the comment spam', [$status, get_comment((int) $data['id'])->comment_approved], [201, 'spam']);
 
+// ---- Services forms: Akismet's comment-check before a submission is written ---------------------------------------
+// Answered as Akismet documents its test values: an author or email of `akismet-guaranteed-spam` is spam,
+// anything else is not (https://akismet.com/developers/detailed-docs/testing/). After the comment stand-in
+// above, which records each request in $checks and calls everything spam.
+add_filter('pre_http_request', static function (mixed $pre, array $args, string $url): mixed {
+    if (parse_url($url, PHP_URL_HOST) !== \Akismet::API_HOST || !str_ends_with((string) parse_url($url, PHP_URL_PATH), '/comment-check')) {
+        return $pre;
+    }
+    parse_str((string) $args['body'], $body);
+    if (($body['comment_type'] ?? '') !== 'contact-form') {
+        return $pre;
+    }
+    $spam = ($body['comment_author'] ?? '') === 'akismet-guaranteed-spam' || ($body['comment_author_email'] ?? '') === 'akismet-guaranteed-spam@example.com';
+    return ['headers' => [], 'body' => $spam ? 'true' : 'false', 'response' => ['code' => 200, 'message' => 'OK'], 'cookies' => [], 'filename' => null];
+}, 20, 3);
+add_filter('first_services_config', static fn (): array => ['forms' => ['contact' => ['fields' => [
+    'name' => ['type' => 'text', 'notNull' => true],
+    'email' => ['type' => 'email', 'notNull' => true],
+    'message' => ['type' => 'text', 'notNull' => true],
+], 'recipientEnv' => 'FIRST_SERVICES_MAIL_TO', 'senderEnv' => 'FIRST_SERVICES_MAIL_FROM', 'limit' => 100]]]);
+putenv('FIRST_SERVICES_RATE_SECRET=' . bin2hex(random_bytes(32)));
+$_SERVER['REMOTE_ADDR'] = '203.0.113.7';
+$submissions = static fn (): int => (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first__services_submissions');
+$submit = static fn (array $data, string $key): array => $wp->call('POST', '/services/forms/contact', ['website' => '', 'data' => $data], headers: ['Idempotency-Key' => $key]);
+$formChecks = static function () use (&$checks): array {
+    return array_values(array_filter($checks, static fn (array $c): bool => ($c['body']['comment_type'] ?? '') === 'contact-form'));
+};
+
+[$status, $body] = $submit(['name' => 'akismet-guaranteed-spam', 'email' => 'spammer@example.test', 'message' => 'Cheap things.'], 'form-spam');
+eq('a submission Akismet calls spam is refused, and nothing is written', [$status, $body['code'] ?? null, $submissions()], [422, 'spam', 0]);
+$asked = $formChecks()[0]['body'] ?? [];
+eq('the check is a contact-form comment: the author, email, text, the visitor\'s address and the key',
+    [$asked['comment_type'] ?? null, $asked['comment_author'] ?? null, $asked['comment_author_email'] ?? null, $asked['comment_content'] ?? null, $asked['user_ip'] ?? null, $asked['api_key'] ?? null],
+    ['contact-form', 'akismet-guaranteed-spam', 'spammer@example.test', 'Cheap things.', '203.0.113.7', 'first-test-akismet-key']);
+[$status] = $submit(['name' => 'Visitor', 'email' => 'akismet-guaranteed-spam@example.com', 'message' => 'Hello.'], 'form-spam-email');
+eq('Akismet\'s spam email test value is refused too', [$status, $submissions()], [422, 0]);
+[$status, $body] = $submit(['name' => 'Visitor', 'email' => 'visitor@example.test', 'message' => 'A real question.'], 'form-ham');
+eq('a submission Akismet passes is saved', [$status, $body['delivery'] ?? null, $submissions(), count($formChecks())], [201, 'queued', 1, 3]);
+add_filter('pre_http_request', static fn (mixed $pre, array $args, string $url): mixed => parse_url($url, PHP_URL_HOST) === \Akismet::API_HOST ? new \WP_Error('http_request_failed', 'unreachable') : $pre, 30, 3);
+[$status] = $submit(['name' => 'akismet-guaranteed-spam', 'email' => 'visitor@example.test', 'message' => 'While Akismet is down.'], 'form-down');
+eq('an unreachable Akismet fails open: the submission is saved', [$status, $submissions()], [201, 2]);
+
 finish('spam_test');

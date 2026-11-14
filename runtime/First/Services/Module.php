@@ -130,6 +130,10 @@ final class Module
             }
         }
         $values = Schema::validateInput($fields, $input['data'] ?? null, '/data', null);
+        // Before anything is written, and outside the write's transaction: Akismet is an HTTP call.
+        if (Spam::isSpam($fields, $values)) {
+            throw new HttpError(422, 'spam', 'Submission rejected');
+        }
         return self::once('services:form:' . $name, $input, $headers, static function () use ($name, $form, $values): array {
             Storage::rate('form:' . $name, max(1, min(100, (int) ($form['limit'] ?? 5))));
             $id = Jobs::uuid();

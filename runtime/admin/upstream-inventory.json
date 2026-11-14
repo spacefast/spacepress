@@ -1476,10 +1476,10 @@
       "source": "lib/api/view-config.php",
       "sha256": "6b2ed658865217720089991adc470b7980cae731a1404efb870ae2f320a17f8c",
       "path": "lib/api/view-config.php",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "617efee838c4b7835ec2b9145e076439c75b83c92141d91582c75ed22dea6b0c",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "1f7aa81b4a90c8c91eef3d52b8da0ac29dd8e4ed67fff120d3d2fbf11383e435",
       "normalizedSha256": "617efee838c4b7835ec2b9145e076439c75b83c92141d91582c75ed22dea6b0c",
-      "retainedSourcePath": "lib/api/view-config.php"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/lib/api/view-config.php"
     },
     {
       "source": "lib/i18n.php",
@@ -1504,7 +1504,7 @@
       "sha256": "8a781c03a3f83c87ffb87ac714e77df6a44ab75b57eca45558b3b838ada2b8dd",
       "path": "lib/load-libs.php",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "c51c89f71c915280c9d93ebec8f2ac533f6c8218e4e080a0362af71efa6941c7",
+      "adaptedSha256": "30533d610e76328bd64c107215205c84a81be9e529cc50ee23f5025dfc6d86f3",
       "normalizedSha256": "3ad86290c58390db19e9af3b4adf7c2f9c9bfb9c3767d044c9adf6c817a37029",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/load-libs.php"
     },
@@ -1530,10 +1530,10 @@
       "source": "lib/post.php",
       "sha256": "761f1002f6de45734400f50da98e546ac4868bbbf6cbdde1addeb4ed8ef6d087",
       "path": "lib/post.php",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "47f01b15ba9bd255aaef78fdbc0b075169dcdfec7826ab5adfc74d3b81d99773",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "f525d43cbf8e56430de8336a567670ac2d63a62e13e453f8c15f5a5f1e751eb5",
       "normalizedSha256": "47f01b15ba9bd255aaef78fdbc0b075169dcdfec7826ab5adfc74d3b81d99773",
-      "retainedSourcePath": "lib/post.php"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/lib/post.php"
     },
     {
       "source": "lib/rest-api/class-next-admin-rest-attachments-controller.php",
@@ -1584,10 +1584,10 @@
       "source": "lib/rest-api/class-next-admin-rest-view-config-controller.php",
       "sha256": "f945d03321eae5eb70b2331c07c816f00fd6d7607531d2193fc09f663ae07f2a",
       "path": "lib/rest-api/class-first-admin-rest-view-config-controller.php",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "0984a4cb3c995d2b405fe9c8fb517ab23f69a110d626ffad565babf174924b26",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "03b8270a8d51978b98aae9317afe1dcf2f326c155789ac1adb5e07d5b59dbf14",
       "normalizedSha256": "0984a4cb3c995d2b405fe9c8fb517ab23f69a110d626ffad565babf174924b26",
-      "retainedSourcePath": "lib/rest-api/class-first-admin-rest-view-config-controller.php"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/lib/rest-api/class-first-admin-rest-view-config-controller.php"
     },
     {
       "source": "lib/rest-api/class-wp-rest-themes-controller.php",
@@ -2925,10 +2925,10 @@
       "source": "packages/core-data-next/src/store/resolvers.ts",
       "sha256": "acbd1386dc42bc748680977893f5aafdb17c806820295c9d6b990307d09aa579",
       "path": "apps/packages/core-data-next/src/store/resolvers.ts",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "acbd1386dc42bc748680977893f5aafdb17c806820295c9d6b990307d09aa579",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "c1655de484ab7c145c062912f9d9458c35083753c7288415f26f7974a36eb61a",
       "normalizedSha256": "acbd1386dc42bc748680977893f5aafdb17c806820295c9d6b990307d09aa579",
-      "retainedSourcePath": "apps/packages/core-data-next/src/store/resolvers.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/core-data-next/src/store/resolvers.ts"
     },
     {
       "source": "packages/core-data-next/src/store/selectors.ts",
@@ -7308,10 +7308,10 @@
       "source": "routes/attachment/route.tsx",
       "sha256": "eaf424e409abbe2b13c0b3b1030ef4cc3c0741632b49fbdf25bb5e9674f31b64",
       "path": "apps/routes/attachment/route.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "930326b33465f744f76a94f941b2c2c98e025776813c8e8e66e9ba9a17154af4",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "bce06d326bfca25929cff47326fddb51365a73400022e76f8a1d1cf36b8b9606",
       "normalizedSha256": "930326b33465f744f76a94f941b2c2c98e025776813c8e8e66e9ba9a17154af4",
-      "retainedSourcePath": "apps/routes/attachment/route.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/attachment/route.tsx"
     },
     {
       "source": "routes/dashboard/components/index.ts",

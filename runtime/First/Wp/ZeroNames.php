@@ -33,7 +33,7 @@ namespace First\Wp;
  *   `zero_upload_namespace`, `zero_upload_cursor_*`, `zero_polylang_languages`, `zero_admin_rewrite`,
  *   `zero_pages_<app>` (+ `_error`), globals `zero_global_<name>_<field>` and their SCF companions;
  * - the `zero_guest` role, in `{p}user_roles` and in every user's `{p}capabilities`;
- * - stored job names (`zero.mail`, `zero.webhook`, `zero.services.*`) in the jobs and outbox tables;
+ * - stored job names (`zero.mail`, `zero.webhook`, `zero.services.*`) in the jobs and outbox tables (First no longer writes the outbox; its rows are kept);
  * - pending Action Scheduler actions and groups under `zero_…` / `zero.…` hooks.
  *
  * The upgrade is one-way: a 0.3 build can't read the renamed data, so a host must not roll a site back

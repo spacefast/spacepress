@@ -186,6 +186,14 @@ $m = new ReflectionMethod(\First\Render\Prebuilt::class, 'write');
 $written = $m->invoke(null, \First\Render\Prebuilt::dir() . '/about.html', 'old', '/about', $started);
 $out['race'] = [$before, $written, is_file(\First\Render\Prebuilt::dir() . '/about.html')];
 
+// `Accept: text/markdown` on a prebuilt HTML URL is never answered with the HTML file: the file lane
+// steps aside and the request reaches WordPress. (A host's engine lane answers it with Markdown
+// through MarkdownTwins::negotiate(); this harness has none, so here the router renders the HTML.)
+// The `.md` URL is served from its file.
+do_action('init');
+$drain();
+$negotiated = fetch("$url/about", ['Accept: text/markdown']);
+$out['accept markdown'] = [$negotiated['prebuilt'], fetch("$url/about.md")['prebuilt']];
 // What a host that serves the files before PHP reads (docs/host-contract.md, "Prebuilt pages"):
 // current.json names this build's directory and the headers to send, and goes with the files.
 do_action('init');

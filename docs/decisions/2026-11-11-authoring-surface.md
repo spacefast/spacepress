@@ -1,7 +1,7 @@
 # The authoring surface: rulings for the cutover
 
 Date: 2026-11-11. Where `docs/spec/spec.md` (2026-11-08, third revision) leaves a choice open or
-contradicts itself, these are the choices the cutover makes. Later owner or coordinator rulings override these. Each PR in the cutover cites the rulings it
+contradicts itself, these are the choices the cutover makes. Later owner or coordinator rulings override these; [the 2026-11-14 rulings](2026-11-14-api-direction.md) replace 16 and 18, the trusted-hooks rule, and `hooks` in `definePlugin`. Each PR in the cutover cites the rulings it
 implements.
 
 Owner and coordinator rulings already in force: kind `label` stays as the one named override for the

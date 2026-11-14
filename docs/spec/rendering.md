@@ -203,10 +203,12 @@ core marks it stable. `<Link prefetch>` uses the router's `prefetch`.
 
 ### 4.4 Live data over Cast
 
-This already exists on main (monorepo #5152, zero #128):
+This exists for Zero 0.3 builds (monorepo #5152, zero #128). For First builds, steps 2 and 3 wait on
+the engine's move to First ([host checklist](../spacefast-host-checklist.md), item 7): today the
+event is `zero.changes` and the browser registry `__zeroRealtime`.
 1. A committed write fires `first_realtime_changes` with ids only.
-2. The control plane broadcasts `first.changes` into the Space's Cast room.
-3. `/__spacefast/client.js` holds one socket per page.
+2. The control plane broadcasts the notice into the Space's Cast room.
+3. The Space's realtime script holds one socket per page.
 4. The client re-runs its own query through the normal API, so a viewer only
    ever sees rows its own read returns.
 5. With the socket down, the page polls every 30 seconds; while live, a safety
@@ -221,7 +223,8 @@ This spec adds:
   context, and directives update when it changes.
 
 Both load Cast only on pages that use them, through the engine client.
-Real-time co-editing is out of scope.
+Real-time co-editing uses the Gutenberg plugin's real-time collaboration
+([decision record](../decisions/2026-11-14-api-direction.md), ruling 18).
 
 ### 4.5 Built-in interactive components
 

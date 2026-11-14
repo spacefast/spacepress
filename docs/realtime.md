@@ -178,8 +178,10 @@ A client connects its transport only while something is subscribed. When the tra
 down to live, subscriptions refresh once to catch up. A notice only says which kinds to ask
 about: the data always comes from the visitor's own read.
 
-[Spacefast](spacefast-deploy.md#live-updates) registers its Cast transport
-automatically, so apps on Spacefast write no setup.
+Spacefast's Cast transport does not register for First builds yet: its engine still runs the 0.3.0
+compiler, and the names it uses are the 0.3.0 ones
+([host checklist](spacefast-host-checklist.md), item 7). Until that changes, subscriptions on
+Spacefast poll like on any other host.
 
 ## Server side: the subscription endpoint
 

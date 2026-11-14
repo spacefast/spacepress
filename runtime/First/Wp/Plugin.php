@@ -75,7 +75,12 @@ final class Plugin
         // Last, so no later callback (SCF's `_acf_changed` one returns false) can undo the refusal.
         add_filter('wp_insert_post_empty_content', fn ($empty, $post) => $empty || ($this->unavailable() !== null && $this->touchesCollection($post)), PHP_INT_MAX, 2);
         $refuseDelete = fn ($check, $post) => $this->unavailable() !== null && $post instanceof \WP_Post && $this->touchesCollection((array) $post) ? false : $check;
-        add_filter('pre_delete_post', $refuseDelete, PHP_INT_MAX, 2);
+        // WordPress empties its trash on a schedule (wp_scheduled_delete), with nobody there to read a
+        // refusal: a First item's before half runs here, where core still lets a delete be declined,
+        // so a refused item is skipped and logged and the run goes on.
+        add_filter('pre_delete_post', fn ($check, $post) => $refuseDelete($check, $post) ?? $this->prepareDelete($check, $post), PHP_INT_MAX, 2);
+        // The run's last prepared delete, if a later filter declined it, ends with the run.
+        add_action('wp_scheduled_delete', [EditorSave::class, 'abandonPrepared'], PHP_INT_MAX, 0);
         add_filter('pre_trash_post', $refuseDelete, PHP_INT_MAX, 2);
         // wp_untrash_post deletes the trash metadata before its update; refuse before that.
         add_filter('pre_untrash_post', fn ($check, $post) => $this->unavailable() !== null && $post instanceof \WP_Post && $this->touchesCollection((array) $post) ? false : $check, PHP_INT_MAX, 2);
@@ -660,8 +665,38 @@ final class Plugin
         }
     }
 
-    public function beforeEditorDelete(int $postId, ?\WP_Post $post = null): void
+    /**
+     * `pre_delete_post` in cron: open the item's own transaction and run its before half (referential
+     * actions, beforeDelete). Refused or thrown: that item rolls back, is logged, and core skips it
+     * (false). Passed: before_delete_post finds the half done and doesn't run it again.
+     */
+    private function prepareDelete(mixed $check, mixed $post): mixed
     {
+        if ($check !== null || !$post instanceof \WP_Post || !wp_doing_cron()) {
+            return $check;
+        }
+        $collection = $this->collectionOf($post->ID);
+        if ($collection === null || $this->connection()->busy() || $this->unavailable() !== null || !EditorSave::prepareDelete($collection, $post->ID)) {
+            return $check;
+        }
+        try {
+            $this->beforeEditorDelete($post->ID, $post, true);
+        } catch (\Throwable $e) {
+            EditorSave::abandonDelete();
+            $problem = App::problem($e);
+            error_log(sprintf('[first] %s #%d stays in the trash: %s: %s', $collection, $post->ID, $problem['code'] ?? 'error', $problem['detail'] ?? $e->getMessage()));
+
+            return false;
+        }
+
+        return $check;
+    }
+
+    public function beforeEditorDelete(int $postId, ?\WP_Post $post = null, bool $prepared = false): void
+    {
+        if (isset($this->deleting[$postId]) && !$prepared) {
+            return; // its before half ran at pre_delete_post
+        }
         $collection = $this->collectionOf($postId);
         if ($collection === null || $this->connection()->busy() || $this->unavailable() !== null) {
             return;
@@ -675,6 +710,9 @@ final class Plugin
                 $db->beforeEditorDelete($collection, $row, WpAuth::current());
             } catch (\Throwable $e) {
                 unset($this->deleting[$postId]);
+                if ($prepared) {
+                    throw $e;
+                }
                 EditorSave::fail($e);
             }
         }

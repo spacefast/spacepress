@@ -1425,7 +1425,7 @@ export const items = table({ name: text(), quantity: integer().default(1) }).on(
 | `afterCreate` | `(row: Row, ctx)` | |
 | `beforeUpdate` | `(patch: Partial<Insert>, existing: Row, ctx)` | mutate `patch` or return a replacement |
 | `afterUpdate` | `(row: Row, previous: Row, ctx)` | |
-| `beforeDelete` / `afterDelete` | `(row: Row, ctx)` | throw to abort |
+| `beforeDelete` / `afterDelete` | `(row: Row, ctx)` | throw to abort; a permanent delete only (WordPress's trash is an unpublish), and `ctx.user` can be null when WordPress empties its trash on a schedule |
 | `afterPublish` | `(row: Row, ctx)` | collections only: the item was created published, updated into published, or its scheduled time came |
 
 `.on()` returns the kind, so calls chain, and several handlers for one event run in

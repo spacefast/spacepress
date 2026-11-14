@@ -168,7 +168,41 @@ $oldComment = (int) $db->insert('comments', ['postId' => $old, 'name' => 'x', 'b
 wp_trash_post($old);
 update_post_meta($old, '_wp_trash_meta_time', time() - (EMPTY_TRASH_DAYS + 1) * DAY_IN_SECONDS);
 $cronError = null;
+add_filter('wp_doing_cron', '__return_true');
 $cron = $seen(static function () use (&$cronError): void {
+    wp_set_current_user(0);
+    try {
+        do_action('wp_scheduled_delete'); // as WP-Cron runs it
+    } catch (\Throwable $e) {
+        $cronError = get_class($e) . ': ' . $e->getMessage();
+    }
+});
+remove_filter('wp_doing_cron', '__return_true');
+eq('cron: nothing threw', $cronError, null);
+eq('cron: beforeDelete saw no signed-in user', $GLOBALS['test_actor'] ?? null, 'anonymous');
+eq('cron: the delete pair once for the old item', array_count_values($cron['hooks']), ['beforeDelete' => 1, 'afterDelete' => 1]);
+check('cron: the old item is gone', get_post($old) === null);
+check('cron: its cascade child is gone', $db->findFirst('comments', ['where' => ['id' => $oldComment]]) === null);
+eq('cron: the delete notice', $cron['notices'], [[['comments', ['delete'], [$oldComment]], ['posts', ['delete'], [$old]]]]);
+
+// WordPress empties the trash on a schedule: a refused item (restrict) must not stop the run. The
+// refused one stays in the trash, logged; a deletable one due in the same run is deleted with its
+// cascade and one delete notice, and beforeDelete ran once per item.
+add_filter('wp_doing_cron', '__return_true');
+$due = time() - (EMPTY_TRASH_DAYS + 1) * DAY_IN_SECONDS;
+$keep = (int) $db->insert('posts', ['title' => 'Kept by a pin', 'status' => 'published'], true)[0]['id'];
+$db->insert('pins', ['postId' => $keep]);
+$goes = (int) $db->insert('posts', ['title' => 'Goes', 'status' => 'published'], true)[0]['id'];
+$goesComment = (int) $db->insert('comments', ['postId' => $goes, 'name' => 'x', 'body' => 'goes'], true)[0]['id'];
+foreach ([$keep, $goes, $pinned] as $id) {
+    get_post_status($id) === 'trash' || wp_trash_post($id);
+    update_post_meta($id, '_wp_trash_meta_time', $due);
+}
+$log = ini_get('error_log');
+$logFile = tempnam(sys_get_temp_dir(), 'first-trash-log');
+ini_set('error_log', $logFile);
+$cronError = null;
+$mixed = $seen(static function () use (&$cronError): void {
     wp_set_current_user(0);
     try {
         wp_scheduled_delete();
@@ -176,12 +210,37 @@ $cron = $seen(static function () use (&$cronError): void {
         $cronError = get_class($e) . ': ' . $e->getMessage();
     }
 });
-eq('cron: nothing threw', $cronError, null);
-eq('cron: beforeDelete saw no signed-in user', $GLOBALS['test_actor'] ?? null, 'anonymous');
-eq('cron: the delete pair once for the old item', array_count_values($cron['hooks']), ['beforeDelete' => 1, 'afterDelete' => 1]);
-check('cron: the old item is gone', get_post($old) === null);
-check('cron: its cascade child is gone', $db->findFirst('comments', ['where' => ['id' => $oldComment]]) === null);
-eq('cron: the delete notice', $cron['notices'], [[['comments', ['delete'], [$oldComment]], ['posts', ['delete'], [$old]]]]);
+ini_set('error_log', (string) $log);
+$logged = array_values(array_filter(explode("\n", (string) file_get_contents($logFile)), static fn ($l) => str_contains($l, '[first]')));
+eq('cron with a refused item: the run did not die', $cronError, null);
+check('cron with a refused item: the refused items stay in the trash', get_post_status($keep) === 'trash' && get_post_status($pinned) === 'trash');
+check('cron with a refused item: the deletable one is gone with its cascade child', get_post($goes) === null && $db->findFirst('comments', ['where' => ['id' => $goesComment]]) === null);
+eq('cron with a refused item: one delete notice, for the deletable one', $mixed['notices'], [[['comments', ['delete'], [$goesComment]], ['posts', ['delete'], [$goes]]]]);
+eq('cron with a refused item: beforeDelete once per item, afterDelete once', array_count_values($mixed['hooks']), ['beforeDelete' => 3, 'afterDelete' => 1]);
+eq('cron with a refused item: each refusal logged with kind, id, code and detail', count(array_filter($logged, static fn ($l) => str_contains($l, 'posts') && str_contains($l, 'reference_violation') && str_contains($l, 'Rows in pins still reference this row'))), 2);
+check('cron with a refused item: no transaction left open', !\First\Wp\Plugin::instance()->connection()->inTransaction());
+
+// A pre_delete_post filter after First's declines the delete: the prepared delete is rolled back,
+// never left open, and the next item still goes.
+$declined = (int) $db->insert('posts', ['title' => 'Declined', 'status' => 'published'], true)[0]['id'];
+$declinedComment = (int) $db->insert('comments', ['postId' => $declined, 'name' => 'x', 'body' => 'declined'], true)[0]['id'];
+$after = (int) $db->insert('posts', ['title' => 'After', 'status' => 'published'], true)[0]['id'];
+foreach ([$after, $declined] as $id) { // the declined one last: nothing after it rolls it back
+    wp_trash_post($id);
+    update_post_meta($id, '_wp_trash_meta_time', $due);
+}
+$decline = static fn ($check, $post) => $post instanceof \WP_Post && $post->ID === $declined ? false : $check;
+add_filter('pre_delete_post', $decline, PHP_INT_MAX, 2);
+$declinedRun = $seen(static function (): void {
+    wp_set_current_user(0);
+    do_action('wp_scheduled_delete'); // as WP-Cron runs it
+});
+remove_filter('pre_delete_post', $decline, PHP_INT_MAX);
+check('declined later: the item and its cascade child are still there', get_post_status($declined) === 'trash' && $db->findFirst('comments', ['where' => ['id' => $declinedComment]]) !== null);
+check('declined later: the next item went', get_post($after) === null);
+check('declined later: no transaction left open', !\First\Wp\Plugin::instance()->connection()->inTransaction());
+eq('declined later: only the deleted item was announced', array_map(static fn ($n) => array_column($n, 0), $declinedRun['notices']), [['posts']]);
+remove_filter('wp_doing_cron', '__return_true');
 
 // Empty Trash in wp-admin (edit.php's delete_all): one wp_delete_post per trashed item, in id order;
 // a refusal wp_dies there, after the items before it were deleted and before the ones after it.

@@ -252,12 +252,52 @@ final class EditorSave
     public static function beginDelete(mixed $postId): void
     {
         $plugin = Plugin::instance();
+        if (self::$open !== null && self::$open['owner'] === 'delete' && self::$open['postId'] === (int) $postId) {
+            self::$open['prepared'] = false; // prepared at pre_delete_post: core started it, it goes on in it
+            return;
+        }
         if ($plugin === null || self::busy() || $plugin->connection()->inTransaction()
             || ($collection = CoreAccess::collection((string) get_post_type((int) $postId))) === null) {
             return;
         }
         self::open('delete', $collection, (int) $postId, null, null, []);
         self::$open['checked'] = true; // delete_post (the delete rule) decided it
+    }
+
+    /**
+     * Open a delete's transaction before core starts it (`pre_delete_post`), for a delete whose
+     * before half must be able to decline it; false when another save is open.
+     */
+    public static function prepareDelete(string $collection, int $postId): bool
+    {
+        $plugin = Plugin::instance();
+        if (self::$open !== null && self::$open['owner'] === 'delete' && (self::$open['prepared'] ?? false)) {
+            self::rollback(); // a prepared delete that never started: a later pre_delete_post declined it
+        }
+        if ($plugin === null || self::busy() || $plugin->connection()->inTransaction()) {
+            return false;
+        }
+        self::open('delete', $collection, $postId, null, null, []);
+        self::$open['checked'] = true;
+        self::$open['prepared'] = true;
+
+        return true;
+    }
+
+    /** The prepared delete was refused by its before half: nothing of it commits. */
+    public static function abandonDelete(): void
+    {
+        if (self::$open !== null && self::$open['owner'] === 'delete') {
+            self::rollback();
+        }
+    }
+
+    /** A prepared delete core never started (a later pre_delete_post declined it) rolls back. */
+    public static function abandonPrepared(): void
+    {
+        if (self::$open !== null && self::$open['owner'] === 'delete' && (self::$open['prepared'] ?? false)) {
+            self::rollback();
+        }
     }
 
     public static function endDelete(mixed $postId): void

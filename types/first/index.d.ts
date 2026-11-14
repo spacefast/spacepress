@@ -1059,7 +1059,13 @@ export interface CollectionHooks<T extends AnyCollection> {
   /** Mutate `patch` or return a replacement. */
   beforeUpdate?: (patch: Patch<T>, existing: Row<T>, ctx: BeforeHookCtx<Patch<T>>) => Awaitable<Patch<T> | void>;
   afterUpdate?: (row: Row<T>, previous: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /**
+   * Before a permanent delete; a throw refuses it. Moving an item to WordPress's trash is not a
+   * delete (it is an unpublish and runs the update hooks); emptying the trash is. `ctx.user` can be
+   * null: WordPress empties its trash on a schedule, with nobody signed in.
+   */
   beforeDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** After a permanent delete, in its transaction. `ctx.user` can be null, as for `beforeDelete`. */
   afterDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
   /** A collection's item became published: created published, updated into it, or its scheduled time came. */
   afterPublish?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;

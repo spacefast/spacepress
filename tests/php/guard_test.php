@@ -70,6 +70,13 @@ eq('blogname kept', get_option('blogname') !== 'Owned', true);
 $id = $call('wp_insert_post', [new JsObject(['post_title' => 'Plain', 'post_status' => 'draft']), true]);
 eq('a plain post is inserted', is_int($id) && $id > 0, true);
 eq('a page is inserted', is_int($call('wp_insert_post', [new JsObject(['post_title' => 'Page', 'post_type' => 'page']), true])), true);
+// A field the catalog's type doesn't declare (JSON.parse keeps it): ID would overwrite that post,
+// a First kind's included, and turn it into a `post`.
+$kind = wp_insert_post(['post_type' => 'first_posts', 'post_status' => 'publish', 'post_title' => 'Kept']);
+foreach (['ID' => $kind, 'import_id' => $kind + 1000, 'meta_input' => ['_edit_lock' => 'x'], 'tax_input' => ['category' => [1]], 'post_date' => '2001-01-01 00:00:00'] as $field => $value) {
+    problem("wp_insert_post refuses the field $field", static fn () => $call('wp_insert_post', [new JsObject(['post_title' => 'overwritten', $field => $value]), true]), 403, 'protected_post_field');
+}
+eq('the First post is untouched', [get_post_type($kind), get_the_title($kind)], ['first_posts', 'Kept']);
 
 // existingTable: this site's prefix (wp_ here), never WordPress's, First's or Action Scheduler's own.
 $refused = static function (string $label, string $table, string $prefix) {
@@ -198,6 +205,8 @@ problem('planning the deploy refuses it the same way, before the schema check re
 // A historical adoption record is refused by plan() too, with no collection binding the table.
 $historical = new Migrator($wp->connection(), $dir, new \First\Schema($schema));
 problem("planning refuses a historical adoption of WordPress users", static fn () => $historical->plan(), 409, 'existing_table_refused');
+problem('marking a step of it applied is refused before the ledger is touched', static fn () => $historical->markApplied('0001_adopt:1'), 409, 'existing_table_refused');
+eq('and the step is still pending', in_array('0001_adopt', $historical->pending(), true), true);
 // The site's read-only inspection returns the refusal instead of throwing: a copy of the plugin
 // whose app directory holds the historical adoption of wp_users.
 $plugin = (new \ReflectionClass(\First\Wp\Plugin::class))->newInstanceWithoutConstructor();
@@ -266,6 +275,36 @@ foreach (['wp_users' => 'WordPress users', $sfz('spc_other') . 'users' => "anoth
     problem("a historical adoption of $what's table is still refused", static fn () => $under($site, static fn () => $replay->migrate()), 409, 'existing_table_refused');
 }
 $wp->connection()->run("DROP TABLE IF EXISTS `{$mine}first__migrations`");
+
+// An adoption an earlier runtime applied, whose collection is gone, is checked again before a later
+// statement drops its table: a ledger that recorded `0001_adopt` of wp_users can't drop wp_users.
+$wp->connection()->run('DROP TABLE IF EXISTS wp_first__migrations');
+$history($adoptRecord('wp_users', 'members'), 'wp_users');
+$migrator = new Migrator($wp->connection(), $dir, new \First\Schema($later), ['myTasks' => (int) $wp->connection()->run('SELECT COUNT(*) AS n FROM wp_users')[0]['n']]);
+$wp->connection()->run('CREATE TABLE wp_first__migrations (`app` VARCHAR(191) NOT NULL, `id` VARCHAR(191) NOT NULL, `applied_at` CHAR(24) NOT NULL, `sql` CHAR(64) NULL, PRIMARY KEY (`app`, `id`))');
+$wp->connection()->run('INSERT INTO wp_first__migrations (`app`, `id`, `applied_at`) VALUES (?, ?, ?)', [(new \First\Schema($later))->name(), '0001_adopt', '2026-01-01T00:00:00.000Z']);
+problem('planning a drop of a table adopted earlier re-checks that adoption', static fn () => $migrator->plan(), 409, 'existing_table_refused');
+problem('and so does applying it, with the drop confirmed', static fn () => $migrator->migrate(), 409, 'existing_table_refused');
+eq('wp_users is still there', (int) $wp->connection()->run('SELECT COUNT(*) AS n FROM wp_users')[0]['n'] > 0, true);
+$wp->connection()->run('DROP TABLE IF EXISTS wp_first__migrations');
+
+// plan() checks an adoption against the live table as migrate() does: a declared index the table
+// lacks is a refusal at plan time, not a successful plan that then fails to apply.
+$GLOBALS['GUARD_SPACE'] = 'spc_mine';
+$wp->connection()->run('CREATE TABLE wp_legacy_notes (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `title` TEXT)');
+array_map('unlink', glob("$dir/*"));
+file_put_contents("$dir/0001_adopt.sql", '-- first-adopt ' . json_encode(['table' => 'wp_legacy_notes', 'name' => 'notes',
+    'indexes' => [['name' => 'PRIMARY', 'unique' => true, 'columns' => ['id']], ['name' => 'by_title', 'unique' => false, 'columns' => ['title']]],
+    'foreignKeys' => [], 'integerColumns' => [['name' => 'id', 'unsigned' => true]]]) . "\nSELECT `id`, `title` FROM `wp_legacy_notes` LIMIT 0;");
+$notes = $schema;
+$notes['collections']['comments']['existingTable'] = 'wp_legacy_notes';
+$planner = new Migrator($wp->connection(), $dir, new \First\Schema($notes));
+problem('plan() refuses an adoption whose declared index the table lacks', static fn () => $planner->plan(), 409, 'schema_refused');
+file_put_contents("$dir/0001_adopt.sql", '-- first-adopt ' . json_encode(['table' => 'wp_legacy_notes', 'name' => 'notes',
+    'indexes' => [['name' => 'PRIMARY', 'unique' => true, 'columns' => ['id']]], 'foreignKeys' => [], 'integerColumns' => [['name' => 'id', 'unsigned' => true]]])
+    . "\nSELECT `id`, `missing` FROM `wp_legacy_notes` LIMIT 0;");
+problem('and one whose declared column the table lacks', static fn () => $planner->plan(), 409, 'schema_refused');
+$GLOBALS['GUARD_SPACE'] = '';
 array_map('unlink', glob("$dir/*"));
 rmdir($dir);
 $GLOBALS['GUARD_SPACE'] = '';

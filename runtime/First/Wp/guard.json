@@ -81,6 +81,8 @@
   ],
   "postTypes": {
     "allowedBuiltIn": ["post", "page"],
+    "fields": ["post_title", "post_content", "post_excerpt", "post_status", "post_type", "post_name", "post_author", "post_parent", "menu_order"],
+    "fieldsWhy": "the catalog's postarr fields only: ID or import_id would overwrite an existing post (a First kind's included) and meta_input, tax_input and the rest write what no capability check covers",
     "why": "wp_insert_post runs no capability check: a published customize_changeset applies its settings with the check turned off, and First's own first_* types would skip the kinds' access rules. App code inserts posts and pages and other plugins' public types; First's kinds go through db"
   }
 }

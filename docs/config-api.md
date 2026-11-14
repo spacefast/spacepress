@@ -1070,7 +1070,12 @@ before the first migration reads the table and on every request that uses it
 
 The first migration's adoption record is checked the same way on its own, so a
 deploy that applies it together with a later migration that drops the table's
-collection (with the `--drop` that needs) still runs.
+collection (with the `--drop` that needs) still runs. An adoption already applied
+is checked again before a later migration alters or drops its table. Planning
+a deploy (the read-only site check), applying it and `wp first migrate
+--mark-applied` all run these checks, and planning also checks the declared
+columns, indexes, keys and integer types against the live table, before anything
+changes.
 
 It is distinct from `storageName`, which still identifies the logical resource's
 migration history. The binding is committed in the snapshot and cannot change

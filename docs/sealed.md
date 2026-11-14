@@ -231,7 +231,11 @@ build with `F4301`; a name built at runtime is refused with `403
 protected_option` before WordPress sees the call. `wp_insert_post`, which
 WordPress runs without a capability check, takes `post`, `page` or another
 plugin's public post type only, so a published `customize_changeset` can't apply
-settings and a First kind's post type can't skip its access rules.
+settings and a First kind's post type can't skip its access rules. It takes only
+the fields its type declares (`post_title`, `post_content`, ...): `ID`,
+`import_id`, `meta_input`, `tax_input` and the rest are refused with `403
+protected_post_field`, whatever the value's type said at build time, so it can't
+overwrite an existing post.
 
 The catalog admits no function that activates plugins, switches themes, or
 changes roles, users, capabilities, user or post metadata, cron, or site

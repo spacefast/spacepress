@@ -43,7 +43,15 @@ final class Guard
         if ($kind === 'read' || $kind === 'write') {
             self::option($args[0] ?? null, $kind === 'write' ? 'write' : 'read');
         } elseif ($kind === 'post') {
-            self::postType(is_array($args[0] ?? null) ? ($args[0]['post_type'] ?? 'post') : 'post');
+            $post = $args[0] ?? null;
+            // Only the fields the catalog declares, whatever the value's type said at build time.
+            $rules = self::rules()['postTypes'];
+            foreach (is_array($post) ? array_keys($post) : [] as $field) {
+                if (!in_array($field, $rules['fields'], true)) {
+                    throw new HttpError(403, 'protected_post_field', 'App code can\'t pass `' . self::shown((string) $field) . "` to wp_insert_post: {$rules['fieldsWhy']}");
+                }
+            }
+            self::postType(is_array($post) ? ($post['post_type'] ?? 'post') : 'post');
         }
     }
 

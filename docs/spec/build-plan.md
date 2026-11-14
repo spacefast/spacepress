@@ -249,7 +249,8 @@ Monorepo `legacy/zero-0.8` keeps its Preact island code until live 0.8 Spaces mo
 
 **Build:**
 - **Per-route cache policy:**
-  - the compiler decides prebuilt, shared or private;
+  - the compiler decides prebuilt, shared or private (deferred: the router decides shared or
+    private per response, and a page opts into prebuilt with `prerender = true`);
   - Batcache and edge headers;
   - bypass for signed-in visitors and previews.
 - **Purge planning:**

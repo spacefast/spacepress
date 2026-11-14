@@ -83,10 +83,6 @@ test( 'a screen declared once has the same fields and actions in both admins, an
 		const { body, id } = made.find( ( m ) => m.which === which )!;
 		await page.goto( `${ site }${ path }` );
 		if ( which === 'classic wp-admin' ) {
-			// Polylang sends the first wp-admin page after its activation to its setup wizard once.
-			if ( page.url().includes( 'page=mlang_wizard' ) ) {
-				await page.goto( `${ site }${ path }` );
-			}
 			// wp-admin's own chrome around it: the admin menu lists the page under Comments.
 			await expect( page.locator( '#adminmenu a[href$="page=first-screen-test-comments"]' ) ).toBeVisible();
 		} else {

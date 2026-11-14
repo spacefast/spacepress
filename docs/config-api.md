@@ -15,7 +15,7 @@ nothing else chooses storage: not a field, not an option.
 |---|---|---|
 | Builders | `collection()`, `userProjection()`, `global()`, and the media library | `table()` |
 | Stored as | WordPress's own objects: posts and post meta, users and user meta, attachments, options | one SQL table per kind, `wp_first_<name>` |
-| Edited in | wp-admin and the WordPress editor; a collection has drafts and revisions | your app, through the API and the typed client (and the optional `admin: true` screens) |
+| Edited in | wp-admin and the WordPress editor; a collection has drafts and revisions | your app, through the API and the typed client (and First Admin's screens) |
 | Other plugins | work on the same posts, users and media | don't know these tables |
 | Field types | a collection's fields are post meta: text, cast to the field's type when read | typed columns (`BIGINT`, `DOUBLE`, `VARCHAR`, ...) |
 | References | checked by First when it writes | a SQL foreign key between two tables; checked by First when the target is content |
@@ -1145,8 +1145,9 @@ These are build errors with the same message the runtime returns.
 `defineConfig({ name?, collections?, tables?, users?, globals?, hooks?, actions?,
 jobs?, webhooks?, media?, files?, locales?, plugins?, use?, admin?, frontend?, runtimeSchema? })`. `name` (a slug,
 default: the project directory) names the WordPress plugin `first-app-<name>`.
-`admin: true` ships the optional admin screens as a fourth plugin,
-`first-admin`; by default the build emits none. `frontend` says who renders the
+Every build ships First Admin, the default admin at `/wp-admin/new/`, as a fourth
+plugin, `first-admin`; `admin: false` leaves it out and keeps only classic wp-admin
+([docs/admin.md](admin.md)). `frontend` says who renders the
 public site: leave it out for the theme (or `first/app` when it exists), `false`
 for backend only, or an external site's `https://` address (`http://` only on
 localhost) so links, previews and feeds point there.

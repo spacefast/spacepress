@@ -71,7 +71,6 @@ export const settings = global("settings", {
 
 export default defineConfig({
   name: "kitchen-sink",
-  admin: true,
   collections: { pages, events },
   tables: { registrations, activity },
   users: { members },

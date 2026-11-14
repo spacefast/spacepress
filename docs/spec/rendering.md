@@ -340,7 +340,8 @@ route's policy and the reason.
 
 ## 7. Kept from today
 
-- Hidden code-owned WordPress Page records for static routes.
+- Hidden code-owned WordPress Page records for static routes (`First\Wp\RoutePages`): one Page per
+  parameterless `page.tsx` route, its permalink the route URL, `/` the front page.
 - Escaping through the HTML API.
 - Route IDs that survive moving a file.
 

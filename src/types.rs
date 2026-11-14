@@ -379,7 +379,7 @@ pub fn col_base(c: &Column, json_ty: &dyn Fn(&Column) -> Ty, insert: bool) -> Ty
         | ColType::RichText => Ty::Str,
         ColType::Boolean => Ty::Bool,
         ColType::Json => json_ty(c),
-        ColType::MediaList => Ty::Array(Box::new(Ty::Num)),
+        ColType::MediaList | ColType::RefList => Ty::Array(Box::new(Ty::Num)),
         ColType::Select => Ty::Array(Box::new(
             c.enum_values
                 .as_ref()

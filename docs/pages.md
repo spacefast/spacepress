@@ -180,6 +180,31 @@ visitor, unless the page's metadata says `robots: { index: false }`, and the
 items of every kind with a `url` that a signed-out visitor may read. A draft, a
 row an access rule hides and a password-protected item are never in it.
 
+### WordPress identity
+
+Each `page.tsx` route without parameters is also a **hidden, code-owned
+WordPress Page**, so the rest of WordPress sees the page as one of its own.
+
+- Menus, SEO plugins and `get_permalink()` see a normal published Page whose
+  link and canonical URL are the route's URL. `/` is the front page
+  (`page_on_front`), unless the site already chose a front page of its own.
+- The Page keeps its ID across builds, so a menu item that points at it keeps
+  working. Its title is the page's literal `metadata.title`, else its folder
+  name.
+- A route under a layout `guard` stores its Page private, so search, feeds,
+  the REST API and the sitemap never list it.
+- Code Pages are absent from the wp-admin Pages list, its counts and REST
+  `context=edit` lists. `edit_post` and `delete_post` are denied on them, and a
+  write that bypasses capabilities keeps the stored fields.
+- WordPress's own addresses for the Page (its slug, `?page_id=`) redirect to
+  the route.
+- A route that goes away moves its Page to the trash; nothing is deleted. A URL
+  that another published Page already owns is not taken over: the route still
+  renders, without a Page, and the log says so.
+
+A `page.md` route owns a real Page that editors change ([Markdown
+pages](#markdown-pages)); a route with parameters has no Page.
+
 ## Client components
 
 A file that starts with `"use client"` is a client component. Its first

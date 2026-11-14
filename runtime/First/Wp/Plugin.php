@@ -39,8 +39,12 @@ final class Plugin
     /** @var array<string, int> `--drop` confirmations for this process's migration (SchemaCheck) */
     private array $drops = [];
 
+    /** The hash of the `schema.php` this request loaded, taken when it booted. */
+    private string $loadedHash = '';
+
     public function __construct(public readonly string $dir, string $mainFile, public readonly Schema $schema)
     {
+        $this->loadedHash = (string) @hash_file('sha256', $dir . '/first/app/schema.php');
         self::$instance = $this;
         $this->mainFile = $mainFile;
         Hardening::apply($schema);
@@ -108,6 +112,7 @@ final class Plugin
         // Components content may use as blocks (first/components: `export const blocks`).
         add_action('init', [\First\Content\Blocks::class, 'register'], 5);
         ContentPages::register($this);
+        RoutePages::register($this);
         KindUrls::register($this);
         MarkdownTwins::register();
         Sitemap::register($this);
@@ -459,6 +464,26 @@ final class Plugin
         return $this->migrator()->nonInnoDb();
     }
 
+    /**
+     * The named lock a deploy holds while it checks and migrates storage. Applying a runtime schema
+     * change takes the same lock (spec §2.10), so it never interleaves with a deploy.
+     */
+    public function schemaLock(): string
+    {
+        return $this->schemaOption();
+    }
+
+    /**
+     * Whether `schema.php` on disk is still the build this request loaded. A deploy that replaced it
+     * while this request ran makes this false; the next request loads the new one.
+     */
+    public function buildIsCurrent(): bool
+    {
+        clearstatcache(true, $this->dir . '/first/app/schema.php');
+
+        return $this->schemaHash() === $this->loadedHash;
+    }
+
     private function schemaOption(): string
     {
         return 'first_' . $this->schema->name() . '_schema';
@@ -472,7 +497,7 @@ final class Plugin
     /** Identifies the compiled schema this request runs: what a runtime schema version was validated on. */
     public function buildHash(): string
     {
-        return $this->schemaHash();
+        return $this->loadedHash;
     }
 
     // ================================================================ registration

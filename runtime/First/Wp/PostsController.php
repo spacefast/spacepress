@@ -289,7 +289,17 @@ final class PostsController extends \WP_REST_Posts_Controller
                 // plugins hooked there see the API's writes as they see core's.
                 clean_post_cache((int) $row[$pk]);
                 $post = get_post((int) $row[$pk]) ?: throw new \LogicException("Post {$row[$pk]} vanished");
+                $this->coreFields($post, $request);
                 do_action("rest_insert_{$this->post_type}", $post, $request, $id === null);
+                // Other plugins' registered meta (outside First's fields), as core's save writes it.
+                $meta = PostMeta::input($request);
+                $others = is_array($meta) ? array_diff_key($meta, PostMeta::fields(Plugin::instance()?->schema->collection($this->collection) ?? [])) : [];
+                if ($others !== [] && $this->meta !== null) {
+                    $done = $this->meta->update_value($others, $post->ID);
+                    if (is_wp_error($done)) {
+                        throw new \First\HttpError((int) ($done->get_error_data()['status'] ?? 400), 'invalid_input', $done->get_error_message());
+                    }
+                }
                 $fields = $this->update_additional_fields_for_object($post, $request);
                 if (is_wp_error($fields)) {
                     throw new \First\HttpError((int) ($fields->get_error_data()['status'] ?? 400), 'invalid_input', $fields->get_error_message());
@@ -309,6 +319,43 @@ final class PostsController extends \WP_REST_Posts_Controller
         $response->set_status($id === null ? 201 : 200);
 
         return $response;
+    }
+
+    /**
+     * The core post fields a First write doesn't own, applied as core's create_item/update_item applies
+     * them after its save: author, menu order, featured image and template. First's own write keeps
+     * title, content, slug, status and its fields; a core client's other fields are not dropped. An
+     * `author` other than the caller needs the type's edit_others capability, as core checks it.
+     */
+    private function coreFields(\WP_Post $post, \WP_REST_Request $request): void
+    {
+        $postarr = [];
+        if ($request->has_param('author') && (int) $request['author'] !== (int) $post->post_author) {
+            $type = get_post_type_object($this->post_type);
+            if ((int) $request['author'] !== get_current_user_id() && !current_user_can($type->cap->edit_others_posts)) {
+                throw new \First\HttpError(403, 'forbidden', 'You may not set another author', '/author');
+            }
+            $postarr['post_author'] = (int) $request['author'];
+        }
+        if ($request->has_param('menu_order')) {
+            $postarr['menu_order'] = (int) $request['menu_order'];
+        }
+        if ($postarr !== []) {
+            $done = wp_update_post(['ID' => $post->ID] + $postarr, true);
+            if (is_wp_error($done)) {
+                throw new \First\HttpError(400, 'invalid_input', $done->get_error_message());
+            }
+        }
+        if ($request->has_param('featured_media')) {
+            $this->handle_featured_media($request['featured_media'], $post->ID);
+        }
+        if ($request->has_param('template')) {
+            $this->handle_template($request['template'], $post->ID, true);
+        }
+        $terms = $this->handle_terms($post->ID, $request);
+        if (is_wp_error($terms)) {
+            throw new \First\HttpError(400, 'invalid_input', $terms->get_error_message());
+        }
     }
 
     /** A hook refusing the delete is the editor's 4xx with its message (§1.7), and nothing is deleted. */

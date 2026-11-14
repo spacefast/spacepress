@@ -227,6 +227,7 @@ final class Runtime
             \First\Extensions::schemaDescribe(static function (array $description): array {
                 $description['runtime']['wp'] = Platform::versions();
                 $description['runtime']['wp']['hardening'] = Hardening::SWITCHES;
+                $description['runtime']['wp']['publicAuthors'] = Authors::public(self::$plugin->schema);
                 $description['runtime']['wp']['incompatibleTables'] = self::$plugin->storageProblems();
                 $description['runtime']['identity'] = self::identity();
                 $description['runtime']['version'] = self::VERSION;

@@ -56,6 +56,19 @@ or profile reference counts. The ceilings bound each profile, not total sign-in
 latency: heterogeneous sites still pay for each distinct supported profile.
 Inventory runs and raw-import registration cannot add an over-budget profile.
 
+## Password attempt limits
+
+Password attempts are limited to ten in five minutes per client address, and ten in five minutes per login, whichever fills first. Once a counter is full, every attempt is refused with `rate_limited` ("Too many attempts. Try again later.", status 429) until the five-minute window ends. This holds on both ways a password reaches the site, and they differ in what they count:
+
+- Identity's own sign-in (`sign-in/password`) counts every attempt, before the password is checked.
+- WordPress's own sign-in (`wp-login.php`, XML-RPC where a site turns it on, any plugin that calls `wp_authenticate`) counts failed attempts, as WordPress reports them (`wp_login_failed`). A sign-in that succeeds counts nothing, so an office behind one address, or a person who signs in often, is never limited by it. With a full counter the refusal replaces the password check's answer, so a limited attempt gets the same answer whether the password was right.
+
+The per-login counter is keyed on the login as typed, without letter case; an email address and a username for the same account are separate counters, and both share the per-address one. A form posted with no login or no password isn't an attempt, and Identity's own refusals (a second factor required, an unavailable account, a limit already reached) aren't counted as wrong guesses.
+
+An application password that authenticates a request is never counted: REST checks it outside WordPress's sign-in, and one that signs in through `wp_authenticate` (XML-RPC, where on) succeeds without counting. A wrong one sent through `wp_authenticate` is a failed attempt like any other. The two paths keep separate counters: ten attempts on `wp-login.php` and ten on `sign-in/password` are both allowed.
+
+The client address is `REMOTE_ADDR`. Behind a proxy or CDN the host must set it to the visitor's address, as WordPress itself expects; otherwise every visitor shares one per-address counter and the per-login limit is the one that protects accounts. When Identity's storage can't read the counters, sign-in is refused, as its other gates do. Anyone can fill a login's counter, so an attacker who knows a login can keep its owner from signing in with a password for as long as they keep trying; passkeys, email codes and existing sessions are not affected.
+
 ## Browser and protocol boundaries
 
 Cookie-authenticated writes require the canonical identity Origin or a registered application origin (`applications.origins`, an exact `scheme://host[:port]`). Other origins fail; WordPress's reflected credentialed CORS headers are replaced in this REST namespace by headers for registered origins only. The token and revoke endpoints answer CORS for registered origins without credentials. Sensitive writes use session CSRF tokens. Consent checks Origin and CSRF. `prompt=login`/`max_age` require a new browser sign-in before consent; silent `prompt=none` is not supported.

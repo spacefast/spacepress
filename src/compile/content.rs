@@ -8,11 +8,23 @@
 //!
 //! The three run in PHP (`First\Content\Nav`), and read as the visitor like every query: a draft
 //! or an item the visitor may not read is in no tree, pager or link.
+//!
+//! - `apiReference(source?)`: an OpenAPI document (the app's own, or a JSON file in `public/`) as
+//!   tags, operations and flat field lists a page maps over (`First\Content\ApiReference`).
 use super::*;
 
-pub const CONTENT_EXPORTS: &[&str] = &["nav", "pager", "headings"];
+pub const CONTENT_EXPORTS: &[&str] = &["nav", "pager", "headings", "apiReference"];
 /// Type-only exports of `"first/content"`: importable, erased.
-pub const CONTENT_TYPES: &[&str] = &["NavItem", "PagerLink", "Heading"];
+pub const CONTENT_TYPES: &[&str] = &[
+    "NavItem",
+    "PagerLink",
+    "Heading",
+    "ApiReference",
+    "ApiTag",
+    "ApiOperation",
+    "ApiField",
+    "ApiResponse",
+];
 
 /// The levels of tree `nav()` returns: the type system has no recursive types, so the tree is as
 /// deep as this, and `nav()` stops there.
@@ -151,6 +163,32 @@ impl Compiler<'_, '_> {
                     Ty::Array(Box::new(heading())),
                 ))
             }
+            "apiReference" => {
+                let source = match args {
+                    [] => "null".to_string(),
+                    [ArrEl::Item(e)] => match &e.kind {
+                        ExprKind::Str(path) if path.ends_with(".json") && !path.contains("..") => php_str(path),
+                        _ => {
+                            return err_help(
+                                e.span,
+                                "`apiReference()` takes the path of a JSON file in `public/`, as a string literal",
+                                "write `apiReference()` for the app's own API, or `apiReference(\"partner-api.json\")`",
+                            );
+                        }
+                    },
+                    _ => {
+                        return err_help(
+                            span,
+                            "`apiReference()` takes at most one argument",
+                            "write `apiReference()` for the app's own API, or `apiReference(\"partner-api.json\")`",
+                        );
+                    }
+                };
+                Ok(Out::atom(
+                    format!("\\First\\Content\\ApiReference::build({source})"),
+                    api_reference(),
+                ))
+            }
             other => unreachable!("first/content has no export {other}"),
         }
     }
@@ -166,6 +204,11 @@ pub(super) fn content_type(name: &str) -> Option<Ty> {
         "NavItem" => Some(nav_item(NAV_DEPTH)),
         "PagerLink" => Some(pager_link()),
         "Heading" => Some(heading()),
+        "ApiReference" => Some(api_reference()),
+        "ApiTag" => Some(api_tag()),
+        "ApiOperation" => Some(api_operation()),
+        "ApiField" => Some(api_field()),
+        "ApiResponse" => Some(api_response()),
         _ => None,
     }
 }
@@ -199,5 +242,63 @@ fn heading() -> Ty {
     field(&mut fields, "depth", Ty::Num);
     field(&mut fields, "text", Ty::Str);
     field(&mut fields, "id", Ty::Str);
+    Ty::Obj(fields)
+}
+
+/// `{ name, depth, type, required, description, constraints, in }`: one parameter or property.
+fn api_field() -> Ty {
+    let mut fields = IndexMap::new();
+    field(&mut fields, "name", Ty::Str);
+    field(&mut fields, "depth", Ty::Num);
+    field(&mut fields, "type", Ty::Str);
+    field(&mut fields, "required", Ty::Bool);
+    field(&mut fields, "description", Ty::Str);
+    field(&mut fields, "constraints", Ty::Array(Box::new(Ty::Str)));
+    field(&mut fields, "in", Ty::Str);
+    Ty::Obj(fields)
+}
+
+/// `{ status, description, type, fields }`.
+fn api_response() -> Ty {
+    let mut fields = IndexMap::new();
+    field(&mut fields, "status", Ty::Str);
+    field(&mut fields, "description", Ty::Str);
+    field(&mut fields, "type", Ty::Str);
+    field(&mut fields, "fields", Ty::Array(Box::new(api_field())));
+    Ty::Obj(fields)
+}
+
+/// One operation: its method and path, what it takes and answers, and request samples.
+fn api_operation() -> Ty {
+    let mut fields = IndexMap::new();
+    for name in ["id", "slug", "method", "path", "summary", "description", "access"] {
+        field(&mut fields, name, Ty::Str);
+    }
+    field(&mut fields, "params", Ty::Array(Box::new(api_field())));
+    field(&mut fields, "bodyType", Ty::Str);
+    field(&mut fields, "body", Ty::Array(Box::new(api_field())));
+    field(&mut fields, "responses", Ty::Array(Box::new(api_response())));
+    field(&mut fields, "curl", Ty::Str);
+    field(&mut fields, "fetch", Ty::Str);
+    Ty::Obj(fields)
+}
+
+/// `{ name, slug, description, operations }`.
+fn api_tag() -> Ty {
+    let mut fields = IndexMap::new();
+    field(&mut fields, "name", Ty::Str);
+    field(&mut fields, "slug", Ty::Str);
+    field(&mut fields, "description", Ty::Str);
+    field(&mut fields, "operations", Ty::Array(Box::new(api_operation())));
+    Ty::Obj(fields)
+}
+
+/// `{ title, version, description, server, tags }`.
+fn api_reference() -> Ty {
+    let mut fields = IndexMap::new();
+    for name in ["title", "version", "description", "server"] {
+        field(&mut fields, name, Ty::Str);
+    }
+    field(&mut fields, "tags", Ty::Array(Box::new(api_tag())));
     Ty::Obj(fields)
 }

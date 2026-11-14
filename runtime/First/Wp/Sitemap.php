@@ -305,7 +305,8 @@ final class Sitemap
     private static function readableUsers(Plugin $plugin, array $args): array
     {
         $collection = $plugin->schema->auth()['collection'] ?? null;
-        if (!is_string($collection)) {
+        // `publicAuthors`, or a kind anyone may read: every author, as WordPress ships it.
+        if (!is_string($collection) || Authors::public($plugin->schema)) {
             return $args;
         }
         if ($plugin->unavailable() !== null) {

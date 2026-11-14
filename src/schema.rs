@@ -23,6 +23,9 @@ pub enum ColType {
     MediaList,
     /// `select([...]).many()`. A single select is `Text` with `enum`.
     Select,
+    /// `ref(kind).many()`: the target ids in write order. No column of its own: the rows live in a
+    /// First-owned join table (see [`Column::join_table`]).
+    RefList,
     Group,
     Repeater,
     Blocks,
@@ -46,6 +49,7 @@ impl ColType {
             ColType::File => "file",
             ColType::MediaList => "mediaList",
             ColType::Select => "select",
+            ColType::RefList => "refList",
             ColType::Group => "group",
             ColType::Repeater => "repeater",
             ColType::Blocks => "blocks",
@@ -76,7 +80,7 @@ impl ColType {
 
     /// Lists filtered with `has` (§3.5 `serialized-list` kind).
     pub fn is_list_kind(self) -> bool {
-        matches!(self, ColType::MediaList | ColType::Select)
+        matches!(self, ColType::MediaList | ColType::Select | ColType::RefList)
     }
 
     /// Group/repeater/blocks: their meta is spread over many rows on WordPress.
@@ -122,6 +126,9 @@ pub struct Reference {
     pub column: String,
     pub on_delete: Option<RefAction>,
     pub on_update: Option<RefAction>,
+    /// A many-ref's join table: its snapshot key, `<owner storage name>_<field snake_case>`, stored as
+    /// `{prefix}first_<key>` with `owner_id`, `target_id` and `position`.
+    pub join: Option<String>,
 }
 
 /// Value rules checked by the runtime after coercion (§1.2).
@@ -271,6 +278,9 @@ pub struct Relation {
     pub from: String,
     pub to: String,
     pub optional: bool,
+    /// A many-ref's relation goes through its join table: (snapshot key, column naming this side's
+    /// row, column naming the related row). `from`/`to` are then both primary keys.
+    pub through: Option<(String, String, String)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -502,12 +512,28 @@ pub struct Schema {
     pub admin: bool,
     /// `defineConfig({ frontend })` (spec §5); `None` is the default: the theme, or `first/app`.
     pub frontend: Option<crate::kind_url::Frontend>,
+    /// `defineConfig({ output })` (docs/decisions/2026-11-13-static-output.md): `Server` renders
+    /// pages per request and prebuilds the ones that say `prerender = true`; `Static` prebuilds them all.
+    pub output: Output,
     /// `defineConfig({ publicAuthors: true })`: core's author archives, author routes and user
     /// listings stay public, as WordPress ships them (the users kind's read rule can also allow it).
     pub public_authors: bool,
+    /// `defineConfig({ sealed: true })`: the slugs of the config's `plugins`, which run as plugins with
+    /// First's own and the platform's (spec §6; docs/sealed.md). `None` when the site isn't sealed.
+    pub sealed: Option<Vec<String>>,
     /// `defineConfig({ runtimeSchema: true })` (spec §2.10): the site's content schema may change
     /// while it runs. Holds what the build read from the lock `first pull` writes.
     pub runtime_schema: Option<RuntimeSchema>,
+}
+
+/// `output` in `defineConfig`, Astro's word for it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Output {
+    /// Pages render on WordPress per request; a page that exports `prerender = true` is prebuilt.
+    #[default]
+    Server,
+    /// Every page is prebuilt; `first export` writes a site with no WordPress at runtime.
+    Static,
 }
 
 /// The site schema version a build contains: zero and no hash before any `first pull`.
@@ -539,7 +565,9 @@ impl Default for Schema {
             locales: None,
             admin: true,
             frontend: None,
+            output: Output::Server,
             public_authors: false,
+            sealed: None,
             runtime_schema: None,
         }
     }
@@ -657,8 +685,10 @@ pub struct App {
 
 #[derive(Debug, Clone)]
 pub struct AppRoute {
-    /// The folder below `app/`, `/` for the root: stable across builds.
+    /// The folder below `app/`, `/` for the root, or the page's own `route.id`: stable across builds.
     pub id: String,
+    /// Where the page set its id itself (`export const route = { id }`, or `id:` in a `page.md`).
+    pub explicit_id: Option<crate::diag::Span>,
     /// `/blog/:slug`, `/docs/*rest` (one or more), `/docs/**rest` (zero or more).
     pub pattern: String,
     pub page: Option<String>,
@@ -667,6 +697,8 @@ pub struct AppRoute {
     pub error: Option<String>,
     /// The stylesheets the page and its layouts import, in link order (`assets::stylesheets`).
     pub styles: Vec<String>,
+    /// The page is prebuilt: its file says `prerender = true`, or the config says `output: "static"`.
+    pub prerender: bool,
     /// The kind whose `url` this page serves (spec §2.7), with each pattern placeholder's folder
     /// parameter: the page receives that kind's `item`, and a missing one is a 404.
     pub kind: Option<(String, Vec<(String, String)>)>,
@@ -686,6 +718,11 @@ pub struct AppFile {
     /// them (`export const signature`, a raw signed webhook). Exactly one when there are handlers.
     pub access: Option<Access>,
     pub signature: Option<Json>,
+    /// `export const prerender = true | false` (pages): `None` when the page says nothing, so it
+    /// follows the config's `output`.
+    pub prerender: Option<bool>,
+    /// `export async function staticParams()`: the compiled function listing a dynamic page's params.
+    pub static_params: Option<String>,
 }
 
 #[derive(Debug, Clone)]

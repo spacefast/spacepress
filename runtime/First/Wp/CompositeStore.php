@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace First\Wp;
 
 use First\Dialect;
+use First\Links;
 use First\Schema;
 use First\Source;
 use First\Store;
@@ -14,7 +15,7 @@ use First\Store;
  * (`editor: false`). Both share one Connection, so one transaction spans posts, meta, custom
  * tables and options. Globals always go to the options-backed WpTableStore.
  */
-final class CompositeStore implements Store
+final class CompositeStore implements Store, Links
 {
     public function __construct(
         private readonly Schema $schema,
@@ -133,5 +134,27 @@ final class CompositeStore implements Store
     public function mapError(\Throwable $e): \Throwable
     {
         return $this->tables->mapError($e);
+    }
+
+    // Join tables are First's own tables, whatever stores their two sides.
+
+    public function linkTable(string $join): string
+    {
+        return $this->tables->linkTable($join);
+    }
+
+    public function links(string $join, string $by, array $ids): array
+    {
+        return $this->tables->links($join, $by, $ids);
+    }
+
+    public function setLinks(string $join, int|string $owner, array $targets): void
+    {
+        $this->tables->setLinks($join, $owner, $targets);
+    }
+
+    public function unlink(string $join, string $by, int|string $id): void
+    {
+        $this->tables->unlink($join, $by, $id);
     }
 }

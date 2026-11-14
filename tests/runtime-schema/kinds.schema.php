@@ -47,6 +47,11 @@ return [
                 'links' => ['type' => 'repeater', 'fields' => [
                         'href' => ['type' => 'text', 'notNull' => true],
                     ]],
+                'page' => ['type' => 'blocks', 'layouts' => [
+                        'hero' => [
+                            'heading' => ['type' => 'text'],
+                        ],
+                    ]],
                 'status' => ['type' => 'text', 'notNull' => true, 'enum' => ['draft', 'published', 'scheduled'], 'default' => ['value' => 'published'], 'system' => true],
                 'publishedAt' => ['type' => 'timestamp', 'system' => true],
             ],

@@ -30,6 +30,7 @@ Route `/__first/*` to WordPress and never cache it: every answer carries
 | The schema lists `collections` (and `tables`) | It lists `kinds`: every kind with its core `route` and `type` (`post`, `table`, `users`, or `builtin` for WordPress's own: `posts`, `pages`, `comments`, `media`, `categories`, `tags`, `menus`, `settings`), plus `globals`, `actions` (with `readonly`, `destructive`, `output`), `runtime` and `site` |
 | A list answers `{ data: rows }` | `{ data: rows, cursor }`; `cursor` is an opaque string for the next page, `null` on the last one |
 | List `limit`: default 50, at most 200 | default 50, at most 100; `offset` or `cursor` (`?cursor=<the previous cursor>`) for the next page |
+| `GET /<kind>/<id>/revisions` answers `{ data }` | `{ data, cursor }`, paged like every list; the generated client's `revisions.list()` follows the cursor |
 | `GET /me` answers `{ id, name, role, member }` with the users row under `member` | `{ id, name, role, ...the users row as you read it }` flat; `null` when signed out |
 | An application password of a suspended account authenticated | 403 `account_unavailable` |
 

@@ -1,7 +1,7 @@
 // "first/app": pages, layouts and HTTP routes under first/app/ (docs/spec/rendering.md §2–§4).
 // Types only: the compiler lowers these to PHP; nothing here runs in Node or the browser.
 /// <reference path="./assets.d.ts" />
-import type { RouteRequest, RouteResponse, User } from "first";
+import type { Action, ColumnsConfig, RouteRequest, RouteResponse, User } from "first";
 import type { JSX } from "first/jsx-runtime";
 
 export type { RouteRequest, RouteResponse };
@@ -52,6 +52,12 @@ export interface Metadata {
 /** `export const guard` in a layout: who may see everything below it. */
 export type Guard = "anyone" | "authenticated" | "subscriber" | "author" | "editor" | "admin" | boolean | ((ctx: { user: User | null }) => boolean);
 
+/**
+ * `export async function staticParams(): Promise<StaticParams<"blog/[slug]">>` in a prebuilt dynamic
+ * page: one entry per page to build, with a value for each folder parameter (Astro's `getStaticPaths`).
+ */
+export type StaticParams<R extends keyof Routes | string = string> = Params<R>[];
+
 /** `export const search = { page: integer().default(1) }`: the typed query string of a page. */
 export type SearchParams<S> = S;
 
@@ -59,6 +65,20 @@ export type SearchParams<S> = S;
 export declare function notFound(): never;
 /** Stops the render and redirects (302 unless given 301, 303, 307 or 308). */
 export declare function redirect(url: string, status?: 301 | 302 | 303 | 307 | 308): never;
+
+/**
+ * What the last submit of a `<form action={action}>` on this page left: read once, after the form
+ * posted without JavaScript and came back. `pending` is false on the server. `error.fields` names
+ * the field an input error is about; `values` is what was typed, to fill the form again (never a
+ * password field).
+ */
+export declare function useFormState<TResult>(action: Action<ColumnsConfig, TResult> | Action<any, TResult>): FormState<Awaited<TResult>>;
+export interface FormState<TResult> {
+  pending: boolean;
+  error: { code: string; message: string; fields: Record<string, string | undefined> } | null;
+  result: TResult | null;
+  values: Record<string, string | undefined>;
+}
 
 /** A post body (block markup) rendered through `the_content`. */
 export declare function Content(props: { value: string | null | undefined }): JSX.Element;

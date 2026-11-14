@@ -13,9 +13,9 @@ Node 22.18+, npm, and TypeScript 5.9
 (`npm install --global typescript@5.9.3`). `cargo build --release` produces
 `target/release/first`.
 
-`first dev` uses pinned WordPress Studio CLI 2.1.1 through npm and needs no
+`first dev` uses pinned WordPress Studio CLI 2.2.0 through npm and needs no
 Docker or host PHP. It supplies WordPress 7.1.4, PHP 8.4 and SQLite Database
-Integration 3.1.2. The host PHP requirements above are for the PHP suites.
+Integration 3.1.3. The host PHP requirements above are for the PHP suites.
 The reference WordPress/MariaDB suites and the separate
 showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
 `curl`, `sha256sum` and `rsync` on the host.

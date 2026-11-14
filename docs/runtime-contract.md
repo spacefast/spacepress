@@ -62,7 +62,7 @@ versions, `scf`, `actionScheduler`, `mcpAdapter`, `twoFactor`, `polylang`, `iden
 Jetpack, and whether it has a key; never required), and `incompatibleTables`. `runtime.pendingMigrations` and
 `runtime.languages` report app migration and localization state. Identity is
 true only for a compatible implementation; the A3 placeholder does not enable it.
-`first doctor [--site URL]` (bearer token in `FIRST_TOKEN`) checks this data against the same
+`first doctor [--site URL]` (bearer token in `FIRST_TOKEN`, or `FIRST_APP_PASSWORD`) checks this data against the same
 platform policy used by runtime activation.
 
 ## schema.php
@@ -556,6 +556,10 @@ The v2 app plugin registers these. A WordPress without a First app is unchanged.
 - **HTML pages** with a twin send
   `Link: <twin>; rel="alternate"; type="text/markdown"` and the matching
   `<link>` in `wp_head`.
+- **WordPress/ai's Markdown Feeds.** The app plugin adds itself (its plugin
+  file and `Name` header) to the `wpai_markdown_feeds_conflicting_plugins`
+  list, so a site that also turns on that experiment is told in its settings
+  that two plugins answer Markdown requests and print Markdown `<link>` tags.
 - **`/llms.txt`** and **`Content-Signal`** (on HTML pages, twins,
   `/llms.txt`, and a `robots.txt` line). The `first_content_signal` filter
   changes the value; `''` sends none.
@@ -728,7 +732,8 @@ listens and purges those URLs from Batcache and the edge. With no listener
 - **Paths, root-relative with their query:** the item's URL before and after
   the write (a slug change purges both), the home page, the posts page, the
   post type archive, every term archive the post had or has, the author
-  archive, page 2 of each listing, the feed, `/llms.txt`, the sitemap index
+  archive, page 2 of each listing, the site's posts and comments feeds, the
+  post's comments feed and each of its terms' feeds, `/llms.txt`, the sitemap index
   and every file of the sub-sitemap that would list the item (as many as the
   index last showed, plus one), and every page URL's `.md` twin. A term edit or delete purges its archive and page 2, and a
   slug change purges both the old and the new archive. Adding or removing a
@@ -742,14 +747,67 @@ listens and purges those URLs from Batcache and the edge. With no listener
   paths, `.md` twins included.
 - **`first/app/` pages** (`Render\Cache`): an anonymous visitor's 200 render of
   a page outside any guarded layout sends `Cache-Control: public,
-  s-maxage=300, max-age=0, must-revalidate` (the `first_app_cache_window`
-  filter sets the window); anything else sends `private, no-store` and calls
+  max-age=0, s-maxage=300, must-revalidate` (the `first_app_cache_window`
+  filter sets the window; `s-maxage` comes after `max-age` because Batcache
+  takes the last `max-age=` in the header as its own window); anything else sends `private, no-store` and calls
   `batcache_cancel()`. Each cacheable render records the rows it read in
   `first__app_reads` (kind, row id or `*` for a listing, path with query). A
   committed write to a kind announces, once after commit, every recorded path
   that read that row or listed the kind, with its `.md` twin. More than 200
   paths becomes `/*`, a whole-host purge. Nothing is recorded or announced
   without a listener.
+- **Page caches the runtime purges itself** (`Wp\PageCaches`): where Batcache
+  (`batcache_clear_url()`), the VIP edge cache (`wpvip_purge_edge_cache_for_url()`,
+  or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins) or Jetpack
+  Boost (`jetpack_boost_clear_page_cache_url`) is loaded, the runtime listens on
+  `first_purge_urls` and clears each path in each of them. Batcache counts only
+  while its drop-in runs (`$batcache` is set). `/*` bans the VIP site and clears
+  Boost's whole cache; a list longer than VIP queues in one request (100) bans
+  the VIP site once instead of each URL. Boost clears a URL recursively, so `/`
+  goes to its home action. Batcache has no whole-site clear, so its entries run
+  out with the window. A host's own listener runs beside these.
+
+## Reactive queries (`Live\Module`)
+
+Design and measurements: [the decision](decisions/2026-11-13-reactive-queries.md).
+
+- **Counters.** `first__versions (kind, scope, version)` holds, per collection, an `all` counter
+  and, for a collection with drafts, a `published` counter (it moves only when a row is published
+  before or after the write). `Live\Versions` listens on `Extensions::onWritten` and writes the
+  counters through `Connection::beforeCommit`, as the transaction's last statements. A rollback
+  writes none. `Live\Versions::touch($connection, $collection, $published = false)` counts a write
+  that doesn't pass the write pipeline; scheduled promotion calls it, and so does a post moved to or
+  out of the trash (`transition_post_status`).
+- **`Connection::beforeCommit(callable)`** runs a callback just before `COMMIT` of the outermost
+  transaction (at once when none is open). A throw rolls the transaction back.
+- **`POST /__first/api/v1/_live`** takes `{ queries: [{ kind, op, args?, id?, token? }] }`:
+  `kind` is the client's schema key, `op` one of `list`, `paginate`, `get`, `count`, `args` that
+  call's arguments, `id` the row for `get` (or `args.where` for a `get` by filter), `token` what
+  the previous answer to the same query returned. It answers
+  `{ data: { results: [...], poll: { minMs, maxMs } } }` with one result per query, in order:
+
+  | Result | Meaning |
+  |---|---|
+  | `{ changed: true, token, data }` | the read's result as the caller reads it |
+  | `{ changed: false, token }` | what the caller holds is current |
+  | `{ error }` | the read's problem document (401, 403, 404, 405, 422) |
+  | `{ pending: true }` | the request's time budget ran out first; ask again |
+
+  At most 20 queries and 32 KiB per request; a `list` or `paginate` is capped at 100 rows, `offset`
+  at 999999999 and `with` at three levels; after one
+  second of reads the rest are `pending`. The response is `private, no-store`. The
+  `first_live_poll` filter changes the `poll` window clients keep to.
+- **`Live\Module::evaluate(Db $db, Viewer $viewer, array $queries, int $budgetMs = 1000): array`**
+  is the same thing without HTTP, for server code that renders a read and hands its token to the
+  browser. Results also carry `json`, the encoded `data` the token's hash was taken of.
+- **Tokens** are opaque and sealed with a key derived from the site's salt. A token answers only
+  the query and visitor it was issued for.
+- A subscription is answered from the counters, without running the read, only when the visitor
+  may read every row and field of every kind the read depends on (a localized kind's published
+  rows list their drafts as translations, so it is answered by hash); otherwise the read runs on each
+  poll and its result hash decides. A counter is trusted for `Live\Module::TRUST_SECONDS` (300)
+  after the read last ran, which bounds how long a write made outside the write pipeline can go
+  unseen.
 
 ## CLI (`wp first`)
 

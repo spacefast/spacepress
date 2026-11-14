@@ -19,7 +19,10 @@ use First\Sync\Markdown;
  * - Twins are the same for every visitor: only publicly viewable content, never drafts, previews,
  *   private posts or password-protected bodies. They are built from stored content
  *   ({@see Markdown::renderPost()}), not from the theme's HTML.
- * - HTML responses with a twin advertise it in a `Link` header and a `<link>` tag.
+ * - HTML responses with a twin advertise it in a `Link` header and a `<link>` tag, the same tag
+ *   WordPress/ai's Markdown Feeds prints for its own Markdown URLs.
+ * - The app names itself on WordPress/ai's `wpai_markdown_feeds_conflicting_plugins` list, so a site
+ *   that also turns on Markdown Feeds is told that two plugins answer Markdown requests.
  * - The engine's `Accept: text/markdown` lane calls {@see negotiate()} (docs/runtime-contract.md).
  */
 final class MarkdownTwins
@@ -35,7 +38,8 @@ final class MarkdownTwins
     /** false outside negotiate(); null while it runs; then the answer `wp` built for it. */
     private static array|false|null $negotiated = false;
 
-    public static function register(): void
+    /** @param string $mainFile the app plugin's main file, which names it to WordPress/ai */
+    public static function register(string $mainFile): void
     {
         // After the app router's handlers (0): a first/app/ route at a `.md` path or `/llms.txt` is the app's.
         add_filter('do_parse_request', [self::class, 'parseRequest'], 1);
@@ -45,6 +49,26 @@ final class MarkdownTwins
         add_filter('robots_txt', [self::class, 'robots'], PHP_INT_MAX);
         add_filter('rest_request_before_callbacks', [self::class, 'restFields'], 10, 3);
         add_filter('rest_pre_serve_request', [self::class, 'restMarkdown'], 10, 4);
+        add_filter('wpai_markdown_feeds_conflicting_plugins', static fn (mixed $plugins): array => self::conflicting((array) $plugins, $mainFile));
+    }
+
+    /**
+     * WordPress/ai's Markdown Feeds lists the active plugins that also serve Markdown
+     * (`plugin file => name`, kept when `is_plugin_active()`), so its settings warn about two answers
+     * to the same Markdown requests and two `<link rel="alternate" type="text/markdown">` tags.
+     *
+     * @param array<string, string> $plugins
+     * @return array<string, string>
+     */
+    public static function conflicting(array $plugins, string $mainFile): array
+    {
+        if (!function_exists('get_plugin_data')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+        $name = (string) (get_plugin_data($mainFile, false, false)['Name'] ?? '');
+        $plugins[plugin_basename($mainFile)] = $name !== '' ? $name : 'First';
+
+        return $plugins;
     }
 
     // ================================================================ public API

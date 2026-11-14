@@ -48,7 +48,7 @@ fn io(error: std::io::Error) -> Diag {
     failure(error.to_string())
 }
 
-fn relative(root: &Path, path: &Path) -> std::io::Result<String> {
+pub(crate) fn relative(root: &Path, path: &Path) -> std::io::Result<String> {
     let mut normalized = PathBuf::new();
     for component in path.components() {
         match component {
@@ -76,6 +76,17 @@ struct Recording {
 impl Fs for Recording {
     fn allow_packages(&self) -> bool {
         self.packages
+    }
+    // How the sources are read is the wrapped tree's: a raw 0.3 project (`crate::zero_bundle`) is
+    // captured with the reading its capture is compiled with.
+    fn frozen_capture(&self) -> bool {
+        self.fs.frozen_capture()
+    }
+    fn module_alias(&self) -> Option<&'static str> {
+        self.fs.module_alias()
+    }
+    fn legacy_fields(&self) -> bool {
+        self.fs.legacy_fields()
     }
     fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
         self.fs.read_dir(path)
@@ -172,19 +183,14 @@ pub fn capture(fs: Rc<dyn Fs>, project: &Path, packages: bool) -> Result<Capture
     }
     let app = serde_json::to_string(&app).map_err(|e| failure(e.to_string()))?;
     let vendor = serde_json::to_string(&vendor).map_err(|e| failure(e.to_string()))?;
-    let manifest = Manifest {
-        format: "first.source-bundle.v1".into(),
-        name: built.schema.name.clone(),
-        app_sha256: hash(app.as_bytes()),
-        vendor_sha256: hash(vendor.as_bytes()),
-    };
+    let manifest = manifest_for("first.source-bundle.v1", &built.schema.name, &app, &vendor);
     let mut public_files = Vec::new();
     capture_assets(&*fs, &project.join("public"), &project, &mut public_files)?;
     public_files.sort();
     Ok(Capture {
         app,
         vendor,
-        manifest: serde_json::to_string(&manifest).unwrap(),
+        manifest,
         public_files,
     })
 }
@@ -253,12 +259,40 @@ pub fn sources(project: &Path, destination: &Path) -> Result<Manifest, Diag> {
 #[cfg(feature = "host")]
 pub(crate) fn write_sources(project: &Path, destination: &Path, packages: bool) -> Result<Manifest, Diag> {
     let captured = capture(Rc::new(loader::Disk), project, packages)?;
+    write_capture(
+        project,
+        destination,
+        [(APP_FILE, &captured.app), (VENDOR_FILE, &captured.vendor)],
+        &captured.manifest,
+    )
+}
+
+/// A capture's two bundles and manifest, and the project's `public/`, into a new directory.
+#[cfg(feature = "host")]
+pub(crate) fn write_capture(
+    project: &Path,
+    destination: &Path,
+    bundles: [(&str, &String); 2],
+    manifest: &str,
+) -> Result<Manifest, Diag> {
     std::fs::create_dir(destination).map_err(io)?;
-    std::fs::write(destination.join(APP_FILE), &captured.app).map_err(io)?;
-    std::fs::write(destination.join(VENDOR_FILE), &captured.vendor).map_err(io)?;
-    std::fs::write(destination.join(MANIFEST_FILE), &captured.manifest).map_err(io)?;
+    for (name, text) in bundles {
+        std::fs::write(destination.join(name), text).map_err(io)?;
+    }
+    std::fs::write(destination.join(MANIFEST_FILE), manifest).map_err(io)?;
     public_assets(&project.join("public"), Some(&destination.join("public")))?;
-    serde_json::from_str(&captured.manifest).map_err(|e| failure(e.to_string()))
+    serde_json::from_str(manifest).map_err(|e| failure(e.to_string()))
+}
+
+/// The manifest of a capture whose bundles are `app` and `vendor`.
+pub(crate) fn manifest_for(format: &str, name: &str, app: &str, vendor: &str) -> String {
+    serde_json::to_string(&Manifest {
+        format: format.into(),
+        name: name.into(),
+        app_sha256: hash(app.as_bytes()),
+        vendor_sha256: hash(vendor.as_bytes()),
+    })
+    .unwrap()
 }
 
 fn is_vendor(path: &str) -> bool {
@@ -408,9 +442,18 @@ pub fn compile(
 /// the bytes as captured, with every path validated and module ownership (app or vendor) checked.
 #[cfg(feature = "host")]
 pub(crate) fn read_bundles(source: &Path, files: [(&str, &String); 2]) -> Result<SourceBundle, Diag> {
+    let [(app, app_hash), (vendor, vendor_hash)] = files;
+    check_bundles([
+        (app, std::fs::read(source.join(app)).map_err(io)?, app_hash),
+        (vendor, std::fs::read(source.join(vendor)).map_err(io)?, vendor_hash),
+    ])
+}
+
+/// [`read_bundles`] on bytes already read: (file name, bytes, expected hash) for app, then vendor.
+#[cfg(feature = "host")]
+pub(crate) fn check_bundles(files: [(&str, Vec<u8>, &String); 2]) -> Result<SourceBundle, Diag> {
     let mut sources = SourceBundle::default();
-    for ((file, expected), vendor) in files.into_iter().zip([false, true]) {
-        let bytes = std::fs::read(source.join(file)).map_err(io)?;
+    for ((file, bytes, expected), vendor) in files.into_iter().zip([false, true]) {
         if hash(&bytes) != *expected {
             return Err(failure(format!("source bundle hash mismatch: {file}")));
         }
@@ -445,6 +488,8 @@ pub(crate) struct Compiled {
     /// The app has an auth collection, so it mounts `first-identity`.
     pub identity: bool,
     pub admin: bool,
+    /// `sealed: true`: the plugin slugs a host lets load, First's own and the platform's.
+    pub sealed: Option<Vec<String>>,
 }
 
 /// `compile`, optionally without the schema-independent runtime plugins (a build store keeps
@@ -457,7 +502,14 @@ pub(crate) fn compile_tree(
     previous: Option<&Path>,
     runtime: bool,
 ) -> Result<Compiled, Diag> {
-    let bytes = std::fs::read(source.join(MANIFEST_FILE)).map_err(io)?;
+    // A raw project from a client released before the rename is captured here first, exactly as
+    // `host::sources` captures it, and read as that capture (`crate::zero_bundle::capture_raw`).
+    let (bytes, raw) = if crate::zero_bundle::is_raw(source)? {
+        let [app, vendor, manifest] = crate::zero_bundle::capture_raw(source)?;
+        (manifest.into_bytes(), Some([app, vendor]))
+    } else {
+        (std::fs::read(source.join(MANIFEST_FILE)).map_err(io)?, None)
+    };
     let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| failure(e.to_string()))?;
     let legacy = manifest.format == crate::zero_bundle::FORMAT;
     if !(legacy || manifest.format == "first.source-bundle.v1")
@@ -470,7 +522,7 @@ pub(crate) fn compile_tree(
         return Err(failure("invalid source bundle format or app name"));
     }
     let sources = if legacy {
-        crate::zero_bundle::read(source, &manifest)?
+        crate::zero_bundle::read(source, &manifest, raw)?
     } else {
         let captured = read_bundles(
             source,
@@ -794,9 +846,14 @@ pub(crate) fn compile_tree(
     actions.sort();
     let summary = serde_json::json!({"name": schema.name, "collections": collections, "tables": tables, "actions": actions,
         "identity": schema.collections.values().any(|c| c.auth), "admin": schema.admin});
-    let manifest = serde_json::json!({"format":"first.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
+    let mut manifest = serde_json::json!({"format":"first.hosted.v1", "hostContract":crate::host_contract::HOST_CONTRACT, "compiler":VERSION, "app":built.schema.name,
         "wordpress":crate::platform::WORDPRESS, "php":crate::platform::PHP, "requires":requirements, "routes":routes, "pagePaths":page_paths,
         "summary":summary, "host":crate::host_contract::manifest_host(), "appSourceSha256":manifest.app_sha256, "vendorSourceSha256":manifest.vendor_sha256});
+    let sealed = sealed_plugins(&built.schema, hosted_first(&built.schema));
+    // No key when the app isn't sealed, so an unsealed app's tree hashes as it did before.
+    if let Some(sealed) = &sealed {
+        manifest["sealed"] = sealed.clone().into();
+    }
     std::fs::write(
         output.join("manifest.json"),
         serde_json::to_vec_pretty(&manifest).unwrap(),
@@ -806,8 +863,57 @@ pub(crate) fn compile_tree(
         manifest,
         identity: built.schema.collections.values().any(|c| c.auth),
         admin: built.schema.admin,
+        sealed,
         name: built.schema.name,
     })
+}
+
+/// The First plugins a host mounts for this build (the build store loader's order).
+#[cfg(feature = "host")]
+fn hosted_first(schema: &crate::schema::Schema) -> Vec<String> {
+    ["first-runtime".to_string(), format!("first-app-{}", schema.name)]
+        .into_iter()
+        .chain(
+            schema
+                .collections
+                .values()
+                .any(|c| c.auth)
+                .then(|| "first-identity".to_string()),
+        )
+        .chain(schema.admin.then(|| "first-admin".to_string()))
+        .collect()
+}
+
+/// Plugins a sealed site never runs, declared or not: each serves stored content around First's
+/// read rules. The Block Data API answers a post's raw `post_content` after an item-level check
+/// only, which shows a rich text field that a field rule hides; the decoupled bundle ships that
+/// API and WPGraphQL. Kept in step with `Sealed::DENIED` in the runtime.
+pub(crate) const SEALED_DENIED: [&str; 2] = ["vip-block-data-api", "vip-decoupled-bundle"];
+
+/// A sealed app's plugin allow-list (docs/sealed.md), by directory slug: `first` (the First plugins
+/// of this target, which its caller names), First's admin, the platform pins this app needs, and
+/// the WordPress plugins the config declares. `None` when the app isn't sealed. Plugin packages (`use`) are compiled into the app
+/// plugin, so they need no entry.
+pub(crate) fn sealed_plugins(
+    schema: &crate::schema::Schema,
+    first: impl IntoIterator<Item = String>,
+) -> Option<Vec<String>> {
+    let declared = schema.sealed.as_ref()?;
+    let mut slugs: Vec<String> = first
+        .into_iter()
+        // First's admin is First's own plugin: listed whether or not this build ships it
+        // (`admin: true`), so a sealed site never refuses it however it is installed.
+        .chain(["first-admin".to_string()])
+        .chain(
+            crate::platform::plugins(schema.locales.is_some())
+                .into_iter()
+                .map(|p| p.slug),
+        )
+        .chain(declared.iter().cloned())
+        .collect();
+    slugs.sort();
+    slugs.dedup();
+    Some(slugs)
 }
 
 #[cfg(feature = "cli")]

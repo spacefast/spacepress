@@ -16,10 +16,9 @@ use First\Wp\SchemaVersions;
  * - Abilities `<app>/schema-read`, `<app>/schema-propose` and `<app>/schema-apply`, served by core's
  *   run route and the MCP Adapter like every other ability of the app. Reading and proposing need
  *   `manage_options`. Applying needs `first_apply_schema`, a capability of its own, which this
- *   module grants to administrators when it is first needed. Taking it away from a role or a user
- *   (`wp cap remove administrator first_apply_schema`) stops them applying and nothing else.
- *   An application password can be denied applying on its own: an administrator lists its UUID in
- *   the `first_<app>_schema_apply_denied` option.
+ *   module gives the administrator role once ({@see grant()}); from then on it is an ordinary
+ *   capability that a role or a user can be refused. A credential can be denied applying on its
+ *   own through the `first_<app>_schema_apply_denied` option ({@see mayApply()}).
  * - `wp first schema list | diff <version> | apply <file> | rollback <version>`: the trusted CLI,
  *   which needs no capability (`first schema …` forwards to it).
  * - A screen, "Schema versions", declared once for both admins (runtime/admin/lib/screens.php):
@@ -70,7 +69,12 @@ final class Surfaces
         if ($plugin === null || SchemaVersions::of($plugin) === null || get_option(self::GRANTED) !== false) {
             return;
         }
-        get_role('administrator')?->add_cap(self::APPLY);
+        $role = get_role('administrator');
+        // A role that already says something about the capability (an explicit false, from before
+        // the grant was recorded) keeps what it says.
+        if ($role !== null && !array_key_exists(self::APPLY, $role->capabilities)) {
+            $role->add_cap(self::APPLY);
+        }
         update_option(self::GRANTED, gmdate('c'), false);
     }
 
@@ -117,18 +121,31 @@ final class Surfaces
         return $bearer !== null ? ['kind' => 'bearer'] : ['kind' => 'session'];
     }
 
-    /** @return list<array{user: int, credential?: string, password?: string}> */
+    /**
+     * The deny list. An entry that is a password UUID on its own (the form the first release
+     * documented) denies that password, whoever it belongs to.
+     *
+     * @return list<array{user?: int, credential?: string, password?: string}>
+     */
     private static function denied(): array
     {
         $denied = get_option(self::deniedOption(), []);
+        $out = [];
+        foreach (is_array($denied) ? $denied : [] as $entry) {
+            if (is_string($entry) && $entry !== '') {
+                $out[] = ['password' => $entry];
+            } elseif (is_array($entry) && is_int($entry['user'] ?? null)) {
+                $out[] = $entry;
+            }
+        }
 
-        return array_values(array_filter(is_array($denied) ? $denied : [], static fn (mixed $entry): bool => is_array($entry) && is_int($entry['user'] ?? null)));
+        return $out;
     }
 
     /** Whether a deny entry covers this user signing in this way. */
     private static function covers(array $entry, int $user, array $signed): bool
     {
-        if ($entry['user'] !== $user) {
+        if (isset($entry['user']) && $entry['user'] !== $user) {
             return false;
         }
         if (isset($entry['password'])) {
@@ -163,8 +180,9 @@ final class Surfaces
     }
 
     /**
-     * A password created while a denied one signed the request is denied too: otherwise a denied,
-     * unscoped password could mint a fresh one through core's route and apply with that.
+     * A password created while a denied credential signed the request is denied too, whoever it is
+     * for: otherwise a denied password could mint a fresh one (for its own user, or, being an
+     * administrator's, for another user) through core's route and apply with that.
      */
     public static function inheritDeny(int $userId, array $item): void
     {
@@ -173,9 +191,12 @@ final class Surfaces
             return;
         }
         $signed = self::signedWith();
+        if ($signed['kind'] === 'session') {
+            return;
+        }
         $denied = self::denied();
         foreach ($denied as $entry) {
-            if ($signed['kind'] === 'application-password' && self::covers($entry, $userId, $signed) && isset($entry['password'])) {
+            if (self::covers($entry, get_current_user_id(), $signed)) {
                 $denied[] = ['user' => $userId, 'password' => (string) $item['uuid']];
                 update_option(self::deniedOption(), $denied, false);
 

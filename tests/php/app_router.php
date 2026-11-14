@@ -126,8 +126,7 @@ $out = [
         return [$r['status'], $r['body']];
     })(),
     'HEAD' => [fetch("$url/", 'HEAD')['status'], fetch("$url/", 'HEAD')['body']],
-    // php -S runs WordPress for every path, so wp-admin and wp-login.php are the browser suite's
-    // (tests/wp); here the router must leave REST, feeds and reserved paths to WordPress.
+    // The app router must leave REST, feeds and reserved paths to WordPress.
     // Markdown twins of app pages (rendering.md §5): the page's own output, never its layout's
     // navigation, rendered as an anonymous visitor; advertised by the HTML page.
     'twin home' => [fetch("$url/index.md")['status'], fetch("$url/index.md")['body'], fetch("$url/index.md")['headers']['content-type'][0] ?? null],

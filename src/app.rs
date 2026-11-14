@@ -555,6 +555,7 @@ pub const EXPORTS: &[&str] = &[
     "notFound",
     "redirect",
     "useFormState",
+    "Comments",
     "Content",
     "Html",
     "Link",

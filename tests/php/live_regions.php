@@ -22,7 +22,7 @@ $site = wpSite('live-regions', ['wpContent' => $argv[1], 'users' => ['chief' => 
     });
     PHP]]);
 wp_set_current_user(1);
-\First\db()->insert('notes', ['title' => 'One', 'status' => 'published']);
+\First\db()->insert('notes', ['title' => 'One', 'slug' => 'one', 'status' => 'published']);
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
@@ -113,6 +113,16 @@ $ch = curl_init("$url/");
 curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true]);
 curl_exec($ch);
 $out['a GET records'] = $reads() - $before > 0;
+
+// `<Live>` around `<Comments>`: a new approved comment shows on the next poll, not after the
+// five-minute trust window, because the thread marks the page as reading something unseen.
+$slug = (string) \First\db()->findFirst('notes', ['where' => ['title' => 'One']])['slug'];
+$noteId = (int) \First\db()->findFirst('notes', ['where' => ['title' => 'One']])['id'];
+[$thread] = post($url, [$page("/notes/$slug", 'thread')]);
+wp_insert_comment(['comment_post_ID' => $noteId, 'comment_content' => 'Live hello', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1]);
+$was = $renders();
+[$thread2] = post($url, [$page("/notes/$slug", 'thread', $thread['token'])]);
+$out['comments'] = [$shape($thread), str_contains($thread['data']['html'] ?? '', 'Live hello'), $shape($thread2), str_contains($thread2['data']['html'] ?? '', 'Live hello'), 'rendered' => $renders() - $was];
 
 // A new build of the same page: the held token is a different question, so the region renders.
 $schemaFile = \First\Wp\Runtime::plugin()->dir . '/first/app/schema.php';

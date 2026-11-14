@@ -618,9 +618,11 @@ final class AppRouter
                     : new \First\HttpError(403, 'forbidden', 'You do not have access to this page');
             }
         }
-        // The page's typed search reads the query string, as on a GET of $url.
-        $saved = $_SERVER['QUERY_STRING'] ?? null;
+        // The render sees the request a GET of $url would be: the page's typed search reads its query
+        // string, and a kind item's canonical-URL check and its components read its URI.
+        $saved = [$_SERVER['QUERY_STRING'] ?? null, $_SERVER['REQUEST_URI'] ?? null];
         $_SERVER['QUERY_STRING'] = $query;
+        $_SERVER['REQUEST_URI'] = $url;
         try {
             $captured = \First\Render\Live::capture($region, function () use ($page, $layouts, $route, $match, $viewer): void {
                 $props = new JsObject([
@@ -641,10 +643,12 @@ final class AppRouter
         } catch (Halt) {
             throw new \First\HttpError(404, 'not_found', 'Nothing is shown at ' . $path);
         } finally {
-            if ($saved === null) {
-                unset($_SERVER['QUERY_STRING']);
-            } else {
-                $_SERVER['QUERY_STRING'] = $saved;
+            foreach (['QUERY_STRING', 'REQUEST_URI'] as $i => $key) {
+                if ($saved[$i] === null) {
+                    unset($_SERVER[$key]);
+                } else {
+                    $_SERVER[$key] = $saved[$i];
+                }
             }
         }
         do_action('first_app_live_rendered', (string) $route['id'], $region);

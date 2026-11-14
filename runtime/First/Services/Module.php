@@ -11,6 +11,7 @@ use First\HttpError;
 use First\Jobs\Jobs;
 use First\Jobs\Receipts;
 use First\Js;
+use First\Response;
 use First\Schema;
 use First\Viewer;
 
@@ -76,11 +77,11 @@ final class Module
             static fn () => Receipts::once($scope, $key, $run));
     }
 
-    public static function route(string $method, array $parts, array $query, string $body, Viewer $viewer, array $files = [], array $form = [], array $headers = []): array
+    public static function route(string $method, array $parts, array $query, string $body, Viewer $viewer, array $files = [], array $form = [], array $headers = []): array|Response
     {
         $path = implode('/', array_slice($parts, 1));
         if ($method === 'POST' && preg_match('#^forms/([a-z][a-z0-9_-]{0,79})$#D', $path, $match)) {
-            return [201, self::submit($match[1], self::body($body), $headers)];
+            return self::submit($match[1], self::body($body), $headers);
         }
         if ($method === 'GET' && $path === 'search') {
             return [200, Search::query($query, $viewer)];
@@ -111,7 +112,8 @@ final class Module
         return ['state' => $row['state'], 'attempts' => (int) $row['attempts'], 'doneAt' => $row['doneAt']];
     }
 
-    private static function submit(string $name, array $input, array $headers): array
+    /** @return array{int, array}|Response */
+    private static function submit(string $name, array $input, array $headers): array|Response
     {
         $form = self::config()['forms'][$name] ?? throw HttpError::notFound('Form not found');
         foreach ($input as $key => $_) {
@@ -130,17 +132,25 @@ final class Module
             }
         }
         $values = Schema::validateInput($fields, $input['data'] ?? null, '/data', null);
-        // Before anything is written, and outside the write's transaction: Akismet is an HTTP call.
-        if (Spam::isSpam($fields, $values)) {
-            throw new HttpError(422, 'spam', 'Submission rejected');
-        }
-        return self::once('services:form:' . $name, $input, $headers, static function () use ($name, $form, $values): array {
+        $result = self::once('services:form:' . $name, $input, $headers, static function () use ($name, $form, $fields, $values): array {
             Storage::rate('form:' . $name, max(1, min(100, (int) ($form['limit'] ?? 5))));
+            // Akismet, after the rate window (so a refused submission still uses a slot) and inside the
+            // receipt (so a retry replays this answer instead of asking again). It is an HTTP call made
+            // inside the request's transaction; refusing returns an answer, so the count still commits.
+            if (Spam::isSpam($fields, $values)) {
+                return ['spam' => true];
+            }
             $id = Jobs::uuid();
             $job = Jobs::enqueue('first.services.mail', ['submissionId' => $id], ['key' => $id]);
             Storage::run('INSERT INTO {submissions} (`id`, `form`, `body`, `jobId`, `createdAt`) VALUES (?, ?, ?, ?, ?)',
                 [$id, $name, \First\Json::encode($values, JSON_THROW_ON_ERROR), $job['id'], Js::iso(Js::now())]);
             return ['id' => $id, 'message' => 'Thanks — your message is saved.', 'delivery' => 'queued'];
         });
+        if ($result['spam'] ?? false) {
+            $problem = \First\App::problem(new HttpError(422, 'spam', 'Submission rejected'));
+            return Response::raw((string) Js::jsonStringify($problem), 422, ['Content-Type' => 'application/problem+json']);
+        }
+
+        return [201, $result];
     }
 }

@@ -74,21 +74,24 @@ add_filter('pre_http_request', static function (mixed $pre, array $args, string 
     $spam = ($body['comment_author'] ?? '') === 'akismet-guaranteed-spam' || ($body['comment_author_email'] ?? '') === 'akismet-guaranteed-spam@example.com';
     return ['headers' => [], 'body' => $spam ? 'true' : 'false', 'response' => ['code' => 200, 'message' => 'OK'], 'cookies' => [], 'filename' => null];
 }, 20, 3);
-add_filter('first_services_config', static fn (): array => ['forms' => ['contact' => ['fields' => [
-    'name' => ['type' => 'text', 'notNull' => true],
-    'email' => ['type' => 'email', 'notNull' => true],
-    'message' => ['type' => 'text', 'notNull' => true],
-], 'recipientEnv' => 'FIRST_SERVICES_MAIL_TO', 'senderEnv' => 'FIRST_SERVICES_MAIL_FROM', 'limit' => 100]]]);
+$formFields = ['name' => ['type' => 'text', 'notNull' => true], 'email' => ['type' => 'email', 'notNull' => true], 'message' => ['type' => 'text', 'notNull' => true]];
+add_filter('first_services_config', static fn (): array => ['forms' => [
+    'contact' => ['fields' => $formFields, 'recipientEnv' => 'FIRST_SERVICES_MAIL_TO', 'senderEnv' => 'FIRST_SERVICES_MAIL_FROM', 'limit' => 100],
+    'tight' => ['fields' => $formFields, 'recipientEnv' => 'FIRST_SERVICES_MAIL_TO', 'senderEnv' => 'FIRST_SERVICES_MAIL_FROM', 'limit' => 2],
+]]);
 putenv('FIRST_SERVICES_RATE_SECRET=' . bin2hex(random_bytes(32)));
 $_SERVER['REMOTE_ADDR'] = '203.0.113.7';
 $submissions = static fn (): int => (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first__services_submissions');
-$submit = static fn (array $data, string $key): array => $wp->call('POST', '/services/forms/contact', ['website' => '', 'data' => $data], headers: ['Idempotency-Key' => $key]);
+$jobs = static fn (): int => (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first__jobs');
+$submit = static fn (array $data, string $key, string $form = 'contact'): array => $wp->call('POST', "/services/forms/$form", ['website' => '', 'data' => $data], headers: ['Idempotency-Key' => $key]);
 $formChecks = static function () use (&$checks): array {
     return array_values(array_filter($checks, static fn (array $c): bool => ($c['body']['comment_type'] ?? '') === 'contact-form'));
 };
 
 [$status, $body] = $submit(['name' => 'akismet-guaranteed-spam', 'email' => 'spammer@example.test', 'message' => 'Cheap things.'], 'form-spam');
-eq('a submission Akismet calls spam is refused, and nothing is written', [$status, $body['code'] ?? null, $submissions()], [422, 'spam', 0]);
+eq('a submission Akismet calls spam is refused, and no submission or mail job is written', [$status, $body['code'] ?? null, $submissions(), $jobs()], [422, 'spam', 0, 0]);
+[$status] = $submit(['name' => 'akismet-guaranteed-spam', 'email' => 'spammer@example.test', 'message' => 'Cheap things.'], 'form-spam');
+eq('its retry gets the same answer without asking Akismet again', [$status, count($formChecks())], [422, 1]);
 $asked = $formChecks()[0]['body'] ?? [];
 eq('the check is a contact-form comment: the author, email, text, the visitor\'s address and the key',
     [$asked['comment_type'] ?? null, $asked['comment_author'] ?? null, $asked['comment_author_email'] ?? null, $asked['comment_content'] ?? null, $asked['user_ip'] ?? null, $asked['api_key'] ?? null],
@@ -100,5 +103,13 @@ eq('a submission Akismet passes is saved', [$status, $body['delivery'] ?? null, 
 add_filter('pre_http_request', static fn (mixed $pre, array $args, string $url): mixed => parse_url($url, PHP_URL_HOST) === \Akismet::API_HOST ? new \WP_Error('http_request_failed', 'unreachable') : $pre, 30, 3);
 [$status] = $submit(['name' => 'akismet-guaranteed-spam', 'email' => 'visitor@example.test', 'message' => 'While Akismet is down.'], 'form-down');
 eq('an unreachable Akismet fails open: the submission is saved', [$status, $submissions()], [201, 2]);
+remove_all_filters('pre_http_request', 30);
+$before = count($formChecks());
+[$status] = $submit(['name' => 'akismet-guaranteed-spam', 'email' => 'visitor@example.test', 'message' => 'While Akismet is down.'], 'form-down');
+eq('a retry of that accepted submission, once Akismet is back and would call it spam, replays its receipt', [$status, $submissions(), count($formChecks())], [201, 2, $before]);
+// Refused submissions use the rate window too: two spam attempts fill a window of two.
+$spam = ['name' => 'akismet-guaranteed-spam', 'email' => 'spammer@example.test', 'message' => 'Again.'];
+$tight = [$submit($spam, 'tight-1', 'tight')[0], $submit($spam, 'tight-2', 'tight')[0], $submit(['name' => 'Visitor', 'email' => 'visitor@example.test', 'message' => 'Hi.'], 'tight-3', 'tight')[0]];
+eq('spam answers count against the rate window: the third submission is limited before Akismet is asked', [$tight, count($formChecks())], [[422, 422, 429], $before + 2]);
 
 finish('spam_test');

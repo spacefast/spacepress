@@ -102,9 +102,26 @@ final class Prebuilt
         return 'first_prebuilt_' . substr(self::build_id(), 0, 16);
     }
 
+    /**
+     * What a prebuilt file was rendered from: the app's compiled schema, page functions and content
+     * pages, and the runtime that rendered them. A deploy that changes any of them starts an empty
+     * directory, so no file from another build is ever served.
+     */
     private static function build_id(): string
     {
-        return (string) self::$plugin?->buildHash();
+        static $id = null;
+        if ($id !== null || self::$plugin === null) {
+            return (string) $id;
+        }
+        $hash = hash_init('sha256');
+        foreach (['schema.php', 'functions.php', 'content.php'] as $file) {
+            $path = self::$plugin->dir . '/first/app/' . $file;
+            hash_update($hash, $file . ':' . (is_file($path) ? (string) hash_file('sha256', $path) : '-') . "\n");
+        }
+        // The runtime renders the document around the page: its own files' identity is part of it.
+        $runtime = dirname(__DIR__);
+        hash_update($hash, \First\Wp\Runtime::VERSION . ':' . $runtime . ':' . (string) @filemtime($runtime . '/Wp/AppRouter.php') . ':' . (string) @filemtime($runtime . '/Render/Prebuilt.php'));
+        return $id = hash_final($hash);
     }
 
     // ------------------------------------------------------------------ the prerender request
@@ -387,16 +404,23 @@ final class Prebuilt
         if ($rest !== []) {
             as_enqueue_async_action(self::ACTION, [$rest], 'first');
         }
+        $reached = true;
         foreach (array_slice($paths, 0, self::BATCH) as $path) {
-            self::render((string) $path);
+            $reached = self::render((string) $path) && $reached;
         }
         if ($all) {
-            update_option(self::option(), 'built', false);
+            // Unreachable: the next request's init schedules the whole build again.
+            $reached ? update_option(self::option(), 'built', false) : delete_option(self::option());
         }
     }
 
-    /** One path, rendered by loopback and written, or its files removed when it no longer renders. */
-    private static function render(string $path): void
+    /**
+     * One path, rendered by loopback and written, or its files removed when it no longer renders.
+     * False when the site couldn't be reached: nothing changed, and the build is tried again.
+     * `first_prebuild_url` routes the loopback (a container's own address), as `first_private_probe_url`
+     * does for the private-files probe.
+     */
+    private static function render(string $path): bool
     {
         [$html, $md] = self::files($path);
         $fetch = static fn (string $url, string $signed) => wp_remote_get((string) apply_filters('first_prebuild_url', $url), [
@@ -404,7 +428,11 @@ final class Prebuilt
             'headers' => [self::HEADER => self::token($signed)],
         ]);
         $page = $fetch(home_url($path), self::full($path));
-        $code = is_wp_error($page) ? 0 : (int) wp_remote_retrieve_response_code($page);
+        if (is_wp_error($page)) {
+            error_log("First: prebuilding $path failed: " . $page->get_error_message() . '. Route the request with the first_prebuild_url filter if the site cannot reach its own address');
+            return false;
+        }
+        $code = (int) wp_remote_retrieve_response_code($page);
         $refused = is_wp_error($page) ? '' : (string) wp_remote_retrieve_header($page, strtolower(self::REFUSED));
         if ($code !== 200 || $refused !== '') {
             @unlink($html);
@@ -412,7 +440,7 @@ final class Prebuilt
             if ($refused !== '') {
                 error_log("First: $path is prebuilt, and its render called $refused; it renders per request instead");
             }
-            return;
+            return true;
         }
         $twin = MarkdownTwins::twin(home_url($path));
         $markdown = $fetch($twin, (string) (wp_parse_url($twin, PHP_URL_PATH) ?? ''));
@@ -422,6 +450,7 @@ final class Prebuilt
         } else {
             @unlink($md);
         }
+        return true;
     }
 
     /** Write by rename, so a reader sees the old file or the new one, never part of one. */

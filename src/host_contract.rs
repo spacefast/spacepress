@@ -72,6 +72,11 @@ pub const HOOKS: &[(&str, &str, &str)] = &[
         "the URL the private-files probe fetches, when the public URL is not reachable from the server",
     ),
     (
+        "first_prebuild_url",
+        "filter",
+        "the URL a prebuilt page is rendered from, when the site cannot reach its own address (`output: \"server\"` with `prerender`)",
+    ),
+    (
         "first_identity_providers",
         "filter",
         "OpenID Connect sign-in providers First Identity offers",

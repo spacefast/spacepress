@@ -155,6 +155,40 @@ the checkout's own code. The site's `webhooks` config fires on publish, and a CI
 
 Each refusal is an error with the page, the route file and the fix.
 
+## Measured: time to first byte for one page
+
+`/about` of `examples/full-site` (`prerender = true`, a layout and an imported stylesheet and
+image), 2026-11-14.
+
+Method:
+- The site ran on the WordPress test stack (`tests/wp/harness.sh up`, port 8874): Apache with PHP
+  8.5 and OPcache, MariaDB 11.4, WordPress 7.1.4 and the pinned platform plugins, in Docker on one
+  host (Intel Core i7-13700, 24 threads).
+- Batcache 1.5 ran on an APCu object cache. Its `max-age` match was pointed at `s-maxage`, because
+  First's cacheable header carries `max-age=0` for browsers and `s-maxage=300` for shared caches.
+- The client opened a new connection for each GET, from the same host, with no cookies. It took
+  the time from sending the request to the first byte of the response.
+- Each case had 20 warm-up requests, then three runs of 200 sequential requests. Below is the
+  median of the three runs' medians, and the highest p95 of the three.
+
+| Case | What answers | Median TTFB | p95 |
+|---|---|---|---|
+| SSR, uncached | WordPress boots, the router renders the page | 71.7 ms | 138.8 ms |
+| Prebuilt (hybrid), Batcache off | the app plugin serves the file at `plugins_loaded`, before the request is parsed | 17.6 ms | 35.8 ms |
+| SSR from Batcache | `advanced-cache.php`, before plugins load | 2.4 ms | 9.0 ms |
+| The same HTML as a file from Apache | no PHP (what `first export` gives a static host) | 0.7 ms | 4.5 ms |
+
+What this means:
+- A prebuilt page is about 4× faster than an uncached render.
+- Batcache, where it runs, is faster still, because it answers before any plugin loads.
+- So the hybrid's prebuilt files matter most where they serve:
+  - the first request after a deploy or an edit, which Batcache would render uncached and which a
+    prebuilt file answers at once;
+  - hosts without a full-page cache;
+  - a host that serves `wp-content/cache/first-prebuilt/` itself, before PHP, at the static-file
+    speed in the last row.
+- The edge cache is unchanged: prebuilt answers carry the same `Cache-Control` as a cacheable render.
+
 ## Alternatives not taken
 
 - **Prebuilding in `first build`.** The build has no content and no PHP. Rendering needs both, and

@@ -862,19 +862,13 @@ impl Builder<'_> {
                     &tag,
                     format!("{key}.revisions.list"),
                     format!("Revisions of {table}"),
-                    "Each saved version of the row, with its time and who saved it.",
+                    format!("Each saved version of the row, newest first, with its time and who saved it, one page at a time. `limit` is {LIMIT} unless given, and at most {MAX_LIMIT}; `cursor` is null on the last page."),
                 )
                 .rule(&update)
                 .note(needs)
-                .params([id.clone()])
-                .ok(
-                    200,
-                    envelope(
-                        "The revisions.",
-                        json!({ "type": "array", "items": self.own_ref("RevisionSummary") }),
-                    ),
-                )
-                .errors(&[404]),
+                .params([id.clone(), paging("limit"), paging("offset"), paging("cursor")])
+                .ok(200, page(self.own_ref("RevisionSummary")))
+                .errors(&[400, 404]),
             );
             self.paths.add(
                 &format!("{item}/revisions/{{revision}}"),

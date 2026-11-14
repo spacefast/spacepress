@@ -423,6 +423,8 @@ jobs:
         run: FIRST_WP_PROJECT=first-wp-hardening FIRST_WP_PORT=8896 tests/wp/hardening/run.sh
       - name: Sealed mode on its own stack
         run: FIRST_WP_PROJECT=first-wp-sealed FIRST_WP_PORT=8895 tests/wp/hardening/sealed-run.sh
+      - name: Build store, managed initialize, and inspecting a candidate without changing the site
+        run: FIRST_WP_PROJECT=first-wp-store FIRST_WP_PORT=8901 tests/wp/store-run.sh
 
   wp-s3:
     if: github.event_name != 'pull_request'

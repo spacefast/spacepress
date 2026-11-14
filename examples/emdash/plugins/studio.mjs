@@ -40,7 +40,7 @@ export async function dispose(directory) {
   await command(['dev', 'stop', directory]);
   const status = JSON.parse(await command(['dev', 'status', directory]));
   if (status.isOnline !== false) throw new Error('Owned Studio site did not stop');
-  const deleted = await exec('npx', ['--yes', '--package', 'wp-studio@2.1.1', '--', 'studio', 'delete', '--path', site, '--no-files'], { timeout: 120000 });
+  const deleted = await exec('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', 'delete', '--path', site, '--no-files'], { timeout: 120000 });
   return { stopped: true, deletedStudioPath: site, studioOutput: deleted.stdout.trim() };
 }
 
@@ -51,6 +51,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const { seed } = await import('./seed.mjs');
   await seed(installed);
   const { base } = installed;
-  await writeFile(join(owned.root, 'README.txt'), `Owned disposable project: ${owned.directory}\nOpen: ${base}/?first-plugins=1\nStop: ${first} dev stop ${owned.directory}\nDelete registration: npx --yes --package wp-studio@2.1.1 -- studio delete --path ${owned.directory}/.first/dev/wordpress --no-files\n`);
+  await writeFile(join(owned.root, 'README.txt'), `Owned disposable project: ${owned.directory}\nOpen: ${base}/?first-plugins=1\nStop: ${first} dev stop ${owned.directory}\nDelete registration: npx --yes --package wp-studio@2.2.0 -- studio delete --path ${owned.directory}/.first/dev/wordpress --no-files\n`);
   console.log(`Project: ${owned.directory}\nPublication: ${base}/?first-plugins=1\nNative admin: ${base}/wp-admin/\n${await readFile(join(owned.root, 'README.txt'), 'utf8')}`);
 }

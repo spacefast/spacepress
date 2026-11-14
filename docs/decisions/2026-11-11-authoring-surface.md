@@ -158,6 +158,24 @@ the earlier API becomes `.optional()`.
     removes or changes an authoring form runs that test (docs/spacefast-host-checklist.md, "Old
     bundles"). Delete `mod legacy` in both files with `src/zero_bundle.rs`.
 
+24. **A raw 0.3 project is captured, then read as its capture.** One released client, the hosted
+    MCP server 0.9.0, uploads the project itself (`zero.config.ts` at the root, the relative modules
+    it imports, `public/`) and labels it `zero.source-bundle.v1`; the 0.3.0 host captured it before
+    compiling. First's host entries do the same: `host::sources`, `compile-sources` and
+    `compile-to-store` capture such a tree into the exact `zero.source-bundle.v1` the 0.3.0 host
+    capture wrote (the fixtures check it byte for byte), and hand that to the reader of ruling 23. So
+    there is still one old-reading mode and one path after the capture, and a raw upload compiles,
+    migrates and is refused exactly as its capture is. The capture reads the tree through a view
+    that puts the 0.3.0 paths on the current layout and turns on the same reading; nothing else
+    constructs it. As 0.3.0's host did, it refuses npm imports (a host installs no packages) with
+    "publish this project from the Spacefast CLI to capture installed npm sources", and refuses
+    `pages/` or `zero/pages.json` with the capture's pages message. A tree that holds both
+    `zero.config.ts` and `first.config.ts`, or a raw project beside a capture (`.zero-source/`,
+    `.first-source/` or the bundle files), is refused as ambiguous. `first build`, `check`, `dev`
+    and `sources` read only `first.config.ts`, so a normal project never reaches it. Considered and
+    dropped: reading the raw tree directly in the compile, which would be a second old-reading path
+    beside the capture's. Delete with `src/zero_bundle.rs`.
+
 ## Stored-schema changes the cutover accepts
 
 The criterion "the authoring rewrite produces no data migration" holds except for exactly these:

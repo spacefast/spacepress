@@ -286,6 +286,47 @@ $deviations = [
     ['non-ISO Date strings are refused', fn () => Js::date('2020-1-1'), ['$err' => 'RangeError']],
 ];
 
+// A JavaScript function is always a Closure. A PHP callable string or [class, method] array reaching
+// a callback parameter is refused before PHP can call the function it names.
+$phpCallables = ['strrev' => 'strrev', 'sprintf' => 'sprintf', 'a static method array' => [Js::class, 'typeOf']];
+$callbackHelpers = [
+    'map' => fn ($f) => Js::map(new JsArray(['a']), $f),
+    'filter' => fn ($f) => Js::filter(new JsArray(['a']), $f),
+    'find' => fn ($f) => Js::find(new JsArray(['a']), $f),
+    'findIndex' => fn ($f) => Js::findIndex(new JsArray(['a']), $f),
+    'findLast' => fn ($f) => Js::findLast(new JsArray(['a']), $f),
+    'findLastIndex' => fn ($f) => Js::findLastIndex(new JsArray(['a']), $f),
+    'some' => fn ($f) => Js::some(new JsArray(['a']), $f),
+    'every' => fn ($f) => Js::every(new JsArray(['a']), $f),
+    'forEach' => fn ($f) => Js::forEach(new JsArray(['a']), $f),
+    'reduce' => fn ($f) => Js::reduce(new JsArray(['a']), $f, ''),
+    'flatMap' => fn ($f) => Js::flatMap(new JsArray(['a']), $f),
+    'from' => fn ($f) => Js::from(new JsArray(['a']), $f),
+    'range' => fn ($f) => Js::range(1, $f),
+    'replace' => fn ($f) => Js::replace('a', 'a', $f),
+    'replaceAll' => fn ($f) => Js::replaceAll('a', 'a', $f),
+    'replace with a RegExp' => fn ($f) => Js::replace('a', Js::re('a', 'g'), $f),
+    'Headers forEach' => fn ($f) => (new \First\FetchHeaders(['a' => 'b']))->forEach($f),
+];
+foreach ($callbackHelpers as $helper => $call) {
+    foreach ($phpCallables as $label => $callable) {
+        // A string replacement is a template (below), never a function name.
+        if (str_starts_with($helper, 'replace') && is_string($callable)) { continue; }
+        $deviations[] = ["$helper refuses the PHP callable $label", static function () use ($call, $callable) {
+            // The parameter type refuses it. An ArgumentCountError is a TypeError too, but it means
+            // PHP already called the function.
+            try { $call($callable); return 'called'; } catch (\TypeError $e) { return preg_match('/Argument #\d+ \(\$\w+\) must be of type \??Closure\b/', $e->getMessage()) === 1 ? 'refused' : $e->getMessage(); }
+        }, 'refused'];
+    }
+}
+// A replacement string stays a template: '$&' is not a callable, even when it names a function.
+$deviations[] = ['a replacement naming a PHP function is a template', fn () => [Js::replace('a', 'a', 'strtoupper'), Js::replaceAll('aa', 'a', 'sprintf'), Js::replace('a', Js::re('a', 'g'), 'strrev')], ['strtoupper', 'sprintfsprintf', 'strrev']];
+// The check compiled code wraps around every function value it did not build itself.
+foreach ($phpCallables as $label => $callable) {
+    $deviations[] = ["Js::callback refuses the PHP callable $label", fn () => Js::callback($callable), ['$err' => 'TypeError']];
+}
+$deviations[] = ['Js::callback passes a closure through', fn () => Js::map(new JsArray(['a']), Js::callback(static fn ($v) => "$v!"))->a, ['a!']];
+
 // Each fixed-length helper owns a separate shrink/growth row because its walk can fail independently.
 $walks = ['map', 'filter', 'forEach', 'some', 'every', 'reduce', 'flatMap', 'find', 'findIndex', 'findLast', 'findLastIndex'];
 foreach ($walks as $method) {

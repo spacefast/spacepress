@@ -1,13 +1,12 @@
-// The editor half of components in Markdown (First\Content\Blocks): each component block the
-// site registers on the server is inserted and edited here. Its props are fields in the block's
-// sidebar, its content is inner blocks, and the preview is the component rendered by the server.
+// The editor half of components in Markdown (First\Content\Blocks) for components that take
+// `children`: its props are fields in the block's sidebar and its content is inner blocks. A
+// component without `children` needs nothing here: core's `autoRegister` support registers it.
 // No build step: it uses the editor's own globals.
 (function (wp) {
 	const { registerBlockType, getBlockType } = wp.blocks;
 	const { createElement: el, Fragment } = wp.element;
 	const { InnerBlocks, InspectorControls, useBlockProps } = wp.blockEditor;
 	const { PanelBody, TextControl, SelectControl, ToggleControl } = wp.components;
-	const ServerSideRender = wp.serverSideRender;
 
 	function field(key, spec, value, set) {
 		if (spec.enum) {
@@ -36,13 +35,10 @@
 				const props = useBlockProps();
 				const fields = Object.entries(spec.attributes).map(([key, attribute]) => field(key, attribute, attributes[key], (v) => setAttributes({ [key]: v })));
 				const panel = el(InspectorControls, null, el(PanelBody, { title: spec.tag }, fields));
-				const body = spec.children
-					? el('div', props, el('strong', null, spec.tag), el(InnerBlocks))
-					: el('div', props, el(ServerSideRender, { block: name, attributes }));
-				return el(Fragment, null, panel, body);
+				return el(Fragment, null, panel, el('div', props, el('strong', null, spec.tag), el(InnerBlocks)));
 			},
 			// A dynamic block: the server renders it. Only its inner blocks are saved.
-			save: () => (spec.children ? el(InnerBlocks.Content) : null),
+			save: () => el(InnerBlocks.Content),
 		});
 	}
 })(window.wp);

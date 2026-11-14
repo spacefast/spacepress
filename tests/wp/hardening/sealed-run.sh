@@ -28,6 +28,11 @@ cp -r "$repo/runtime/admin/lib" "$repo/runtime/admin/build" "$admin/"
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$repo/Cargo.toml" | head -1)"
 read -r wp_floor php_floor < <(python3 -c 'import json,sys;p=json.load(open(sys.argv[1]));print(p["wordpress"],p["php"])' "$repo/tests/fixtures/platform.json")
 sed -i "s/{{firstVersion}}/$version/g; s/{{wpVersion}}/$wp_floor/g; s/{{phpVersion}}/$php_floor/g" "$admin/first-admin.php"
+# A plugin in the directory a sealed site never runs, with a route that answers a post's stored
+# content after an item-level check only, as the Block Data API does.
+denied="$work/app/first/dist/wp-content/plugins/vip-block-data-api"
+mkdir -p "$denied"
+cp "$here/sealed-denied.php" "$denied/vip-block-data-api.php"
 "$wp/harness.sh" up --wp-content "$work/app/first/dist/wp-content" > "$work/harness.json"
 # What a host has beside the plugins: the build's manifest (its allow-list) and the build loader.
 "$wp/harness.sh" wp eval "file_put_contents(WP_CONTENT_DIR . '/first-manifest.json', base64_decode('$(base64 -w0 < "$work/app/first/dist/wp-content/first-manifest.json")'));

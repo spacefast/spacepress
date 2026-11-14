@@ -24,7 +24,7 @@ final class Hardening
     private const RULES = 'first_rewrite_rules';
 
     /** In the order spec.md §6 lists them. */
-    public const SWITCHES = ['xmlrpc', 'pings', 'emoji', 'fileEditors', 'pluginAndThemeInstalls', 'autoUpdates', 'customizer', 'comments', 'schemaLock', 'authors', 'loginErrors', 'permalinks', 'timezone', 'blockTheme'];
+    public const SWITCHES = ['xmlrpc', 'pings', 'emoji', 'fileEditors', 'pluginAndThemeInstalls', 'autoUpdates', 'customizer', 'comments', 'authors', 'schemaLock', 'loginErrors', 'permalinks', 'timezone', 'blockTheme'];
 
     /** Error codes that differ between an account that exists and one that doesn't (other plugins' sign-ins add them too). */
     private const ACCOUNT_CODES = ['invalid_username', 'invalid_email', 'incorrect_password', 'invalidcombo'];

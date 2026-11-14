@@ -881,6 +881,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.client = Some(client::ClientCtx {
                     analysis,
                     root_pending: true,
+                    template: false,
                 });
             }
             self.current = name.clone();
@@ -943,6 +944,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     );
                 }
                 self.use_wordpress(WordPressKind::Hook, &hook.hook, root.closure.func.span);
+            }
+            if let Slot::AppStaticParams { file } = &root.slot {
+                let ret = match self.helper_types.get(&key) {
+                    Some(Ty::Fn(_, ret)) => match &**ret {
+                        Ty::Promise(t) => (**t).clone(),
+                        t => t.clone(),
+                    },
+                    _ => Ty::Unknown,
+                };
+                let Ty::Obj(props) = self.app_props(file) else {
+                    unreachable!()
+                };
+                let params = props["params"].0.clone();
+                if !assignable(&ret, &Ty::Array(Box::new(params.clone()))) {
+                    return err_help(
+                        root.closure.func.span,
+                        format!(
+                            "staticParams in {file} returns {}, not a list of {}",
+                            ret.describe(),
+                            params.describe()
+                        ),
+                        "return one object per page to build, with a string for each `[name]` folder and a string[] for each `[...name]`",
+                    );
+                }
             }
             if let Slot::AppHandler { file, method } = &root.slot {
                 let ret = match self.helper_types.get(&key) {
@@ -1012,6 +1037,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Slot::AppGuard { .. } => vec![types::hook_ctx()],
             Slot::AppAccess { .. } => vec![types::access_ctx(Ty::Map(Box::new(Ty::Unknown)))],
             Slot::AppHandler { .. } => vec![types::route_request(), ctx],
+            Slot::AppStaticParams { .. } => vec![],
             Slot::ActionHandler { action } => vec![
                 types::action_input(&self.schema.actions[action].input, &types::json_ty),
                 ctx,
@@ -5114,7 +5140,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return err(e.span, format!("expected a function, got {}", v.ty.describe()));
         };
         check_callback_parameters(params, declared, e.span)?;
-        Ok(v)
+        Ok(checked_function(v))
     }
 
     /// An object-literal method that reads `this`, compiled with `this` typed as the literal.
@@ -6666,7 +6692,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => props.php,
                 };
                 Ok(Out::atom(
-                    format!("\\First\\Html::component({}, {props})", f.php),
+                    format!("\\First\\Html::component({}, {props})", checked_function(f).php),
                     Ty::Html,
                 ))
             }
@@ -6807,6 +6833,29 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         );
                     }
                     self.jsx_attribute_rule(&folded_tag, name, literal, value, *span)?;
+                    // In a list's or conditional's `<template>`, a value the browser computes is
+                    // left to its directive: the server has no item to compute it from. A style
+                    // object keeps the properties that don't change.
+                    let value = match self.client.as_ref() {
+                        Some(ctx) if ctx.template && ctx.analysis.reactive(value) => match &value.kind {
+                            ExprKind::Object(props) if name.eq_ignore_ascii_case("style") => {
+                                let fixed: Vec<Prop> = props
+                                    .iter()
+                                    .filter(|p| !matches!(p, Prop::KV(_, v) if ctx.analysis.reactive(v)))
+                                    .cloned()
+                                    .collect();
+                                &Expr {
+                                    kind: ExprKind::Object(fixed),
+                                    span: value.span,
+                                }
+                            }
+                            _ => continue,
+                        },
+                        _ => value,
+                    };
+                    if name == "key" && self.client.is_some() {
+                        continue;
+                    }
                     let v = self.expr(value)?;
                     let v = self.finish_value(v, value.span)?;
                     let php = if name.eq_ignore_ascii_case("style") {
@@ -6878,6 +6927,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
             for child in &jsx.children {
                 if let ExprKind::Str(text) = &child.kind {
                     out.push(format!("\\First\\Html::raw({})", php_str(&jsx_escape(text))));
+                    continue;
+                }
+                // A list or conditional over state: the server renders it now, and the browser
+                // re-renders it from a `<template>` when the state changes.
+                if let Some(reactive) = self.client_reactive(child)? {
+                    out.push(self.client_reactive_php(child, reactive)?);
                     continue;
                 }
                 let v = self.expr(child)?;
@@ -8293,7 +8348,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     open
                 }
             ),
-            None => format!("({})({argv})", f.php),
+            None => format!("{}({argv})", checked_function(f).php),
         };
         Ok(Out::new(
             php,
@@ -9209,7 +9264,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let rep = self.expr(rep_e)?;
                 if let Ty::Fn(declared, _) = &rep.ty {
                     check_callback_parameters(&parameters(declared.len()), declared, rep_e.span)?;
-                    Out::atom(format!("\\Closure::fromCallable({})", rep.php), rep.ty)
+                    checked_function(rep)
                 } else if !rep.ty.is_str() {
                     return err(rep_e.span, "a replacement must be a string or a function");
                 } else {
@@ -10807,6 +10862,14 @@ fn logical_result_type(op: LogOp, left: &Ty, right: &Ty) -> Ty {
     } else {
         Ty::union([retained, right.clone()])
     }
+}
+
+/// A function value the compiler did not build itself, checked to be a JavaScript function before
+/// it is called. The type checker says it is a function, but a type assertion or parsed JSON can
+/// make it a string or an array at run time, and PHP would call the PHP function a string names
+/// (`"system"`, `"First\\Db::..."`) with the arguments the program passes.
+fn checked_function(f: Out) -> Out {
+    Out::atom(format!("\\First\\Js::callback({})", f.php), f.ty)
 }
 
 /// The global `Boolean` read as a value: one shared closure that returns ToBoolean of its

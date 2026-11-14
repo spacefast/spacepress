@@ -157,6 +157,21 @@ test("list encodes where/orderBy/limit/offset/status/locale; with is a comma lis
   assert.deepEqual([last().query.get("cursor"), last().query.get("limit")], ["c2", "1"]);
 });
 
+test("revisions.list follows the cursor and returns every revision, newest first", async () => {
+  seen = [];
+  const pages: Record<string, { data: unknown[]; cursor: string | null }> = {
+    "": { data: [{ id: 9 }, { id: 8 }], cursor: "c1" },
+    c1: { data: [{ id: 7 }], cursor: null },
+  };
+  reply = (s) => ({ status: 200, body: JSON.stringify(pages[s.query.get("cursor") ?? ""]) });
+  const first = mod.createClient({ url });
+  assert.deepEqual(await first.posts.revisions.list(1), [{ id: 9 }, { id: 8 }, { id: 7 }]);
+  assert.deepEqual(seen.map((s) => [s.path, s.query.get("cursor"), s.query.get("limit")]), [
+    ["/__first/api/v1/posts/1/revisions", null, "100"],
+    ["/__first/api/v1/posts/1/revisions", "c1", "100"],
+  ]);
+});
+
 test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSON bodies", async () => {
   seen = [];
   reply = ok({ id: 1 });
@@ -164,7 +179,9 @@ test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSO
   await first.posts.create({ title: "Hi" });
   await first.posts.update(1, { title: "Yo" });
   await first.posts.delete(1);
+  reply = () => ({ status: 200, body: JSON.stringify({ data: [], cursor: null }) });
   await first.posts.revisions.list(1);
+  reply = ok({ id: 1 });
   await first.posts.revisions.get(1, 4);
   await first.posts.revisions.restore(1, 4);
   await first.posts.stage(1, { title: "Staged" });
@@ -867,46 +884,131 @@ function fakeTransport() {
 const tick = () => new Promise((r) => setTimeout(r, 20));
 const notice = (collection: string, ids: number[] | null = [1]) => ({ id: "n", at: "2026-11-07T00:00:00.000Z", changes: [{ collection, ops: ["update"], ids }] });
 
-test("watch re-runs the access-checked list on a matching notice, never trusting pushed data", async () => {
+/**
+ * The subscription endpoint, in memory: each read's answer comes from `rows(query)`, and its token
+ * is the JSON of that answer, so "not modified" is exactly "the same answer as last time".
+ */
+function liveServer(rows: (query: any) => unknown, poll = { minMs: 2000, maxMs: 30000 }) {
+  const state = { requests: [] as any[][], fail: null as null | ReturnType<typeof problem>, errors: new Map<string, ReturnType<typeof problem>>() };
+  reply = (s) => {
+    if (s.path !== "/__first/api/v1/_live") return ok(rows({ kind: s.path.split("/").pop(), op: "http", method: s.method }))();
+    if (state.fail) return state.fail;
+    const queries = JSON.parse(s.body.toString()).queries as any[];
+    state.requests.push(queries);
+    const results = queries.map((q) => {
+      const refused = state.errors.get(q.kind);
+      if (refused) return { error: JSON.parse(refused.body) };
+      const data = rows(q);
+      const token = JSON.stringify(data);
+      return q.token === token ? { changed: false, token } : { changed: true, token, data };
+    });
+    return ok({ results, poll })();
+  };
+  return state;
+}
+
+test("subscribe asks the subscription endpoint once, then sends back the token and hears only changes", async () => {
   seen = [];
-  let n = 0;
-  reply = (s) => ok([{ id: 1, title: `v${++n}` }])();
+  let title = "v1";
+  const server = liveServer(() => [{ id: 1, title }]);
   const transport = fakeTransport();
   const first = mod.createClient({ url, realtime: { transport, pollMs: false, livePollMs: false } });
   const got: unknown[] = [];
-  const stop = first.posts.watch({ where: { title: { like: "%v%" } }, with: { author: true } }, (rows: unknown) => got.push(rows));
+  const query = { where: { title: { like: "%v%" } }, orderBy: "-id", status: "draft", with: { author: true } };
+  const stop = first.posts.list(query).subscribe((rows: unknown) => got.push(rows));
   await tick();
-  assert.equal(transport.connects, 1, "the first watcher connects the transport");
-  assert.deepEqual(got, [[{ id: 1, title: "v1" }]], "an initial read");
+  assert.equal(transport.connects, 1, "the first subscriber connects the transport");
+  assert.deepEqual(got, [[{ id: 1, title: "v1" }]], "the first answer");
+  assert.deepEqual([last().method, last().path], ["POST", "/__first/api/v1/_live"]);
+  assert.deepEqual(server.requests[0], [{
+    kind: "posts", op: "list",
+    args: { where: { AND: [{ title: { like: "%v%" } }, { status: "draft" }] }, orderBy: { id: "desc" }, with: { author: true } },
+  }], "the read as the kind query API's call, without a token the first time");
+
   transport.set("live");
   await tick();
-  assert.equal(got.length, 2, "going live catches up once");
+  assert.equal(server.requests.length, 2, "going live asks once to catch up");
+  assert.equal(server.requests[1][0].token, JSON.stringify([{ id: 1, title: "v1" }]), "with the token of the last answer");
+  assert.equal(got.length, 1, "not modified: the callback is not called");
 
+  title = "v2";
   transport.push({ ...notice("posts"), changes: [{ collection: "posts", ops: ["update"], ids: [1], row: { title: "pushed" } }] });
   await tick();
-  assert.deepEqual(got.at(-1), [{ id: 1, title: "v3" }], "the refresh is the server's answer, not the pushed payload");
-  assert.equal(last().path, "/__first/api/v1/posts");
-  assert.deepEqual(JSON.parse(last().query.get("where") ?? ""), { title: { like: "%v%" } }, "the same query re-runs");
+  assert.deepEqual(got.at(-1), [{ id: 1, title: "v2" }], "the result is the server's answer, never the pushed payload");
 
   transport.push(notice("authors"));
   await tick();
-  assert.equal(got.length, 4, "a change to a collection loaded through `with` refreshes too");
+  assert.equal(server.requests.length, 4, "a change to a kind loaded through `with` asks too");
   transport.push(notice("shoppingList"));
   await tick();
-  assert.equal(got.length, 4, "an unrelated collection does not");
+  assert.equal(server.requests.length, 4, "an unrelated kind does not");
 
   stop();
-  assert.equal(transport.stops, 1, "the last watcher disconnects");
+  assert.equal(transport.stops, 1, "the last subscriber disconnects");
   transport.push(notice("posts"));
   await tick();
-  assert.equal(got.length, 4, "nothing after stop");
+  assert.equal(server.requests.length, 4, "nothing after it ends");
 });
 
-test("watch coalesces a burst into one extra read and reports read errors", async () => {
+test("every subscription of a client travels in one request; the same read is asked for once", async () => {
+  const server = liveServer((q) => (q.op === "count" ? 3 : q.op === "get" ? { id: q.id } : q.op === "paginate" ? { rows: [], cursor: null } : [q.kind]));
+  const first = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const got: Record<string, unknown[]> = { a: [], b: [], count: [], get: [], page: [] };
+  const stops = [
+    first.posts.list({ limit: 5 }).subscribe((d: unknown) => got.a.push(d)),
+    first.posts.list({ limit: 5 }).subscribe((d: unknown) => got.b.push(d)),
+    first.authors.count({ where: { name: "x" } }).subscribe((d: unknown) => got.count.push(d)),
+    first.posts.get(7).subscribe((d: unknown) => got.get.push(d)),
+    first.shoppingList.paginate({ limit: 2, cursor: "c1" }).subscribe((d: unknown) => got.page.push(d)),
+  ];
+  await tick();
+  assert.equal(server.requests.length, 1, "one request for everything subscribed in the same turn");
+  assert.deepEqual(server.requests[0], [
+    { kind: "posts", op: "list", args: { limit: 5 } },
+    { kind: "authors", op: "count", args: { where: { name: "x" } } },
+    { kind: "posts", op: "get", id: 7, args: {} },
+    { kind: "shoppingList", op: "paginate", args: { limit: 2, cursor: "c1" } },
+  ]);
+  assert.deepEqual(got, { a: [["posts"]], b: [["posts"]], count: [3], get: [{ id: 7 }], page: [{ rows: [], cursor: null }] });
+  assert.equal(first.posts.list({ limit: 5 }).key, first.posts.list({ limit: 5 }).key, "the same call has the same key");
+  assert.notEqual(first.posts.list({ limit: 5 }).key, first.posts.list({ limit: 6 }).key);
+
+  // A later subscriber of a read already held gets what is held, at once.
+  const late: unknown[] = [];
+  stops.push(first.posts.list({ limit: 5 }).subscribe((d: unknown) => late.push(d)));
+  await Promise.resolve();
+  assert.deepEqual(late, [["posts"]]);
+  for (const stop of stops) stop();
+
+  // More than the endpoint's 20 per request goes out as several.
+  const many = Array.from({ length: 25 }, (_, i) => first.posts.list({ limit: i + 1 }).subscribe(() => {}));
+  server.requests.length = 0;
+  await tick();
+  assert.deepEqual(server.requests.map((r) => r.length), [20, 5]);
+  for (const stop of many) stop();
+});
+
+test("awaiting a read is one plain request; nothing is sent until it is awaited or subscribed", async () => {
+  seen = [];
+  liveServer((q) => (q.op === "count" ? 4 : [{ id: 1 }]));
+  const first = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const read = first.posts.list({ limit: 1 });
+  await tick();
+  assert.equal(seen.length, 0, "creating a read sends nothing");
+  assert.deepEqual(await read, [{ id: 1 }]);
+  assert.deepEqual([last().method, last().path, last().query.get("limit")], ["GET", "/__first/api/v1/posts", "1"]);
+  assert.deepEqual(await read, [{ id: 1 }]);
+  assert.equal(seen.length, 1, "awaited twice, sent once");
+  assert.equal(await first.posts.count({ where: { title: "x" } }), 4);
+  assert.deepEqual(JSON.parse(last().body.toString()), { queries: [{ kind: "posts", op: "count", args: { where: { title: "x" } } }] }, "count has no route of its own: one answer from the subscription endpoint");
+  assert.equal(await first.posts.list().then((rows: unknown[]) => rows.length).catch(() => -1).finally(() => {}), 1, "then, catch and finally chain");
+});
+
+test("a burst of notices is one more request; a refused read reports its problem and keeps going", async () => {
   let release: () => void = () => {};
   const gate = new Promise<void>((r) => (release = r));
   let calls = 0;
-  reply = () => ok([])();
+  const server = liveServer(() => []);
   const slowFetch: typeof fetch = async (input, init) => {
     calls++;
     if (calls === 2) await gate;
@@ -918,19 +1020,305 @@ test("watch coalesces a burst into one extra read and reports read errors", asyn
   await tick();
   transport.push(notice("posts"));
   transport.push(notice("posts"));
+  await tick();
+  assert.equal(calls, 2, "notices in the same turn are one request");
+  transport.push(notice("posts"));
+  transport.push(notice("posts"));
   transport.push(notice("posts"));
   await tick();
   release();
   await tick();
-  assert.equal(calls, 3, "initial read, one in flight, one more for the burst");
+  assert.equal(calls, 3, "and a burst while that one is out is exactly one more");
   stop();
 
-  reply = () => problem(403, "forbidden");
+  // One read refused, one answered, in the same request.
+  server.errors.set("posts", problem(403, "forbidden"));
+  const client = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
   const errors: string[] = [];
-  const stop2 = mod.createClient({ url, realtime: { transport: false, pollMs: false } }).posts.watch(undefined, () => {}, (e: { code: string }) => errors.push(e.code));
+  const rows: unknown[] = [];
+  const stops = [
+    client.posts.watch(undefined, () => rows.push("posts"), (e: { code: string; status: number }) => errors.push(`${e.status} ${e.code}`)),
+    client.authors.list().subscribe((d: unknown) => rows.push(d)),
+  ];
   await tick();
-  assert.deepEqual(errors, ["forbidden"]);
+  assert.deepEqual([errors, rows], [["403 forbidden"], [[]]], "the refusal is that read's alone");
+  await client.actions.approveComment({ id: 1 });
+  await tick();
+  assert.deepEqual(errors, ["403 forbidden"], "a read that stays refused reports it once, not on every answer");
+  // The whole request failing reaches every subscriber's onError; the subscriptions stay.
+  server.errors.clear();
+  server.fail = problem(503, "unavailable");
+  await client.actions.approveComment({ id: 1 }); // asks for every read again
+  await tick();
+  assert.deepEqual(errors, ["403 forbidden", "503 unavailable"]);
+  for (const s of stops) s();
+
+  // A `get` whose row is missing or unreadable is the API's 404, as when awaited.
+  server.fail = null;
+  liveServer(() => null);
+  const missing: string[] = [];
+  const stop3 = client.posts.get(404).subscribe(() => missing.push("data"), (e: { status: number; code: string }) => missing.push(`${e.status} ${e.code}`));
+  await tick();
+  assert.deepEqual(missing, ["404 not_found"]);
+  stop3();
+});
+
+test("without a transport the poll gap grows while nothing changes, restarts on a change, and is jittered", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let random = 0.5; // no jitter: 0.8 + 0.5 × 0.4 = 1
+  t.mock.method(Math, "random", () => random);
+  let value = 1;
+  const asked: number[] = [];
+  let now = 0;
+  const first = mod.createClient({
+    url,
+    fetch: async (_input: unknown, init: { body: string }) => {
+      asked.push(now);
+      const q = JSON.parse(init.body).queries[0];
+      const token = String(value);
+      return new Response(JSON.stringify({ data: { results: [q.token === token ? { changed: false, token } : { changed: true, token, data: value }], poll: { minMs: 2000, maxMs: 30000 } } }), { status: 200 });
+    },
+    realtime: { transport: false },
+  });
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+  };
+  const advance = async (ms: number) => {
+    now += ms;
+    t.mock.timers.tick(ms);
+    await settle();
+  };
+  const stop = first.posts.count().subscribe(() => {});
+  await settle();
+  assert.deepEqual(asked, [0], "the first answer, at once");
+  // The first answer was a change, so the gap starts at the server's minimum and grows by half.
+  const gaps: number[] = [];
+  for (let i = 0; i < 9; i++) {
+    const before = asked.length;
+    let waited = 0;
+    while (asked.length === before && waited < 60_000) {
+      await advance(250);
+      waited += 250;
+    }
+    gaps.push(waited);
+  }
+  assert.deepEqual(gaps, [2000, 3000, 4500, 6750, 10250, 15250, 23000, 30000, 30000], "2 s, then half as long again each time, up to 30 s");
+
+  value = 2; // someone wrote
+  await advance(30_000);
+  const at = asked.length;
+  await advance(1999);
+  assert.equal(asked.length, at, "after a change the gap is the minimum again");
+  await advance(1);
+  assert.equal(asked.length, at + 1);
+
+  // Jitter: the same gap, 20% either way.
+  random = 0; // × 0.8
+  await advance(3000); // this poll schedules the next with the new factor
+  const base = asked.length;
+  await advance(3599);
+  assert.equal(asked.length, base, "4.5 s × 0.8 = 3.6 s, not sooner");
+  await advance(1);
+  assert.equal(asked.length, base + 1);
+  stop();
+  await advance(120_000);
+  assert.equal(asked.length, base + 1, "nothing after the last subscriber ends");
+});
+
+test("pollMs sets the gap: a number is a fixed interval, { min, max } the bounds, false turns polling off; errors back off", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(Math, "random", () => 0.5);
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+  };
+  let fail = false;
+  const counting = (asked: number[]) => async (_input: unknown, init: { body: string }) => {
+    asked.push(1);
+    if (fail) return new Response(JSON.stringify({ type: "about:blank", title: "x", status: 503, code: "unavailable", detail: "x" }), { status: 503 });
+    const q = JSON.parse(init.body).queries[0];
+    return new Response(JSON.stringify({ data: { results: [q.token ? { changed: false, token: "t" } : { changed: true, token: "t", data: 1 }], poll: { minMs: 2000, maxMs: 30000 } } }), { status: 200 });
+  };
+  const run = async (pollMs: unknown, ticks: number[]) => {
+    const asked: number[] = [];
+    const first = mod.createClient({ url, fetch: counting(asked), realtime: { transport: false, pollMs } });
+    const stop = first.posts.count().subscribe(() => {}, () => {});
+    await settle();
+    const counts = [];
+    for (const ms of ticks) {
+      t.mock.timers.tick(ms);
+      await settle();
+      counts.push(asked.length);
+    }
+    stop();
+    return counts;
+  };
+  assert.deepEqual(await run(1000, [999, 1, 1000, 1000]), [1, 2, 3, 4], "a number: every second, however quiet it is");
+  assert.deepEqual(await run({ min: 500, max: 600 }, [499, 1, 599, 1, 600]), [1, 2, 2, 3, 4], "bounds: 500 ms, then capped at 600 ms");
+  assert.deepEqual(await run(false, [600_000]), [1], "false: the first answer only");
+  fail = true;
+  assert.deepEqual(await run(undefined, [3999, 1, 7999, 1]), [1, 2, 2, 3], "a failing server is asked half as often each time: 4 s, 8 s");
+  fail = false;
+});
+
+test("a hidden tab does not poll, and asks once when it is shown again", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(Math, "random", () => 0.5);
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+  };
+  const listeners = new Set<() => void>();
+  const page = { visibilityState: "visible", addEventListener: (_: string, fn: () => void) => void listeners.add(fn), removeEventListener: (_: string, fn: () => void) => void listeners.delete(fn) };
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "document");
+  Object.defineProperty(globalThis, "document", { configurable: true, value: page });
+  try {
+    let asked = 0;
+    const transport = fakeTransport();
+    const first = mod.createClient({
+      url,
+      fetch: async () => (asked++, new Response(JSON.stringify({ data: { results: [{ changed: false, token: "t" }], poll: { minMs: 2000, maxMs: 30000 } } }), { status: 200 })),
+      realtime: { transport },
+    });
+    const stop = first.posts.list().subscribe(() => {});
+    await settle();
+    assert.equal(asked, 1);
+    page.visibilityState = "hidden";
+    for (const fn of [...listeners]) fn();
+    t.mock.timers.tick(600_000);
+    await settle();
+    assert.equal(asked, 1, "ten minutes hidden: nothing asked");
+    transport.set("live");
+    await settle();
+    transport.push(notice("posts"));
+    await settle();
+    assert.equal(asked, 2, "going live asks once; a notice to a hidden tab waits");
+    page.visibilityState = "visible";
+    for (const fn of [...listeners]) fn();
+    await settle();
+    assert.equal(asked, 3, "shown again: asked at once, including what the notice named");
+    stop();
+    assert.equal(listeners.size, 0, "the last subscriber removes the listener");
+  } finally {
+    if (saved) Object.defineProperty(globalThis, "document", saved);
+    else delete (globalThis as Record<string, unknown>).document;
+  }
+});
+
+test("a write through the client asks for the reads of that kind at once", async () => {
+  const rows: Record<string, string[]> = { posts: ["a"], authors: ["x"] };
+  const server = liveServer((q) => (q.op === "http" ? (q.method === "POST" ? { id: 9 } : rows[q.kind]) : rows[q.kind]));
+  const first = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const posts: unknown[] = [];
+  const stops = [first.posts.list().subscribe((d: unknown) => posts.push(d)), first.authors.list().subscribe(() => {})];
+  await tick();
+  server.requests.length = 0;
+  rows.posts = ["a", "b"];
+  await first.posts.create({ title: "b" });
+  await tick();
+  assert.deepEqual(server.requests.map((r) => r.map((q) => q.kind)), [["posts"]], "only the reads of the written kind");
+  assert.deepEqual(posts.at(-1), ["a", "b"]);
+  server.requests.length = 0;
+  await first.actions.approveComment({ id: 1 });
+  await tick();
+  assert.deepEqual(server.requests.map((r) => r.map((q) => q.kind)), [["posts", "authors"]], "an action may write anything: every read is asked for");
+  for (const stop of stops) stop();
+});
+
+test("optimistic updates show at once, roll back on failure, and give way to the server's answer", async () => {
+  let rows = [{ id: 1, title: "one" }];
+  const server = liveServer(() => rows);
+  const first = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const got: { id: number; title: string }[][] = [];
+  const read = first.posts.list();
+  const stop = read.subscribe((d: { id: number; title: string }[]) => got.push(d));
+  await tick();
+  assert.deepEqual(got, [[{ id: 1, title: "one" }]]);
+
+  // A write that fails: shown at once, then taken back, with no request.
+  const failed = read.optimistic((current: { id: number; title: string }[]) => [...current, { id: -1, title: "pending" }]);
+  assert.deepEqual(got.at(-1)?.map((r) => r.title), ["one", "pending"], "shown before any answer");
+  const before = server.requests.length;
+  failed.rollback();
+  assert.deepEqual(got.at(-1)?.map((r) => r.title), ["one"], "rolled back to the server's data");
+  assert.equal(server.requests.length, before);
+  failed.rollback();
+  assert.equal(got.length, 3, "rolling back twice does nothing more");
+
+  // A write that succeeds: the update stays until the server's next answer replaces it.
+  const done = read.optimistic((current: { id: number; title: string }[]) => [...current, { id: -2, title: "two (pending)" }]);
+  rows = [...rows, { id: 2, title: "two" }];
+  done.settle();
+  await tick();
+  assert.deepEqual(got.at(-1), [{ id: 1, title: "one" }, { id: 2, title: "two" }], "the server's answer, with the pending row gone");
+  assert.ok(!got.some((g, i) => i > 3 && g.length === 1), "never a frame without the new row in between");
+
+  // Two at once apply in order, over whatever the server answers meanwhile.
+  const a = read.optimistic((current: { id: number; title: string }[]) => current.map((r) => (r.id === 1 ? { ...r, title: "ONE" } : r)));
+  const b = read.optimistic((current: { id: number; title: string }[]) => current.filter((r) => r.id !== 2));
+  assert.deepEqual(got.at(-1), [{ id: 1, title: "ONE" }]);
+  a.rollback();
+  assert.deepEqual(got.at(-1), [{ id: 1, title: "one" }], "the other update still applies");
+  b.rollback();
+  assert.deepEqual(got.at(-1), [{ id: 1, title: "one" }, { id: 2, title: "two" }]);
+
+  // A write through the client: its own refresh is the answer that replaces the update. The row
+  // is never shown twice, and settling costs no request of its own.
+  rows = [{ id: 1, title: "one" }];
+  const client = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const frames: string[][] = [];
+  const mine = client.posts.list();
+  const stop2 = mine.subscribe((d: { title: string }[]) => frames.push(d.map((r) => r.title)));
+  await tick();
+  const saving = mine.optimistic((current: { id: number; title: string }[]) => [...current, { id: -3, title: "three (saving)" }]);
+  server.requests.length = 0;
+  rows = [...rows, { id: 3, title: "three" }];
+  await client.posts.create({ title: "three" });
+  saving.settle();
+  await tick();
+  assert.deepEqual(frames, [["one"], ["one", "three (saving)"], ["one", "three"]], "saving, then saved: no frame with both or neither");
+  assert.equal(server.requests.length, 1, "one request: the write's own refresh");
+  // Settled late, after that refresh was already shown: dropped at once, with no request.
+  const late = mine.optimistic((current: { id: number; title: string }[]) => [...current, { id: -4, title: "four (saving)" }]);
+  rows = [...rows, { id: 4, title: "four" }];
+  await client.posts.create({ title: "four" });
+  await tick();
+  assert.deepEqual(frames.at(-1), ["one", "three", "four", "four (saving)"], "not settled yet: the update is still applied");
+  late.settle();
+  assert.deepEqual(frames.at(-1), ["one", "three", "four"]);
+  assert.equal(server.requests.length, 2);
   stop2();
+
+  // On a read nobody is subscribed to there is nothing to show: it does nothing.
+  const none = first.authors.list().optimistic(() => []);
+  none.settle();
+  none.rollback();
+  stop();
+});
+
+test("a server-rendered answer seeds a subscription: its data at once, its token on the first request", async () => {
+  const server = liveServer(() => ["fresh"]);
+  const first = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const got: unknown[] = [];
+  const stop = first.posts.list().subscribe((d: unknown) => got.push(d), undefined, { token: JSON.stringify(["fresh"]), data: ["fresh"] });
+  await tick();
+  assert.deepEqual(got, [["fresh"]], "delivered once, from the seed");
+  assert.equal(server.requests[0][0].token, JSON.stringify(["fresh"]), "and the first request is not modified");
+  stop();
+});
+
+test("the exported watch() still re-runs an arbitrary read on a notice or the fixed interval", async () => {
+  let n = 0;
+  reply = () => ok(++n)();
+  const transport = fakeTransport();
+  const first = mod.createClient({ url, realtime: { transport, pollMs: false, livePollMs: false } });
+  const got: unknown[] = [];
+  const stop = mod.watch(first, ["posts"], () => first.actions.publishedCount(), (v: unknown) => got.push(v));
+  await tick();
+  transport.push(notice("posts"));
+  await tick();
+  transport.push(notice("authors"));
+  await tick();
+  assert.deepEqual(got, [1, 2], "the read, and once more for the notice that names its kind");
+  stop();
 });
 
 test("without a live transport, watch polls; a transport registered later is picked up", async () => {

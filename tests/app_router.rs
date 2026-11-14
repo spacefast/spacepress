@@ -76,7 +76,7 @@ fn app_router_serves_pages_on_wordpress() {
     // An anonymous visitor's page is cacheable (rendering.md §6.1; app_pages_cache_and_purge_by_what_they_read).
     assert_eq!(
         seen["home cache"][0],
-        "public, s-maxage=300, max-age=0, must-revalidate"
+        "public, max-age=0, s-maxage=300, must-revalidate"
     );
     // `<Link>` to a path on the site is the router region's navigation, loaded on the page.
     assert!(body.contains(r#"/notes" data-wp-interactive="first/router" data-wp-on--click="actions.navigate" data-wp-on--mouseenter="actions.prefetch">Notes</a>"#), "{body}");
@@ -326,7 +326,7 @@ fn page_md_is_a_wordpress_page() {
     let seen: serde_json::Value =
         serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
     let text = |v: &serde_json::Value| v.as_str().unwrap_or_default().to_string();
-    let shared = "public, s-maxage=300, max-age=0, must-revalidate";
+    let shared = "public, max-age=0, s-maxage=300, must-revalidate";
     let private = "private, no-store, max-age=0";
 
     // The file's Markdown is stored as blocks in a Page, and the route renders that Page inside
@@ -846,6 +846,216 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// A prebuilt page is an anonymous visitor's render with nothing from the request, at URLs the build
+/// can list (docs/decisions/2026-11-13-static-output.md). Everything else is a build error at the
+/// page, with the fix.
+#[test]
+fn refuses_prebuilt_pages_that_depend_on_the_request() {
+    let dir = std::env::temp_dir().join(format!("first-app-prerender-{}", std::process::id()));
+    let page = "export default function P() { return <p/>; }\n";
+    let static_config = (
+        "first.config.ts",
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ output: \"static\" });\n",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first.config.ts",
+            "import { defineConfig } from \"first\";\nexport default defineConfig({ output: \"hybrid\" });\n",
+        )],
+        "`output` is \"server\" or \"static\", not \"hybrid\"",
+        "first.config.ts:2:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first.config.ts",
+            "import { defineConfig } from \"first\";\nexport default defineConfig({ output: \"static\", frontend: \"https://example.com\" });\n",
+        )],
+        "`frontend` hands it to another site",
+        "first.config.ts:2:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/page.tsx",
+            "export const prerender = \"yes\";\nexport default function P() { return <p/>; }\n",
+        )],
+        "`prerender` is \"yes\", not true or false",
+        "first/app/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[
+            static_config,
+            (
+                "first/app/about/page.tsx",
+                "export const prerender = false;\nexport default function P() { return <p/>; }\n",
+            ),
+        ],
+        "app/about/page.tsx says `prerender = false`, and `output: \"static\"` prebuilds every page",
+        "first/app/about/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[static_config, ("first/app/blog/[slug]/page.tsx", page)],
+        "app/blog/[slug]/page.tsx is prebuilt (`output: \"static\"` prebuilds every page), and nothing lists its URLs",
+        "first/app/blog/[slug]/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/blog/[slug]/page.tsx",
+            "export const prerender = true;\nexport default function P() { return <p/>; }\n",
+        )],
+        "export `async function staticParams() { return [{ slug: \"…\" }]; }`",
+        "first/app/blog/[slug]/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/blog/[slug]/page.tsx",
+            "export async function staticParams() { return [{ slug: \"a\" }]; }\nexport default function P() { return <p/>; }\n",
+        )],
+        "exports `staticParams`, but it isn't prebuilt",
+        "first/app/blog/[slug]/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/about/page.tsx",
+            "export const prerender = true;\nexport async function staticParams() { return []; }\nexport default function P() { return <p/>; }\n",
+        )],
+        "exports `staticParams`, and its URL has no parameter",
+        "first/app/about/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/blog/[slug]/page.tsx",
+            "export const prerender = true;\nexport async function staticParams() { return [{ id: \"a\" }]; }\nexport default function P() { return <p/>; }\n",
+        )],
+        "staticParams in app/blog/[slug]/page.tsx returns",
+        "first/app/blog/[slug]/page.tsx:2:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/find/page.tsx",
+            "import { text } from \"first\";\nexport const prerender = true;\nexport const search = { q: text().optional() };\nexport default function P() { return <p/>; }\n",
+        )],
+        "app/find/page.tsx is prebuilt (it says `prerender = true`), and it reads `search`",
+        "first/app/find/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[
+            (
+                "first/app/account/layout.tsx",
+                "export const guard = \"subscriber\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
+            ),
+            (
+                "first/app/account/page.tsx",
+                "export const prerender = true;\nexport default function P() { return <p/>; }\n",
+            ),
+        ],
+        "app/account/page.tsx is prebuilt (it says `prerender = true`), and app/account/layout.tsx guards it",
+        "first/app/account/page.tsx",
+    );
+    rejects(
+        &dir,
+        &[
+            static_config,
+            (
+                "first/app/form/page.tsx",
+                "export const access = \"anyone\";\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
+            ),
+        ],
+        "app/form/page.tsx has HTTP handlers, and a static site has no server to answer them",
+        "first/app/form/page.tsx",
+    );
+    // Through an imported helper too: the check follows the page's imports.
+    rejects(
+        &dir,
+        &[
+            (
+                "first/app/_lib/who.ts",
+                "import { is_user_logged_in } from \"php/wordpress\";\nexport function who(): string { return is_user_logged_in() ? \"you\" : \"guest\"; }\n",
+            ),
+            (
+                "first/app/hello/page.tsx",
+                "import { who } from \"../_lib/who\";\nexport const prerender = true;\nexport default function P() { return <p>{who()}</p>; }\n",
+            ),
+        ],
+        "app/hello/page.tsx is prebuilt, and `is_user_logged_in` asks who the visitor is",
+        "first/app/_lib/who.ts:2:",
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A hybrid app: `prerender` and `staticParams` reach the route table the runtime reads, and a page
+/// that serves a kind's `url` is prebuilt with no staticParams (one file per published item).
+#[test]
+fn prerender_and_static_params_reach_the_route_table() {
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path();
+    let write = |path: &str, source: &str| {
+        let path = project.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, source).unwrap();
+    };
+    write(
+        "first.config.ts",
+        "import { defineConfig, collection, text, slug } from \"first\";\nexport const notes = collection({ title: text(), slug: slug({ source: \"title\" }) }, { url: \"/notes/:slug\", access: { read: \"anyone\" } });\nexport default defineConfig({ name: \"hybrid\", collections: { notes } });\n",
+    );
+    write("first/app/page.tsx", "export default function P() { return <p/>; }\n");
+    write(
+        "first/app/about/page.tsx",
+        "export const prerender = true;\nexport default function P() { return <p/>; }\n",
+    );
+    write(
+        "first/app/notes/[slug]/page.tsx",
+        "export const prerender = true;\nexport default function P() { return <p/>; }\n",
+    );
+    write(
+        "first/app/tags/[tag]/page.tsx",
+        "import type { PageProps, StaticParams } from \"first/app\";\nexport const prerender = true;\nexport async function staticParams(): Promise<StaticParams<\"tags/[tag]\">> { return [\"news\", \"notes\"].map((tag) => ({ tag })); }\nexport default function P({ params }: PageProps<\"tags/[tag]\">) { return <p>{params.tag}</p>; }\n",
+    );
+    build(project);
+    let schema =
+        std::fs::read_to_string(project.join("first/dist/wp-content/plugins/first-app-hybrid/first/app/schema.php"))
+            .unwrap();
+    let route = |id: &str| {
+        schema
+            .lines()
+            .find(|l| l.contains(&format!("['id' => '{id}'")))
+            .unwrap_or_else(|| panic!("no route {id}:\n{schema}"))
+            .to_string()
+    };
+    assert!(!route("/").contains("'prerender'"), "{}", route("/"));
+    assert!(route("about").contains("'prerender' => true"));
+    assert!(route("notes/[slug]").contains("'prerender' => true"));
+    assert!(route("tags/[tag]").contains("'prerender' => true"));
+    assert!(!schema.contains("'output' =>"), "server is the default");
+    // staticParams compiles to a function the export calls; its list is the one the page wrote.
+    let out = Command::new("php")
+        .arg("-r")
+        .arg(format!(
+            "require '{}/runtime/First/bootstrap.php'; require '{}'; $s = require '{}'; $fn = '\\\\FirstApp\\\\' . $s['app']['files']['app/tags/[tag]/page.tsx']['staticParams']; echo \\First\\Js::jsonStringify($fn());",
+            root().display(),
+            project.join("first/dist/wp-content/plugins/first-app-hybrid/first/app/functions.php").display(),
+            project.join("first/dist/wp-content/plugins/first-app-hybrid/first/app/schema.php").display(),
+        ))
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        r#"[{"tag":"news"},{"tag":"notes"}]"#,
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.
 fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value {
     let project = fixture("frontend-modes", variant);
@@ -991,7 +1201,14 @@ fn frontend_modes_on_wordpress() {
             "both ids": 404,
             "listed embed": [false, "/author/editor/"],
             "unlisted embed": [true, ""],
-            "core route": [401, 401]
+            "core route": [401, 401],
+            "api list": true,
+            "api listed": 200,
+            "api unlisted": 401,
+            "api missing": 401,
+            "purged": true,
+            "unlisted after": 404,
+            "public sitemap": ["/author/admin/", "/author/editor/"]
         }),
         "{theme}"
     );
@@ -1281,14 +1498,46 @@ fn refuses_client_code_outside_the_subset() {
         "returns its element",
         "first/components/A.tsx:3:",
     );
+    // Reactive lists and conditionals: the item is one keyed element, and each branch is one element.
+    let shelf = |markup: &str| {
+        component(&format!(
+            "export function A() {{ const [xs, setXs] = useState([{{ id: 1, t: \"a\" }}]); return <ul onClick={{() => setXs([])}}>{markup}</ul>; }}"
+        ))
+    };
+    for (markup, refusal) in [
+        (
+            "{xs.map((x) => <li>{x.t}</li>)}",
+            "each item of a reactive list needs a `key`",
+        ),
+        (
+            "{xs.map((x) => <><li key={x.id}/><li/></>)}",
+            "each item of a reactive list is one element",
+        ),
+        (
+            "{xs.map((x, i) => <li key={i}/>)}",
+            "a reactive list's callback takes one item",
+        ),
+        (
+            "{xs.length > 0 && <><li/><li/></>}",
+            "a reactive `&&` renders one element",
+        ),
+    ] {
+        rejects(
+            &dir,
+            &[("first/components/A.tsx", &shelf(markup))],
+            refusal,
+            "first/components/A.tsx:3:",
+        );
+    }
     let _ = std::fs::remove_dir_all(dir);
 }
 
 /// The record's browser check: compiled client components on a real WordPress page, in Chromium
 /// with `SCRIPT_DEBUG` (the Interactivity runtime's development build, the one that warns).
 /// Hydration changes nothing in the server HTML, the runtime logs no warnings, a click calls the
-/// server action and updates the label, effects and shared state follow state changes, and a CSS
-/// module's class switches with state and styles the element.
+/// server action and updates the label, effects and shared state follow state changes, a CSS
+/// module's class switches with state and styles the element, and a reactive list and
+/// conditionals re-render from their templates, keeping the server's elements.
 #[test]
 fn client_components_hydrate_in_the_browser() {
     assert!(
@@ -1352,6 +1601,23 @@ fn client_components_hydrate_in_the_browser() {
         ),
         "{seen}"
     );
+    // A reactive list adds and drops items by key, and `&&` and `?:` switch their elements.
+    let step = |books: &[&str], open: u64, count: Option<&str>, empty: u64| serde_json::json!({ "books": books, "open": open, "count": count, "empty": empty });
+    assert_eq!(
+        seen["shelfSteps"],
+        serde_json::json!([
+            step(&["1:Dune", "2:Emma"], 1, Some("2"), 0),
+            step(&["1:Dune", "2:Emma", "3:Book 3"], 1, Some("3"), 0),
+            step(&["1:Dune", "2:Emma", "3:Book 3"], 0, Some("3"), 0),
+            step(&[], 0, None, 1),
+            step(&["1:Book 1"], 1, Some("1"), 0),
+        ]),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["kept"], true,
+        "the server-rendered item is kept, not re-created: {seen}"
+    );
 }
 
 /// rendering.md §6.1 and §6.2 for `first/app/` pages, on WordPress with a stand-in host listening
@@ -1377,7 +1643,24 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         String::from_utf8_lossy(&out.stderr)
     );
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let shared = "public, s-maxage=300, max-age=0, must-revalidate";
+    // Batcache's own regex over every policy: a shareable page is kept for its window, the
+    // filtered one too, and a private answer for none (max-age=0 means Batcache skips it).
+    assert_eq!(
+        seen["batcache"],
+        serde_json::json!([
+            [200, true, false, true, 300],
+            [200, false, false, false, 0],
+            [200, true, true, false, 0],
+            [404, true, false, false, 0],
+            [500, true, false, false, 0],
+            ["window 60", 60]
+        ])
+    );
+    assert_eq!(
+        seen["batcache served"],
+        serde_json::json!({ "home": 300, "as editor": 0, "missing": 0 })
+    );
+    let shared = "public, max-age=0, s-maxage=300, must-revalidate";
     let private = "private, no-store, max-age=0";
     for key in ["home", "note", "other note", "about"] {
         assert_eq!(
@@ -1407,6 +1690,24 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         seen["purged"],
         serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])
     );
+    // The runtime's own listener cleared those paths in Batcache (keyed as `http://`, no query),
+    // the VIP edge and Jetpack Boost; `/*` reaches Boost's clear-all.
+    let mut cleared: Vec<String> = seen["cleared"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    cleared.sort();
+    let mut want = Vec::new();
+    for cache in ["batcache", "boost", "vip"] {
+        for path in ["/", "/index.md", "/notes/hello", "/notes/hello.md"] {
+            want.push(format!("{cache} {path}"));
+        }
+    }
+    want.sort();
+    assert_eq!(cleared, want);
+    assert_eq!(seen["cleared all"], serde_json::json!(["boost *"]));
 }
 
 /// Stylesheets and SVGs that pages, layouts and components import (docs/spec/tsx-to-php.md,
@@ -1614,17 +1915,32 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         serde_json::json!([
             "#why Why depth-2",
             "#small-print Small print depth-3",
-            "#why-2 Why depth-2"
+            "#whats-firstapp What's first/app/? depth-3",
+            "#why-1 Why depth-2",
+            "#step-1---install Step 1 - Install depth-3",
+            "#the---force-flag The --force flag depth-3",
+            "#why-1-1 Why 1 depth-2",
+            "#two--spaces Two spaces depth-2"
         ])
     );
+    // Ids follow GitHub's rule (github-slugger): punctuation goes, a repeat gets `-1`.
     assert_eq!(
         seen["introduction"]["anchors"],
-        serde_json::json!(["h2#why", "h3#small-print", "h2#why-2"])
+        serde_json::json!([
+            "h2#why",
+            "h3#small-print",
+            "h3#whats-firstapp",
+            "h2#why-1",
+            "h3#step-1---install",
+            "h3#the---force-flag",
+            "h2#why-1-1",
+            "h2#two--spaces"
+        ])
     );
     assert_eq!(seen["introduction"]["title"], "Introduction · Docs");
     assert_eq!(
         seen["introduction"]["cache"],
-        "public, s-maxage=300, max-age=0, must-revalidate"
+        "public, max-age=0, s-maxage=300, must-revalidate"
     );
     // The draft: a 404 and no twin for visitors; in nobody's tree or pager, an editor's included.
     assert_eq!(seen["roadmap"], 404);
@@ -1659,6 +1975,11 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         seen["same slug elsewhere"],
         serde_json::json!([["Install again"], ["Install"]])
     );
+    // Every id github-slugger gives the fixture's headings (tests/fixtures/docs-kind/heading-ids.json).
+    assert_eq!(seen["heading ids"], serde_json::json!([]));
+    assert_eq!(seen["heading id cases"], 17);
+    // `## Why`, `<h2 id="why">`, `## Why`: the own id stays, and the generated ones step around it.
+    assert_eq!(seen["own ids"], serde_json::json!(["why-1", "why", "why-2"]));
     // A block that renders differently each time doesn't cost the headings their anchors.
     assert_eq!(
         seen["headings beside a gallery"],
@@ -1666,9 +1987,23 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
             [
                 "#why Why depth-2",
                 "#small-print Small print depth-3",
-                "#why-2 Why depth-2"
+                "#whats-firstapp What's first/app/? depth-3",
+                "#why-1 Why depth-2",
+                "#step-1---install Step 1 - Install depth-3",
+                "#the---force-flag The --force flag depth-3",
+                "#why-1-1 Why 1 depth-2",
+                "#two--spaces Two spaces depth-2"
             ],
-            ["h2#why", "h3#small-print", "h2#why-2"]
+            [
+                "h2#why",
+                "h3#small-print",
+                "h3#whats-firstapp",
+                "h2#why-1",
+                "h3#step-1---install",
+                "h3#the---force-flag",
+                "h2#why-1-1",
+                "h2#two--spaces"
+            ]
         ])
     );
     // Components in Markdown (docs/decisions/2026-11-13-components-in-markdown.md): the file's
@@ -1925,6 +2260,79 @@ fn content_blocks_refuse_props_a_tag_cannot_write() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Components in Markdown in the block editor, in Chromium: a component without `children` is
+/// registered by core's `autoRegister` support (a server-rendered preview, a sidebar field per
+/// prop), one with `children` by the runtime's script (inner blocks edited in place, props in the
+/// sidebar); both save as the app's blocks and render through their components
+/// (tests/differential/client/editor-blocks.mjs).
+#[test]
+fn component_blocks_edit_in_the_block_editor() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let project = fixture("docs-kind", "editor");
+    build(&project);
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/editor-blocks.mjs"))
+        .arg(&url)
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    // Core marks the Badge's props for its own fields; the Callout's are the runtime's.
+    assert_eq!(
+        seen["types"],
+        serde_json::json!({ "docskind/badge": ["count", "label"], "docskind/callout": [] }),
+        "{seen}"
+    );
+    assert_eq!(seen["badgePreview"], "<span class=\"badge\">New<b> 3</b></span>");
+    assert_eq!(seen["badgeFields"], serde_json::json!([1, 1]), "{seen}");
+    assert_eq!(seen["badgeEdited"], "<span class=\"badge\">Fresh<b> 3</b></span>");
+    assert_eq!(seen["calloutInner"], "Mind the gap.");
+    assert_eq!(seen["calloutFields"], serde_json::json!([1, 1]), "{seen}");
+    let saved = seen["saved"].as_str().unwrap();
+    assert!(
+        saved.contains("<!-- wp:docskind/badge {\"label\":\"Fresh\",\"count\":3} /-->")
+            && saved.contains("<!-- wp:docskind/callout {\"type\":\"warning\"} -->")
+            && saved.contains("<p>Mind the gap.</p>"),
+        "{saved}"
+    );
+    assert_eq!(
+        seen["rendered"],
+        serde_json::json!([
+            "<span class=\"badge\">Fresh<b> 3</b></span>",
+            "<aside class=\"callout callout-warning\" role=\"note\"><div class=\"callout-body\"> <p class=\"wp-block-paragraph\">Mind the gap.</p> </div></aside>"
+        ]),
+        "{seen}"
+    );
+}
+
 /// The docs example (examples/docs), every content feature at once, read in Chromium as an
 /// anonymous visitor: the site is the example as built, seeded from the records a hosted compile
 /// writes for its content/docs/ folder tree (tests/differential/client/docs.mjs).
@@ -1990,6 +2398,18 @@ fn docs_example_reads_in_the_browser() {
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
     // Home → the docs, by the reader's click; the doc has its title and the published tree.
     assert_eq!(seen["home"], "First docs");
+    // The router region is processed as core processes a block theme's: core/router's state.url
+    // comes from the server, follows a <Link> click that swapped the region in the same document,
+    // and core's loading bar is in the footer with its styles.
+    assert_eq!(seen["serverUrl"], format!("{url}/"), "{seen}");
+    assert_eq!(
+        seen["navigation"],
+        serde_json::json!({
+            "sameDocument": true,
+            "url": format!("{url}/docs/introduction"),
+            "loadingBar": [["core/router/private", "fixed"]]
+        })
+    );
     assert_eq!(
         seen["intro"],
         serde_json::json!({ "path": "/docs/introduction", "title": "Introduction · First docs", "h1": "Introduction" })
@@ -2114,7 +2534,7 @@ fn page_reads_run_as_the_visitor() {
     // Only the anonymous render is shared; an editor's is private, and doesn't replace it.
     assert_eq!(
         seen["anonymous"]["page cache"],
-        "public, s-maxage=300, max-age=0, must-revalidate"
+        "public, max-age=0, s-maxage=300, must-revalidate"
     );
     assert_eq!(seen["editor"]["page cache"], "private, no-store, max-age=0");
     assert_eq!(seen["anonymous after editor"], public);

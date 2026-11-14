@@ -295,6 +295,7 @@ It also hardens WordPress:
 - disables comments everywhere except kinds that turn them on;
 - refuses edits made on the site to the schema First generates (the schema lock);
 - closes the public listing of users unless the app makes authors public;
+- answers sign-in and lost-password requests the same whether or not the account exists;
 - turns on pretty permalinks, the Space timezone and the object cache;
 - ships a minimal default block theme.
 

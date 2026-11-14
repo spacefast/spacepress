@@ -93,7 +93,6 @@ async function describeLoans(owner: number, entries: Loan[]) {
 
 export default defineConfig({
   name: "stuff-drawer",
-  admin: true,
   collections, tables, hooks: {
     bins: { beforeCreate(data, ctx) { data.ownerId = actorId(ctx); } },
     people: { beforeCreate(data, ctx) { data.ownerId = actorId(ctx); } },

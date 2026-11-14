@@ -73,7 +73,32 @@ try {
   await sidebar.getByLabel("type", { exact: true }).waitFor({ timeout: 30000 });
   out.calloutFields = await Promise.all(["type", "title"].map((name) => sidebar.getByLabel(name, { exact: true }).count()));
 
-  // Saved, the post holds both blocks as stored blocks.
+  // A Status that renders nothing yet still has a box to select, and its optional choice starts
+  // unset: the select shows the empty choice, and picking one then clearing it unsets it again.
+  const status = await page.evaluate(() => {
+    const block = window.wp.blocks.createBlock("docskind/status", {});
+    window.wp.data.dispatch("core/block-editor").insertBlocks(block);
+    window.wp.data.dispatch("core/block-editor").selectBlock(block.clientId);
+    return block.clientId;
+  });
+  await canvas().locator(`[data-block='${status}'].first-block-preview`).waitFor({ timeout: 30000 });
+  out.statusEmpty = await canvas().locator(`[data-block='${status}']`).innerText();
+  const kind = sidebar.getByLabel("kind", { exact: true });
+  await kind.waitFor({ timeout: 30000 });
+  out.statusKind = [await kind.inputValue()];
+  await kind.selectOption("live");
+  out.statusKind.push(await page.evaluate((id) => window.wp.data.select("core/block-editor").getBlockAttributes(id).kind ?? null, status));
+  await kind.selectOption("");
+  out.statusKind.push(await page.evaluate((id) => window.wp.data.select("core/block-editor").getBlockAttributes(id).kind ?? null, status));
+  // A text prop typed then cleared leaves nothing the file would write.
+  const label = sidebar.getByLabel("label", { exact: true });
+  await label.fill("Shipped");
+  await canvas().locator(`[data-block='${status}'].status`, { hasText: "Shipped" }).waitFor({ timeout: 30000 });
+  await label.fill("");
+  await canvas().locator(`[data-block='${status}'].first-block-preview`).waitFor({ timeout: 30000 });
+  out.statusCleared = await page.evaluate((id) => window.wp.data.select("core/block-editor").getBlockAttributes(id).label ?? null, status);
+
+  // Saved, the post holds the blocks as stored blocks.
   await page.evaluate(() => {
     window.wp.data.dispatch("core/editor").editPost({ title: "Blocks in the editor", status: "publish" });
     return window.wp.data.dispatch("core/editor").savePost();
@@ -84,7 +109,9 @@ try {
   // The page as a visitor sees it: each block rendered by its component.
   const visitor = await browser.newPage();
   await visitor.goto(link);
-  out.rendered = await visitor.evaluate(() => [...document.querySelectorAll("span.badge, aside.callout")].map((n) => n.outerHTML.replace(/\s+/g, " ")));
+  out.rendered = await visitor.evaluate(() => [...document.querySelectorAll("span.badge, aside.callout, em.status")].map((n) => n.outerHTML.replace(/\s+/g, " ")));
+  // Written back as Markdown, a cleared prop isn't a tag attribute.
+  out.markdown = await page.evaluate(async (id) => (await window.wp.apiFetch({ path: `/wp/v2/pages/${id}?context=edit` })).content.raw, await page.evaluate(() => window.wp.data.select("core/editor").getCurrentPostId()));
 } catch (e) {
   out.errors.push(String(e.stack ?? e));
 } finally {

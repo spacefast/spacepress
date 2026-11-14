@@ -30,7 +30,6 @@ export const privateSettings = global("privateSettings", {
 
 export default defineConfig({
   name: "agents",
-  admin: true,
   collections: { articles },
   tables: { privateNotes },
   globals: { settings, privateSettings },

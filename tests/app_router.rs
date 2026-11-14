@@ -1611,6 +1611,12 @@ fn client_components_hydrate_in_the_browser() {
         seen["kept"], true,
         "the server-rendered item is kept, not re-created: {seen}"
     );
+    // The typed client is served from the app plugin as a module the browser imports as is.
+    assert_eq!(
+        seen["client"],
+        serde_json::json!([200, "text/javascript;charset=UTF-8", "function", "function"]),
+        "{seen}"
+    );
 }
 
 /// rendering.md §6.1 and §6.2 for `first/app/` pages, on WordPress with a stand-in host listening
@@ -1679,6 +1685,11 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         "{index:?}"
     );
     assert!(!index.iter().any(|r| r.ends_with(" /about")), "{index:?}");
+    assert_eq!(
+        seen["count reads"],
+        serde_json::json!({ "notes": { "ids": [], "listed": true } }),
+        "a count depends on every row of its kind"
+    );
     assert_eq!(
         seen["purged"],
         serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])

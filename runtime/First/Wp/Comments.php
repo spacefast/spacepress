@@ -14,10 +14,10 @@ namespace First\Wp;
  * notifications behave as on any WordPress site.
  *
  * The policy is the app's, never the Discussion settings: a site admin changing those changes
- * nothing an app declared. Until a kind's `comments` takes the spec's options object, every kind
- * with comments on has the spec's defaults ({@see policy()}):
- * - signed-in users only (`rest_allow_anonymous_comments` stays core's `false`, and a signed-out
- *   submission is refused before it is saved);
+ * nothing an app declared. Each kind's policy is its `comments` option ({@see policy()}); `true`
+ * is the spec's defaults:
+ * - signed-in users only unless `guests: true` (`rest_allow_anonymous_comments` follows `guests`,
+ *   and a signed-out submission to a kind without guests is refused before it is saved);
  * - first-time moderation: a commenter's comment is approved when they already have an approved
  *   comment on the site, and held otherwise; users who may moderate are approved, as core does;
  * - threaded to depth 3: a reply below that is refused, not flattened, so a reply never shows
@@ -34,11 +34,15 @@ final class Comments
     /** @var array<string, string> post type => collection, for kinds with comments on */
     private static array $types = [];
 
+    /** @var array<string, array{guests: bool, moderation: string, threaded: int, closeAfterDays: ?int, types: list<string>}> collection => policy */
+    private static array $policies = [];
+
     public static function register(Plugin $plugin): void
     {
         foreach ($plugin->schema->collections() as $name => $collection) {
             if (($collection['comments'] ?? false) === true && isset($collection['wp']['postType'])) {
                 self::$types[(string) $collection['wp']['postType']] = (string) $name;
+                self::$policies[(string) $name] = $plugin->schema->commentPolicy((string) $name);
             }
         }
         if (self::$types === []) {
@@ -66,6 +70,11 @@ final class Comments
             }
             return self::refusal((int) ($prepared['comment_post_ID'] ?? 0), (int) ($prepared['comment_parent'] ?? 0), (int) ($prepared['user_id'] ?? 0)) ?? $prepared;
         }, PHP_INT_MAX, 2);
+        // `guests: true`: core's REST controller lets an anonymous visitor comment on that kind's items.
+        add_filter('rest_allow_anonymous_comments', static function (mixed $allow, \WP_REST_Request $request): mixed {
+            $collection = self::collection((int) $request->get_param('post'));
+            return $collection === null ? $allow : self::policy($collection)['guests'];
+        }, PHP_INT_MAX, 2);
         // Moderation, after core's own checks (the disallowed list still sends a comment to spam).
         add_filter('pre_comment_approved', static function (mixed $approved, array $data): mixed {
             $collection = self::collection((int) ($data['comment_post_ID'] ?? 0));
@@ -85,14 +94,15 @@ final class Comments
     }
 
     /**
-     * A kind's comment policy. Until `comments` takes the options object (spec §2.3), the spec's
-     * defaults for every kind that turns comments on.
+     * A kind's comment policy: its `comments` option (spec §2.3), defaults filled
+     * ({@see \First\Schema::commentPolicy()}).
      *
-     * @return array{guests: bool, moderation: string, threaded: int, closeAfterDays: ?int}
+     * @return array{guests: bool, moderation: string, threaded: int, closeAfterDays: ?int, types: list<string>}
      */
     public static function policy(string $collection): array
     {
-        return ['guests' => false, 'moderation' => 'first-time', 'threaded' => 3, 'closeAfterDays' => null];
+        return self::$policies[$collection]
+            ?? ['guests' => false, 'moderation' => 'first-time', 'threaded' => 3, 'closeAfterDays' => null, 'types' => []];
     }
 
     /** Why a comment on $postId (as a reply to $parent) is refused, or null when the policy allows it. */

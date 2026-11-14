@@ -212,6 +212,24 @@ $out['draft'] = [
     'list' => $draftList['status'] === 200 ? count(json_decode($draftList['body'], true)['data'] ?? []) : $draftList['status'],
     'post' => $draftPost['status'],
 ];
+// An authored policy (`notices`: guests, no moderation, flat, closes after 30 days).
+\First\db()->insert('notices', ['title' => 'Open notice', 'status' => 'published']);
+\First\db()->insert('notices', ['title' => 'Old notice', 'status' => 'published', 'publishedAt' => gmdate('Y-m-d\\TH:i:s\\Z', time() - 40 * DAY_IN_SECONDS)]);
+$notice = (int) \First\db()->findFirst('notices', ['where' => ['title' => 'Open notice']])['id'];
+$old = (int) \First\db()->findFirst('notices', ['where' => ['title' => 'Old notice']])['id'];
+$guestJson = fetch("$url/__first/api/v1/comments", 'POST', ['Content-Type: application/json'], json_encode(['on' => $notice, 'content' => 'guest json', 'authorName' => 'Guest', 'authorEmail' => 'guest@example.test']));
+$guestCore = fetch("$url/wp-comments-post.php", 'POST', ['Content-Type: application/x-www-form-urlencoded'], http_build_query(['comment_post_ID' => $notice, 'comment' => 'guest core', 'author' => 'Guest', 'email' => 'guest2@example.test']));
+$guestCoreId = (int) (get_comments(['post_id' => $notice, 'search' => 'guest core', 'fields' => 'ids', 'status' => 'all'])[0] ?? 0);
+$firstOnNotice = (int) (get_comments(['post_id' => $notice, 'search' => 'guest', 'fields' => 'ids', 'status' => 'all', 'orderby' => 'comment_ID', 'order' => 'ASC'])[0] ?? 0);
+$flatReply = fetch("$url/__first/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $notice, 'parent' => $firstOnNotice, 'content' => 'a reply']));
+$closed = fetch("$url/__first/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $old, 'content' => 'too late']));
+$out['authored policy'] = [
+    'guest facade' => [$guestJson['status'], json_decode($guestJson['body'], true)['data']['status'] ?? $guestJson['body']],
+    'guest core' => [$guestCore['status'], $guestCoreId > 0 ? $status($guestCoreId) : null],
+    'reply' => $flatReply['status'],
+    'closed' => $closed['status'],
+];
+
 // A kind without comments refuses every path.
 $memoPost = fetch("$url/__first/api/v1/comments", 'POST', [$cookie, "X-WP-Nonce: $nonce", 'Content-Type: application/json'], json_encode(['on' => $memo, 'content' => 'on a memo']));
 $out['memo'] = $memoPost['status'];

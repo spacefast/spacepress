@@ -778,6 +778,13 @@ function wpCliRoot(string $dir): string
 
 function wpCore(): string
 {
+    // The WordPress-ahead workflow (.github/workflows/wordpress-ahead.yml) boots a WordPress build other than the pinned one: a ZIP in the cache
+    // it downloaded itself (`FIRST_WP_CORE_ZIP`, with its SHA-256 in `FIRST_WP_CORE_SHA256`).
+    $other = getenv('FIRST_WP_CORE_ZIP');
+    if (is_string($other) && $other !== '') {
+        return wpArchive($other, 'file://' . wpCache() . "/$other", (string) getenv('FIRST_WP_CORE_SHA256'), 'wordpress');
+    }
+
     return wpArchive('wordpress-' . WP_CORE_VERSION . '.zip', 'https://wordpress.org/wordpress-' . WP_CORE_VERSION . '.zip', WP_CORE_SHA256, 'wordpress');
 }
 

@@ -555,6 +555,21 @@
       "guidance": "typeof navigator and typeof process, also through globalThis., are the constant \"object\" in compiled code and in the build-time evaluator. navigator.platform and process.platform (and navigator?.platform, process?.platform) are strings read when PHP runs, from First\\Host, with Node's names: process.platform is win32, darwin, sunos or the lower-cased PHP_OS (linux, freebsd, aix), and navigator.platform follows Node's rule over platform and CPU architecture (Win32, MacIntel, Linux x86_64, Linux arm64, FreeBSD amd64, AIX). They are never decided on the build machine. picomatch 4.0.7's isWindows compiles unchanged. Evidence: tests/differential/language/host-platform.ts; the mapping for every OS is tests/php/host_test.php. See docs/decisions/2026-11-14-host-platform-detection.md."
     },
     {
+      "id": "string-from-char-code",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "language_constructs_match_node_through_generated_php",
+      "guidance": "String.fromCharCode(...codes) (each ToUint16, one UTF-16 code unit, so surrogate pairs combine) and String.fromCodePoint(...points) (RangeError outside 0..0x10FFFF or for a fraction) compile in typed TypeScript, imported JavaScript and configuration evaluation. Evidence: tests/differential/language/char-codes.ts."
+    },
+    {
+      "id": "lone-surrogate-char-code",
+      "status": "refused",
+      "code": "F2001",
+      "fixture": "tests/fixtures/reject-lone-surrogate-char-code",
+      "message": "this makes a string with a lone UTF-16 surrogate, which First can't represent",
+      "guidance": "Strings are stored as UTF-8, which has no lone surrogates. Pair each high surrogate with a low one, or build the character with String.fromCodePoint. At run time the same call throws a RangeError."
+    },
+    {
       "id": "optional-chains",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",

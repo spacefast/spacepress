@@ -8878,6 +8878,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(format!("\\First\\Js::stringRaw(...({argv})->a)"), Ty::Str));
         }
+        if g == "String" && matches!(m, "fromCharCode" | "fromCodePoint") {
+            let argv = self.javascript_args(args)?;
+            return Ok(Out::atom(format!("\\First\\Js::{m}(...({argv})->a)"), Ty::Str));
+        }
         if (self.javascript_module(self.fx.as_ref().expect("fn").module)
             || args.iter().any(|a| matches!(a, ArrEl::Spread(_))))
             && matches!(

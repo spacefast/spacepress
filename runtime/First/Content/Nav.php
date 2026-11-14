@@ -195,7 +195,8 @@ final class Nav
 
     /**
      * Every heading in rendered HTML: (level, text, id). A heading with its own id keeps it; any
-     * other gets one from its text, made unique in the page with `-2`, `-3`, ….
+     * other gets one from its text (slug()), made unique in the page with `-1`, `-2`, … as GitHub
+     * does, so a link to a heading of a README or an earlier docs site lands on the same one.
      *
      * @return list<array{int, string, string}>
      */
@@ -233,7 +234,7 @@ final class Nav
         foreach ($out as $i => [$depth, $words, $id]) {
             $id ??= self::slug($words);
             $base = $id;
-            for ($n = 2; isset($seen[$id]); $n++) {
+            for ($n = 1; isset($seen[$id]); $n++) {
                 $id = "$base-$n";
             }
             $seen[$id] = true;
@@ -243,9 +244,17 @@ final class Nav
         return $out;
     }
 
-    private static function slug(string $text): string
+    /**
+     * A heading's id from its text, by GitHub's rule (github-slugger, which GitHub, Astro and most
+     * docs tools use): lowercase; keep letters, marks, digits, letter numbers, connector
+     * punctuation (`_`), hyphens and spaces, and the enclosed letters it keeps (Ⓐ, 🅐); drop every
+     * other character; then each space is a hyphen. `What's first/app/?` is `whats-firstapp`, and
+     * `C++ & Rust` is `c--rust`. A heading whose text keeps nothing is `section`.
+     */
+    public static function slug(string $text): string
     {
-        $slug = trim((string) preg_replace('/[^\p{L}\p{N}]+/u', '-', mb_strtolower($text)), '-');
+        $kept = (string) preg_replace('/[^\p{L}\p{M}\p{Nd}\p{Nl}\p{Pc}\x{24B6}-\x{24E9}\x{1F130}-\x{1F149}\x{1F150}-\x{1F169}\x{1F170}-\x{1F189} \-]/u', '', mb_strtolower($text));
+        $slug = str_replace(' ', '-', $kept);
 
         return $slug === '' ? 'section' : $slug;
     }

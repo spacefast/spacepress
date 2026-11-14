@@ -14,6 +14,10 @@ Because.
 
 None.
 
+### What's `first/app/`?
+
+Its punctuation goes; its words stay.
+
 ## Why
 
 Twice, on purpose.

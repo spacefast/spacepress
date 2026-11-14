@@ -143,6 +143,11 @@ $wpdb->update($wpdb->posts, ['post_content' => get_post_field('post_content', $i
 clean_post_cache($intro);
 $gallery = doc(fetch("$url/docs/introduction"));
 $out['headings beside a gallery'] = [$gallery['toc'], $gallery['anchors']];
+
+// Heading ids follow GitHub's rule: each case's id as github-slugger gives it. Prints the ones that differ.
+$ids = json_decode((string) file_get_contents(dirname(__DIR__) . '/fixtures/docs-kind/heading-ids.json'), true, flags: JSON_THROW_ON_ERROR);
+$out['heading ids'] = array_values(array_filter(array_map(static fn (array $c): ?array => \First\Content\Nav::slug($c[0]) === $c[1] ? null : [$c[0], $c[1], \First\Content\Nav::slug($c[0])], $ids['cases'])));
+$out['heading id cases'] = count($ids['cases']);
 // The query API reads the same tree.
 $out['api'] = array_map(static fn (array $r): array => [$r['slug'], $r['parent'] === null ? null : $byId[$r['parent']] ?? $r['parent'], $r['order']], \First\Seam::toPhp(\First\Seam::kindList('docs', ['orderBy' => ['order' => 'asc'], 'where' => ['parent' => null]], true)));
 

@@ -407,7 +407,7 @@ Phase-2 modifiers:
   with a top-level `OR`. It never hides data from the API.
 - `.localized()`: the field is translated per locale (text, richText, json,
   select, group, repeater, blocks). See [Locales](#locales).
-- `file({ bucket })`: a column holding a private file's id. See [Files](#files).
+- `file(bucket)`: a column holding a private file's id from an exported `files()` bucket. See [Files](#files).
 
 Each modifier is checked against the column kind (design §1.2): `.max()` on a
 boolean, `.pattern()` on a number, `.onDelete()` on text and so on fail the
@@ -867,8 +867,8 @@ backend.
 
 ### Globals
 
-`global(name, fields, { label?, access?: { read?, update? } })`, registered in
-`defineConfig({ globals: { name } })`. One record per global; fields use the
+`export const settings = global(fields, { label?, access?: { read?, update? } })`:
+the export names it. One record per global; fields use the
 sub-field rules, and a required field needs a default. `GET`/`PATCH
 /__first/api/v1/<name>`.
 
@@ -880,13 +880,14 @@ focal point (`PATCH /media/<id>` with `{ focal: { x, y } }`, editors only;
 centre by default); `inside` scales to fit. Media rows carry
 `sizes.<name>.url`.
 
-<a id="files"></a>Private files live in logical file resources:
+<a id="files"></a>Private files live in logical buckets, each named by its export:
 
 ```ts
-files: { decks: files("decks", { accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "owner", delete: "editor" } }) },
+export const decks = files({ accept: ["application/pdf"], maxBytes: 20_000_000, access: { read: "owner", delete: "editor" } });
+export const talks = collection({ title: text(), deck: file(decks).optional() });
 ```
 
-and a `file({ bucket: "decks" })` column holds one by id. Files never get a
+and a `file(decks)` column holds one by id. Files never get a
 public URL: `GET /files/<bucket>/<id>` returns the row with a signed `url`
 valid for five minutes, and that link streams the bytes through PHP. `"owner"` means the uploader. Uploads outside
 `accept` are refused (422 at `/file`); uploads over `maxBytes` get 413
@@ -909,7 +910,7 @@ uploads: {
 ```
 
 This backend stores private files, media originals and generated sizes, including
-standard WordPress editor uploads. `client.files.decks` and `file({ bucket: "decks" })`
+standard WordPress editor uploads. `client.files.decks` and `file(decks)`
 keep naming the logical resource; `uploads.bucket` is the physical provider bucket.
 Collections and tables can both reference files and media. Credentials resolve
 only at runtime; the compiler requires `env()` references. An optional
@@ -1088,7 +1089,8 @@ table rows, posts and post meta.
   of a collection each run in one transaction. A throw rolls back every write
   in it, to tables and to content alike.
 - A job enqueued from a hook or an action runs after the request commits,
-  never inside it.
+  never inside it. It is queued in the request's transaction: a rollback
+  leaves no job and nothing for Action Scheduler to run.
 - Handlers in `first/wp-hooks/` run wherever WordPress fires the hook. Outside
   a First write (a page view, cron, a save of a post type First doesn't own)
   there is no First transaction and each write commits on its own. When the

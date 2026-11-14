@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace First\Jobs;
 
-use First\Extensions;
 use First\HttpError;
 use First\Js;
 use First\Schema;
+use First\Wp\Jobs\ActionSchedulerQueue;
 
 use function First\db;
 
-/** `jobs.<name>.enqueue(input, opts)` (§6.1): validated, written to the outbox, queued after commit. */
+/**
+ * `jobs.<name>.enqueue(input, opts)` (§6.1): validated, then the job row and its Action Scheduler action
+ * are written in the caller's transaction, on one connection, so they commit or roll back together.
+ */
 final class Jobs
 {
     public const MAX_KEY = 191;
@@ -48,9 +51,8 @@ final class Jobs
             if (Storage::changes() === 0) {
                 return ['id' => self::holder($name, (string) $key) ?? throw new \RuntimeException("job key '$key' is held by a job that vanished")];
             }
-            // The queue hears about the job only after commit (Action Scheduler is told then).
-            Storage::run('INSERT INTO {outbox} ("id", "job", "input", "key", "runAt", "createdAt") VALUES (?, ?, ?, ?, ?, ?)', $row);
-            Extensions::afterCommit(static fn () => Outbox::dispatch([$id]));
+            // Action Scheduler writes through the same $wpdb connection: its action commits with this row.
+            ActionSchedulerQueue::schedule($id, $row[4]);
 
             return ['id' => $id];
         });

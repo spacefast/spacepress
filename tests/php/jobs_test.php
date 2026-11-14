@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
- * Feature 3 (§6.1) on WordPress, in-process (tests/php/wp.php): the transactional outbox, dedupe
+ * Feature 3 (§6.1) on WordPress, in-process (tests/php/wp.php): jobs queued in their write's transaction, dedupe
  * keys, retries with backoff and the dead state, once() receipts, the Idempotency-Key header, receipt
  * sweep and the `jobs` CLI. Time moves through FIRST_NOW; the runner is called directly, and due jobs
  * are drained through Action Scheduler's queue runner (the delivery every WordPress site uses; AS
@@ -15,6 +15,7 @@ use First\Jobs\Runner;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
+require __DIR__ . '/jobs_transaction_cases.php';
 
 // The blog fixture plus what a compiled jobs config adds: one job, an idempotent action, a hook
 // that enqueues, and a once() call (these bodies are what the compiler emits for them).
@@ -70,6 +71,7 @@ $db = $app->db;
 $jobs = static fn (?string $state = null) => $wp->sql('SELECT * FROM {prefix}first__jobs' . ($state === null ? '' : " WHERE `state` = '$state'") . ' ORDER BY `createdAt`, `id`');
 $job = static fn (string $id) => $wp->sql('SELECT * FROM {prefix}first__jobs WHERE `id` = ?', [$id])[0] ?? null;
 $outbox = static fn () => (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first__outbox');
+$actionsFor = static fn (string $id): int => (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}actionscheduler_actions WHERE `hook` = ? AND `args` = ? AND `status` = ?', ['first_job', json_encode(['id' => $id]), 'pending']);
 /** Action Scheduler's pending delivery for a job: its scheduled time, or null. */
 $delivery = static fn (string $id) => $wp->scalar('SELECT `scheduled_date_gmt` FROM {prefix}actionscheduler_actions WHERE `hook` = ? AND `args` = ? AND `status` = ? ORDER BY `action_id` DESC',
     [\First\Wp\Jobs\ActionSchedulerQueue::HOOK, json_encode(['id' => $id]), 'pending']);
@@ -96,25 +98,39 @@ $t0 = time();
 $at = static fn (int $seconds, int $ms = 0): string => \First\Js::iso($t0 * 1000 + $seconds * 1000 + $ms);
 $asTime = static fn (int $seconds): string => gmdate('Y-m-d H:i:s', $t0 + $seconds);
 
-// ---- outbox: a committed write queues its job; a rolled-back write leaves nothing --------------------------------
+// ---- a committed write queues its job; a rolled-back write leaves nothing ---------- --------------------------------
 putenv('FIRST_NOW=' . $at(0));
 [$status, $created] = $post('Hello');
 eq('create with an enqueueing hook', $status, 201);
 $pid = $created['data']['id'];
 $queued = $jobs();
-check('the job is queued after commit with its validated input', count($queued) === 1 && $queued[0]['state'] === 'pending'
+check('the job is queued with its validated input', count($queued) === 1 && $queued[0]['state'] === 'pending'
     && json_decode($queued[0]['input'], true) === ['postId' => $created['data']['id'], 'note' => null] && $queued[0]['runAt'] === $at(0), $queued);
-eq('the outbox is drained', $outbox(), 0);
+eq('with one pending action, and nothing in the outbox', [$actionsFor($queued[0]['id']), $outbox()], [1, 0]);
 [$status] = $post('Explode');
 eq('a throwing hook fails the request', $status, 500);
 eq('rollback: no job and no outbox row', [count($jobs()), $outbox()], [1, 0]);
 problem('enqueue validates input like an action', static fn () => $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => 'x'])), 422, 'invalid_input', '/postId');
 
-// A crash after commit leaves the committed job row and its outbox ticket; the sweep delivers it.
-$wp->exec('INSERT INTO {prefix}first__jobs (`id`, `job`, `input`, `state`, `attempts`, `runAt`, `createdAt`) VALUES (?, ?, ?, ?, 0, ?, ?)', ['00000000-0000-4000-8000-000000000001', 'notify', json_encode(['postId' => $pid]), 'pending', $at(0), $at(0)]);
-$wp->exec('INSERT INTO {prefix}first__outbox VALUES (?, ?, ?, NULL, ?, ?)', ['00000000-0000-4000-8000-000000000001', 'notify', json_encode(['postId' => $pid]), $at(0), $at(0)]);
-eq('maintain drains a stranded outbox row', Runner::maintain()['dispatched'], 1);
-eq('the ticket is consumed', $outbox(), 0);
+// A runtime before this one left a committed job's ticket in the outbox (a crash between commit and
+// dispatch), and another whose action exists, and one for a job since cancelled. The next request
+// gives the first its action, once, and leaves every ticket in the table.
+$stranded = ['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000003'];
+foreach ($stranded as $n => $id) {
+    $wp->exec('INSERT INTO {prefix}first__jobs (`id`, `job`, `input`, `state`, `attempts`, `runAt`, `createdAt`) VALUES (?, ?, ?, ?, 0, ?, ?)', [$id, 'notify', json_encode(['postId' => $pid]), $n === 2 ? 'dead' : 'pending', $at(0), $at(0)]);
+    $wp->exec('INSERT INTO {prefix}first__outbox VALUES (?, ?, ?, NULL, ?, ?)', [$id, 'notify', json_encode(['postId' => $pid]), $at(0), $at(0)]);
+}
+as_schedule_single_action(time(), 'first_job', ['id' => $stranded[1]], 'first-blog');
+delete_option(\First\Wp\Jobs\ActionSchedulerQueue::PREPARED);
+do_action('action_scheduler_init');
+do_action('action_scheduler_init');
+eq('the next request gives a stranded ticket its action, once, and no job a second one', array_map($actionsFor, $stranded), [1, 1, 0]);
+eq('the outbox rows stay: data is never deleted', $outbox(), 3);
+eq('the groups are recorded as prepared, with the version of the step', get_option(\First\Wp\Jobs\ActionSchedulerQueue::PREPARED), 'v1:first,first-blog');
+// The moved job runs with the others below; the two helper rows are this case's own.
+as_unschedule_all_actions('first_job', ['id' => $stranded[1]]);
+$wp->exec('DELETE FROM {prefix}first__jobs WHERE `id` IN (?, ?)', [$stranded[1], $stranded[2]]);
+$wp->exec('DELETE FROM {prefix}first__outbox');
 
 // ---- dedupe key: one pending job per (job, key) ------------------------------------------------------------------
 $first = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => $pid], ['key' => 'k1']));
@@ -165,7 +181,7 @@ eq('the third failure (retries: 3) is dead', [$last['state'], $last['attempts']]
 eq('a retry reclaims its dedupe key while it runs', $retryHolds, true);
 eq('a dead job is never run again', Runner::run($failing['id']), null);
 eq('each failed attempt rolled back its write and its enqueue', [count($db->findMany('comments', ['where' => ['name' => 'partial']])),
-    (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}first__jobs WHERE `input` LIKE '%from-failed%'"), $outbox()], [0, 0, 0]);
+    (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}first__jobs WHERE `input` LIKE '%from-failed%'")], [0, 0]);
 
 // A commit callback that throws after the handler committed must not re-run the job.
 $committedJob = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => $created['data']['id'], 'note' => 'callback']));
@@ -196,6 +212,62 @@ eq('`jobs cancel` on a dead job is refused', $cli('jobs', 'cancel', $delayed['id
 $wp->exec("UPDATE {prefix}first__jobs SET `state` = 'running', `lockedAt` = ? WHERE `id` = ?", [$at(-241), $failing['id']]);
 eq('maintain re-queues a stuck job', Runner::maintain()['requeued'], 1);
 eq('the stuck job is pending again, with a delivery', [$job($failing['id'])['state'], $delivery($failing['id']) !== null], ['pending', true]);
+
+// ---- a waiting job with no action gets one, once ---------------------------------------------------------------
+// Only a job from before this runtime, one queued before Action Scheduler was ready in a request that died,
+// or one whose action someone deleted can be left without one; daily maintenance gives it its action.
+$orphan = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => $pid], ['delay' => 120]));
+$wp->exec('DELETE FROM {prefix}actionscheduler_actions WHERE `hook` = ? AND `args` = ?', ['first_job', json_encode(['id' => $orphan['id']])]); // a lost action
+eq('maintain gives a waiting job without an action one, at its runAt', [Runner::maintain()['recovered'], $delivery($orphan['id'])], [1, gmdate('Y-m-d H:i:s', max(time(), intdiv((int) \First\Js::date($job($orphan['id'])['runAt']), 1000)))]);
+eq('and leaves it alone once it has one', [Runner::recover(), $actionsFor($orphan['id'])], [0, 1]);
+as_unschedule_all_actions('first_job', ['id' => $orphan['id']]); // what Tools > Scheduled Actions > Cancel does
+eq('an action an administrator cancelled is not brought back', [Runner::recover(), $actionsFor($orphan['id'])], [0, 0]);
+$wp->exec("UPDATE {prefix}first__jobs SET `state` = 'dead', `dedupe` = NULL WHERE `id` = ?", [$orphan['id']]);
+as_unschedule_all_actions('first_job', ['id' => $orphan['id']]);
+
+// ---- queued before Action Scheduler is ready (a wp-hooks `init` handler at priority 0) ----------------------------
+$ready = new \ReflectionProperty(\ActionScheduler::class, 'data_store_initialized');
+$ready->setValue(null, false);
+try {
+    $early = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => $pid]));
+    eq('before Action Scheduler is ready, the write commits and its job waits', [$job($early['id'])['state'] ?? null, $actionsFor($early['id'])], ['pending', 0]);
+} finally {
+    $ready->setValue(null, true);
+}
+// The first request after an update prepares the site (recovering the job) before the deferred delivery runs.
+delete_option(\First\Wp\Jobs\ActionSchedulerQueue::PREPARED);
+do_action('action_scheduler_init');
+eq('then gets one action once Action Scheduler is ready, even when preparing recovered it first', $actionsFor($early['id']), 1);
+$wp->exec("UPDATE {prefix}first__jobs SET `state` = 'dead', `dedupe` = NULL WHERE `id` = ?", [$early['id']]);
+as_unschedule_all_actions('first_job', ['id' => $early['id']]);
+
+// ---- a connection wpdb replaced mid-transaction never commits ------------------------------------------------------
+// wpdb::check_connection() leaves a new handle after a reconnect. The stand-in: the transaction began on
+// another handle, so this one looks like a replacement (the database underneath is the same).
+$handle = new \ReflectionProperty(\First\Wp\Connection::class, 'handle');
+$refused = null;
+try {
+    $db->transaction(static function () use ($handle): void {
+        $handle->setValue(\First\Wp\Plugin::instance()->connection(), new \stdClass());
+    });
+} catch (\RuntimeException $e) {
+    $refused = $e->getMessage();
+}
+check('a transaction whose connection was replaced refuses to commit', str_contains((string) $refused, 'connection was lost'), $refused);
+$written = null;
+try {
+    $db->transaction(static function () use ($handle, $wp, &$written): void {
+        $handle->setValue(\First\Wp\Plugin::instance()->connection(), new \stdClass());
+        try {
+            $wp->exec('SELECT 1');
+        } catch (\First\Wp\DbError $e) {
+            $written = $e->getMessage();
+            throw $e;
+        }
+    });
+} catch (\First\Wp\DbError) {
+}
+check('and refuses every statement after the reconnect, which would commit on its own', str_contains((string) $written, 'connection was lost'), $written);
 
 // Both registered handler contracts consume the same validated, persisted JSON payload.
 (static function () use ($schema, $db): void {
@@ -322,48 +394,17 @@ putenv('FIRST_NOW=' . $at(7 * 86400 + 360, 1));
 $left = (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first__receipts');
 eq('receipts older than 7 days are swept', [Runner::maintain()['swept'], (int) $wp->scalar('SELECT COUNT(*) FROM {prefix}first__receipts')], [$left, 0]);
 
-// Sweep more than a keyset page, including work committed while dispatch is in flight.
-$seedTicket = static function (int $n) use ($wp, $pid, $at): string {
-    $id = sprintf('10000000-0000-4000-8000-%012d', $n);
-    $wp->exec('INSERT INTO {prefix}first__jobs (`id`, `job`, `input`, `state`, `attempts`, `runAt`, `createdAt`) VALUES (?, ?, ?, ?, 0, ?, ?)', [$id, 'notify', json_encode(['postId' => $pid]), 'pending', $at(0), $at(0)]);
-    $wp->exec('INSERT INTO {prefix}first__outbox VALUES (?, ?, ?, NULL, ?, ?)', [$id, 'notify', json_encode(['postId' => $pid]), $at(0), $at(0)]);
-    return $id;
-};
-$expectedTickets = [];
-for ($i = 1; $i <= 105; $i++) { $expectedTickets[] = $seedTicket($i); }
-$originalQueue = \First\Jobs\Outbox::queue();
-$queue = new class($seedTicket) implements \First\Jobs\Queue {
-    public array $deliveries = [];
-    public function __construct(private \Closure $seed) {}
-    public function schedule(string $id, string $runAtIso): void
-    {
-        if ($this->deliveries === []) { ($this->seed)(106); }
-        $this->deliveries[$id] = $runAtIso;
-    }
-};
-\First\Jobs\Outbox::useQueue($queue);
-try {
-    eq('keyset sweep dispatches every page and later committed work', \First\Jobs\Outbox::dispatch(), 106);
-    $expectedTickets[] = sprintf('10000000-0000-4000-8000-%012d', 106);
-    eq('each swept ticket reaches the queue with its schedule', $queue->deliveries, array_fill_keys($expectedTickets, $at(0)));
-    eq('multi-page sweep leaves no outstanding tickets', $outbox(), 0);
-} finally {
-    \First\Jobs\Outbox::useQueue($originalQueue);
-}
-
 // ---- `jobs tick`: the host worker's one bounded pass ---------------------------------------------------------------
-// Every job is due; the outbox holds tickets; a stuck runner and an expired receipt wait. A tick does at
+// Every job is due; a stuck runner and an expired receipt wait. A tick does at
 // most `limit` units of each kind and says whether work remains; the next one finishes it.
 putenv('FIRST_NOW=' . $at(8 * 86400));
 $wp->exec('DELETE FROM {prefix}first__jobs');
-$wp->exec('DELETE FROM {prefix}first__outbox');
 $wp->exec("UPDATE {prefix}actionscheduler_actions SET `status` = 'canceled' WHERE `status` = 'pending'");
 $tickId = static fn (int $n): string => sprintf('20000000-0000-4000-8000-%012d', $n);
 for ($n = 1; $n <= 9; $n++) {
     $wp->exec('INSERT INTO {prefix}first__jobs (`id`, `job`, `input`, `state`, `attempts`, `runAt`, `createdAt`) VALUES (?, ?, ?, ?, 0, ?, ?)',
         [$tickId($n), 'notify', json_encode(['postId' => $pid, 'note' => $n === 9 ? 'fail' : null]), 'pending', $at(8 * 86400 - 60 + $n), $at(8 * 86400 - 60 + $n)]);
 }
-$wp->exec('INSERT INTO {prefix}first__outbox VALUES (?, ?, ?, NULL, ?, ?)', [$tickId(1), 'notify', json_encode(['postId' => $pid]), $at(8 * 86400 - 59), $at(8 * 86400 - 59)]);
 $wp->exec('INSERT INTO {prefix}first__jobs (`id`, `job`, `input`, `state`, `attempts`, `runAt`, `lockedAt`, `createdAt`) VALUES (?, ?, ?, ?, 1, ?, ?, ?)',
     [$tickId(10), 'notify', json_encode(['postId' => $pid]), 'running', $at(0), $at(8 * 86400 - 3600), $at(0)]);
 $wp->exec("INSERT INTO {prefix}first__receipts VALUES ('action:remember', 'old', 0, ?, 'done', 'null', ?)", [hash('sha256', '{}'), $at(0)]);
@@ -373,7 +414,7 @@ $done = static fn (): int => (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}fir
 eq('a tick exits 0 and prints its counts', $code, 0);
 $pass = $first['data'];
 check('the first tick stays within its limit and says more is left', $pass['remaining'] === true && $pass['processed'] <= 4
-    && $pass['outboxDispatched'] === 1 && $pass['requeued'] === 1 && $pass['receiptsExpired'] === 1, $pass);
+    && $pass['outboxDispatched'] === 0 && $pass['requeued'] === 1 && $pass['receiptsExpired'] === 1, $pass);
 eq('due jobs ran directly: at most half the limit', $done(), 2);
 eq('the stuck job is pending again', $wp->scalar('SELECT `state` FROM {prefix}first__jobs WHERE `id` = ?', [$tickId(10)]), 'pending');
 eq('the expired receipt is gone', (int) $wp->scalar("SELECT COUNT(*) FROM {prefix}first__receipts WHERE CAST(`key` AS CHAR) = 'old'"), 0);
@@ -508,5 +549,10 @@ as_schedule_single_action((int) floor(\First\Js::date($at(8 * 86400 + 3600)) / 1
 ActionScheduler_QueueRunner::instance()->process_action((int) $wp->scalar('SELECT `action_id` FROM {prefix}actionscheduler_actions WHERE `hook` = ? AND `args` = ? AND `status` = ? ORDER BY `action_id` DESC',
     [\First\Wp\Jobs\ActionSchedulerQueue::HOOK, json_encode(['id' => $backoffId]), 'pending']), 'by hand');
 eq('the job\'s own delivery, run early by hand, runs it', (int) $job($backoffId)['attempts'], 2);
+
+// ---- the job and its Action Scheduler action commit or roll back together (shared with tests/wp/jobs.test.ts) ----
+foreach (firstJobsTransactionCases('notify', ['postId' => $pid]) as [$label, $actual, $expected]) {
+    eq($label, $actual, $expected);
+}
 
 finish('jobs');

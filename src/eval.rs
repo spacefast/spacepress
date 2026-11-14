@@ -360,6 +360,7 @@ const GLOBALS: &[&str] = &[
     "NaN",
     "fetch",
     "process",
+    "navigator",
     "require",
     "globalThis",
     "eval",
@@ -438,6 +439,7 @@ pub const BINARY_GLOBALS: &[&str] = &[
 const HOST_GLOBALS: &[&str] = &[
     "fetch",
     "process",
+    "navigator",
     "require",
     "crypto",
     "Buffer",
@@ -456,7 +458,7 @@ const HOST_GLOBALS: &[&str] = &[
 
 /// Browser, worker and other server-runtime globals that neither the PHP runtime
 /// nor Node provides, so `undefined` matches the Node oracle. `navigator` is not
-/// here: Node 21+ defines it.
+/// here: Node 21+ defines it (see [`HOST_OBJECTS`]).
 pub const ABSENT_GLOBALS: &[&str] = &[
     "window",
     "document",
@@ -504,15 +506,29 @@ pub fn global_member(name: &str) -> GlobalMember {
     GlobalMember::Refused
 }
 
+/// Host objects whose `typeof` is the constant `"object"`, also through `globalThis.`, and whose
+/// only readable members are `.platform` (read when PHP runs, from `First\Host`) and
+/// `process.env.NAME`. See docs/decisions/2026-11-14-host-platform-detection.md.
+pub const HOST_OBJECTS: &[&str] = &["navigator", "process"];
+
 /// `typeof` of a provided global, matching JavaScript.
 pub fn global_type_of(g: &str) -> &'static str {
     match g {
-        "Math" | "JSON" | "console" | "globalThis" => "object",
+        "Math" | "JSON" | "console" | "globalThis" | "navigator" | "process" => "object",
         "Infinity" | "NaN" => "number",
         // Node defines no FileReader; First keeps the name so a fallback branch can compile.
         "FileReader" => "undefined",
         _ => "function",
     }
+}
+
+/// `navigator.X` for any member but `platform`, in the evaluator and in compiled code.
+pub fn navigator_member_refusal(prop: &str, span: Span) -> Diag {
+    Diag::new(
+        span,
+        format!("`navigator.{prop}` isn't available in First code; only `navigator.platform` is"),
+    )
+    .help("First runs on the WordPress server, which has no browser or Node values for the rest of `navigator`")
 }
 
 pub fn refused_global_member(name: &str, span: Span) -> Diag {
@@ -2016,6 +2032,16 @@ impl<'p> Evaluator<'p> {
             }
             ExprKind::Func(f) => Value::Closure(Rc::new(Closure::new(f.clone(), scope.clone()))),
             ExprKind::Unary(op, x) => {
+                // `typeof globalThis.process` / `typeof globalThis.navigator`: the host objects are
+                // detectable, though reading them through `globalThis` is refused.
+                if *op == UnOp::TypeOf
+                    && let ExprKind::Member { obj, prop, .. } = &x.kind
+                    && HOST_OBJECTS.contains(&prop.as_str())
+                    && matches!(&obj.kind, ExprKind::Ident(n) if n == "globalThis")
+                    && scope.lookup("globalThis").is_none()
+                {
+                    return Ok(Value::str("object"));
+                }
                 let v = self.eval_static_data(x, scope)?;
                 if matches!(op, UnOp::Neg | UnOp::Plus | UnOp::BitNot) {
                     require_static_coercion(&v, e.span)?;
@@ -2026,7 +2052,7 @@ impl<'p> Evaluator<'p> {
                     UnOp::Plus => Value::Num(to_number(&v)),
                     UnOp::BitNot => Value::Num(f64::from(!crate::num::to_int32(to_number(&v)))),
                     UnOp::TypeOf => {
-                        if let Value::Builtin(Builtin::Global(name @ ("process" | "require" | "crypto"))) = &v {
+                        if let Value::Builtin(Builtin::Global(name @ ("require" | "crypto"))) = &v {
                             return err_help(
                                 x.span,
                                 format!("typeof `{name}` depends on the host and isn't supported"),
@@ -2544,6 +2570,12 @@ impl<'p> Evaluator<'p> {
             Value::Symbol(symbol) if prop == "description" => {
                 Ok(symbol.description().map_or(Value::Undef, |d| Value::str(&d)))
             }
+            Value::Builtin(Builtin::Global(g @ ("process" | "navigator"))) if prop == "platform" => err_help(
+                span,
+                format!("`{g}.platform` is the server's operating system, known only when PHP runs"),
+                "read it inside a function that runs at request time, such as a hook, action, route or job",
+            ),
+            Value::Builtin(Builtin::Global("navigator")) => Err(Ctl::Err(navigator_member_refusal(prop, span))),
             Value::Builtin(Builtin::Global(g @ ("process" | "fetch" | "crypto" | "Buffer"))) => err_help(
                 span,
                 format!("`{g}` only works inside hooks, actions, routes and jobs, which run in PHP at request time"),

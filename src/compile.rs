@@ -4153,6 +4153,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Dynamic,
                 ))
             }
+            Resolved::Global(g @ ("process" | "navigator")) => err_help(
+                span,
+                format!(
+                    "`{g}` can only be used as `navigator.platform`, `process.platform`, `process.env.NAME` or under `typeof`"
+                ),
+                format!("read the member you need, e.g. `{g}.platform`; `{g}` itself isn't a value in First code"),
+            ),
             Resolved::Global(g) => err_help(
                 span,
                 format!("`{g}` can't be used as a value; call one of its functions"),
@@ -8504,6 +8511,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => None,
         };
         let name = match &x.kind {
+            ExprKind::Member { obj, prop, .. }
+                if crate::eval::HOST_OBJECTS.contains(&prop.as_str()) && global(self, obj) == Some("globalThis") =>
+            {
+                return Ok(Some("object"));
+            }
             ExprKind::Member {
                 obj, prop, prop_span, ..
             } if global(self, obj) == Some("globalThis") => match crate::eval::global_member(prop) {
@@ -8518,7 +8530,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         if matches!(
             name,
-            "process" | "require" | "crypto" | "fetch" | "setTimeout" | "Promise" | "eval" | "Function"
+            "require" | "crypto" | "fetch" | "setTimeout" | "Promise" | "eval" | "Function"
         ) {
             return err_help(
                 x.span,
@@ -8641,7 +8653,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("\\First\\Js::isFinite(\\First\\Js::toNumber({}))", v.php),
                 Ty::Bool,
             ),
-            ("process" | "crypto" | "Buffer", _) => {
+            ("process" | "navigator" | "crypto" | "Buffer", _) => {
                 return err_help(
                     span,
                     format!("`{g}` can't be called"),

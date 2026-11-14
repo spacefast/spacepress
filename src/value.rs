@@ -591,7 +591,7 @@ impl Value {
             Value::Builtin(
                 Builtin::Db
                 | Builtin::Jobs
-                | Builtin::Global("Math" | "JSON" | "console" | "globalThis")
+                | Builtin::Global("Math" | "JSON" | "console" | "globalThis" | "navigator" | "process")
                 | Builtin::ObjectPrototype,
             ) => "object",
             Value::Symbol(_) => "symbol",

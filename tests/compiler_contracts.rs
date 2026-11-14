@@ -2247,10 +2247,12 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         "(() => {switch(1){case 1:function f(){return 1;}return f();}})()",
         "(() => {switch(1){case 1:class C{}return new C();}})()",
         r#"new RegExp("(*ACCEPT)")"#,
-        "typeof process",
+        "process.arch",
+        "navigator.userAgent",
+        "process.platform",
         "typeof require",
         "typeof crypto",
-        "typeof globalThis.process",
+        "typeof globalThis.Buffer",
         "(() => { const o = {n: 1}; Object.freeze(o); try {o.n = 2;} catch {} return o.n; })()",
         "(() => { const o: Record<string, number> = {}; o['__proto__'] = 1; return Object.hasOwn(o, '__proto__'); })()",
         "JSON.stringify({toJSON: () => 42})",
@@ -3914,6 +3916,68 @@ fn language_constructs_match_node_through_generated_php() {
             );
         }
         assert_eq!(php, node, "{name}: the PHP envelope is not byte-identical to Node's");
+    }
+}
+
+/// `process.platform` and `navigator.platform` are read when PHP runs, never decided on the build
+/// machine: two builds of tests/differential/language/host-platform.ts emit the same PHP, and that
+/// PHP answers with whatever `First\Host` reports on the server. A stand-in `First\Host` for a
+/// Windows and a macOS server makes picomatch's `isWindows` flip without rebuilding.
+#[test]
+fn host_platform_is_read_on_the_server_not_the_build_machine() {
+    let dir = root().join("tests/differential/language");
+    let config = dir.join("host-platform.ts");
+    let helpers = dir.join("host-platform-helpers.mjs");
+    let builds: Vec<_> = (0..2)
+        .map(|_| {
+            let tmp = tempfile::tempdir().unwrap();
+            project_from(tmp.path(), &config, &[helpers.as_path()]);
+            let content = build_wp(tmp.path());
+            let app = content.join("plugins/first-app-language-host-platform/first/app");
+            let functions = std::fs::read(app.join("functions.php")).unwrap();
+            (tmp, content, app, functions)
+        })
+        .collect();
+    assert_eq!(builds[0].3, builds[1].3, "two builds emitted different PHP");
+    let (_, content, app, _) = &builds[0];
+    let runtime = content.join("plugins/first-runtime/first/bootstrap.php");
+    let script = r#"
+        namespace First { final class Host {
+            public static function platform(): string { return getenv('FAKE_PLATFORM'); }
+            public static function navigatorPlatform(): string { return getenv('FAKE_NAVIGATOR'); }
+        } }
+        namespace {
+            require $argv[1];
+            $schema = require $argv[2] . '/schema.php';
+            require $argv[2] . '/functions.php';
+            $out = [];
+            foreach (['picomatch', 'platforms', 'typedPlatforms'] as $name) {
+                $fn = '\\FirstApp\\' . $schema['actions'][$name]['handler'];
+                $out[$name] = \First\Seam::toWire($fn(new \First\JsObject()));
+            }
+            echo json_encode($out);
+        }
+    "#;
+    for (platform, navigator, windows) in [("win32", "Win32", true), ("darwin", "MacIntel", false)] {
+        let out = Command::new("php")
+            .args(["-r", script])
+            .arg(&runtime)
+            .arg(app)
+            .env("FAKE_PLATFORM", platform)
+            .env("FAKE_NAVIGATOR", navigator)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let got: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(
+            got,
+            serde_json::json!({
+                "picomatch": { "isWindows": windows, "type": "boolean" },
+                "platforms": { "navigator": navigator, "process": platform },
+                "typedPlatforms": { "navigator": navigator, "process": platform, "windows": windows },
+            }),
+            "{platform}"
+        );
     }
 }
 

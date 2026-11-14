@@ -58,7 +58,13 @@ test("a subscription refreshes through the access-checked endpoint when the serv
       return () => clearInterval(timer);
     },
   };
-  const first = createClient({ url: api, headers: auth("subscriber"), realtime: { transport, pollMs: false, livePollMs: false } });
+  // Every subscription request the client sends, so a notice that should ask nothing can be checked.
+  let asked = 0;
+  const counting: typeof fetch = (input, init) => {
+    if (String(input).endsWith("/_live")) asked++;
+    return fetch(input, init);
+  };
+  const first = createClient({ url: api, headers: auth("subscriber"), fetch: counting, realtime: { transport, pollMs: false, livePollMs: false } });
   const snapshots: string[][] = [];
   const counts: number[] = [];
   const where = { title: { like: `Watched ${run}%` } };
@@ -76,11 +82,15 @@ test("a subscription refreshes through the access-checked endpoint when the serv
     await ok("POST", "/events", { as: "editor", body: { title: `Watched ${run} one` } });
     await until(() => snapshots.at(-1)?.length === 1 && counts.at(-1) === 1);
     assert.deepEqual(snapshots.at(-1), [`Watched ${run} one`], "the subscriber's own read, after the editor's commit");
-    const delivered = snapshots.length;
     // A write to another kind publishes a notice that names it: this subscription is not asked about.
+    // A control notice for events, delivered after it, shows the transport delivered both in order.
+    const before = asked;
     await ok("POST", "/guest_notes", { as: "subscriber", body: { body: `Elsewhere ${run}` } });
     await until(() => seenNotices === notices().length);
-    assert.equal(snapshots.length, delivered, "nothing new for a kind the read does not use");
+    assert.equal(asked, before, "a notice for a kind the reads don't use asks nothing");
+    await ok("POST", "/events", { as: "editor", body: { title: `Watched ${run} two` } });
+    await until(() => snapshots.at(-1)?.length === 2);
+    assert.ok(asked > before, "a notice for events does ask");
   } finally {
     for (const stop of stops) stop();
   }

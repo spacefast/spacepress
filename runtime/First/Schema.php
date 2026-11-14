@@ -230,6 +230,24 @@ final class Schema
             ?? throw HttpError::notFound("Unknown collection '$name'");
     }
 
+    /**
+     * How comments behave on a collection (spec §2.3): `guests` (bool), `moderation` ("none",
+     * "first-time" or "all"), `threaded` (reply depth, 1 is flat), `closeAfterDays` (int, or null for
+     * never, counted from the item's publish date) and `types` (comment types allowed besides normal
+     * comments). Null when the collection takes no comments.
+     *
+     * @return ?array{guests: bool, moderation: string, threaded: int, closeAfterDays: ?int, types: list<string>}
+     */
+    public function commentPolicy(string $collection): ?array
+    {
+        $spec = $this->collection($collection);
+        if (($spec['comments'] ?? false) !== true) {
+            return null;
+        }
+
+        return ($spec['commentPolicy'] ?? []) + ['guests' => false, 'moderation' => 'first-time', 'threaded' => 3, 'closeAfterDays' => null, 'types' => []];
+    }
+
     public function global(string $name): array
     {
         return $this->raw['globals'][$name]

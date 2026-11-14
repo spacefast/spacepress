@@ -615,7 +615,31 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         ),
         (
             "collections: { notes: collection({ title: text() }, { comments: 'yes' }) }",
-            "`comments` must be true or false",
+            "`comments` is true, false or an options object",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }, { comments: { guest: true } }) }",
+            "`comments` has no option `guest`",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }, { comments: { moderation: 'sometimes' } }) }",
+            "`comments.moderation` can't be \"sometimes\"",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }, { comments: { threaded: 11 } }) }",
+            "`comments.threaded` can't be",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }, { comments: { closeAfterDays: 0 } }) }",
+            "`comments.closeAfterDays` can't be",
+        ),
+        (
+            "collections: { notes: collection({ title: text() }, { comments: { types: ['review'] } }) }",
+            "comment types aren't built yet",
+        ),
+        (
+            "tables: { notes: table({ title: text().optional() }, { comments: { guests: true } }) }",
+            "only collection() kinds take comments",
         ),
     ] {
         std::fs::write(tmp.path().join("first.config.ts"), format!(
@@ -2556,8 +2580,8 @@ fn builds_wordpress_and_knows_no_target_option() {
     let _ = std::fs::remove_dir_all(tmp);
 }
 
-/// A kind's `url` and `staged` and the config's `frontend` (docs/spec/spec.md §2.7, §5): checked at
-/// build time and emitted into schema.php, where the runtime reads them.
+/// A kind's `url`, `staged` and `comments` and the config's `frontend` (docs/spec/spec.md §2.3,
+/// §2.7, §5): checked at build time and emitted into schema.php, where the runtime reads them.
 #[test]
 fn kind_urls_and_the_frontend_mode_reach_the_schema() {
     rejects(
@@ -2617,6 +2641,25 @@ export default defineConfig({ name: "kindurls", collections: { notes, plain }, f
     assert_eq!(built["collections"]["notes"]["url"], "/notes/:year/:slug");
     assert!(built["collections"]["plain"].get("url").is_none(), "{built}");
     assert_eq!(built["frontend"], "https://www.example.com");
+    // `comments` (spec §2.3): `true` is the defaults; an object overrides some; off writes no policy.
+    let built = schema(
+        r#"import { collection, defineConfig, text } from "first";
+export const posts = collection({ title: text() }, { comments: true });
+export const reviews = collection({ title: text() }, { comments: { guests: true, moderation: "all", threaded: false, closeAfterDays: 30 } });
+export const pages = collection({ title: text() });
+export default defineConfig({ name: "kindurls", collections: { posts, reviews, pages } });
+"#,
+    );
+    let defaults = serde_json::json!({ "guests": false, "moderation": "first-time", "threaded": 3, "closeAfterDays": null, "types": [] });
+    assert_eq!(built["collections"]["posts"]["comments"], true);
+    assert_eq!(built["collections"]["posts"]["commentPolicy"], defaults);
+    assert_eq!(built["collections"]["reviews"]["comments"], true);
+    assert_eq!(
+        built["collections"]["reviews"]["commentPolicy"],
+        serde_json::json!({ "guests": true, "moderation": "all", "threaded": 1, "closeAfterDays": 30, "types": [] })
+    );
+    assert_eq!(built["collections"]["pages"]["comments"], false);
+    assert!(built["collections"]["pages"].get("commentPolicy").is_none(), "{built}");
     let built = schema(
         r#"import { defineConfig } from "first";
 export default defineConfig({ name: "kindurls", frontend: false });

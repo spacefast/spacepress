@@ -20,9 +20,21 @@ The store root is a parameter. The host passes its own private directory.
                                 plugins/zero-pages-<name>/
 <root>/build/<id>.json          {format, name, compiler, runtime, app, identity,
                                  admin, pages, snapshot, client}
+<root>/baseline/<id>/           snapshot.json, migrations/, storage.json, hashes.json
 <root>/ready/<id>.json          written after the build initialized on this site
 <root>/.lock, <root>/.tmp/      writer lock and staging
 ```
+
+Added 2026-11-14, unused by serving so far: each app tree also holds `storage.json`, what the build
+stores and how (per kind and field its type, choices, nested shape, required, SQL default and where
+it lives; each table's indexes; no access rules, UI, hooks, actions or pages; keys sorted). Each build
+gets `baseline/<id>/`: a copy of its snapshot, migrations and `storage.json` with each file's SHA-256,
+so the next compile's baseline survives without its app tree. The build manifest gains `baseline` (the
+build it was compiled against), `storage`, `jobs` and `wordpress` (the oldest WordPress its runtime
+supports). They are optional to read: a manifest without them still loads, and the loader checks only
+the fields it names. `First\Loader\Loader::inspect()` reports what `initialize()` would run on the
+site for the loaded build (system tables, the stored-name upgrade, the identity schema, migrations
+with each file's hash, the runtime-schema comparison, refusals) without writing anything.
 
 - `<revision>` is the SHA-256 of the runtime tree's paths and bytes, not a Git
   revision. A vendored crate has no Git metadata, and two compiler revisions

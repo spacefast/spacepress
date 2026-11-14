@@ -12,7 +12,7 @@ use crate::num::js_number_to_string;
 use crate::schema::{ColType, RefAction, RelKind};
 use crate::value::*;
 use indexmap::IndexMap;
-use std::cell::OnceCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -337,6 +337,7 @@ const FIRST_TYPES: &[&str] = &[
 const GLOBALS: &[&str] = &[
     "Math",
     "Object",
+    "Reflect",
     "Array",
     "Set",
     "Map",
@@ -2498,6 +2499,10 @@ impl<'p> Evaluator<'p> {
             Value::Regex(p, _) if prop == "source" => Ok(Value::str(&crate::builtins::regex_source(p))),
             Value::Regex(_, f) if prop == "flags" => Ok(Value::str(f)),
             Value::Num(_) | Value::Column(_) | Value::Regex(..) => bound(),
+            // `kind.on({ ... })`: the hooks method, never a field (spec §2.8).
+            Value::Collection(c) if prop == "on" && !c.columns.contains_key(prop) => {
+                Ok(Value::Bound(Rc::new(v.clone()), Rc::from(prop)))
+            }
             Value::Collection(c) if prop == "index" && !c.columns.contains_key(prop) => {
                 Ok(Value::Bound(Rc::new(v.clone()), Rc::from(prop)))
             }
@@ -2795,6 +2800,7 @@ impl<'p> Evaluator<'p> {
                     columns,
                     options,
                     span,
+                    hooks: RefCell::new(Vec::new()),
                     indexes: std::cell::RefCell::new(Vec::new()),
                 })))
             }
@@ -3759,6 +3765,28 @@ impl<'p> Evaluator<'p> {
             }
             Value::Column(c) if self.legacy && legacy::MODIFIERS.contains(&m) => legacy::modifier(c, m, &args, span),
             Value::Column(c) => column_method(c, m, &args, span),
+            // `.on({ beforeCreate, ... })` (spec §2.8, ruling 18): handlers in call order; returns the kind.
+            Value::Collection(c) if m == "on" => {
+                let extra = args.len() > 1;
+                let handlers = args.into_iter().next().unwrap_or(Value::Undef);
+                if !matches!(handlers, Value::Object(_)) || extra {
+                    return err_help(
+                        span,
+                        format!(".on() takes one object of hooks, not {}", handlers.describe()),
+                        "write `.on({ beforeCreate(data, ctx) { ... } })`",
+                    );
+                }
+                // Ruling 18: hooks belong to the declaration, so another file can't add them.
+                if span.file != c.span.file {
+                    return err_help(
+                        span,
+                        ".on() belongs to the kind's declaration, in the file that declares it",
+                        "move this .on({ ... }) next to the kind's collection()/table() call; handler functions may come from anywhere",
+                    );
+                }
+                c.hooks.borrow_mut().push((handlers, span));
+                Ok(recv.clone())
+            }
             Value::Str(s) => string_method(s, m, &args, span),
             Value::Num(n) => {
                 crate::builtins::check("number", m, args.len(), crate::builtins::Phase::Evaluator, span)

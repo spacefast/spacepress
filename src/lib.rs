@@ -36,6 +36,7 @@ pub mod schema;
 pub mod schema_php;
 pub mod services_config;
 pub mod sort;
+pub mod storage;
 pub mod types;
 pub mod uri;
 pub mod value;

@@ -176,7 +176,7 @@ eq('an operation names a kind or a global, not both', $verdict($set(['op' => 'se
 $declared = ['collections' => ['events' => ['starts' => 'text']], 'globals' => ['banner' => ['text' => 'integer']]];
 $verdictWith = static function (array $changeSet) use ($kinds, $empty, $declared): string {
     try {
-        Changes::resolve($kinds, $empty, $changeSet, $declared);
+        Changes::resolve($kinds, $empty, $changeSet, null, $declared);
 
         return 'accept';
     } catch (Refused $e) {
@@ -209,6 +209,36 @@ $uiGone = Changes::resolve($kinds, $grown['state'], $set(['op' => 'setFieldUi', 
 $uiBack = Changes::resolve($kinds, $uiGone['state'], ['format' => Loader::FORMAT, 'changes' => Changes::reverse($grown['state'], $uiGone['changes'])]);
 eq('undoing a version that presented a field and then removed it leaves the field as it was before', Loader::apply($kinds, $uiBack['state']), $schema);
 eq('undoing the version that added a kind, after another built on it, removes the kind whole', Loader::apply($kinds, Changes::resolve($kinds, $grown['state'], ['format' => Loader::FORMAT, 'changes' => Changes::reverse($empty, $site['changes'])])['state'])['collections'], $kinds['collections']);
+
+// ---------------------------------------------------------------- what a deploy does with the site's changes
+$deploy = static fn (array $built, array $state): array => \First\RuntimeSchema\Deploy::check($built, $state);
+$codes = static fn (array $r): array => array_map(static fn (array $x): string => "{$x['code']} {$x['name']}", $r['refusals']);
+$withMood = Changes::resolve($kinds, $empty, $add('articles', 'mood', ['type' => 'text', 'enum' => ['calm', 'loud']]))['state'];
+eq('a build without the runtime field keeps it', $deploy($kinds, $withMood)['kept'], ['articles.mood']);
+$same = $kinds;
+$same['collections']['articles']['columns']['mood'] = ['type' => 'text', 'enum' => ['calm', 'loud']];
+eq('a build that declares it the same way leaves nothing to report', [$deploy($same, $withMood)['kept'], $deploy($same, $withMood)['refusals'], $deploy($same, $withMood)['changed']], [[], [], []]);
+$other = $kinds;
+$other['collections']['articles']['columns']['mood'] = ['type' => 'text', 'enum' => ['calm', 'loud', 'angry']];
+eq('a build that gives a runtime select other options is refused', $codes($deploy($other, $withMood)), ['runtime_type_differs articles.mood']);
+$plain = $kinds;
+$plain['collections']['articles']['columns']['mood'] = ['type' => 'text'];
+eq('and so is one that declares it without options', $codes($deploy($plain, $withMood)), ['runtime_type_differs articles.mood']);
+$longer = $kinds;
+$longer['collections']['articles']['columns']['mood'] = ['type' => 'text', 'enum' => ['calm', 'loud'], 'ui' => ['label' => 'Mood']];
+eq('a build that only presents it differently is reported as changed, not refused', [$codes($deploy($longer, $withMood)), $deploy($longer, $withMood)['changed']], [[], ['articles.mood']]);
+$withVenue = Changes::resolve($kinds, $empty, $add('articles', 'venue', ['type' => 'group', 'fields' => ['name' => ['type' => 'text'], 'city' => ['type' => 'text']]]))['state'];
+$subs = $kinds;
+$subs['collections']['articles']['columns']['venue'] = ['type' => 'group', 'fields' => ['name' => ['type' => 'text'], 'city' => ['type' => 'integer']]];
+eq('a build whose group sub-field has another type is refused', $codes($deploy($subs, $withVenue)), ['runtime_type_differs articles.venue']);
+$fewer = $kinds;
+$fewer['collections']['articles']['columns']['venue'] = ['type' => 'group', 'fields' => ['name' => ['type' => 'text']]];
+eq('and so is one with other sub-fields', $codes($deploy($fewer, $withVenue)), ['runtime_type_differs articles.venue']);
+$withEvents = Changes::resolve($kinds, $empty, $set(['op' => 'addCollection', 'kind' => 'events', 'definition' => ['fields' => ['title' => ['type' => 'text', 'notNull' => true]]]]))['state'];
+$table = $kinds;
+$table['collections']['events'] = ['key' => 'events', 'editor' => false, 'wp' => null, 'table' => 'first_events', 'primaryKey' => 'id', 'columns' => ['id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true], 'title' => ['type' => 'text', 'notNull' => true]]];
+eq('a build that declares a table() named like a runtime collection is refused', $codes($deploy($table, $withEvents)), ['runtime_kind_differs events']);
+eq('a build that declares the runtime collection as a collection is fine', $deploy(Loader::apply($kinds, $withEvents)['collections'] + [] === [] ? $kinds : ['collections' => Loader::apply($kinds, $withEvents)['collections']] + $kinds, $withEvents)['refusals'], []);
 
 // ---------------------------------------------------------------- replay
 $first = Changes::resolve($kinds, $empty, $add('articles', 'subtitle', $text));

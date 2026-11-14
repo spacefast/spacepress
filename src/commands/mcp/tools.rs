@@ -94,8 +94,9 @@ pub(super) fn list(options: &Options) -> Vec<Value> {
         tool(
             "dev_status",
             "The local dev site",
-            "Whether this project has a local WordPress dev site, whether it is running, and its URL. `first dev` \
-             creates and starts it; `first dev stop` stops it and keeps its data.",
+            "Whether this project has a local WordPress dev site, whether it is running, its URL and port, and \
+             whether a `first dev` process is rebuilding it on save (`watching`, `pid`, `log`). `first dev --detach` \
+             starts it in the background; `first dev stop` stops it and keeps its data.",
             object(json!({}), &[]),
             read.clone(),
         ),
@@ -527,7 +528,17 @@ pub(super) fn call(options: &Options, name: &str, arguments: &Arguments) -> Resu
         "commands" => Ok(ok(
             serde_json::from_str(crate::cli::COMMANDS).expect("runtime/First/Cli/commands.json is JSON")
         )),
-        "dev_status" => dev::status(&options.project).map(ok),
+        // Studio's own status, for a site with no state file, is bounded and cancellable too.
+        "dev_status" => dev::status_with(&options.project, |studio| match child::run(options, studio) {
+            child::Ran::Finished(output) => Ok(output),
+            ran => Err(
+                not_run("the dev site's status (npx wp-studio)", ran, options)["content"][0]["text"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            ),
+        })
+        .map(ok),
         _ => return Err(RpcError::new(INVALID_PARAMS, format!("Unknown tool: {name}"))),
     };
     Ok(result.unwrap_or_else(failed))

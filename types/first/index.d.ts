@@ -413,6 +413,11 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   drafts?: boolean;
   /** Keep a revision per update. Default true for collections, false for tables. */
   revisions?: boolean;
+  /**
+   * Staged versions: a change to an item saved beside the live one, then compared, promoted or
+   * discarded. Default true for collections; `false` turns them off. collection() only.
+   */
+  staged?: boolean;
   /** WordPress comments on this collection's post type. Default false: comments are closed on every kind that doesn't turn them on. */
   comments?: boolean;
   /** The WordPress post title: a NOT NULL `text()` column. Default: a text column named `title`. Required for collections. */
@@ -1040,7 +1045,15 @@ export type InferActionInput<TInput extends ColumnsConfig> = Simplify<
 
 export interface Action<TInput extends ColumnsConfig = ColumnsConfig, TResult = unknown> {
   readonly [actionBrand]: { input: TInput; result: TResult };
+  /**
+   * From a `"use client"` component: a `fetch` to the action's endpoint, with the REST nonce. The
+   * parameter is checked through `ClientInput`, so an action of any input stays an `AnyAction`.
+   */
+  <I extends ClientInput<TInput>>(input: I): Promise<Awaited<TResult>>;
 }
+
+/** The input a client call passes: the action's input, or anything for `AnyAction`. */
+type ClientInput<TInput extends ColumnsConfig> = ColumnsConfig extends TInput ? Record<string, unknown> : InferActionInput<TInput>;
 
 export type AnyAction = Action<ColumnsConfig, unknown>;
 

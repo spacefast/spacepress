@@ -26,7 +26,9 @@ compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `firs
    `first/DATABASE.md`, on how tables work.
 
 2. Export the kind from a file under `first/` (by convention `first/schema.ts`). The export name is
-   the kind's name everywhere: the API path, the typed client, `first:db`.
+   the kind's name in TypeScript: the typed client and `first:db`. Its storage name, the snake_case
+   form (`shoppingList` is `shopping_list`), is what the API path and the site commands take; the
+   `schema` tool lists both (`path` is the storage name).
 
    ```ts
    // first/schema.ts
@@ -44,6 +46,12 @@ compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `firs
      stars: integer().min(1).max(5),
      verified: boolean().default(false),
    }, { access: { read: "anyone", create: "subscriber" } });
+
+   // Stored, and reached on the API, as `shopping_list`.
+   export const shoppingList = table({
+     item: text().max(120),
+     done: boolean().default(false),
+   }, { access: { read: "authenticated", create: "subscriber", update: "subscriber" } });
    ```
 
 3. Follow the field rules:
@@ -59,7 +67,8 @@ compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `firs
    A new required field with no default is refused at deploy when rows lack it.
 
 5. To rename a `table()` field keep its data with `.was("oldName")`. To remove a field or kind
-   that holds rows, the deploy needs the row count: `first migrate --drop=<kind>=<rows>`. On the
+   that holds rows, the deploy refuses it and answers with the exact `--drop=…` value that confirms
+   the row count (`first migrate --drop=…`; copy it from the refusal's `drop`). On the
    local dev site, `first dev --allow-destructive` passes it once.
 
 6. Run `first check`, then `first build`. The build writes the SQL change to
@@ -69,8 +78,9 @@ compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `firs
 ## Verification
 
 - `first check` exits 0.
-- The `schema` tool (or `first check --json`, under `indexes`) shows the kind and its fields.
-- With the dev site running, `first find <kind>` answers `{"data":[…]}` for the new kind.
+- The `schema` tool shows the kind, its fields and its storage name (`path`).
+- With the dev site running, `first find <storage name>` (for `shoppingList`, `first find
+  shopping_list`) answers `{"data":[…]}`. The `query` tool takes the export name instead.
 
 ## Failure modes / debugging
 

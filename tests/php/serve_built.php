@@ -7,12 +7,18 @@ declare(strict_types=1);
  * test (tests/app_router.rs `client_components_hydrate_in_the_browser`). Prints one JSON line
  * ({url}) and serves until killed. FIRST_WP_SCRIPT_DEBUG=1 is passed through to the server.
  *
- *   FIRST_WP_THEMES=1 php tests/php/serve_built.php <wp-content dir>
+ * With a seed records directory (what a hosted compile writes for synced files), the site is
+ * seeded from it first, as a publish seeds it.
+ *
+ *   FIRST_WP_THEMES=1 php tests/php/serve_built.php <wp-content dir> [seed records dir]
  */
 
 require __DIR__ . '/wp.php';
 
 $site = wpSite('serve-built', ['wpContent' => $argv[1]]);
+if (isset($argv[2])) {
+    \First\Sync\Seed::run(\First\Wp\Runtime::plugin(), $argv[2]);
+}
 $site->startServer();
 echo json_encode(['url' => $site->url()]), "\n";
 fclose(STDOUT);

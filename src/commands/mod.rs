@@ -6,7 +6,9 @@ mod describe;
 mod dev;
 mod doctor;
 pub(crate) mod init;
+mod init_github;
 pub(crate) mod mcp;
+pub(crate) mod pull;
 pub(crate) mod site;
 mod sync;
 

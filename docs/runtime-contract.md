@@ -498,6 +498,7 @@ route); the facade maps input and output only. Everything else → 404 problem.
 | `GET /{kind}/{id}` (`slug:x`) | `GET /wp/v2/<route>/{id}`, `with` allowed; `?format=md` is `MarkdownTwins::post()` | 200 `{data: row}` / 404 `not_found` |
 | `POST /{kind}`, `PATCH /{kind}/{id}`, `DELETE /{kind}/{id}` | the core route's create, update and permanent delete, through First's write pipeline | 201/200 `{data: row}` |
 | `GET /{kind}/{id}/revisions[/{rid}]`, `POST …/{rid}/restore` | core's revisions route; a restore is an update | 200 `{data}` |
+| `GET`/`PATCH`/`DELETE /{kind}/{id}/staged`, `GET …/staged/compare`, `POST …/staged/promote`, `POST …/staged/preview` | `Wp\Staged` (no core route): a post kind's [staged version](staged.md); a promote is an update | 200 `{data}` / 404 `not_found` without the update rule |
 | `GET`/`PATCH /{global}` | `/wp-abilities/v1/abilities/<app>/global-<name>-{get,update}/run` | 200 `{data}` |
 | `POST /actions/{name}` (`GET` when readonly) | `/wp-abilities/v1/abilities/<app>/<name>/run` | 200 `{data: result}` |
 | `GET /me`, `/settings`, `/menus[/{location}]` | `/wp/v2/users/me`, `/wp/v2/settings`, `/wp/v2/menu-locations` + `/wp/v2/menu-items` | 200 `{data}` |
@@ -797,6 +798,8 @@ wp first find <collection> [opts-json]
 wp first insert <collection> <json>
 wp first update <collection> <where-json> <set-json>
 wp first delete <collection> <where-json>
+wp first staged list [<kind>] | show|compare|discard <kind> <id> | stage <kind> <id> <json>
+wp first staged promote <kind> <id> [--at=<ISO time> | --cancel]
 ```
 
 Prints `{"data": ...}` on success (exit 0) or `{"error": {problem}}` (exit 1)

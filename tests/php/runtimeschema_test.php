@@ -194,6 +194,41 @@ $rows = $versions->list();
 eq('exactly one of them was stored', [count($rows), $rows[2]['changes'][0]['field']], [3, $outcomes[0]['field']]);
 $winner = $outcomes[0]['field'];
 
+// ================================================================ apply and deploy share one lock
+// A deploy holds the schema lock while it migrates. An apply that starts meanwhile waits for it, and
+// then checks the change against the build that is live, not the one its own request loaded.
+$hold = "$wp->dir/hold.php";
+file_put_contents($hold, '<?php
+require ' . var_export(__DIR__ . '/wp.php', true) . ';
+$dir = ' . var_export($wp->dir, true) . ';
+$site = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
+wpDefine($dir, $site["url"]);
+$_SERVER["REQUEST_METHOD"] = "GET";
+require_once ABSPATH . "wp-settings.php";
+$plugin = \First\Wp\Runtime::plugin();
+// The lock a deploy takes (Plugin::migrateLocked).
+\First\Wp\Migrator::locked($plugin->connection(), "first_" . $plugin->schema->name() . "_schema", static function () use ($argv): void {
+    fwrite(STDOUT, "held\n");
+    // While the deploy holds the lock, the new build lands: it declares `lockProbe` as an integer.
+    file_put_contents($argv[1], $argv[2]);
+    usleep(1500000);
+});
+');
+$newBuild = $base;
+$newBuild['collections']['articles']['columns']['lockProbe'] = ['type' => 'integer'];
+$newBuild = array_replace_recursive((require "$wp->content/plugins/first-app-rtschema/first/app/schema.php"), ['collections' => ['articles' => ['columns' => ['lockProbe' => ['type' => 'integer']]]]]);
+$schemaFile = "$wp->content/plugins/first-app-rtschema/first/app/schema.php";
+$before = (string) file_get_contents($schemaFile);
+$deployer = proc_open([PHP_BINARY, '-d', 'memory_limit=512M', $hold, $schemaFile, '<?php return ' . var_export($newBuild, true) . ';'], [1 => ['pipe', 'w'], 2 => ['file', "$wp->dir/hold.log", 'a']], $pipes);
+eq('the deploy holds the lock', fgets($pipes[1]), "held\n");
+$started = microtime(true);
+$lockRefusal = $refusal(fn () => $versions->apply(count($versions->list()), $add('lockProbe', ['type' => 'text']), $admin));
+$waited = microtime(true) - $started;
+proc_close($deployer);
+check('an apply during a deploy waits for the deploy\'s lock', $waited > 0.5, $waited);
+eq('and is checked against the build that is live once it holds it', $lockRefusal, '409 schema_build_changed /changes');
+file_put_contents($schemaFile, $before);
+
 // ================================================================ the option is a copy of the versions
 delete_option(Loader::option('rtschema'));
 check('without its option the site serves the build\'s schema', !isset($described()['kinds']['articles']['columns']['subtitle']));
@@ -337,6 +372,145 @@ eq('the item is the same post', http('GET', "$api/events/{$event['data']['id']}"
 [$status, $inUse] = http('POST', $wp->url() . '/__rtschema_propose', $set(['op' => 'removeCollection', 'kind' => 'events']));
 eq('a kind the build declares can\'t be removed at runtime, whoever added it', [$status, $inUse['code'] ?? null, $inUse['pointer'] ?? null], [422, 'schema_in_use', '/changes/0/kind']);
 $wp->writeSchema($base);
+
+// ================================================================ the ways in: abilities, the command, the admin screen
+// Core runs a read-only ability with GET (input in the query string) and any other with POST.
+$run = static function (string $ability, array $input, ?string $as) use ($wp): array {
+    $url = $wp->url() . "/wp-json/wp-abilities/v1/abilities/rtschema/$ability/run";
+
+    if ($ability === 'schema-apply') {
+        return http('POST', $url, ['input' => $input], $as);
+    }
+    // Over GET the changes travel as one JSON string.
+    if (isset($input['changes'])) {
+        $input['changes'] = json_encode($input['changes']);
+    }
+
+    return http('GET', $url . '?' . http_build_query(['input' => $input]), null, $as);
+};
+$newest = static function (): int {
+    $rows = $GLOBALS['versions']->list();
+
+    return $rows === [] ? 0 : end($rows)['version'];
+};
+// `wp first schema …` as WP-CLI runs it (the runtime registers it for WP-CLI only).
+$schemaCli = static function (array $args, array $flags = []): array {
+    if (!class_exists('WP_CLI')) {
+        eval('final class WP_CLI { public static array $lines = []; public static function line(string $s): void { self::$lines[] = $s; } public static function halt(int $c): never { throw new WpCliHalt($c); } }');
+    }
+    \WP_CLI::$lines = [];
+    $code = \First\RuntimeSchema\Surfaces::wpCli($args, $flags);
+
+    return [$code, json_decode(implode("\n", \WP_CLI::$lines), true)];
+};
+$count = count($versions->list());
+
+// Reading: administrators only.
+eq('anonymous can\'t read the schema versions', $run('schema-read', [], null)[0], 401);
+eq('an editor can\'t either', $run('schema-read', [], 'editor')[0], 403);
+[$status, $read] = $run('schema-read', [], 'admin');
+eq('an administrator reads the active version and every stored one', [$status, $read['version'] ?? null, count($read['versions'] ?? [])], [200, $newest(), $count]);
+check('each version says what it changed, and no secret is in it', isset($read['versions'][0]['changes'][0]['op']) && !str_contains(json_encode($read), $wp->appPassword('admin')), $read['versions'][0] ?? null);
+
+// Proposing writes nothing.
+$change = ['op' => 'addField', 'kind' => 'articles', 'field' => 'byline', 'definition' => ['type' => 'text', 'rules' => ['max' => 80]]];
+eq('an editor can\'t propose', $run('schema-propose', ['changes' => [$change]], 'editor')[0], 403);
+[$status, $proposal] = $run('schema-propose', ['changes' => [$change]], 'admin');
+eq('a proposal returns the stored change and its effect, and stores nothing', [$status, $proposal['changes'][0]['definition'] ?? null, $proposal['effects'][0]['op'] ?? null, count($versions->list())],
+    [200, ['type' => 'text', 'rules' => ['max' => 80]], 'addField', $count]);
+[$status, $refused] = $run('schema-propose', ['changes' => [['op' => 'addField', 'kind' => 'articles', 'field' => 'bad-name', 'definition' => ['type' => 'text']]]], 'admin');
+eq('a refusal keeps its code and pointer over the run route', [$status, $refused['code'] ?? null, $refused['data']['pointer'] ?? null], [422, 'first_schema_invalid', '/changes/0/definition']);
+
+// Applying needs its own capability; an application password can be denied it.
+eq('an editor can\'t apply', $run('schema-apply', ['parent' => $newest(), 'changes' => [$change]], 'editor')[0], 403);
+[$status, $applied] = $run('schema-apply', ['parent' => $newest(), 'changes' => [$change]], 'admin');
+eq('an administrator applies; the version records the user and the application password, never its secret', [$status, $applied['version'] ?? null, $applied['actor']['login'] ?? null, $applied['actor']['via'] ?? null, isset($applied['actor']['credential']['uuid']), $applied['actor']['credential']['name'] ?? null],
+    [200, $count + 1, 'admin', 'ability', true, $applied['actor']['credential']['name'] ?? 'missing']);
+check('the recorded credential is the one that signed the request', in_array($applied['actor']['credential']['uuid'] ?? '', array_column(WP_Application_Passwords::get_user_application_passwords($wp->userId('admin')), 'uuid'), true));
+[$status, $conflict] = $run('schema-apply', ['parent' => $newest() - 1, 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Late']]], 'admin');
+eq('a change made against an older version is a 409 over the run route too', [$status, $conflict['code'] ?? null], [409, 'first_schema_conflict']);
+update_option('first_rtschema_schema_apply_denied', [['user' => $wp->userId('admin'), 'password' => $applied['actor']['credential']['uuid']]]);
+[$status] = $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Denied']]], 'admin');
+eq('an application password an administrator denied can\'t apply', $status, 403);
+eq('it can still read and propose', [$run('schema-read', [], 'admin')[0], $run('schema-propose', ['changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'x']]], 'admin')[0]], [200, 200]);
+// A denied password that mints another one (core's own route allows it for an unscoped password)
+// hands the deny on: the new password was created by a denied credential.
+[$status, $minted] = http('POST', $wp->url() . '/wp-json/wp/v2/users/me/application-passwords', ['name' => 'minted while denied'], 'admin');
+eq('a denied password can still create another one through core', $status, 201);
+$mintedAuth = 'admin:' . $minted['password'];
+// A password made over core's route starts read-only (First's default scope); its owner grants writes
+// on purpose. Even then the deny its maker carried must hold.
+// (This process read the user's passwords before the HTTP request made one: read them again.)
+wp_cache_delete($wp->userId('admin'), 'user_meta');
+\First\Wp\AgentScope::store($wp->userId('admin'), $minted['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
+$runAs = static function (string $ability, array $input, string $credential) use ($wp): array {
+    $ch = curl_init($wp->url() . "/wp-json/wp-abilities/v1/abilities/rtschema/$ability/run");
+    curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => 'POST', CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Basic ' . base64_encode($credential)], CURLOPT_POSTFIELDS => json_encode(['input' => $input])]);
+    $body = curl_exec($ch);
+
+    return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), is_string($body) ? json_decode($body, true) : null];
+};
+[$status, $mintedAnswer] = $runAs('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Minted']]], $mintedAuth);
+echo json_encode($mintedAnswer), "\n";
+eq('a password a denied one created can\'t apply either: the deny passed to it', [$status, $mintedAnswer['code'] ?? null], [403, 'first_forbidden']);
+[$status] = $runAs('schema-read', [], $mintedAuth);
+eq('it signs in fine otherwise', $status, 405);
+// Denying a user's application passwords as a kind: every one of them, present and future.
+update_option('first_rtschema_schema_apply_denied', [['user' => $wp->userId('admin'), 'credential' => 'application-password']]);
+eq('denying all of a user\'s application passwords covers the one they sign in with now', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Kind']]], 'admin')[0], 403);
+delete_option('first_rtschema_schema_apply_denied');
+eq('nothing denied: an administrator applies', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Free']]], 'admin')[0], 200);
+
+// Revoking the capability. WordPress's own `wp cap remove administrator first_apply_schema` removes it
+// from the role; it stays removed. So does an explicit false.
+$role = get_role('administrator');
+$role->remove_cap(\First\RuntimeSchema\Surfaces::APPLY);
+eq('after the capability is removed from the role, administrators can\'t apply', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Removed']]], 'admin')[0], 403);
+$role->add_cap(\First\RuntimeSchema\Surfaces::APPLY, false);
+eq('an explicit false on the role does the same', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'No']]], 'admin')[0], 403);
+$role->add_cap(\First\RuntimeSchema\Surfaces::APPLY);
+eq('and they apply again once it is given back', $run('schema-apply', ['parent' => $newest(), 'changes' => [['op' => 'setLabel', 'kind' => 'articles', 'label' => 'Yes']]], 'admin')[0], 200);
+// The grant happens once: an administrator account made later gets it from the role, and taking it
+// from that one user (`wp user remove-cap`) holds too.
+$later = $wp->addUser('later_admin', 'admin');
+check('a later administrator holds the capability through the role', user_can($later, \First\RuntimeSchema\Surfaces::APPLY));
+(new WP_User($later))->remove_cap(\First\RuntimeSchema\Surfaces::APPLY);
+$role->remove_cap(\First\RuntimeSchema\Surfaces::APPLY);
+check('with it removed from the role and that user, they don\'t hold it', !user_can($later, \First\RuntimeSchema\Surfaces::APPLY));
+$role->add_cap(\First\RuntimeSchema\Surfaces::APPLY);
+
+// The abilities are on the app's MCP server with the rest of its tools.
+$tools = array_column(\First\Wp\Abilities\Register::operations(), 'agents', 'name');
+eq('the three are agent tools', [$tools['rtschema/schema-read'] ?? null, $tools['rtschema/schema-propose'] ?? null, $tools['rtschema/schema-apply'] ?? null], [true, true, true]);
+
+// `wp first schema`: list, diff, apply, rollback.
+[$code, $listed] = $schemaCli(['list']);
+eq('schema list: one line per version, newest last', [$code, count($listed['data']), end($listed['data'])['version'], end($listed['data'])['changes']], [0, $newest(), $newest(), 1]);
+[$code, $diff] = $schemaCli(['diff', (string) $applied['version']]);
+eq('schema diff: one version with its changes', [$code, $diff['data']['changes'][0]['field'] ?? null], [0, 'byline']);
+$file = "$wp->dir/change.json";
+file_put_contents($file, json_encode([['op' => 'addField', 'kind' => 'articles', 'field' => 'teaserImage', 'definition' => ['type' => 'media', 'accept' => 'image']]]));
+[$code, $cliApplied] = $schemaCli(['apply', $file]);
+eq('schema apply: a file of changes on the newest version, recorded as WP-CLI', [$code, $cliApplied['data']['version'] ?? null, $cliApplied['data']['actor']['via'] ?? null], [0, $newest(), 'wp-cli']);
+[$code, $stale] = $schemaCli(['apply', $file], ['parent' => '1']);
+eq('schema apply on an older parent is the 409', [$code, $stale['error']['code'] ?? null], [1, 'schema_conflict']);
+[$code, $rolledBack] = $schemaCli(['rollback', (string) $cliApplied['data']['version']]);
+eq('schema rollback: a new version that reverses the given one', [$code, $rolledBack['data']['changes'] ?? null], [0, [['op' => 'removeField', 'kind' => 'articles', 'field' => 'teaserImage', 'was' => 'media']]]);
+[$code, $bad] = $schemaCli(['diff', 'x']);
+eq('a bad argument says how to call it', [$code, $bad['error']['code'] ?? null], [1, 'invalid_command']);
+
+// The admin screen lists the versions with what each changed.
+$wp->actAs('admin');
+ob_start();
+\First\RuntimeSchema\Surfaces::page();
+$html = (string) ob_get_clean();
+$wp->actAs(null);
+check('the admin screen lists the versions, newest first, with each change in words',
+    str_contains($html, 'Added articles.byline (text)') && str_contains($html, 'Hid articles.teaserImage (its values are kept)') && str_contains($html, '(WP-CLI)')
+    && strpos($html, 'Hid articles.teaserImage') < strpos($html, 'Added articles.byline'), $html);
+check('it escapes what it shows', !str_contains($html, '<script'), $html);
+eq('the screen is under Tools for administrators', menu_page_url('first-schema-versions', false) !== '' || has_action('admin_menu', [\First\RuntimeSchema\Surfaces::class, 'menu']) !== false, true);
 
 // ================================================================ a format this runtime doesn't know
 $state = get_option(Loader::option('rtschema'));

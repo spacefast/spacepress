@@ -276,7 +276,9 @@ fn failure(id: Option<&Value>, error: RpcError) -> Value {
         body["data"] = data;
     }
     let mut message = json!({ "jsonrpc": "2.0", "error": body });
-    // An id that could not be read is left out; the specification forbids a null one.
+    // An id that could not be read is left out. 2025-11-25 and later make `id` optional on an error
+    // for this case; 2025-06-18 requires one and forbids `null`, so it has no valid answer, and
+    // leaving it out is what JSON-RPC's own `null` means.
     if let Some(id) = id {
         message["id"] = id.clone();
     }

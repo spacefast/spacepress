@@ -20,8 +20,6 @@ runtime/identity/apps/node_modules/
 /packages/blocks/dist/
 /packages/blocks/vendor/
 
-# The optional packages/pages package (its own pnpm project)
-/packages/pages/node_modules/
 
 
 # Disposable SQL adoption proof artifacts.

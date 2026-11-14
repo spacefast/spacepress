@@ -98,7 +98,11 @@ WordPress administration is available with the disposable local login
 `admin` / `first-test-admin`.
 
 Ctrl+C stops the foreground site without deleting its data. `--no-watch`
-starts it and returns; `first dev stop [dir]` stops it later. `--port` selects
+starts it and returns; `--detach` returns once the site is up and leaves the
+watcher running in the background, logging to `.first/dev/dev.log`;
+`first dev stop [dir]` stops either later. When the site is up, `first dev`
+writes `.first/dev/state.json` (URL, port, the watcher's PID), which
+`first dev status --json` and `first mcp` read without starting Studio. `--port` selects
 a new site's port; an existing site retains its original port, printed at
 startup. Different project directories have independent sites. Create API
 credentials explicitly with WP-CLI:

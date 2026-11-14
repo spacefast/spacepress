@@ -260,41 +260,6 @@ jobs:
       - run: node --test scripts/dev/studio.test.mjs
       - run: node --test packages/cli/test/*.test.mjs packages/create-first/test/*.test.mjs scripts/release/archive.test.mjs
 
-  pages:
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '22'
-      - run: corepack enable
-      # The pages build reads the example's compiled schema, so the compiler builds it first.
-      - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal
-      - run: cargo build --locked --bin first
-      - run: target/debug/first build examples/full-site
-      - run: pnpm install --frozen-lockfile
-        working-directory: packages/blocks
-      - run: pnpm build
-        working-directory: packages/blocks
-      - run: pnpm install --frozen-lockfile
-        working-directory: packages/pages
-      - run: pnpm check
-        working-directory: packages/pages
-      - name: The committed render artifact is current
-        run: |
-          (cd packages/pages && pnpm build)
-          node packages/pages/bin/first-pages.mjs build examples/full-site
-          git diff --exit-code examples/full-site/first/pages.json
-      - run: pnpm test:package
-        working-directory: packages/pages
-      - run: npx --yes playwright-core@1.62.1 install --with-deps chromium-headless-shell
-      - run: pnpm test:wp
-        working-directory: packages/pages
-        env:
-          FIRST_BIN: ${{ github.workspace }}/target/debug/first
-
   wp:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
@@ -374,8 +339,6 @@ jobs:
             .first/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
-      # The app migration lane renders converted static pages with packages/pages, built with pnpm.
-      - run: corepack enable
       - run: cargo build --locked --bin first
       - name: Zero 0.8 site, app-user and application migrations
         run: FIRST_WP_PROJECT=first-wp-migrate FIRST_WP_PORT=8794 tests/wp/migrate-run.sh
@@ -457,7 +420,7 @@ jobs:
       - name: Shared S3 storage across disposable replicas
         run: FIRST_WP_PROJECT=first-wp-s3 FIRST_WP_PORT=8792 FIRST_WP_REPLICA_PORT=8793 tests/wp/run.sh --s3
 
-  # Hosted TSX pages, the island in Chromium and custom HTTP routes, from `first compile-sources`.
+  # Hosted first/app pages, client components in Chromium and route.ts handlers, from `first compile-sources`.
   wp-pages:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
@@ -487,13 +450,11 @@ jobs:
             .first/cache/plugins
             tests/wp/cache
           key: wp-plugins-${{ runner.os }}-${{ hashFiles('tests/fixtures/platform.json') }}
-      - run: corepack enable
       - run: cargo build --locked --bin first
-      - name: Hosted pages, island, action and HTTP routes from compile-sources
+      - name: Hosted pages, client components, action and HTTP routes from compile-sources
         run: |
-          (cd packages/blocks && pnpm install --frozen-lockfile && pnpm build)
-          (cd packages/pages && pnpm install --frozen-lockfile)
-          npx --yes playwright-core@1.62.1 install --with-deps chromium-headless-shell
+          npm ci --prefix tests/differential/client --ignore-scripts --no-audit --no-fund
+          npx --prefix tests/differential/client playwright-core install --with-deps chromium-headless-shell
           FIRST_WP_PROJECT=first-wp-pages FIRST_WP_PORT=8873 tests/wp/hosted-pages-run.sh
 
   # `first dev` from a release binary after removing its build checkout.

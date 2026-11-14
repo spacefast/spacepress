@@ -7,7 +7,6 @@ export default defineComponents({
 		CodeFile: "./lib/CodeFile.astro",
 		CompiledExcerpt: "./lib/CompiledExcerpt.astro",
 		ExampleConfig: "./lib/ExampleConfig.astro",
-		PagesArtifact: "./lib/PagesArtifact.astro",
 		RepoFile: "./lib/RepoFile.astro",
 		Showcase: "./lib/Showcase.astro",
 	},

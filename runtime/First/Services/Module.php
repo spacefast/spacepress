@@ -66,7 +66,7 @@ final class Module
     }
 
     /** Existing receipts own request idempotency, including changed-input rejection. */
-    public static function once(string $scope, array $input, array $headers, callable $run): mixed
+    public static function once(string $scope, array $input, array $headers, \Closure $run): mixed
     {
         $key = $headers['idempotency-key'] ?? '';
         if (!is_string($key) || $key === '' || strlen($key) > 64) {

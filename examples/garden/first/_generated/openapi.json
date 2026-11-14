@@ -301,7 +301,7 @@
         "operationId": "plants.revisions.list",
         "summary": "Revisions of plants",
         "x-first-access": "editor",
-        "description": "Each saved version of the row, with its time and who saved it.\n\nAccess: Users with the `editor` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
+        "description": "Each saved version of the row, newest first, with its time and who saved it, one page at a time. `limit` is 50 unless given, and at most 100; `cursor` is null on the last page.\n\nAccess: Users with the `editor` role or a higher one may do this.\n\nNeeds the kind's update rule on the row; a row outside it is a 404.",
         "parameters": [
           {
             "name": "id",
@@ -314,11 +314,14 @@
                 { "type": "string", "pattern": "^slug:." }
               ]
             }
-          }
+          },
+          { "$ref": "#/components/parameters/limit" },
+          { "$ref": "#/components/parameters/offset" },
+          { "$ref": "#/components/parameters/cursor" }
         ],
         "responses": {
           "200": {
-            "description": "The revisions.",
+            "description": "One page of rows.",
             "content": {
               "application/json": {
                 "schema": {
@@ -327,13 +330,15 @@
                     "data": {
                       "type": "array",
                       "items": { "$ref": "#/components/schemas/RevisionSummary" }
-                    }
+                    },
+                    "cursor": { "type": ["string", "null"] }
                   },
-                  "required": ["data"]
+                  "required": ["data", "cursor"]
                 }
               }
             }
           },
+          "400": { "$ref": "#/components/responses/Problem" },
           "401": { "$ref": "#/components/responses/Problem" },
           "403": { "$ref": "#/components/responses/Problem" },
           "404": { "$ref": "#/components/responses/Problem" },

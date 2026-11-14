@@ -165,4 +165,23 @@ eq('deleting a term removes its meta', (function () use ($db, $sports): array {
     return get_term_meta($sports['id']);
 })(), []);
 
+// ================================================================ core internals the term route relies on
+// TermsController subclasses core's WP_REST_Terms_Controller and TermMeta its WP_REST_Term_Meta_Fields
+// (docs/wordpress-internals.md). A core release that renames, hides or reshapes one of these fails here
+// by name, against the WordPress this suite runs on.
+$member = static function (string $class, string $name): array {
+    $m = new ReflectionMethod($class, $name);
+    return [$m->isProtected() ? 'protected' : ($m->isPublic() ? 'public' : 'private'), $m->getNumberOfParameters(), $m->getNumberOfRequiredParameters()];
+};
+$property = static function (string $class, string $name): string {
+    $p = new ReflectionProperty($class, $name);
+    return $p->isProtected() ? 'protected' : ($p->isPublic() ? 'public' : 'private');
+};
+eq('core terms controller: get_term($id) is protected, one parameter', $member(WP_REST_Terms_Controller::class, 'get_term'), ['protected', 1, 1]);
+eq('core terms controller: $meta and $taxonomy are protected properties', [$property(WP_REST_Terms_Controller::class, 'meta'), $property(WP_REST_Terms_Controller::class, 'taxonomy')], ['protected', 'protected']);
+eq('core terms controller: the overridden handlers take ($request)', array_map(static fn (string $m) => $member(WP_REST_Terms_Controller::class, $m), ['get_items', 'get_item', 'create_item', 'update_item', 'delete_item', 'get_items_permissions_check', 'get_item_permissions_check', 'create_item_permissions_check', 'update_item_permissions_check', 'delete_item_permissions_check']),
+    array_fill(0, 10, ['public', 1, 1]));
+eq('core terms controller: prepare_item_for_response($item, $request), get_collection_params()', [$member(WP_REST_Terms_Controller::class, 'prepare_item_for_response'), $member(WP_REST_Terms_Controller::class, 'get_collection_params')], [['public', 2, 2], ['public', 0, 0]]);
+eq('core term meta fields: constructed with ($taxonomy); get_value($object_id, $request)', [$member(WP_REST_Term_Meta_Fields::class, '__construct'), $member(WP_REST_Meta_Fields::class, 'get_value')], [['public', 1, 1], ['public', 2, 2]]);
+
 finish('taxonomy');

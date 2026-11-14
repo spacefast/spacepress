@@ -108,6 +108,34 @@ fn app_router_serves_pages_on_wordpress() {
     assert!(page("search").2.contains("page 3 q tea"));
     assert!(page("search defaults").2.contains("page 1 q none"));
     assert_eq!(seen["search noindex"], true);
+    // `<Pagination>`: numbered links that keep the page's other arguments (never a flash marker),
+    // page 1 without the argument, the current page marked and not a link, Previous and Next at
+    // the ends only, and long runs collapsed around the current page.
+    assert_eq!(
+        seen["pagination"],
+        serde_json::json!({
+            "label": "Pagination",
+            "items": [
+                "Previous /notes?q=tea&page=5 rel=prev",
+                "1 /notes?q=tea",
+                "…",
+                "4 /notes?q=tea&page=4",
+                "5 /notes?q=tea&page=5",
+                "6 current",
+                "7 /notes?q=tea&page=7",
+                "8 /notes?q=tea&page=8",
+                "…",
+                "12 /notes?q=tea&page=12",
+                "Next /notes?q=tea&page=7 rel=next",
+            ],
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["pagination first"],
+        serde_json::json!(["1", "2", "3", "…", "12", "Next"]),
+        "{seen}"
+    );
     // A route group adds no segment; an optional catch-all matches its own folder and below.
     assert!(page("group").2.contains("<h1>About</h1>"));
     assert!(page("docs index").2.contains(r#"<p class="docs">index</p>"#));
@@ -2111,6 +2139,39 @@ fn refuses_live_regions_it_cannot_name() {
         &dir,
         &[("first/app/page.tsx", &page("<Live id=\"Not Ok\"><p>x</p></Live>"))],
         "`<Live id>` is a literal id",
+        "first/app/page.tsx:3:",
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// `<Pagination>` without the numbers it needs, or with the wrong types, is a build error at the prop.
+#[test]
+fn refuses_pagination_without_its_numbers() {
+    let dir = std::env::temp_dir().join(format!("first-pagination-reject-{}", std::process::id()));
+    let page = |body: &str| {
+        format!(
+            "import {{ Pagination }} from \"first/app\";\nexport default function Home() {{\n  return {body};\n}}\n"
+        )
+    };
+    rejects(
+        &dir,
+        &[("first/app/page.tsx", &page("<Pagination page={1} />"))],
+        "`<Pagination>` needs `pages`",
+        "first/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[("first/app/page.tsx", &page("<Pagination page={\"2\"} pages={4} />"))],
+        "`<Pagination page>` takes a number",
+        "first/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/page.tsx",
+            &page("<Pagination page={1} pages={4} href=\"/x\" />"),
+        )],
+        "`<Pagination>` has no prop `href`",
         "first/app/page.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(dir);

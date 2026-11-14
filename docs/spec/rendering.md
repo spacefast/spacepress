@@ -231,7 +231,8 @@ Real-time co-editing is out of scope.
 
 `<Comments for>` (thread + form + moderation state; as built, see
 [the decision](../decisions/2026-11-14-comments.md)), `<SignIn>`,
-`<Search kind>`, `<Pagination>`, `<Menu name>`. They are written in the same
+`<Search kind>`, `<Pagination>` (as built: `page`, `pages`, `param?`; see
+[pages.md](../pages.md#a-page)), `<Menu name>`. They are written in the same
 TSX subset, so they are examples as well as product.
 
 ## 5. Markdown and llms.txt

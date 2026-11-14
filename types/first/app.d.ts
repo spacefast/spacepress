@@ -92,6 +92,12 @@ export declare function Comments(props: { for: { id: number }; className?: strin
  * place. `id` is a literal, unique on the page; it names the region to the server.
  */
 export declare function Live(props: { id: string; children?: JSX.Children }): JSX.Element;
+/**
+ * Numbered links to the other pages of a listing, as a `<nav>` that works without JavaScript:
+ * `<Pagination page={search.page} pages={Math.ceil(total / 20)} />`. Each link is this URL with
+ * only `param` (default `"page"`) changed; page 1 drops it. Many pages collapse around the current one.
+ */
+export declare function Pagination(props: { page: number; pages: number; param?: string; className?: string; "aria-label"?: string }): JSX.Element;
 /** A post body (block markup) rendered through `the_content`. */
 export declare function Content(props: { value: string | null | undefined }): JSX.Element;
 /** Trusted markup: a literal is placed as written; any other value goes through `wp_kses_post`. */

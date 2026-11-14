@@ -1,0 +1,30 @@
+.first-admin-screen {
+	display: grid;
+	gap: 16px;
+}
+.first-admin-screen__value {
+	white-space: pre-line;
+}
+.first-admin-screen__summary {
+	margin: 0;
+}
+.first-admin-screen__form {
+	display: grid;
+	gap: 16px;
+	max-width: 760px;
+}
+.first-admin-screen__confirm {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+}
+// Classic wp-admin: the component sits in wp-admin's `.wrap`, below its own title.
+.first-admin-screen--classic {
+	margin-top: 16px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	padding: 0 0 8px;
+	.dataviews-wrapper {
+		background: transparent;
+	}
+}

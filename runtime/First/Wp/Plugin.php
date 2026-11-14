@@ -517,9 +517,14 @@ final class Plugin
         Scf::registerFilters();
     }
 
+    /**
+     * The app's own wp-admin menu: the parent of its globals (SCF options pages) and of First Admin's
+     * table screens (runtime/admin/lib/screens.php), so it exists when the app has either.
+     */
     public function adminMenu(): void
     {
-        if ($this->schema->globals() === []) {
+        $tables = array_filter($this->schema->collections(), static fn (array $c): bool => !isset($c['wp']['postType']) && empty($c['auth']));
+        if ($this->schema->globals() === [] && ($tables === [] || !function_exists('first_admin_register_screen'))) {
             return;
         }
         $slug = 'first-' . $this->schema->name();

@@ -54,6 +54,14 @@ only admin and login lands there, as in WordPress.
 Editor asset URLs use WordPress's registered installation URL, including the
 subdirectory prefix.
 
+## Screens in both admins
+
+A screen declared once with `first_admin_register_screen()` appears in First
+Admin (`/wp-admin/new/screens/<id>`) and as a classic wp-admin page, rendered by
+the same component, with actions that run Abilities. First declares Schema
+versions and one list per `table()` kind this way. See
+[admin-screens.md](admin-screens.md).
+
 ## Source scope
 
 The admin includes the complete distributable next-admin / CIAB Admin plugin
@@ -174,6 +182,14 @@ may enable `ai_agent_enabled` through `first_admin_boot_context` and implement
 `window.wpOrchestratorAgent.ask`. Missing providers reject requests explicitly.
 See the package README for its events and slot contract. Hosted AI execution
 and hosted account invitations are not proven by local WordPress tests.
+
+The slot stays unwired on purpose. It needs a model that turns a prompt into
+answers and tool calls; First's agent surface (the site's MCP endpoint,
+`/wp-json/mcp/first-<app>`, and the app's Abilities) is the tools side of that,
+not a model. Wiring the two together would still need a hosted model and its
+credentials, which First does not ship. An agent outside the site (Claude Code,
+an MCP client) already uses that endpoint and the same Abilities the admin's
+screens run, under the same permissions; see `first mcp` and docs/agents.md.
 
 Telemetry calls use an inert compatibility adapter: First sends no upstream
 usage events. The three upstream dashboard demonstration widgets retain their

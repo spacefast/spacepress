@@ -34,3 +34,20 @@ The owner asked for the original admin, at its original URL, with the least
 change to upstream code. Mounting inside wp-admin removes First's own login
 check and its admin-bar shim, and makes the upstream bootstrap's URL handling
 apply unchanged.
+
+## Screens declared once (follow-up)
+
+A screen is a PHP declaration (`first_admin_register_screen()`): a DataViews
+list or a DataForm, with actions bound to Abilities. One React component renders
+it; First Admin mounts it on `/screens/<id>`, classic wp-admin on its own
+`add_submenu_page` page. The declaration is served by one REST route, and every
+action runs an Ability through core's run route, so the server is the only
+place access is decided. See [admin-screens.md](../admin-screens.md).
+
+Why PHP declarations and not TSX modules: the server must know a screen to
+register its wp-admin page and menu entry and to gate it, and the screens First
+needs are generated from the schema or from runtime state (schema versions,
+table kinds), which PHP has. A TSX module would need a build step per app and a
+second registry. DataViews/DataForm shapes and Abilities are the parts core is
+standardising (view config in 7.1, server-registered fields and actions next),
+so declarations stay portable to those APIs.

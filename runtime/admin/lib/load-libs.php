@@ -49,6 +49,9 @@ require_once __DIR__ . '/legacy-route.php';
 require_once __DIR__ . '/first-admin-menu.php';
 require_once __DIR__ . '/menu.php';
 
+// Screens declared once for both admins.
+require_once __DIR__ . '/screens.php';
+
 // Build output: registers the modules, routes and fields. Absent until the build is committed.
 if ( is_file( __DIR__ . '/../build/index.php' ) ) {
 	require_once __DIR__ . '/../build/index.php';

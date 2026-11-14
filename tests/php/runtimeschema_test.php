@@ -425,17 +425,12 @@ eq('schema rollback: a new version that reverses the given one', [$code, $rolled
 [$code, $bad] = $schemaCli(['diff', 'x']);
 eq('a bad argument says how to call it', [$code, $bad['error']['code'] ?? null], [1, 'invalid_command']);
 
-// The admin screen lists the versions with what each changed.
-$wp->actAs('admin');
-ob_start();
-\First\RuntimeSchema\Surfaces::page();
-$html = (string) ob_get_clean();
-$wp->actAs(null);
-check('the admin screen lists the versions, newest first, with each change in words',
-    str_contains($html, 'Added articles.byline (text)') && str_contains($html, 'Hid articles.teaserImage (its values are kept)') && str_contains($html, '(WP-CLI)')
-    && strpos($html, 'Hid articles.teaserImage') < strpos($html, 'Added articles.byline'), $html);
-check('it escapes what it shows', !str_contains($html, '<script'), $html);
-eq('the screen is under Tools for administrators', menu_page_url('first-schema-versions', false) !== '' || has_action('admin_menu', [\First\RuntimeSchema\Surfaces::class, 'menu']) !== false, true);
+// The versions screen (both admins) lists what schema-read returns: each version with who made it
+// and each change in words. The screens API itself is First Admin's; its WordPress tests cover both hosts.
+[, $read] = $run('schema-read', [], 'admin');
+$withByline = array_values(array_filter($read['versions'], static fn (array $v): bool => in_array('Added articles.byline (text)', $v['summary'] ?? [], true)));
+check('each version says what it changed, in words', $withByline !== [] && in_array('Hid articles.teaserImage (its values are kept)', array_merge(...array_map(static fn (array $v): array => $v['summary'], $read['versions'])), true), $read['versions']);
+check('and who made it', str_contains(implode(' ', array_column($read['versions'], 'by')), '(WP-CLI)'), array_column($read['versions'], 'by'));
 
 // ================================================================ a format this runtime doesn't know
 $state = get_option(Loader::option('rtschema'));

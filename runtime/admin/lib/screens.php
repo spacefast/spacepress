@@ -1,0 +1,360 @@
+<?php
+/**
+ * Screens declared once, shown natively in both admins.
+ *
+ * A screen is a declaration: a DataViews list or a DataForm, with actions bound to Abilities. One
+ * React component (`@first-admin/screens`) renders it. First Admin mounts that component on the
+ * route `/screens/<id>`; classic wp-admin mounts the same component on its own page
+ * (`add_menu_page` / `add_submenu_page`, slug `first-screen-<id>`), inside wp-admin's chrome and
+ * with `@wordpress/components` styling. Both read the declaration from the same REST route and
+ * run the same abilities, so the server decides access in both places: `capability` gates the
+ * page and the declaration, and each ability checks its own permission when it runs.
+ *
+ * ```php
+ * add_action( 'first_admin_screens', static function () {
+ *     first_admin_register_screen( 'schema-versions', array(
+ *         'title'      => 'Schema versions',
+ *         'capability' => 'manage_options',
+ *         'classic'    => array( 'parent' => 'tools.php' ),
+ *         'view'       => array(
+ *             'ability' => 'blog/schema-read',  // read-only ability that returns the items
+ *             'items'   => 'versions',           // where the list is in its output
+ *             'id'      => 'version',
+ *             'fields'  => array( array( 'id' => 'version', 'label' => 'Version', 'type' => 'integer' ) ),
+ *             'layout'  => array( 'type' => 'table', 'fields' => array( 'version' ) ),
+ *         ),
+ *         'actions'    => array( array( 'id' => 'rollback', 'label' => 'Roll back', 'ability' => 'blog/schema-apply', 'input' => array( 'version' => '{item.version}' ) ) ),
+ *     ) );
+ * } );
+ * ```
+ *
+ * @package First_Admin
+ */
+
+/** @var array<string, array> Registered screens by id. */
+global $first_admin_screens;
+$first_admin_screens = array();
+
+/**
+ * Declare one screen. Call it on `first_admin_screens`.
+ *
+ * @param string $id   Slug: lowercase letters, digits and hyphens.
+ * @param array  $args {
+ *     @type string $title       Page title (both admins).
+ *     @type string $description Optional line under the title.
+ *     @type string $capability  Who may open the screen and read its declaration. Default 'manage_options'.
+ *     @type array  $classic     Where wp-admin lists it: `parent` (a top-level menu slug such as
+ *                               'tools.php'; absent for a top-level page), `icon`, `position`. `false`
+ *                               keeps it out of wp-admin.
+ *     @type array  $menu        Where First Admin lists it: `parent` (a First Admin menu id), `icon`.
+ *                               `false` keeps it out of the sidebar (the route still works).
+ *     @type array  $view        A list: `ability` (read-only, returns the items), `input` (its
+ *                               input), `items` (dot path to the list in the output; absent when
+ *                               the output is the list), `id` (the item key, default 'id'),
+ *                               `fields` (DataViews fields: id, label, type, elements), `layout`
+ *                               (a DataViews view: type, fields, sort, perPage).
+ *     @type array  $form        A form instead of a list: `ability` (read-only, returns the values),
+ *                               `input`, `item` (dot path), `fields`, `layout` (a DataForm form),
+ *                               `submit` (an action, see below).
+ *     @type array  $actions     Item actions: `id`, `label`, `ability`, `input` (a map whose
+ *                               string values may name `{item.<field>}`), `destructive`,
+ *                               `confirm` (a sentence asked before it runs).
+ *     @type array  $data        Plain values the screen also shows (a summary line, for example).
+ * }
+ * @return bool Whether the screen was registered.
+ */
+function first_admin_register_screen( $id, $args ) {
+	global $first_admin_screens;
+	if ( ! is_string( $id ) || ! preg_match( '/^[a-z0-9][a-z0-9-]*$/', $id ) ) {
+		_doing_it_wrong( __FUNCTION__, 'A screen id is a slug: lowercase letters, digits and hyphens.', '1.0.0' );
+		return false;
+	}
+	if ( empty( $args['view'] ) === empty( $args['form'] ) ) {
+		_doing_it_wrong( __FUNCTION__, 'A screen has either a `view` (a list) or a `form`.', '1.0.0' );
+		return false;
+	}
+	$first_admin_screens[ $id ] = array_merge(
+		array(
+			'title'       => $id,
+			'description' => '',
+			'capability'  => 'manage_options',
+			'classic'     => array(),
+			'menu'        => array(),
+			'view'        => null,
+			'form'        => null,
+			'actions'     => array(),
+			'data'        => null,
+		),
+		$args,
+		array( 'id' => $id )
+	);
+	return true;
+}
+
+/**
+ * Every declared screen, collected once per request.
+ *
+ * @return array<string, array>
+ */
+function first_admin_screens() {
+	static $collected = false;
+	global $first_admin_screens;
+	if ( ! $collected && did_action( 'init' ) ) {
+		$collected = true;
+		/**
+		 * Declare screens with first_admin_register_screen().
+		 */
+		do_action( 'first_admin_screens' );
+	}
+	return $first_admin_screens;
+}
+
+/**
+ * The declaration as the component reads it: data resolved for the current user, nothing else.
+ *
+ * @param array $screen A registered screen.
+ * @return array
+ */
+function first_admin_screen_payload( $screen ) {
+	$data = $screen['data'];
+	if ( is_callable( $data ) ) {
+		$data = call_user_func( $data );
+	}
+	$form = $screen['form'];
+	if ( is_array( $form ) && isset( $form['submit'] ) ) {
+		$form['submit'] = first_admin_screen_action( $form['submit'] );
+	}
+	return array(
+		'id'          => $screen['id'],
+		'title'       => $screen['title'],
+		'description' => $screen['description'],
+		'view'        => $screen['view'],
+		'form'        => $form,
+		'actions'     => array_values( array_map( 'first_admin_screen_action', $screen['actions'] ) ),
+		'data'        => $data,
+	);
+}
+
+/**
+ * An action with the HTTP method core's run route expects for its ability (read-only GET,
+ * destructive and idempotent DELETE, otherwise POST), read from the ability's own annotations.
+ *
+ * @param array $action A declared action.
+ * @return array
+ */
+function first_admin_screen_action( $action ) {
+	$ability     = function_exists( 'wp_get_ability' ) && wp_has_ability( $action['ability'] ) ? wp_get_ability( $action['ability'] ) : null;
+	$annotations = $ability ? (array) $ability->get_meta_item( 'annotations', array() ) : array();
+	$method      = 'POST';
+	if ( ! empty( $annotations['readonly'] ) ) {
+		$method = 'GET';
+	} elseif ( ! empty( $annotations['destructive'] ) && ! empty( $annotations['idempotent'] ) ) {
+		$method = 'DELETE';
+	}
+	return $action + array( 'method' => $method );
+}
+
+/**
+ * `GET /wp-json/first-admin/v1/screens/<id>`: the declaration, for users who may open the screen.
+ * Both admins read it from here; neither embeds a copy.
+ */
+function first_admin_register_screen_routes() {
+	register_rest_route(
+		'first-admin/v1',
+		'/screens/(?P<id>[a-z0-9][a-z0-9-]*)',
+		array(
+			'methods'             => WP_REST_Server::READABLE,
+			'permission_callback' => static function ( $request ) {
+				$screen = first_admin_screens()[ $request['id'] ] ?? null;
+				if ( null === $screen ) {
+					return new WP_Error( 'rest_screen_not_found', __( 'No such screen.', 'first-admin' ), array( 'status' => 404 ) );
+				}
+				return current_user_can( $screen['capability'] )
+					? true
+					: new WP_Error( 'rest_forbidden', __( 'Sorry, you are not allowed to open this screen.', 'first-admin' ), array( 'status' => rest_authorization_required_code() ) );
+			},
+			'callback'            => static function ( $request ) {
+				return rest_ensure_response( first_admin_screen_payload( first_admin_screens()[ $request['id'] ] ) );
+			},
+		)
+	);
+}
+add_action( 'rest_api_init', 'first_admin_register_screen_routes' );
+
+/** The wp-admin page slug of a screen. */
+function first_admin_screen_page( $id ) {
+	return 'first-screen-' . $id;
+}
+
+/**
+ * The classic wp-admin pages: one per screen, under its declared parent.
+ */
+function first_admin_register_classic_screens() {
+	foreach ( first_admin_screens() as $id => $screen ) {
+		if ( false === $screen['classic'] ) {
+			continue;
+		}
+		$classic  = (array) $screen['classic'];
+		$render   = static function () use ( $id ) {
+			first_admin_render_classic_screen( $id );
+		};
+		$hook     = empty( $classic['parent'] )
+			? add_menu_page( $screen['title'], $screen['title'], $screen['capability'], first_admin_screen_page( $id ), $render, $classic['icon'] ?? 'dashicons-admin-generic', $classic['position'] ?? null )
+			: add_submenu_page( $classic['parent'], $screen['title'], $screen['title'], $screen['capability'], first_admin_screen_page( $id ), $render, $classic['position'] ?? null );
+		if ( $hook ) {
+			add_action( 'load-' . $hook, static fn () => first_admin_enqueue_classic_screen( $id ) );
+		}
+	}
+}
+add_action( 'admin_menu', 'first_admin_register_classic_screens' );
+
+/**
+ * The scripts a classic screen page needs: WordPress's own React packages, the import map and
+ * the `@first-admin/screens` module, which mounts the component into the page.
+ *
+ * @param string $id Screen id.
+ */
+function first_admin_enqueue_classic_screen( $id ) {
+	// The build registers its modules for the First Admin page; a classic page needs the same ones.
+	if ( function_exists( 'wp_plugin_build_apps_register_wp_modules' ) ) {
+		wp_plugin_build_apps_register_wp_modules();
+	}
+	wp_enqueue_style( 'wp-components' );
+	$asset = is_file( FIRST_ADMIN_PLUGIN_DIR . 'build/packages/screens/index.asset.php' )
+		? include FIRST_ADMIN_PLUGIN_DIR . 'build/packages/screens/index.asset.php'
+		: array( 'dependencies' => array(), 'version' => FIRST_ADMIN_VERSION );
+	// Classic globals the module expects (React, wp.data, wp.apiFetch with its nonce), then the module.
+	wp_register_script( 'first-admin-screen-prerequisites', '', $asset['dependencies'], $asset['version'], true );
+	wp_add_inline_script(
+		'first-admin-screen-prerequisites',
+		sprintf(
+			'import( "@first-admin/screens" ).then( ( mod ) => mod.mountClassic( document.getElementById( "first-admin-screen" ), %s ) );',
+			wp_json_encode( array( 'id' => $id, 'host' => 'classic' ), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES )
+		)
+	);
+	wp_enqueue_script( 'first-admin-screen-prerequisites' );
+	wp_enqueue_script_module( '@first-admin/screens' );
+	// The modules import `__i18n__`, which First Admin's import map scopes; print that map in place
+	// of core's (same position: before the modules).
+	remove_action( 'admin_print_footer_scripts', array( wp_script_modules(), 'print_import_map' ), 9 );
+	add_action( 'admin_print_footer_scripts', 'first_admin_print_import_map', 9 );
+}
+
+/**
+ * The classic page body: wp-admin's own `.wrap` and title, and the element the component fills.
+ *
+ * @param string $id Screen id.
+ */
+function first_admin_render_classic_screen( $id ) {
+	$screen = first_admin_screens()[ $id ] ?? null;
+	if ( null === $screen || ! current_user_can( $screen['capability'] ) ) {
+		wp_die( esc_html__( 'Sorry, you are not allowed to access this page.', 'first-admin' ), 403 );
+	}
+	echo '<div class="wrap first-admin-classic-screen"><h1 class="wp-heading-inline">' . esc_html( $screen['title'] ) . '</h1>';
+	if ( '' !== $screen['description'] ) {
+		echo '<p class="description">' . esc_html( $screen['description'] ) . '</p>';
+	}
+	echo '<div id="first-admin-screen" data-screen="' . esc_attr( $id ) . '"></div></div>';
+}
+
+/**
+ * First Admin: one route for every screen, and a sidebar entry for each one this user may open.
+ */
+add_action(
+	'first_admin_init',
+	static function () {
+		foreach ( first_admin_screens() as $id => $screen ) {
+			if ( false === $screen['menu'] || ! current_user_can( $screen['capability'] ) ) {
+				continue;
+			}
+			$menu = (array) $screen['menu'];
+			first_admin_register_menu_item(
+				'screen-' . $id,
+				array_filter(
+					array(
+						'to'     => '/screens/' . $id,
+						'label'  => $screen['title'],
+						'parent' => $menu['parent'] ?? null,
+						'icon'   => $menu['icon'] ?? null,
+					)
+				)
+			);
+		}
+	},
+	15
+);
+
+/**
+ * First's table kinds, declared as screens: each `table()` gets a list in both admins, through its
+ * `<app>/<kind>-list` ability, with delete bound to `<app>/<kind>-delete`. Collections keep
+ * wp-admin's own post screens (and First Admin's collection routes); this gives tables, which have
+ * no wp-admin screen of their own, one there. The app's access rules decide what each user sees
+ * and may do, in both admins.
+ */
+add_action(
+	'first_admin_screens',
+	static function () {
+		$plugin = class_exists( '\\First\\Wp\\Runtime' ) ? \First\Wp\Runtime::plugin() : null;
+		if ( null === $plugin ) {
+			return;
+		}
+		$app = $plugin->schema->name();
+		foreach ( $plugin->schema->collections() as $name => $kind ) {
+			$api = $kind['api'] ?? array();
+			if ( isset( $kind['wp']['postType'] ) || ! empty( $kind['auth'] ) || false === ( $api['list'] ?? true ) || false === ( $kind['agents'] ?? true ) ) {
+				continue;
+			}
+			$k       = \First\Wp\Abilities\Register::kebab( $name );
+			$fields  = array();
+			foreach ( $kind['columns'] as $column => $spec ) {
+				if ( ! empty( $spec['hidden'] ) ) {
+					continue;
+				}
+				$type     = $spec['type'] ?? 'text';
+				$fields[] = array_filter(
+					array(
+						'id'    => (string) $column,
+						'label' => $spec['label'] ?? (string) $column,
+						'type'  => 'integer' === $type ? 'integer' : ( 'boolean' === $type ? 'boolean' : ( in_array( $type, array( 'timestamp', 'date' ), true ) ? 'datetime' : null ) ),
+					)
+				);
+			}
+			$primary = (string) $kind['primaryKey'];
+			$title   = $kind['title'] ?? $primary;
+			$actions = array();
+			if ( false !== ( $api['delete'] ?? true ) ) {
+				$actions[] = array(
+					'id'          => 'delete',
+					'label'       => __( 'Delete', 'first-admin' ),
+					'ability'     => "$app/$k-delete",
+					'input'       => array( 'id' => '{item.' . $primary . '}' ),
+					'destructive' => true,
+					'confirm'     => __( 'Delete this row? This cannot be undone.', 'first-admin' ),
+				);
+			}
+			first_admin_register_screen(
+				'table-' . $name,
+				array(
+					'title'      => $kind['label'] ?? $name,
+					'capability' => 'read',
+					'classic'    => array( 'parent' => 'first-' . $app ),
+					// First Admin lists every kind under Collections already.
+					'menu'       => false,
+					'view'       => array(
+						'ability' => "$app/$k-list",
+						'input'   => array( 'limit' => 100 ),
+						'items'   => 'rows',
+						'id'      => $primary,
+						'fields'  => $fields,
+						'layout'  => array(
+							'type'       => 'table',
+							'titleField' => $title,
+							'fields'     => array_values( array_diff( array_column( $fields, 'id' ), array( $title ) ) ),
+						),
+					),
+					'actions'    => $actions,
+				)
+			);
+		}
+	}
+);

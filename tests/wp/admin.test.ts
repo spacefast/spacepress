@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { harness, wp } from "./env.ts";
+import { auth, harness, wp } from "./env.ts";
 
 const site = harness.url;
 const content = fileURLToPath(new URL("./.wp-content/", import.meta.url));
@@ -116,4 +116,37 @@ test("the earlier /first-admin/ address redirects to the same route at /wp-admin
     assert.equal(response.status, 301, from);
     assert.equal(response.headers.get("location"), `${site}${to}`, from);
   }
+});
+
+test("a declared screen: its declaration is served to users who may open it, with each action's method", async () => {
+  const anon = await fetch(`${site}/wp-json/first-admin/v1/screens/test-comments`);
+  assert.equal(anon.status, 401);
+  assert.equal((await fetch(`${site}/wp-json/first-admin/v1/screens/nope`, { headers: auth("admin") })).status, 404);
+  const response = await fetch(`${site}/wp-json/first-admin/v1/screens/test-comments`, { headers: auth("subscriber") });
+  assert.equal(response.status, 200);
+  const screen = await response.json();
+  assert.equal(screen.title, "Comment review");
+  assert.deepEqual(screen.view.fields.map((f: { id: string }) => f.id), ["name", "body", "approved"]);
+  // The method comes from the ability's annotations: an update runs over POST.
+  assert.deepEqual(screen.actions.map((a: { id: string; method: string }) => [a.id, a.method]), [["approve", "POST"]]);
+  assert.deepEqual(screen.data, ["Approving a comment publishes it."]);
+  // Each table kind is a screen too, with delete bound to the kind's delete ability; the method is
+  // whatever that ability's annotations make core's run route require.
+  const table = await (await fetch(`${site}/wp-json/first-admin/v1/screens/table-comments`, { headers: auth("admin") })).json();
+  assert.equal(table.view.ability, "blog/comments-list");
+  const annotations = JSON.parse(wp("eval", "echo wp_json_encode(wp_get_ability('blog/comments-delete')->get_meta_item('annotations'));"));
+  const method = annotations.destructive && annotations.idempotent ? "DELETE" : "POST";
+  assert.deepEqual(table.actions.map((a: { ability: string; method: string }) => [a.ability, a.method]), [["blog/comments-delete", method]]);
+  // Classic wp-admin registered a page for each, under the declared parent.
+  const pages = JSON.parse(wp("eval", `
+    wp_set_current_user(${harness.users.admin.id});
+    require_once ABSPATH . 'wp-admin/includes/admin.php';
+    set_current_screen('dashboard');
+    global $menu, $submenu, $_wp_submenu_nopriv;
+    $menu = []; $submenu = [];
+    do_action('admin_menu', '');
+    echo wp_json_encode(['comments' => array_column($submenu['edit-comments.php'] ?? [], 2), 'app' => array_column($submenu['first-blog'] ?? [], 2)]);
+  `));
+  assert.ok(pages.comments.includes("first-screen-test-comments"), JSON.stringify(pages));
+  assert.ok(pages.app.includes("first-screen-table-comments"), JSON.stringify(pages));
 });

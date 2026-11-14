@@ -64,6 +64,8 @@ pub struct Lock {
     fields: Vec<(bool, String, String, Json)>,
     /// Labels and field presentation that replace the declared ones: (is a global, kind, override).
     overrides: Vec<(bool, String, Map<String, Json>)>,
+    /// Kinds the lock adds that source doesn't declare: (is a global, kind).
+    added: Vec<(bool, String)>,
 }
 
 fn object<'a>(value: Option<&'a Json>, at: &str, what: &str) -> Result<Option<&'a Map<String, Json>>, Diag> {
@@ -138,6 +140,7 @@ pub fn declare(program: &Program, ev: &mut Evaluator<'_>, config: &Value) -> Res
     let mut out = Lock {
         version,
         hash: hash.to_string(),
+        added: Vec::new(),
         kinds: Vec::new(),
         fields: Vec::new(),
         overrides: Vec::new(),
@@ -203,11 +206,17 @@ pub fn declare(program: &Program, ev: &mut Evaluator<'_>, config: &Value) -> Res
             if declared {
                 out.kinds.push((global, name.clone()));
                 for (field, definition) in fields {
+                    // A collection's title and body are its post's own columns: source declares them
+                    // now, under whatever field it chose, so they are not fields to add.
+                    if !global && (field == "title" || field == "content") {
+                        continue;
+                    }
                     out.fields
                         .push((global, name.clone(), field.clone(), definition.clone()));
                 }
                 continue;
             }
+            out.added.push((global, name.clone()));
             let value = kind(ev, global, name, def, fields)?;
             let entries = match listed {
                 Some(entries @ Value::Object(_)) => entries,
@@ -429,10 +438,165 @@ pub fn apply(lock: Option<&Lock>, ev: &mut Evaluator<'_>, ext: &mut Extracted) -
             }
         }
     }
+    storage_collisions(lock, ext)?;
     ext.schema.runtime_schema = Some(RuntimeSchema {
         version: lock.version,
         hash: lock.hash.clone(),
     });
+    Ok(())
+}
+
+/// A key pattern: literal text, and `None` for one row number (one or more digits).
+type KeyPattern = Vec<Option<String>>;
+
+/// Where a field's values are stored (`StorageKeys::of` in the PHP runtime, the same rule): Secure
+/// Custom Fields keeps a field `seo` under `seo`, a group's sub-field `title` under `seo_title`, and a
+/// repeater or blocks field's rows under `<field>_<n>_<sub>` for every row number n.
+fn storage_keys(name: &str, column: &Column) -> Vec<KeyPattern> {
+    let mut out = vec![vec![Some(name.to_string())]];
+    let rows = matches!(column.ty, ColType::Repeater | ColType::Blocks);
+    let mut nested: Vec<(&String, &Column)> = column.fields.iter().flatten().collect();
+    for layout in column.layouts.iter().flat_map(|l| l.values()) {
+        nested.extend(layout.iter());
+    }
+    for (sub, definition) in nested {
+        for pattern in storage_keys(sub, definition) {
+            let mut key: KeyPattern = Vec::new();
+            let head = pattern[0].clone().expect("a key starts with text");
+            if rows {
+                key.extend([Some(format!("{name}_")), None, Some(format!("_{head}"))]);
+            } else {
+                key.push(Some(format!("{name}_{head}")));
+            }
+            key.extend(pattern.into_iter().skip(1));
+            out.push(joined(key));
+        }
+    }
+    out
+}
+
+fn joined(pattern: KeyPattern) -> KeyPattern {
+    let mut out: KeyPattern = Vec::new();
+    for part in pattern {
+        match (part, out.last_mut()) {
+            (Some(text), Some(Some(last))) => last.push_str(&text),
+            (part, _) => out.push(part),
+        }
+    }
+    out
+}
+
+/// A pattern as characters, `None` for a row number.
+fn chars(pattern: &KeyPattern) -> Vec<Option<char>> {
+    pattern
+        .iter()
+        .flat_map(|part| match part {
+            Some(text) => text.chars().map(Some).collect::<Vec<_>>(),
+            None => vec![None],
+        })
+        .collect()
+}
+
+/// One key both character patterns produce, or `None`. A row number matches one or more digits.
+fn overlap(a: &[Option<char>], b: &[Option<char>], so: &str) -> Option<String> {
+    match (a.first(), b.first()) {
+        (None, None) => Some(so.to_string()),
+        (None, _) | (_, None) => None,
+        (Some(None), Some(None)) => overlap(&a[1..], &b[1..], &format!("{so}0")),
+        (Some(None), Some(Some(_))) | (Some(Some(_)), Some(None)) => {
+            let number_first = a[0].is_none();
+            let (number, text) = if number_first { (a, b) } else { (b, a) };
+            let mut i = 0;
+            while i < text.len() && text[i].is_some_and(|c| c.is_ascii_digit()) {
+                let digits: String = text[..=i].iter().map(|c| c.expect("a digit")).collect();
+                let found = if number_first {
+                    overlap(&number[1..], &text[i + 1..], &format!("{so}{digits}"))
+                } else {
+                    overlap(&text[i + 1..], &number[1..], &format!("{so}{digits}"))
+                };
+                if found.is_some() {
+                    return found;
+                }
+                i += 1;
+            }
+            None
+        }
+        (Some(Some(x)), Some(Some(y))) if x == y => overlap(&a[1..], &b[1..], &format!("{so}{x}")),
+        _ => None,
+    }
+}
+
+fn shared(a: &[KeyPattern], b: &[KeyPattern]) -> Option<String> {
+    a.iter()
+        .flat_map(|left| b.iter().map(move |right| (left, right)))
+        .find_map(|(left, right)| overlap(&chars(left), &chars(right), ""))
+}
+
+fn prefixed(prefix: &str, keys: Vec<KeyPattern>) -> Vec<KeyPattern> {
+    keys.into_iter()
+        .map(|mut key| {
+            match key.first_mut() {
+                Some(Some(head)) => *head = format!("{prefix}{head}"),
+                _ => key.insert(0, Some(prefix.to_string())),
+            }
+            key
+        })
+        .collect()
+}
+
+/// A field the lock adds stores its values under keys no other field of its storage uses: a
+/// collection's meta keys, and the one option name space every global shares
+/// (`first_global_<global>_<field>`). Fields declared in source are checked against each other by
+/// nothing here: this rule is about what a runtime change may add.
+fn storage_collisions(lock: &Lock, ext: &Extracted) -> Result<(), Diag> {
+    let added = |global: bool, kind: &str, name: &str| {
+        lock.added.iter().any(|(g, k)| *g == global && k == kind)
+            || lock
+                .fields
+                .iter()
+                .any(|(g, k, f, _)| *g == global && k == kind && f == name)
+    };
+    let mut keys: Vec<(bool, String, String, Vec<KeyPattern>)> = Vec::new();
+    for (kind, c) in &ext.schema.collections {
+        for (name, column) in c.columns.iter().filter(|(name, _)| !c.is_core_column(name)) {
+            keys.push((false, kind.clone(), name.clone(), storage_keys(name, column)));
+        }
+    }
+    for (kind, g) in &ext.schema.globals {
+        for (name, column) in &g.fields {
+            keys.push((
+                true,
+                kind.clone(),
+                name.clone(),
+                prefixed(&format!("{kind}_"), storage_keys(name, column)),
+            ));
+        }
+    }
+    for (i, (global, kind, name, own)) in keys.iter().enumerate() {
+        if !added(*global, kind, name) {
+            continue;
+        }
+        for (j, (other_global, other_kind, other_name, theirs)) in keys.iter().enumerate() {
+            let same_storage = global == other_global && (*global || kind == other_kind);
+            // Each pair once; and two fields that both came from source can't collide here.
+            if i == j || !same_storage || (j < i && added(*other_global, other_kind, other_name)) {
+                continue;
+            }
+            if let Some(key) = shared(own, theirs) {
+                let place = if *global {
+                    format!("the option first_global_{key}")
+                } else {
+                    format!("the post meta key first_{key}")
+                };
+                return Err(refuse(
+                    &format!("{kind}.{name}"),
+                    format!(
+                        "`{name}` would store values under {place}, which {other_kind}.{other_name} already uses; give the field another name"
+                    ),
+                ));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -986,7 +1150,13 @@ mod tests {
         let lock = lock_adding(
             false,
             "articles",
-            &serde_json::json!({ "fields": { "rating": { "type": "integer" }, "subtitle": { "type": "text" } } }),
+            // What `first pull` writes for a collection the site added: its title, and here its body.
+            &serde_json::json!({ "fields": {
+                "title": { "type": "text", "notNull": true },
+                "body": { "type": "richText" },
+                "rating": { "type": "integer" },
+                "subtitle": { "type": "text" }
+            } }),
         );
         let schema = build(Some(&lock)).unwrap_or_else(|d| panic!("{}", d.message));
         let columns: Vec<&str> = schema.collections["articles"]
@@ -996,7 +1166,17 @@ mod tests {
             .collect();
         assert_eq!(
             columns,
-            ["id", "title", "body", "rating", "status", "publishedAt", "subtitle"]
+            [
+                "id",
+                "title",
+                "body",
+                "rating",
+                "seo",
+                "links",
+                "status",
+                "publishedAt",
+                "subtitle"
+            ]
         );
     }
 

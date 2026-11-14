@@ -702,7 +702,9 @@ test('restored native WordPress routes persist settings and published content an
     await page.goto(`${site}/wp-admin/new/types/post/list/all`);
     await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('native-post-list.png') });
-    await page.goto(`${site}/wp-admin/new/`);
+    // The dashboard's earlier address, /dashboard, goes to the home route.
+    await page.goto(`${site}/wp-admin/new/dashboard`);
+    await expect(page).toHaveURL(`${site}/wp-admin/new/`);
     await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Add widgets', exact: true }).click();
     await expect(page.getByRole('dialog').getByText('Quick Stats (example data)', { exact: true })).toBeVisible();

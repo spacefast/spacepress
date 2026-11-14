@@ -162,12 +162,13 @@ The package supports two different persistence strategies:
 
 ### Automatic Persistence Keys
 
-Preferences are saved using unique keys based on entity information. View settings persist globally across all tabs for the same entity:
+Preferences are saved by `@wordpress/views` under a key per entity and tab, and only what
+differs from the default view is saved:
 
--   **Pattern**: `dataviews-{kind}-{name}`
+-   **Pattern**: `dataviews-{kind}-{name}-{slug}`
 -   **Examples**:
-    -   `dataviews-taxonomy-category` (shared across all category tabs)
-    -   `dataviews-postType-post` (shared across all post status tabs)
+    -   `dataviews-taxonomy-category-all`
+    -   `dataviews-postType-post-drafts` (each post status tab keeps its own)
 
 ### Modification Detection
 

@@ -108,7 +108,7 @@ packages instead of the copies the upstream admin carried:
 
 | Was | Now | How it loads |
 |---|---|---|
-| `packages/theme` (`@first-admin/theme`) | `@wordpress/theme` | WordPress 7.1's `wp-theme` script; `useThemeProviderStyles` is its private API, unlocked as core's packages do |
+| `packages/theme` (`@first-admin/theme`) | `@wordpress/theme` | WordPress 7.1's `wp-theme` script; `useThemeProviderStyles` is its private API, unlocked as core's packages do. WordPress 7.1 marks that private API deprecated (removal planned for 7.3), so the AI panel and the editor settings need a replacement before First supports 7.3 |
 | `packages/views`: `useView`, `loadView`, the view types and preference keys | `@wordpress/views` | bundled into the admin (WordPress 7.1 has no `wp-views` script) |
 | `packages/views`: `useViewConfig`, the `DataViews` layout wrapper | stays First's | `useViewConfig` reads First Admin's own fields (tabs, quick and add forms, labels, actions) from `/first-admin/v1/view-config`, which core's endpoint doesn't serve |
 | `packages/wp-build` | stays for now | `@wordpress/build` targets WordPress core's admin boot and a newer `@wordpress/theme` than 7.1 ships; it moves with First Admin onto core's boot |
@@ -124,14 +124,12 @@ page size) under `dataviews-<kind>-<name>-<tab>` where the copy used
 Layouts saved before this change are not read: every list opens on its default
 layout once, then saves under the new key. Nothing is migrated.
 
-The seven lists that change (twelve call sites: each list and, for most, its
-route loader), and how:
+The six lists that change, and how:
 
 | List | Route | What changes |
 |---|---|---|
 | Users | `/users`, `/users/list/<role>` | each role tab keeps its own layout; the role filter is the tab's and is never saved |
 | Posts and pages (each post type) | `/types/<type>/list/<tab>` | each status tab keeps its own layout; the tab's status filter is never saved |
-| Media | `/media` | layout saved under `all` |
 | Plugins | `/plugins/list/<tab>` | each tab (all, active, inactive, …) keeps its own layout |
 | Categories, tags and other taxonomies | `/types/<type>/taxonomies/<taxonomy>` | layout saved under `all` |
 | Themes | `/design/themes` | layout saved under `all` |

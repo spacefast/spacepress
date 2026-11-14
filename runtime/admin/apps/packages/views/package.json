@@ -16,7 +16,8 @@
 		"@first-admin/dataviews": "workspace:*",
 		"@first-admin/design-system": "workspace:*",
 		"@wordpress/views": "catalog:",
-		"@wordpress/data": "catalog:"
+		"@wordpress/data": "catalog:",
+		"@wordpress/element": "catalog:"
 	},
 	"license": "GPL-2.0-or-later"
 }

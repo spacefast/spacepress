@@ -6669,17 +6669,17 @@
       "source": "packages/views/README.md",
       "sha256": "a40b9d9e986abdf08bf5a1d36744d2f47ad5736572e3df22456f91c14fd1b6b7",
       "path": "apps/packages/views/README.md",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "8763b4d34ef9661e3ea2420defbd5cda03d8bee4ff8b8d51ab3756e21ff7e8f6",
+      "adaptation": "persistence keys describe @wordpress/views (per tab)",
+      "adaptedSha256": "46ee2a656954fac95acc84a466ac7c4b08d036650d34ee61d507459356729864",
       "normalizedSha256": "8763b4d34ef9661e3ea2420defbd5cda03d8bee4ff8b8d51ab3756e21ff7e8f6",
-      "retainedSourcePath": "apps/packages/views/README.md"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/views/README.md"
     },
     {
       "source": "packages/views/package.json",
       "sha256": "c07997b46b21f98b13b3f793c39b92aaecc2cc3c00fd19f1cb3f6d38300394df",
       "path": "apps/packages/views/package.json",
       "adaptation": "pinned dependency catalog and First module/route integration",
-      "adaptedSha256": "62fbd9e86cc6f0542249cc0e0cfd18e5012d6616a9f6bdf3795084156a7a6fb3",
+      "adaptedSha256": "d7b07b3ea2934967c80e6cbc270a7c2483e9be52325b8ea981d054bf833cfedc",
       "normalizedSha256": "4d84befb863936951a012a8389d2391351e56a8ee4af65ac9c58e154c9671a56",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/views/package.json"
     },
@@ -6697,7 +6697,7 @@
       "sha256": "02e03b6a859c62b28b1355ca7ca578e1efd79914b5e1d43343689b11900075fb",
       "path": "apps/packages/views/src/index.ts",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "e3645d8c1d382aabdbed6f269035cc27497f443a023f35ffe42b89749931ef0f",
+      "adaptedSha256": "cd07a22787f5fe428cce3dc38e754f701feb84594b016389ae5e3ae63f97cdbf",
       "normalizedSha256": "02e03b6a859c62b28b1355ca7ca578e1efd79914b5e1d43343689b11900075fb",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/views/src/index.ts"
     },

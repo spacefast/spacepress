@@ -120,6 +120,10 @@ jobs:
       # Every app under examples/ compiles (files-sdk, a probe of what doesn't yet, is left out).
       - if: matrix.shard == 'rest'
         run: scripts/check-examples.sh target/debug/first
+      # Every example's committed first/_generated/ (client, migrations, openapi.json) is what this
+      # compiler builds. runtime/client/committed.test.ts checks only the copied client files.
+      - if: matrix.shard == 'rest'
+        run: scripts/check-generated.sh target/debug/first
       - name: Zero 0.8 census tool
         if: matrix.shard == 'rest'
         env:

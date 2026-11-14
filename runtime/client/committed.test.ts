@@ -1,6 +1,8 @@
 // Every committed client (`first/_generated/client/` in the repository, examples included) holds
 // the files `first build` copies from runtime/client/ unchanged. A change to the runtime that
 // doesn't rebuild every committed client fails here, not later in an app that imports a stale copy.
+// This needs no build, so it runs on every PR. scripts/check-generated.sh (the rust job's `rest`
+// shard) builds each example and compares everything under first/_generated/, client.js included.
 //
 // Run: node --test runtime/client/committed.test.ts
 // Fix: `first build` in each project this names, and commit its first/_generated/client/.

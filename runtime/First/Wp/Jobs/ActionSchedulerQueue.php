@@ -93,10 +93,10 @@ final class ActionSchedulerQueue
     }
 
     /**
-     * Once per site and app: create First's Action Scheduler groups outside any transaction, and give
-     * a job that a runtime before this one left in `first__outbox` (committed, not yet handed to Action
-     * Scheduler) its action. The outbox rows themselves stay: data is never deleted automatically.
-     * Runs again for a new app name, and on the next request after a failure.
+     * Once per site and app: create First's Action Scheduler groups outside any transaction, then give
+     * every waiting job that has no action one (Runner::recover), which covers the jobs a runtime before
+     * this one left in `first__outbox`. The outbox rows themselves stay: data is never deleted
+     * automatically. Runs again for a new app name, and on the next request after a failure.
      */
     private static function prepare(): void
     {
@@ -121,7 +121,10 @@ final class ActionSchedulerQueue
                     return;
                 }
                 self::createGroups($connection, $groups);
-                self::moveOutbox($plugin);
+                // Jobs a runtime before this one left in `first__outbox` (committed, never handed to
+                // Action Scheduler) get their action now; the daily maintenance repeats the sweep.
+                $plugin->app();
+                Runner::recover();
                 update_option(self::PREPARED, $done, true); // read on every request
             });
         } catch (\Throwable $e) {
@@ -144,34 +147,20 @@ final class ActionSchedulerQueue
         }
     }
 
-    /**
-     * A runtime before this one wrote each job's ticket to `first__outbox` and handed it to Action
-     * Scheduler after commit; a crash in between left the ticket. Each pending job with a ticket and no
-     * pending or running action gets one, scheduled for its runAt. The tickets are left as they are.
-     */
-    private static function moveOutbox(\First\Wp\Plugin $plugin): void
-    {
-        global $wpdb;
-        $connection = $plugin->connection();
-        if ($connection->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$wpdb->prefix . 'first__outbox']) === []) {
-            return;
-        }
-        $plugin->app();
-        $db = \First\db();
-        foreach (Storage::run('SELECT "id" FROM {outbox} ORDER BY "createdAt", "id"') as $ticket) {
-            $id = (string) $ticket['id'];
-            $db->transaction(static function () use ($id): void {
-                $job = Storage::run('SELECT "runAt" FROM {jobs} WHERE "id" = ? AND "state" = \'pending\'' . Storage::forUpdate(), [$id])[0] ?? null;
-                if ($job !== null && !as_has_scheduled_action(self::HOOK, ['id' => $id])) {
-                    self::schedule($id, (string) $job['runAt']);
-                }
-            });
-        }
-    }
-
     /** One delivery of job $id at $runAtIso (never in the past), in the caller's transaction when one is open. */
     public static function schedule(string $id, string $runAtIso): void
     {
+        if (!\ActionScheduler::is_initialized()) {
+            // Before `init` (a wp-hooks handler at priority 0): Action Scheduler can't write yet. The job
+            // row commits; its action follows once Action Scheduler is ready, and if this request dies
+            // first, Runner::recover gives it one.
+            \First\Extensions::afterCommit(static function () use ($id, $runAtIso): void {
+                \ActionScheduler::is_initialized() ? self::schedule($id, $runAtIso)
+                    : add_action('action_scheduler_init', static fn () => self::schedule($id, $runAtIso));
+            });
+
+            return;
+        }
         $app = Runtime::plugin()?->schema->name() ?? 'app';
         $at = (int) floor(\First\Js::date($runAtIso) / 1000);
         if (as_schedule_single_action(max($at, time()), self::HOOK, ['id' => $id], 'first-' . $app, false) === 0) {

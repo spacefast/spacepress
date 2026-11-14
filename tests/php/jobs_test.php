@@ -213,6 +213,44 @@ $wp->exec("UPDATE {prefix}first__jobs SET `state` = 'running', `lockedAt` = ? WH
 eq('maintain re-queues a stuck job', Runner::maintain()['requeued'], 1);
 eq('the stuck job is pending again, with a delivery', [$job($failing['id'])['state'], $delivery($failing['id']) !== null], ['pending', true]);
 
+// ---- a waiting job with no action gets one, once ---------------------------------------------------------------
+// Only a job from before this runtime, one queued before Action Scheduler was ready in a request that died,
+// or one whose action someone deleted can be left without one; daily maintenance gives it its action.
+$orphan = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => $pid], ['delay' => 120]));
+as_unschedule_all_actions('first_job', ['id' => $orphan['id']]);
+eq('maintain gives a waiting job without an action one, at its runAt', [Runner::maintain()['recovered'], $delivery($orphan['id'])], [1, gmdate('Y-m-d H:i:s', max(time(), intdiv((int) \First\Js::date($job($orphan['id'])['runAt']), 1000)))]);
+eq('and leaves it alone once it has one', [Runner::recover(), $actionsFor($orphan['id'])], [0, 1]);
+$wp->exec("UPDATE {prefix}first__jobs SET `state` = 'dead', `dedupe` = NULL WHERE `id` = ?", [$orphan['id']]);
+as_unschedule_all_actions('first_job', ['id' => $orphan['id']]);
+
+// ---- queued before Action Scheduler is ready (a wp-hooks `init` handler at priority 0) ----------------------------
+$ready = new \ReflectionProperty(\ActionScheduler::class, 'data_store_initialized');
+$ready->setValue(null, false);
+try {
+    $early = $db->transaction(static fn () => Jobs::enqueue('notify', ['postId' => $pid]));
+    eq('before Action Scheduler is ready, the write commits and its job waits', [$job($early['id'])['state'] ?? null, $actionsFor($early['id'])], ['pending', 0]);
+} finally {
+    $ready->setValue(null, true);
+}
+do_action('action_scheduler_init');
+eq('then gets its action once Action Scheduler is ready', $actionsFor($early['id']), 1);
+$wp->exec("UPDATE {prefix}first__jobs SET `state` = 'dead', `dedupe` = NULL WHERE `id` = ?", [$early['id']]);
+as_unschedule_all_actions('first_job', ['id' => $early['id']]);
+
+// ---- a connection wpdb replaced mid-transaction never commits ------------------------------------------------------
+// wpdb::check_connection() leaves a new handle after a reconnect. The stand-in: the transaction began on
+// another handle, so this one looks like a replacement (the database underneath is the same).
+$handle = new \ReflectionProperty(\First\Wp\Connection::class, 'handle');
+$refused = null;
+try {
+    $db->transaction(static function () use ($handle): void {
+        $handle->setValue(\First\Wp\Plugin::instance()->connection(), new \stdClass());
+    });
+} catch (\RuntimeException $e) {
+    $refused = $e->getMessage();
+}
+check('a transaction whose connection was replaced refuses to commit', str_contains((string) $refused, 'connection was lost'), $refused);
+
 // Both registered handler contracts consume the same validated, persisted JSON payload.
 (static function () use ($schema, $db): void {
     eval('namespace FirstApp; function refs__job($input, $ctx) { $GLOBALS["refsJob"] = [is_object($input), \First\Js::jsonStringify($input->p["meta"]), $input->p["info"] instanceof \First\JsObject, $input->p["rows"]->a[0] instanceof \First\JsObject]; } function refs__jobValidate($value, $ctx) { return $ctx->p["user"] !== null || "enqueue requires a user"; }');

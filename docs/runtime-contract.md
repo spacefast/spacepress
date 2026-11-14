@@ -299,11 +299,18 @@ transaction runs on (`Wp\Connection`), so the action commits or rolls back with
 the row, and a crash after the commit loses no job. Action Scheduler caches the
 id of each group it creates in the object cache, which a rollback doesn't undo,
 so First creates its groups (`first`, `first-<app>`) at `action_scheduler_init`,
-outside any transaction (`Wp\Jobs\ActionSchedulerQueue::prepare`). The
-`first__outbox` table, where runtimes before this one kept each job's ticket
-until after commit, is no longer written. The same step gives each pending job
-still holding a ticket there its action, once, and leaves the table and its rows
-in place (`tests/php/jobs_transaction_cases.php`, run on SQLite and MariaDB).
+outside any transaction (`Wp\Jobs\ActionSchedulerQueue::prepare`). Action
+Scheduler's actions and groups tables must be InnoDB, like First's own (the
+storage check refuses another engine). If wpdb reconnects during a transaction
+(it retries a query after a lost connection), the transaction refuses to commit.
+A job queued before Action Scheduler is ready (a `wp-hooks` handler on `init`
+at priority 0) commits without an action and gets one once Action Scheduler is
+ready. `Jobs\Runner::recover`, run when the runtime prepares a site and by the
+daily maintenance action, gives every waiting job that has no pending action
+one. That covers a request that died before Action Scheduler was ready, and the
+jobs that runtimes before this one left in `first__outbox`. That table, where
+each job's ticket waited until after commit, is no longer written; its rows
+stay (`tests/php/jobs_transaction_cases.php`, run on SQLite and MariaDB).
 
 ## Validation and coercion (input → stored)
 

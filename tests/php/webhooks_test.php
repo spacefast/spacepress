@@ -91,6 +91,11 @@ $functions = file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php'
     {
         return ['n' => $input->p['n'] ?? null, 'user' => $ctx->p['user']];
     }
+
+    function route__woo(\First\JsObject $req, $ctx)
+    {
+        return ['status' => 202, 'body' => 'order ' . json_decode($req->p['body'], true)['id']];
+    }
     PHP;
 
 $wp = wpSite('webhooks', ['schema' => $schema, 'functions' => $functions, 'users' => ['ann' => 'admin']]);
@@ -157,6 +162,37 @@ eq('a missing header is 401 invalid_signature', $call('inboundZero', $raw, [])[1
 eq('a signature over different bytes is rejected', $call('inboundZero', '{"n": 7}', ['first-signature' => $zeroSig($now)])[0], 401);
 eq('hmac-sha256 compares hex(hmac(secret, raw body))', $call('inboundHmac', $raw, ['x-hub-signature' => hash_hmac('sha256', $raw, 'inbound_test')])[0], 200);
 eq('hmac-sha256 rejects a forged digest', $call('inboundHmac', $raw, ['x-hub-signature' => hash_hmac('sha256', $raw, 'nope')])[1]['code'] ?? null, 'invalid_signature');
+// WooCommerce signs base64(hmac_sha256(raw body, secret)) in X-WC-Webhook-Signature
+// (woocommerce/includes/class-wc-webhook.php generate_signature()); Shopify does the same.
+// The expected value was computed outside PHP:
+//   printf %s "$body" | openssl dgst -sha256 -hmac inbound_test -binary | base64
+$woo = '{"id":727,"parent_id":0,"status":"processing","currency":"USD","total":"29.35","billing":{"first_name":"John","last_name":"Doe"},'
+    . '"line_items":[{"id":315,"name":"Woo Single #1","product_id":93,"quantity":2,"total":"6.00"}]}';
+$wooSig = 'vL/fGCs5FfTAzsn71/GOxwMLlPtJdIRFOjTTJQT01nY=';
+eq('the fixture signature is what WooCommerce\'s generate_signature() produces', base64_encode(hash_hmac('sha256', $woo, 'inbound_test', true)), $wooSig);
+// A store delivers to a route handler (first/app/webhooks/woo/route.ts) that exports this signature.
+$route = ['name' => 'webhooks/woo', 'params' => [], 'route' => ['handler' => 'route__woo', 'access' => ['allow' => false],
+    'signature' => ['secret' => ['env' => 'FIRST_INBOUND_SECRET'], 'header' => 'x-wc-webhook-signature', 'scheme' => 'hmac-sha256']]];
+$hook = static function (string $body, string $signature) use ($wp, $route): array {
+    [$status, , $out] = $wp->app()->serveRoute($route, 'POST', '/webhooks/woo', '', $body,
+        ['X-WC-Webhook-Topic' => 'order.created', 'X-WC-Webhook-Signature' => $signature], null, 'https://example.test/webhooks/woo');
+
+    return [$status, $status === 401 ? (json_decode($out, true)['code'] ?? $out) : $out];
+};
+eq('hmac-sha256 accepts a WooCommerce base64 signature of the raw body', $hook($woo, $wooSig), [202, 'order 727']);
+eq('base64 without its padding is the same digest', $hook($woo, rtrim($wooSig, '='))[0], 202);
+eq('hex is still accepted, in either case and with a sha256= prefix (GitHub)',
+    [$call('inboundHmac', $raw, ['x-hub-signature' => strtoupper(hash_hmac('sha256', $raw, 'inbound_test'))])[0],
+        $call('inboundHmac', $raw, ['x-hub-signature' => 'sha256=' . hash_hmac('sha256', $raw, 'inbound_test')])[0]], [200, 200]);
+eq('a base64 signature over other bytes is rejected', $hook($woo . ' ', $wooSig), [401, 'invalid_signature']);
+eq('a base64 signature with another secret is rejected',
+    $hook($woo, base64_encode(hash_hmac('sha256', $woo, 'nope', true))), [401, 'invalid_signature']);
+eq('a truncated, url-safe, SHA-1 or base64-of-hex signature is rejected', [
+    $hook($woo, substr($wooSig, 0, 40))[0],
+    $hook($woo, strtr($wooSig, '+/', '-_'))[0],
+    $hook($woo, base64_encode(hash_hmac('sha1', $woo, 'inbound_test', true)))[0],
+    $hook($woo, base64_encode(hash_hmac('sha256', $woo, 'inbound_test')))[0],
+], [401, 401, 401, 401]);
 $keyed = ['first-signature' => $zeroSig($now), 'idempotency-key' => 'evt-1'];
 [$s1, $anon] = $call('inboundIdem', $raw, $keyed);
 [$s2, $asAdmin] = $call('inboundIdem', $raw, $keyed, 'ann');

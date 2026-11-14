@@ -556,6 +556,10 @@ The v2 app plugin registers these. A WordPress without a First app is unchanged.
 - **HTML pages** with a twin send
   `Link: <twin>; rel="alternate"; type="text/markdown"` and the matching
   `<link>` in `wp_head`.
+- **WordPress/ai's Markdown Feeds.** The app plugin adds itself (its plugin
+  file and `Name` header) to the `wpai_markdown_feeds_conflicting_plugins`
+  list, so a site that also turns on that experiment is told in its settings
+  that two plugins answer Markdown requests and print Markdown `<link>` tags.
 - **`/llms.txt`** and **`Content-Signal`** (on HTML pages, twins,
   `/llms.txt`, and a `robots.txt` line). The `first_content_signal` filter
   changes the value; `''` sends none.

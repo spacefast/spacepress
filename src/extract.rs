@@ -3585,6 +3585,7 @@ mod legacy {
             entry.methods.insert(method, String::new());
             table.files.insert(file.clone(), entry);
             table.routes.push(AppRoute {
+                explicit_id: None,
                 id: name,
                 pattern: path,
                 page: None,

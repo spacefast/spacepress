@@ -26,7 +26,7 @@ final class Hardening
     /** In the order spec.md §6 lists them. */
     public const SWITCHES = ['xmlrpc', 'pings', 'emoji', 'fileEditors', 'pluginAndThemeInstalls', 'autoUpdates', 'customizer', 'comments', 'schemaLock', 'authors', 'loginErrors', 'permalinks', 'timezone', 'blockTheme'];
 
-    /** Error codes that differ between an account that exists and one that doesn't. */
+    /** Error codes that differ between an account that exists and one that doesn't (other plugins' sign-ins add them too). */
     private const ACCOUNT_CODES = ['invalid_username', 'invalid_email', 'incorrect_password', 'invalidcombo'];
     /** Lost-password errors that only an unknown account, or only a known one, produces. */
     private const RESET_CODES = ['invalid_email', 'invalidcombo', 'no_password_reset', 'retrieve_password_email_failure'];
@@ -196,10 +196,10 @@ final class Hardening
      */
 
     /**
-     * Signing in doesn't tell a visitor which accounts exist. wp-login.php shows one message for an
-     * unknown username or email and for a wrong password; lost-password answers "check your email"
-     * whether or not the account exists; an unknown user costs one password hash, as a known one does;
-     * and a REST request with an application password for an unknown user gets the wrong-password error.
+     * Signing in doesn't tell a visitor which accounts exist. An unknown username or email is a wrong
+     * password (`incorrect_password`, one message, the typed username kept) and costs one password
+     * hash, as a known one does; lost-password answers "check your email" whether or not the account
+     * exists; and a REST application password for an unknown user gets the wrong-password error.
      */
     private static function loginErrors(): void
     {
@@ -235,26 +235,50 @@ final class Hardening
             }
             return $errors;
         }, 99);
-        // Core answers an unknown user without hashing anything, so it answers sooner than a wrong
-        // password: hash this one once, with the site's algorithm and cost.
+        // Core checks the password twice when the login is both a username and that same user's email
+        // (wp_authenticate_username_password, then wp_authenticate_email_password): check it once.
+        remove_filter('authenticate', 'wp_authenticate_email_password', 20);
         add_filter('authenticate', static function (mixed $user, mixed $login, mixed $password): mixed {
-            if ($user instanceof \WP_Error && is_string($password) && $password !== ''
-                && array_intersect($user->get_error_codes(), ['invalid_username', 'invalid_email']) !== []) {
+            if ($user instanceof \WP_Error && $user->get_error_code() === 'incorrect_password' && is_string($login)
+                && ($byLogin = get_user_by('login', $login)) && ($byEmail = get_user_by('email', $login)) && $byLogin->ID === $byEmail->ID) {
+                return $user;
+            }
+            return wp_authenticate_email_password($user, $login, $password);
+        }, 20, 3);
+        // In core's order: the email check before the application-password one.
+        if (remove_filter('authenticate', 'wp_authenticate_application_password', 20)) {
+            add_filter('authenticate', 'wp_authenticate_application_password', 20, 3);
+        }
+        // An unknown user is a wrong password: one code for every caller (wp-login.php refills the
+        // username only for `incorrect_password`), and, since core answers an unknown user without
+        // hashing anything, one password hash at the site's algorithm and cost, as a wrong password costs.
+        add_filter('authenticate', static function (mixed $user, mixed $login, mixed $password): mixed {
+            if (!$user instanceof \WP_Error || array_intersect($user->get_error_codes(), ['invalid_username', 'invalid_email']) === []) {
+                return $user;
+            }
+            if (is_string($password) && $password !== '') {
                 wp_hash_password($password);
             }
-            return $user;
+            return new \WP_Error('incorrect_password', __('<strong>Error:</strong> Invalid username, email address or incorrect password.'));
         }, PHP_INT_MAX, 3);
-        // REST answers an application password's error code as is (rest_application_password_check_errors).
+        // REST answers an application password's error code as is (rest_application_password_check_errors):
+        // an unknown user, or a known one who may not use application passwords, answers as a wrong password,
+        // or as "not available" for everyone when the site turned them off.
         add_action('application_password_failed_authentication', static function (mixed $error): void {
             if (!$error instanceof \WP_Error) {
                 return;
             }
-            $unknown = array_intersect($error->get_error_codes(), ['invalid_username', 'invalid_email']);
-            foreach ($unknown as $code) {
+            $leaks = array_intersect($error->get_error_codes(), ['invalid_username', 'invalid_email', 'application_passwords_disabled_for_user']);
+            foreach ($leaks as $code) {
                 $error->remove($code);
             }
-            if ($unknown !== []) {
+            if ($leaks === []) {
+                return;
+            }
+            if (wp_is_application_passwords_available()) {
                 $error->add('incorrect_password', __('The provided password is an invalid application password.'));
+            } elseif (!$error->has_errors()) {
+                $error->add('application_passwords_disabled', __('Application passwords are not available.'));
             }
         }, 0);
     }

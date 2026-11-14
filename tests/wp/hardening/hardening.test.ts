@@ -210,6 +210,8 @@ test("loginErrors: wp-login.php answers an unknown account and a wrong password 
     assert.equal(status, 200, log);
     assert.ok(body.includes(GENERIC_LOGIN_ERROR), `${log}: ${body.match(/id="login_error"[\s\S]{0,300}/)?.[0]}`);
     assert.doesNotMatch(body, /is not registered|Unknown email address|The password you entered for/, log);
+    // wp-login.php refills the username only after a wrong password: it is refilled for every account.
+    assert.equal(body.match(/id="user_login"[^>]*value="([^"]*)"/)?.[1], log, `${log}: the typed username is kept`);
   }
 });
 

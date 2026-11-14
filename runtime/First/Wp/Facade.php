@@ -796,15 +796,23 @@ final class Facade
             throw HttpError::notFound('No such revisions route');
         }
         \First\App::allow($method, ['POST']);
-        $patch = [];
-        foreach ($spec['columns'] as $name => $col) {
-            if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !isset($col['onUpdate']) && array_key_exists($name, $row)) {
-                $patch[(string) $name] = $row[$name];
+        // The restore is First's update from the revision as stored, as the viewer (Db::restoreRevision):
+        // fields hidden from the viewer are restored too, and never returned to it. The answer is the
+        // row as core's item read gives it to this viewer, so it is masked like every other read.
+        // Core has no REST restore route; wp-admin restores with wp_restore_post_revision, and this
+        // write is wp_update_post too (WpPostStore), so WordPress's own save hooks fire as for it.
+        $db->transaction(static function () use ($db, $collection, $id, $rid, $viewer): void {
+            $previous = $db->actor();
+            $db->setActor($viewer->user);
+            try {
+                $db->restoreRevision($collection, $id, $rid, $viewer);
+            } finally {
+                $db->setActor($previous);
             }
-        }
-        $updated = self::dispatch('POST', "{$kind['route']}/" . rawurlencode((string) $id), self::context($kind), Kinds::input($kind, $patch));
+        });
+        $restored = self::dispatch('GET', "{$kind['route']}/" . rawurlencode((string) $id), self::context($kind));
 
-        return self::json(200, ['data' => Kinds::row($kind, $updated)]);
+        return self::json(200, ['data' => Kinds::row($kind, $restored)]);
     }
 
     private static function isoGmt(string $gmt): string

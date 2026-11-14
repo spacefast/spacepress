@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { api, core, http, ok, problem, qs, run, wp } from "./env.ts";
+import { api, core, harness, http, ok, problem, qs, run, wp } from "./env.ts";
 
 /** Polylang's view of a post: [language slug, translations]. */
 function polylang(id: number): [string, Record<string, number>] {
@@ -218,4 +218,17 @@ test("sync pulls a localized collection as one record per locale, and a pushed t
     body: { expect: "absent", record: { uid: soloUid, fields: { title: `Solo ${run}`, locale: "en", translations: {} }, body: "Alone." } },
   });
   assert.equal(solo.status, 201, JSON.stringify(solo.json));
+});
+
+test("a core create with `locale` keeps core's own post fields and other plugins' meta", async () => {
+  const author = harness.users.author.id;
+  const made = await http("POST", `${core}/first_tours`, { as: "editor", body: {
+    title: `Core fields ${run}`, status: "publish", locale: "de", author, menu_order: 7, meta: { other_plugin_note: "kept" },
+  } });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  const id = made.json.id;
+  const post = JSON.parse(wp("eval", `$p = get_post(${id}); echo wp_json_encode([(int) $p->post_author, (int) $p->menu_order, get_post_meta(${id}, 'other_plugin_note', true), pll_get_post_language(${id})]);`));
+  assert.deepEqual(post, [author, 7, "kept", "de"], "author, menu order and the other plugin's meta survive First's write");
+  const asAuthor = await http("POST", `${core}/first_tours`, { as: "author", body: { title: `Other author ${run}`, locale: "de", author: harness.users.editor.id } });
+  assert.equal(asAuthor.status, 403, "an author can't create as someone else, as core checks");
 });

@@ -146,7 +146,7 @@ Build the compiler from source
 with Rust 1.96 (the checkout pins it). Local development needs Node 22+ and
 npm; it needs neither Docker nor a host PHP installation. First automatically
 runs pinned [WordPress Studio CLI](https://github.com/Automattic/studio/tree/trunk/apps/cli)
-2.1.1 to provide WordPress 7.1.4, PHP 8.4 and SQLite Database Integration 3.1.2.
+2.2.0 to provide WordPress 7.1.4, PHP 8.4 and SQLite Database Integration 3.1.3.
 The first start downloads the local environment and required plugins.
 
 ```sh
@@ -387,6 +387,7 @@ sure WP-Cron or a real cron reaches the site.
 - [`docs/config-api.md`](docs/config-api.md): the `first.config.ts` API, with its [Content](docs/config-api.md#content) and [Database](docs/config-api.md#database) halves, the enforced subset and the known gaps
 - [`docs/examples.md`](docs/examples.md): the examples, how to run each, and the suites that prove them
 - [`docs/wp-plugins.md`](docs/wp-plugins.md): declaring and pinning WordPress plugins
+- [`docs/sealed.md`](docs/sealed.md): sealed mode, a site that runs only First's code and the plugins it declares
 - [`docs/services.md`](docs/services.md): native forms, queued email, publication search and Stripe checkout
 - [`docs/agents.md`](docs/agents.md): `first init` and `first mcp` for coding agents, and the site's MCP endpoint for agents that use the app
 - [`docs/realtime.md`](docs/realtime.md): live updates with `watch`, the change hook and pluggable transports

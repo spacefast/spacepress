@@ -91,7 +91,7 @@ When finished with the interactive site:
 
 ```sh
 ./target/debug/first dev stop "$platform_project"
-npx --yes --package wp-studio@2.1.1 -- studio delete --path "$platform_project/.first/dev/wordpress" --no-files
+npx --yes --package wp-studio@2.2.0 -- studio delete --path "$platform_project/.first/dev/wordpress" --no-files
 rm -r "$platform_root"
 ```
 

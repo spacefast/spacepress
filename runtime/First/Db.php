@@ -202,7 +202,7 @@ final class Db
             }
             return array_map(
                 static fn (array $raw) => Schema::decodeRow($spec['columns'], $raw),
-                $this->store->select($collection, $q),
+                $this->withLinks($collection, $this->store->select($collection, $q)),
             );
         });
     }
@@ -325,6 +325,18 @@ final class Db
         });
     }
 
+    /**
+     * The row filters $viewer's reads of $collection are confined to: the read rule's filter, draft
+     * visibility (`['status' => 'published']`) and the store's own guards. Empty when the viewer
+     * reads every row; a 401/403 when the rule refuses the viewer.
+     *
+     * @return list<array|SqlPredicate>
+     */
+    public function readScope(string $collection, Viewer $viewer): array
+    {
+        return $this->readGuards($collection, $viewer);
+    }
+
     /** The read rule (+ draft visibility) as filters; throws 401/403 when the rule is false. */
     private function readGuards(string $collection, Viewer $viewer): array
     {
@@ -341,6 +353,80 @@ final class Db
         }
 
         return [...$guards, ...$this->store->readGuards($collection, $viewer)];
+    }
+
+    /**
+     * A `ref().many()` column holds no value of its own: its value is its links, the target ids in
+     * position order (storage form: JSON text), read with one query per such column.
+     *
+     * @param list<array<string, mixed>> $raw storage rows
+     * @return list<array<string, mixed>>
+     */
+    private function withLinks(string $collection, array $raw): array
+    {
+        $spec = $this->schema->collection($collection);
+        $pk = $spec['primaryKey'];
+        foreach ($raw === [] ? [] : $spec['columns'] as $name => $col) {
+            if ($col['type'] !== 'refList') {
+                continue;
+            }
+            $ids = [];
+            foreach ($this->links()->links($col['references']['join'], 'owner_id', array_column($raw, $pk)) as $link) {
+                $ids[$link['owner_id']][] = $link['target_id'];
+            }
+            foreach ($raw as &$row) {
+                $row[$name] = (string) json_encode($ids[(int) $row[$pk]] ?? []);
+            }
+            unset($row);
+        }
+
+        return $raw;
+    }
+
+    private function links(): Links
+    {
+        return $this->store instanceof Links ? $this->store : throw new \LogicException('This store keeps no ref().many() links');
+    }
+
+    /**
+     * A relation through a many-ref's join table: one query for the links, one for the related rows.
+     * The field's own list keeps position order unless `orderBy` sorts it; a reverse list follows the
+     * related rows' order. limit/offset apply per row.
+     */
+    private function attachThrough(array $rows, string $name, array $rel, array $opts, string $ptr, ?Viewer $viewer, callable $sourceFor, string $pk): array
+    {
+        ['table' => $join, 'from' => $from, 'to' => $to] = $rel['through'];
+        foreach (['limit', 'offset'] as $k) {
+            if (isset($opts[$k]) && (!Js::isInteger($opts[$k]) || $opts[$k] < 0)) {
+                throw HttpError::invalidQuery("$k must be a non-negative integer", $ptr . '/' . $k);
+            }
+        }
+        [$limit, $offset] = [isset($opts['limit']) ? (int) $opts['limit'] : null, (int) ($opts['offset'] ?? 0)];
+        unset($opts['limit'], $opts['offset']);
+        $owners = array_values(array_unique(array_map(static fn (array $row) => (int) $sourceFor($row)[$pk], $rows)));
+        $linked = [];
+        foreach ($this->links()->links($join, $from, $owners) as $link) {
+            $linked[$link[$from]][] = $link[$to];
+        }
+        $target = $this->schema->collection($rel['collection']);
+        $childPk = $target['primaryKey'];
+        $ids = array_values(array_unique(array_merge([], ...array_values($linked))));
+        $values = array_map(static fn ($id) => Schema::encode($target['columns'][$childPk], $id, $childPk, ''), $ids);
+        $children = $this->fetch($rel['collection'], $opts, $ptr, $viewer, [$childPk, $values], decoded: $childDecoded);
+        $childKeys = array_map(static fn (array $row) => (int) $row[$childPk], $childDecoded);
+        $byId = array_combine($childKeys, $this->project($children, $rel['collection'], $opts, $ptr));
+        $rank = array_flip($childKeys);
+        $sorted = $from === 'target_id' || isset($opts['orderBy']);
+        foreach ($rows as &$row) {
+            $list = array_values(array_filter($linked[(int) $sourceFor($row)[$pk]] ?? [], static fn (int $id) => isset($byId[$id])));
+            if ($sorted) {
+                usort($list, static fn (int $a, int $b) => $rank[$a] <=> $rank[$b]);
+            }
+            $row[$name] = array_map(static fn (int $id) => $byId[$id], array_slice($list, $offset, $limit));
+        }
+        unset($row);
+
+        return $rows;
     }
 
     /** Load each requested relation with one query, never N+1; populate media columns in place. */
@@ -373,6 +459,10 @@ final class Db
             $opts = $opts === true ? [] : $opts;
             if (!is_array($opts)) {
                 throw HttpError::invalidQuery('Relation options must be true or an object', $rptr);
+            }
+            if (isset($rel['through'])) {
+                $rows = $this->attachThrough($rows, $name, $rel, $opts, $rptr, $viewer, $sourceFor, $spec['primaryKey']);
+                continue;
             }
             // A `many` relation between localized collections resolves per parent (§7.3): a parent's
             // children in that parent row's locale, falling back per translation group like a top-level
@@ -679,12 +769,17 @@ final class Db
         $this->checkValues($columns, $norm, $full, $viewer);
         $this->requireUniqueVisibility($collection, $norm, $viewer);
 
-        $insert = [];
+        $insert = $links = [];
         foreach ($norm as $name => $v) {
+            if ($columns[$name]['type'] === 'refList') {
+                $links[$name] = $v ?? [];
+                continue;
+            }
             $insert[$name] = Schema::store($columns[$name], $v);
         }
         try {
             $pk = $this->store->insert($collection, $insert);
+            $this->writeLinks($columns, $pk, $links);
         } catch (\Throwable $e) {
             throw $this->store->mapError($e);
         }
@@ -769,8 +864,12 @@ final class Db
         }
         $this->checkValues($columns, $norm, $norm + $previous, $viewer ?? $errorViewer);
         $this->requireUniqueVisibility($collection, $norm, $viewer ?? $errorViewer, existing: $previous);
-        $set = [];
+        $set = $links = [];
         foreach ($norm as $name => $v) {
+            if ($columns[$name]['type'] === 'refList') {
+                $links[$name] = $v ?? [];
+                continue;
+            }
             if (!($publishing && $name === $slugCol) && $this->unchangedReadableUnique($collection, (string) $name, $v, $previous, $viewer ?? $errorViewer)) {
                 continue; // WordPress meta uniqueness checks must not inspect competitors for a no-op.
             }
@@ -779,6 +878,7 @@ final class Db
         $this->requireIncomingVisibility($collection, $set, $viewer ?? $errorViewer);
         try {
             $this->store->update($collection, $pkValue, $set);
+            $this->writeLinks($columns, $pkValue, $links);
         } catch (\Throwable $e) {
             throw $this->store->mapError($e);
         }
@@ -790,6 +890,14 @@ final class Db
         Extensions::written('update', $collection, $row, $previous);
 
         return $row;
+    }
+
+    /** A many-ref write replaces the row's whole list. @param array<string, list<int>> $links */
+    public function writeLinks(array $columns, int|string $pk, array $links): void
+    {
+        foreach ($links as $name => $ids) {
+            $this->links()->setLinks($columns[$name]['references']['join'], $pk, $ids);
+        }
     }
 
     private function deleteOne(string $collection, array $row, ?Viewer $viewer): void
@@ -822,6 +930,9 @@ final class Db
                     continue;
                 }
                 $this->requireReferenceVisibility($collection, $ref['column'], (string) $child, $def, $viewer);
+                if ($def['type'] === 'refList') {
+                    continue; // a deleted target only loses its links
+                }
                 $action = strtolower($ref['onDelete'] ?? 'no action');
                 if ($action === 'cascade') {
                     $this->requireDeleteVisibility((string) $child, $viewer, $seen);
@@ -894,9 +1005,25 @@ final class Db
     private function referentialActions(string $collection, array $row, ?Viewer $viewer = null): void
     {
         $this->requireDeleteVisibility($collection, $viewer);
+        $spec = $this->schema->collection($collection);
         foreach ($this->schema->collections() as $child => $cspec) {
             foreach ($cspec['columns'] as $col => $c) {
                 $ref = $c['references'] ?? null;
+                if ($c['type'] === 'refList') {
+                    // The deleted row's own links go with it; links to it go unless `restrict`.
+                    if ($child === $collection) {
+                        $this->links()->unlink($ref['join'], 'owner_id', $row[$spec['primaryKey']]);
+                    }
+                    if ($ref['collection'] !== $collection) {
+                        continue;
+                    }
+                    $id = $row[$ref['column']];
+                    if (strtolower($ref['onDelete'] ?? 'cascade') === 'restrict' && $this->links()->links($ref['join'], 'target_id', [$id]) !== []) {
+                        throw new HttpError(409, 'reference_violation', "Rows in $child still link to this row");
+                    }
+                    $this->links()->unlink($ref['join'], 'target_id', $id);
+                    continue;
+                }
                 if ($ref === null || $ref['collection'] !== $collection || $row[$ref['column']] === null) {
                     continue;
                 }
@@ -1050,28 +1177,40 @@ final class Db
             if ($ref === null || $v === null) {
                 continue;
             }
-            $missing = new HttpError(409, 'reference_violation', "No referenced {$ref['collection']} row for $name", HttpError::seg($name));
-            $target = $this->schema->collection($ref['collection']);
-            if ($viewer !== null) {
-                if (FieldAccess::mayHide($target['columns'][$ref['column']], $viewer)) {
-                    throw $missing;
+            if ($columns[$name]['type'] === 'refList') {
+                foreach ($v as $i => $id) {
+                    $this->checkReference($ref, (string) $name, $id, HttpError::seg((string) $name) . "/$i", $viewer);
                 }
+                continue;
             }
-            $opts = ['where' => [$ref['column'] => $v], 'limit' => 1];
-            if ($target['localized'] ?? false) {
-                $opts['locale'] = '*';
+            $this->checkReference($ref, (string) $name, $v, HttpError::seg((string) $name), $viewer);
+        }
+    }
+
+    /** The referenced row exists and, for a viewer, is one they may read: otherwise the same 409. */
+    private function checkReference(array $ref, string $name, mixed $v, string $ptr, ?Viewer $viewer): void
+    {
+        $missing = new HttpError(409, 'reference_violation', "No referenced {$ref['collection']} row for $name", $ptr);
+        $target = $this->schema->collection($ref['collection']);
+        if ($viewer !== null) {
+            if (FieldAccess::mayHide($target['columns'][$ref['column']], $viewer)) {
+                throw $missing;
             }
-            try {
-                $row = $viewer === null
-                    ? ($this->selectDecoded($ref['collection'], $opts, '', null)[0] ?? null)
-                    : $this->findFirst($ref['collection'], $opts, $viewer);
-                if ($row === null || !array_key_exists($ref['column'], $row)
-                    || !Js::strictEq($row[$ref['column']], $v)) {
-                    throw $missing;
-                }
-            } catch (HttpError $error) {
-                throw $viewer === null ? $error : $missing;
+        }
+        $opts = ['where' => [$ref['column'] => $v], 'limit' => 1];
+        if ($target['localized'] ?? false) {
+            $opts['locale'] = '*';
+        }
+        try {
+            $row = $viewer === null
+                ? ($this->selectDecoded($ref['collection'], $opts, '', null)[0] ?? null)
+                : $this->findFirst($ref['collection'], $opts, $viewer);
+            if ($row === null || !array_key_exists($ref['column'], $row)
+                || !Js::strictEq($row[$ref['column']], $v)) {
+                throw $missing;
             }
+        } catch (HttpError $error) {
+            throw $viewer === null ? $error : $missing;
         }
     }
 
@@ -1246,7 +1385,7 @@ final class Db
     private function readByPk(string $collection, array $spec, int|string $pk): array
     {
         $q = Sql::select($this->schema, $this->store, $collection, ['where' => [$spec['primaryKey'] => $pk], 'limit' => 1]);
-        $raw = $this->store->select($collection, $q)[0] ?? throw new \RuntimeException("Row $collection/$pk vanished after write");
+        $raw = $this->withLinks($collection, $this->store->select($collection, $q))[0] ?? throw new \RuntimeException("Row $collection/$pk vanished after write");
         $raw = array_intersect_key($raw, $spec['columns']);
 
         return [Schema::decodeRow($spec['columns'], $raw), $raw];
@@ -1366,23 +1505,50 @@ final class Db
     }
 
     /**
-     * Restore: the revision's user columns become an update patch (pk, system columns and onUpdate
-     * columns excluded), run through the full update pipeline.
+     * Restore: the whole revision as stored, as $viewer, in one update. Fields the viewer can read are
+     * its patch where the revision differs from the row, under every update and field rule. Fields
+     * that may be hidden from it are written from the stored revision as trusted values, after its
+     * rules pass: it sends nothing for them, so nothing about them can be probed, and a restore never
+     * leaves part of the row at a later state. The answer is masked like every read.
      */
     public function restoreRevision(string $collection, int|string $pk, int $revisionId, ?Viewer $viewer = null): array
     {
-        $spec = $this->schema->collection($collection);
-        $this->requireRevisable($collection, $pk, $viewer);
-        $row = $this->revisionRow($collection, $pk, $revisionId);
-        $patch = [];
-        foreach ($spec['columns'] as $name => $col) {
-            if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !isset($col['onUpdate'])) {
-                $patch[$name] = $row[$name];
+        return $this->current(function () use ($collection, $pk, $revisionId, $viewer): array {
+            $spec = $this->schema->collection($collection);
+            $this->requireRevisable($collection, $pk, $viewer);
+            $row = $this->revisionRow($collection, $pk, $revisionId);
+            $opts = ['where' => [$spec['primaryKey'] => $pk]];
+            $current = $this->selectDecoded($collection, $opts, '', null)[0] ?? throw HttpError::notFound("No $collection row $pk");
+            $patch = $hidden = [];
+            foreach ($spec['columns'] as $name => $col) {
+                // A revision taken where links aren't kept with the row (WordPress revisions) leaves a
+                // `refList` it holds as null as it is.
+                if ($name === $spec['primaryKey'] || ($col['system'] ?? false) || isset($col['onUpdate'])
+                    || ($col['type'] === 'refList' && $row[$name] === null)
+                    || Js::jsonStringify($row[$name] ?? null) === Js::jsonStringify($current[$name] ?? null)) {
+                    continue;
+                }
+                if ($viewer !== null && FieldAccess::mayHide($col, $viewer)) {
+                    $hidden[$name] = $row[$name];
+                } else {
+                    $patch[$name] = $row[$name];
+                }
             }
-        }
+            if ($hidden === []) {
+                return $this->update($collection, $patch, [$spec['primaryKey'] => $pk], true, $viewer)[0]
+                    ?? throw HttpError::notFound("No $collection row $pk");
+            }
 
-        return $this->update($collection, $patch, [$spec['primaryKey'] => $pk], true, $viewer)[0]
-            ?? throw HttpError::notFound("No $collection row $pk");
+            return $this->nested(function () use ($collection, $spec, $pk, $patch, $hidden, $viewer): array {
+                $guards = $viewer === null ? [] : $this->writeGuards($collection, 'update', $viewer, $patch);
+                $opts = ['where' => [$spec['primaryKey'] => $pk]];
+                $existing = $this->selectDecoded($collection, $opts, '', null, null, $guards, $viewer)[0]
+                    ?? throw HttpError::notFound("No $collection row $pk");
+                $written = Js::atInstant(fn () => $this->updateOne($collection, $spec, $existing, $patch, $viewer, $hidden));
+
+                return $this->present([$written], $collection, $viewer)[0];
+            });
+        });
     }
 
     private function requireRevisable(string $collection, int|string $pk, ?Viewer $viewer): void

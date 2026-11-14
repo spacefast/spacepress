@@ -57,7 +57,7 @@ When finished, remove only this exact disposable site:
 
 ```sh
 target/debug/first dev stop "$project"
-npx --yes --package wp-studio@2.1.1 -- studio delete --path "$project/.first/dev/wordpress" --no-files
+npx --yes --package wp-studio@2.2.0 -- studio delete --path "$project/.first/dev/wordpress" --no-files
 rm -r "$project"
 ```
 

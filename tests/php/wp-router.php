@@ -43,6 +43,22 @@ if ($static !== null && !str_ends_with($path, '.php') && !str_contains($path, '.
     readfile($static);
     exit;
 }
+// wp-login.php and wp-admin's screens run as their own files, as a web server runs them: they boot
+// through wp-load.php, which needs a wp-config.php, so they run from the site's WP-CLI root (core
+// linked in, with a wp-config.php that defines this site).
+if (preg_match('#^/(wp-login\.php|wp-admin/(?:[a-z0-9-]+\.php)?)$#', $path, $m) === 1) {
+    require __DIR__ . '/wp.php';
+    $root = wpCliRoot($dir);
+    $file = $m[1] === 'wp-admin/' ? 'wp-admin/index.php' : $m[1];
+    define('ABSPATH', "$root/");
+    // Each script and stylesheet on its own URL, so a browser test's failed request names the file.
+    define('CONCATENATE_SCRIPTS', false);
+    $_SERVER['SCRIPT_NAME'] = $_SERVER['PHP_SELF'] = "/$file";
+    $_SERVER['SCRIPT_FILENAME'] = "$root/$file";
+    chdir(dirname("$root/$file"));
+    require "$root/$file";
+    exit;
+}
 if (preg_match('#^/wp-json(/.*)?$#', $path, $m) === 1) {
     $_GET['rest_route'] = ($m[1] ?? '') === '' ? '/' : $m[1];
 }

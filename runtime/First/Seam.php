@@ -48,7 +48,7 @@ final class Seam
         if ($type === 'query') { return self::query($shape['collection'], $value); }
         if ($type === 'sync') { return self::sync($shape['collection'], $value); }
         if ($shape !== null && ($type === null || $type === 'group') && $value instanceof JsArray) { return $value; }
-        if (in_array($type, ['repeater', 'blocks', 'mediaList', 'select'], true) && ($value instanceof JsObject || $value instanceof \stdClass)) { return self::jsonJs($value); }
+        if (in_array($type, ['repeater', 'blocks', 'mediaList', 'select', 'refList'], true) && ($value instanceof JsObject || $value instanceof \stdClass)) { return self::jsonJs($value); }
         $value = self::container($value);
         if (!is_array($value)) { return $value; }
         if ($shape === null) {
@@ -124,7 +124,7 @@ final class Seam
         if ($type === 'row') { return self::rowToJs($shape['collection'], $value); }
         if ($type === 'rows') { return new JsArray(array_map(static fn ($row) => self::rowToJs($shape['collection'], $row), $value)); }
         if ($type === 'group') { return self::jsValue($value, $shape['fields'] ?? [], $input); }
-        if (in_array($type, ['repeater', 'blocks', 'mediaList', 'select'], true)) {
+        if (in_array($type, ['repeater', 'blocks', 'mediaList', 'select', 'refList'], true)) {
             if ($input && !array_is_list($value)) { return Js::detach(self::jsonJs($value)); }
             $out = new JsArray();
             foreach ($value as $item) {
@@ -132,6 +132,7 @@ final class Seam
                     'repeater' => $shape['fields'] ?? [],
                     'blocks' => ['layout' => ['type' => 'text']] + (is_string($layout = self::container($item)['layout'] ?? null) ? ($shape['layouts'][$layout] ?? []) : []),
                     'mediaList' => ['type' => 'media'],
+                    'refList' => ['type' => 'integer'],
                     default => null,
                 };
                 $out->a[] = self::jsValue($item, $itemShape, $input);
@@ -167,8 +168,9 @@ final class Seam
             if ($column['hidden'] ?? false) { unset($row[$name]); }
         }
         foreach ($spec['relations'] ?? [] as $name => $relation) {
-            // A `ref()` field is its id until `with` loads the row in its place.
-            if (isset($fields[$name]) && !is_array($row[$name] ?? null)) { continue; }
+            // A `ref()` field is its id (a many-ref its ids) until `with` loads the row(s) in its place.
+            $loaded = is_array($row[$name] ?? null) && (($fields[$name]['type'] ?? null) !== 'refList' || is_array($row[$name][0] ?? null));
+            if (isset($fields[$name]) && !$loaded) { continue; }
             $fields[$name] = ['type' => $relation['kind'] === 'many' ? 'rows' : 'row', 'collection' => $relation['collection']];
         }
         if ($spec['localized'] ?? false) { $fields['translations'] = ['type' => 'record']; }

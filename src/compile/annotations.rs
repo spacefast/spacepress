@@ -176,6 +176,38 @@ impl Compiler<'_, '_> {
                         return Ok(ty);
                     }
                 }
+                // `StaticParams<"blog/[slug]">`: the list a prebuilt page's `staticParams` returns,
+                // one entry of that route's params per page to build.
+                if self.first_type_import(module, name).as_deref() == Some("StaticParams") {
+                    let file = match args.as_slice() {
+                        [TyAnn::StrLit(id)] => self
+                            .schema
+                            .app
+                            .as_ref()
+                            .and_then(|app| app.routes.iter().find(|r| r.id == *id).and_then(|r| r.page.clone())),
+                        [] => None,
+                        _ => {
+                            return err(
+                                *span,
+                                "`StaticParams` takes the route's id, e.g. `StaticParams<\"blog/[slug]\">`",
+                            );
+                        }
+                    };
+                    let params = match file {
+                        Some(file) => match self.app_props(&file) {
+                            Ty::Obj(props) => props["params"].0.clone(),
+                            _ => unreachable!("app props are an object"),
+                        },
+                        None if args.is_empty() => Ty::Map(Box::new(Ty::Str)),
+                        None => {
+                            return err(
+                                *span,
+                                "`StaticParams` names no page route; use the route's id, e.g. `StaticParams<\"blog/[slug]\">`",
+                            );
+                        }
+                    };
+                    return Ok(Ty::Array(Box::new(params)));
+                }
                 if args.is_empty() {
                     for stmt in &self.ev_program().modules[module].body {
                         if let Stmt::Import { source, specs, .. } = stmt

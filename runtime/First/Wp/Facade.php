@@ -22,6 +22,7 @@ use First\Js;
  *   GET/PATCH /__first/api/v1/<global>      → the global's get/update Ability, through the same run route
  *   GET/PATCH /__first/api/v1/settings      → GET /wp/v2/settings (public fields from the index for others)
  *   GET    /__first/api/v1/menus[/<loc>]    → /wp/v2/menu-locations + /wp/v2/menu-items, public locations only
+ *   POST   /__first/api/v1/_live           → subscribed reads: "not modified" or fresh results (Live\Module)
  *   GET    /__first/api/v1                 → the app's schema: kinds, fields, actions (`first pull`)
  *   …/<kind>/<id>/staged[/compare|/promote|/preview] → a post kind's staged version ({@see Staged})
  *
@@ -125,6 +126,10 @@ final class Facade
             }
             $auth = self::authenticate();
             if ($auth instanceof \WP_Error) {
+                // A form whose nonce has expired goes back to its page with the error, as a refused action does.
+                if (($form = self::formAction($method, $path)) !== null) {
+                    self::emit(...\First\Render\Forms::redirect($form, (string) file_get_contents('php://input'), null, \First\App::problem(self::fromWpError($auth, 401))));
+                }
                 self::problem($auth);
             }
             $query = self::query();
@@ -170,6 +175,9 @@ final class Facade
         if ($name === 'actions' && count($segments) === 2) {
             return self::action($plugin, $method, $segments[1], $query, $body);
         }
+        if ($name === \First\Live\Module::ROUTE && count($segments) === 1) {
+            return \First\Live\Module::serve($plugin, $method, $body); // reactive queries: its own file
+        }
         if (isset($plugin->schema->globals()[$name]) && count($segments) === 1) {
             return self::global($plugin, $method, $name, $body);
         }
@@ -207,7 +215,7 @@ final class Facade
         if ($kind['type'] === 'post' && ($segments[2] ?? null) === 'revisions' && count($segments) <= 5) {
             self::gate($kind, 'update');
 
-            return self::revisions($kind, $method, self::id($kind, $segments[1]), array_slice($segments, 3));
+            return self::revisions($kind, $method, self::id($kind, $segments[1]), array_slice($segments, 3), $query);
         }
         if ($kind['type'] === 'post' && ($segments[2] ?? null) === 'staged' && count($segments) <= 4) {
             // A kind's staged versions ({@see Staged}): First's own, with no core route to map.
@@ -267,15 +275,16 @@ final class Facade
         return self::json(200, ['data' => Kinds::row($kind, $row)]);
     }
 
-    /** A list: First's `where`/`orderBy`/`with`/`search`, `limit` and an opaque `cursor` (the next page). */
-    private static function list(array $kind, array $query): array
+    /**
+     * A list request's page: `limit` (default 50, at most 100), then `offset` or the opaque `cursor` a
+     * previous page of this API returned. @return array{int, int} [limit, offset]
+     */
+    private static function paging(array $query): array
     {
         $limit = isset($query['limit']) ? (int) $query['limit'] : self::LIMIT;
         if ($limit < 1 || (string) $limit !== (string) ($query['limit'] ?? $limit)) {
             throw HttpError::invalidQuery('limit must be a positive integer', '/limit');
         }
-        $limit = min($limit, self::MAX_LIMIT);
-        // `offset` skips rows; `cursor` (opaque) is where the previous page of this API stopped.
         $offset = 0;
         if (isset($query['offset'])) {
             if (!preg_match('/^\d{1,9}$/D', (string) $query['offset'])) {
@@ -290,6 +299,20 @@ final class Facade
             }
             $offset = $decoded['offset'];
         }
+
+        return [min($limit, self::MAX_LIMIT), $offset];
+    }
+
+    /** The opaque cursor of the page starting at $next, or null when $next is past the last of $total. */
+    private static function cursor(int $next, int $total): ?string
+    {
+        return $next < $total ? rtrim(strtr(base64_encode((string) json_encode(['offset' => $next])), '+/', '-_'), '=') : null;
+    }
+
+    /** A list: First's `where`/`orderBy`/`with`/`search`, `limit` and an opaque `cursor` (the next page). */
+    private static function list(array $kind, array $query): array
+    {
+        [$limit, $offset] = self::paging($query);
         $paging = ['per_page' => $limit] + ($offset > 0 ? ['offset' => $offset] : []);
         if (Kinds::first($kind)) {
             // `where` is always First's (an empty filter when none was given): First's pipeline picks the
@@ -309,9 +332,7 @@ final class Facade
         }
         $response = self::run(self::request('GET', $kind['route'], $params));
         $rows = self::unwrap($response);
-        $total = (int) ($response->get_headers()['X-WP-Total'] ?? 0);
-        $next = $offset + $limit;
-        $cursor = $next < $total ? rtrim(strtr(base64_encode((string) json_encode(['offset' => $next])), '+/', '-_'), '=') : null;
+        $cursor = self::cursor($offset + $limit, (int) ($response->get_headers()['X-WP-Total'] ?? 0));
 
         $rows = array_values(array_filter(Kinds::rows($kind, $rows), static fn ($r) => $r !== null));
 
@@ -337,6 +358,9 @@ final class Facade
             return $plugin->app()->handle('POST', '/actions/' . rawurlencode($name), [], $body, self::headers());
         }
         \First\App::allow($method, ($action['readonly'] ?? false) ? ['GET', 'HEAD', 'POST'] : ['POST']);
+        if ($method === 'POST' && \First\Render\Forms::posted()) {
+            return self::form($plugin, $action, $name, $body);
+        }
         // No arguments is the empty object, not the empty list an empty PHP array encodes as.
         $given = $method === 'POST' ? [] : self::queryInput($query);
         $input = $method === 'POST' ? $body : ($given === [] ? '{}' : (string) Js::jsonStringify($given));
@@ -345,6 +369,42 @@ final class Facade
         [$status, $headers, $out] = self::json(200, ['data' => self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'")]);
 
         return [$status, self::$passed + $headers, $out];
+    }
+
+    /**
+     * A browser's form post to an action (`<form action={name}>`, rendering.md §4.2): the fields read
+     * as the action's input, the action run as a JSON call runs it, and `303 See Other` back to the
+     * page with the result or the error in a flash. Only a form on this site's own pages may post:
+     * a cross-site `Origin` is refused before anything runs.
+     *
+     * @return array{int, array<string, string>, string}
+     */
+    private static function form(Plugin $plugin, array $action, string $name, string $body): array
+    {
+        try {
+            $origin = $_SERVER['HTTP_ORIGIN'] ?? null;
+            $site = wp_parse_url(home_url('/'));
+            if (is_string($origin) && $origin !== 'null'
+                && strtolower($origin) !== strtolower(($site['scheme'] ?? 'https') . '://' . ($site['host'] ?? '') . (isset($site['port']) ? ':' . $site['port'] : ''))) {
+                throw new HttpError(403, 'forbidden', 'A form posts to an action only from this site\'s own pages');
+            }
+            $input = \First\Render\Forms::decode((array) ($action['input'] ?? []), $body);
+            self::$passed = [];
+            $data = self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'");
+
+            return \First\Render\Forms::redirect($name, $body, $data, null);
+        } catch (HttpError | \First\JsError $e) {
+            return \First\Render\Forms::redirect($name, $body, null, \First\App::problem($e));
+        }
+    }
+
+    /** The action a browser's form post to `$path` names, if this request is one. */
+    private static function formAction(string $method, string $path): ?string
+    {
+        $segments = array_values(array_filter(explode('/', $path), static fn ($s) => $s !== ''));
+
+        return $method === 'POST' && count($segments) === 2 && $segments[0] === 'actions' && \First\Render\Forms::posted()
+            ? rawurldecode($segments[1]) : null;
     }
 
     /** `GET`/`PATCH /<global>` (spec §3a): the global's read and update Abilities through the run route. */
@@ -424,25 +484,31 @@ final class Facade
         return self::$depth > 0;
     }
 
-    /** @var list<string> the methods of the core dispatches in progress, innermost last */
-    private static array $methods = [];
+    /** @var list<array{string, string}> the method and route of each core dispatch in progress, innermost last */
+    private static array $dispatches = [];
 
-    /** The method of the core dispatch the facade is running now, or null outside one. */
-    public static function dispatchingMethod(): ?string
+    /**
+     * True while the facade's innermost core dispatch reads or deletes a media item on core's media
+     * route: rendering one needs its path, never its bytes. Any other dispatch (an action's run, a
+     * post read that embeds media) may use the file.
+     */
+    public static function mediaWithoutBytes(): bool
     {
-        return self::$methods === [] ? null : self::$methods[count(self::$methods) - 1];
+        [$method, $route] = self::$dispatches === [] ? [null, ''] : self::$dispatches[count(self::$dispatches) - 1];
+
+        return in_array($method, ['GET', 'HEAD', 'DELETE'], true) && preg_match('#^/wp/v2/media(?:/\d+)?/?$#', $route) === 1;
     }
 
     private static function run(\WP_REST_Request $request): \WP_REST_Response
     {
         self::$rows = []; // each core dispatch reads its own page fresh: nothing outlives it
         self::$depth++;
-        self::$methods[] = $request->get_method();
+        self::$dispatches[] = [$request->get_method(), (string) $request->get_route()];
         try {
             return rest_do_request($request);
         } finally {
             self::$rows = [];
-            array_pop(self::$methods);
+            array_pop(self::$dispatches);
             self::$depth--;
         }
     }
@@ -663,7 +729,7 @@ final class Facade
      * A restore is the revision's row as an update of the post through its core route, so the update
      * rule, validation and hooks decide it exactly as any other edit. Needs First's update rule.
      */
-    private static function revisions(array $kind, string $method, int|string $id, array $rest): array
+    private static function revisions(array $kind, string $method, int|string $id, array $rest, array $query = []): array
     {
         $collection = (string) $kind['name'];
         $spec = $kind['spec'];
@@ -688,17 +754,32 @@ final class Facade
         }
         if ($rest === []) {
             \First\App::allow($method, ['GET', 'HEAD']);
+            // A page of core's revisions route, newest first, as `{ data, cursor }` like every list.
+            // Autosaves are drafts in progress, not revisions: they are left out in the query, so the
+            // page counts and the cursor stay exact.
+            [$limit, $offset] = self::paging($query);
+            $noAutosaves = static function (array $args): array {
+                global $wpdb;
+                $parent = (int) ($args['post_parent'] ?? 0);
+                // wp_is_post_autosave(): a revision whose name holds "<parent>-autosave".
+                $ids = $wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'revision' AND post_parent = %d AND post_name LIKE %s", $parent, '%' . $wpdb->esc_like("$parent-autosave") . '%'));
+                // Core already sets `post__not_in` from the route's `exclude` (default []): add to it.
+                return $ids === [] ? $args : ['post__not_in' => array_merge((array) ($args['post__not_in'] ?? []), array_map('intval', $ids))] + $args;
+            };
+            add_filter('rest_revision_query', $noAutosaves);
+            try {
+                $response = self::run(self::request('GET', $route, ['context' => 'view', 'per_page' => $limit, '_fields' => 'id,author,date_gmt'] + ($offset > 0 ? ['offset' => $offset] : [])));
+            } finally {
+                remove_filter('rest_revision_query', $noAutosaves);
+            }
             $out = [];
-            foreach ((array) $hidden(fn () => self::dispatch('GET', $route, ['context' => 'view', 'per_page' => 100, '_fields' => 'id,author,date_gmt'])) as $r) {
-                if (wp_is_post_autosave((int) $r['id'])) {
-                    continue;
-                }
+            foreach ((array) $hidden(static fn () => self::unwrap($response)) as $r) {
                 $user = (int) ($r['author'] ?? 0) > 0 ? get_userdata((int) $r['author']) : null;
                 $out[] = ['id' => (int) $r['id'], 'at' => self::isoGmt((string) ($r['date_gmt'] ?? '')),
                     'user' => $user instanceof \WP_User ? ['id' => (int) $user->ID, 'name' => (string) $user->display_name] : null];
             }
 
-            return self::json(200, ['data' => $out]);
+            return self::json(200, ['data' => $out, 'cursor' => self::cursor($offset + $limit, (int) ($response->get_headers()['X-WP-Total'] ?? 0))]);
         }
         if (!preg_match('/^\d{1,18}$/D', $rest[0])) {
             throw HttpError::notFound("No revision {$rest[0]}");
@@ -715,15 +796,23 @@ final class Facade
             throw HttpError::notFound('No such revisions route');
         }
         \First\App::allow($method, ['POST']);
-        $patch = [];
-        foreach ($spec['columns'] as $name => $col) {
-            if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !isset($col['onUpdate']) && array_key_exists($name, $row)) {
-                $patch[(string) $name] = $row[$name];
+        // The restore is First's update from the revision as stored, as the viewer (Db::restoreRevision):
+        // fields hidden from the viewer are restored too, and never returned to it. The answer is the
+        // row as core's item read gives it to this viewer, so it is masked like every other read.
+        // Core has no REST restore route; wp-admin restores with wp_restore_post_revision, and this
+        // write is wp_update_post too (WpPostStore), so WordPress's own save hooks fire as for it.
+        $db->transaction(static function () use ($db, $collection, $id, $rid, $viewer): void {
+            $previous = $db->actor();
+            $db->setActor($viewer->user);
+            try {
+                $db->restoreRevision($collection, $id, $rid, $viewer);
+            } finally {
+                $db->setActor($previous);
             }
-        }
-        $updated = self::dispatch('POST', "{$kind['route']}/" . rawurlencode((string) $id), self::context($kind), Kinds::input($kind, $patch));
+        });
+        $restored = self::dispatch('GET', "{$kind['route']}/" . rawurlencode((string) $id), self::context($kind));
 
-        return self::json(200, ['data' => Kinds::row($kind, $updated)]);
+        return self::json(200, ['data' => Kinds::row($kind, $restored)]);
     }
 
     private static function isoGmt(string $gmt): string

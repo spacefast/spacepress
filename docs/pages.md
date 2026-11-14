@@ -94,6 +94,52 @@ checked against the app's routes and `PageProps<"notes/[slug]">` types
 { "compilerOptions": { "jsx": "react-jsx", "jsxImportSource": "first" } }
 ```
 
+## Forms
+
+`<form action={subscribe}>` posts to an action imported from your server code,
+and works without JavaScript:
+
+```tsx
+import { useFormState } from "first/app";
+import { subscribe } from "../server";
+
+export default function Page() {
+  const state = useFormState(subscribe);
+  return (
+    <form action={subscribe}>
+      {state.error ? <p>{state.error.message}</p> : null}
+      {state.result ? <p>Subscribed {state.result.email}</p> : null}
+      <input name="email" type="email" defaultValue={state.values.email ?? ""} />
+      <button>Subscribe</button>
+    </form>
+  );
+}
+```
+
+- The form posts form-encoded to the action's endpoint
+  (`/__first/api/v1/actions/<name>`), with a hidden `_first_return` (the page's
+  path and query). The action runs as the visitor, exactly as a JSON call runs
+  it, and the answer is `303 See Other` back to that page.
+- Fields read as the action's input types them: `integer()` and `number()` from
+  their digits, `boolean()` from a checkbox (unchecked is `false`), select and
+  reference lists from repeated names, an empty field as absent. A value that
+  doesn't parse reaches the action's validation, which names the field. Uploads
+  are refused (415); use the media API.
+- What came back is a flash: a cookie sealed with the site's key, named by
+  `?_flash=<id>` on the redirect, read once and deleted, gone after two
+  minutes. Nothing is stored on the server. The marked URL is never served
+  from or stored in a shared cache.
+- `useFormState(action)` reads it: `{ pending, error, result, values }`.
+  `error.fields` maps the field an input error is about to its message;
+  `values` refills the form and never holds a password field. `pending` is
+  `false` on the server; the JavaScript submit sets it.
+- A page with a form stays cacheable for signed-out visitors: it carries no
+  nonce. A page rendered for a signed-in user carries the REST nonce; without
+  it, the action runs signed out. A post with another site's `Origin` is
+  refused.
+- A `"use client"` component calls its action from `onSubmit` instead;
+  `method` and `encType` on a form with an action are build errors.
+
 ## Markdown pages
 
 ```md
@@ -114,7 +160,8 @@ wp-admin, in the block editor, and the route shows what they saved.
   protects it, like a `page.tsx`. Its `<title>` and description come from the
   stored Page, so an editor's change to either shows.
 - Front matter: `title`, `description`, `status` (`published` or `draft`),
-  `canonical` and `robots: { index, follow }`. Without `title`, the first
+  `canonical`, `robots: { index, follow }` and `id` (keeps the Page when the
+  file moves to another URL). Without `title`, the first
   `# Heading` is the title. Any other key is a build error at its line: fields
   of your own belong to a kind with `sync`, where they have a type.
 - A later version of the file replaces the Page only while nobody edited the
@@ -180,6 +227,36 @@ visitor, unless the page's metadata says `robots: { index: false }`, and the
 items of every kind with a `url` that a signed-out visitor may read. A draft, a
 row an access rule hides and a password-protected item are never in it.
 
+### WordPress identity
+
+Each `page.tsx` route without parameters is also a **hidden, code-owned
+WordPress Page**, so the rest of WordPress sees the page as one of its own.
+
+- Menus, SEO plugins and `get_permalink()` see a normal published Page whose
+  link and canonical URL are the route's URL. `/` is the front page
+  (`page_on_front`), unless the site already chose a front page of its own.
+- The Page keeps its ID across builds, so a menu item that points at it keeps
+  working. Its title is the page's literal `metadata.title`, else its folder
+  name.
+- The route ID is the folder path (`notes/featured`). A page that sets its own
+  keeps its Page when the file moves: `export const route = { id: "notes.featured" }`
+  in a `page.tsx`, or `id: notes.featured` in a `page.md`'s front matter. The old
+  URL then redirects to the new one. Two pages with one ID are a build error
+  at the second.
+- A route under a layout `guard` stores its Page private, so search, feeds,
+  the REST API and the sitemap never list it.
+- Code Pages are absent from the wp-admin Pages list, its counts and REST
+  `context=edit` lists. `edit_post` and `delete_post` are denied on them, and a
+  write that bypasses capabilities keeps the stored fields.
+- WordPress's own addresses for the Page (its slug, `?page_id=`) redirect to
+  the route.
+- A route that goes away moves its Page to the trash; nothing is deleted. A URL
+  that another published Page already owns is not taken over: the route still
+  renders, without a Page, and the log says so.
+
+A `page.md` route owns a real Page that editors change ([Markdown
+pages](#markdown-pages)); a route with parameters has no Page.
+
 ## Client components
 
 A file that starts with `"use client"` is a client component. Its first
@@ -207,6 +284,10 @@ export function CheerButton({ noteId, count: initial }: { noteId: number; count:
   `useMount`, `useEvent`, `useRef` and `sharedState` come from `"first/client"`.
 - Calling an imported action posts to its endpoint with the REST nonce, as the
   visitor.
+- A list over state or props, `items.map((item) => <li key={item.id}>…</li>)`,
+  and a conditional over elements, `{open && <p>…</p>}` or
+  `{empty ? <em>…</em> : <b>…</b>}`, re-render in the browser from a
+  `<template>`. Each item and each branch is one element; each item has a `key`.
 - The component returns one element. React context, third-party React
   components, npm imports and `dangerouslySetInnerHTML` are refused at the line.
 

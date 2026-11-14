@@ -300,6 +300,8 @@ jobs:
         working-directory: runtime/admin/apps
       - run: pnpm exec playwright install --with-deps chromium
         working-directory: runtime/admin/apps
+      # The React hooks test (tests/wp/hooks.test.ts) drives the headless shell through playwright-core.
+      - run: npx --yes playwright-core@1.62.1 install chromium-headless-shell
       # Main suites and the native admin journey, on one stack. The migration and S3 lanes run as
       # their own jobs below: on one runner the three together reached the 40-minute limit.
       - run: tests/wp/run.sh
@@ -391,6 +393,8 @@ jobs:
         run: FIRST_WP_PROJECT=first-wp-wordpress FIRST_WP_PORT=8898 tests/wp/wordpress/run.sh
       - name: Opinionated WordPress hardening, and stock WordPress without an app
         run: FIRST_WP_PROJECT=first-wp-hardening FIRST_WP_PORT=8896 tests/wp/hardening/run.sh
+      - name: Sealed mode on its own stack
+        run: FIRST_WP_PROJECT=first-wp-sealed FIRST_WP_PORT=8895 tests/wp/hardening/sealed-run.sh
 
   wp-s3:
     if: github.event_name != 'pull_request'

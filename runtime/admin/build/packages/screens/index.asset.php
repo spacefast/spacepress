@@ -1,1 +1,1 @@
-<?php return array('name' => '@first-admin/screens', 'dependencies' => array('react', 'react-dom', 'wp-api-fetch', 'wp-components'), 'moduleDependencies' => array('@first-admin/dataviews'), 'version' => '9d13fe16763b3d4d1de6');
+<?php return array('name' => '@first-admin/screens', 'dependencies' => array('react', 'react-dom', 'wp-api-fetch', 'wp-components'), 'moduleDependencies' => array('@first-admin/dataviews'), 'version' => '45fc24bcf6a96a81a435');

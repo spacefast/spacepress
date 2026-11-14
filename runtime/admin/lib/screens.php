@@ -109,8 +109,65 @@ function first_admin_screens() {
 	return $first_admin_screens;
 }
 
+/** The entity a screen is in WordPress's entity fields and actions registries: kind, then name. */
+const FIRST_ADMIN_SCREEN_ENTITY_KIND = 'firstAdminScreen';
+
 /**
- * The declaration as the component reads it: data resolved for the current user, nothing else.
+ * WordPress 7.2 holds fields and actions per entity in core registries (`wp_register_entity_fields()`,
+ * `wp_register_entity_actions()`, served at `/wp/v2/entity-fields` and `/wp/v2/entity-actions`).
+ * When the running WordPress has them, every screen's fields and actions are registered there, as the
+ * entity `firstAdminScreen` / `<id>`, and the screen reads them back from there: core is the registry,
+ * and anything that reads core's registries sees them. On 7.1 (First's floor) the declaration is the
+ * registry. The declared shapes are core's (a field is a DataViews field; an action carries core's
+ * `id`, `label`, `isPrimary`, `supportsBulk`, `context`), plus `ability` and `input`, which core
+ * keeps because its action schema allows more properties.
+ *
+ * @return array{fields: bool, actions: bool}
+ */
+function first_admin_screen_core_registries() {
+	return array(
+		'fields'  => function_exists( 'wp_register_entity_fields' ) && function_exists( 'wp_get_registered_entity_fields' ),
+		'actions' => function_exists( 'wp_register_entity_actions' ) && function_exists( 'wp_get_registered_entity_actions' ),
+	);
+}
+
+/** A screen's fields: the list's or the form's. */
+function first_admin_screen_fields( $screen ) {
+	return array_values( (array) ( $screen['view']['fields'] ?? $screen['form']['fields'] ?? array() ) );
+}
+
+/** A field as core's registry takes it: `type` only from the values DataViews provides. */
+function first_admin_screen_core_field( $field ) {
+	return 'array' === ( $field['type'] ?? null ) ? array_merge( $field, array( 'type' => 'text' ) ) : $field;
+}
+
+add_action(
+	'wp_entity_fields_api_init',
+	static function () {
+		foreach ( first_admin_screens() as $id => $screen ) {
+			$fields = array_map( 'first_admin_screen_core_field', first_admin_screen_fields( $screen ) );
+			if ( $fields ) {
+				wp_register_entity_fields( 'first-admin', FIRST_ADMIN_SCREEN_ENTITY_KIND, $id, $fields );
+			}
+		}
+	}
+);
+
+add_action(
+	'wp_entity_actions_api_init',
+	static function () {
+		foreach ( first_admin_screens() as $id => $screen ) {
+			$actions = array_values( (array) $screen['actions'] );
+			if ( $actions ) {
+				wp_register_entity_actions( 'first-admin', FIRST_ADMIN_SCREEN_ENTITY_KIND, $id, $actions );
+			}
+		}
+	}
+);
+
+/**
+ * The declaration as the component reads it: data resolved for the current user; fields and actions
+ * from core's registries when WordPress has them, else from the declaration.
  *
  * @param array $screen A registered screen.
  * @return array
@@ -120,18 +177,50 @@ function first_admin_screen_payload( $screen ) {
 	if ( is_callable( $data ) ) {
 		$data = call_user_func( $data );
 	}
+	$core    = first_admin_screen_core_registries();
+	$fields  = first_admin_screen_fields( $screen );
+	$actions = array_values( (array) $screen['actions'] );
+	if ( $core['fields'] ) {
+		// Core's definition, with the declared `array` type kept for how the screen shows a list value.
+		$declared = array_column( $fields, null, 'id' );
+		$fields   = array();
+		foreach ( wp_get_registered_entity_fields( FIRST_ADMIN_SCREEN_ENTITY_KIND, $screen['id'] ) as $field ) {
+			unset( $field['origin'] );
+			$fields[] = array_merge( $field, array_intersect_key( $declared[ $field['id'] ] ?? array(), array( 'type' => true ) ) );
+		}
+	}
+	if ( $core['actions'] ) {
+		$actions = array();
+		foreach ( wp_get_registered_entity_actions( FIRST_ADMIN_SCREEN_ENTITY_KIND, $screen['id'] ) as $action ) {
+			unset( $action['origin'] );
+			$actions[] = $action;
+		}
+	}
+	$view = $screen['view'];
 	$form = $screen['form'];
-	if ( is_array( $form ) && isset( $form['submit'] ) ) {
-		$form['submit'] = first_admin_screen_action( $form['submit'] );
+	if ( is_array( $view ) ) {
+		$view['fields'] = $fields;
+	}
+	if ( is_array( $form ) ) {
+		$form['fields'] = $fields;
+		if ( isset( $form['submit'] ) ) {
+			$form['submit'] = first_admin_screen_action( $form['submit'] );
+		}
 	}
 	return array(
 		'id'          => $screen['id'],
 		'title'       => $screen['title'],
 		'description' => $screen['description'],
-		'view'        => $screen['view'],
+		'view'        => $view,
 		'form'        => $form,
-		'actions'     => array_values( array_map( 'first_admin_screen_action', $screen['actions'] ) ),
+		// Only actions bound to an ability run here; one another plugin added to the entity in core
+		// without one has a script module of its own, which this screen does not load.
+		'actions'     => array_values( array_map( 'first_admin_screen_action', array_filter( $actions, static fn ( $a ) => isset( $a['ability'] ) ) ) ),
 		'data'        => $data,
+		'registry'    => array(
+			'fields'  => $core['fields'] ? 'core' : 'first-admin',
+			'actions' => $core['actions'] ? 'core' : 'first-admin',
+		),
 	);
 }
 
@@ -220,6 +309,11 @@ function first_admin_enqueue_classic_screen( $id ) {
 		wp_plugin_build_apps_register_wp_modules();
 	}
 	wp_enqueue_style( 'wp-components' );
+	// WordPress's admin design tokens (7.1: the `wp-theme` handle, `--wpds-*`), which the component
+	// reads; First Admin's own page sets them through its theme provider.
+	if ( wp_style_is( 'wp-theme', 'registered' ) ) {
+		wp_enqueue_style( 'wp-theme' );
+	}
 	$asset = is_file( FIRST_ADMIN_PLUGIN_DIR . 'build/packages/screens/index.asset.php' )
 		? include FIRST_ADMIN_PLUGIN_DIR . 'build/packages/screens/index.asset.php'
 		: array( 'dependencies' => array(), 'version' => FIRST_ADMIN_VERSION );

@@ -130,6 +130,19 @@ test("a declared screen: its declaration is served to users who may open it, wit
   // The method comes from the ability's annotations: an update runs over POST.
   assert.deepEqual(screen.actions.map((a: { id: string; method: string }) => [a.id, a.method]), [["approve", "POST"]]);
   assert.deepEqual(screen.data, ["Approving a comment publishes it."]);
+  // WordPress 7.2 keeps fields and actions per entity in its own registries: when the running
+  // WordPress has them, the screen's are registered there (entity firstAdminScreen/<id>) and read
+  // back from there; on 7.1 the declaration is the registry. Either way the screen is the same.
+  const core = JSON.parse(wp("eval", "echo wp_json_encode(['fields' => function_exists('wp_register_entity_fields'), 'actions' => function_exists('wp_register_entity_actions')]);"));
+  assert.deepEqual(screen.registry, { fields: core.fields ? "core" : "first-admin", actions: core.actions ? "core" : "first-admin" });
+  if (core.fields) {
+    const registered = await (await fetch(`${site}/wp-json/wp/v2/entity-fields?kind=firstAdminScreen&name=test-comments`, { headers: auth("editor") })).json();
+    assert.deepEqual(registered.fields.map((f: { id: string; origin: { registeredBy: string } }) => [f.id, f.origin.registeredBy]), [["name", "first-admin"], ["body", "first-admin"], ["approved", "first-admin"]]);
+  }
+  if (core.actions) {
+    const registered = await (await fetch(`${site}/wp-json/wp/v2/entity-actions?kind=firstAdminScreen&name=test-comments`, { headers: auth("editor") })).json();
+    assert.deepEqual(registered.actions.map((a: { id: string; ability: string }) => [a.id, a.ability]), [["approve", "blog/comments-update"]]);
+  }
   // Each table kind is a screen too, with delete bound to the kind's delete ability; the method is
   // whatever that ability's annotations make core's run route require.
   const table = await (await fetch(`${site}/wp-json/first-admin/v1/screens/table-comments`, { headers: auth("admin") })).json();

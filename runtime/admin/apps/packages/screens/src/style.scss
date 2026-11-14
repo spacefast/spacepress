@@ -1,6 +1,6 @@
 .first-admin-screen {
 	display: grid;
-	gap: 16px;
+	gap: var(--wpds-dimension-gap-lg, 16px);
 }
 .first-admin-screen__value {
 	white-space: pre-line;
@@ -21,8 +21,9 @@
 // Classic wp-admin: the component sits in wp-admin's `.wrap`, below its own title.
 .first-admin-screen--classic {
 	margin-top: 16px;
-	background: #fff;
-	border: 1px solid #c3c4c7;
+	background: var(--wpds-color-background-surface-neutral-strong, #fff);
+	border: 1px solid var(--wpds-color-stroke-surface-neutral, #c3c4c7);
+	border-radius: var(--wpds-border-radius-sm, 2px);
 	padding: 0 0 8px;
 	.dataviews-wrapper {
 		background: transparent;

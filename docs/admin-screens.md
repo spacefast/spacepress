@@ -105,12 +105,39 @@ first_admin_register_screen( 'staged-' . $kind, array(
 The ability names here are placeholders for whatever that lane registers; the
 screen needs only that they exist and carry their own permission checks.
 
-## Relation to WordPress core
+## WordPress core's fields and actions registries
 
-Core 7.1 serves view configurations for its own entities
-(`wp_get_entity_view_config()`, the `get_entity_view_config_{kind}_{name}`
-filter, `GET /wp/v2/view-config`), and its next releases move fields and
-actions to the server. A screen's `view.layout` and `form.layout` use the same
-DataViews/DataForm shapes, and its actions are Abilities, so a screen can move
-onto those APIs when core exposes them for arbitrary screens; the declaration
-would not change.
+WordPress 7.2 keeps fields and actions per entity on the server:
+`wp_register_entity_fields()` on `wp_entity_fields_api_init`, served at
+`/wp/v2/entity-fields`, and `wp_register_entity_actions()` on
+`wp_entity_actions_api_init`, served at `/wp/v2/entity-actions` (both in 7.2
+beta; the actions API is still being completed for the editors in 7.3). A
+screen's fields and actions are already in those shapes, so:
+
+- When the running WordPress has the functions, First Admin registers every
+  screen's fields and actions there, as the entity `firstAdminScreen` /
+  `<id>` with origin `first-admin`, and the screen reads them back from core.
+  Another plugin can then adjust them with core's own
+  `wp_update_entity_fields()` and `wp_unregister_entity_*()`; an action it adds
+  without an `ability` is skipped by this screen, since it would need its own
+  script module.
+- On WordPress 7.1 (First's floor) the declaration is the registry. The screen
+  is the same; `GET /wp-json/first-admin/v1/screens/<id>` says which one served
+  it in `registry`.
+
+Actions keep `ability` and `input` next to core's properties (`id`, `label`,
+`isPrimary`, `supportsBulk`, `context`); core's action schema allows extra
+properties. The Ability stays the thing that runs and checks permission.
+
+View layout (`view.layout`, `form.layout`) uses the same DataViews/DataForm
+shapes as core's view config (`wp_get_entity_view_config()`, the
+`get_entity_view_config_{kind}_{name}` filter, `GET /wp/v2/view-config`, in
+7.1). That endpoint serves `postType`, `taxonomy` and `root` entities; a
+screen's layout stays in the declaration until core takes arbitrary entities.
+
+## Styles
+
+Both hosts read WordPress's admin design tokens (`--wpds-*`). On classic pages
+the screen enqueues core's `wp-theme` style (7.1's `design-tokens.css`); First
+Admin sets the same tokens through its theme provider. Spacing, borders and
+radii in the screen use those tokens, with the upstream values as fallbacks.

@@ -51,3 +51,10 @@ table kinds), which PHP has. A TSX module would need a build step per app and a
 second registry. DataViews/DataForm shapes and Abilities are the parts core is
 standardising (view config in 7.1, server-registered fields and actions next),
 so declarations stay portable to those APIs.
+
+Fields and actions map onto WordPress 7.2's server registries
+(`wp_register_entity_fields()`, `wp_register_entity_actions()`, checked on the
+7.2 beta sources): when present, First Admin registers each screen there as
+`firstAdminScreen`/`<id>` and reads them back; on 7.1 the declaration is the
+registry. Actions stay bound to Abilities, which core's action schema carries as
+extra properties, so a screen keeps working as core's action API grows in 7.3.

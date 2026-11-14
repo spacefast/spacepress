@@ -85,7 +85,7 @@ final class SchemaVersions
                 throw new Refused('schema_build_changed', 'A new build was deployed while this change waited for the schema lock. Read the schema again and propose the change on the new build', null, '/changes', 409);
             }
             $db->applySystemStatements(['CREATE TABLE IF NOT EXISTS `{prefix}' . self::TABLE . '` (`app` VARCHAR(191) NOT NULL, `version` BIGINT NOT NULL, `parent` BIGINT NOT NULL, `format` INT NOT NULL, `build` CHAR(64) NOT NULL, `actor` LONGTEXT NOT NULL, `changes` LONGTEXT NOT NULL, `hash` CHAR(64) NOT NULL, `createdAt` CHAR(24) NOT NULL, PRIMARY KEY (`app`, `version`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin']);
-            $rows = $this->rows();
+            $rows = $this->checked();
             $newest = $rows === [] ? ['version' => 0, 'hash' => ''] : end($rows);
             if ($parent !== $newest['version']) {
                 throw new Refused('schema_conflict', "The schema is at version {$newest['version']}, not $parent: another change was applied first. Read the schema and propose the change again", null, '/parent', 409);
@@ -94,7 +94,7 @@ final class SchemaVersions
             wp_cache_delete('alloptions', 'options');
             wp_cache_delete(Loader::option($app), 'options');
             $state = Loader::state($app);
-            if ((int) ($state['version'] ?? 0) !== $newest['version'] || ($state['format'] ?? null) !== Loader::FORMAT) {
+            if ((int) ($state['version'] ?? 0) !== $newest['version'] || ($state['format'] ?? null) !== Loader::FORMAT || ($state['seal'] ?? null) !== Loader::seal($state)) {
                 $state = $this->replay($rows);
             }
             $resolved = Changes::resolve($this->compiled(), $state, $changeSet, Loader::references(), Loader::declared($this->plugin->schema->name()));
@@ -113,7 +113,7 @@ final class SchemaVersions
                     throw $taken ? new Refused('schema_conflict', "Version {$row['version']} already exists: another change was applied first. Read the schema and propose the change again", null, '/parent', 409) : $e;
                 }
                 $db->touchOption(Loader::option($app));
-                update_option(Loader::option($app), $state, true);
+                update_option(Loader::option($app), Loader::sealed($state), true);
             });
 
             return $row;
@@ -137,10 +137,66 @@ final class SchemaVersions
         return Loader::compiled() ?? throw new \LogicException('The app was loaded without its compiled schema');
     }
 
-    /** Every version, oldest first. Empty before the first change. */
+    /**
+     * Every version, oldest first, after checking the chain; empty before the first change. Reading
+     * the versions also puts the option back to the state they add up to, if something else wrote it.
+     *
+     * @throws Refused 409 `schema_chain_broken` when a stored version was changed outside First
+     */
     public function list(): array
     {
-        return $this->exists() ? $this->rows() : [];
+        return $this->exists() ? $this->checked() : [];
+    }
+
+    /**
+     * Every version, checked: each row's parent is the one before it and its hash covers it and its
+     * parent's hash. A row edited or removed in the database breaks the chain from there on.
+     *
+     * @throws Refused 409 `schema_chain_broken`, naming the first version that doesn't check out
+     */
+    private function verified(): array
+    {
+        $rows = $this->rows();
+        $parentHash = '';
+        foreach ($rows as $i => $row) {
+            if ($row['version'] !== $i + 1 || $row['parent'] !== $i || self::hashOf($parentHash, $row) !== $row['hash']) {
+                throw new Refused('schema_chain_broken', "schema version {$row['version']} does not match its hash: a stored version was changed outside First. Restore it from a backup; nothing is applied on top of a broken history", null, '/changes', 409);
+            }
+            $parentHash = $row['hash'];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The stored versions, checked, after which the option is the state they add up to. A broken
+     * chain keeps the option as the last state that checked out and records why on it.
+     */
+    private function checked(): array
+    {
+        $app = $this->plugin->schema->name();
+        try {
+            $rows = $this->verified();
+        } catch (Refused $broken) {
+            $state = Loader::state($app);
+            if (($state['problem'] ?? null) !== self::chainProblem($broken)) {
+                update_option(Loader::option($app), Loader::sealed(['problem' => self::chainProblem($broken)] + $state), true);
+            }
+            throw $broken;
+        }
+        $state = Loader::sealed($rows === [] ? Loader::EMPTY : $this->replay($rows));
+        wp_cache_delete('alloptions', 'options');
+        wp_cache_delete(Loader::option($app), 'options');
+        if ($rows !== [] && Loader::state($app) !== $state) {
+            update_option(Loader::option($app), $state, true);
+        }
+
+        return $rows;
+    }
+
+    private static function chainProblem(Refused $broken): string
+    {
+        return explode(':', $broken->getMessage(), 2)[0];
     }
 
     private function rows(): array

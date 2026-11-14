@@ -5,13 +5,21 @@ declare(strict_types=1);
 namespace First\Services;
 
 use First\HttpError;
+use First\Search\Index;
 use First\Viewer;
 
 use function First\db;
 
-/** No shadow index: every search observes publication, deletion, row access and field access now. */
+/**
+ * `GET /services/search?collection=…&q=…`: one configured kind's published rows whose configured
+ * fields hold every word, matched by the search index ({@see Index}) on the kind's own read as the
+ * caller, like every other search. The configured fields are also the columns returned, so a field
+ * the caller may not read is the same 403 as asking for it on a list.
+ */
 final class Search
 {
+    public const LIMIT = 20;
+
     public static function query(array $query, Viewer $viewer): array
     {
         $name = $query['collection'] ?? '';
@@ -21,22 +29,14 @@ final class Search
         }
         $fields = Module::config()['search'][$name] ?? throw HttpError::notFound('Search collection not found');
         $spec = db()->schema()->collection($name);
-        if (!($spec['drafts'] ?? false) || !is_array($fields) || $fields === []) {
-            throw new \LogicException('Search requires a publication-enabled collection and explicit text fields');
+        if (!($spec['drafts'] ?? false) || !is_array($fields) || $fields === [] || array_diff($fields, Index::fields($spec)) !== []) {
+            throw new \LogicException('Search requires a publication-enabled collection and searchable text fields');
         }
-        $pattern = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], trim($term)) . '%';
-        $where = [];
-        $columns = [$spec['primaryKey'] => true];
-        foreach ($fields as $field) {
-            if (($spec['columns'][$field]['type'] ?? '') !== 'text') {
-                throw new \LogicException('Search fields must be text columns');
-            }
-            $where[] = [$field => ['ilike' => $pattern]];
-            $columns[$field] = true;
-        }
-        // The query/field-access owner rejects probing unreadable fields before evaluating SQL.
-        $rows = db()->findMany($name, ['where' => ['AND' => [['status' => 'published'], ['OR' => $where]]],
-            'columns' => $columns, 'limit' => 20, 'orderBy' => [$spec['primaryKey'] => 'asc']], $viewer);
-        return ['provider' => 'wordpress-lexical', 'results' => $rows, 'limit' => 20];
+        $fields = array_values($fields);
+        $pk = $spec['primaryKey'];
+        $rows = db()->findMany($name, ['where' => ['status' => 'published'], 'search' => $term, 'searchFields' => $fields,
+            'columns' => array_fill_keys([$pk, ...$fields], true), 'limit' => self::LIMIT, 'orderBy' => [$pk => 'asc']], $viewer);
+
+        return ['provider' => 'wordpress-lexical', 'results' => $rows, 'limit' => self::LIMIT];
     }
 }

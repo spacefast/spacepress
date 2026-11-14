@@ -14,7 +14,7 @@ function first_admin_register_menu_items() {
 	first_admin_register_menu_item(
 		'dashboard',
 		array(
-			'to'    => '/dashboard',
+			'to'    => '/',
 			'label' => __( 'Dashboard', 'first-admin' ),
 		)
 	);

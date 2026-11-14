@@ -75,6 +75,21 @@ final class Schema
         return (string) ($this->raw['name'] ?? 'app');
     }
 
+    /** The compiler's list (src/kind_url.rs), for an app built before it was in every schema. */
+    private const RESERVED = ['wp-admin', 'wp-json', 'wp-content', 'wp-includes', 'wp-login.php', 'wp-signup.php', 'wp-cron.php', 'wp-sitemap.xml', 'xmlrpc.php', 'feed', '__first', '__spacefast', 'llms.txt', 'robots.txt', 'favicon.ico', 'sitemap.xml', 'author', 'category', 'tag', 'search', 'page', 'comments', 'embed', 'type', 'attachment', 'trackback', 'wp-activate.php', 'wp-trackback.php', 'wp-comments-post.php', 'wp-mail.php', '.well-known', '__zero', 'identity', 'index.php', 'wp-config.php', 'first-admin', 'auth'];
+
+    /**
+     * WordPress's and First's own first path segments (`wp-admin`, `wp-json`, `__first`, `feed`, …),
+     * lowercased: what the app's files never answer for.
+     *
+     * @return list<string>
+     */
+    public function reserved(): array
+    {
+        // An app built before the list was in every schema: the app router's copy, else the runtime's.
+        return array_map('strtolower', (array) ($this->raw['reserved'] ?? $this->raw['app']['reserved'] ?? self::RESERVED));
+    }
+
     /** @return array<string, array> */
     public function collections(): array
     {

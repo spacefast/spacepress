@@ -1,1 +1,0 @@
-<?php return array('name' => 'collection-index', 'dependencies' => array(), 'moduleDependencies' => array('@first-admin/schema'), 'version' => '3a78283dfe2ffa330a4f');

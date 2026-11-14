@@ -366,7 +366,8 @@ final class Sitemap
         $out = [];
         foreach ($ids as $id) {
             $post = get_post($id);
-            if (!$post instanceof \WP_Post || $post->post_status !== 'publish' || $post->post_password !== '') {
+            // A published page under one that isn't is as hidden as its parent, and has no URL.
+            if (!$post instanceof \WP_Post || $post->post_status !== 'publish' || $post->post_password !== '' || !KindUrls::published($post)) {
                 continue;
             }
             $path = KindUrls::instance()?->path($kind, $post);

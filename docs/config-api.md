@@ -459,7 +459,7 @@ registered once.
 | `uid` | `false` (`true` with `sync`) | stable immutable `uid` on every row |
 | `sync` | none | project-relative `*.md` or `*.json` pattern for `first sync` |
 | `agents` | `true` | expose operations as WordPress abilities |
-| `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
+| `url` | none | collections only; the item URL, e.g. `"/blog/:slug"`. One pattern parses incoming URLs and builds links. It starts with a literal segment, not one WordPress or First serves (`wp-admin`, `wp-json`, `feed`, `category`, `page`, `__first`, ...); a hierarchical collection may instead be `"/:path"`, at the site root (see [a docs section](#a-folder-tree-a-docs-section)). Placeholders: `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required field with no read rule, or `:field.slug` of a referenced collection anyone reads, each used once; it must contain `:slug` or `:id`. Two kinds' patterns can't match the same URL: `/blog/news/:slug` and `/blog/:topic/:id` both match `/blog/news/7` |
 
 Collections need a title and physical names of at most 14 characters (WordPress
 prefixes `first_`). Built-in route names are reserved (`media`, `files`,
@@ -732,6 +732,11 @@ content/docs/
 
 - `hierarchical: true` adds `parent` and `order`, stored as the post's own parent and menu order:
   the editor's page attributes edit them, and `:path` in the url is the parent chain.
+- `url: "/:path"` puts the section at the site root, as WordPress's Pages are: `/introduction`,
+  `/guides/install`, served by `first/app/[...path]/page.tsx`. The kind takes a path only when one
+  of its published items is there. WordPress's own addresses and First's, other kinds' patterns,
+  the app's other pages and WordPress's Pages and posts keep theirs, and any other path is the
+  app's 404.
 - A file's name is its slug and its folder its parent; front matter never holds either. Put
   `order: 2` in front matter to sort; siblings with the same order sort by title.
 - A folder tree's file slugs are unique, so two folders can't both hold an `install.md`; a file

@@ -25,7 +25,7 @@ namespace First\Wp;
  */
 final class KindUrls
 {
-    /** @var array<string, array{type: string, pattern: string, segments: list<string>, slug: ?string}> */
+    /** @var array<string, array{type: string, pattern: string, segments: list<string>, slug: ?string, reserved: list<string>}> */
     private array $kinds = [];
     private static ?self $instance = null;
 
@@ -66,6 +66,8 @@ final class KindUrls
                 'pattern' => $spec['url'],
                 'segments' => explode('/', trim($spec['url'], '/')),
                 'slug' => $spec['slug'] ?? null,
+                // WordPress's and First's own first segments, which a kind at the root never takes.
+                'reserved' => array_map('strtolower', $spec['reserved'] ?? []),
             ];
         }
     }
@@ -74,6 +76,9 @@ final class KindUrls
     public function rewrites(): void
     {
         foreach ($this->kinds as $name => $kind) {
+            if (self::root($kind)) {
+                continue; // resolved in request(), after every rule: a rule would match every path
+            }
             $regex = '';
             $query = [];
             $n = 0;
@@ -124,7 +129,7 @@ final class KindUrls
     {
         $name = $vars['first_kind'] ?? null;
         if (!is_string($name) || !isset($this->kinds[$name])) {
-            return $vars;
+            return $this->rootItem($vars) ?? $vars;
         }
         unset($vars['first_kind']);
         $vars['post_type'] = $this->kinds[$name]['type'];
@@ -134,6 +139,10 @@ final class KindUrls
             // this kind only, the whole parent chain, and query that item by id.
             $post = get_page_by_path((string) $vars['pagename'], OBJECT, $this->kinds[$name]['type']);
             unset($vars['pagename']);
+            // A `/` written as `%2F` (or `.`/`..`) in the URL isn't a path segment: no item has it.
+            if (self::segments() === null) {
+                $post = null;
+            }
             if ($post instanceof \WP_Post) {
                 $vars['p'] = $post->ID;
             } else {
@@ -142,6 +151,104 @@ final class KindUrls
         }
         // Fields other than slug/id/date are checked once the item is known (oldSlug runs then).
         return $vars;
+    }
+
+    /** A kind at the site root: `url: "/:path"`, a hierarchical kind's whole parent chain. */
+    private static function root(array $kind): bool
+    {
+        return $kind['segments'] === [':path'];
+    }
+
+    /**
+     * A kind at the site root (`/:path`) answers a path no other kind's pattern matched, and that
+     * WordPress itself has nothing at (no published post, Page or other kind's item by that name or
+     * path), when one of its published items has exactly that path, parent by parent:
+     * `/reference/config` is the `config` item under `reference`. WordPress's own entry points,
+     * First's, feeds and archives are never asked, and a path segment that is empty, `.`, `..` or
+     * hides a `/` (`%2F`) is no item's. Every other query var (`preview`, `page`) is kept.
+     *
+     * @param array<string, mixed> $vars
+     * @return ?array<string, mixed> the query for that item
+     */
+    private function rootItem(array $vars): ?array
+    {
+        foreach ($this->kinds as $kind) {
+            if (!self::root($kind)) {
+                continue;
+            }
+            // Only WordPress's own catch-all permalink rules: a post by name, a Page by path, or
+            // nothing matched. Any other rule (a plugin's, an archive) is WordPress's request.
+            $rest = array_diff_key($vars, array_flip(['name', 'pagename', 'page', 'error', 'attachment', 'preview', 'p', 'post_type', 'cpage']));
+            if ($rest !== []) {
+                return null;
+            }
+            $segments = self::segments();
+            if ($segments === null || $segments === []) {
+                return null;
+            }
+            $first = strtolower($segments[0]);
+            if (in_array($first, $kind['reserved'], true) || str_starts_with($first, 'wp-')) {
+                return null;
+            }
+            $path = implode('/', $segments);
+            // WordPress has something at this path: it keeps it.
+            $types = array_values(array_diff(get_post_types(['public' => true]), [$kind['type'], 'attachment']));
+            if (get_page_by_path($path, OBJECT, $types) instanceof \WP_Post) {
+                return null;
+            }
+            $post = get_page_by_path($path, OBJECT, $kind['type']);
+            if (!$post instanceof \WP_Post) {
+                return null;
+            }
+            $preview = isset($vars['preview']) && current_user_can('edit_post', $post->ID);
+            if (!$preview && ($post->post_status !== 'publish' || !self::published($post))) {
+                return null;
+            }
+            $kept = array_diff_key($vars, array_flip(['name', 'pagename', 'attachment', 'error', 'p', 'post_type']));
+            return ['post_type' => $kind['type'], 'p' => $post->ID] + $kept;
+        }
+        return null;
+    }
+
+    /**
+     * The request's path below the home URL as decoded segments, or null when a segment is no
+     * part of a path (empty, `.`, `..`, or a `/` written as `%2F`).
+     *
+     * @return ?list<string>
+     */
+    private static function segments(): ?array
+    {
+        $path = (string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
+        $home = rtrim((string) wp_parse_url(home_url('/'), PHP_URL_PATH), '/');
+        if ($home !== '') {
+            if ($path !== $home && !str_starts_with($path, $home . '/')) {
+                return null;
+            }
+            $path = substr($path, strlen($home));
+        }
+        $out = [];
+        foreach (explode('/', trim($path, '/')) as $raw) {
+            if ($raw === '') {
+                continue;
+            }
+            $segment = rawurldecode($raw);
+            if ($segment === '.' || $segment === '..' || str_contains($segment, '/') || str_contains($segment, '\\') || str_contains($segment, "\0")) {
+                return null;
+            }
+            $out[] = $segment;
+        }
+        return $out;
+    }
+
+    /** Whether every page above a post is published: a page under a draft is as hidden as the draft. */
+    public static function published(\WP_Post $post): bool
+    {
+        foreach (get_post_ancestors($post) as $ancestor) {
+            if (get_post_status($ancestor) !== 'publish') {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** `post_type_link`: the item's URL from its kind's pattern. */
@@ -180,6 +287,14 @@ final class KindUrls
                 return null;
             }
             $parts[] = $field === 'path' ? implode('/', array_map('rawurlencode', explode('/', get_page_uri($post) ?: $value))) : rawurlencode($value);
+        }
+        // At the site root, an item whose first segment WordPress or First owns can't be reached:
+        // it has no URL, so no link, tree or sitemap points at it.
+        if (self::root($this->kinds[$name])) {
+            $first = strtolower(rawurldecode(explode('/', $parts[0] ?? '', 2)[0]));
+            if (in_array($first, $this->kinds[$name]['reserved'], true) || str_starts_with($first, 'wp-')) {
+                return null;
+            }
         }
         return '/' . implode('/', $parts);
     }

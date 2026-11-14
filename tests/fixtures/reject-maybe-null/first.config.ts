@@ -1,3 +1,3 @@
 import { collection, text, defineConfig, table } from "first";
-const a = table({ note: text().optional() });
-export default defineConfig({ tables: { a }, hooks: { a: { afterCreate(row) { const n = row.note.length; } } } });
+export const a = table({ note: text().optional() }).on({ afterCreate(row) { const n = row.note.length; } });
+export default defineConfig({});

@@ -15,7 +15,9 @@ declare(strict_types=1);
 
 require __DIR__ . '/wp.php';
 
-$site = wpSite('serve-built', ['wpContent' => $argv[1]]);
+// FIRST_SERVE_MU names a must-use plugin a browser test needs on the server (its test hooks).
+$mu = getenv('FIRST_SERVE_MU');
+$site = wpSite('serve-built', ['wpContent' => $argv[1]] + (is_string($mu) && is_file($mu) ? ['muPlugins' => ['test' => (string) file_get_contents($mu)]] : []));
 if (isset($argv[2])) {
     \First\Sync\Seed::run(\First\Wp\Runtime::plugin(), $argv[2]);
 }

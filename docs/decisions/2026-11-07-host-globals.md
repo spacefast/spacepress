@@ -27,7 +27,9 @@ capability check has one place to hook.
   `randomBytes(n).toString("hex")`, `timingSafeEqual(Buffer.from(a), Buffer.from(b))`),
   `Buffer.byteLength(s)` and `process.*(...)`.
 - Reads: `Compiler::host_member` / `host_index` handle `process.env.NAME` and
-  `process.env["NAME"]`, and refuse every other `process` read.
+  `process.env["NAME"]`, `process.platform` and `navigator.platform`
+  (2026-11-14-host-platform-detection.md), and refuse every other `process`
+  and `navigator` read.
 - `new Headers(...)`, `new URLSearchParams(...)` in `host_new`; `new URL`,
   `Request`, `Response` are refused with a fix.
 - Values: `Ty::Host(HostTy::{Response, Headers, SearchParams})`, nominal, with

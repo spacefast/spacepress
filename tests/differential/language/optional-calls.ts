@@ -8,10 +8,8 @@ import { classMethods, optionalCalls } from "./optional-calls-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
-export default defineConfig({
-  name: "language-optional-calls",
-  actions: {
-    calls: run(() => optionalCalls()),
-    classes: run(() => classMethods()),
-  },
-});
+export const calls = run(() => optionalCalls());
+
+export const classes = run(() => classMethods());
+
+export default defineConfig({ name: "language-optional-calls" });

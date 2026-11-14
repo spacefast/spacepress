@@ -61,7 +61,8 @@ ${asset(targets['linux-x64'], '      ')}
   test do
     (testpath/"first.config.ts").write <<~TS
       import { defineConfig, table, text } from 'first';
-      export default defineConfig({ tables: { notes: table({ title: text() }) } });
+      export const notes = table({ title: text() });
+      export default defineConfig({});
     TS
     system "#{bin}/first", "check", testpath
   end

@@ -64,9 +64,15 @@ pub enum Code {
     /// Two exports register the same name, or one kind, action or job under two (§1.1).
     #[serde(rename = "F1221")]
     DuplicateExport,
+    /// A kind, global, bucket, action or job built in app source but not exported, so it has no name.
+    #[serde(rename = "F1222")]
+    Unexported,
     /// A plugin's compiled code uses a capability its `first/_generated/plugins.lock.json` entry doesn't grant.
     #[serde(rename = "F4201")]
     PluginCapability,
+    /// App code names a WordPress option the runtime guard protects (runtime/First/Wp/guard.json).
+    #[serde(rename = "F4301")]
+    ProtectedWordPress,
 }
 
 impl Code {
@@ -156,6 +162,36 @@ pub fn site(span: Span) -> String {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         format!("{name}:{line}:{col}")
+    })
+}
+
+/// The property name `key` written just before `value` (`key: value`), so an error about a key
+/// points at the key. A shorthand property (`{ tables }`) is its own key; anything else keeps `value`.
+pub fn key_of(value: Span, key: &str) -> Span {
+    FILES.with(|files| {
+        let files = files.borrow();
+        let Some((_, src)) = files.get(value.file as usize) else {
+            return value;
+        };
+        let start = boundary(src, value.start as usize);
+        let before = src[..start].trim_end();
+        let Some(before) = before.strip_suffix(':') else {
+            return value;
+        };
+        let before = before.trim_end();
+        let quoted = [format!("\"{key}\""), format!("'{key}'"), key.to_string()];
+        for name in quoted {
+            if let Some(head) = before.strip_suffix(name.as_str())
+                && !head.ends_with(|c: char| c.is_alphanumeric() || c == '_' || c == '$')
+            {
+                return Span {
+                    file: value.file,
+                    start: head.len() as u32,
+                    end: before.len() as u32,
+                };
+            }
+        }
+        value
     })
 }
 

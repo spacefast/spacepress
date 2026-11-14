@@ -7,7 +7,6 @@ import {
   integer,
   table,
   text,
-  type CollectionHooks,
   type InferSelectModel, select, ref,
 } from "first";
 import { stories } from "./stories";
@@ -93,7 +92,9 @@ async function syncShopping(item: Item, previous?: Item) {
     .where({ id: entry.id });
 }
 
-export const itemHooks: CollectionHooks<typeof items> = {
+// Declared after `Item` so the handlers' types don't depend on the call that types `items`;
+// `.on()` stays in this file, beside the declaration.
+items.on({
   beforeCreate(data) {
     data.name = data.name.trim();
     if (!data.name)
@@ -111,7 +112,7 @@ export const itemHooks: CollectionHooks<typeof items> = {
     await syncShopping(item);
   },
   afterUpdate: syncShopping,
-};
+});
 
 async function changeStock(itemId: number, amount: number, consuming: boolean) {
   const item = await db.query.items.findFirst({ where: { id: itemId } });

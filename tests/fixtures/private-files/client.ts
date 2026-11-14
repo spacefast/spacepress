@@ -12,7 +12,7 @@ async function check() {
   const orderAmount: string = (await first.recordRowOrders.get(1)).amount;
   const preferenceCount: string | null = (await first.globals.prefsPatch.get()).count;
   const preferenceValue: string | null = (await first.globals.prefsOutput.get()).value;
-  const updatedPreference: string = await first.actions.prefs();
+  const updatedPreference: string = await first.actions.updatePrefs();
   const unpopulatedDeck: number | null = (await first.privateFiles.get(1)).deck;
   const unpopulatedDecks: (number | null)[] = (await first.privateFiles.list()).map(row => row.deck);
   const uploaded: PrivateFile = await first.files.decks.upload(new Blob([]));

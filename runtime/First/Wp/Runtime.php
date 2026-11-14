@@ -23,7 +23,7 @@ final class Runtime
         if (self::$booted) {
             return;
         }
-        if (version_compare((string) get_bloginfo('version'), Platform::WORDPRESS, '<') || version_compare(PHP_VERSION, Platform::PHP, '<')) {
+        if (!Platform::wordpressSupported((string) get_bloginfo('version')) || version_compare(PHP_VERSION, Platform::PHP, '<')) {
             self::notice('WordPress ' . Platform::WORDPRESS . '+ and PHP ' . Platform::PHP . '+ are required');
             return;
         }
@@ -197,18 +197,22 @@ final class Runtime
     {
         \First\RuntimeSchema\Surfaces::grant();
         Uploads::install();
+        if (self::$plugin->schema->files() !== []) {
+            WpFiles::install();
+        }
         if (function_exists('as_schedule_recurring_action')) {
             Jobs\ActionSchedulerQueue::install();
             Guests::install();
         }
         ContentPages::install();
         RoutePages::install();
+        \First\Search\Index::reindexChanged();
         self::installRewrites();
         // The Pages log and swallow a failure on a request (the next one retries); initialize's
         // receipt must mean everything is installed, so what is still to do is a failure here.
         $left = self::installPlan();
         if ($left !== []) {
-            throw new \RuntimeException('First could not install ' . implode(', ', array_map(static fn (array $s): string => $s['step'] . (isset($s['route']) ? ' ' . $s['route'] : ''), $left)) . '; see the PHP error log');
+            throw new \RuntimeException('First could not install ' . implode(', ', array_column($left, 'id')) . '; see the PHP error log');
         }
     }
 
@@ -274,6 +278,20 @@ final class Runtime
     }
 
     /**
+     * One step of a plan: `kind` says what it does (`page.create`, `rewrite-rules`, …; the set is open:
+     * a reader must accept kinds it doesn't know, data migrations among the expected ones), `id` names
+     * it uniquely within the plan, and `state` is `pending` until a deployment records its progress.
+     * Anything else is the kind's own detail.
+     *
+     * @param array<string, mixed> $detail
+     * @return array{kind: string, id: string, state: string}
+     */
+    public static function step(string $kind, string $id, array $detail = []): array
+    {
+        return ['kind' => $kind, 'id' => $id, 'state' => 'pending'] + $detail;
+    }
+
+    /**
      * The install steps {@see install()} would run for this build, computed without writing: Pages
      * (each created, changed, adopted, hidden, restored or trashed), the front-page options, and one
      * rebuild of the rewrite rules. An empty list means installing changes nothing.
@@ -283,8 +301,11 @@ final class Runtime
     public static function installPlan(): array
     {
         $steps = [...ContentPages::plan(), ...RoutePages::plan()];
+        if (class_exists(\First\Search\Index::class, false) && \First\Search\Index::shapeChanged()) {
+            $steps[] = self::step('search-shape', 'search-shape');
+        }
         if (self::rewritesBehind()) {
-            $steps[] = ['step' => 'rewrite-rules'];
+            $steps[] = self::step('rewrite-rules', 'rewrite-rules');
         }
 
         return $steps;
@@ -298,7 +319,7 @@ final class Runtime
      * once; nothing is thrown for them.
      *
      * @param array<string, int> $drops
-     * @return array{platform: list<string>, legacyNames: bool, systemTables: ?array{from: mixed, to: string, steps: array<string, list<string>>}, identitySchema: ?array{from: int, to: int}, migrations: list<array>, install: list<array>, runtimeSchema: ?array, refusals: list<array>}
+     * @return array{steps: list<array{kind: string, id: string, state: string}>, platform: list<string>, legacyNames: bool, systemTables: ?array{from: mixed, to: string, steps: array<string, list<string>>}, identitySchema: ?array{from: int, to: int}, migrations: list<array>, install: list<array>, runtimeSchema: ?array, refusals: list<array>}
      */
     public static function inspect(array $drops = []): array
     {
@@ -320,14 +341,42 @@ final class Runtime
             $identity = $from < \First\Identity\Schema::VERSION ? ['from' => $from, 'to' => \First\Identity\Schema::VERSION] : null;
         }
         $app = self::$plugin->inspect($drops);
+        $install = self::installPlan();
+        $legacy = ZeroNames::pending();
+        // Every step initialize would run, in order, as one open set: whatever reads it (the deployment
+        // that decides whether a plan is empty) counts kinds it doesn't know too.
+        $steps = [];
+        // The one-time moves of a site that ran 0.3 (before the rename): identity's names first, as
+        // initialize runs them, then the runtime's. `state` is `started` for a run that was interrupted.
+        $connection = new Connection($wpdb);
+        $names = [];
+        if (class_exists(\First\Identity\Legacy\ZeroNames::class)) {
+            $names['identity'] = \First\Identity\Legacy\ZeroNames::state($wpdb);
+        }
+        $names['runtime'] = ZeroNames::state($connection);
+        foreach ($names as $which => $state) {
+            if ($state === 'pending' || $state === 'started') {
+                $steps[] = array_replace(self::step('names', "names:$which"), ['state' => $state]);
+            }
+        }
+        if ($recorded !== self::tablesVersion()) {
+            $steps[] = self::step('system-tables', 'system-tables', ['to' => self::tablesVersion()]);
+        }
+        if ($identity !== null) {
+            $steps[] = self::step('identity-schema', 'identity-schema', $identity);
+        }
+        foreach ($app['migrations'] as $migration) {
+            $steps[] = self::step('migration', 'migration:' . $migration['id'], ['sql' => $migration['sql']]);
+        }
 
         return [
+            'steps' => [...$steps, ...$install],
             'platform' => $platform,
-            'legacyNames' => ZeroNames::pending(),
+            'legacyNames' => $legacy,
             'systemTables' => $recorded === self::tablesVersion() ? null : ['from' => $recorded, 'to' => self::tablesVersion(), 'steps' => \First\SystemTables::plan()],
             'identitySchema' => $identity,
             'migrations' => $app['migrations'],
-            'install' => self::installPlan(),
+            'install' => $install,
             'runtimeSchema' => $app['runtimeSchema'],
             'refusals' => array_merge(array_map(static fn (string $p): array => ['code' => 'platform', 'message' => $p], $platform), $app['refusals']),
         ];

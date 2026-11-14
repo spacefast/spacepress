@@ -64,74 +64,78 @@ function failWith(kind: number): never {
   throw new TypeError("plain");
 }
 
-export default defineConfig({
-  name: "class-private",
-  actions: {
-    privateTyped: run(() => {
-      const a = new PrivateCounter();
-      a.bump();
-      const second = a.bump();
-      const child = new PrivateChild();
-      child.bump();
-      return {
-        second, history: a.history(), made: PrivateCounter.made(), peek: PrivateCounter.peek(child),
-        keys: Object.keys(a), json: JSON.stringify(child), spread: { ...a },
-        childCount: child.childCount(),
-        branded: [PrivateCounter.branded(a), PrivateCounter.branded(child), PrivateCounter.branded({ count: 1 })],
-        childBranded: [PrivateChild.childBranded(a), PrivateChild.childBranded(child)],
-        cloneBranded: PrivateCounter.branded(structuredClone(a)),
-        foreign: [PrivateReader.read(new PrivateReader()), PrivateReader.read({ secret: "x" })],
-      };
-    }),
-    accessorsTyped: run(() => {
-      const t = new Temperature();
-      t.celsius = 36.6;
-      t.celsius += 1;
-      const k = new Kelvin();
-      return {
-        celsius: t.celsius, fahrenheit: t.fahrenheit, reads: Temperature.reads,
-        keys: Object.keys(t), json: JSON.stringify({ t, list: [t] }), kelvin: k.celsius,
-      };
-    }),
-    accessorsUntyped: run(() => untypedAccessors()),
-    errorsTyped: run(() => {
-      const out: { app: boolean; quota: boolean; error: boolean; name: string; message: string; text: string; stack: string; code: string; limit: number; json: string }[] = [];
-      for (const kind of [0, 1, 2]) {
-        try { failWith(kind); } catch (e) {
-          out.push({
-            app: e instanceof AppError, quota: e instanceof QuotaError, error: e instanceof Error,
-            name: e.name, message: e.message, text: String(e), stack: (e.stack ?? "").split("\n")[0] ?? "",
-            code: e instanceof AppError ? e.code : "", limit: e instanceof QuotaError ? e.limit : -1,
-            json: JSON.stringify(e) ?? "",
-          });
-        }
-      }
-      return out;
-    }),
-    syntaxErrorsTyped: run(() => {
-      const made = new SyntaxError("made");
-      const called = SyntaxError("called");
-      const glob = new GlobSyntaxError("[");
-      const out: (string | boolean)[] = [
-        made.name, made.message, String(made), (made.stack ?? "").split("\n")[0] ?? "",
-        called.name, called.message, String(SyntaxError()),
-        made instanceof SyntaxError, made instanceof Error, made instanceof TypeError, new RangeError("r") instanceof SyntaxError,
-        glob instanceof GlobSyntaxError, glob instanceof SyntaxError, glob instanceof Error, glob instanceof RangeError,
-        glob.name, glob.message, glob.pattern, String(glob), JSON.stringify(glob),
-      ];
-      try { JSON.parse("{"); } catch (e) {
-        out.push(e instanceof SyntaxError, e instanceof Error, e instanceof TypeError, e.name);
-      }
-      try { throw new SyntaxError("thrown"); } catch (e) {
-        out.push(e instanceof SyntaxError, e.name, e.message);
-      }
-      try { throw glob; } catch (e) {
-        out.push(e instanceof GlobSyntaxError, e instanceof SyntaxError, e instanceof GlobSyntaxError ? e.pattern : "");
-      }
-      return out;
-    }),
-    errorsUntyped: run(() => untypedErrors()),
-    privateUntyped: run(() => untypedPrivate()),
-    classesUntyped: run(() => untypedClasses()),
-  },
+export const privateTyped = run(() => {
+  const a = new PrivateCounter();
+  a.bump();
+  const second = a.bump();
+  const child = new PrivateChild();
+  child.bump();
+  return {
+    second, history: a.history(), made: PrivateCounter.made(), peek: PrivateCounter.peek(child),
+    keys: Object.keys(a), json: JSON.stringify(child), spread: { ...a },
+    childCount: child.childCount(),
+    branded: [PrivateCounter.branded(a), PrivateCounter.branded(child), PrivateCounter.branded({ count: 1 })],
+    childBranded: [PrivateChild.childBranded(a), PrivateChild.childBranded(child)],
+    cloneBranded: PrivateCounter.branded(structuredClone(a)),
+    foreign: [PrivateReader.read(new PrivateReader()), PrivateReader.read({ secret: "x" })],
+  };
 });
+
+export const accessorsTyped = run(() => {
+  const t = new Temperature();
+  t.celsius = 36.6;
+  t.celsius += 1;
+  const k = new Kelvin();
+  return {
+    celsius: t.celsius, fahrenheit: t.fahrenheit, reads: Temperature.reads,
+    keys: Object.keys(t), json: JSON.stringify({ t, list: [t] }), kelvin: k.celsius,
+  };
+});
+
+export const accessorsUntyped = run(() => untypedAccessors());
+
+export const errorsTyped = run(() => {
+  const out: { app: boolean; quota: boolean; error: boolean; name: string; message: string; text: string; stack: string; code: string; limit: number; json: string }[] = [];
+  for (const kind of [0, 1, 2]) {
+    try { failWith(kind); } catch (e) {
+      out.push({
+        app: e instanceof AppError, quota: e instanceof QuotaError, error: e instanceof Error,
+        name: e.name, message: e.message, text: String(e), stack: (e.stack ?? "").split("\n")[0] ?? "",
+        code: e instanceof AppError ? e.code : "", limit: e instanceof QuotaError ? e.limit : -1,
+        json: JSON.stringify(e) ?? "",
+      });
+    }
+  }
+  return out;
+});
+
+export const syntaxErrorsTyped = run(() => {
+  const made = new SyntaxError("made");
+  const called = SyntaxError("called");
+  const glob = new GlobSyntaxError("[");
+  const out: (string | boolean)[] = [
+    made.name, made.message, String(made), (made.stack ?? "").split("\n")[0] ?? "",
+    called.name, called.message, String(SyntaxError()),
+    made instanceof SyntaxError, made instanceof Error, made instanceof TypeError, new RangeError("r") instanceof SyntaxError,
+    glob instanceof GlobSyntaxError, glob instanceof SyntaxError, glob instanceof Error, glob instanceof RangeError,
+    glob.name, glob.message, glob.pattern, String(glob), JSON.stringify(glob),
+  ];
+  try { JSON.parse("{"); } catch (e) {
+    out.push(e instanceof SyntaxError, e instanceof Error, e instanceof TypeError, e.name);
+  }
+  try { throw new SyntaxError("thrown"); } catch (e) {
+    out.push(e instanceof SyntaxError, e.name, e.message);
+  }
+  try { throw glob; } catch (e) {
+    out.push(e instanceof GlobSyntaxError, e instanceof SyntaxError, e instanceof GlobSyntaxError ? e.pattern : "");
+  }
+  return out;
+});
+
+export const errorsUntyped = run(() => untypedErrors());
+
+export const privateUntyped = run(() => untypedPrivate());
+
+export const classesUntyped = run(() => untypedClasses());
+
+export default defineConfig({ name: "class-private" });

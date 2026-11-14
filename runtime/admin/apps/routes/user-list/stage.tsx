@@ -98,6 +98,7 @@ export default function UserList() {
 	const { view, isModified, updateView, resetToDefault } = useView( {
 		kind: 'root',
 		name: 'user',
+		slug,
 		defaultView,
 		queryParams: searchParams,
 		onChangeQueryParams: handleQueryParamsChange,

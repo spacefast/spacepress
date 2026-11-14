@@ -49,6 +49,31 @@ final class Comments
         if (self::$types === []) {
             return;
         }
+        // What visitors see of a thread changed: the item's cached pages go. Core's own comment hooks,
+        // so every path (the form, REST, wp-admin, wp-comments-post.php, other plugins) is covered.
+        add_action('transition_comment_status', static function (mixed $new, mixed $old, mixed $comment): void {
+            if ($comment instanceof \WP_Comment && self::visible((string) $old, (string) $new, $comment)) {
+                self::seen($comment);
+            }
+        }, 10, 3);
+        add_action('wp_insert_comment', static function (int $id, \WP_Comment $comment): void {
+            if (self::visible('new', (string) $comment->comment_approved, $comment)) {
+                self::seen($comment);
+            }
+        }, 10, 2);
+        add_action('edit_comment', static function (int $id): void {
+            $comment = get_comment($id);
+            // An edit keeps the status (wp_set_comment_status reports the change itself): visible
+            // only while approved.
+            if ($comment instanceof \WP_Comment && self::visible((string) $comment->comment_approved, (string) $comment->comment_approved, $comment)) {
+                self::seen($comment);
+            }
+        });
+        add_action('delete_comment', static function (mixed $id, mixed $comment): void {
+            if ($comment instanceof \WP_Comment && self::visible((string) $comment->comment_approved, 'deleted', $comment)) {
+                self::seen($comment);
+            }
+        }, 10, 2);
         // wp-comments-post.php: refused before core reads the submission any further.
         add_action('pre_comment_on_post', static function (int $postId): void {
             $error = self::refusal($postId, (int) ($_POST['comment_parent'] ?? 0), 0, (string) ($_POST['author'] ?? ''), (string) ($_POST['email'] ?? ''));
@@ -84,6 +109,50 @@ final class Comments
             }
             return self::moderate($collection, $data);
         }, PHP_INT_MAX, 2);
+    }
+
+    /**
+     * Whether a comment event changes what visitors see of a thread: a comment on a kind with comments
+     * on becomes approved, stops being approved (held, spam, trash, deleted), or is edited while
+     * approved. A held or spam submission changes nothing a visitor sees, so it purges nothing and
+     * announces nothing: an anonymous form post can't make every cached copy and every open page
+     * render again.
+     */
+    public static function visible(string $from, string $to, \WP_Comment $comment): bool
+    {
+        if (self::collection((int) $comment->comment_post_ID) === null || ($comment->comment_type !== '' && $comment->comment_type !== 'comment')) {
+            return false;
+        }
+        $approved = static fn (string $s): bool => in_array($s, ['1', 'approved', 'approve'], true);
+
+        return $approved($from) || $approved($to);
+    }
+
+    /**
+     * The change notice key for core comments: never a kind's export name, so it can't be mistaken
+     * for an app collection's. Replaced when `wp.comments` is a kind announced through the write path.
+     */
+    public const NOTICE = 'wp:comments';
+
+    /** A visible change to $comment's thread: its item's cached pages are purged, and live pages told. */
+    private static function seen(\WP_Comment $comment): void
+    {
+        \First\Realtime\Module::changed(self::NOTICE, 'update');
+        $post = get_post((int) $comment->comment_post_ID);
+        if ($post instanceof \WP_Post && $post->post_status === 'publish') {
+            // The item's own URL and comments feed, and every page that rendered this item: a
+            // first/app/ page can show the thread somewhere else, and a kind without a url has
+            // only WordPress's query-string permalink, which no page is cached at. Pages that only
+            // listed the kind keep their copy (a comment count there updates within the window).
+            $collection = self::collection($post->ID);
+            $urls = $collection === null ? [] : \First\Render\Cache::itemUrls($collection, $post->ID);
+            $link = get_permalink($post);
+            if (is_string($link)) {
+                $urls[] = $link;
+            }
+            $urls[] = get_post_comments_feed_link($post->ID);
+            Purges::announce($urls);
+        }
     }
 
     /** The collection whose item $postId is, when that kind has comments on. */

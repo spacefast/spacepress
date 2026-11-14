@@ -63,6 +63,19 @@ fn each_source_compiles_with_its_storage_and_access() {
     ] {
         let (dir, report) = migrate_fixture(from, file);
         assert_eq!(report["status"], "written");
+        // Each kind registers by its export (spec §1.1): the config lists none of them.
+        let config = std::fs::read_to_string(dir.path().join("first.config.ts")).unwrap();
+        assert!(config.contains(" as notes"), "{from}: {config}");
+        let built = Command::new(env!("CARGO_BIN_EXE_first"))
+            .args(["check"])
+            .arg(dir.path())
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{from}: {}",
+            String::from_utf8_lossy(&built.stderr)
+        );
         assert!(
             report["entries"]
                 .as_array()

@@ -22,4 +22,15 @@ final class FirstAbility extends \WP_Ability
 
         return parent::get_meta_item($key, $default_value);
     }
+
+    /**
+     * WordPress 7.2 sanitizes an ability's input by its schema inside execute(), after validating it.
+     * First's pipeline is the one validator of its abilities (Register::validate) and reads the input
+     * as it was sent, so nothing is cast here. Query-string input is still typed by core's run route
+     * before it gets here.
+     */
+    protected function sanitize_input($input)
+    {
+        return $input;
+    }
 }

@@ -1,5 +1,5 @@
-// Lane fragment for the WP test app; only this lane edits this file. ../compose.ts merges every
-// export into the app and fails the build if a key collides with the shared app or another lane.
+// Lane fragment for the WP test app; only this lane edits this file. Every kind, action and job it
+// exports registers under its export name, and a name another lane or the app uses fails the build.
 //
 // Lane B (field access + conditional fields, phase 2 §4): a post-backed collection whose columns
 // carry `.access` and `.showIf`, linked to a `table()` table with an admin-only column.
@@ -44,14 +44,5 @@ export const fieldStaff = collection({
     delete: "editor",
   },
 });
-
-export const collections = { fieldStaff };
-export const tables = { fieldTeams };
-export const users = {  };
-export const entities = { ...collections, ...tables, ...users };
-export const actions = {};
-export const globals = {};
-/** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */
-export const hooks = {};
-/** Top-level options this lane owns (e.g. jobs, webhooks, files, media, locales). */
+/** Top-level options this lane owns (e.g. webhooks, media, locales). */
 export const config = {};

@@ -43,10 +43,17 @@ fn tree(root: &Path) -> BTreeMap<String, Vec<u8>> {
 }
 
 /// The fixture app ported to First by hand, as its owner would: First names, `first/`, and the
-/// current field forms (tests/fixtures/zero-0.3/ported/), with the 0.3.0 ledger.
+/// current field forms (tests/fixtures/zero-0.3/ported/), with the 0.3.0 ledger. Its config is the
+/// export form (tests/fixtures/zero-0.3-ported/first.config.ts), since `defineConfig` no longer
+/// lists kinds and actions; the files under zero-0.3/ stay as they were captured.
 fn ported(work: &Path) -> PathBuf {
     let app = work.join("ported");
     copy_dir(&Path::new(FIXTURE).join("ported"), &app);
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/zero-0.3-ported/first.config.ts"),
+        app.join("first.config.ts"),
+    )
+    .unwrap();
     fs::create_dir_all(app.join("first/_generated/migrations")).unwrap();
     for name in ["0001_init.sql", "snapshot.json"] {
         fs::copy(
@@ -481,81 +488,148 @@ export default defineConfig({ routes: {} });"#,
         ),
         (
             r#"import { defineConfig, action, env } from "first";
-export default defineConfig({ actions: { hook: action({ input: {}, signature: { secret: env("S"), header: "x-sig", scheme: "zero" }, handler() { return 1; } }) } });"#,
+export const hook = action({ input: {}, signature: { secret: env("S"), header: "x-sig", scheme: "zero" }, handler() { return 1; } });
+export default defineConfig({});"#,
             "signature.scheme must be first or hmac-sha256",
             "",
         ),
         (
             r#"import { defineConfig, table, text } from "first";
-const codes = table({ code: text().primaryKey().max(40) });
-export default defineConfig({ tables: { codes } });"#,
+export const codes = table({ code: text().primaryKey().max(40) });
+export default defineConfig({});"#,
             "`.primaryKey()` is gone",
             "`get({ code })`",
         ),
         (
             r#"import { defineConfig, table, id, text } from "first";
-const notes = table({ id: id(), title: text() });
-export default defineConfig({ tables: { notes } });"#,
+export const notes = table({ id: id(), title: text() });
+export default defineConfig({});"#,
             "`id()` is gone",
             "delete `id: id()`",
         ),
         (
             r#"import { defineConfig, table, real } from "first";
-const notes = table({ score: real() });
-export default defineConfig({ tables: { notes } });"#,
+export const notes = table({ score: real() });
+export default defineConfig({});"#,
             "`real()` is now `number()`",
             "number()",
         ),
         (
             r#"import { defineConfig, table, text } from "first";
-const notes = table({ kind: text({ enum: ["a", "b"] }) });
-export default defineConfig({ tables: { notes } });"#,
+export const notes = table({ kind: text({ enum: ["a", "b"] }) });
+export default defineConfig({});"#,
             "`text({ enum })` is now `select([...])`",
             "select(",
         ),
         (
             r#"import { defineConfig, table, select } from "first";
-const notes = table({ kind: select({ options: ["a", "b"] }) });
-export default defineConfig({ tables: { notes } });"#,
+export const notes = table({ kind: select({ options: ["a", "b"] }) });
+export default defineConfig({});"#,
             "select() takes its options as an array",
             "select([",
         ),
         (
             r#"import { defineConfig, table, group, text } from "first";
-const notes = table({ seo: group({ fields: { title: text() } }) });
-export default defineConfig({ tables: { notes } });"#,
+export const notes = table({ seo: group({ fields: { title: text() } }) });
+export default defineConfig({});"#,
             "group() takes its fields directly",
             "group({",
         ),
         (
             r#"import { defineConfig, table, json } from "first";
-const notes = table({ tags: json().$type<string[]>() });
-export default defineConfig({ tables: { notes } });"#,
+export const notes = table({ tags: json().$type<string[]>() });
+export default defineConfig({});"#,
             "`json().$type<T>()` is now `json<T>()`",
             "json<string[]>()",
         ),
         (
             r#"import { defineConfig, table, text, integer } from "first";
-const notes = table({ title: text() });
-const links = table({ noteId: integer().references(() => notes.id) });
-export default defineConfig({ tables: { notes, links } });"#,
+export const notes = table({ title: text() });
+export const links = table({ noteId: integer().references(() => notes.id) });
+export default defineConfig({});"#,
             "`.references()` is gone",
             "ref(locations)",
         ),
         (
             r#"import { defineConfig, defineRelations, table, text } from "first";
-const notes = table({ title: text() });
+export const notes = table({ title: text() });
 const relations = defineRelations({ notes }, () => ({}));
-export default defineConfig({ tables: { notes }, relations });"#,
+export default defineConfig({ relations });"#,
             "`defineRelations()` is gone",
             "ref(locations)",
         ),
         (
             r#"import { defineConfig, table, text } from "first";
-const notes = table({ title: text() });
-export default defineConfig({ tables: { notes }, relations: {} });"#,
+export const notes = table({ title: text() });
+export default defineConfig({ relations: {} });"#,
             "`relations` is gone",
             "ref(locations)",
+        ),
+        // The registry keys (ruling 36): read in a 0.3.0 capture, refused at the key in a First
+        // project, each with the export that replaces it under the same name.
+        (
+            r#"import { defineConfig, collection, text } from "first";
+const notes = collection({ title: text() });
+export default defineConfig({ collections: { notes } });"#,
+            "`collections` is gone: a kind registers by its export",
+            "export const notes = collection({ ... })",
+        ),
+        (
+            r#"import { defineConfig, table, text } from "first";
+const variants = table({ name: text() });
+export default defineConfig({ tables: { productVariants: variants } });"#,
+            "`tables` is gone: a table registers by its export",
+            "export { variants as productVariants }",
+        ),
+        (
+            r#"import { defineConfig, userProjection, email } from "first";
+const members = userProjection({ email: email().unique().max(191) });
+export default defineConfig({ users: { members } });"#,
+            "`users` is gone: the users kind registers by its export",
+            "export const members = userProjection({ ... })",
+        ),
+        (
+            r#"import { defineConfig, global, text } from "first";
+const settings = global({ title: text().default("x") });
+export default defineConfig({ globals: { settings } });"#,
+            "`globals` is gone: a global registers by its export",
+            "export const settings = global({ ... })",
+        ),
+        (
+            r#"import { defineConfig, files } from "first";
+const decks = files({ accept: ["application/pdf"], maxBytes: 10 });
+export default defineConfig({ files: { decks } });"#,
+            "`files` is gone: a file bucket registers by its export",
+            "`file(decks)` takes the export",
+        ),
+        (
+            r#"import { defineConfig, action } from "first";
+const like = action({ input: {}, handler() { return 1; } });
+export default defineConfig({ actions: { like } });"#,
+            "`actions` is gone: an action registers by its export",
+            "the client call is `first.like()`",
+        ),
+        (
+            r#"import { defineConfig, job } from "first";
+const digest = job({ input: {}, handler() {} });
+export default defineConfig({ jobs: { digest } });"#,
+            "`jobs` is gone: a job registers by its export",
+            "export const digest = job(...)",
+        ),
+        (
+            r#"import { defineConfig, table, text } from "first";
+export const notes = table({ title: text() });
+export default defineConfig({ hooks: { notes: { beforeCreate() {} } } });"#,
+            "`hooks` is gone: hooks are declared on the kind",
+            "export const notes = collection({ ... }).on({",
+        ),
+        // A kind registered by no export was registered by its config key in 0.3.0 (ruling 37).
+        (
+            r#"import { defineConfig, table, text } from "first";
+const hidden = table({ title: text() });
+export default defineConfig({});"#,
+            "`hidden` is a table but isn't exported, so it has no name",
+            "export const hidden = table({ ... })",
         ),
     ];
     for (config, message, help) in cases {

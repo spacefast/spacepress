@@ -25,7 +25,7 @@ aggregated license file and original license files ship with the runtime.
 
 ### What WordPress core provides instead
 
-First runs only inside WordPress 7.1 or later, so the runtime uses core's own
+First runs only inside WordPress 7.2-beta5 or later, so the runtime uses core's own
 copies wherever core ships the code
 ([decision](decisions/2026-11-07-wp-core-apis.md)):
 
@@ -74,7 +74,14 @@ Generation also patches one line in rowbot/url (`String/PercentEncoder.php`). It
 percent-encoded with `rawurlencode()`, which leaves `~` alone although the
 `application/x-www-form-urlencoded` set contains it. The patch encodes the byte
 directly, which matches the URL Standard and Node, and generation fails if the
-line changes upstream. `DS` is excluded from constant prefixing because
+line changes upstream. It also patches wp-php-toolkit's Markdown converter
+(`markdown/class-markdownproducer.php`, `class-markdownconsumer.php`), which wrote Markdown that
+reads back as other blocks: a code block lost its blank lines; a `|` in a table cell ended the cell;
+a code block in a list item was written at the margin, ending the item, and the item's text after
+it moved before it; a code span holding backticks closed early; and an escaped `\<` in text became
+an HTML element that was then dropped. Sync and the content seed refuse a document that doesn't
+survive the round trip, so these refused most pages with code samples. Generation fails if an
+upstream fragment it patches changes. `DS` is excluded from constant prefixing because
 rowbot/idna aliases `DIRECTORY_SEPARATOR` as `DS`, and prefixing it leaves an
 undefined constant.
 `tests/php/run.sh boundary` checks the shipped PHP for process calls, with the

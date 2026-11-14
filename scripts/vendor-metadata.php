@@ -15,6 +15,109 @@ if ($bundle[0] === 'FirstRuntime') {
     $patched = str_replace('$output .= rawurlencode($bytes[$i]);', "\$output .= sprintf('%%%02X', ord(\$bytes[\$i]));", $source, $count);
     if ($count !== 1) { fwrite(STDERR, "rowbot/url percent-encoder patch no longer applies\n"); exit(1); }
     file_put_contents($encoder, $patched);
+    // wp-php-toolkit's Markdown converter wrote Markdown that reads back as other blocks, which
+    // Sync\Markdown::fromBlocks() then refuses (docs/dependencies.md lists each case). Each pair is
+    // an exact upstream fragment and its replacement; generation fails if one stops matching.
+    $markdown = $root . '/vendor-prefixed/wp-php-toolkit/markdown/class-markdown';
+    foreach ([
+    ['producer', <<<'FROM'
+		$markdown = trim( $markdown, "\n" );
+
+FROM, <<<'TO'
+		if ( $this->has_parent( 'core/code' ) ) {
+			return rtrim( preg_replace( '/^\n/', '', $markdown ), "\n" );
+		}
+		$markdown = trim( $markdown, "\n" );
+
+TO],
+    ['producer', <<<'FROM'
+				return "{$fence}{$language}\n{$code}\n{$fence}\n\n";
+FROM, <<<'TO'
+				return $this->indent( "{$fence}{$language}\n{$code}\n{$fence}" ) . "\n\n";
+TO],
+    ['producer', <<<'FROM'
+						$current_row[] = $this->html_to_markdown( $cell_content );
+FROM, <<<'TO'
+						$current_row[] = str_replace( '|', '\|', $this->html_to_markdown( $cell_content ) );
+TO],
+    ['producer', <<<'FROM'
+		$last_href = null;
+		while ( $processor->next_token() ) {
+			if ( '#text' === $processor->get_token_type() ) {
+				$markdown .= $processor->get_modifiable_text();
+FROM, <<<'TO'
+		$last_href  = null;
+		$code_start = null;
+		while ( $processor->next_token() ) {
+			if ( '#text' === $processor->get_token_type() ) {
+				$text      = $processor->get_modifiable_text();
+				$markdown .= $this->has_parent( 'core/code' ) || null !== $code_start ? $text : preg_replace( '/<(?=[A-Za-z\/!?])/', '\\<', $text );
+TO],
+    ['producer', <<<'FROM'
+				case '+CODE':
+				case '-CODE':
+					if ( ! $this->has_parent( 'core/code' ) ) {
+						$markdown .= '`';
+					}
+					break;
+FROM, <<<'TO'
+				case '+CODE':
+					$code_start = $this->has_parent( 'core/code' ) ? null : strlen( $markdown );
+					break;
+
+				case '-CODE':
+					if ( null !== $code_start ) {
+						$span       = substr( $markdown, $code_start );
+						$ticks      = str_repeat( '`', $this->longest_sequence_of( $span, '`' ) + 1 );
+						$pad        = '' !== $span && ( '`' === $span[0] || '`' === substr( $span, -1 ) ) ? ' ' : '';
+						$markdown   = substr( $markdown, 0, $code_start ) . $ticks . $pad . $span . $pad . $ticks;
+						$code_start = null;
+					}
+					break;
+TO],
+    ['producer', <<<'FROM'
+				$content       = $this->html_to_markdown( $inner_html );
+FROM, <<<'TO'
+				$pieces        = $block['innerContent'] ?? array( $inner_html );
+				$content       = $this->html_to_markdown( (string) array_shift( $pieces ) );
+TO],
+    ['producer', <<<'FROM'
+				$inner_blocks_markdown = $this->blocks_to_markdown(
+					$inner_blocks
+				);
+				if ( $inner_blocks_markdown ) {
+					$markdown .= $inner_blocks_markdown . "\n";
+				}
+FROM, <<<'TO'
+				$next = 0;
+				foreach ( $pieces as $piece ) {
+					if ( null === $piece ) {
+						$inner_blocks_markdown = isset( $inner_blocks[ $next ] ) ? $this->blocks_to_markdown( array( $inner_blocks[ $next ] ) ) : '';
+						++$next;
+						if ( $inner_blocks_markdown ) {
+							$markdown .= $inner_blocks_markdown . "\n";
+						}
+						continue;
+					}
+					$text = trim( $this->html_to_markdown( $piece ) );
+					if ( '' !== $text ) {
+						$markdown = rtrim( $markdown, "\n" ) . "\n\n" . $this->indent( $text ) . "\n\n";
+					}
+				}
+TO],
+    ['consumer', <<<'FROM'
+						 */
+						$this->append_content( $node->getLiteral() );
+FROM, <<<'TO'
+						 */
+						$this->append_content( str_replace( '<', '&lt;', $node->getLiteral() ) );
+TO],
+    ] as [$file, $from, $to]) {
+        $source = file_get_contents("$markdown$file.php");
+        $patched = str_replace($from, $to, $source, $count);
+        if ($count !== 1) { fwrite(STDERR, "wp-php-toolkit Markdown$file patch no longer applies:\n$from\n"); exit(1); }
+        file_put_contents("$markdown$file.php", $patched);
+    }
 }
 // Strauss creates a temporary Composer project without a lock, so Composer
 // chooses a random loader suffix. Give this isolated bundle a stable identity.

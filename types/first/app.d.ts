@@ -47,6 +47,14 @@ export interface Metadata {
   /** An absolute URL or a path on this site. */
   canonical?: string;
   robots?: { index?: boolean; follow?: boolean };
+  /** Open Graph tags. `title` and `description` default to the page's; `image` may be a path on this site. */
+  openGraph?: { title?: string; description?: string; image?: string; type?: string };
+  /** `<meta name="twitter:card">`: `"summary"` or `"summary_large_image"`. */
+  twitter?: { card: string };
+  /** More `<link>`s for the head (`rel="alternate"`, `rel="describedby"`, …). Each layout's and the page's all appear. */
+  links?: { rel: string; href: string; type?: string }[];
+  /** Script modules the page loads: paths on this site (a file in `public/`) or https:// URLs. Each layout's and the page's all load, once each. */
+  scripts?: string[];
 }
 
 /** `export const guard` in a layout: who may see everything below it. */
@@ -92,6 +100,12 @@ export declare function Comments(props: { for: { id: number }; className?: strin
  * place. `id` is a literal, unique on the page; it names the region to the server.
  */
 export declare function Live(props: { id: string; children?: JSX.Children }): JSX.Element;
+/**
+ * Numbered links to the other pages of a listing, as a `<nav>` that works without JavaScript:
+ * `<Pagination page={search.page} pages={Math.ceil(total / 20)} />`. Each link is this URL with
+ * only `param` (default `"page"`) changed; page 1 drops it. Many pages collapse around the current one.
+ */
+export declare function Pagination(props: { page: number; pages: number; param?: string; className?: string; "aria-label"?: string }): JSX.Element;
 /** A post body (block markup) rendered through `the_content`. */
 export declare function Content(props: { value: string | null | undefined }): JSX.Element;
 /** Trusted markup: a literal is placed as written; any other value goes through `wp_kses_post`. */

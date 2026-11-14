@@ -43,9 +43,15 @@ nothing a reader could not see.
   item's own theme page with it, `no-store` and `noindex`.
 - **Kinds.** Every `collection()` stages; `staged: false` turns it off. `table()` kinds have no
   editorial lifecycle and no staged versions.
+- **`_rev`.** A token names the item, its newest revision (First writes one per update, so it is
+  the row as it was read) and an HMAC digest of the post row and its First meta; a staged version's
+  token adds a digest of the staged revision. A write checks it after taking the item's row lock,
+  so nothing changes between the check and the write. The newest revision lets a stale-token
+  problem name the fields that changed, through the caller's field masks.
+- **Edit locks are core's** `_edit_lock` and `wp_check_post_lock()`, so the block editor's lock and
+  First's agree. `takeover` is `wp_set_post_lock()` for the caller.
 
 ## Not done here
 
-`_rev` tokens and edit locks (`_edit_lock`) are the next change; wp-admin's staged-changes screens
-the one after. Scoping a credential to some abilities is not First's: the abilities are only
-declared separately.
+wp-admin's staged-changes screens are the next change. Scoping a credential to some abilities is
+not First's: the abilities are only declared separately.

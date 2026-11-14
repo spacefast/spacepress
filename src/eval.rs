@@ -253,6 +253,8 @@ pub const FIRST_EXPORTS: &[&str] = &[
     "collection",
     "table",
     "userProjection",
+    "taxonomy",
+    "terms",
     "integer",
     "number",
     "text",
@@ -360,6 +362,7 @@ const GLOBALS: &[&str] = &[
     "NaN",
     "fetch",
     "process",
+    "navigator",
     "require",
     "globalThis",
     "eval",
@@ -438,6 +441,7 @@ pub const BINARY_GLOBALS: &[&str] = &[
 const HOST_GLOBALS: &[&str] = &[
     "fetch",
     "process",
+    "navigator",
     "require",
     "crypto",
     "Buffer",
@@ -456,7 +460,7 @@ const HOST_GLOBALS: &[&str] = &[
 
 /// Browser, worker and other server-runtime globals that neither the PHP runtime
 /// nor Node provides, so `undefined` matches the Node oracle. `navigator` is not
-/// here: Node 21+ defines it.
+/// here: Node 21+ defines it (see [`HOST_OBJECTS`]).
 pub const ABSENT_GLOBALS: &[&str] = &[
     "window",
     "document",
@@ -504,15 +508,29 @@ pub fn global_member(name: &str) -> GlobalMember {
     GlobalMember::Refused
 }
 
+/// Host objects whose `typeof` is the constant `"object"`, also through `globalThis.`, and whose
+/// only readable members are `.platform` (read when PHP runs, from `First\Host`) and
+/// `process.env.NAME`. See docs/decisions/2026-11-14-host-platform-detection.md.
+pub const HOST_OBJECTS: &[&str] = &["navigator", "process"];
+
 /// `typeof` of a provided global, matching JavaScript.
 pub fn global_type_of(g: &str) -> &'static str {
     match g {
-        "Math" | "JSON" | "console" | "globalThis" => "object",
+        "Math" | "JSON" | "console" | "globalThis" | "navigator" | "process" => "object",
         "Infinity" | "NaN" => "number",
         // Node defines no FileReader; First keeps the name so a fallback branch can compile.
         "FileReader" => "undefined",
         _ => "function",
     }
+}
+
+/// `navigator.X` for any member but `platform`, in the evaluator and in compiled code.
+pub fn navigator_member_refusal(prop: &str, span: Span) -> Diag {
+    Diag::new(
+        span,
+        format!("`navigator.{prop}` isn't available in First code; only `navigator.platform` is"),
+    )
+    .help("First runs on the WordPress server, which has no browser or Node values for the rest of `navigator`")
 }
 
 pub fn refused_global_member(name: &str, span: Span) -> Diag {
@@ -558,6 +576,9 @@ pub struct Evaluator<'p> {
     pub method_home_fields: HashMap<(usize, String), (TyAnn, usize)>,
     /// The 0.3.0 field reading for pre-rename captures (`Fs::legacy_fields`).
     pub(crate) legacy: bool,
+    /// Every kind, global, bucket, action and job value built so far, in call order. Registration
+    /// refuses one built in app source that no export names (ruling 37).
+    pub built: Vec<Value>,
 }
 
 pub fn ptr_of(v: &Value) -> Option<usize> {
@@ -587,6 +608,7 @@ impl<'p> Evaluator<'p> {
             method_homes: HashMap::new(),
             method_home_fields: HashMap::new(),
             legacy: program.fs.legacy_fields(),
+            built: Vec::new(),
         }
     }
 
@@ -604,7 +626,7 @@ impl<'p> Evaluator<'p> {
                 },
                 "first.config.ts has no default export",
             )
-            .help("end the file with `export default defineConfig({ collections, tables, hooks, actions })`")),
+            .help("end the file with `export default defineConfig({ name: \"my-app\" })`; kinds, actions and jobs register by their exports")),
         }
     }
 
@@ -2016,6 +2038,16 @@ impl<'p> Evaluator<'p> {
             }
             ExprKind::Func(f) => Value::Closure(Rc::new(Closure::new(f.clone(), scope.clone()))),
             ExprKind::Unary(op, x) => {
+                // `typeof globalThis.process` / `typeof globalThis.navigator`: the host objects are
+                // detectable, though reading them through `globalThis` is refused.
+                if *op == UnOp::TypeOf
+                    && let ExprKind::Member { obj, prop, .. } = &x.kind
+                    && HOST_OBJECTS.contains(&prop.as_str())
+                    && matches!(&obj.kind, ExprKind::Ident(n) if n == "globalThis")
+                    && scope.lookup("globalThis").is_none()
+                {
+                    return Ok(Value::str("object"));
+                }
                 let v = self.eval_static_data(x, scope)?;
                 if matches!(op, UnOp::Neg | UnOp::Plus | UnOp::BitNot) {
                     require_static_coercion(&v, e.span)?;
@@ -2026,7 +2058,7 @@ impl<'p> Evaluator<'p> {
                     UnOp::Plus => Value::Num(to_number(&v)),
                     UnOp::BitNot => Value::Num(f64::from(!crate::num::to_int32(to_number(&v)))),
                     UnOp::TypeOf => {
-                        if let Value::Builtin(Builtin::Global(name @ ("process" | "require" | "crypto"))) = &v {
+                        if let Value::Builtin(Builtin::Global(name @ ("require" | "crypto"))) = &v {
                             return err_help(
                                 x.span,
                                 format!("typeof `{name}` depends on the host and isn't supported"),
@@ -2544,6 +2576,12 @@ impl<'p> Evaluator<'p> {
             Value::Symbol(symbol) if prop == "description" => {
                 Ok(symbol.description().map_or(Value::Undef, |d| Value::str(&d)))
             }
+            Value::Builtin(Builtin::Global(g @ ("process" | "navigator"))) if prop == "platform" => err_help(
+                span,
+                format!("`{g}.platform` is the server's operating system, known only when PHP runs"),
+                "read it inside a function that runs at request time, such as a hook, action, route or job",
+            ),
+            Value::Builtin(Builtin::Global("navigator")) => Err(Ctl::Err(navigator_member_refusal(prop, span))),
             Value::Builtin(Builtin::Global(g @ ("process" | "fetch" | "crypto" | "Buffer"))) => err_help(
                 span,
                 format!("`{g}` only works inside hooks, actions, routes and jobs, which run in PHP at request time"),
@@ -2733,6 +2771,7 @@ impl<'p> Evaluator<'p> {
             Builtin::DefineGlobal => Some("global"),
             Builtin::DefineRelations => Some("defineRelations"),
             Builtin::Ref => Some("ref"),
+            Builtin::Terms => Some("terms"),
             Builtin::DefineConfig => Some("defineConfig"),
             Builtin::Env => Some("env"),
             Builtin::Files => Some("files"),
@@ -2749,7 +2788,11 @@ impl<'p> Evaluator<'p> {
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         match b {
             Builtin::Collection(kind) => {
-                let cols_val = arg(0);
+                // `taxonomy(fields?, options)`: a taxonomy may declare no fields of its own.
+                let cols_val = match arg(0) {
+                    Value::Undef if *kind == StorageKind::Taxonomy => Value::object(IndexMap::new()),
+                    v => v,
+                };
                 let Value::Object(cols) = &cols_val else {
                     return err(span, format!("{}() needs an object of fields first", kind.builder()));
                 };
@@ -2794,7 +2837,7 @@ impl<'p> Evaluator<'p> {
                         );
                     }
                 };
-                Ok(Value::Collection(Rc::new(CollectionVal {
+                let value = Value::Collection(Rc::new(CollectionVal {
                     kind: *kind,
                     table: std::cell::OnceCell::new(),
                     columns,
@@ -2802,7 +2845,9 @@ impl<'p> Evaluator<'p> {
                     span,
                     hooks: RefCell::new(Vec::new()),
                     indexes: std::cell::RefCell::new(Vec::new()),
-                })))
+                }));
+                self.built.push(value.clone());
+                Ok(value)
             }
             Builtin::Column(ty) => self.make_column(ty.name(), &args, span),
             Builtin::Field(name) => self.make_column(name, &args, span),
@@ -2839,12 +2884,14 @@ impl<'p> Evaluator<'p> {
                 if let Some(name) = name {
                     let _ = cell.set(name);
                 }
-                Ok(Value::Global(Rc::new(GlobalVal {
+                let value = Value::Global(Rc::new(GlobalVal {
                     name: cell,
                     fields,
                     options,
                     span,
-                })))
+                }));
+                self.built.push(value.clone());
+                Ok(value)
             }
             Builtin::Id if self.legacy => Ok(Value::Column(Rc::new(legacy::id(span)))),
             Builtin::Id => err_help(
@@ -2866,6 +2913,30 @@ impl<'p> Evaluator<'p> {
                 };
                 let mut c = ColBuilder::new(ColType::Integer, span);
                 c.references = Some((target, None, None, span));
+                Ok(Value::Column(Rc::new(c)))
+            }
+            Builtin::Terms => {
+                let taxonomy = match arg(0) {
+                    k @ Value::Collection(_) if matches!(&k, Value::Collection(c) if c.kind == StorageKind::Taxonomy) => {
+                        RefTarget::Kind(k)
+                    }
+                    // A taxonomy declared later: checked once every kind is registered.
+                    Value::Closure(f) => RefTarget::Thunk(f),
+                    other => {
+                        let what = match &other {
+                            Value::Collection(c) => format!("a {}() kind", c.kind.builder()),
+                            other => other.describe(),
+                        };
+                        return err_help(
+                            span,
+                            format!("terms() takes a taxonomy() export, not {what}"),
+                            "declare `export const topics = taxonomy({}, { on: [posts] })` and write `terms(topics)`; core's categories and tags wait for the wp.* built-ins",
+                        );
+                    }
+                };
+                let mut c = ColBuilder::new(ColType::RefList, span);
+                c.references = Some((taxonomy, None, None, span));
+                c.terms = true;
                 Ok(Value::Column(Rc::new(c)))
             }
             Builtin::DefineRelations if !self.legacy => err_help(
@@ -2923,6 +2994,9 @@ impl<'p> Evaluator<'p> {
                 ),
             },
             Builtin::Env => match arg(0) {
+                Value::Str(n) if crate::compile::reserved_env_name(&n) => {
+                    crate::compile::reserved_env_error(span, &n).map_err(Ctl::Err)
+                }
                 Value::Str(n) if regex::Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap().is_match(&n) => {
                     Ok(Value::Env(n))
                 }
@@ -2956,11 +3030,13 @@ impl<'p> Evaluator<'p> {
                 if let Some(name) = name {
                     let _ = cell.set(name);
                 }
-                Ok(Value::FileBucket(Rc::new(FileBucketVal {
+                let value = Value::FileBucket(Rc::new(FileBucketVal {
                     name: cell,
                     options,
                     span,
-                })))
+                }));
+                self.built.push(value.clone());
+                Ok(value)
             }
             Builtin::Once
             | Builtin::Jobs
@@ -2985,11 +3061,15 @@ impl<'p> Evaluator<'p> {
                     );
                 }
                 let value = Rc::new(ActionVal { config: cfg, span });
-                Ok(match b {
+                let value = match b {
                     Builtin::Job => Value::Job(value),
                     Builtin::Route => Value::Route(value),
                     _ => Value::Action(value),
-                })
+                };
+                if !matches!(value, Value::Route(_)) {
+                    self.built.push(value.clone());
+                }
+                Ok(value)
             }
             Builtin::RelFn(kind, target) => {
                 let config = match arg(0) {
@@ -4143,6 +4223,8 @@ fn first_export(name: &str, legacy: bool, span: Span) -> R<Value> {
         "collection" => Builtin::Collection(StorageKind::Collection),
         "table" => Builtin::Collection(StorageKind::Table),
         "userProjection" => Builtin::Collection(StorageKind::UserProjection),
+        "taxonomy" => Builtin::Collection(StorageKind::Taxonomy),
+        "terms" => Builtin::Terms,
         // Deleted builders still resolve, so the call says what replaces them.
         "id" => Builtin::Id,
         "real" => Builtin::Field("real"),
@@ -4588,6 +4670,18 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
     if let Some((message, fix)) = removed_modifier(m) {
         return err_help(span, message, fix);
     }
+    if c.terms && !matches!(m, "access" | "ui" | "reverse") {
+        return err_help(
+            span,
+            format!("`.{m}()` isn't valid on a `terms()` field"),
+            match m {
+                "many" => "a terms field is already a list of term ids; remove `.many()`",
+                "min" | "max" => "`.min()` and `.max()` on a terms field aren't built yet; check the count in a hook",
+                "optional" => "a terms field is never null: an item with no terms holds `[]`; remove `.optional()`",
+                _ => "a terms field takes `.access()`, `.ui()` and `.reverse()`; remove the modifier",
+            },
+        );
+    }
     if let Some(why) = modifier_invalid(&c, m) {
         return err_help(span, why.0, why.1);
     }
@@ -4877,6 +4971,7 @@ impl ColBuilder {
             on_update: None,
             references: None,
             reverse: None,
+            terms: false,
             ts_type: None,
             access: None,
             show_if: None,

@@ -1,4 +1,6 @@
-pub const WORDPRESS: &str = "7.1";
+/// The oldest WordPress a build targets: 7.2's fifth beta. Compared in PHP's version_compare order
+/// (`wp_plugins::version::at_least`), so 7.2's later betas, RCs and nightlies pass and 7.2-beta4 doesn't.
+pub const WORDPRESS: &str = "7.2-beta5";
 pub const PHP: &str = "8.2";
 pub const MYSQL: &str = "8.0";
 pub const MARIADB: &str = "10.11";
@@ -62,4 +64,34 @@ pub fn cache(project: &std::path::Path) -> std::path::PathBuf {
     std::env::var_os("FIRST_WP_PLUGIN_CACHE")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| project.join(".first/cache/plugins"))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn wordpress_floor_is_7_2_beta5_in_version_compare_order() {
+        for (found, supported) in [
+            ("7.2-beta5", true),
+            ("7.2-beta5-65525", true),
+            ("7.2-beta6", true),
+            ("7.2-RC1", true),
+            ("7.2-RC2-65600", true),
+            ("7.2", true),
+            ("7.2.1", true),
+            ("7.3-alpha-61000", true),
+            ("8.0", true),
+            ("7.1", false),
+            ("7.1.4", false),
+            ("7.1.9", false),
+            ("7.2-beta4", false),
+            ("7.2-beta4-65000", false),
+            ("7.2-alpha-64000", false),
+        ] {
+            assert_eq!(
+                crate::wp_plugins::version::at_least(found, super::WORDPRESS),
+                supported,
+                "{found}"
+            );
+        }
+    }
 }

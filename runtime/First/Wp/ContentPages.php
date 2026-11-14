@@ -104,7 +104,7 @@ final class ContentPages
      * stored. A file this build hasn't stored yet that changes no Page (the site edited it) records
      * only the history option, which is not a step.
      *
-     * @return list<array{step: string, route: string, post?: int}>
+     * @return list<array{kind: string, id: string, state: string}>
      */
     public static function plan(): array
     {
@@ -123,13 +123,13 @@ final class ContentPages
             $post = $entry !== null ? get_post($entry['post']) : $self->lost($route);
             $hides = $post instanceof \WP_Post && $was === 'publish' && $page['status'] !== 'publish' && $post->post_status === 'publish';
             if ($entry === null && $post instanceof \WP_Post) {
-                $steps[] = ['step' => $hides ? 'page.adopt-hide' : 'page.adopt', 'route' => (string) $route, 'post' => $post->ID];
+                $steps[] = Runtime::step($hides ? 'page.adopt-hide' : 'page.adopt', 'content:' . $route, ['post' => $post->ID]);
             } elseif ($entry !== null && (!$post instanceof \WP_Post || self::fingerprint($post) !== $entry['stored'])) {
                 if ($hides) {
-                    $steps[] = ['step' => 'page.hide', 'route' => (string) $route, 'post' => $post->ID];
+                    $steps[] = Runtime::step('page.hide', 'content:' . $route, ['post' => $post->ID]);
                 }
             } else {
-                $steps[] = $post instanceof \WP_Post ? ['step' => 'page.update', 'route' => (string) $route, 'post' => $post->ID] : ['step' => 'page.create', 'route' => (string) $route];
+                $steps[] = $post instanceof \WP_Post ? Runtime::step('page.update', 'content:' . $route, ['post' => $post->ID]) : Runtime::step('page.create', 'content:' . $route);
             }
         }
 

@@ -19,7 +19,7 @@
 		"@wordpress/icons": "catalog:",
 		"@wordpress/primitives": "catalog:",
 		"@wordpress/ui": "catalog:",
-		"@first-admin/theme": "workspace:*",
+		"@wordpress/theme": "catalog:",
 		"clsx": "catalog:",
 		"dequal": "catalog:"
 	},

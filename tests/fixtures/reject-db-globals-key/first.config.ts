@@ -1,4 +1,6 @@
 import { collection, text, global, defineConfig, action, db, table } from "first";
-const n = table({  });
-const settings = global({ title: text().optional() });
-export default defineConfig({ tables: { n }, globals: { settings }, actions: { a: action({ input: {}, handler: async () => (await db.globals.setings.get()).title }) } });
+export const n = table({  });
+export const settings = global({ title: text().optional() });
+export const a = action({ input: {}, handler: async () => (await db.globals.setings.get()).title });
+
+export default defineConfig({});

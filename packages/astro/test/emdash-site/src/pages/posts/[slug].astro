@@ -1,0 +1,11 @@
+---
+import { getEmDashCollection, getEmDashEntry } from "emdash";
+import { PortableText } from "emdash/ui";
+export async function getStaticPaths() {
+  return (await getEmDashCollection("posts", { limit: 100 })).entries.map((e) => ({ params: { slug: e.id } }));
+}
+const { entry } = await getEmDashEntry("posts", Astro.params.slug!);
+---
+<h1>{entry!.data.title}</h1>
+<article><PortableText value={entry!.data.content} /></article>
+<p class="headings">{entry!.data.content.filter((b) => b.style === "h2").map((b) => b.children?.[0]?.text).join("|")}</p>

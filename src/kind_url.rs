@@ -140,10 +140,21 @@ pub fn check(pattern: &str, kind: &UrlKind<'_>) -> Result<Vec<Segment>, Invalid>
             "remove the extra `/`",
         ));
     }
+    // A hierarchical kind may own the site root, as WordPress's Pages do (`/about/team`): its items
+    // take the paths WordPress's own rules leave unmatched, after every other kind's pattern.
+    if segments == [":path"] {
+        if !kind.hierarchical {
+            return Err(invalid(
+                format!("`:path` in \"{pattern}\" needs a hierarchical kind"),
+                "use `:slug` under a literal segment, e.g. \"/blog/:slug\", or declare the kind with `hierarchical: true`",
+            ));
+        }
+        return Ok(vec![Segment::Path]);
+    }
     if segments[0].starts_with(':') {
         return Err(invalid(
             format!("the url pattern \"{pattern}\" starts with a placeholder"),
-            "start it with your own literal segment, e.g. \"/blog/:slug\": WordPress's posts, pages, archives and feeds own every other first segment",
+            "start it with your own literal segment, e.g. \"/blog/:slug\": WordPress's posts, pages, archives and feeds own every other first segment (a hierarchical kind may be \"/:path\")",
         ));
     }
     if let Some(reserved) = RESERVED_FIRST_SEGMENTS
@@ -444,6 +455,7 @@ mod tests {
         );
         assert_eq!(post("/d/:publishedAt/:slug").unwrap(), [L("d".into()), P, P]);
         assert_eq!(checked("/docs/:path", false, true).unwrap(), [L("docs".into()), Path]);
+        assert_eq!(checked("/:path", false, true).unwrap(), [Path]);
     }
 
     /// The runtime keeps a copy of this list for apps built before schema.php carried it
@@ -475,6 +487,14 @@ mod tests {
         assert!(message("/blog/:title").contains("doesn't identify an item"));
         assert!(message("/n/:slug/:slug").contains("appears twice"));
         assert!(message("/:topic/:slug").contains("starts with a placeholder"));
+        assert!(message("/:slug").contains("starts with a placeholder"));
+        assert!(message("/:path").contains("needs a hierarchical kind"));
+        assert!(
+            checked("/:path/x", false, true)
+                .unwrap_err()
+                .message
+                .contains("starts with a placeholder")
+        );
         assert!(message("/type/:slug").contains("already serves"));
         assert!(message("/x/:year/:year/:slug").contains("appears twice"));
     }
@@ -517,6 +537,9 @@ mod tests {
         assert!(!overlap("/blog/:slug", "/blog/:year/:slug"));
         assert!(!overlaps(&seg("/docs/:path"), &[L("docs".into())]));
         assert!(!overlap("/docs/:path", "/guide/:path"));
+        // The site root overlaps every pattern; extract lets one root kind sit beneath the others.
+        assert!(overlap("/:path", "/docs/:path"));
+        assert!(overlap("/:path", "/:path"));
     }
 
     #[test]

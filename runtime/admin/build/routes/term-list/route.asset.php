@@ -1,1 +1,1 @@
-<?php return array('name' => 'term-list', 'dependencies' => array('wp-core-data', 'wp-data'), 'moduleDependencies' => array('@first-admin/core-data-next', '@first-admin/views', '@wordpress/route'), 'version' => '837b73a01d2954fbf5aa');
+<?php return array('name' => 'term-list', 'dependencies' => array('wp-core-data', 'wp-data'), 'moduleDependencies' => array('@first-admin/core-data-next', '@first-admin/views', '@wordpress/route'), 'version' => '63c03733eec11e3b4eeb');

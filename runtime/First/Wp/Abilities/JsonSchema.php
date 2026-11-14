@@ -241,7 +241,7 @@ final class JsonSchema
         $out = [];
         foreach ($spec['columns'] as $name => $col) {
             $name = (string) $name;
-            if (($col['hidden'] ?? false) || ($col['derived'] ?? false) || ($col['autoIncrement'] ?? false)
+            if (($col['hidden'] ?? false) || ($col['derived'] ?? false) || ($col['readOnly'] ?? false) || ($col['autoIncrement'] ?? false)
                 || (!$create && ($name === $spec['primaryKey'] || $name === 'uid' && ($col['system'] ?? false)))) {
                 continue;
             }

@@ -647,6 +647,8 @@
 				"a-page-with-its-own-form-handler",
 				"forms-that-post-to-an-action",
 				"comments",
+				"search",
+				"live-regions",
 				"markdown-pages",
 				"a-docs-section-a-folder-of-markdown-as-a-kind",
 				"typed-search-a-guard-http-handlers",
@@ -792,6 +794,7 @@
 			"toc": [
 				"the-pull-request",
 				"the-github-workflow",
+				"the-site-reports-a-save",
 				"conflicts",
 				"permissions"
 			],
@@ -1177,9 +1180,9 @@
 			"stops": [],
 			"edit": "https://github.com/spacefast/zero/edit/main/docs-site/docs/reference/language-support.mdx",
 			"toc": [
-				"compiles-52",
+				"compiles-57",
 				"compiles-and-differs-from-javascript-2",
-				"refused-94"
+				"refused-100"
 			],
 			"prev": "/reference/cli",
 			"next": "/reference/diagnostics",

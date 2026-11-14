@@ -3,7 +3,7 @@ import {
   action, db, defineConfig, integer, text, job, email,
   type AccessCtx, type BlockValue, type BeforeHookCtx, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx,
 } from "first";
-import { authors, comments, items, locations, posts, entities, settings, shoppingList } from "./schema";
+import { authors, comments, items, locations, notes, posts, entities, settings, shoppingList } from "./schema";
 import type { AppRelations } from "./register";
 
 export type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
@@ -81,6 +81,25 @@ async function queries() {
   expectType<Equal<NonNullable<typeof withRelated>["relatedFrom"][number]["related"], number[] | null>>();
   await db.update(posts).set({ related: [1, 2] }).where({ id: 1 });
 
+  // A term row (ruling 27): its own fields and the authored ones; `with` both ways (ruling 28).
+  const topic = await db.query.topics.findFirst({ where: { posts: { title: "x" } }, with: { posts: { columns: { title: true } } } });
+  expectType<Equal<NonNullable<typeof topic>["name"], string>>();
+  expectType<Equal<NonNullable<typeof topic>["slug"], string>>();
+  expectType<Equal<NonNullable<typeof topic>["parent"], number | null>>();
+  expectType<Equal<NonNullable<typeof topic>["count"], number>>();
+  expectType<Equal<NonNullable<typeof topic>["url"], string | null>>();
+  expectType<Equal<NonNullable<typeof topic>["color"], string | null>>();
+  expectType<Equal<NonNullable<typeof topic>["posts"], { title: string }[]>>();
+  const label = await db.query.labels.findFirst();
+  expectType<Equal<"parent" extends keyof NonNullable<typeof label> ? true : false, false>>();
+  // The item field is the term ids; `with` puts the term rows in their place.
+  const tagged = await db.query.notes.findFirst({ where: { labelIds: { has: 2 } } });
+  expectType<Equal<NonNullable<typeof tagged>["labelIds"], number[]>>();
+  const withTerms = await db.query.notes.findFirst({ with: { labelIds: { columns: { name: true } } } });
+  expectType<Equal<NonNullable<typeof withTerms>["labelIds"], { name: string }[]>>();
+  await db.insert(notes).values({ title: "n" });
+  await db.update(notes).set({ labelIds: [1, 2] }).where({ id: 1 });
+
   // A required ref -> not nullable once loaded.
   const comment = await db.query.comments.findFirst({ with: { postId: true } });
   expectType<Equal<NonNullable<typeof comment>["postId"]["id"], number>>();
@@ -115,7 +134,7 @@ async function queries() {
   expectType<Equal<(typeof news)[number]["authorId"], Author | null>>();
   await db.update(posts).set({ status: "published", sections: [{ layout: "quote", text: "hi" }] }).where({ tags: { eq: [] } });
 
-  // db.globals is typed from the registered config.
+  // db.globals is typed from the registration first build writes (./register.ts).
   const s = await db.globals.settings.get();
   expectType<Equal<typeof s.postsPerPage, number>>();
   await db.globals.settings.update({ postsPerPage: 20 });
@@ -131,59 +150,57 @@ void (0 as unknown as PostAccess);
 declare const vctx: ValidateCtx;
 expectType<Equal<typeof vctx.user, User | null>>();
 
+export const sendWelcome = job({ input: { email: email(), name: text().default("world") }, handler: async (input, ctx) => { expectType<Equal<typeof input.name, string>>(); void [input.email, ctx.attempt, ctx.jobId]; } });
+
+// Hooks are declared on the kind (spec §2.8); each handler is typed by its own kind.
+posts.on({
+  // Hooks get a trailing ctx: who's writing, and where.
+  async beforeCreate(data, ctx) {
+    expectType<Equal<typeof ctx, BeforeHookCtx<typeof data>>>();
+    expectType<Equal<typeof ctx.data, typeof data>>();
+    if (data.authorId == null && ctx.user) {
+      const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
+      if (author) data.authorId = author.id;
+    }
+  },
+  afterUpdate(row, previous, ctx) {
+    expectType<Equal<[typeof row, typeof previous], [Post, Post]>>();
+    if (previous.status !== "published" && row.status === "published") void ctx.user;
+  },
+});
+items.on({
+  beforeCreate(data) {
+    expectType<Equal<typeof data, ItemInsert>>();
+    data.name = data.name.trim();
+  },
+  async beforeUpdate(patch, existing) {
+    expectType<Equal<typeof patch, Partial<ItemInsert>>>();
+    return { ...patch, name: existing.name };
+  },
+  afterUpdate(row, previous) {
+    expectType<Equal<typeof row | typeof previous, Item>>();
+  },
+});
+
+export const consume = action({
+  input: { itemId: integer(), amount: integer().default(1).optional(), note: text().optional() },
+  handler(input) {
+    expectType<Equal<typeof input, { itemId: number; amount: number | null; note?: string | null }>>();
+    return input.itemId;
+  },
+});
+export const whoami = action({
+  input: {},
+  access: (ctx) => ctx.user !== null,
+  handler(_input, ctx) {
+    expectType<Equal<typeof ctx, HookCtx>>();
+    return ctx.user?.name ?? "anonymous";
+  },
+});
+export const publish = action({ input: { id: integer() }, access: "editor", handler: ({ id }) => id });
+
 export default defineConfig({
-  jobs: { sendWelcome: job({ input: { email: email(), name: text().default("world") }, handler: async (input, ctx) => { expectType<Equal<typeof input.name, string>>(); void [input.email, ctx.attempt, ctx.jobId]; } }) },
   locales: { default: "en", all: ["en", "de"] },
   name: "fixture",
-  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
-  globals: { settings },
-  hooks: {
-    posts: {
-      // Hooks get a trailing ctx: who's writing, and where.
-      async beforeCreate(data, ctx) {
-        expectType<Equal<typeof ctx, BeforeHookCtx<typeof data>>>();
-        expectType<Equal<typeof ctx.data, typeof data>>();
-        if (data.authorId == null && ctx.user) {
-          const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
-          if (author) data.authorId = author.id;
-        }
-      },
-      afterUpdate(row, previous, ctx) {
-        expectType<Equal<[typeof row, typeof previous], [Post, Post]>>();
-        if (previous.status !== "published" && row.status === "published") void ctx.user;
-      },
-    },
-    items: {
-      beforeCreate(data) {
-        expectType<Equal<typeof data, ItemInsert>>();
-        data.name = data.name.trim();
-      },
-      async beforeUpdate(patch, existing) {
-        expectType<Equal<typeof patch, Partial<ItemInsert>>>();
-        return { ...patch, name: existing.name };
-      },
-      afterUpdate(row, previous) {
-        expectType<Equal<typeof row | typeof previous, Item>>();
-      },
-    },
-  },
-  actions: {
-    consume: action({
-      input: { itemId: integer(), amount: integer().default(1).optional(), note: text().optional() },
-      handler(input) {
-        expectType<Equal<typeof input, { itemId: number; amount: number | null; note?: string | null }>>();
-        return input.itemId;
-      },
-    }),
-    whoami: action({
-      input: {},
-      access: (ctx) => ctx.user !== null,
-      handler(_input, ctx) {
-        expectType<Equal<typeof ctx, HookCtx>>();
-        return ctx.user?.name ?? "anonymous";
-      },
-    }),
-    publish: action({ input: { id: integer() }, access: "editor", handler: ({ id }) => id }),
-  },
 });
 void queries;

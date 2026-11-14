@@ -1,6 +1,7 @@
 //! Standard host globals, lowered onto the PHP runtime: the global `fetch` (`First\Fetch`),
-//! `Response`/`Headers`/`URLSearchParams`, `process.env.NAME` (`First\Env`), the global `crypto`'s
-//! `randomUUID` and the `node:crypto` subset (`First\Crypto`).
+//! `Response`/`Headers`/`URLSearchParams`, `process.env.NAME` (`First\Env`), `process.platform` and
+//! `navigator.platform` (`First\Host`), the global `crypto`'s `randomUUID` and the `node:crypto`
+//! subset (`First\Crypto`).
 //!
 //! Every outbound call, crypto call and environment read is reported to [`Compiler::host_use`]
 //! before its PHP is emitted, so one function sees all of them. Forms that cannot be lowered
@@ -20,6 +21,8 @@ pub(crate) enum HostUse<'n> {
     Crypto(&'static str),
     /// A runtime variable read (`process.env.NAME`, or a `createHmac` key read from it).
     EnvRead(&'n str),
+    /// The server's operating system, read when PHP runs: `process.platform` or `navigator.platform`.
+    Platform(&'static str),
 }
 
 const ALGORITHMS: &[&str] = &["md5", "sha1", "sha256", "sha384", "sha512"];
@@ -41,9 +44,15 @@ impl Compiler<'_, '_> {
                 }
                 self.uses("http", host.unwrap_or("*"), span);
             }
-            HostUse::EnvRead(name) => self.uses("env", name, span),
-            // Hashing and random values reach nothing outside the handler; no capability.
-            HostUse::Crypto(_) => {}
+            HostUse::EnvRead(name) => {
+                if reserved_env_name(name) {
+                    return reserved_env_error(span, name);
+                }
+                self.uses("env", name, span)
+            }
+            // Hashing, random values and the platform name reach nothing outside the handler; no
+            // capability.
+            HostUse::Crypto(_) | HostUse::Platform(_) => {}
         }
         Ok(())
     }
@@ -112,13 +121,33 @@ impl Compiler<'_, '_> {
             if matches!(self.resolve(n, e.span), Ok(Resolved::Value(Value::Builtin(Builtin::NodeCrypto(None)), _))))
     }
 
-    /// Reads: `process.env.NAME`, and refusals for every other host member read.
+    /// `process.platform` / `navigator.platform`: Node's names for the server's operating system,
+    /// computed by PHP when it runs, never decided on the build machine.
+    fn platform_read(&mut self, g: &'static str, span: Span) -> Result<Out> {
+        let (what, method) = match g {
+            "process" => ("process.platform", "platform"),
+            _ => ("navigator.platform", "navigatorPlatform"),
+        };
+        self.host_use(HostUse::Platform(what), span)?;
+        Ok(Out::atom(format!("\\First\\Host::{method}()"), Ty::Str))
+    }
+
+    /// Reads: `process.env.NAME`, `process.platform`, `navigator.platform`, and refusals for every
+    /// other host member read.
     pub(super) fn host_member(&mut self, obj: &Expr, prop: &str, prop_span: Span) -> Result<Option<Out>> {
         if self.is_process_env(obj) {
             return self.env_read(prop, prop_span).map(Some);
         }
+        if self.is_global(obj, "navigator") {
+            return match prop {
+                "platform" => self.platform_read("navigator", prop_span).map(Some),
+                _ => Err(crate::eval::navigator_member_refusal(prop, prop_span)),
+            };
+        }
         if self.is_global(obj, "process") {
-            return if prop == "env" {
+            return if prop == "platform" {
+                self.platform_read("process", prop_span).map(Some)
+            } else if prop == "env" {
                 err_help(
                     Span {
                         end: prop_span.end,
@@ -131,7 +160,7 @@ impl Compiler<'_, '_> {
                 err_help(
                     prop_span,
                     format!("`process.{prop}` isn't available in First code"),
-                    "handlers run in PHP; only `process.env.NAME` is supported",
+                    "handlers run in PHP; only `process.env.NAME` and `process.platform` are supported",
                 )
             };
         }
@@ -182,8 +211,15 @@ impl Compiler<'_, '_> {
                 ),
             };
         }
-        if ["process", "crypto", "Buffer"].iter().any(|g| self.is_global(obj, g)) {
-            return err_help(index.span, "host objects can't be indexed", "use `process.env.NAME`");
+        if ["process", "navigator", "crypto", "Buffer"]
+            .iter()
+            .any(|g| self.is_global(obj, g))
+        {
+            return err_help(
+                index.span,
+                "host objects can't be indexed",
+                "use `process.env.NAME`, `process.platform` or `navigator.platform`",
+            );
         }
         Ok(None)
     }
@@ -191,7 +227,10 @@ impl Compiler<'_, '_> {
     /// Writes to `process.env` and other host objects.
     pub(super) fn host_place(&mut self, target: &Expr) -> Result<()> {
         if let ExprKind::Member { obj, .. } | ExprKind::Index { obj, .. } = &target.kind
-            && (self.is_process_env(obj) || ["process", "crypto", "Buffer"].iter().any(|g| self.is_global(obj, g)))
+            && (self.is_process_env(obj)
+                || ["process", "navigator", "crypto", "Buffer"]
+                    .iter()
+                    .any(|g| self.is_global(obj, g)))
         {
             return err_help(
                 target.span,
@@ -260,8 +299,11 @@ impl Compiler<'_, '_> {
                     return err_help(
                         *prop_span,
                         format!("`{prop}` isn't available on `process` in First code"),
-                        "handlers run in PHP; only `process.env.NAME` is supported",
+                        "handlers run in PHP; only `process.env.NAME` and `process.platform` are supported",
                     );
+                }
+                if self.is_global(obj, "navigator") {
+                    return Err(crate::eval::navigator_member_refusal(prop, *prop_span));
                 }
                 if self.is_node_namespace(obj)
                     && let Some(f) = self.node_fn(callee)?

@@ -134,6 +134,47 @@ static site starts a rebuild instead. Deliveries are First jobs, retried with ba
 for the app's own kinds, so a `media:<id>` tag is not purged by a media edit; it purges with the row
 that shows it.
 
+## EmDash's official templates
+
+`@first/astro/emdash` runs EmDash's official Astro templates (blank, starter, blog) on a First site
+with no code in the template: their `emdash`, `emdash/ui`, `emdash/page` and `emdash/runtime`
+imports resolve to it.
+
+```js
+// astro.config.mjs
+import node from "@astrojs/node";
+import { defineConfig } from "astro/config";
+import { firstEmdash } from "@first/astro/emdash";
+
+export default defineConfig({ output: "server", adapter: node({ mode: "standalone" }), integrations: [firstEmdash()] });
+```
+
+It reads the site at `FIRST_URL`, and adds type declarations for the `emdash` modules, so a template type-checks (`astro check`) with its own upstream tsconfig and no EmDash package. The First app declares what the templates show:
+
+| The template reads | The First app declares |
+|---|---|
+| posts and pages (`getEmDashCollection`, `getEmDashEntry`) | `posts` and `pages` collections with `title`, `slug`, `body` (content), and optionally `excerpt`, `cover` (media), `seoTitle`, `seoDescription` |
+| categories, tags, bylines | `category`, `tag` and `credits` taxonomies on `posts` (`credits` with a `role` text field) |
+| widget areas | a `widgets` global: `{ areas: json<unknown[]>() }` |
+| site title, tagline, logo, icon | WordPress's settings |
+| the primary menu | a menu at WordPress's `primary` location |
+| comments | `comments: true` on `posts`; the comment form posts to WordPress through the integration |
+
+Anything the app leaves out reads as empty. The integration also answers `/_emdash/admin` (to
+wp-admin), `/wp-comments-post.php` (forwarded to WordPress) and `/api/search` (the live search), and
+reads a draft through a staged-version preview token (`?preview=`).
+
+Not covered:
+
+- `Astro.locals.user` stays unset, so the templates' admin link doesn't show. Core accepts the login
+  cookie only with a REST nonce, which a page served elsewhere doesn't have.
+- WordPress sees every comment the form forwards as coming from the Astro server's IP, so its
+  per-IP flood and spam checks treat all visitors as one.
+- A draft preview shows the staged version's block markup as saved; WordPress doesn't render a
+  staged version, so dynamic blocks and shortcodes don't run in it.
+- The site's description (its kinds and fields) is read once per server process: restart the Astro
+  server after a schema change.
+
 ## Hosting
 
 First never runs the Astro site. A static build is plain files and goes on any static host; an
@@ -142,7 +183,7 @@ two Spaces: see [docs/astro.md](../../docs/astro.md) in the First repository.
 
 ## Tests
 
-`node --test packages/astro/test/paging.test.mjs` checks the paging against a stand-in for the subscription endpoint through thousands of random writes. `node --test packages/astro/test/loader.test.mjs` builds `test/fixture` with `first build`, serves it
+`node --test packages/astro/test/emdash.test.mjs` runs the `emdash` API and an `astro build` of a page written against it on the same kind of site. `node --test packages/astro/test/paging.test.mjs` checks the paging against a stand-in for the subscription endpoint through thousands of random writes. `node --test packages/astro/test/loader.test.mjs` builds `test/fixture` with `first build`, serves it
 on WordPress-on-SQLite, and runs both loaders, the webhook endpoint and a real `astro build` against
 it. It needs PHP 8.2+ with `pdo_sqlite`, `target/debug/first` (or `FIRST_BIN`) and `npm ci` here.
 

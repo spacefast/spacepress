@@ -18,16 +18,96 @@ final class Live
     /** @var ?array{id: string, html: ?string, reads: array, unseen: bool, found: bool} the region the endpoint asked for */
     private static ?array $capture = null;
 
-    /** A `<Live>` region: its children rendered now, in an element the router region can update. */
+    /** @var list<string> region ids this page rendered, for the browser module */
+    private static array $rendered = [];
+
+    /**
+     * A `<Live>` region: its children rendered now, in an element the browser keeps current. In a
+     * page's own render the element also carries the region's first answer for the subscription
+     * (`data-first-live-seed`: its sealed token and the kinds it read), so the browser asks nothing
+     * until a notice, a write or the poll says it may have changed.
+     */
     public static function region(string $id, \Closure $render): Html
     {
+        if (self::$capture !== null) {
+            $html = Html::child($render());
+            if (self::$capture['id'] === $id) {
+                self::$capture['html'] = $html;
+                self::$capture['found'] = true;
+            }
+
+            return Html::element('div', ['data-first-live' => $id], Html::raw($html));
+        }
+        self::$rendered[] = $id;
         $html = Html::child($render());
-        if (self::$capture !== null && self::$capture['id'] === $id) {
-            self::$capture['html'] = $html;
-            self::$capture['found'] = true;
+        // The region's first answer for the browser's subscription: the endpoint's own render of this
+        // URL and region, so its token and kinds are exactly what the next poll compares against.
+        $seed = self::seed($id);
+
+        return Html::element('div', ['data-first-live' => $id] + ($seed === null ? [] : ['data-first-live-seed' => (string) json_encode($seed, JSON_UNESCAPED_SLASHES)]), Html::raw($html));
+    }
+
+    /** @return ?array{token: string, kinds: list<string>} */
+    private static function seed(string $id): ?array
+    {
+        $plugin = \First\Wp\Runtime::plugin();
+        $viewer = \First\Wp\CoreAccess::viewer();
+        $url = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+        if ($plugin === null || $viewer === null || preg_match('~\A/(?![/\\\\])[^\x00-\x20\x7f#]*\z~', $url) !== 1) {
+            return null;
+        }
+        // A form's flash marker is this visitor's alone: the subscription names the page without it.
+        $url = preg_replace('~([?&])_flash=[0-9a-f]+(&|$)~', '$1', $url) ?? $url;
+        $url = rtrim($url, '?&');
+        try {
+            [$result] = \First\Live\Module::evaluate($plugin->app()->db, $viewer, [['op' => 'page', 'args' => ['url' => $url, 'region' => $id]]]);
+        } catch (\Throwable) {
+            return null;
+        }
+        if (!isset($result['token'], $result['data']['kinds'])) {
+            return null;
         }
 
-        return Html::element('div', ['data-first-live' => $id], Html::raw($html));
+        return ['url' => $url, 'token' => $result['token'], 'kinds' => $result['data']['kinds']];
+    }
+
+    /**
+     * Records that the page being rendered for a region depends on $key, a change notice key that is
+     * not an app collection's (`wp:comments`): it goes back in the answer's `kinds`, so the browser
+     * asks again when a notice names it.
+     */
+    public static function reads(string $key): void
+    {
+        if (self::$capture !== null) {
+            self::$capture['extra'][$key] = true;
+        }
+    }
+
+    /** Whether this render placed any `<Live>` region: the page loads the browser module. */
+    public static function used(): bool
+    {
+        return self::$rendered !== [];
+    }
+
+    /**
+     * On a page with a `<Live>` region: the browser module, which imports the app's typed client
+     * (`@first/client`) and loads the Interactivity router when an answer changed. A signed-in
+     * visitor's reads carry the REST nonce; a signed-out page carries none and stays cacheable.
+     */
+    public static function enqueue(): void
+    {
+        if (self::$rendered === [] || !function_exists('wp_register_script_module') || !\First\Islands::registerClient()) {
+            return;
+        }
+        wp_register_script_module('first-live-region', plugins_url('first/Render/client/live-region.js', \First\Wp\Runtime::file()), [
+            ['id' => \First\Islands::CLIENT, 'import' => 'static'],
+            ['id' => '@wordpress/interactivity', 'import' => 'static'],
+            ['id' => '@wordpress/interactivity-router', 'import' => 'dynamic'],
+        ], null);
+        wp_enqueue_script_module('first-live-region');
+        wp_interactivity_config('first/live', ['nonce' => is_user_logged_in() ? wp_create_nonce('wp_rest') : '']);
+        // The region the router swaps: the page's main region, processed as Navigation does.
+        Navigation::used();
     }
 
     /**
@@ -51,7 +131,7 @@ final class Live
     public static function capture(string $id, \Closure $render): array
     {
         $previous = self::$capture;
-        self::$capture = ['id' => $id, 'html' => null, 'reads' => [], 'unseen' => false, 'found' => false];
+        self::$capture = ['id' => $id, 'html' => null, 'reads' => [], 'unseen' => false, 'found' => false, 'extra' => []];
         try {
             // The whole route's reads, not the region's alone: a page reads data above its `<Live>`
             // and passes it in (`const all = await notes.list(); <Live>{all.map(…)}</Live>`), and

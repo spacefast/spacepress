@@ -54,21 +54,25 @@ function typedMethodCall(): string {
   }
 }
 
-export default defineConfig({
-  name: "language-null-proto",
-  actions: {
-    nullProtoBuildTime: run(() => BUILD_TIME),
-    nullProtoCaptured: run(() => [INPUTS.map(replace), INPUTS.map((key) => key in REPLACEMENTS), Object.keys(REPLACEMENTS), JSON.stringify(REPLACEMENTS)]),
-    nullProtoCapturedMutation: run(() => {
-      REPLACEMENTS.constructor = "own";
-      const out = [REPLACEMENTS.constructor, "constructor" in REPLACEMENTS, Object.keys(REPLACEMENTS)];
-      delete REPLACEMENTS.constructor;
-      return out;
-    }),
-    nullProtoTyped: run(() => typedFresh()),
-    nullProtoTypedMethod: run(() => typedMethodCall()),
-    nullProtoPicomatch: run(() => picomatchLookups(INPUTS)),
-    nullProtoUntyped: run(() => untypedNullProto()),
-    nullProtoThis: run(() => thisNullProto(INPUTS)),
-  },
+export const nullProtoBuildTime = run(() => BUILD_TIME);
+
+export const nullProtoCaptured = run(() => [INPUTS.map(replace), INPUTS.map((key) => key in REPLACEMENTS), Object.keys(REPLACEMENTS), JSON.stringify(REPLACEMENTS)]);
+
+export const nullProtoCapturedMutation = run(() => {
+  REPLACEMENTS.constructor = "own";
+  const out = [REPLACEMENTS.constructor, "constructor" in REPLACEMENTS, Object.keys(REPLACEMENTS)];
+  delete REPLACEMENTS.constructor;
+  return out;
 });
+
+export const nullProtoTyped = run(() => typedFresh());
+
+export const nullProtoTypedMethod = run(() => typedMethodCall());
+
+export const nullProtoPicomatch = run(() => picomatchLookups(INPUTS));
+
+export const nullProtoUntyped = run(() => untypedNullProto());
+
+export const nullProtoThis = run(() => thisNullProto(INPUTS));
+
+export default defineConfig({ name: "language-null-proto" });

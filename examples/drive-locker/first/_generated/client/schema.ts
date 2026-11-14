@@ -4,6 +4,23 @@
 export const SCHEMA = {
   "name": "drive-locker",
   "collections": {
+    "places": {
+      "path": "places",
+      "primaryKey": "id",
+      "drafts": false,
+      "revisions": false,
+      "localized": false,
+      "relations": {
+        "drives": {
+          "kind": "many",
+          "collection": "drives",
+          "optional": false
+        }
+      },
+      "media": [],
+      "mediaList": [],
+      "files": []
+    },
     "drives": {
       "path": "drives",
       "primaryKey": "id",
@@ -24,23 +41,6 @@ export const SCHEMA = {
         "contents": {
           "kind": "many",
           "collection": "contents",
-          "optional": false
-        }
-      },
-      "media": [],
-      "mediaList": [],
-      "files": []
-    },
-    "places": {
-      "path": "places",
-      "primaryKey": "id",
-      "drafts": false,
-      "revisions": false,
-      "localized": false,
-      "relations": {
-        "drives": {
-          "kind": "many",
-          "collection": "drives",
           "optional": false
         }
       },

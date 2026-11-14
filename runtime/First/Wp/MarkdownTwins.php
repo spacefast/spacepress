@@ -592,7 +592,17 @@ final class MarkdownTwins
      */
     private static function hasTwin(\WP_Post $post): bool
     {
-        return is_post_publicly_viewable($post) && apply_filters('first_markdown_twin', true, $post);
+        if (!is_post_publicly_viewable($post) || !apply_filters('first_markdown_twin', true, $post)) {
+            return false;
+        }
+        // An item of a First kind: as a signed-out visitor reads it, through the kind's read rule,
+        // and never under a page that isn't published.
+        $kind = CoreAccess::collection($post->post_type);
+        if ($kind !== null) {
+            return CoreAccess::covers($kind, 'read', $post->ID, new \First\Viewer(null)) && KindUrls::published($post);
+        }
+
+        return true;
     }
 
     /**

@@ -56,9 +56,9 @@ belong to the forms plugin; a decorative contact form cannot qualify that plugin
 retain pinned blank, starter and blog Astro routes, components, styles and
 utilities with a source-hash drift guard. Astro compiles to a Node frontend;
 First compiles its backend and the original reading-time algorithm to PHP.
-The native adapter supplies WordPress/SCF content, menus, media, comments,
-Appearance widgets, saved-draft previews and privacy rules to those original
-routes. The deeper marketing and portfolio examples above remain behavioral
+`@first/astro/emdash` reads WordPress content, menus, media, comments, the
+widgets global, staged-version previews and privacy rules through First's API
+for those original routes, with no adapter code in the templates. The deeper marketing and portfolio examples above remain behavioral
 counterparts; they do not claim unchanged upstream frontend source.
 
 Run the full application seam with `node examples/emdash/test.mjs official-source`.

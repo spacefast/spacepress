@@ -63,7 +63,8 @@ const importLine = (entry, specifier) =>
 // Each case builds this app and runs only its action in PHP: no admin plugin to write and zip.
 const config = `import {action, defineConfig} from "first";
 import {run} from "./first/run";
-export default defineConfig({name: "npm-compat", admin: false, actions: {probe: action({access: "anyone", input: {}, handler: () => run()})}});
+export const probe = action({access: "anyone", input: {}, handler: () => run()});
+export default defineConfig({name: "npm-compat", admin: false});
 `;
 if (!options.isolated) await rm(work, { recursive: true, force: true });
 await mkdir(work, { recursive: true });

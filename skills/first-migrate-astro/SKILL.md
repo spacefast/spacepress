@@ -1,7 +1,7 @@
 ---
 name: first-migrate-astro
 description: "Use when moving an Astro site onto First: its content collections become kinds, its pages and layouts become `first/app/` TSX, and its islands become \"use client\" components. Covers what to keep as it is, what to convert, what to flag for the owner, and how to check the result page by page."
-compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `first` CLI and Node.js 22+."
+compatibility: "Targets First 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `first` CLI and Node.js 22+."
 ---
 
 # Migrate an Astro site to First

@@ -16,7 +16,7 @@ services:
     tmpfs:
       - /var/lib/mysql
   wordpress:
-    image: ${FIRST_WP_IMAGE:-wordpress:7.1-php8.5-apache}
+    image: ${FIRST_WP_IMAGE:-wordpress:beta-7.2-beta5-php8.5-apache}
     depends_on:
       db:
         condition: service_healthy
@@ -27,10 +27,13 @@ services:
       WORDPRESS_DB_USER: wordpress
       WORDPRESS_DB_PASSWORD: first-test-db
       WORDPRESS_DB_NAME: wordpress
+      # The Space whose Zero 0.8 tables (`sf_<space>_…`) an app may bind with existingTable; unset, none.
+      FIRST_WP_SPACE_ID: ${FIRST_WP_SPACE_ID:-}
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_ENVIRONMENT_TYPE', 'local');
         define('DISABLE_WP_CRON', true);
         define('FIRST_IDENTITY_DEV_HTTP', true);
+        if (getenv('FIRST_WP_SPACE_ID')) define('FIRST_SPACE_ID', getenv('FIRST_WP_SPACE_ID'));
     healthcheck:
       test: ["CMD", "php", "-r", "exit(is_file('/var/www/html/wp-includes/version.php') && @fsockopen('127.0.0.1',80) ? 0 : 1);"]
       interval: 1s
@@ -60,11 +63,13 @@ services:
       WORDPRESS_DB_USER: wordpress
       WORDPRESS_DB_PASSWORD: first-test-db
       WORDPRESS_DB_NAME: wordpress
+      FIRST_WP_SPACE_ID: ${FIRST_WP_SPACE_ID:-}
       # wp-config evaluates this per process, so WP-CLI needs the same constants as the web server.
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_ENVIRONMENT_TYPE', 'local');
         define('DISABLE_WP_CRON', true);
         define('FIRST_IDENTITY_DEV_HTTP', true);
+        if (getenv('FIRST_WP_SPACE_ID')) define('FIRST_SPACE_ID', getenv('FIRST_WP_SPACE_ID'));
     volumes:
       - wp:/var/www/html
       - ./cache:/first-cache:ro

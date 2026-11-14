@@ -1,9 +1,11 @@
 ---
+uid: zr_54d327ab551c32be24fd
 title: Introduction
-order: 1
 description: What First is and what these docs cover.
+order: 1
+status: published
+publishedAt: 2026-11-14T04:35:34.000Z
 ---
-
 <Badge label="New" />
 
 First compiles a TypeScript app into a WordPress plugin.

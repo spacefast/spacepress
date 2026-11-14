@@ -98,6 +98,49 @@ fn is_env_name(s: &str) -> bool {
         && chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
 }
 
+/// WordPress's own secrets: its database login, its keys and salts, the Secrets API site key, and
+/// the credentials core reads for its filesystem (`FTP_*`) and outgoing proxy.
+/// App code never reads them,
+/// on any host; `First\\Env::HOST_SECRETS` answers null for the same names at runtime, and
+/// `host_secrets_match_the_runtime` keeps the lists equal.
+const HOST_SECRETS: &[&str] = &[
+    "DB_NAME",
+    "DB_USER",
+    "DB_PASSWORD",
+    "DB_HOST",
+    "AUTH_KEY",
+    "SECURE_AUTH_KEY",
+    "LOGGED_IN_KEY",
+    "NONCE_KEY",
+    "AUTH_SALT",
+    "SECURE_AUTH_SALT",
+    "LOGGED_IN_SALT",
+    "NONCE_SALT",
+    "SECRET_KEY",
+    "SECRET_SALT",
+    "WP_CACHE_KEY_SALT",
+    "WP_SECRETS_KEY",
+    "WP_SECRETS_KEY_PREVIOUS",
+    "FTP_USER",
+    "FTP_PASS",
+    "FTP_PUBKEY",
+    "FTP_PRIVKEY",
+    "WP_PROXY_USERNAME",
+    "WP_PROXY_PASSWORD",
+];
+
+pub(crate) fn reserved_env_name(name: &str) -> bool {
+    HOST_SECRETS.contains(&name.to_ascii_uppercase().as_str())
+}
+
+pub(crate) fn reserved_env_error<T>(span: Span, name: &str) -> Result<T> {
+    err_help(
+        span,
+        format!("`{name}` is a host setting, not an app variable"),
+        "WordPress's database login, keys and salts, and core's FTP and proxy credentials, can't be read from app code; give the app its own variable",
+    )
+}
+
 const ATTRIBUTE_HELP: &str = "PHP objects carry only ordinary properties; read the value inside a function instead, or assign the property normally while the module runs";
 
 fn validate_captured_data(v: &Value, span: Span, seen: &mut HashSet<usize>) -> Result<()> {
@@ -3245,22 +3288,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let out = match &e.kind {
             ExprKind::Class(_) => return err(span, "class declarations must be at module scope"),
             ExprKind::Instanceof(left, right) => {
-                // Host classes First implements answer `instanceof` from imported JavaScript.
+                // Built-in classes First implements answer `instanceof` from imported JavaScript.
+                // None of them can be subclassed in compiled code, so the PHP class is exact.
                 if let ExprKind::Ident(name) = &right.kind
-                    && matches!(
-                        name.as_str(),
-                        "Promise" | "ReadableStream" | "WritableStream" | "TransformStream"
-                    )
+                    && let Some(class) = builtin_instance_class(name)
                     && self.javascript_module(self.fx.as_ref().expect("fn").module)
                     && matches!(self.resolve(name, right.span)?, Resolved::Global(_))
                 {
                     let left = self.expr(left)?;
-                    let class = match name.as_str() {
-                        "Promise" => "JsPromise",
-                        "ReadableStream" => "JsReadableStream",
-                        "WritableStream" => "JsWritableStream",
-                        _ => "JsTransformStream",
-                    };
                     return Ok(Out::atom(
                         format!("({} instanceof \\First\\{class})", left.php),
                         Ty::Bool,
@@ -4126,6 +4161,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn ident(&mut self, n: &str, span: Span) -> Result<Out> {
+        if let Some(field) = n.strip_prefix(client::LIVE_SEED)
+            && self.client.is_some()
+        {
+            return self.client_live_seed(field, span);
+        }
         match self.resolve(n, span)? {
             Resolved::Local(l) => Ok(Out {
                 php: l.php.clone(),
@@ -4153,6 +4193,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Dynamic,
                 ))
             }
+            Resolved::Global(g @ ("process" | "navigator")) => err_help(
+                span,
+                format!(
+                    "`{g}` can only be used as `navigator.platform`, `process.platform`, `process.env.NAME` or under `typeof`"
+                ),
+                format!("read the member you need, e.g. `{g}.platform`; `{g}` itself isn't a value in First code"),
+            ),
             Resolved::Global(g) => err_help(
                 span,
                 format!("`{g}` can't be used as a value; call one of its functions"),
@@ -4290,6 +4337,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Value::Asset(file) => Ok(Out::atom(format!("\\First\\Assets::url({})", php_str(file)), Ty::Str)),
             Value::Env(name) => {
+                if reserved_env_name(name) {
+                    return reserved_env_error(span, name);
+                }
                 self.uses("env", name.to_string(), span);
                 Ok(Out::atom(
                     format!("\\First\\Env::get({})", php_str(name)),
@@ -4999,7 +5049,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let saved_out = std::mem::take(&mut self.output);
         let saved_fx = self.fx.take();
         let saved_this = std::mem::replace(&mut self.implicit_this, this);
+        // A helper is compiled once and reused by every caller, so it never takes on its first
+        // caller's `"use client"` analysis: a server component a client component renders stays
+        // a server component.
+        let saved_client = self.client.take();
         let r = self.compile_function(c, name, None, None, no_db);
+        self.client = saved_client;
         self.implicit_this = saved_this;
         self.fx = saved_fx;
         let helper_src = std::mem::replace(&mut self.output, saved_out);
@@ -8266,6 +8321,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "the type comes from WordPress's own documentation of the function",
                 );
             }
+            if i == 0
+                && let Some(access) = crate::wordpress::option_access(name)
+            {
+                protected_option_literal(name, access, &v.ty, e.span)?;
+            }
             php.push(v.php);
         }
         php.extend(f.fixed.iter().map(php_json));
@@ -8336,7 +8396,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if let Some(s) = suggest(job, self.schema.jobs.keys().map(String::as_str)) {
                 d = d.help(format!("did you mean `{s}`?"));
             } else {
-                d = d.help("declare it in defineConfig({ jobs: { ... } })");
+                d = d.help(format!("export it: `export const {job} = job(...)`"));
             }
             return Err(d);
         };
@@ -8504,6 +8564,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => None,
         };
         let name = match &x.kind {
+            ExprKind::Member { obj, prop, .. }
+                if crate::eval::HOST_OBJECTS.contains(&prop.as_str()) && global(self, obj) == Some("globalThis") =>
+            {
+                return Ok(Some("object"));
+            }
             ExprKind::Member {
                 obj, prop, prop_span, ..
             } if global(self, obj) == Some("globalThis") => match crate::eval::global_member(prop) {
@@ -8518,7 +8583,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         if matches!(
             name,
-            "process" | "require" | "crypto" | "fetch" | "setTimeout" | "Promise" | "eval" | "Function"
+            "require" | "crypto" | "fetch" | "setTimeout" | "Promise" | "eval" | "Function"
         ) {
             return err_help(
                 x.span,
@@ -8641,7 +8706,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("\\First\\Js::isFinite(\\First\\Js::toNumber({}))", v.php),
                 Ty::Bool,
             ),
-            ("process" | "crypto" | "Buffer", _) => {
+            ("process" | "navigator" | "crypto" | "Buffer", _) => {
                 return err_help(
                     span,
                     format!("`{g}` can't be called"),
@@ -11372,6 +11437,33 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
 }
 
 /// Is a value of type `a` usable where `b` is expected?
+/// A protected option named by a literal (or a union of literals) is refused at the call; a name
+/// built at runtime meets the same list in `First\Wp\Guard` (runtime/First/Wp/guard.json).
+fn protected_option_literal(function: &str, access: &str, name: &Ty, span: Span) -> Result<()> {
+    let literals: Vec<&str> = match name {
+        Ty::StrLit(s) | Ty::FreshStrLit(s) => vec![s.as_str()],
+        Ty::Union(parts) => parts
+            .iter()
+            .filter_map(|t| match t {
+                Ty::StrLit(s) | Ty::FreshStrLit(s) => Some(s.as_str()),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    for option in literals {
+        if let Some((why, readable)) = crate::wordpress::protected_option(option)
+            && !(access == "read" && readable)
+        {
+            let verb = if access == "read" { "read" } else { "change" };
+            return Err(Diag::new(span, format!("`{function}` can't {verb} the WordPress option `{option}`: {why}"))
+                .code(crate::diag::Code::ProtectedWordPress)
+                .help("keep app settings in a global or a table, or under an option name of the app's own; site settings like this one belong to the site's administrator"));
+        }
+    }
+    Ok(())
+}
+
 pub fn assignable(a: &Ty, b: &Ty) -> bool {
     if a == b || *b == Ty::Unknown || *b == Ty::Dynamic || *a == Ty::Never {
         return true;
@@ -11677,6 +11769,27 @@ fn paren(s: &str) -> String {
     format!("({s})")
 }
 
+/// The runtime class behind a built-in global, for `value instanceof Global` in imported JavaScript.
+fn builtin_instance_class(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "Promise" => "JsPromise",
+        "ReadableStream" => "JsReadableStream",
+        "WritableStream" => "JsWritableStream",
+        "TransformStream" => "JsTransformStream",
+        "RegExp" => "RegExp",
+        "Map" => "JsMap",
+        "Set" => "JsSet",
+        "WeakMap" => "JsWeakMap",
+        "WeakSet" => "JsWeakSet",
+        "Date" => "JsDate",
+        "URL" => "JsUrl",
+        "URLSearchParams" => "JsUrlSearchParams",
+        "AbortController" => "JsAbortController",
+        "AbortSignal" => "JsAbortSignal",
+        _ => return None,
+    })
+}
+
 fn check_optional_chain(e: &Expr) -> Result<bool> {
     let (receiver, optional) = match &e.kind {
         ExprKind::Member { obj, optional, .. } | ExprKind::Index { obj, optional, .. } => (obj, *optional),
@@ -11873,3 +11986,20 @@ const SVG_CAMEL_TAGS: &[&str] = &[
     "radialGradient",
     "textPath",
 ];
+
+#[cfg(test)]
+mod host_secret_tests {
+    use super::HOST_SECRETS;
+
+    #[test]
+    fn host_secrets_match_the_runtime() {
+        let php = include_str!("../runtime/First/Env.php");
+        let start = php.find("HOST_SECRETS = [").expect("Env::HOST_SECRETS");
+        let list = &php[start..start + php[start..].find("];").unwrap()];
+        let runtime: Vec<&str> = list.split('\'').skip(1).step_by(2).collect();
+        assert_eq!(
+            runtime, HOST_SECRETS,
+            "runtime/First/Env.php and src/compile.rs disagree"
+        );
+    }
+}

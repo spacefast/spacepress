@@ -698,3 +698,55 @@ test("a core update of a First post sets its featured image and its terms, as co
     wp("eval", "@unlink(WPMU_PLUGIN_DIR . '/first-test-jot-terms.php');");
   }
 });
+
+test("a taxonomy's terms over /first/v1 and core's term route, assigned by an editor save, with a URL in the sitemap", async () => {
+  // Terms through the API: implicit fields, term meta, the hierarchy, the URL.
+  const parent = await http("POST", `${api}/oracle_topics`, { as: "editor", body: { name: `Topic ${run}`, color: "red" } });
+  assert.equal(parent.status, 201, JSON.stringify(parent.json));
+  const p = parent.json.data;
+  assert.deepEqual([p.slug, p.description, p.parent, p.count, p.color], [`topic-${run}`, "", null, 0, "red"]);
+  const child = await http("POST", `${api}/oracle_topics`, { as: "editor", body: { name: `Child ${run}`, parent: p.id } });
+  const c = child.json.data;
+  assert.equal(c.url, `${harness.url}/oracle-topics/${p.slug}/${c.slug}/`);
+  assert.equal((await http("POST", `${api}/oracle_topics`, { as: "author", body: { name: `Nope ${run}` } })).status, 403, "editor creates");
+  const counted = await http("PATCH", `${api}/oracle_topics/${c.id}`, { as: "editor", body: { count: 3 } });
+  assert.deepEqual([counted.status, counted.json.pointer], [422, "/count"], "count is read-only");
+
+  // Core's term route answers the same rows, its writes through First's pipeline.
+  const coreList = await http("GET", `${core}/first_oracle_topics?per_page=100&search=${run}`);
+  assert.deepEqual(coreList.json.map((t: any) => t.name).sort(), [`Child ${run}`, `Topic ${run}`]);
+  assert.equal(coreList.json.find((t: any) => t.id === p.id).meta.color, "red");
+  const coreWrite = await http("POST", `${core}/first_oracle_topics/${c.id}`, { as: "editor", body: { meta: { color: "blue" }, description: "Kids" } });
+  assert.equal(coreWrite.status, 200, JSON.stringify(coreWrite.json));
+  assert.deepEqual([coreWrite.json.description, coreWrite.json.meta.color], ["Kids", "blue"]);
+  assert.equal((await http("POST", `${core}/first_oracle_topics`, { as: "author", body: { name: `Core nope ${run}` } })).status, 403);
+
+  // Assigning: the item's field, in write order, as core's term relationships.
+  const kid = await http("POST", `${api}/oracle_kids`, { as: "editor", body: { title: `Classified ${run}`, oracleTopics: [c.id, p.id] } });
+  assert.equal(kid.status, 201, JSON.stringify(kid.json));
+  const id = kid.json.data.id;
+  assert.deepEqual(kid.json.data.oracleTopics, [c.id, p.id]);
+  const found = await http("GET", `${api}/oracle_kids?where=${encodeURIComponent(JSON.stringify({ oracleTopics: { has: p.id } }))}&with=oracleTopics`, { as: "editor" });
+  assert.deepEqual(found.json.data.map((k: any) => [k.id, k.oracleTopics.map((t: any) => t.name)]), [[id, [`Child ${run}`, `Topic ${run}`]]]);
+  const reverse = await http("GET", `${api}/oracle_topics/${p.id}?with=oracleKids`);
+  assert.deepEqual(reverse.json.data.oracleKids.map((k: any) => k.id), [id]);
+
+  // A core editor save sets the term set with core's own taxonomy field on the post.
+  const saved = await http("POST", `${core}/first_oracle_kids/${id}`, { as: "editor", body: { first_oracle_topics: [p.id] } });
+  assert.equal(saved.status, 200, JSON.stringify(saved.json));
+  assert.deepEqual(saved.json.first_oracle_topics, [p.id]);
+  assert.deepEqual(first("find", "oracle_kids", JSON.stringify({ where: { id } }))[0].oracleTopics, [p.id]);
+
+  // The term URL renders its archive, and core's sitemap lists the taxonomy's terms.
+  const page = await fetch(`${harness.url}/oracle-topics/${p.slug}/`, { redirect: "manual" });
+  assert.equal(page.status, 200);
+  const index = await (await fetch(`${harness.url}/wp-sitemap.xml`)).text();
+  assert.match(index, /wp-sitemap-taxonomies-first_oracle_topics-1\.xml/);
+  const terms = await (await fetch(`${harness.url}/wp-sitemap-taxonomies-first_oracle_topics-1.xml`)).text();
+  assert.ok(terms.includes(`/oracle-topics/${p.slug}/`), terms);
+
+  // Deleting the parent moves the child up and removes its links.
+  assert.equal((await http("DELETE", `${api}/oracle_topics/${p.id}`, { as: "editor" })).status, 200);
+  assert.equal(first("find", "oracle_topics", JSON.stringify({ where: { id: c.id } }))[0].parent, null);
+  assert.deepEqual(first("find", "oracle_kids", JSON.stringify({ where: { id } }))[0].oracleTopics, []);
+});

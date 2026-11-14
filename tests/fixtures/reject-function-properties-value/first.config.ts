@@ -4,7 +4,8 @@ import { action, defineConfig } from "first";
 function match(glob: string) { return glob.length; }
 match.version = "1";
 
+export const probe = action({ input: {}, handler: () => [match] });
+
 export default defineConfig({
   name: "reject-function-properties-value",
-  actions: { probe: action({ input: {}, handler: () => [match] }) },
 });

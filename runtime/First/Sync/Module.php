@@ -21,7 +21,10 @@ final class Module
         Extensions::onWrite(self::onWrite(...));
         Extensions::onWritten(self::onWritten(...));
         Extensions::schemaDescribe(self::describe(...));
-        Extensions::route('sync', Routes::dispatch(...));
+        // `first sync`'s own writes send no dispatch: the run that made them already has them.
+        Extensions::route('sync', static fn (mixed ...$args) => GitDispatch::quietly(static fn () => Routes::dispatch(...$args)));
+        Extensions::onWritten(GitDispatch::written(...));
+        Extensions::cli('git-dispatch', GitDispatch::cli(...));
         if (function_exists('add_action')) {
             // Before the editor-save pipeline (Plugin, priority 20), so its hooks and every onWritten
             // observer (webhooks included) see the post's uid.

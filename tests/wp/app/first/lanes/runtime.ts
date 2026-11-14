@@ -1,5 +1,5 @@
-// Lane fragment for the WP test app; only this lane edits this file. ../compose.ts merges every
-// export into the app and fails the build if a key collides with the shared app or another lane.
+// Lane fragment for the WP test app; only this lane edits this file. Every kind, action and job it
+// exports registers under its export name, and a name another lane or the app uses fails the build.
 //
 // Lane K1 (runtime gaps): `legs` is a post-backed localized child of the localized `tours` (lane
 // H), for `with` resolving each parent row's children in that row's locale through Polylang.
@@ -26,48 +26,41 @@ export const guestNotes = table({
 
 export const bigCounts = table({ n: integer() }, { access: { read: "anyone", create: "editor" } });
 
-export const collections = { legs };
-export const tables = { guestCarts, guestNotes, bigCounts };
-export const users = {  };
-export const entities = { ...collections, ...tables, ...users };
-export const actions = {
-  nativeHandler: action({
-    input: { title: text(), count: integer() },
-    access: "anyone", agents: false,
-    handler(input) {
-      input.title = input.title.trim();
-      input.count += 1;
-      return { title: input.title, count: input.count };
-    },
-  }),
-  // Arithmetic in compiled code on a stored integer and on an input one, past 2^53. The stored row
-  // is still found by its exact value.
-  bigMath: action({
-    input: { id: integer(), m: integer() },
-    access: "editor",
-    agents: false,
-    async handler({ id, m }) {
-      const row = await db.query.bigCounts.findFirst({ where: { id } });
-      if (!row) return null;
-      const n = row.n;
-      let k = n;
-      const old = k++;
-      const again = await db.query.bigCounts.findFirst({ where: { n } });
-      return [old - 1, n + 1, n - 1, n * 1, -n, k, m + 1, m - n, n + m, String(n + 0), again ? again.id : null];
-    },
-  }),
-  bulkTourPrice: action({
-    input: { a: integer(), b: integer(), price: integer() },
-    access: "editor",
-    agents: false,
-    async handler({ a, b, price }) {
-      const rows = await db.update(tours).set({ price }).where({ id: { in: [a, b] } }).returning();
-      return rows.length;
-    },
-  }),
-};
-export const globals = {};
-/** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */
-export const hooks = {};
-/** Top-level options this lane owns (e.g. jobs, webhooks, files, media, locales). */
+export const nativeHandler = action({
+  input: { title: text(), count: integer() },
+  access: "anyone", agents: false,
+  handler(input) {
+    input.title = input.title.trim();
+    input.count += 1;
+    return { title: input.title, count: input.count };
+  },
+});
+
+// Arithmetic in compiled code on a stored integer and on an input one, past 2^53. The stored row
+// is still found by its exact value.
+export const bigMath = action({
+  input: { id: integer(), m: integer() },
+  access: "editor",
+  agents: false,
+  async handler({ id, m }) {
+    const row = await db.query.bigCounts.findFirst({ where: { id } });
+    if (!row) return null;
+    const n = row.n;
+    let k = n;
+    const old = k++;
+    const again = await db.query.bigCounts.findFirst({ where: { n } });
+    return [old - 1, n + 1, n - 1, n * 1, -n, k, m + 1, m - n, n + m, String(n + 0), again ? again.id : null];
+  },
+});
+
+export const bulkTourPrice = action({
+  input: { a: integer(), b: integer(), price: integer() },
+  access: "editor",
+  agents: false,
+  async handler({ a, b, price }) {
+    const rows = await db.update(tours).set({ price }).where({ id: { in: [a, b] } }).returning();
+    return rows.length;
+  },
+});
+/** Top-level options this lane owns (e.g. webhooks, media, locales). */
 export const config = {};

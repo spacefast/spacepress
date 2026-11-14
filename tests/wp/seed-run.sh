@@ -13,14 +13,14 @@ trap cleanup EXIT
 mkdir -p "$app/project/content/posts" "$app/project/content/locked" "$app/content/plugins"
 cat > "$app/project/first.config.ts" <<'TS'
 import { defineConfig, collection, table, text, richText, slug } from 'first';
-const posts = collection({ title: text(), body: richText().optional(), slug: slug({ source: 'title' }).optional() }, {
+export const posts = collection({ title: text(), body: richText().optional(), slug: slug({ source: 'title' }).optional() }, {
   title: 'title', content: 'body', drafts: true, sync: 'content/posts/*.md',
   access: { read: 'anyone', create: 'editor', update: 'editor', delete: 'editor' },
 });
-const locked = table({ title: text(), body: richText().optional() }, {
+export const locked = table({ title: text(), body: richText().optional() }, {
   content: 'body', sync: 'content/locked/*.md', access: { read: false, create: false, update: false, delete: false },
 });
-export default defineConfig({ collections: { posts }, tables: { locked } });
+export default defineConfig({});
 TS
 cat > "$app/project/content/posts/hello.md" <<'MD'
 ---

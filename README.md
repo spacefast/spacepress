@@ -9,7 +9,7 @@ works with Next.js, Astro, TanStack Start, or anything else that can call
 `fetch`.
 
 First is built on top of WordPress and runs alongside a traditional WordPress
-setup. It needs WordPress 7.1+, PHP 8.2+ and a small set of plugins that
+setup. It needs WordPress 7.2 (7.2-beta5 or later), PHP 8.2+ and a small set of plugins that
 `first build` pins for you. First apps can be deployed to
 [Spacefast](https://spacefast.com) natively.
 
@@ -67,36 +67,29 @@ export const posts = collection({
 }, {
   content: "body",
   access: { read: "anyone", create: "author", update: "author", delete: "editor" },
+}).on({
+  beforeCreate(data) {
+    data.title = data.title.trim();
+    if (data.title === "") throw new HttpError(422, "invalid_input", "A post needs a title");
+  },
 });
 
-export const collections = { authors, posts };
 export const stock = table({
   post: ref(posts).optional(),
   quantity: integer().default(0),
 });
-export const tables = { stock };
+
+export const publishedCount = action({
+  input: {},
+  access: "anyone",
+  async handler() {
+    const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
+    return { count: rows.length };
+  },
+});
 
 export default defineConfig({
   name: "journal",
-  collections, tables,
-  hooks: {
-    posts: {
-      beforeCreate(data) {
-        data.title = data.title.trim();
-        if (data.title === "") throw new HttpError(422, "invalid_input", "A post needs a title");
-      },
-    },
-  },
-  actions: {
-    publishedCount: action({
-      input: {},
-      access: "anyone",
-      async handler() {
-        const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
-        return { count: rows.length };
-      },
-    }),
-  },
 });
 ```
 
@@ -146,7 +139,7 @@ Build the compiler from source
 with Rust 1.96 (the checkout pins it). Local development needs Node 22+ and
 npm; it needs neither Docker nor a host PHP installation. First automatically
 runs pinned [WordPress Studio CLI](https://github.com/Automattic/studio/tree/trunk/apps/cli)
-2.2.0 to provide WordPress 7.1.4, PHP 8.4 and SQLite Database Integration 3.1.3.
+2.2.0 to provide WordPress 7.2-beta5, PHP 8.4 and SQLite Database Integration 3.1.3.
 The first start downloads the local environment and required plugins.
 
 ```sh
@@ -272,7 +265,7 @@ live collections with cache tags, and a webhook endpoint that purges or rebuilds
 |---|---|
 | To build | Rust 1.96 (today; see [Status](#status)) |
 | Local `first dev` | Node 22+ and npm; Studio supplies WordPress, PHP and SQLite |
-| To run | WordPress 7.1, PHP 8.2 with `mbstring`, `gd`, `fileinfo`, `openssl` and `sodium`, and MySQL 8.0, MariaDB 10.11 or SQLite through the [SQLite Database Integration](https://wordpress.org/plugins/sqlite-database-integration/) plugin 3.1.2 |
+| To run | WordPress 7.2-beta5 or later, PHP 8.2 with `mbstring`, `gd`, `fileinfo`, `openssl` and `sodium`, and MySQL 8.0, MariaDB 10.11 or SQLite through the [SQLite Database Integration](https://wordpress.org/plugins/sqlite-database-integration/) plugin 3.1.2 |
 | Required plugins | Secure Custom Fields 6.9.7, Action Scheduler 4.2.0, MCP Adapter 0.7.1, and Polylang 3.9 only when the app uses `locales` |
 
 `first build` downloads the required plugins at their pinned versions,
@@ -353,10 +346,10 @@ saved as a [staged version](docs/staged.md) that visitors don't see, then
 compared, previewed, promoted or discarded.
 Use `table(fields, options?)` for app data in its own SQL table. Both kinds
 support references and one/many relations to either kind, with typed client
-queries and target access rules. The registry key supplies the name once:
-`shoppingList` stays `first.shoppingList` in the client and stores in
-`wp_first_shopping_list`. `userProjection()` in `users` projects existing
-WordPress users for auth; it creates no second user table. Core `/wp/v2` routes and
+queries and target access rules. The export name supplies the name once:
+`export const shoppingList = table(...)` is `first.shoppingList` in the client and stores in
+`wp_first_shopping_list`, whichever file under `first/` (or `first.config.ts`) exports it.
+An exported `userProjection()` projects existing WordPress users for auth; it creates no second user table. Core `/wp/v2` routes and
 admin screens for First's post types follow First's access rules. Need other
 plugins at exact versions? [Declare them in the config](docs/wp-plugins.md)
 and the build pins and ships them too.

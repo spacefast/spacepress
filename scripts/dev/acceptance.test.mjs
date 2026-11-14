@@ -15,16 +15,14 @@ const first = resolve(process.env.FIRST_BIN ?? 'target/debug/first');
 const command = async (args, env = process.env) => (await exec(first, args, { env, timeout: 600000, maxBuffer: 4 * 1024 * 1024 })).stdout.trim();
 const config = (version, extra = '', admin = true) => `
 import { defineConfig, table, collection, text, boolean, integer, json, richText, action, job, jobs, db } from 'first';
-const items = table({ name: text(), processed: boolean().default(false), ${extra} });
-const stories = collection({ title: text().max(160), body: richText().optional(), details: json().optional() }, { title: 'title', content: 'body', access: { read: 'anyone', create: 'editor', update: 'editor', delete: 'editor' } });
-export default defineConfig({
-  admin: ${admin}, tables: { items }, collections: { stories },
-  hooks: { items: { afterCreate: async (item) => { await jobs.stamp.enqueue({ itemId: item.id }); } } },
-  jobs: { stamp: job({ input: { itemId: integer() }, handler: async ({ itemId }) => {
-    await db.update(items).set({ processed: true }).where({ id: itemId });
-  } }) },
-  actions: { version: action({ input: {}, handler() { return '${version}'; } }) }
-});
+export const items = table({ name: text(), processed: boolean().default(false), ${extra} })
+  .on({ afterCreate: async (item) => { await jobs.stamp.enqueue({ itemId: item.id }); } });
+export const stories = collection({ title: text().max(160), body: richText().optional(), details: json().optional() }, { title: 'title', content: 'body', access: { read: 'anyone', create: 'editor', update: 'editor', delete: 'editor' } });
+export const stamp = job({ input: { itemId: integer() }, handler: async ({ itemId }) => {
+  await db.update(items).set({ processed: true }).where({ id: itemId });
+} });
+export const version = action({ input: {}, handler() { return '${version}'; } });
+export default defineConfig({ admin: ${admin} });
 `;
 
 // `first mcp` over stdio: one request per tool call, then end of input, which stops the server.
@@ -109,10 +107,16 @@ test('Docker-free dev supports editing, jobs, identity, uploads, rebuild recover
       if (!t.error) throw error;
     }
   });
-  await command(['dev', project, '--port', String(await freePort()), '--no-watch'], env);
+  const firstStart = await command(['dev', project, '--port', String(await freePort()), '--no-watch'], env);
   const status = JSON.parse(await command(['dev', 'status', project], env));
   assert.equal(status.isOnline, true);
   const base = status.siteUrl.replace(/\/$/, '');
+  // The summary links First Admin where it is mounted. Studio's server reads no .htaccess, so the
+  // address answers with the form every server serves, wp-admin's own page for First Admin.
+  assert.match(firstStart, new RegExp(`First Admin: ${base}/wp-admin/new/\n`));
+  const adminLink = await fetch(`${base}/wp-admin/new/`, { redirect: 'manual' });
+  assert.equal(adminLink.status, 302);
+  assert.equal(adminLink.headers.get('location'), `${base}/wp-admin/admin.php?page=first-admin&p=%2F`);
   // A coding agent's view of the same site: its state and URL, a read, and (only when the server
   // was started with --allow-writes) a write and an action, all through the site commands.
   const [devStatus, refusedInsert] = await mcp([project], env, [

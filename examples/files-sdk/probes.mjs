@@ -36,9 +36,10 @@ export const PROBES = [
 
 const config = (body) => `import { action, defineConfig, text } from "first";
 ${body.imports ?? ""}
-export default defineConfig({ name: "probe", actions: { a: action({ access: "anyone", input: { s: text() }, async handler(input) {
+export const a = action({ access: "anyone", input: { s: text() }, async handler(input) {
 ${body.handler}
-} }) } });
+} });
+export default defineConfig({ name: "probe" });
 `;
 
 function verdict(first, dir) {

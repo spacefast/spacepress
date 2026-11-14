@@ -24,7 +24,8 @@ cp "$target/release/first" "$bin/first"
 rm -rf "$src"
 cat > "$project/first.config.ts" <<'CONFIG'
 import { defineConfig, table, text } from 'first';
-export default defineConfig({ tables: { notes: table({ title: text() }) } });
+export const notes = table({ title: text() });
+export default defineConfig({});
 CONFIG
 cd "$work"
 env -u FIRST_WP_HARNESS HOME="$home" XDG_CACHE_HOME= \

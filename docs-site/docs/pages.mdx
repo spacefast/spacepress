@@ -53,8 +53,9 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 - Components are ordinary (async) functions. `&&`, `?:`, `??`, `.map`, `.length` and string methods work as in React.
 - **Reads run as the visitor.** Every read a render makes is bound to the person viewing the page, so drafts, rows they may not read and masked fields never reach the HTML.
 - `notFound()` renders `not-found.tsx` with a 404. `redirect(url, status?)` redirects (302 by default).
-- `metadata` is an object or a function of the page's props: `title`, `description`, `canonical`, `robots: { index, follow }`. A layout's `title: { default, template }` wraps its pages' titles.
+- `metadata` is an object or a function of the page's props: `title`, `description`, `canonical`, `robots: { index, follow }`, `openGraph: { title, description, image, type }`, `twitter: { card }`, `links: [{ rel, href, type }]` and `scripts: ["/app.js"]`, script modules the page loads (a file in `public/`, or an https:// URL). A layout's `title: { default, template }` wraps its pages' titles. A page overrides its layouts field by field, so it can set only `openGraph.image`; every layout's `links` and `scripts` and the page's are all in the page.
 - `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
+- `<Pagination page={search.page} pages={n} />` links to the other pages of a listing. Each link changes only `page` (or `param`) in this URL, page 1 drops it, and long runs collapse around the current page (`1 … 4 5 6 7 8 … 12`). Without JavaScript they are plain links.
 - `<Content value>` renders a post body through `the_content`. `<Html value>` places a literal as written and runs anything else through `wp_kses_post`.
 
 ### Forms that post to an action
@@ -74,6 +75,23 @@ The files below are from the router's test app, [`tests/fixtures/app-router`](ht
 - `<Comments for={item} />` shows the thread as the visitor may read it (approved comments, plus their own held ones) and a form that works without JavaScript.
 - The item's kind turns `comments` on; on a kind without it the build stops at the prop.
 - Who may comment, moderation and reply depth are the kind's, enforced wherever a comment is created: this form, `POST /__first/api/v1/comments` and WordPress's own comment form all get the same answer. With `comments: true`: signed-in users only, a first comment waits for approval, replies go three levels deep; the kind's `comments` options change any of them.
+
+### Search
+
+<RepoFile path="tests/fixtures/search/first/app/notes-search/page.tsx" />
+
+- `<Search />` is a form that works with JavaScript off: a `GET` of the page with the query in `q`.
+- `<SearchResults kind="notes" q={search.q} />` lists the rows the visitor may read that match, each its title linked to the kind's URL. A draft, or a match only in a field the visitor can't read, never shows and isn't counted.
+- One kind pages with `page`, as `<Pagination>` does. With no `kind`, every searchable kind with a URL is searched, a few rows each, with a link to the rest.
+- A page that searched is never cached for anyone else, and is `noindex`. The bare form page is cached like any other.
+
+### Live regions
+
+<RepoFile path="tests/fixtures/live-regions/first/app/board/page.tsx" />
+
+- `<Live id="board">` marks part of a server page the browser keeps current. When something the page read for it changes, it is rendered again as the visitor and updated in place; client components and form fields keep their state.
+- It updates on the next change notice or poll (2 to 30 seconds without a realtime transport), right after the visitor's own writes through the typed client, and, around `<Comments>`, when a comment's approval changes. Changes made outside First show within five minutes.
+- Cost: one uncached request when the page loads, then one per poll while the tab is visible, per open tab, even when the page came from a page cache. A background or prerendered tab costs nothing until shown. Unchanged regions usually cost no render.
 
 ### Markdown pages
 
@@ -103,7 +121,7 @@ Many Markdown pages are a kind, synced from a folder tree and rendered by one ca
 
 A component can be used inside the Markdown as a block: its file lists it with `export const blocks = ["Callout"]`, and the Markdown writes `<Callout type="warning">…</Callout>` on lines of its own. In WordPress it is a block the editor inserts and edits, rendered through the component; `first sync` writes it back as the same tag. The test app's [`Callout.tsx`](https://github.com/spacefast/zero/blob/main/tests/fixtures/docs-kind/first/components/Callout.tsx) has two.
 
-Code fences are highlighted on the server when the page renders, in light and dark themes, with no script: ```` ```ts title="first.config.ts" {2} ```` titles the block and marks line 2, and blocks that share `group="install"` show as tabs. They are WordPress code blocks underneath, so the editor edits them and `first sync` writes the fence back.
+Code fences are highlighted on the server when the page renders, in light and dark themes, with no script. The theme follows the visitor's colour scheme, and a site with its own switch sets `data-theme="dark"` or `"light"` on `<html>`. ```` ```ts title="first.config.ts" {2} ```` titles the block and marks line 2, and blocks that share `group="install"` show as tabs. They are WordPress code blocks underneath, so the editor edits them and `first sync` writes the fence back.
 
 `"first/content"` gives the page its navigation, read as the visitor from the published tree: `nav(kind, item)` (the tree, with the current page and its ancestors marked), `pager(kind, item)` (previous and next, reading the tree top to bottom) and `headings(item)` (the `##` and `###` headings, with the ids the page renders them with).
 
@@ -141,6 +159,9 @@ A component file under `first/components/` that starts with `"use client"` runs 
 - `onClick` and other event props become `data-wp-on--*` actions. An `await` in a handler is fine.
 - Calling an `action()` the file imports posts to that action's endpoint with the REST nonce, so the caller is the visitor.
 - `useEffect`, `useMount`, `useEvent` and `useRef` come from `"first/client"`, and `sharedState()` gives state every instance shares.
+- `useLive("guestbook", { orderBy: { id: "asc" }, limit })` is a list read the page keeps current: `{ data, error, loading }`. The server answers it in the first render, as the visitor; the page then subscribes through the app's typed client, so another visitor's write shows without a reload (within the client's poll, 2 to 30 seconds without a push transport). The query reads props and literals; `{ enabled: false }` reads nothing.
+
+<RepoFile path="tests/fixtures/client-components/first/components/Guestbook.tsx" />
 - A list over state or props, `items.map((item) => <li key={item.id}>…</li>)`, and a conditional, `{open && <p>…</p>}` or `{empty ? <em>…</em> : <b>…</b>}`, re-render in the browser. Each item and each branch is one element, and each item has a `key`. A list or conditional over values that never change renders once, on the server.
 - npm imports, module-level helpers the browser doesn't have, and assigning state directly are build errors at the line, with the alternative.
 

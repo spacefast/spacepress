@@ -82,6 +82,12 @@ final class Module
             }
         }
         unset($entry);
+        self::arm();
+    }
+
+    /** Flush the pending batch after the outermost commit (now, outside a transaction); discard it on rollback. */
+    private static function arm(): void
+    {
         if (!self::$armed) {
             self::$armed = true;
             $store = db()->store();
@@ -93,6 +99,34 @@ final class Module
             });
             Extensions::afterCommit(self::flush(...));
         }
+    }
+
+    /**
+     * A change to something clients read that isn't an app collection (`wp:comments`: core's
+     * comments on a kind with comments on), announced with no ids ("this changed, read again"),
+     * through the same pending batch as {@see written()}: discarded on rollback, flushed after the
+     * outermost commit (at once outside a transaction), chunked the same way.
+     *
+     * $key must not name an app collection, by key or physical name: those go through written(),
+     * whose ids and access rules a caller here would bypass.
+     */
+    public static function changed(string $key, string $op): void
+    {
+        foreach (db()->schema()->collections() as $table => $spec) {
+            if ($key === (string) $table || $key === (string) ($spec['key'] ?? $table)) {
+                throw new \LogicException("'$key' is an app collection: its writes are announced by written()");
+            }
+        }
+        if (!self::enabled()) {
+            return;
+        }
+        $entry = &self::$pending[$key];
+        $entry ??= ['ops' => [], 'ids' => [], 'overflow' => false];
+        $entry['ops'][$op] = true;
+        $entry['overflow'] = true; // no ids: the notice says only that it changed
+        $entry['ids'] = [];
+        unset($entry);
+        self::arm();
     }
 
     /**

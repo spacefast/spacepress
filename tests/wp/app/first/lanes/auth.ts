@@ -1,8 +1,8 @@
-// Lane fragment for the WP test app; only this lane edits this file. ../compose.ts merges every
-// export into the app and fails the build if a key collides with the shared app or another lane.
+// Lane fragment for the WP test app; only this lane edits this file. Every kind, action and job it
+// exports registers under its export name, and a name another lane or the app uses fails the build.
 // Lane E (§6.2): members are WordPress users, plus a collection any signed-in viewer (guests
 // included) may write and one that subscribers and up may write, for the guest role ladder.
-import { blocks, boolean, collection, date, db, email, group, HttpError, integer, repeater, select, text, timestamp, type Hooks, userProjection, table, ref } from "first";
+import { blocks, boolean, collection, date, db, email, group, HttpError, integer, repeater, select, text, timestamp, userProjection, table, ref } from "first";
 
 export const members = userProjection({
   email: email().unique().max(191),
@@ -36,7 +36,19 @@ export const members = userProjection({
   sections: blocks({ bio: { body: text() }, quote: { text: text().optional(), cite: text().showIf({ text: "visible" }).optional() } }).showIf({ plan: "pro" }).optional(),
   notes: group({ private: text().access({ read: "admin", update: "admin" }).optional() }).optional(),
   addressBy: integer().optional(),
-}, { access: { read: "self", update: (ctx) => ctx.data?.address?.city === "Gated" ? { id: ctx.user?.id ?? -1, name: "Unlocked" } : { id: ctx.user?.id ?? -1 }, create: "admin", delete: "admin" } });
+}, { access: { read: "self", update: (ctx) => ctx.data?.address?.city === "Gated" ? { id: ctx.user?.id ?? -1, name: "Unlocked" } : { id: ctx.user?.id ?? -1 }, create: "admin", delete: "admin" } }).on({
+  // Who last saved the address, as the hook saw ctx.user; a "Throw" city rolls the save back.
+  beforeUpdate(patch, _existing, ctx) {
+    if (patch.address !== undefined) {
+      if (patch.address?.city === "Throw") throw new HttpError(409, "conflict", "address hook refused");
+      patch.addressBy = ctx.user?.id ?? 0;
+      if (patch.address?.city === "Hooked") patch.name = "Name from hook";
+    }
+  },
+  async afterUpdate(row) {
+    await db.insert(memberUpdates).values({ memberId: row.id, name: row.name, city: row.address?.city ?? null });
+  },
+});
 
 export const guestbook = table({
   message: text(),
@@ -50,28 +62,5 @@ export const reviews = table({
 export const memberUpdates = table({
   memberId: integer(), name: text(), city: text().optional(),
 });
-
-export const collections = {  };
-export const tables = { guestbook, reviews, memberUpdates };
-export const users = { members };
-export const entities = { ...collections, ...tables, ...users };
-export const actions = {};
-export const globals = {};
-/** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */
-export const hooks = {
-  members: {
-    // Who last saved the address, as the hook saw ctx.user; a "Throw" city rolls the save back.
-    beforeUpdate(patch, _existing, ctx) {
-      if (patch.address !== undefined) {
-        if (patch.address?.city === "Throw") throw new HttpError(409, "conflict", "address hook refused");
-        patch.addressBy = ctx.user?.id ?? 0;
-        if (patch.address?.city === "Hooked") patch.name = "Name from hook";
-      }
-    },
-    async afterUpdate(row) {
-      await db.insert(memberUpdates).values({ memberId: row.id, name: row.name, city: row.address?.city ?? null });
-    },
-  },
-} satisfies Hooks<{ members: typeof members }>;
-/** Top-level options this lane owns (e.g. jobs, webhooks, files, media, locales). */
+/** Top-level options this lane owns (e.g. webhooks, media, locales). */
 export const config = {};

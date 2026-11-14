@@ -120,6 +120,11 @@ jobs:
       # Every app under examples/ compiles (files-sdk, a probe of what doesn't yet, is left out).
       - if: matrix.shard == 'rest'
         run: scripts/check-examples.sh target/debug/first
+      # Every example's committed first/_generated/ (client, db.d.ts, openapi.json, a migration the
+      # compiler would add) is what this compiler builds. This job runs after merging, on main;
+      # on PRs, runtime/client/committed.test.ts checks only the copied client files.
+      - if: matrix.shard == 'rest'
+        run: scripts/check-generated.sh target/debug/first
       - name: Zero 0.8 census tool
         if: matrix.shard == 'rest'
         env:
@@ -133,7 +138,7 @@ jobs:
         run: |
           npm ci --prefix packages/astro --ignore-scripts --no-audit --no-fund
           tsc -p packages/astro
-          node --test packages/astro/test/loader.test.mjs packages/astro/test/paging.test.mjs
+          node --test packages/astro/test/loader.test.mjs packages/astro/test/paging.test.mjs packages/astro/test/emdash.test.mjs
       # examples/garden and its Astro twin render the same pages (Chromium from the slow shard's setup).
       - name: Astro twin example
         if: matrix.shard == 'rest'
@@ -573,6 +578,6 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y rsync
       - name: Identity acceptance on PHP ${{ matrix.php }}
         env:
-          IDENTITY_WORDPRESS_IMAGE: wordpress:7.1-php${{ matrix.php }}-apache
+          IDENTITY_WORDPRESS_IMAGE: wordpress:beta-7.2-beta5-php${{ matrix.php }}-apache
           IDENTITY_CLI_IMAGE: wordpress:cli-php${{ matrix.php }}
         run: tests/identity/run.sh

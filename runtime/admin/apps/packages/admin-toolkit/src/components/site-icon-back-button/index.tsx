@@ -1,4 +1,4 @@
-import { ThemeProvider } from '@first-admin/theme';
+import { ThemeProvider } from '@wordpress/theme';
 import { __unstableMotion as motion } from '@wordpress/components';
 import { Icon, arrowUpLeft } from '@wordpress/icons';
 import { __ } from '@wordpress/i18n';

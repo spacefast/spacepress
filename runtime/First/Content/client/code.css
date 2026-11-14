@@ -1,10 +1,13 @@
 /* Code blocks (First\Content\Code): Atom One Light and Atom One Dark from highlight.php's
- * bundled styles (MIT, Daniel Gamage), switched by the visitor's colour scheme; titles, marked
- * lines and tab groups. No script: tabs switch with radio inputs. */
+ * bundled styles (MIT, Daniel Gamage), switched by the visitor's colour scheme or the page's
+ * `data-theme`; titles, marked lines and tab groups. No script: tabs switch with radio inputs. */
 .first-code-block { margin: 1.5em 0; }
 .first-code { margin: 0; padding: 0.75em 0; overflow-x: auto; border-radius: 6px; font-size: 0.875em; line-height: 1.6; }
 .first-code code { display: block; background: none; padding: 0; }
-.first-code-line { display: block; padding: 0 1em; min-height: 1.6em; }
+/* Each line is a block, and the newline after it (kept so copied code has its line breaks) would be
+   a second, empty line inside <pre>: lines float in normal flow and the newline takes no room. */
+.first-code code { white-space: normal; }
+.first-code-line { display: block; padding: 0 1em; min-height: 1.6em; white-space: pre; }
 .first-code-title { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8125em; padding: 0.4em 1em; border-radius: 6px 6px 0 0; }
 .first-code-title + .first-code { border-top-left-radius: 0; border-top-right-radius: 0; }
 .first-code-group { margin: 1.5em 0; display: flex; flex-wrap: wrap; }
@@ -23,7 +26,8 @@
 .first-code-group > .first-code-tab-input:checked + .first-code-tab { border-bottom-color: currentColor; font-weight: 600; }
 .first-code-group .first-code-title { display: none; }
 
-@media (prefers-color-scheme: light), (prefers-color-scheme: no-preference) {
+/* Light by default; dark by the visitor's scheme, unless the page says `data-theme="light"` on
+ * <html>. A site with a theme switch sets `data-theme="dark"` or `"light"` there to choose. */
 .first-code-title { background: #eaeaeb; color: #383a42; }
 .first-code-marked { background: rgba(56, 58, 66, 0.08); box-shadow: inset 3px 0 0 #4078f2; }
 .first-code {  color: #383a42;  background: #fafafa; }
@@ -38,20 +42,33 @@
 .first-code .hljs-emphasis { font-style: italic; }
 .first-code .hljs-strong { font-weight: bold; }
 .first-code .hljs-link { text-decoration: underline; }
-}
 @media (prefers-color-scheme: dark) {
-.first-code-title { background: #21252b; color: #abb2bf; }
-.first-code-marked { background: rgba(171, 178, 191, 0.1); box-shadow: inset 3px 0 0 #61aeee; }
-.first-code {  color: #abb2bf;  background: #282c34; }
-.first-code .hljs-comment, .first-code .hljs-quote { color: #5c6370; font-style: italic; }
-.first-code .hljs-doctag, .first-code .hljs-keyword, .first-code .hljs-formula { color: #c678dd; }
-.first-code .hljs-section, .first-code .hljs-name, .first-code .hljs-selector-tag, .first-code .hljs-deletion, .first-code .hljs-subst { color: #e06c75; }
-.first-code .hljs-literal { color: #56b6c2; }
-.first-code .hljs-string, .first-code .hljs-regexp, .first-code .hljs-addition, .first-code .hljs-attribute, .first-code .hljs-meta-string { color: #98c379; }
-.first-code .hljs-built_in, .first-code .hljs-class .hljs-title { color: #e6c07b; }
-.first-code .hljs-attr, .first-code .hljs-variable, .first-code .hljs-template-variable, .first-code .hljs-type, .first-code .hljs-selector-class, .first-code .hljs-selector-attr, .first-code .hljs-selector-pseudo, .first-code .hljs-number { color: #d19a66; }
-.first-code .hljs-symbol, .first-code .hljs-bullet, .first-code .hljs-link, .first-code .hljs-meta, .first-code .hljs-selector-id, .first-code .hljs-title { color: #61aeee; }
-.first-code .hljs-emphasis { font-style: italic; }
-.first-code .hljs-strong { font-weight: bold; }
-.first-code .hljs-link { text-decoration: underline; }
+:root:not([data-theme="light"]) .first-code-title { background: #21252b; color: #abb2bf; }
+:root:not([data-theme="light"]) .first-code-marked { background: rgba(171, 178, 191, 0.1); box-shadow: inset 3px 0 0 #61aeee; }
+:root:not([data-theme="light"]) .first-code {  color: #abb2bf;  background: #282c34; }
+:root:not([data-theme="light"]) .first-code .hljs-comment, :root:not([data-theme="light"]) .first-code .hljs-quote { color: #5c6370; font-style: italic; }
+:root:not([data-theme="light"]) .first-code .hljs-doctag, :root:not([data-theme="light"]) .first-code .hljs-keyword, :root:not([data-theme="light"]) .first-code .hljs-formula { color: #c678dd; }
+:root:not([data-theme="light"]) .first-code .hljs-section, :root:not([data-theme="light"]) .first-code .hljs-name, :root:not([data-theme="light"]) .first-code .hljs-selector-tag, :root:not([data-theme="light"]) .first-code .hljs-deletion, :root:not([data-theme="light"]) .first-code .hljs-subst { color: #e06c75; }
+:root:not([data-theme="light"]) .first-code .hljs-literal { color: #56b6c2; }
+:root:not([data-theme="light"]) .first-code .hljs-string, :root:not([data-theme="light"]) .first-code .hljs-regexp, :root:not([data-theme="light"]) .first-code .hljs-addition, :root:not([data-theme="light"]) .first-code .hljs-attribute, :root:not([data-theme="light"]) .first-code .hljs-meta-string { color: #98c379; }
+:root:not([data-theme="light"]) .first-code .hljs-built_in, :root:not([data-theme="light"]) .first-code .hljs-class .hljs-title { color: #e6c07b; }
+:root:not([data-theme="light"]) .first-code .hljs-attr, :root:not([data-theme="light"]) .first-code .hljs-variable, :root:not([data-theme="light"]) .first-code .hljs-template-variable, :root:not([data-theme="light"]) .first-code .hljs-type, :root:not([data-theme="light"]) .first-code .hljs-selector-class, :root:not([data-theme="light"]) .first-code .hljs-selector-attr, :root:not([data-theme="light"]) .first-code .hljs-selector-pseudo, :root:not([data-theme="light"]) .first-code .hljs-number { color: #d19a66; }
+:root:not([data-theme="light"]) .first-code .hljs-symbol, :root:not([data-theme="light"]) .first-code .hljs-bullet, :root:not([data-theme="light"]) .first-code .hljs-link, :root:not([data-theme="light"]) .first-code .hljs-meta, :root:not([data-theme="light"]) .first-code .hljs-selector-id, :root:not([data-theme="light"]) .first-code .hljs-title { color: #61aeee; }
+:root:not([data-theme="light"]) .first-code .hljs-emphasis { font-style: italic; }
+:root:not([data-theme="light"]) .first-code .hljs-strong { font-weight: bold; }
+:root:not([data-theme="light"]) .first-code .hljs-link { text-decoration: underline; }
 }
+:root[data-theme="dark"] .first-code-title { background: #21252b; color: #abb2bf; }
+:root[data-theme="dark"] .first-code-marked { background: rgba(171, 178, 191, 0.1); box-shadow: inset 3px 0 0 #61aeee; }
+:root[data-theme="dark"] .first-code {  color: #abb2bf;  background: #282c34; }
+:root[data-theme="dark"] .first-code .hljs-comment, :root[data-theme="dark"] .first-code .hljs-quote { color: #5c6370; font-style: italic; }
+:root[data-theme="dark"] .first-code .hljs-doctag, :root[data-theme="dark"] .first-code .hljs-keyword, :root[data-theme="dark"] .first-code .hljs-formula { color: #c678dd; }
+:root[data-theme="dark"] .first-code .hljs-section, :root[data-theme="dark"] .first-code .hljs-name, :root[data-theme="dark"] .first-code .hljs-selector-tag, :root[data-theme="dark"] .first-code .hljs-deletion, :root[data-theme="dark"] .first-code .hljs-subst { color: #e06c75; }
+:root[data-theme="dark"] .first-code .hljs-literal { color: #56b6c2; }
+:root[data-theme="dark"] .first-code .hljs-string, :root[data-theme="dark"] .first-code .hljs-regexp, :root[data-theme="dark"] .first-code .hljs-addition, :root[data-theme="dark"] .first-code .hljs-attribute, :root[data-theme="dark"] .first-code .hljs-meta-string { color: #98c379; }
+:root[data-theme="dark"] .first-code .hljs-built_in, :root[data-theme="dark"] .first-code .hljs-class .hljs-title { color: #e6c07b; }
+:root[data-theme="dark"] .first-code .hljs-attr, :root[data-theme="dark"] .first-code .hljs-variable, :root[data-theme="dark"] .first-code .hljs-template-variable, :root[data-theme="dark"] .first-code .hljs-type, :root[data-theme="dark"] .first-code .hljs-selector-class, :root[data-theme="dark"] .first-code .hljs-selector-attr, :root[data-theme="dark"] .first-code .hljs-selector-pseudo, :root[data-theme="dark"] .first-code .hljs-number { color: #d19a66; }
+:root[data-theme="dark"] .first-code .hljs-symbol, :root[data-theme="dark"] .first-code .hljs-bullet, :root[data-theme="dark"] .first-code .hljs-link, :root[data-theme="dark"] .first-code .hljs-meta, :root[data-theme="dark"] .first-code .hljs-selector-id, :root[data-theme="dark"] .first-code .hljs-title { color: #61aeee; }
+:root[data-theme="dark"] .first-code .hljs-emphasis { font-style: italic; }
+:root[data-theme="dark"] .first-code .hljs-strong { font-weight: bold; }
+:root[data-theme="dark"] .first-code .hljs-link { text-decoration: underline; }

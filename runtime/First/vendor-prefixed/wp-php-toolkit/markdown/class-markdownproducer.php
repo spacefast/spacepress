@@ -91,7 +91,7 @@ class MarkdownProducer implements DataFormatProducer {
 				$code     = $this->html_to_markdown( $inner_html );
 				$language = $attributes['language'] ?? '';
 				$fence    = str_repeat( '`', max( 3, $this->longest_sequence_of( $code, '`' ) + 1 ) );
-				return "{$fence}{$language}\n{$code}\n{$fence}\n\n";
+				return $this->indent( "{$fence}{$language}\n{$code}\n{$fence}" ) . "\n\n";
 
 			case 'core/image':
 				if ( ! isset( $attributes['url'] ) ) {
@@ -157,7 +157,7 @@ class MarkdownProducer implements DataFormatProducer {
 						$current_row = array();
 					} elseif ( ( 'TH' === $tag || 'TD' === $tag ) && ! $is_closer ) {
 						$cell_content  = $processor->get_inner_html();
-						$current_row[] = $this->html_to_markdown( $cell_content );
+						$current_row[] = str_replace( '|', '\|', $this->html_to_markdown( $cell_content ) );
 					}
 				}
 
@@ -230,7 +230,8 @@ class MarkdownProducer implements DataFormatProducer {
 				$bullet        = $this->get_list_bullet( $item );
 				$bullet_indent = str_repeat( ' ', strlen( $bullet ) + 1 );
 
-				$content       = $this->html_to_markdown( $inner_html );
+				$pieces        = $block['innerContent'] ?? array( $inner_html );
+				$content       = $this->html_to_markdown( (string) array_shift( $pieces ) );
 				$content_parts = explode( "\n", $content, 2 );
 				$content_parts = array_map( 'trim', $content_parts );
 				$first_line    = $content_parts[0];
@@ -254,11 +255,20 @@ class MarkdownProducer implements DataFormatProducer {
 				if ( $rest_lines ) {
 					$markdown .= $this->indent( $rest_lines ) . "\n";
 				}
-				$inner_blocks_markdown = $this->blocks_to_markdown(
-					$inner_blocks
-				);
-				if ( $inner_blocks_markdown ) {
-					$markdown .= $inner_blocks_markdown . "\n";
+				$next = 0;
+				foreach ( $pieces as $piece ) {
+					if ( null === $piece ) {
+						$inner_blocks_markdown = isset( $inner_blocks[ $next ] ) ? $this->blocks_to_markdown( array( $inner_blocks[ $next ] ) ) : '';
+						++$next;
+						if ( $inner_blocks_markdown ) {
+							$markdown .= $inner_blocks_markdown . "\n";
+						}
+						continue;
+					}
+					$text = trim( $this->html_to_markdown( $piece ) );
+					if ( '' !== $text ) {
+						$markdown = rtrim( $markdown, "\n" ) . "\n\n" . $this->indent( $text ) . "\n\n";
+					}
 				}
 				array_pop( $this->state['indent'] );
 
@@ -293,10 +303,12 @@ class MarkdownProducer implements DataFormatProducer {
 		$processor = DataLiberationHTMLProcessor::create_fragment( $html );
 		$markdown  = '';
 
-		$last_href = null;
+		$last_href  = null;
+		$code_start = null;
 		while ( $processor->next_token() ) {
 			if ( '#text' === $processor->get_token_type() ) {
-				$markdown .= $processor->get_modifiable_text();
+				$text      = $processor->get_modifiable_text();
+				$markdown .= $this->has_parent( 'core/code' ) || null !== $code_start ? $text : preg_replace( '/<(?=[A-Za-z\/!?])/', '\\<', $text );
 				continue;
 			} elseif ( '#tag' !== $processor->get_token_type() ) {
 				continue;
@@ -328,9 +340,16 @@ class MarkdownProducer implements DataFormatProducer {
 					break;
 
 				case '+CODE':
+					$code_start = $this->has_parent( 'core/code' ) ? null : strlen( $markdown );
+					break;
+
 				case '-CODE':
-					if ( ! $this->has_parent( 'core/code' ) ) {
-						$markdown .= '`';
+					if ( null !== $code_start ) {
+						$span       = substr( $markdown, $code_start );
+						$ticks      = str_repeat( '`', $this->longest_sequence_of( $span, '`' ) + 1 );
+						$pad        = '' !== $span && ( '`' === $span[0] || '`' === substr( $span, -1 ) ) ? ' ' : '';
+						$markdown   = substr( $markdown, 0, $code_start ) . $ticks . $pad . $span . $pad . $ticks;
+						$code_start = null;
 					}
 					break;
 
@@ -359,6 +378,9 @@ class MarkdownProducer implements DataFormatProducer {
 		// The HTML processor gives us all the whitespace verbatim
 		// as it was encountered in the byte stream/
 		// Let's normalize it to a single space.
+		if ( $this->has_parent( 'core/code' ) ) {
+			return rtrim( preg_replace( '/^\n/', '', $markdown ), "\n" );
+		}
 		$markdown = trim( $markdown, "\n" );
 
 		// The ltrim() here is arbitrary and potentially wrong,

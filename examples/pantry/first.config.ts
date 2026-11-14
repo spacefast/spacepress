@@ -56,48 +56,45 @@ async function restock(itemId: number, name: string, quantity: number, lowStockA
   }
 }
 
-export default defineConfig({
-  tables,
-  jobs: {
-    // A real pantry would push a notification here; this one stamps the list entry.
-    notifyLowStock: job({
-      input: { itemId: integer() },
-      retries: 2,
-      handler: async ({ itemId }) => {
-        await db.update(shoppingList).set({ notifiedAt: new Date().toISOString() }).where({ itemId });
-      },
-    }),
-  },
-  actions: {
-    consume: action({
-      input: { itemId: integer(), amount: integer().default(1) },
-      async handler({ itemId, amount }) {
-        const item = await db.query.items.findFirst({ where: { id: itemId } });
-        if (!item) throw new HttpError(404, "not_found", `No item ${itemId}`);
-        const [updated] = await db
-          .update(items)
-          .set({ quantity: Math.max(0, item.quantity - amount) })
-          .where({ id: itemId })
-          .returning();
-        if (!updated) throw new HttpError(404, "not_found", `No item ${itemId}`);
-        return { item: updated, message: `${updated.name}: ${updated.quantity} ${updated.unit} left` };
-      },
-    }),
-    expiringSoon: action({
-      input: { days: integer().default(3) },
-      async handler({ days }) {
-        const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
-        const soon = await db.query.items.findMany({
-          where: { expiresOn: { lte: cutoff }, quantity: { gt: 0 } },
-          orderBy: { expiresOn: "asc" },
-          with: { locationId: true },
-        });
-        return soon.map((i) => ({
-          name: i.name,
-          expiresOn: i.expiresOn,
-          where: i.locationId?.name ?? "somewhere",
-        }));
-      },
-    }),
+// A real pantry would push a notification here; this one stamps the list entry.
+export const notifyLowStock = job({
+  input: { itemId: integer() },
+  retries: 2,
+  handler: async ({ itemId }) => {
+    await db.update(shoppingList).set({ notifiedAt: new Date().toISOString() }).where({ itemId });
   },
 });
+
+export const consume = action({
+  input: { itemId: integer(), amount: integer().default(1) },
+  async handler({ itemId, amount }) {
+    const item = await db.query.items.findFirst({ where: { id: itemId } });
+    if (!item) throw new HttpError(404, "not_found", `No item ${itemId}`);
+    const [updated] = await db
+      .update(items)
+      .set({ quantity: Math.max(0, item.quantity - amount) })
+      .where({ id: itemId })
+      .returning();
+    if (!updated) throw new HttpError(404, "not_found", `No item ${itemId}`);
+    return { item: updated, message: `${updated.name}: ${updated.quantity} ${updated.unit} left` };
+  },
+});
+
+export const expiringSoon = action({
+  input: { days: integer().default(3) },
+  async handler({ days }) {
+    const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+    const soon = await db.query.items.findMany({
+      where: { expiresOn: { lte: cutoff }, quantity: { gt: 0 } },
+      orderBy: { expiresOn: "asc" },
+      with: { locationId: true },
+    });
+    return soon.map((i) => ({
+      name: i.name,
+      expiresOn: i.expiresOn,
+      where: i.locationId?.name ?? "somewhere",
+    }));
+  },
+});
+
+export default defineConfig({});

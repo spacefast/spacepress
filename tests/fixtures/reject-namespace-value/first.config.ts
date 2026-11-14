@@ -4,7 +4,8 @@ import { action, defineConfig } from "first";
 // at compile time, but the object itself has no PHP form.
 const helpers = { twice: (n: number) => n * 2 };
 
+export const probe = action({ input: {}, handler: () => Object.keys(helpers) });
+
 export default defineConfig({
   name: "reject-namespace-value",
-  actions: { probe: action({ input: {}, handler: () => Object.keys(helpers) }) },
 });

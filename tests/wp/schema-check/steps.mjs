@@ -9,7 +9,7 @@
 const tasks = (fields = "") => `const tasks = table({
   title: text(),
   note: text().optional(),${fields}
-}, { existingTable: "sf_spc_schema_check_tasks_0123456789" });`;
+}, { existingTable: "sf_spc_schema_check_tasks_510ec462fc" });`;
 const likes = (fields = "", options = "") => `const likes = table({
   post: integer(),${fields}
 }${options});`;
@@ -50,7 +50,7 @@ export const steps = {
   // 7. The adopted table renames a field and loses one, then (8) its kind: never without --drop, even when empty.
   adoptedField: app([`const tasks = table({
   name: text().was("title"),
-}, { existingTable: "sf_spc_schema_check_tasks_0123456789" });`,
+}, { existingTable: "sf_spc_schema_check_tasks_510ec462fc" });`,
     "const memos = table({ text: text().optional() }, { was: \"notes\" });",
     "const tags = table({ name: text().optional() });"], "tasks, memos, tags"),
   adoptedKind: app(["const memos = table({ text: text().optional() }, { was: \"notes\" });",
@@ -87,10 +87,10 @@ export const steps = {
   //     changes type: a retype of an adopted table is refused even when empty, until --drop names it.
   readoptField: app(["const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
     "const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: ref(memos).optional() });",
-    `const tasks = table({ name: text().optional(), rank: integer().optional() }, { existingTable: "sf_spc_schema_check_retype" });`], "memos, tags, tasks"),
+    `const tasks = table({ name: text().optional(), rank: integer().optional() }, { existingTable: "sf_spc_schema_check_retype_082186420c" });`], "memos, tags, tasks"),
   readoptRetype: app(["const memos = table({ text: text().max(5).optional() }, { was: \"notes\" });",
     "const tags = table({ name: text().max(5), flag: boolean().optional(), count: number().optional(), ratio: number().optional(), memo: ref(memos).optional() });",
-    `const tasks = table({ name: text().optional(), rank: text().optional() }, { existingTable: "sf_spc_schema_check_retype" });`], "memos, tags, tasks"),
+    `const tasks = table({ name: text().optional(), rank: text().optional() }, { existingTable: "sf_spc_schema_check_retype_082186420c" });`], "memos, tags, tasks"),
 };
 
 if (process.argv[2] !== undefined) {

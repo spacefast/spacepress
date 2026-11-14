@@ -22,17 +22,17 @@ services:
       - "${IDENTITY_MAIL_PORT:-8815}:8025"
   # Local stand-ins for an external OpenID provider and a webhook endpoint (PHP's built-in server).
   oidc:
-    image: ${IDENTITY_WORDPRESS_IMAGE:-wordpress:7.1-php8.2-apache}
+    image: ${IDENTITY_WORDPRESS_IMAGE:-wordpress:beta-7.2-beta5-php8.2-apache}
     command: ["php", "-S", "0.0.0.0:8080", "/opt/identity-tests/fixtures/oidc-provider.php"]
     volumes:
       - ./:/opt/identity-tests:ro
   webhook:
-    image: ${IDENTITY_WORDPRESS_IMAGE:-wordpress:7.1-php8.2-apache}
+    image: ${IDENTITY_WORDPRESS_IMAGE:-wordpress:beta-7.2-beta5-php8.2-apache}
     command: ["php", "-S", "0.0.0.0:8080", "/opt/identity-tests/fixtures/webhook-receiver.php"]
     volumes:
       - ./:/opt/identity-tests:ro
   wordpress:
-    image: ${IDENTITY_WORDPRESS_IMAGE:-wordpress:7.1-php8.2-apache}
+    image: ${IDENTITY_WORDPRESS_IMAGE:-wordpress:beta-7.2-beta5-php8.2-apache}
     depends_on:
       database:
         condition: service_healthy

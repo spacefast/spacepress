@@ -4,7 +4,7 @@
 // `bigint-helpers.mjs` runs the same operations untyped. Exact arithmetic on random operands is
 // also checked against Node in tests/php/bigint_test.php.
 import { action, defineConfig } from "first";
-import { bigintUntyped } from "./bigint-helpers.mjs";
+import { bigintUntyped as bigintUntypedImpl } from "./bigint-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -74,16 +74,20 @@ function money(): string[] {
   return [String(total), String(tax), `${total / 100n}.${String(total % 100n).padStart(2, "0")}`];
 }
 
-export default defineConfig({
-  name: "language-bigint",
-  actions: {
-    bigintArithmetic: run(() => arithmetic()),
-    bigintBits: run(() => bits()),
-    bigintCompare: run(() => compare()),
-    bigintConvert: run(() => convert()),
-    bigintErrors: run(() => errors()),
-    bigintMoney: run(() => money()),
-    bigintEdges: run(() => edges()),
-    bigintUntyped: run(() => bigintUntyped()),
-  },
-});
+export const bigintArithmetic = run(() => arithmetic());
+
+export const bigintBits = run(() => bits());
+
+export const bigintCompare = run(() => compare());
+
+export const bigintConvert = run(() => convert());
+
+export const bigintErrors = run(() => errors());
+
+export const bigintMoney = run(() => money());
+
+export const bigintEdges = run(() => edges());
+
+export const bigintUntyped = run(() => bigintUntypedImpl());
+
+export default defineConfig({ name: "language-bigint" });

@@ -1,3 +1,5 @@
 import { action, defineConfig } from "first";
 type Keys = keyof { id: number; title: string };
-export default defineConfig({ tables: {}, actions: { example: action({ input: {}, handler: () => { const key: Keys = "other"; return key; } }) } });
+export const example = action({ input: {}, handler: () => { const key: Keys = "other"; return key; } });
+
+export default defineConfig({});

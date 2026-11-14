@@ -77,7 +77,7 @@ test('host capture gives npm imports an actionable stable diagnostic', () => {
 
 test('wasm capture and check refuse a ledger still at first/migrations/', () => {
   const files = {
-    'first.config.ts': "import { defineConfig, table, text } from 'first'; const notes = table({ body: text().optional() }); export default defineConfig({ tables: { notes } });",
+    'first.config.ts': "import { defineConfig, table, text } from 'first'; export const notes = table({ body: text().optional() }); export default defineConfig({});",
     'first/migrations/snapshot.json': '{"version":2,"tables":{}}',
   };
   const moved = 'first/migrations/ moved to first/_generated/migrations/';
@@ -92,7 +92,7 @@ test('wasm and native capture include the same synced Markdown files', () => {
   try {
     const project = path.join(temp, 'project');
     const files = {
-      'first.config.ts': "import { defineConfig, collection, text, richText } from 'first'; const posts = collection({ title: text(), body: richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); export default defineConfig({ collections: { posts } });",
+      'first.config.ts': "import { defineConfig, collection, text, richText } from 'first'; export const posts = collection({ title: text(), body: richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); export default defineConfig({});",
       'content/posts/hello.md': '---\ntitle: Hello\n---\nA **seed**.\n',
       'content/posts/ignored.txt': 'not synced',
     };
@@ -136,7 +136,8 @@ test('wasm and native resolve build-time namespace members and refuse the same w
 import * as ns from './first/ns.mjs';
 function tagged(s: string) { return s; }
 Object.assign(tagged, { prefix: 'p' });
-export default defineConfig({ name: 'ns', actions: { probe: action({ input: {}, handler: () => ${handler} }) } });
+export const probe = action({ input: {}, handler: () => ${handler} });
+export default defineConfig({ name: 'ns' });
 `;
   const helper = 'export const shout = (value) => value.toUpperCase();\nexport const constants = { SEP: "/" };\n';
   for (const handler of ["[ns.shout('a'), ns.constants.SEP, tagged('x'), tagged.prefix]", 'Object.keys(ns)', '[tagged]']) {

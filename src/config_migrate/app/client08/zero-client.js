@@ -146,7 +146,9 @@ export function paginatedArgs(name, args, pagination) {
 
 /** Runs one 0.8 query, mutation or action as its v2 action and returns the result. */
 export async function run(name, args = []) {
-  const { res, parsed } = await authed("POST", `/actions/${encodeURIComponent(name)}`, input(name, args), { guest: true });
+  // A handler named like a table is the v2 action `<name>Query` (or Mutation, Action).
+  const action = HANDLERS[name]?.action ?? name;
+  const { res, parsed } = await authed("POST", `/actions/${encodeURIComponent(action)}`, input(name, args), { guest: true });
   if (!res.ok) throw failure(res, parsed, `Zero ${name} request failed.`);
   return parsed?.data ?? null;
 }

@@ -63,6 +63,5 @@ export const settings = global({
 
 export default defineConfig({
   name: "portfolio",
-  collections: { projects, pages }, globals: { settings },
   media: { sizes: { card: { width: 960, height: 720, fit: "cover" } } },
 });

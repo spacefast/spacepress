@@ -9,6 +9,8 @@ export interface FirstOptions {
   appPassword?: string;
   /** A First Identity bearer token. Default: `FIRST_TOKEN`. */
   token?: string;
+  /** Read as an anonymous visitor: ignore `appPassword`, `token`, FIRST_APP_PASSWORD and FIRST_TOKEN. */
+  anonymous?: boolean;
   /** Extra headers on every request; an `Authorization` here wins over the two above. */
   headers?: Record<string, string>;
   fetch?: typeof fetch;
@@ -97,7 +99,8 @@ export declare class FirstError extends Error {
 
 export interface FirstConnection {
   readonly site: string;
-  request(method: string, path: string, body?: unknown): Promise<any>;
+  /** `extra`: headers for this one request, such as a visitor's `cookie`. */
+  request(method: string, path: string, body?: unknown, extra?: Record<string, string>): Promise<any>;
   describe(): Promise<Record<string, any>>;
 }
 

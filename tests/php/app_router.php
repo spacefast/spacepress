@@ -71,18 +71,46 @@ $cookie = static fn (string $user): string => $session($user)['cookie'];
 
 $home = fetch("$url/");
 $out = [
+    'base' => $url,
     'home' => page($home),
     'home description' => str_contains($home['body'], '<meta name="description" content="Notes.">'),
     'home cache' => $home['headers']['cache-control'] ?? null,
     'router module' => str_contains($home['body'], 'first/Render/client/router.js'),
     'note' => page(fetch("$url/notes/hello")),
     'note canonical' => (bool) preg_match('#<link rel="canonical" href="' . preg_quote($url, '#') . '/notes/hello">#', fetch("$url/notes/hello")['body']),
+    // The layout's Open Graph type, card and link, with the page's image and link added.
+    'note social' => (static function (string $body): array {
+        preg_match_all('#<meta (?:property|name)="((?:og|twitter):[a-z]+)" content="([^"]*)">#', $body, $meta, PREG_SET_ORDER);
+        preg_match_all('#<link rel="(describedby|alternate)" href="([^"]*)" type="([^"]*)">#', $body, $links, PREG_SET_ORDER);
+        preg_match_all('#<script id="first-app-script-[0-9a-f]+-js-module" src="([^"]*)" type="module">#', $body, $scripts);
+        return ['meta' => array_map(static fn ($m) => [$m[1], html_entity_decode($m[2], ENT_QUOTES)], $meta), 'links' => array_map(static fn ($m) => array_slice($m, 1), $links), 'scripts' => $scripts[1]];
+    })(fetch("$url/notes/hello")['body']),
     'note as editor' => page(fetch("$url/notes/hello", headers: [$cookie('chief')])),
     'draft' => page(fetch("$url/notes/draft")),
     'missing' => page(fetch("$url/notes/nope")),
     'unrouted' => page(fetch("$url/no/such/page")),
     'search' => page(fetch("$url/notes?page=3&q=tea")),
     'search defaults' => page(fetch("$url/notes?page=abc")),
+    // `<Pagination>` on page 6 of 12, reached from a URL with another argument and a flash marker.
+    'pagination' => (static function () use ($url): array {
+        $doc = new DOMDocument();
+        @$doc->loadHTML((string) fetch("$url/notes?q=tea&page=6&_flash=abcdefabcdef")['body']);
+        $x = new DOMXPath($doc);
+        $nav = $x->query('//nav[@class="first-pagination"]')->item(0);
+        $out = ['label' => $nav?->getAttribute('aria-label'), 'items' => []];
+        foreach ($nav === null ? [] : $x->query('.//li', $nav) as $li) {
+            $a = $x->query('.//a', $li)->item(0);
+            $current = $x->query('.//*[@aria-current="page"]', $li)->item(0);
+            $out['items'][] = trim($li->textContent) . ($a ? ' ' . parse_url($a->getAttribute('href'), PHP_URL_PATH) . '?' . parse_url($a->getAttribute('href'), PHP_URL_QUERY) . ($a->getAttribute('rel') ? ' rel=' . $a->getAttribute('rel') : '') : '') . ($current ? ' current' : '');
+        }
+        return $out;
+    })(),
+    'pagination first' => (static function () use ($url): array {
+        $doc = new DOMDocument();
+        @$doc->loadHTML((string) fetch("$url/notes")['body']);
+        $x = new DOMXPath($doc);
+        return array_map(static fn ($li) => trim($li->textContent), iterator_to_array($x->query('//nav[@class="first-pagination"]//li')));
+    })(),
     'search noindex' => str_contains(fetch("$url/notes")['body'], 'noindex'),
     'group' => page(fetch("$url/about")),
     'docs index' => page(fetch("$url/docs")),

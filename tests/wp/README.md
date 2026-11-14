@@ -1,6 +1,6 @@
 # WordPress test harness
 
-The harness runs disposable WordPress 7.1, PHP 8.5 and MariaDB 11.4. It uses the
+The harness runs disposable WordPress 7.2-beta5, PHP 8.5 and MariaDB 11.4. It uses the
 platform floor pins in `tests/fixtures/platform.json`: SCF, Action Scheduler,
 MCP Adapter and, for localized apps, Polylang. Every downloaded ZIP is verified
 against its SHA-256. The database lives on tmpfs and `down` deletes its volume.
@@ -10,7 +10,7 @@ production data and may be rotated with the stack.
 
 ```sh
 cargo build
-mkdir -p tests/wp/app/first/blog && cp tests/fixtures/blog/first.config.ts tests/wp/app/first/blog/
+mkdir -p tests/wp/app/first/blog && cat tests/fixtures/blog/first.config.ts tests/wp/blog-test-hooks.ts > tests/wp/app/first/blog/first.config.ts
 target/debug/first build tests/wp/app
 tests/wp/harness.sh up --wp-content "$PWD/tests/wp/app/first/dist/wp-content"
 tests/wp/harness.sh wp plugin list

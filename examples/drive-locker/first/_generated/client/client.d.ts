@@ -47,6 +47,94 @@ export interface RevisionSummary {
 }
 export type Status = "draft" | "published" | "scheduled";
 export type Locale = never;
+export interface Place {
+	id: number;
+	ownerId: number;
+	name: string;
+	kind: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+}
+export interface PlaceInsert {
+	ownerId?: number;
+	name: string;
+	kind: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+}
+export interface PlacePatch {
+	ownerId?: number;
+	name?: string;
+	kind?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+}
+export interface PlaceWith {
+	drives?: true | {
+		where?: DriveFilter;
+		orderBy?: DriveOrder;
+		limit?: number;
+		offset?: number;
+		with?: DriveWith;
+	};
+}
+export interface PlaceFilter {
+	id?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	ownerId?: number | null | {
+		eq?: number | null;
+		ne?: number | null;
+		gt?: number;
+		gte?: number;
+		lt?: number;
+		lte?: number;
+		in?: number[];
+		notIn?: number[];
+		isNull?: true;
+		isNotNull?: true;
+	};
+	name?: string | null | {
+		eq?: string | null;
+		ne?: string | null;
+		gt?: string;
+		gte?: string;
+		lt?: string;
+		lte?: string;
+		in?: string[];
+		notIn?: string[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	kind?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite" | null | {
+		eq?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite" | null;
+		ne?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite" | null;
+		gt?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+		gte?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+		lt?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+		lte?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
+		in?: ("nas-bay" | "desktop" | "laptop" | "drawer" | "offsite")[];
+		notIn?: ("nas-bay" | "desktop" | "laptop" | "drawer" | "offsite")[];
+		like?: string;
+		ilike?: string;
+		notLike?: string;
+		notIlike?: string;
+		isNull?: true;
+		isNotNull?: true;
+	};
+	drives?: true | DriveFilter;
+	AND?: PlaceFilter[];
+	OR?: PlaceFilter[];
+	NOT?: PlaceFilter;
+}
+export type PlaceOrder = Partial<Record<"id" | "ownerId" | "name" | "kind", "asc" | "desc">> | string;
 export interface Drive {
 	id: number;
 	ownerId: number;
@@ -348,94 +436,6 @@ export interface DriveFilter {
 	NOT?: DriveFilter;
 }
 export type DriveOrder = Partial<Record<"id" | "ownerId" | "label" | "model" | "serial" | "serialKey" | "kind" | "capacityGb" | "interface" | "purchasedOn" | "warrantyUntil" | "placeId" | "status" | "notes" | "replacementNeededAt", "asc" | "desc">> | string;
-export interface Place {
-	id: number;
-	ownerId: number;
-	name: string;
-	kind: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-}
-export interface PlaceInsert {
-	ownerId?: number;
-	name: string;
-	kind: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-}
-export interface PlacePatch {
-	ownerId?: number;
-	name?: string;
-	kind?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-}
-export interface PlaceWith {
-	drives?: true | {
-		where?: DriveFilter;
-		orderBy?: DriveOrder;
-		limit?: number;
-		offset?: number;
-		with?: DriveWith;
-	};
-}
-export interface PlaceFilter {
-	id?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	};
-	ownerId?: number | null | {
-		eq?: number | null;
-		ne?: number | null;
-		gt?: number;
-		gte?: number;
-		lt?: number;
-		lte?: number;
-		in?: number[];
-		notIn?: number[];
-		isNull?: true;
-		isNotNull?: true;
-	};
-	name?: string | null | {
-		eq?: string | null;
-		ne?: string | null;
-		gt?: string;
-		gte?: string;
-		lt?: string;
-		lte?: string;
-		in?: string[];
-		notIn?: string[];
-		like?: string;
-		ilike?: string;
-		notLike?: string;
-		notIlike?: string;
-		isNull?: true;
-		isNotNull?: true;
-	};
-	kind?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite" | null | {
-		eq?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite" | null;
-		ne?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite" | null;
-		gt?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-		gte?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-		lt?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-		lte?: "nas-bay" | "desktop" | "laptop" | "drawer" | "offsite";
-		in?: ("nas-bay" | "desktop" | "laptop" | "drawer" | "offsite")[];
-		notIn?: ("nas-bay" | "desktop" | "laptop" | "drawer" | "offsite")[];
-		like?: string;
-		ilike?: string;
-		notLike?: string;
-		notIlike?: string;
-		isNull?: true;
-		isNotNull?: true;
-	};
-	drives?: true | DriveFilter;
-	AND?: PlaceFilter[];
-	OR?: PlaceFilter[];
-	NOT?: PlaceFilter;
-}
-export type PlaceOrder = Partial<Record<"id" | "ownerId" | "name" | "kind", "asc" | "desc">> | string;
 export interface HealthReading {
 	id: number;
 	ownerId: number;
@@ -877,14 +877,6 @@ export type RetireOutput = {
 	replacementNeededAt: string | null;
 };
 export interface Collections {
-	drives: {
-		row: Drive;
-		insert: DriveInsert;
-		patch: DrivePatch;
-		with: DriveWith;
-		filter: DriveFilter;
-		order: DriveOrder;
-	};
 	places: {
 		row: Place;
 		insert: PlaceInsert;
@@ -892,6 +884,14 @@ export interface Collections {
 		with: PlaceWith;
 		filter: PlaceFilter;
 		order: PlaceOrder;
+	};
+	drives: {
+		row: Drive;
+		insert: DriveInsert;
+		patch: DrivePatch;
+		with: DriveWith;
+		filter: DriveFilter;
+		order: DriveOrder;
 	};
 	healthReadings: {
 		row: HealthReading;
@@ -944,6 +944,23 @@ export interface Actions {
 export declare const SCHEMA: {
 	readonly name: "drive-locker";
 	readonly collections: {
+		readonly places: {
+			readonly path: "places";
+			readonly primaryKey: "id";
+			readonly drafts: false;
+			readonly revisions: false;
+			readonly localized: false;
+			readonly relations: {
+				readonly drives: {
+					readonly kind: "many";
+					readonly collection: "drives";
+					readonly optional: false;
+				};
+			};
+			readonly media: readonly [];
+			readonly mediaList: readonly [];
+			readonly files: readonly [];
+		};
 		readonly drives: {
 			readonly path: "drives";
 			readonly primaryKey: "id";
@@ -964,23 +981,6 @@ export declare const SCHEMA: {
 				readonly contents: {
 					readonly kind: "many";
 					readonly collection: "contents";
-					readonly optional: false;
-				};
-			};
-			readonly media: readonly [];
-			readonly mediaList: readonly [];
-			readonly files: readonly [];
-		};
-		readonly places: {
-			readonly path: "places";
-			readonly primaryKey: "id";
-			readonly drafts: false;
-			readonly revisions: false;
-			readonly localized: false;
-			readonly relations: {
-				readonly drives: {
-					readonly kind: "many";
-					readonly collection: "drives";
 					readonly optional: false;
 				};
 			};
@@ -1148,8 +1148,13 @@ export interface CollectionClient<K extends CollectionKey> {
 		where?: Collections[K]["filter"];
 	} & StatusQuery<K> & LocaleQuery<K>): Query<number>;
 	create(data: Collections[K]["insert"]): Promise<Row<K>>;
-	update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
-	delete(id: IdOf<K>): Promise<Row<K>>;
+	/**
+	* On a collection, add `_rev` (from a read) to the patch to refuse the update when the row changed
+	* since: a 409 `stale_revision`. While someone else has the row open in the editor the update is a
+	* 409 `locked`; `takeover: true` takes over their edit lock.
+	*/
+	update(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<Row<K>>;
+	delete(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
 	/** `list(q).subscribe(onRows, onError)`. Returns a function that stops watching. */
 	watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q: ListQuery<K, ExactWith<K, W>> | undefined, onRows: (rows: RowWith<K, W>[]) => void, onError?: (error: FirstError) => void): () => void;
 	revisions: {
@@ -1164,7 +1169,7 @@ export interface CollectionClient<K extends CollectionKey> {
 	* staged version per item, shared by everyone who may update it; each call adds to it. Post
 	* kinds only. Every staged call needs `update` access on the row, and answers 404 without it.
 	*/
-	stage(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<StagedVersion<K>>;
+	stage(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<StagedVersion<K>>;
 	/** The staged version: the row as it would be once promoted. 404 when nothing is staged. */
 	staged(id: IdOf<K>): Promise<StagedVersion<K>>;
 	/** The staged fields whose value differs from the live row, with both values. */
@@ -1174,12 +1179,12 @@ export interface CollectionClient<K extends CollectionKey> {
 	* time) the promote is scheduled instead, and `at: null` cancels a scheduled one; both return
 	* the staged version.
 	*/
-	promote(id: IdOf<K>): Promise<Row<K>>;
+	promote(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
 	promote(id: IdOf<K>, options: {
 		at: string | null;
-	}): Promise<StagedVersion<K>>;
+	} & WriteConditions): Promise<StagedVersion<K>>;
 	/** End the staged version. It stays in the row's revisions, as `revision`. */
-	discard(id: IdOf<K>): Promise<{
+	discard(id: IdOf<K>, options?: WriteConditions): Promise<{
 		revision: number;
 	}>;
 	/** A signed link to the staged version that works without signing in for `ttl` seconds (an hour by default). */
@@ -1188,6 +1193,15 @@ export interface CollectionClient<K extends CollectionKey> {
 	}): Promise<StagedPreview>;
 }
 /** A staged version: the row once promoted, the fields that are staged, who staged last. */
+/**
+* A write's conditions on a collection's row: `_rev`, the token a read returned (the row's own, or a
+* staged version's for stage, promote and discard), refuses the write if the row changed since;
+* `takeover` takes over another user's edit lock.
+*/
+export interface WriteConditions {
+	_rev?: string;
+	takeover?: boolean;
+}
 export interface StagedVersion<K extends CollectionKey> {
 	/** The revision holding it. */
 	id: number;
@@ -1200,6 +1214,8 @@ export interface StagedVersion<K extends CollectionKey> {
 	at: string;
 	/** When a scheduled promote runs, or null. */
 	promoteAt: string | null;
+	/** The staged version's token, for the next stage, promote or discard. */
+	_rev: string;
 	/** Why the last scheduled promote did not run. */
 	error?: {
 		code: string;

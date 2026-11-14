@@ -509,6 +509,14 @@ eq('wp first staged promote --cancel', $site->cli('staged', 'promote', 'posts', 
 eq('wp first staged promote', [$code, $out['data']['title'] ?? null, $out['data']['memo'] ?? null, array_slice($notes($pid), -1)], [0, 'Staged from the CLI', 'cli memo', ['Staged by an agent -> Staged from the CLI by nobody']]);
 $site->cli('staged', 'stage', 'posts', (string) $pid, '{"title":"x"}');
 eq('wp first staged discard', [$site->cli('staged', 'discard', 'posts', (string) $pid)[0], $stagedPosts($pid)], [0, []]);
+$site->cli('staged', 'stage', 'posts', (string) $pid, '{"title":"cli rev"}');
+[, $shown] = $site->cli('staged', 'show', 'posts', (string) $pid);
+$token = $shown['data']['_rev'];
+$site->cli('staged', 'stage', 'posts', (string) $pid, '{"title":"cli rev, again"}');
+[$code, $out] = $site->cli('staged', 'promote', 'posts', (string) $pid, "--rev=$token");
+eq('wp first staged promote --rev refuses a stale token', [$code, $out['error']['code'] ?? null], [1, 'stale_revision']);
+[, $shown] = $site->cli('staged', 'show', 'posts', (string) $pid);
+eq('… and takes the current one', $site->cli('staged', 'discard', 'posts', (string) $pid, '--rev=' . $shown['data']['_rev'])[0], 0);
 [$code, $out] = $site->cli('staged', 'frobnicate', 'posts', (string) $pid);
 eq('an unknown staged command is a usage error', [$code, $out['error']['code'] ?? null], [1, 'invalid_command']);
 
@@ -532,6 +540,105 @@ eq('the admin promotes it whole', array_intersect_key($db->findFirst('posts', ['
 api('PATCH', "/posts/{$other['id']}/staged", ['title' => 'Going away'], 'ed');
 $db->delete('posts', ['id' => $other['id']]);
 eq('deleting the item deletes its staged revision', $stagedPosts($other['id']), []);
+
+// ================================================================ _rev tokens and edit locks
+
+$rev = $db->insert('posts', ['title' => 'Rev live', 'slug' => 'rev-live', 'excerpt' => 'one', 'memo' => 'rev memo'], true)[0]['id'];
+[, $read] = api('GET', "/posts/$rev", as: 'ed');
+$token = $read['_rev'] ?? null;
+check('an item read carries an opaque _rev', is_string($token) && $token !== '', $read);
+eq('every reader gets the same live _rev, whoever asks', [api('GET', "/posts/$rev")[1]['_rev'] ?? null, api('GET', "/posts/$rev", as: 'admin')[1]['_rev'] ?? null], [$token, $token]);
+eq('a list row carries it too', array_column(array_filter(api('GET', '/posts', as: 'ed', query: ['where' => json_encode(['id' => $rev])])[1], static fn ($r) => $r['id'] === $rev), '_rev'), [$token]);
+eq('a table row carries none', array_key_exists('_rev', api('GET', '/comments', as: 'ed')[1][0] ?? []), false);
+
+// The item's own write with a stale token: refused, and the problem says what changed and carries the new token.
+$db->update('posts', ['excerpt' => 'two'], ['id' => $rev]); // someone else's edit after the read
+[$code, $stale] = api('PATCH', "/posts/$rev", ['title' => 'Mine', '_rev' => $token], 'ed');
+eq('a PATCH with the _rev of an older read is 409 stale_revision', [$code, $stale['code'] ?? null, $stale['pointer'] ?? null], [409, 'stale_revision', '/_rev']);
+eq('… naming the fields that changed since, as the caller may read them', $stale['changed']['fields'] ?? null, ['excerpt']);
+$fresh = api('GET', "/posts/$rev", as: 'ed')[1]['_rev'];
+eq('… with the current _rev', $stale['_rev'] ?? null, $fresh);
+eq('… and nothing was written', $db->findFirst('posts', ['where' => ['id' => $rev]])['title'], 'Rev live');
+[$code, $written] = api('PATCH', "/posts/$rev", ['title' => 'Mine', '_rev' => $fresh], 'ed');
+eq('the current _rev writes, and the answer carries the next one', [$code, $written['title'] ?? null, ($written['_rev'] ?? $fresh) !== $fresh], [200, 'Mine', true]);
+eq('leaving _rev out is an unconditional write, as on core', api('PATCH', "/posts/$rev", ['excerpt' => 'three'], 'ed')[0], 200);
+isProblem('a _rev that is not a string', api('PATCH', "/posts/$rev", ['title' => 'x', '_rev' => 5], 'ed'), 422, 'invalid_input', '/_rev');
+[$code, $hiddenChange] = (function () use ($rev, $db): array {
+    $before = api('GET', "/posts/$rev", as: 'ed')[1]['_rev'];
+    $db->update('posts', ['memo' => 'changed memo'], ['id' => $rev]);
+
+    return api('PATCH', "/posts/$rev", ['title' => 'x', '_rev' => $before], 'ed');
+})();
+eq('a change to a field the caller can\'t read still makes the token stale, and is never named', [$code, $hiddenChange['changed']['fields'] ?? null], [409, []]);
+$token = api('GET', "/posts/$rev", as: 'ed')[1]['_rev'];
+$db->update('posts', ['excerpt' => 'four'], ['id' => $rev]);
+eq('a DELETE with a stale _rev is refused too', api('DELETE', "/posts/$rev", as: 'ed', query: ['_rev' => $token])[0], 409);
+
+// A staged version's token covers the staged version as well; the item's token does not change when someone stages.
+$itemToken = api('GET', "/posts/$rev", as: 'ed')[1]['_rev'];
+[$code, $first] = api('PATCH', "/posts/$rev/staged", ['excerpt' => 'staged one', '_rev' => $itemToken], 'ed');
+eq('with nothing staged, the item\'s own _rev starts a stage', [$code, is_string($first['_rev'] ?? null)], [200, true]);
+eq('staging leaves the item\'s _rev as it was, for every reader', [api('GET', "/posts/$rev", as: 'ed')[1]['_rev'], api('GET', "/posts/$rev")[1]['_rev']], [$itemToken, $itemToken]);
+[$code, $second] = api('PATCH', "/posts/$rev/staged", ['excerpt' => 'staged two'], 'admin');
+eq('… but the staged _rev moves when someone else stages', [$code, ($second['_rev'] ?? null) !== $first['_rev']], [200, true]);
+[$code, $conflict] = api('POST', "/posts/$rev/staged/promote", ['_rev' => $first['_rev']], 'ed');
+eq('a promote with the staged _rev of an older read is refused, saying the staged version changed', [$code, $conflict['code'] ?? null, $conflict['changed']['staged'] ?? null], [409, 'stale_revision', true]);
+eq('… and promotes nothing', $db->findFirst('posts', ['where' => ['id' => $rev]])['excerpt'], 'four');
+isProblem('a discard with it is refused too', api('DELETE', "/posts/$rev/staged", as: 'ed', query: ['_rev' => $first['_rev']]), 409, 'stale_revision', '/_rev');
+isProblem('… and so is a stage', api('PATCH', "/posts/$rev/staged", ['excerpt' => 'x', '_rev' => $first['_rev']], 'ed'), 409, 'stale_revision', '/_rev');
+[$code] = api('POST', "/posts/$rev/staged/promote", ['_rev' => api('GET', "/posts/$rev/staged/compare", as: 'ed')[1]['_rev']], 'ed');
+eq('the compare\'s _rev promotes', [$code, $db->findFirst('posts', ['where' => ['id' => $rev]])['excerpt']], [200, 'staged two']);
+isProblem('a reader never learns a token is stale: no update rule, the missing row\'s 404',
+    api('PATCH', "/posts/$rev/staged", ['excerpt' => 'x', '_rev' => 'stale'], 'sub'), 404, 'not_found');
+
+// ---- core's edit lock: _edit_lock, as the block editor sets it
+require_once ABSPATH . 'wp-admin/includes/post.php';
+$site->actAs('admin');
+wp_set_post_lock($rev);
+wp_set_current_user(0);
+[$code, $locked] = api('PATCH', "/posts/$rev", ['excerpt' => 'blocked'], 'ed');
+eq('while another user holds the edit lock, the API refuses the write: 409 locked, naming the holder',
+    [$code, $locked['code'] ?? null, $locked['holder']['id'] ?? null], [409, 'locked', $site->userId('admin')]);
+isProblem('… a stage', api('PATCH', "/posts/$rev/staged", ['excerpt' => 'blocked'], 'ed'), 409, 'locked');
+api('PATCH', "/posts/$rev/staged", ['excerpt' => 'by the holder'], 'admin');
+isProblem('… a promote', api('POST', "/posts/$rev/staged/promote", null, 'ed'), 409, 'locked');
+isProblem('… a discard', api('DELETE', "/posts/$rev/staged", as: 'ed'), 409, 'locked');
+isProblem('… a delete', api('DELETE', "/posts/$rev", as: 'ed'), 409, 'locked');
+eq('the holder writes', api('PATCH', "/posts/$rev", ['excerpt' => 'holder'], 'admin')[0], 200);
+eq('reading is never refused', api('GET', "/posts/$rev", as: 'ed')[0], 200);
+isProblem('a subscriber learns of no lock: the missing row\'s 404 whatever is locked', api('PATCH', "/posts/$rev", ['excerpt' => 'x'], 'sub'), 404, 'not_found');
+// Core REST and abilities are refused the same way.
+$site->actAs('ed');
+$abilityLocked = wp_get_ability('blog/posts-update')->execute(['id' => $rev, 'patch' => ['excerpt' => 'via agent']]);
+$core = new \WP_REST_Request('POST', "/wp/v2/first_posts/$rev");
+$core->set_param('excerpt', 'via core');
+$coreLocked = rest_do_request($core);
+wp_set_current_user(0);
+eq('core REST\'s update of the item is refused while it is locked', [$coreLocked->get_status(), $coreLocked->as_error()?->get_error_code()], [409, 'first_locked']);
+eq('… and so is the update ability', is_wp_error($abilityLocked) ? [$abilityLocked->get_error_code(), $abilityLocked->get_error_data()['status'] ?? null] : $abilityLocked, ['first_locked', 409]);
+eq('nothing of either was written', $db->findFirst('posts', ['where' => ['id' => $rev]])['excerpt'], 'holder');
+// Taking over: the editor's "Take over".
+[$code, $taken] = api('PATCH', "/posts/$rev", ['excerpt' => 'taken over', 'takeover' => true], 'ed');
+eq('takeover: true takes the lock and writes', [$code, $taken['excerpt'] ?? null], [200, 'taken over']);
+eq('… the lock is now the taker\'s, so the old holder is refused in turn', (function () use ($site, $rev): array {
+    $site->actAs('admin');
+    $holder = wp_check_post_lock($rev);
+    wp_set_current_user(0);
+
+    return [$holder, api('PATCH', "/posts/$rev", ['excerpt' => 'back'], 'admin')[1]['code'] ?? null];
+})(), [$site->userId('ed'), 'locked']);
+isProblem('takeover must be a boolean', api('PATCH', "/posts/$rev", ['excerpt' => 'x', 'takeover' => 'yes'], 'admin'), 422, 'invalid_input', '/takeover');
+isProblem('takeover doesn\'t open a row the update rule closes', api('PATCH', "/posts/$rev", ['excerpt' => 'x', 'takeover' => true], 'sub'), 404, 'not_found');
+// A lock lapses when its heartbeat stops (core's 150-second window).
+update_post_meta($rev, '_edit_lock', (time() - 600) . ':' . $site->userId('ed'));
+eq('a lapsed lock refuses nobody', api('PATCH', "/posts/$rev", ['excerpt' => 'lapsed'], 'admin')[0], 200);
+eq('the trusted CLI is never refused by a lock', (function () use ($site, $rev): int {
+    $site->actAs('admin');
+    wp_set_post_lock($rev);
+    wp_set_current_user(0);
+
+    return $site->cli('update', 'posts', json_encode(['id' => $rev]), json_encode(['excerpt' => 'cli']))[0];
+})(), 0);
 
 // ================================================================ review fixes
 

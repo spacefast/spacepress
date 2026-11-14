@@ -28,7 +28,9 @@ description: "Every code first check can report, and the refusals the test suite
 | `F1201` | `invalid-source` | A plugin package imports code it may not import |
 | `F1210` | `invalid-source` | App code imports a file outside `first/` |
 | `F1221` | `invalid-source` | Two exports register the same name |
+| `F1222` | `invalid-source` | A kind, global, bucket, action or job is built but not exported, so it has no name |
 | `F4201` | `invalid-source` | A plugin uses a capability its lock entry doesn't grant |
+| `F4301` | `invalid-source` | App code changes or reads a protected WordPress option |
 
 ## Tested refusals
 
@@ -56,6 +58,7 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F2001` | this makes a string with a lone UTF-16 surrogate, which First can't represent | [`reject-lone-surrogate-char-code`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-lone-surrogate-char-code) |
 | `F2001` | "node:crypto" has no `createCipheriv` in First code | [`reject-node-crypto-member`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-node-crypto-member) |
 | `F2001` | Object.create with a prototype other than null or Object.prototype | [`reject-object-create-proto`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-object-create-proto) |
+| `F2001` | is the server's operating system, known only when PHP runs | [`reject-platform-build-time`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-platform-build-time) |
 | `F2001` | the comparator returned a symbol, which can't convert to a number | [`reject-symbol-comparator`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-symbol-comparator) |
 | `F2001` | "php/wordpress" has no export named `the_title` | [`reject-wp-function-unknown`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-wp-function-unknown) |
 | `F2101` | Date.now() | [`reject-build-time-clock`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-build-time-clock) |
@@ -78,6 +81,7 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F4001` | doesn't satisfy constraint | [`reject-type-constraint`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-constraint) |
 | `F4001` | needs type argument | [`reject-type-arity`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-arity) |
 | `F4001` | depends on the host and can't be resolved at compile time | [`reject-globalthis-host`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-globalthis-host) |
+| `F4001` | can only be used as `navigator.platform`, `process.platform`, `process.env.NAME` or under `typeof` | [`reject-host-object-value`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-host-object-value) |
 | `F4001` | has no field | [`reject-type-index`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-index) |
 | `F4001` | isn't a valid attribute name | [`reject-jsx-attribute-name`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-attribute-name) |
 | `F4001` | which JSX can't pass | [`reject-jsx-children-object`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-jsx-children-object) |
@@ -102,11 +106,14 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F4001` | localeCompare() isn't supported | [`reject-locale-compare`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-locale-compare) |
 | `F4001` | mapped keys need direct keyof | [`reject-type-mapped-provenance`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-mapped-provenance) |
 | `F4001` | holds functions, so it exists only while the config is built | [`reject-namespace-value`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-namespace-value) |
+| `F4001` | isn't available in First code; only `navigator.platform` is | [`reject-navigator-member`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-navigator-member) |
 | `F4001` | digest() without an encoding returns a Buffer | [`reject-digest-buffer`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-digest-buffer) |
 | `F4001` | keyof supports finite object types | [`reject-type-open-keyof`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-open-keyof) |
 | `F4001` | optional calls (`f?.()`) aren't supported in TypeScript code yet | [`reject-optional-call-typed`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-optional-call-typed) |
 | `F4001` | creates a wrapper object | [`reject-new-boolean`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-new-boolean) |
 | `F4001` | `process.env` needs a literal variable name | [`reject-process-env-dynamic`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-process-env-dynamic) |
+| `F4001` | is a host setting, not an app variable | [`reject-process-env-host`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-process-env-host) |
+| `F4001` | `process.arch` isn't available in First code | [`reject-process-member-read`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-process-member-read) |
 | `F4001` | isn't available on `process` in First code | [`reject-process-member`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-process-member) |
 | `F4001` | 96-level limit | [`reject-type-recursion`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-type-recursion) |
 | `F4001` | response streams aren't available in First code | [`reject-response-stream`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-response-stream) |
@@ -130,5 +137,6 @@ Each row is a fixture under [`tests/fixtures`](https://github.com/spacefast/zero
 | `F4101` | access rules can't query | [`reject-access-query`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-access-query) |
 | `F4201` | plugin "seo" writes posts.body; first/_generated/plugins.lock.json grants it only posts.summary | [`reject-plugin-write`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-plugin-write) |
 | `F4201` | plugin "ping" fetches from tracker.example.net; first/_generated/plugins.lock.json grants it only api.example.com | [`reject-plugin-http`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-plugin-http) |
+| `F4301` | `update_option` can't change the WordPress option `default_role` | [`reject-wp-protected-option`](https://github.com/spacefast/zero/tree/main/tests/fixtures/reject-wp-protected-option) |
 
 The codes come from the `Code` enum in [`src/diag.rs`](https://github.com/spacefast/zero/blob/main/src/diag.rs). The refusals come from [`tests/compatibility/registry.json`](https://github.com/spacefast/zero/blob/main/tests/compatibility/registry.json).

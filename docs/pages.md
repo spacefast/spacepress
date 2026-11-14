@@ -83,6 +83,12 @@ export async function POST(req: RouteRequest) {
   the login page; a signed-in one gets a 403.
 - `<Link href>` is an `<a>` that, once JavaScript runs, swaps only the router
   region (`@wordpress/interactivity-router`). `<Link prefetch>` prefetches on hover.
+- `<Pagination page={search.page} pages={n} />` renders numbered links to the
+  other pages of a listing as a `<nav>`: each is this URL with only `page` (or
+  `param`) changed, page 1 drops it, the current page is `aria-current` and not
+  a link, and Previous and Next appear only where there is a page to go to.
+  Twelve pages show as `1 … 4 5 6 7 8 … 12`. The links are `<Link>`s: plain
+  links without JavaScript, router navigation with it.
 - `<Content value>` renders a post body through `the_content`. `<Html value>`
   places a literal as written and runs anything else through `wp_kses_post`.
 
@@ -160,6 +166,87 @@ signed-in users only, first-time moderation, and replies three levels deep (a
 deeper reply is refused); `comments: { guests, moderation, threaded,
 closeAfterDays }` changes any of them ([Comments](config-api.md#comments)). See
 [the decision](decisions/2026-11-14-comments.md).
+
+## Search
+
+```tsx
+import { integer, text } from "first";
+import { Search, SearchResults, type PageProps } from "first/app";
+
+export const search = { q: text().optional(), page: integer().default(1) };
+
+export default function Find({ search }: PageProps) {
+  return <main><Search /><SearchResults kind="notes" q={search.q} page={search.page} /></main>;
+}
+```
+
+`<Search>` is a search form that works without JavaScript: a `GET` of this page
+(or `action`, a path on this site) with the query in `q`, never WordPress's own
+`s`. The input takes at most 200 characters.
+
+`<SearchResults q>` lists the rows that match, as the visitor may read them:
+- a draft, or a match only in a field the visitor may not read, never shows and
+  isn't counted;
+- each result is its title, linked to its kind's URL, so `kind` must be a kind
+  with a `url` (the build says so at the prop otherwise; for anything else,
+  render the rows yourself with `kind.list({ search })`);
+- one kind pages with `page`, the same parameter as `<Pagination>`, and its
+  links keep `q`;
+- with no `kind`, every searchable kind with a URL: up to `perPage` (10) rows
+  each, under the kind's name, with a link to the rest at `?q=…&kind=<name>`.
+  A `kind=` the search doesn't cover finds nothing;
+- an empty `q` (or only spaces) renders nothing and reads nothing; a `q` longer
+  than 200 characters, typed into the URL, shows a short message.
+
+Matching is by word prefix (`gard` finds "gardens"), and the first 8 words of a
+query count. On MySQL and MariaDB, words shorter than the server's minimum
+(3 characters on InnoDB) and its stopwords don't match.
+
+A page that searched (a non-empty `q`) is the visitor's alone: `private,
+no-store`, `noindex` (header and meta tag), and never recorded for page-cache
+purges, since every distinct query would be one more cached URL listing the
+kind. The bare form page is cached like any other. See
+[the decision](decisions/2026-11-14-search.md).
+
+## Live regions
+
+```tsx
+import { notes } from "first:db";
+import { Live } from "first/app";
+
+export default async function Home() {
+  const all = await notes.list({ orderBy: { id: "asc" } });
+  return <Live id="notes"><ul>{all.map((n) => <li key={n.id}>{n.title}</li>)}</ul></Live>;
+}
+```
+
+`<Live id="…">` marks part of a server page the browser keeps current. When
+something the page read for it changes, the region is rendered again on the
+server, as the visitor, and the page updates in place through the
+Interactivity router. Client components and form fields in the page keep their
+state. `id` is a literal (lowercase letters, digits, dashes) and unique on the
+page.
+
+- **When it updates.** Each region subscribes with the kinds its page read. With
+  a realtime transport it updates on the next change notice for one of them,
+  or after a write the visitor makes through the typed client. Without one it
+  updates on the next poll, 2 to 30 seconds apart. `<Comments>` inside a region
+  updates when a comment's approval changes. A region whose page read nothing
+  updates on the poll only. Anything that changes without a First write (the
+  clock, another plugin's SQL) shows within five minutes.
+- **What it costs.** A page with a live region makes one uncached request to
+  WordPress when it loads, then one per poll while the tab is visible (or on a
+  notice), per open tab. That holds even when the page itself came from a page
+  cache, and that first request is what brings a cached copy current. A tab
+  opened in the background, or prerendered, costs nothing until it is shown;
+  a page restored with the browser's back button asks once. An unchanged region
+  usually costs no render (the change counters answer). A region that reads
+  something the counters can't follow, such as a comment thread, renders once
+  per poll. Think about this before putting `<Live>` on a busy cached page.
+- At most four regions render per request; a page with more fills the rest on
+  the next request.
+
+See [the decision](decisions/2026-11-14-live-regions.md).
 
 ## Markdown pages
 
@@ -303,6 +390,16 @@ export function CheerButton({ noteId, count: initial }: { noteId: number; count:
 
 - `useState`, values derived from state and props, handlers, `useEffect`,
   `useMount`, `useEvent`, `useRef` and `sharedState` come from `"first/client"`.
+- `useLive(kind, query, { enabled })` is a list read the page keeps current, as
+  `{ data, error, loading }`. The server answers it in the first render as the
+  visitor (`First\Live\Module::evaluate`, with its token), and the page
+  subscribes to the same read through the app's typed client (`@first/client`),
+  so another visitor's write shows with no reload: within the client's poll (2
+  to 30 seconds) without a push transport, at once with one. The query reads
+  props and literals, which both sides have; a query that follows state is a
+  build error for now. There is no `seed` option: the server's answer is the
+  seed. The names match the generated client's React `useQuery`, for external
+  React frontends.
 - Calling an imported action posts to its endpoint with the REST nonce, as the
   visitor.
 - A list over state or props, `items.map((item) => <li key={item.id}>…</li>)`,

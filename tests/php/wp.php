@@ -26,8 +26,8 @@ if ((int) ini_get('memory_limit') !== -1 && (int) ini_get('memory_limit') < 512)
     ini_set('memory_limit', '512M');
 }
 
-const WP_CORE_VERSION = '7.1.4';
-const WP_CORE_SHA256 = 'a147146c159362778ecbbbfb07bb20ddf4e85b130f971c824e656a8f938c5f87';
+const WP_CORE_VERSION = '7.2-beta5';
+const WP_CORE_SHA256 = '43ab43ff79f256b1efc177125ef45b63ea621b0aacba9d0275ce56c5efa8a793';
 const WP_SQLITE_VERSION = '3.1.2';
 const WP_SQLITE_SHA256 = '04c43be5e200a1633499f7577f3fdc25345d389e1a8ffa64dbd6a4eacfbaaaf6';
 const WP_CLI_PHAR_VERSION = '2.12.0';
@@ -641,7 +641,8 @@ function wpDdl(array $schema): string
             continue;
         }
         foreach ($spec['columns'] ?? [] as $def) {
-            if (($def['type'] ?? null) === 'refList') {
+            // A `terms` field's links are core's term relationships (`term:<taxonomy>`): no table.
+            if (($def['type'] ?? null) === 'refList' && !str_starts_with($def['references']['join'], 'term:')) {
                 $join = $def['references']['join'];
                 $joins[] = "CREATE TABLE `{prefix}first_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
                     . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";

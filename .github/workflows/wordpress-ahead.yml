@@ -1,6 +1,6 @@
 name: WordPress ahead
 
-# First against the WordPress that is coming, not only the floor it supports (7.1): the nightly build,
+# First against the WordPress that is coming, not only the floor it supports (7.2-beta5): the nightly build,
 # and the newest beta or release candidate when there is one. Weekly and by hand only, never on a PR:
 # a change in core must not turn every PR red. A failure names the build and each failing test in
 # the job summary; docs/wordpress-internals.md says what to look at in core.
@@ -9,6 +9,14 @@ on:
   schedule:
     - cron: '17 5 * * 1'
   workflow_dispatch:
+    inputs:
+      report:
+        description: Open, update or close the tracking issue as a scheduled run does
+        type: boolean
+        default: false
+  # TEMPORARY, removed before the PR is ready: proves the issue opens on a failing run and closes on a green one.
+  push:
+    branches: [first/wordpress-ahead-issue]
 
 permissions:
   contents: read
@@ -32,7 +40,7 @@ jobs:
       - id: pick
         run: |
           set -euo pipefail
-          builds='[{"name":"nightly","url":"https://wordpress.org/nightly-builds/wordpress-latest.zip"}]'
+          builds='[{"name":"nightly","url":"https://wordpress.org/nightly-builds/wordpress-latest.zip"},{"name":"broken","url":"https://wordpress.org/latest.tar.gz"}]'  # TEMPORARY failing entry
           offers=$(curl -fsS 'https://api.wordpress.org/core/version-check/1.7/?channel=beta')
           next=$(jq -r '[.offers[] | select(.response == "development") | .download | select(test("/release/wordpress-[0-9.]+-(beta|RC)[0-9]+\\.zip$"))] | first // empty' <<<"$offers")
           if [ -n "$next" ]; then
@@ -73,7 +81,16 @@ jobs:
           FIRST_WP_CORE_SHA256: ${{ steps.core.outputs.sha256 }}
       - name: Summary
         if: always()
-        run: .github/actions/wordpress-build/summary.sh "${{ matrix.build.name }}" "${{ steps.core.outputs.version }}" php "$RUNNER_TEMP/php.log"
+        run: |
+          SUMMARY_FILE="$RUNNER_TEMP/report/php-${{ matrix.build.name }}.md" .github/actions/wordpress-build/summary.sh "${{ matrix.build.name }}" "${{ steps.core.outputs.version }}" php "$RUNNER_TEMP/php.log"
+          echo "${{ job.status }}" > "$RUNNER_TEMP/report/php-${{ matrix.build.name }}.status"
+      - name: Keep the summary for the report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: report-php-${{ matrix.build.name }}
+          path: ${{ runner.temp }}/report
+          retention-days: 7
 
   wp:
     name: wp (${{ matrix.build.name }})
@@ -123,7 +140,16 @@ jobs:
           FIRST_WP_CORE_ZIP: ${{ steps.core.outputs.zip }}
       - name: Summary
         if: always()
-        run: .github/actions/wordpress-build/summary.sh "${{ matrix.build.name }}" "${{ steps.core.outputs.version }}" wp "$RUNNER_TEMP/wp.log"
+        run: |
+          SUMMARY_FILE="$RUNNER_TEMP/report/wp-${{ matrix.build.name }}.md" .github/actions/wordpress-build/summary.sh "${{ matrix.build.name }}" "${{ steps.core.outputs.version }}" wp "$RUNNER_TEMP/wp.log"
+          echo "${{ job.status }}" > "$RUNNER_TEMP/report/wp-${{ matrix.build.name }}.status"
+      - name: Keep the summary for the report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: report-wp-${{ matrix.build.name }}
+          path: ${{ runner.temp }}/report
+          retention-days: 7
 
   wp-schema:
     name: wp-schema (${{ matrix.build.name }})
@@ -178,4 +204,38 @@ jobs:
           exit $status
       - name: Summary
         if: always()
-        run: .github/actions/wordpress-build/summary.sh "${{ matrix.build.name }}" "${{ steps.core.outputs.version }}" wp-schema "$RUNNER_TEMP/wp-schema.log"
+        run: |
+          SUMMARY_FILE="$RUNNER_TEMP/report/wp-schema-${{ matrix.build.name }}.md" .github/actions/wordpress-build/summary.sh "${{ matrix.build.name }}" "${{ steps.core.outputs.version }}" wp-schema "$RUNNER_TEMP/wp-schema.log"
+          echo "${{ job.status }}" > "$RUNNER_TEMP/report/wp-schema-${{ matrix.build.name }}.status"
+      - name: Keep the summary for the report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: report-wp-schema-${{ matrix.build.name }}
+          path: ${{ runner.temp }}/report
+          retention-days: 7
+
+  # One issue tracks WordPress ahead: opened (or updated) by a failing scheduled run, closed by the
+  # next green one. Nobody is assigned or mentioned; the issue is where a failure is visible.
+  report:
+    needs: [builds, php, wp, wp-schema]
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'push' || inputs.report)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # A job's permissions replace the workflow's: checkout still needs to read the repository.
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: report-*
+          path: ${{ runner.temp }}/report
+          merge-multiple: true
+      - name: Open, update or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULTS: ${{ toJSON(needs) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: .github/actions/wordpress-build/report.sh "$RUNNER_TEMP/report"

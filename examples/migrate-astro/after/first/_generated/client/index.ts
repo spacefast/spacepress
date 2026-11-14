@@ -118,8 +118,13 @@ export interface CollectionClient<K extends CollectionKey> {
   /** How many rows `list` with this filter would return without a limit. */
   count(q?: { where?: Collections[K]["filter"] } & StatusQuery<K> & LocaleQuery<K>): Query<number>;
   create(data: Collections[K]["insert"]): Promise<Row<K>>;
-  update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
-  delete(id: IdOf<K>): Promise<Row<K>>;
+  /**
+   * On a collection, add `_rev` (from a read) to the patch to refuse the update when the row changed
+   * since: a 409 `stale_revision`. While someone else has the row open in the editor the update is a
+   * 409 `locked`; `takeover: true` takes over their edit lock.
+   */
+  update(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<Row<K>>;
+  delete(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
   /** `list(q).subscribe(onRows, onError)`. Returns a function that stops watching. */
   watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
     q: ListQuery<K, ExactWith<K, W>> | undefined,
@@ -138,7 +143,7 @@ export interface CollectionClient<K extends CollectionKey> {
    * staged version per item, shared by everyone who may update it; each call adds to it. Post
    * kinds only. Every staged call needs `update` access on the row, and answers 404 without it.
    */
-  stage(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<StagedVersion<K>>;
+  stage(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<StagedVersion<K>>;
   /** The staged version: the row as it would be once promoted. 404 when nothing is staged. */
   staged(id: IdOf<K>): Promise<StagedVersion<K>>;
   /** The staged fields whose value differs from the live row, with both values. */
@@ -148,15 +153,25 @@ export interface CollectionClient<K extends CollectionKey> {
    * time) the promote is scheduled instead, and `at: null` cancels a scheduled one; both return
    * the staged version.
    */
-  promote(id: IdOf<K>): Promise<Row<K>>;
-  promote(id: IdOf<K>, options: { at: string | null }): Promise<StagedVersion<K>>;
+  promote(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
+  promote(id: IdOf<K>, options: { at: string | null } & WriteConditions): Promise<StagedVersion<K>>;
   /** End the staged version. It stays in the row's revisions, as `revision`. */
-  discard(id: IdOf<K>): Promise<{ revision: number }>;
+  discard(id: IdOf<K>, options?: WriteConditions): Promise<{ revision: number }>;
   /** A signed link to the staged version that works without signing in for `ttl` seconds (an hour by default). */
   previewLink(id: IdOf<K>, options?: { ttl?: number }): Promise<StagedPreview>;
 }
 
 /** A staged version: the row once promoted, the fields that are staged, who staged last. */
+/**
+ * A write's conditions on a collection's row: `_rev`, the token a read returned (the row's own, or a
+ * staged version's for stage, promote and discard), refuses the write if the row changed since;
+ * `takeover` takes over another user's edit lock.
+ */
+export interface WriteConditions {
+  _rev?: string;
+  takeover?: boolean;
+}
+
 export interface StagedVersion<K extends CollectionKey> {
   /** The revision holding it. */
   id: number;
@@ -166,6 +181,8 @@ export interface StagedVersion<K extends CollectionKey> {
   at: string;
   /** When a scheduled promote runs, or null. */
   promoteAt: string | null;
+  /** The staged version's token, for the next stage, promote or discard. */
+  _rev: string;
   /** Why the last scheduled promote did not run. */
   error?: { code: string; detail: string; at: string };
 }
@@ -448,12 +465,10 @@ function listParams(q: Json | undefined): URLSearchParams {
 }
 
 /** One subscribed read, as `POST /_live` takes it: the kind query API's call on a kind. */
-interface ReadCall {
-  kind: string;
-  op: "list" | "paginate" | "get" | "count";
-  args?: Json;
-  id?: string | number;
-}
+type ReadCall =
+  | { kind: string; op: "list" | "paginate" | "get" | "count"; args?: Json; id?: string | number }
+  /** One `<Live>` region of a page (First's own pages only): `{ html, kinds }`. */
+  | { kind?: undefined; op: "page"; args: { url: string; region: string }; id?: undefined };
 
 /** The client's query as that call's arguments: `status` folded into `where`, `orderBy` as an object. */
 function liveArgs(q: Json | undefined): Json {
@@ -1305,7 +1320,8 @@ export function createClient(options: ClientOptions = {}): Client {
    * that tell two reads apart without being sent with the subscription (a paginate's `offset`).
    */
   function query<T>(descriptor: ReadCall, deps: readonly string[], run: () => Promise<T>, refuse?: string, keyed?: Json): Query<T> {
-    const key = JSON.stringify([descriptor.kind, descriptor.op, descriptor.id ?? null, descriptor.args ?? {}, ...(keyed ? [keyed] : [])]);
+    // A page read is keyed apart from every kind read, whatever a kind is called.
+    const key = JSON.stringify(descriptor.op === "page" ? ["page", descriptor.args.url, descriptor.args.region] : [descriptor.kind, descriptor.op, descriptor.id ?? null, descriptor.args ?? {}, ...(keyed ? [keyed] : [])]);
     // Nothing is sent until the read is awaited or subscribed to.
     let started: Promise<T> | undefined;
     const promise = () => (started ??= run());
@@ -1322,6 +1338,15 @@ export function createClient(options: ClientOptions = {}): Client {
       optimistic: (update) => optimistic(key, update as (current: unknown) => unknown),
     };
     return read as Query<T>;
+  }
+
+  /** A DELETE's write conditions travel in its query: `?_rev=…&takeover=1`. */
+  function conditions(options?: WriteConditions): URLSearchParams | undefined {
+    if (!options) return undefined;
+    const query = new URLSearchParams();
+    if (options._rev !== undefined) query.set("_rev", options._rev);
+    if (options.takeover) query.set("takeover", "1");
+    return query;
   }
 
   function collection(key: CollectionKey) {
@@ -1351,7 +1376,7 @@ export function createClient(options: ClientOptions = {}): Client {
       },
       create: (data: unknown) => wrote(request("POST", path, { json: data }), key),
       update: (id: string | number, patch: unknown) => wrote(request("PATCH", one(id), { json: patch }), key),
-      delete: (id: string | number) => wrote(request("DELETE", one(id)), key),
+      delete: (id: string | number, options?: WriteConditions) => wrote(request("DELETE", one(id), { query: conditions(options) }), key),
       revisions: {
         // Every revision, newest first: the API pages them ({ data, cursor }), this follows the cursor.
         list: async (id: string | number) => {
@@ -1372,8 +1397,8 @@ export function createClient(options: ClientOptions = {}): Client {
       stage: (id: string | number, patch: unknown) => request("PATCH", `${one(id)}/staged`, { json: patch }),
       staged: (id: string | number) => request("GET", `${one(id)}/staged`),
       compare: (id: string | number) => request("GET", `${one(id)}/staged/compare`),
-      promote: (id: string | number, options?: { at: string | null }) => request("POST", `${one(id)}/staged/promote`, { json: options ?? {} }),
-      discard: (id: string | number) => request("DELETE", `${one(id)}/staged`),
+      promote: (id: string | number, options?: { at?: string | null } & WriteConditions) => request("POST", `${one(id)}/staged/promote`, { json: options ?? {} }),
+      discard: (id: string | number, options?: WriteConditions) => request("DELETE", `${one(id)}/staged`, { query: conditions(options) }),
       previewLink: (id: string | number, options?: { ttl?: number }) => request("POST", `${one(id)}/staged/preview`, { json: options ?? {} }),
     };
   }
@@ -1424,11 +1449,26 @@ export function createClient(options: ClientOptions = {}): Client {
   };
   for (const key of Object.keys(SCHEMA.collections)) client[key] = collection(key as CollectionKey);
   hubs.set(client, realtime);
+  pageReads.set(client, (url, region, deps) => query<{ html: string; kinds: string[] }>({ op: "page", args: { url, region } }, deps, () => once({ op: "page", args: { url, region } })));
   return client as unknown as Client;
 }
 
 type Hub = { subscribe(collections: readonly string[] | null, onChange: (notice: ChangeNotice | null) => void): () => void };
 const hubs = new WeakMap<object, Hub>();
+const pageReads = new WeakMap<object, (url: string, region: string, deps: readonly string[]) => Query<{ html: string; kinds: string[] }>>();
+
+/**
+ * @internal First's own `<Live>` regions only; not part of the client's API. One region of one of
+ * this site's pages as a read: `{ html, kinds }`, kept current like any other subscription (the
+ * same batch, polling and notices). `deps` are the kinds the server said the region read: a notice
+ * or a write through `client` for one of them asks again at once.
+ */
+export function pageRead(client: Client, url: string, region: string, deps: readonly string[]): Query<{ html: string; kinds: string[] }> {
+  const read = pageReads.get(client) ?? (() => {
+    throw new TypeError("pageRead() needs a client from createClient()");
+  })();
+  return read(url, region, deps);
+}
 
 /**
  * Runs `read` now and again whenever one of `collections` (schema keys) changes, while `client`'s

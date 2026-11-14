@@ -158,7 +158,7 @@ final class Artifact
             }
             if (str_ends_with($name, '.php')) {
                 foreach (self::environment(file_get_contents($root . '/' . $name)) as $variable) {
-                    $env[$variable] = ['name' => $variable, 'present' => getenv($variable) !== false, 'value' => '[redacted]'];
+                    $env[$variable] = ['name' => $variable, 'present' => !\First\Env::hostSecret($variable) && !\First\Env::requestValue($variable) && getenv($variable) !== false, 'value' => '[redacted]'];
                 }
             }
             if (str_starts_with($name, $prefix . 'migrations/') && str_ends_with($name, '.sql')) {

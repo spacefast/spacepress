@@ -116,21 +116,17 @@ struct RefField {
     reverse: Option<String>,
     /// `.many()`: a list through the field's join table.
     many: bool,
+    /// `terms()`: the list is core's term relationships, not a join table.
+    terms: bool,
     span: Span,
 }
 
+/// What `defineConfig` takes. None of these registers a named thing: kinds, globals, file buckets,
+/// actions and jobs register by their exports (ruling 36).
 const CONFIG_KEYS: &[&str] = &[
     "name",
-    "collections",
-    "tables",
-    "users",
     "relations",
-    "globals",
-    "hooks",
-    "actions",
-    "jobs",
     "webhooks",
-    "files",
     "media",
     "uploads",
     "locales",
@@ -163,12 +159,49 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "url",
     "hierarchical",
 ];
+/// The registries `crate::pipeline` fills from the app's exports (a 0.3.0 capture's config writes
+/// them itself): the model extraction reads, never an option a current config can set.
+const REGISTRIES: &[&str] = &[
+    "collections",
+    "tables",
+    "users",
+    "taxonomies",
+    "globals",
+    "files",
+    "actions",
+    "jobs",
+];
 /// Collection names that would shadow a built-in route (§4.8).
 const RESERVED_COLLECTIONS: &[&str] = &[
     "media", "files", "globals", "actions", "me", "_schema", "auth", "services", "search",
 ];
 /// WordPress limits post types to 20 characters; First prefixes `first_`.
 const MAX_POST_TYPE_TABLE: usize = 20 - "first_".len();
+/// WordPress limits taxonomy names to 32 characters; First prefixes `first_`.
+const MAX_TAXONOMY_TABLE: usize = 32 - "first_".len();
+/// `taxonomy()` options (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34).
+const TAXONOMY_OPTIONS: &[&str] = &[
+    "storageName",
+    "label",
+    "access",
+    "hierarchical",
+    "url",
+    "on",
+    "translations",
+];
+/// A term row's own fields (ruling 27), and the names no authored term field may take.
+const TERM_FIELDS: &[&str] = &[
+    "id",
+    "name",
+    "slug",
+    "description",
+    "parent",
+    "count",
+    "url",
+    "author",
+    "createdAt",
+    "updatedAt",
+];
 /// MySQL utf8mb4 index prefix limit.
 const MAX_UNIQUE_TEXT: f64 = 191.0;
 const MAX_NESTING: usize = 3;
@@ -217,7 +250,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         |ev: &Evaluator<'_>, obj: &Value, key: &str, fallback: Span| ev.key_span(obj, key).unwrap_or(fallback);
     for key in cfg_map.keys() {
         let old_key = ev.legacy() && legacy::CONFIG_KEYS.contains(&key.as_str());
-        if !CONFIG_KEYS.contains(&key.as_str()) && !old_key {
+        if !CONFIG_KEYS.contains(&key.as_str()) && !REGISTRIES.contains(&key.as_str()) && !old_key {
             let mut d = Diag::new(
                 span_of(ev, config, key, config_span),
                 format!("defineConfig() has no option `{key}`"),
@@ -340,7 +373,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         out.schema.sealed = Some(declared);
     }
 
-    for registry in ["collections", "tables", "users"] {
+    for registry in ["collections", "tables", "users", "taxonomies"] {
         if let Some((_, span)) = ev.duplicate_key(config, Some(registry)) {
             return Err(Diag::new(span, format!("duplicate `{registry}` registry")));
         }
@@ -348,7 +381,12 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
 
     // Bind every identity before evaluating columns or reference closures. The shared schema
     // remains the runtime/migration model, so relations do not depend on storage kind.
-    for kind in [StorageKind::Collection, StorageKind::Table, StorageKind::UserProjection] {
+    for kind in [
+        StorageKind::Collection,
+        StorageKind::Table,
+        StorageKind::UserProjection,
+        StorageKind::Taxonomy,
+    ] {
         let registry = kind.registry();
         let Some(registry_val) = cfg_map.get(registry) else {
             continue;
@@ -424,6 +462,17 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             if out.schema.collections.values().any(|other| other.key == *key) {
                 return Err(Diag::new(span, format!("duplicate logical registration `{key}`")));
             }
+            if kind == StorageKind::Taxonomy && table.len() > MAX_TAXONOMY_TABLE {
+                return Err(Diag::new(
+                    c.span,
+                    format!(
+                        "\"{table}\" is too long for a taxonomy: WordPress limits taxonomy names to 32 characters and First prefixes `first_`"
+                    ),
+                )
+                .help(format!(
+                    "use a name of at most {MAX_TAXONOMY_TABLE} characters, or give it a shorter `storageName`"
+                )));
+            }
             if c.table.set(table.clone()).is_err() {
                 return Err(Diag::new(span, "a definition can only be registered once"));
             }
@@ -435,6 +484,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     table: c.table().to_string(),
                     existing_table: None,
                     was: None,
+                    adopted_as: None,
                     label: title_case(c.table()),
                     editor: true,
                     drafts: true,
@@ -457,6 +507,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     localized: false,
                     url: None,
                     hierarchical: false,
+                    taxonomy: (kind == StorageKind::Taxonomy).then(|| Taxonomy { on: Vec::new() }),
                     indexes: Vec::new(),
                     api: Api {
                         list: true,
@@ -470,11 +521,35 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         }
     }
     let mut url_shapes: Vec<(String, Vec<crate::kind_url::Segment>, Span)> = Vec::new();
+    let attached = taxonomy_on(ev, &out)?;
     for c in out.collections.clone() {
+        if c.kind == StorageKind::Taxonomy {
+            taxonomy_kind(&c, ev, &mut out, &mut url_shapes)?;
+            continue;
+        }
         let owner = Owner::Collection(c.table().to_string());
         let mut columns = IndexMap::new();
         for (name, b) in &c.columns {
             let col = column(name, b, &owner, &[], Place::Top, ev, &mut out)?;
+            if b.terms && c.kind != StorageKind::Collection {
+                return Err(Diag::new(
+                    b.span,
+                    format!("`terms()` isn't available on a {}() kind (`{name}`)", c.kind.builder()),
+                )
+                .help("core's term relationships carry no object type, so terms attach to collection() kinds only; keep a plain field or a table of links instead"));
+            }
+            if b.terms
+                && let Some((other, _)) = columns.iter().find(|(_, o): &(&String, &Column)| {
+                    o.ty == ColType::RefList
+                        && o.references.as_ref().map(|r| &r.join) == col.references.as_ref().map(|r| &r.join)
+                })
+            {
+                return Err(Diag::new(
+                    b.span,
+                    format!("`{name}` and `{other}` are both `terms()` of the same taxonomy"),
+                )
+                .help("WordPress keeps one term set per item and taxonomy; keep one of the two fields"));
+            }
             if col.was.is_some() && c.kind != StorageKind::Table {
                 return Err(Diag::new(
                     b.span_of("was"),
@@ -483,6 +558,44 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                 .help("rename the field without `.was()` and move its values yourself, or keep the old name"));
             }
             columns.insert(name.clone(), col);
+        }
+        // A taxonomy's `on` adds a terms field named after it, unless the kind declares `terms()` for it.
+        for (field, taxonomy, span) in attached.get(c.table()).into_iter().flatten() {
+            let join = term_join(taxonomy);
+            if columns
+                .values()
+                .any(|o| o.references.as_ref().and_then(|r| r.join.as_ref()) == Some(&join))
+            {
+                continue;
+            }
+            if columns.contains_key(field) {
+                return Err(Diag::new(
+                    *span,
+                    format!(
+                        "`{field}`'s `on` gives `{}` a terms field named `{field}`, which is already a field of `{}`",
+                        c.table(),
+                        c.table()
+                    ),
+                )
+                .help(format!(
+                    "rename the field, or declare the terms field yourself under another name: `{}: terms({field})`",
+                    crate::schema::physical_name(field)
+                )));
+            }
+            if c.kind != StorageKind::Collection {
+                unreachable!("taxonomy_on admits collections only");
+            }
+            columns.insert(field.clone(), terms_column(field, taxonomy));
+            out.refs.push(RefField {
+                table: c.table().to_string(),
+                field: field.clone(),
+                target: taxonomy.clone(),
+                optional: false,
+                reverse: None,
+                many: true,
+                terms: true,
+                span: *span,
+            });
         }
         let opts = collection_options(&c, &columns, ev, &mut out)?;
         let coll = out.schema.collections.get_mut(c.table()).expect("collection");
@@ -509,7 +622,13 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.agents = opts.agents;
         let key = coll.key.clone();
         if let Some((pattern, shape, span)) = opts.url {
-            if let Some((other, ..)) = url_shapes.iter().find(|(_, s, _)| crate::kind_url::overlaps(s, &shape)) {
+            // A kind at the site root (`/:path`) takes only the URLs no other pattern matches, so it
+            // overlaps no other kind; two of them would.
+            let root = |s: &[crate::kind_url::Segment]| matches!(s, [crate::kind_url::Segment::Path]);
+            if let Some((other, ..)) = url_shapes
+                .iter()
+                .find(|(_, s, _)| crate::kind_url::overlaps(s, &shape) && root(s) == root(&shape))
+            {
                 return Err(
                     Diag::new(span, format!("\"{pattern}\" can match the same URLs as {other}'s url"))
                         .help("give one of them a different literal segment, e.g. \"/blog/:slug\" and \"/docs/:slug\""),
@@ -573,6 +692,32 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
             coll.columns.insert("publishedAt".into(), published_at);
         }
     }
+    // Each taxonomy registers for the union of its `on` and every kind with a `terms()` field for it.
+    let attachments: Vec<(String, String)> = out
+        .schema
+        .collections
+        .values()
+        .flat_map(|c| {
+            c.columns.values().filter_map(|col| {
+                let r = col.references.as_ref()?;
+                is_term_join(r.join.as_deref()?).then(|| (r.collection.clone(), c.table.clone()))
+            })
+        })
+        .collect();
+    for (taxonomy, kind) in attachments {
+        let on = &mut out
+            .schema
+            .collections
+            .get_mut(&taxonomy)
+            .expect("taxonomy")
+            .taxonomy
+            .as_mut()
+            .expect("taxonomy")
+            .on;
+        if !on.contains(&kind) {
+            on.push(kind);
+        }
+    }
     phase2_collections(ev, &mut out)?;
     postmeta_hints(&mut out);
 
@@ -613,6 +758,18 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
     for c in out.collections.clone() {
         let calls = c.hooks.borrow().clone();
         for (handlers, span) in calls {
+            if c.kind == StorageKind::Taxonomy {
+                let key = out
+                    .schema
+                    .collections
+                    .values()
+                    .find(|k| k.table == c.table())
+                    .map_or_else(|| c.table().to_string(), |k| k.key.clone());
+                return Err(
+                    Diag::new(span, format!("hooks on the taxonomy `{key}` aren't built yet"))
+                        .help("run the logic from a hook of the kind its terms attach to, or from an action"),
+                );
+            }
             kind_hooks(c.table(), &handlers, span, ev, &mut out, None)?;
         }
     }
@@ -660,6 +817,12 @@ fn hooks(
             }
             return Err(d);
         };
+        if coll.taxonomy.is_some() {
+            return Err(
+                Diag::new(kspan, format!("hooks on the taxonomy `{key}` aren't built yet"))
+                    .help("run the logic from a hook of the kind its terms attach to, or from an action"),
+            );
+        }
         let table = coll.table.clone();
         let Value::Object(_) = per else {
             return Err(Diag::new(
@@ -1018,6 +1181,356 @@ struct CollOpts {
     hierarchical: bool,
 }
 
+/// The terms fields `on` gives each kind: kind storage name → (field name, taxonomy storage name,
+/// where `on` lists it).
+type Attached = IndexMap<String, Vec<(String, String, Span)>>;
+
+/// Each taxonomy's `on` (ruling 26). The field is named after the taxonomy's export.
+fn taxonomy_on(ev: &Evaluator<'_>, out: &Extracted) -> Result<Attached> {
+    let mut attached: Attached = IndexMap::new();
+    for t in out.collections.iter().filter(|c| c.kind == StorageKind::Taxonomy) {
+        let Some(opts @ Value::Object(o)) = t.options.as_ref() else {
+            continue;
+        };
+        let Some(on) = o.borrow().get("on").cloned().filter(|v| !matches!(v, Value::Undef)) else {
+            continue;
+        };
+        let span = ev.key_span(opts, "on").unwrap_or(t.span);
+        let Value::Array(items) = &on else {
+            return Err(Diag::new(
+                span,
+                format!("`on` must be a list of collections, not {}", on.describe()),
+            )
+            .help("write `on: [posts]`"));
+        };
+        let field = out.schema.collections[t.table()].key.clone();
+        for item in items.borrow().iter() {
+            let Value::Collection(kind) = item else {
+                return Err(
+                    Diag::new(span, format!("`on` lists {}, not a collection", item.describe()))
+                        .help("list the app's collection() exports; core's posts wait for the wp.* built-ins"),
+                );
+            };
+            if !out.collections.iter().any(|c| Rc::ptr_eq(c, kind)) {
+                return Err(Diag::new(span, "`on` lists a kind that isn't exported")
+                    .help("export the kind, e.g. `export const posts = collection({ ... })`"));
+            }
+            match kind.kind {
+                StorageKind::Collection => {}
+                StorageKind::Table => {
+                    return Err(Diag::new(
+                        span,
+                        format!("`on` lists the table `{}`; terms attach to collection() kinds only", kind.table()),
+                    )
+                    .help("core's term relationships carry no object type, so a table row and a post with the same id would share terms; keep a plain field or a table of links instead"));
+                }
+                other => {
+                    return Err(Diag::new(
+                        span,
+                        format!(
+                            "`on` lists a {}() kind; terms attach to collection() kinds only",
+                            other.builder()
+                        ),
+                    )
+                    .help("list the app's collection() exports"));
+                }
+            }
+            let entry = attached.entry(kind.table().to_string()).or_default();
+            if !entry.iter().any(|(_, tax, _)| tax == t.table()) {
+                entry.push((field.clone(), t.table().to_string(), span));
+            }
+        }
+    }
+    Ok(attached)
+}
+
+/// The terms field `on` adds to a kind (ruling 26): the item's term ids, `[]` when none.
+fn terms_column(field: &str, taxonomy: &str) -> Column {
+    let mut col = Column::new(field, ColType::RefList);
+    col.not_null = true;
+    col.default = Some(DefaultKind::Value(Json::Array(Vec::new())));
+    col.references = Some(Reference {
+        collection: taxonomy.to_string(),
+        column: "id".into(),
+        on_delete: Some(RefAction::Cascade),
+        on_update: None,
+        join: Some(term_join(taxonomy)),
+    });
+    col
+}
+
+/// A `taxonomy()` kind (rulings 25-34): its options, the term row's own fields and the authored
+/// term meta fields.
+fn taxonomy_kind(
+    c: &Rc<CollectionVal>,
+    ev: &mut Evaluator<'_>,
+    out: &mut Extracted,
+    url_shapes: &mut Vec<(String, Vec<crate::kind_url::Segment>, Span)>,
+) -> Result<()> {
+    let table = c.table().to_string();
+    let key = out.schema.collections[&table].key.clone();
+    let empty = Value::object(IndexMap::new());
+    let opts_val = c.options.clone().unwrap_or(empty);
+    let Value::Object(o) = &opts_val else { unreachable!() };
+    let o = o.borrow().clone();
+    let spans: IndexMap<String, Span> = o
+        .keys()
+        .map(|k| (k.clone(), ev.key_span(&opts_val, k).unwrap_or(c.span)))
+        .collect();
+    let access_val = o.get("access").cloned();
+    let access_spans: IndexMap<String, Span> = match &access_val {
+        Some(av @ Value::Object(am)) => am
+            .borrow()
+            .keys()
+            .filter_map(|k| Some((k.clone(), ev.key_span(av, k)?)))
+            .collect(),
+        _ => IndexMap::new(),
+    };
+    let span = |k: &str| spans.get(k).copied().unwrap_or(c.span);
+    for k in o.keys() {
+        if TAXONOMY_OPTIONS.contains(&k.as_str()) {
+            continue;
+        }
+        let (message, help) = match k.as_str() {
+            "was" => (
+                "`was` on a taxonomy isn't built yet: renaming one has to move its terms".to_string(),
+                "keep the stored name under a new export with `storageName: \"<old name>\"`, which moves nothing"
+                    .to_string(),
+            ),
+            "sync" => (
+                "a taxonomy can't sync: `sync` is for collections and tables".to_string(),
+                "remove `sync`; create terms through the API or wp-admin".to_string(),
+            ),
+            "agents" | "abilities" | "search" => (
+                format!("`{k}` on a taxonomy isn't built yet"),
+                "remove the option".to_string(),
+            ),
+            _ => (
+                format!("taxonomy() has no option `{k}`"),
+                suggest(k, TAXONOMY_OPTIONS.iter().copied()).map_or_else(
+                    || format!("use one of {}", TAXONOMY_OPTIONS.join(", ")),
+                    |s| format!("did you mean `{s}`?"),
+                ),
+            ),
+        };
+        return Err(Diag::new(span(k), message).help(help));
+    }
+    let flag = |k: &str| -> Result<Option<bool>> {
+        match o.get(k) {
+            None | Some(Value::Undef) => Ok(None),
+            Some(Value::Bool(b)) => Ok(Some(*b)),
+            Some(other) => Err(Diag::new(
+                span(k),
+                format!("`{k}` must be true or false, not {}", other.describe()),
+            )),
+        }
+    };
+    let hierarchical = flag("hierarchical")?.unwrap_or(false);
+    match flag("translations")? {
+        Some(true) => {
+            return Err(
+                Diag::new(span("translations"), "taxonomy translations aren't built yet")
+                    .help("write `translations: false`: one vocabulary shared by every locale"),
+            );
+        }
+        None if out.schema.locales.is_some() => {
+            return Err(Diag::new(
+                c.span,
+                "taxonomy translations aren't built yet; add `translations: false`",
+            )
+            .help("with `locales` set, a taxonomy says `translations: false`: one vocabulary shared by every locale"));
+        }
+        _ => {}
+    }
+    let label = match o.get("label") {
+        None | Some(Value::Undef) => title_case(&table),
+        Some(Value::Str(s)) => s.to_string(),
+        Some(other) => {
+            return Err(Diag::new(
+                span("label"),
+                format!("`label` must be a string, not {}", other.describe()),
+            ));
+        }
+    };
+
+    // The term row's own fields (ruling 27).
+    let owner = Owner::Collection(table.clone());
+    let mut columns: IndexMap<String, Column> = IndexMap::new();
+    let id = column("id", &c.columns["id"], &owner, &[], Place::Top, ev, out)?;
+    columns.insert("id".into(), id);
+    let mut name = Column::new("name", ColType::Text);
+    name.not_null = true;
+    columns.insert("name".into(), name);
+    // Always set: core derives it from the name when a create leaves it out, unique within the
+    // taxonomy, as a collection's slug derives from its `source`.
+    let mut slug = Column::new("slug", ColType::Slug);
+    slug.not_null = true;
+    slug.source = Some("name".into());
+    columns.insert("slug".into(), slug);
+    let mut description = Column::new("description", ColType::Text);
+    description.not_null = true;
+    description.multiline = true;
+    description.default = Some(DefaultKind::Value(Json::String(String::new())));
+    columns.insert("description".into(), description);
+    if hierarchical {
+        // A term of this taxonomy, or null; core checks it and moves children up on delete.
+        columns.insert("parent".into(), Column::new("parent", ColType::Integer));
+    }
+    let mut count = Column::new("count", ColType::Integer);
+    count.not_null = true;
+    count.read_only = true;
+    columns.insert("count".into(), count);
+    let mut url = Column::new("url", ColType::Text);
+    url.read_only = true;
+    columns.insert("url".into(), url);
+
+    for (field, b) in c.columns.iter().filter(|(n, _)| *n != "id") {
+        if TERM_FIELDS.contains(&field.as_str()) {
+            return Err(Diag::new(b.span, format!("`{field}` is built into every term; delete this field"))
+                .help("a term has id, name, slug, description, parent (hierarchical), count and url, and no author or timestamps"));
+        }
+        let refused = match b.ty {
+            ColType::RichText => Some("richText()"),
+            ColType::File => Some("file()"),
+            ColType::Group => Some("group()"),
+            ColType::Repeater => Some("repeater()"),
+            ColType::Blocks => Some("blocks()"),
+            ColType::Slug => Some("slug()"),
+            ColType::MediaList => Some("media().many()"),
+            ColType::RefList if b.terms => Some("terms()"),
+            ColType::RefList => Some("ref().many()"),
+            _ => None,
+        };
+        if let Some(what) = refused {
+            return Err(Diag::new(b.span, format!("{what} fields on a taxonomy aren't built yet (`{field}`)"))
+                .help("a term field is text, number, integer, boolean, date, timestamp, select, email, url, json, media or a single ref"));
+        }
+        if b.unique {
+            return Err(Diag::new(
+                b.span_of("unique"),
+                format!("`.unique()` on a term field isn't built yet (`{field}`)"),
+            )
+            .help("remove `.unique()`; a term's slug is already unique within its taxonomy"));
+        }
+        if b.localized {
+            return Err(Diag::new(
+                b.span_of("localized"),
+                format!("term fields aren't translated yet (`{field}`)"),
+            )
+            .help("remove `.localized()`; a taxonomy is one vocabulary shared by every locale"));
+        }
+        if b.was.is_some() {
+            return Err(Diag::new(
+                b.span_of("was"),
+                "`.was()` renames a column of a table(); this kind stores its fields elsewhere",
+            )
+            .help("rename the field without `.was()` and move its values yourself, or keep the old name"));
+        }
+        let col = column(field, b, &owner, &[], Place::Top, ev, out)?;
+        columns.insert(field.clone(), col);
+    }
+
+    // url (ruling 30): `:slug`, `:id` and, hierarchical, `:path`; one rewrite rule per pattern.
+    let url = match o.get("url") {
+        None | Some(Value::Undef) => None,
+        Some(Value::Str(pattern)) => {
+            if let Some(bad) = pattern
+                .split('/')
+                .filter_map(|s| s.strip_prefix(':'))
+                .find(|p| !matches!(*p, "slug" | "id" | "path"))
+            {
+                return Err(Diag::new(
+                    span("url"),
+                    format!("`:{bad}` in \"{pattern}\" isn't a term placeholder"),
+                )
+                .help("a term URL takes `:slug`, `:id` and, on a hierarchical taxonomy, `:path`"));
+            }
+            let never = |_: &str| false;
+            let kind = crate::kind_url::UrlKind {
+                columns: &columns,
+                dated: false,
+                hierarchical,
+                public_slug: &never,
+            };
+            let shape =
+                crate::kind_url::check(pattern, &kind).map_err(|e| Diag::new(span("url"), e.message).help(e.help))?;
+            // A kind at the site root (`/:path`) takes only the URLs no other pattern matches, so a
+            // taxonomy's URL never overlaps it.
+            let root = |s: &[crate::kind_url::Segment]| matches!(s, [crate::kind_url::Segment::Path]);
+            if let Some((other, ..)) = url_shapes
+                .iter()
+                .find(|(_, s, _)| !root(s) && crate::kind_url::overlaps(s, &shape))
+            {
+                return Err(Diag::new(
+                    span("url"),
+                    format!("\"{pattern}\" can match the same URLs as {other}'s url"),
+                )
+                .help("give one of them a different literal segment, e.g. \"/topics/:slug\" and \"/blog/:slug\""));
+            }
+            url_shapes.push((format!("`{key}`"), shape, span("url")));
+            Some(pattern.to_string())
+        }
+        Some(other) => {
+            return Err(Diag::new(
+                span("url"),
+                format!(
+                    "`url` must be a pattern like \"/topics/:slug\", not {}",
+                    other.describe()
+                ),
+            ));
+        }
+    };
+
+    // access (ruling 29): the spec's defaults, the same keys as every kind.
+    let mut access: IndexMap<String, Access> = ACCESS_OPS
+        .iter()
+        .map(|op| {
+            (
+                op.to_string(),
+                if *op == "read" {
+                    Access::anyone()
+                } else {
+                    Access::editor()
+                },
+            )
+        })
+        .collect();
+    if let Some(av) = o.get("access").filter(|v| !matches!(v, Value::Undef)) {
+        let Value::Object(am) = av else {
+            return Err(Diag::new(
+                span("access"),
+                "`access` must be an object like `{ read: \"anyone\", create: \"editor\" }`",
+            ));
+        };
+        for (op, rule) in am.borrow().iter() {
+            let sp = access_spans.get(op).copied().unwrap_or(span("access"));
+            if !ACCESS_OPS.contains(&op.as_str()) {
+                let mut d = Diag::new(sp, format!("`access` has no operation `{op}`"));
+                d = match suggest(op, ACCESS_OPS.iter().copied()) {
+                    Some(s) => d.help(format!("did you mean `{s}`?")),
+                    None => d.help("use read, create, update, delete"),
+                };
+                return Err(d);
+            }
+            let fn_name = format!("{table}__access__{op}");
+            access.insert(op.clone(), access_rule(rule, sp, &owner, op, fn_name, out)?);
+        }
+    }
+
+    let coll = out.schema.collections.get_mut(&table).expect("taxonomy");
+    coll.columns = columns;
+    coll.label = label;
+    coll.editor = false;
+    coll.drafts = false;
+    coll.revisions = false;
+    coll.staged = false;
+    coll.agents = false;
+    coll.access = access;
+    coll.hierarchical = hierarchical;
+    coll.url = url;
+    Ok(())
+}
+
 fn collection_options(
     c: &CollectionVal,
     columns: &IndexMap<String, Column>,
@@ -1068,6 +1581,7 @@ fn collection_options(
                     StorageKind::UserProjection => {
                         "storage follows the builder: userProjection() is always WordPress users; remove the option"
                     }
+                    StorageKind::Taxonomy => unreachable!("taxonomy options are checked by taxonomy_kind"),
                 });
             } else if let Some(s) = suggest(k, COLLECTION_OPTIONS.iter().copied()) {
                 d = d.help(format!("did you mean `{s}`?"));
@@ -1337,7 +1851,7 @@ fn collection_options(
             let public_slug = |table: &str| {
                 out.collections.iter().any(|c| {
                     c.table() == table
-                        && c.kind == StorageKind::Collection
+                        && matches!(c.kind, StorageKind::Collection | StorageKind::Taxonomy)
                         && match c.options.as_ref() {
                             Some(Value::Object(o)) => match o.borrow().get("access") {
                                 None | Some(Value::Undef) => true,
@@ -1781,6 +2295,8 @@ fn column(
         Some(("id() / .primaryKey()", b.span_of("primaryKey")))
     } else if b.unique && b.ty != ColType::Slug {
         Some(("`.unique()`", b.span_of("unique")))
+    } else if b.terms {
+        Some(("`terms()`", b.span))
     } else if b.references.is_some() {
         Some(("`ref()`", b.span))
     } else if b.on_update.is_some() {
@@ -1869,6 +2385,12 @@ fn column(
             .help("a many-ref is a list of links First keeps in its own table; remove the modifier"));
         }
     }
+    let default = if b.terms {
+        // An item with no terms holds `[]`.
+        Some(DefaultKind::Value(Json::Array(Vec::new())))
+    } else {
+        default
+    };
     let references = match &b.references {
         None => None,
         Some((target, on_delete, on_update, span)) => {
@@ -1900,6 +2422,20 @@ fn column(
                     Diag::new(*span, format!("`{name}` refers to a kind that isn't exported"))
                         .help("export the kind it refers to, e.g. `export const authors = collection({ ... })`"),
                 );
+            }
+            if b.terms && kind.kind != StorageKind::Taxonomy {
+                return Err(Diag::new(*span, format!("terms() takes a taxonomy() export, not the {}() `{}`", kind.kind.builder(), kind.table()))
+                    .help("declare `export const topics = taxonomy({}, { on: [posts] })` and write `terms(topics)`; core's categories and tags wait for the wp.* built-ins"));
+            }
+            if kind.kind == StorageKind::Taxonomy && !b.terms {
+                return Err(Diag::new(
+                    *span,
+                    format!("`{name}` refers to a taxonomy with `ref()`, which isn't built yet"),
+                )
+                .help(format!(
+                    "attach terms with `{name}: terms({})` or the taxonomy's `on` option",
+                    kind.table()
+                )));
             }
             let target_col = &kind.columns[&column];
             if target_col.ty != if many_ref { ColType::Integer } else { b.ty } {
@@ -1963,10 +2499,12 @@ fn column(
                     optional: b.optional,
                     reverse: b.reverse.clone(),
                     many: many_ref,
+                    terms: b.terms,
                     span: *span,
                 });
             }
             let join = match owner {
+                Owner::Collection(_) if b.terms => Some(term_join(kind.table())),
                 Owner::Collection(table) if many_ref => Some(join_key(table, name)),
                 _ => None,
             };
@@ -2074,6 +2612,7 @@ fn column(
         fields,
         layouts,
         system: false,
+        read_only: false,
         localized: b.localized,
         access,
         show_if,
@@ -2320,7 +2859,7 @@ fn digits(s: &str) -> Option<u32> {
 fn ref_relations(out: &mut Extracted) -> Result<()> {
     let refs = std::mem::take(&mut out.refs);
     let mut joins: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for r in refs.iter().filter(|r| r.many) {
+    for r in refs.iter().filter(|r| r.many && !r.terms) {
         let key = join_key(&r.table, &r.field);
         if out.schema.collections.values().any(|c| c.table == key) || joins.contains(&key) {
             return Err(Diag::new(
@@ -2347,7 +2886,7 @@ fn ref_relations(out: &mut Extracted) -> Result<()> {
                     from: "id".into(),
                     to: "id".into(),
                     optional: false,
-                    through: Some((join_key(&r.table, &r.field), "owner_id".into(), "target_id".into())),
+                    through: Some((link_key(r), "owner_id".into(), "target_id".into())),
                 }
             } else {
                 Relation {
@@ -2400,13 +2939,20 @@ fn ref_relations(out: &mut Extracted) -> Result<()> {
                 from: "id".into(),
                 to: if r.many { "id".into() } else { r.field.clone() },
                 optional: false,
-                through: r
-                    .many
-                    .then(|| (join_key(&r.table, &r.field), "target_id".into(), "owner_id".into())),
+                through: r.many.then(|| (link_key(r), "target_id".into(), "owner_id".into())),
             },
         );
     }
     Ok(())
+}
+
+/// Where a list field's links live: its join table, or its taxonomy's term relationships.
+fn link_key(r: &RefField) -> String {
+    if r.terms {
+        term_join(&r.target)
+    } else {
+        join_key(&r.table, &r.field)
+    }
 }
 
 /// A many-ref's join table key (`posts` + `relatedPosts` → `posts_related_posts`), stored as
@@ -3053,8 +3599,9 @@ fn phase2_config(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span, 
         let valid_mime = regex::Regex::new(r"^[A-Za-z0-9!#$&^_.+-]+/(\*|[A-Za-z0-9!#$&^_.+-]+)$").unwrap();
         for (name, value) in object(v, span, "files")? {
             let Value::FileBucket(bucket) = value else {
-                return Err(Diag::new(span, "files entries must use files()")
-                    .help("write `export const decks = files({ accept: [\"application/pdf\"], maxBytes: 20000000 })` and list it as `files: { decks }`"));
+                return Err(Diag::new(span, "files entries must use files()").help(
+                    "write `export const decks = files({ accept: [\"application/pdf\"], maxBytes: 20000000 })`",
+                ));
             };
             let sp = bucket.span;
             // The export name (the registry key) names the bucket; a 0.3.0 capture's own name must match.
@@ -3405,9 +3952,21 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
     }
     for c in out.schema.collections.values().filter(|c| c.sync.is_some()) {
         for col in c.columns.values() {
+            let builder = out.collections.iter().find(|b| b.table() == c.table).unwrap();
+            if let Some(join) = col.references.as_ref().and_then(|r| r.join.as_ref())
+                && is_term_join(join)
+            {
+                // Declared with `terms()`, or added by the taxonomy's `on`.
+                let span = builder.columns.get(&col.name).map_or(builder.span, |b| b.span);
+                return Err(Diag::new(
+                    span,
+                    format!("`{}` holds terms, which sync can't carry yet", col.name),
+                )
+                .help("leave the taxonomy off synced kinds (its `on` and `terms()` fields), or turn sync off for this kind"));
+            }
             if col.ty == ColType::RefList {
                 return Err(Diag::new(
-                    out.collections.iter().find(|b| b.table() == c.table).unwrap().columns[&col.name].span,
+                    builder.columns[&col.name].span,
                     format!("`{}` is a `ref().many()` list, which sync can't carry yet", col.name),
                 )
                 .help("leave the list off synced kinds, or turn sync off for this kind"));
@@ -3563,7 +4122,7 @@ fn validate_phase2(cfg: &IndexMap<String, Value>, ev: &Evaluator<'_>, span: Span
         }
         Ok(())
     };
-    for c in out.schema.collections.values() {
+    for c in out.schema.collections.values().filter(|c| c.taxonomy.is_none()) {
         for op in ["list", "get", "create", "update", "delete", "revisions"] {
             add(format!("{}-{op}", kebab(&c.table)))?;
         }
@@ -3647,7 +4206,7 @@ mod legacy {
     use super::*;
 
     /// `defineConfig()` keys this reading accepts besides the current ones.
-    pub const CONFIG_KEYS: &[&str] = &["routes"];
+    pub const CONFIG_KEYS: &[&str] = &["routes", "hooks"];
 
     /// `routes: { feed: route({ method, path, access | signature, handler }) }`, from the config or a
     /// plugin, read onto the `first/app/` route table as one handler route per entry: its path is the

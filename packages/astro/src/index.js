@@ -64,8 +64,10 @@ const connections = new Map();
 export function connect(options = {}) {
   const site = siteUrl(options.site);
   const headers = { accept: "application/json", ...options.headers };
-  const password = options.appPassword ?? env("FIRST_APP_PASSWORD");
-  const token = options.token ?? env("FIRST_TOKEN");
+  // `anonymous: true` never reads credentials from the environment: a server that renders pages
+  // for visitors must read as a visitor, whatever FIRST_APP_PASSWORD the build uses.
+  const password = options.anonymous ? undefined : options.appPassword ?? env("FIRST_APP_PASSWORD");
+  const token = options.anonymous ? undefined : options.token ?? env("FIRST_TOKEN");
   if (!Object.keys(headers).some((h) => h.toLowerCase() === "authorization")) {
     if (password) headers.authorization = `Basic ${base64(password)}`;
     else if (token) headers.authorization = `Bearer ${token}`;
@@ -75,8 +77,9 @@ export function connect(options = {}) {
   // The description is shared by every collection of one build; a custom fetch gets its own.
   if (!options.fetch && connections.has(key)) return connections.get(key);
 
-  async function request(method, path, body) {
-    const init = { method, headers: { ...headers } };
+  /** `extra`: headers for this request only (an Astro endpoint forwarding the visitor's cookie). */
+  async function request(method, path, body, extra) {
+    const init = { method, headers: { ...headers, ...extra } };
     if (body !== undefined) {
       init.headers["content-type"] = "application/json";
       init.body = JSON.stringify(body);

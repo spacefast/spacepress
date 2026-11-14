@@ -6,7 +6,7 @@ copied verbatim into every build) plus generated files. This document is the
 seam between them. The compiler only emits calls listed here.
 
 Requirements (`Platform::problems()` is the one statement of them; activation
-and `first doctor` both apply it): WordPress 7.1+ on PHP 8.2+ with the
+and `first doctor` both apply it): WordPress 7.2-beta5+ on PHP 8.2+ with the
 `mbstring`, `json` and `gd` extensions (`sodium` for the identity bundle);
 MySQL 8.0+ or MariaDB 10.11+ with every First table InnoDB, or SQLite through
 SQLite Database Integration 3.1.2+; the pinned platform plugins Secure Custom
@@ -791,11 +791,14 @@ listens and purges those URLs from Batcache and the edge. With no listener
   filter sets the window; `s-maxage` comes after `max-age` because Batcache
   takes the last `max-age=` in the header as its own window); anything else sends `private, no-store` and calls
   `batcache_cancel()`. Each cacheable render records the rows it read in
-  `first__app_reads` (kind, row id or `*` for a listing, path with query). A
-  committed write to a kind announces, once after commit, every recorded path
-  that read that row or listed the kind, with its `.md` twin. More than 200
-  paths becomes `/*`, a whole-host purge. Nothing is recorded or announced
-  without a listener.
+  `first__app_reads` (kind, row id or `*` for a listing, path with query),
+  under the address WordPress links the page at (`/notes/a/` for a visit to
+  `/notes/a`). A committed write to a kind adds every recorded path that read
+  that row or listed the kind, with its `.md` twin, to the same announcement
+  as the paths above: one `first_purge_urls` call per committed transaction.
+  The router answers a page with or without its trailing slash, so both
+  spellings are purged. More than 200 paths in that call becomes `/*`, a
+  whole-host purge. Nothing is recorded or announced without a listener.
 - **Page caches the runtime purges itself** (`Wp\PageCaches`): where Batcache
   (`batcache_clear_url()`), the VIP edge cache (`wpvip_purge_edge_cache_for_url()`,
   or `wpcom_vip_purge_edge_cache_for_url()` on older VIP mu-plugins) or Jetpack

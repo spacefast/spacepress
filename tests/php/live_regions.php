@@ -125,7 +125,7 @@ $noteId = (int) \First\db()->findFirst('notes', ['where' => ['title' => 'One']])
 wp_insert_comment(['comment_post_ID' => $noteId, 'comment_content' => 'Live hello', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1]);
 $was = $renders();
 [$thread2] = post($url, [$page("/notes/$slug", 'thread', $thread['token'])]);
-$out['comments'] = [$shape($thread), str_contains($thread['data']['html'] ?? '', 'Live hello'), $shape($thread2), str_contains($thread2['data']['html'] ?? '', 'Live hello'), 'rendered' => $renders() - $was];
+$out['comments'] = [$shape($thread), str_contains($thread['data']['html'] ?? '', 'Live hello'), $shape($thread2), str_contains($thread2['data']['html'] ?? '', 'Live hello'), 'rendered' => $renders() - $was, 'kinds' => $thread['data']['kinds'] ?? null];
 
 // The visitor key includes the post-password cookie: a password-protected note is in the region
 // only for a visitor holding its cookie, and a token issued to one visitor is never "not modified"
@@ -149,6 +149,16 @@ $out['password'] = [
 wp_set_current_user(1);
 wp_delete_post((int) \First\db()->findFirst('notes', ['where' => ['slug' => 'locked']])['id'], true);
 $site->actAs(null);
+
+// A cached page's seed: its token is older than TRUST_SECONDS (a page cache served it later). The
+// counters may not answer for it: the region renders and compares, and answers unchanged.
+[$fresh] = post($url, [$page('/', 'notes')]);
+$claims = \First\Live\Token::open($fresh['token']);
+$claims['t'] -= \First\Live\Module::TRUST_SECONDS + 100;
+$old = \First\Live\Token::seal($claims);
+$was = $renders();
+[$aged] = post($url, [$page('/', 'notes', $old)]);
+$out['aged seed'] = [$shape($aged), 'rendered' => $renders() - $was];
 
 // A new build of the same page: the held token is a different question, so the region renders.
 $schemaFile = \First\Wp\Runtime::plugin()->dir . '/first/app/schema.php';

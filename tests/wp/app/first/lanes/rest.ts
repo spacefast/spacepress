@@ -1,9 +1,9 @@
-// Lane fragment for the WP test app; only this lane edits this file. ../compose.ts merges every
-// export into the app and fails the build if a key collides with the shared app or another lane.
+// Lane fragment for the WP test app; only this lane edits this file. Every kind, action and job it
+// exports registers under its export name, and a name another lane or the app uses fails the build.
 //
 // Lane R (core `/wp/v2` under First's rules): an admin-only collection, one whose read rule is a
 // per-owner filter, and one with an admin-only field.
-import { action, blocks, collection, db, group, HttpError, integer, json, repeater, richText, slug, text, table, ref } from "first";
+import { action, blocks, collection, db, group, HttpError, integer, json, repeater, richText, slug, text, table, ref, taxonomy } from "first";
 import { jottings, vault as vaultKind } from "first:db";
 
 export const vault = collection({ title: text(), code: text().optional() },
@@ -94,7 +94,23 @@ export const notices = collection({ title: text() },
 
 // Editor saves roll back when a hook throws (§1.7): each hook writes a log row first, then refuses.
 export const fuses = collection({ title: text(), note: text().optional() },
-  { revisions: true, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+  { revisions: true, access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } }).on({
+  async afterCreate(row: { id: number; title: string; note: string | null; status: string; publishedAt: string | null }) {
+    await db.insert(fuseLog).values({ msg: `created ${row.title}` });
+    if (row.title.startsWith("Explode")) throw new HttpError(422, "boom", "afterCreate refused this");
+  },
+  async afterUpdate(row: { id: number; title: string; note: string | null; status: string; publishedAt: string | null }) {
+    await db.insert(fuseLog).values({ msg: `updated ${row.title}` });
+    if (row.title.startsWith("Explode")) throw new HttpError(422, "boom", "afterUpdate refused this");
+  },
+  async beforeDelete(row: { id: number; title: string; note: string | null; status: string; publishedAt: string | null }) {
+    await db.insert(fuseLog).values({ msg: `deleting ${row.title}` });
+  },
+  async afterDelete(row: { id: number; title: string; note: string | null; status: string; publishedAt: string | null }) {
+    if (row.title.startsWith("Keep")) throw new HttpError(409, "kept", "afterDelete refused this");
+  },
+});
+
 export const fuseLog = table({ msg: text() }, { access: { read: "anyone" } });
 
 // Filtered reads and unreadable restrictive children exercise write-error confidentiality.
@@ -104,6 +120,7 @@ export const oracleRows = collection({
   read: (ctx) => ctx.user?.role === "admin" ? true : { ownerId: ctx.user?.id ?? -1 },
   create: "editor", update: "editor", delete: "editor",
 } });
+
 export const oracleRefs = collection({
   title: text(),
   rowId: ref(oracleRows).optional().onDelete("restrict"),
@@ -112,23 +129,41 @@ export const oracleRefs = collection({
 
 export const oracleSync = collection({
   title: text(), rowId: ref(oracleRows).optional().onDelete("restrict"), badgeId: integer().min(889002).optional(), publicBadgeId: integer().optional(),
-}, { sync: "content/oracle-sync/*.json", access: { read: "admin", create: "editor", update: "editor", delete: "admin" } });
+}, { sync: "content/oracle-sync/*.json", access: { read: "admin", create: "editor", update: "editor", delete: "admin" } }).on({
+  async beforeCreate(data) {
+    if (data.title === "Swap reference") {
+      const other = await db.query.oracleRows.findFirst({ where: { title: "Other private" } });
+      if (other !== undefined && other !== null) data.rowId = other.id;
+    }
+    return data;
+  },
+});
+
 export const oraclePeers = collection({
   title: text().localized(), ownerId: integer().optional(),
 }, { sync: "content/oracle-peers/*.json", access: {
   read: (ctx) => ctx.user?.role === "admin" ? true : { ownerId: ctx.user?.id ?? -1 },
   create: "editor", update: "editor", delete: "admin",
 } });
+
 export const oracleParents = collection({ title: text() },
   { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+
 export const oracleKids = collection({
   title: text(), parentId: ref(oracleParents).optional().onDelete("cascade"),
   // A many-ref between two post-backed kinds: links in First's join table, a post_object (multiple) in the editor.
   mentors: ref(oracleParents).many().optional().reverse("mentees"),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
-export const oracleGrandchildren = collection({
+// A taxonomy (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34): terms in core's term
+// tables, a `oracleTopics` field on oracleKids, a term URL and its terms in core's sitemap; the app
+// has `locales`, so it is one vocabulary for every locale and stays out of Polylang.
+export const oracleTopics = taxonomy({ color: text().optional() },
+  { hierarchical: true, url: "/oracle-topics/:path", on: [oracleKids], translations: false });
+
+export const oracleGrand = collection({
   title: text(), childId: ref(oracleKids).optional().onDelete("restrict"),
 }, { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
+
 export const oracleDefault = collection({
   title: text(),
   code: text().max(191).unique().default("reserved").access({ read: "admin" }).optional(),
@@ -137,6 +172,7 @@ export const oracleDefault = collection({
 
 export const nullParents = collection({ title: text() },
   { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+
 export const nullChildren = collection({
   title: text(), parentId: ref(nullParents).optional(),
   code: text().max(191).unique().$onUpdate(() => "null-reserved").access({ read: "admin" }).optional(),
@@ -144,13 +180,18 @@ export const nullChildren = collection({
 
 export const hookParents = collection({ title: text() },
   { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+
 export const hookChildren = collection({
   title: text(), parentId: ref(hookParents).optional(),
   code: text().max(191).unique().access({ read: "admin" }).optional(),
-}, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+}, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } }).on({
+  async beforeUpdate(data) { data.code = "hook-reserved"; return data; },
+});
+
 export const secretParents = collection({
   title: text(), secret: integer().unique().access({ read: "admin" }).optional(),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+
 export const secretLinks = collection({
   title: text(), secret: integer().optional(),
 }, { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
@@ -172,10 +213,19 @@ export const derivedRefs = collection({
 }, { sync: "content/derived-refs/*.json", access: {
   read: "anyone", update: "editor", delete: "admin",
   create: (ctx) => ctx.user?.role === "editor" && (ctx.data?.badgeId ?? 100) >= 100,
-} });
+} }).on({
+  async beforeCreate(data) {
+    if (data.title === "Hook reference") {
+      const row = await db.query.oracleRows.findFirst({ where: { title: "Generated source" } });
+      data.badgeId = row?.badge ?? null;
+    }
+    return data;
+  },
+});
 
 export const deepRoots = collection({ title: text() },
   { access: { read: "anyone", create: "editor", update: "editor", delete: "editor" } });
+
 export const deepNodes = collection({
   title: text(), rootId: ref(deepRoots).optional().onDelete("cascade"),
   parentId: ref(() => deepNodes).optional().onDelete("cascade"),
@@ -189,99 +239,53 @@ export const roundTrips = collection({
   create: "admin", update: "editor", delete: "admin",
 } });
 
+export const jotQuery = action({
+  input: { tag: text() },
+  access: "anyone",
+  readonly: true,
+  async handler({ tag }) {
+    const where = { title: { like: `${tag}%` } };
+    const rows = await jottings.list({ where, orderBy: { title: "asc" }, columns: { title: true, status: true } });
+    const page1 = await jottings.paginate({ where, orderBy: { title: "asc" }, limit: 2 });
+    const page2 = page1.cursor === null ? null : await jottings.paginate({ where, orderBy: { title: "asc" }, limit: 2, cursor: page1.cursor });
+    const head = rows[0];
+    const first = head === undefined ? null : await jottings.get({ title: head.title });
+    const byId = first === null ? null : await jottings.get(first.id);
+    return {
+      titles: rows.map((r) => r.title),
+      statuses: rows.map((r) => r.status),
+      pages: [page1.rows.map((r) => r.title), page2 === null ? null : page2.rows.map((r) => r.title), page2 === null ? null : page2.cursor],
+      total: await jottings.count({ where }),
+      searched: await jottings.count({ where, search: "needle" }),
+      get: byId === null ? null : byId.title,
+      trusted: (await jottings.system.list({ where, columns: { title: true } })).length,
+      trustedCount: await jottings.system.count({ where }),
+    };
+  },
+});
 
-export const collections = { jottings, vault, ledger, payroll, gated, dossier, claims, fuses, oracleRows, oracleRefs, oracleSync, oraclePeers, oracleParents, oracleKids, oracleGrand: oracleGrandchildren, oracleDefault, nullParents, nullChildren, hookParents, hookChildren, secretParents, secretLinks, refDefaults, defaultOnly, deepRoots, deepNodes, derivedRefs, roundTrips };
-export const tables = { fuseLog };
-export const users = {  };
-export const entities = { ...collections, ...tables, ...users };
-export const actions = {
-  jotQuery: action({
-    input: { tag: text() },
-    access: "anyone",
-    readonly: true,
-    async handler({ tag }) {
-      const where = { title: { like: `${tag}%` } };
-      const rows = await jottings.list({ where, orderBy: { title: "asc" }, columns: { title: true, status: true } });
-      const page1 = await jottings.paginate({ where, orderBy: { title: "asc" }, limit: 2 });
-      const page2 = page1.cursor === null ? null : await jottings.paginate({ where, orderBy: { title: "asc" }, limit: 2, cursor: page1.cursor });
-      const head = rows[0];
-      const first = head === undefined ? null : await jottings.get({ title: head.title });
-      const byId = first === null ? null : await jottings.get(first.id);
-      return {
-        titles: rows.map((r) => r.title),
-        statuses: rows.map((r) => r.status),
-        pages: [page1.rows.map((r) => r.title), page2 === null ? null : page2.rows.map((r) => r.title), page2 === null ? null : page2.cursor],
-        total: await jottings.count({ where }),
-        searched: await jottings.count({ where, search: "needle" }),
-        get: byId === null ? null : byId.title,
-        trusted: (await jottings.system.list({ where, columns: { title: true } })).length,
-        trustedCount: await jottings.system.count({ where }),
-      };
-    },
-  }),
-  jotWrite: action({
-    input: { tag: text(), step: text() },
-    access: "anyone",
-    async handler({ tag, step }) {
-      if (step === "create") return (await jottings.create({ title: `${tag} written`, note: "first" })).title;
-      const row = await jottings.system.get({ title: `${tag} written` });
-      if (row === null) return "missing";
-      if (step === "update") return (await jottings.update(row.id, { note: "second" })).note ?? "none";
-      if (step === "delete") return (await jottings.delete(row.id)).title;
-      return "unknown step";
-    },
-  }),
-  vaultPeek: action({
-    input: { title: text(), system: integer().optional() },
-    access: "anyone",
-    readonly: true,
-    async handler({ title, system }) {
-      if (system !== 1) return (await vaultKind.get({ title }))?.title ?? null;
-      const trusted = await vaultKind.system.get({ title });
-      return { system: trusted === null ? null : trusted.title, count: await vaultKind.system.count({ where: { title } }) };
-    },
-  }),
-};
-export const globals = {};
-/** Hooks by collection, then event. Two lanes may hook one collection, never the same event. */
-export const hooks = {
-  derivedRefs: {
-    async beforeCreate(data) {
-      if (data.title === "Hook reference") {
-        const row = await db.query.oracleRows.findFirst({ where: { title: "Generated source" } });
-        data.badgeId = row?.badge ?? null;
-      }
-      return data;
-    },
+export const jotWrite = action({
+  input: { tag: text(), step: text() },
+  access: "anyone",
+  async handler({ tag, step }) {
+    if (step === "create") return (await jottings.create({ title: `${tag} written`, note: "first" })).title;
+    const row = await jottings.system.get({ title: `${tag} written` });
+    if (row === null) return "missing";
+    if (step === "update") return (await jottings.update(row.id, { note: "second" })).note ?? "none";
+    if (step === "delete") return (await jottings.delete(row.id)).title;
+    return "unknown step";
   },
-  hookChildren: {
-    async beforeUpdate(data) { data.code = "hook-reserved"; return data; },
+});
+
+export const vaultPeek = action({
+  input: { title: text(), system: integer().optional() },
+  access: "anyone",
+  readonly: true,
+  async handler({ title, system }) {
+    if (system !== 1) return (await vaultKind.get({ title }))?.title ?? null;
+    const trusted = await vaultKind.system.get({ title });
+    return { system: trusted === null ? null : trusted.title, count: await vaultKind.system.count({ where: { title } }) };
   },
-  oracleSync: {
-    async beforeCreate(data) {
-      if (data.title === "Swap reference") {
-        const other = await db.query.oracleRows.findFirst({ where: { title: "Other private" } });
-        if (other !== undefined && other !== null) data.rowId = other.id;
-      }
-      return data;
-    },
-  },
-  fuses: {
-    async afterCreate(row: { id: number; title: string; note: string | null; status: string; publishedAt: string | null }) {
-      await db.insert(fuseLog).values({ msg: `created ${row.title}` });
-      if (row.title.startsWith("Explode")) throw new HttpError(422, "boom", "afterCreate refused this");
-    },
-    async afterUpdate(row: { id: number; title: string; note: string | null; status: string; publishedAt: string | null }) {
-      await db.insert(fuseLog).values({ msg: `updated ${row.title}` });
-      if (row.title.startsWith("Explode")) throw new HttpError(422, "boom", "afterUpdate refused this");
-    },
-    async beforeDelete(row: { id: number; title: string; note: string | null; status: string; publishedAt: string | null }) {
-      await db.insert(fuseLog).values({ msg: `deleting ${row.title}` });
-    },
-    async afterDelete(row: { id: number; title: string; note: string | null; status: string; publishedAt: string | null }) {
-      if (row.title.startsWith("Keep")) throw new HttpError(409, "kept", "afterDelete refused this");
-    },
-  },
-};
-/** Top-level options this lane owns (e.g. jobs, webhooks, files, media, locales). */
+});
+/** Top-level options this lane owns (e.g. webhooks, media, locales). */
 export const config = {};

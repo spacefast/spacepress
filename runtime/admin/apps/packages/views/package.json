@@ -1,7 +1,7 @@
 {
 	"name": "@first-admin/views",
 	"version": "1.0.0",
-	"description": "View persistence and management for WordPress DataViews",
+	"description": "First Admin list views: @wordpress/views with First's view config and DataViews layout",
 	"type": "module",
 	"wpModule": true,
 	"exports": {
@@ -13,12 +13,11 @@
 	"dependencies": {
 		"@first-admin/core-data-next": "workspace:*",
 		"@wordpress/base-styles": "catalog:",
-		"@wordpress/data": "catalog:",
 		"@first-admin/dataviews": "workspace:*",
 		"@first-admin/design-system": "workspace:*",
-		"@wordpress/element": "catalog:",
-		"@wordpress/preferences": "catalog:",
-		"dequal": "catalog:"
+		"@wordpress/views": "catalog:",
+		"@wordpress/data": "catalog:",
+		"@wordpress/element": "catalog:"
 	},
 	"license": "GPL-2.0-or-later"
 }

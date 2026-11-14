@@ -41,6 +41,7 @@ export default function PluginList() {
 	const { view, updateView, isModified, resetToDefault } = useView( {
 		kind: 'root',
 		name: 'plugin',
+		slug,
 		defaultView,
 		queryParams: searchParams,
 		onChangeQueryParams: handleQueryParamsChange,

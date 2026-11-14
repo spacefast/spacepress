@@ -1,7 +1,7 @@
 import { forwardRef } from 'react';
 import clsx from 'clsx';
 import { Tooltip } from '@base-ui/react/tooltip';
-import { ThemeProvider } from '@first-admin/theme';
+import { ThemeProvider } from '@wordpress/theme';
 import { type PopupProps } from './types';
 import resetStyles from '../utils/css/resets.module.css';
 import styles from './style.module.css';
@@ -40,7 +40,7 @@ const Popup = forwardRef< HTMLDivElement, PopupProps >( function TooltipPopup(
 				    them;
 				  - remove the hardcoded `bg` setting from the `ThemeProvider` below
 					*/ }
-				<ThemeProvider color={ { bg: '#1e1e1e' } }>
+				<ThemeProvider color={ { background: '#1e1e1e' } }>
 					<Tooltip.Popup
 						ref={ ref }
 						className={ styles.popup }

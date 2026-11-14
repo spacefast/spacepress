@@ -29,6 +29,7 @@ The client unwraps `data`, so `list()` returns the rows themselves.
 | `ListQuery` | type |
 | `Query` | interface |
 | `CollectionClient` | interface |
+| `WriteConditions` | interface |
 | `StagedVersion` | interface |
 | `StagedComparison` | interface |
 | `StagedPreview` | interface |
@@ -50,6 +51,7 @@ The client unwraps `data`, so `list()` returns the rows themselves.
 | `Problem` | interface |
 | `FirstError` | class |
 | `createClient` | function |
+| `pageRead` | function |
 | `watch` | function |
 
 ## A collection
@@ -65,8 +67,8 @@ interface CollectionClient<K extends CollectionKey> {
   get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: { with?: ExactWith<K, W> } & LocaleQuery<K>): Query<RowWith<K, W>>;
   count(q?: { where?: Collections[K]["filter"] } & StatusQuery<K> & LocaleQuery<K>): Query<number>;
   create(data: Collections[K]["insert"]): Promise<Row<K>>;
-  update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
-  delete(id: IdOf<K>): Promise<Row<K>>;
+  update(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<Row<K>>;
+  delete(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
   watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
     q: ListQuery<K, ExactWith<K, W>> | undefined,
     onRows: (rows: RowWith<K, W>[]) => void,
@@ -77,12 +79,12 @@ interface CollectionClient<K extends CollectionKey> {
     get(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
     restore(id: IdOf<K>, revisionId: number): Promise<Row<K>>;
   };
-  stage(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<StagedVersion<K>>;
+  stage(id: IdOf<K>, patch: Collections[K]["patch"] & WriteConditions): Promise<StagedVersion<K>>;
   staged(id: IdOf<K>): Promise<StagedVersion<K>>;
   compare(id: IdOf<K>): Promise<StagedComparison<K>>;
-  promote(id: IdOf<K>): Promise<Row<K>>;
-  promote(id: IdOf<K>, options: { at: string | null }): Promise<StagedVersion<K>>;
-  discard(id: IdOf<K>): Promise<{ revision: number }>;
+  promote(id: IdOf<K>, options?: WriteConditions): Promise<Row<K>>;
+  promote(id: IdOf<K>, options: { at: string | null } & WriteConditions): Promise<StagedVersion<K>>;
+  discard(id: IdOf<K>, options?: WriteConditions): Promise<{ revision: number }>;
   previewLink(id: IdOf<K>, options?: { ttl?: number }): Promise<StagedPreview>;
 }
 ```

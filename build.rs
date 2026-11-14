@@ -109,6 +109,7 @@ const NOT_GUIDES: &[&str] = &[
     "research-adoption.md",
     "runtime-contract.md",
     "spacefast-host-checklist.md",
+    "wordpress-internals.md",
     "zero-08-parity.md",
 ];
 

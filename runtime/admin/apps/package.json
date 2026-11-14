@@ -16,7 +16,7 @@
 		"@wordpress/core-data": "catalog:",
 		"@first-admin/dataviews": "workspace:*",
 		"@first-admin/design-system": "workspace:*",
-		"@first-admin/theme": "workspace:*",
+		"@wordpress/theme": "catalog:",
 		"clsx": "catalog:",
 		"dequal": "catalog:",
 		"react": "catalog:"

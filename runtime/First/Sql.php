@@ -83,6 +83,10 @@ final class Sql
             }
         }
         $order = $this->orderBy($collection, $opts['orderBy'] ?? [], $alias, $ptr . '/orderBy');
+        if ($order === [] && ($spec['taxonomy'] ?? false)) {
+            // Terms list by name, then id, as core lists them (ruling 28).
+            $order = [$this->cmpRef($collection, 'name', $alias) . ' ASC', $this->cmpRef($collection, $spec['primaryKey'], $alias) . ' ASC'];
+        }
         $limit = self::count($opts, 'limit', $ptr);
         $offset = self::count($opts, 'offset', $ptr);
 

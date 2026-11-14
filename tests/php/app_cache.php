@@ -102,6 +102,7 @@ $out['count reads'] = $counted;
 global $wpdb;
 $out['index'] = array_map(static fn ($r) => "{$r['kind']} {$r['item']} {$r['url']}", $wpdb->get_results("SELECT kind, item, url FROM {$wpdb->prefix}first__app_reads ORDER BY url, kind, item", ARRAY_A));
 // An edit to one note purges the URLs that read it and the ones that listed notes, nothing else.
+\First\Wp\Purges::flush(); // what setting the site up wrote outside a transaction goes out first
 delete_option('test_purges');
 delete_option('test_cleared');
 wp_set_current_user(1);

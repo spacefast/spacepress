@@ -1,34 +1,7 @@
 {
-  "extends": "astro/tsconfigs/strict",
-  "include": [
-    ".astro/types.d.ts",
-    "**/*",
-    "../shared/**/*"
-  ],
-  "exclude": [
-    "dist",
-    "first.config.ts"
-  ],
-  "compilerOptions": {
-    "paths": {
-      "emdash": [
-        "../shared/client.ts"
-      ],
-      "emdash/page": [
-        "../shared/page.ts"
-      ],
-      "emdash/ui": [
-        "../shared/ui.ts"
-      ],
-      "emdash/ui/comments": [
-        "../shared/comments.ts"
-      ],
-      "emdash/ui/search": [
-        "../shared/LiveSearch.astro"
-      ]
-    },
-    "types": [
-      "node"
-    ]
-  }
+	"extends": "astro/tsconfigs/base",
+	"compilerOptions": {
+		"types": ["node"]
+	},
+	"include": ["src", ".astro/types.d.ts", "emdash-env.d.ts"]
 }

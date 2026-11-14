@@ -5,6 +5,9 @@
 set -uo pipefail
 name=$1 version=$2 lane=$3 log=$4
 out=${GITHUB_STEP_SUMMARY:-/dev/stdout}
+# SUMMARY_FILE: a copy for the workflow's report job, which opens the tracking issue from it.
+copy=${SUMMARY_FILE:-/dev/null}
+[ "$copy" = /dev/null ] || mkdir -p "$(dirname "$copy")"
 {
   echo "### $lane on WordPress ${version:-?} ($name)"
   if [ ! -s "$log" ]; then
@@ -29,13 +32,13 @@ out=${GITHUB_STEP_SUMMARY:-/dev/stdout}
   echo "</details>"
   echo
   # Which core changes: a nightly's version ends in its SVN revision (7.2-beta5-65523); the core
-  # commits since the floor's branch are its Trac log. A beta or RC names its tag.
+  # commits up to it are trunk's Trac log, which holds the floor (7.2-beta5) too. A beta or RC names its tag.
   rev=$(sed -nE 's/^.*-([0-9]{5,})$/\1/p' <<<"$version")
   if [ -n "$rev" ]; then
-    echo "Core changes up to r$rev: https://core.trac.wordpress.org/log/trunk?rev=$rev (compare with the floor's branch: https://core.trac.wordpress.org/log/branches/7.1)"
+    echo "Core changes up to r$rev: https://core.trac.wordpress.org/log/trunk?rev=$rev (First's floor, 7.2-beta5, is on trunk too)"
   else
     echo "Core changes in this build: https://core.trac.wordpress.org/browser/tags/$version (its milestone's tickets list what changed)"
   fi
   echo
   echo "What First relies on in core, and what to check first: docs/wordpress-internals.md."
-} >> "$out"
+} | tee -a "$copy" >> "$out"

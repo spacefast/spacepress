@@ -966,7 +966,12 @@ export function createClient(options = {}) {
 	* that tell two reads apart without being sent with the subscription (a paginate's `offset`).
 	*/
 	function query(descriptor, deps, run, refuse, keyed) {
-		const key = JSON.stringify([
+		// A page read is keyed apart from every kind read, whatever a kind is called.
+		const key = JSON.stringify(descriptor.op === "page" ? [
+			"page",
+			descriptor.args.url,
+			descriptor.args.region
+		] : [
 			descriptor.kind,
 			descriptor.op,
 			descriptor.id ?? null,
@@ -992,6 +997,14 @@ export function createClient(options = {}) {
 			optimistic: (update) => optimistic(key, update)
 		};
 		return read;
+	}
+	/** A DELETE's write conditions travel in its query: `?_rev=…&takeover=1`. */
+	function conditions(options) {
+		if (!options) return undefined;
+		const query = new URLSearchParams();
+		if (options._rev !== undefined) query.set("_rev", options._rev);
+		if (options.takeover) query.set("takeover", "1");
+		return query;
 	}
 	function collection(key) {
 		const desc = SCHEMA.collections[key];
@@ -1048,7 +1061,7 @@ export function createClient(options = {}) {
 			},
 			create: (data) => wrote(request("POST", path, { json: data }), key),
 			update: (id, patch) => wrote(request("PATCH", one(id), { json: patch }), key),
-			delete: (id) => wrote(request("DELETE", one(id)), key),
+			delete: (id, options) => wrote(request("DELETE", one(id), { query: conditions(options) }), key),
 			revisions: {
 				// Every revision, newest first: the API pages them ({ data, cursor }), this follows the cursor.
 				list: async (id) => {
@@ -1073,7 +1086,7 @@ export function createClient(options = {}) {
 			staged: (id) => request("GET", `${one(id)}/staged`),
 			compare: (id) => request("GET", `${one(id)}/staged/compare`),
 			promote: (id, options) => request("POST", `${one(id)}/staged/promote`, { json: options ?? {} }),
-			discard: (id) => request("DELETE", `${one(id)}/staged`),
+			discard: (id, options) => request("DELETE", `${one(id)}/staged`, { query: conditions(options) }),
 			previewLink: (id, options) => request("POST", `${one(id)}/staged/preview`, { json: options ?? {} })
 		};
 	}
@@ -1113,9 +1126,35 @@ export function createClient(options = {}) {
 	};
 	for (const key of Object.keys(SCHEMA.collections)) client[key] = collection(key);
 	hubs.set(client, realtime);
+	pageReads.set(client, (url, region, deps) => query({
+		op: "page",
+		args: {
+			url,
+			region
+		}
+	}, deps, () => once({
+		op: "page",
+		args: {
+			url,
+			region
+		}
+	})));
 	return client;
 }
 const hubs = new WeakMap();
+const pageReads = new WeakMap();
+/**
+* @internal First's own `<Live>` regions only; not part of the client's API. One region of one of
+* this site's pages as a read: `{ html, kinds }`, kept current like any other subscription (the
+* same batch, polling and notices). `deps` are the kinds the server said the region read: a notice
+* or a write through `client` for one of them asks again at once.
+*/
+export function pageRead(client, url, region, deps) {
+	const read = pageReads.get(client) ?? (() => {
+		throw new TypeError("pageRead() needs a client from createClient()");
+	})();
+	return read(url, region, deps);
+}
 /**
 * Runs `read` now and again whenever one of `collections` (schema keys) changes, while `client`'s
 * transport is live, or on its polling interval otherwise. For reads a `subscribe` can't express:

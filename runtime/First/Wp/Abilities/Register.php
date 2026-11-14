@@ -355,6 +355,12 @@ final class Register
         $ops = [];
         $columns = array_values(array_map('strval', array_keys(array_filter($spec['columns'], static fn (array $c): bool => !($c['hidden'] ?? false)))));
 
+        // A kind with staged versions takes `_rev` (refuse when the row changed since that read) and
+        // `takeover` (take another user's edit lock) on its writes ({@see \First\Wp\Rev}).
+        $guard = \First\Wp\Staged::enabled($spec) ? [\First\Wp\Rev::FIELD => ['type' => 'string'], \First\Wp\Rev::TAKEOVER => ['type' => 'boolean']] : [];
+        if ($guard !== []) {
+            $row['properties'][\First\Wp\Rev::FIELD] = ['type' => 'string'];
+        }
         if ($api['list'] ?? true) {
             $ops[] = $base + [
                 'name' => "$app/$k-list", 'op' => 'list',
@@ -365,7 +371,7 @@ final class Register
                 'annotations' => ['readonly' => true, 'idempotent' => true], 'rule' => [$rules['read'], 'read', "read $name"], 'defer' => true,
                 'call' => static fn (array $in): array => ['GET', "/$name", Invoke::listQuery($in), null],
                 'result' => static fn (array $rows): array => ['rows' => $rows],
-            ];
+            ] + ($guard === [] ? [] : ['guard' => true]);
         }
         if ($api['get'] ?? true) {
             $ops[] = $base + [
@@ -374,7 +380,7 @@ final class Register
                 'input' => JsonSchema::input(['id' => $pk] + $with + $locale, ['id']),
                 'output' => $row, 'annotations' => ['readonly' => true, 'idempotent' => true], 'rule' => [$rules['read'], 'read', "read $name"], 'defer' => true,
                 'call' => static fn (array $in): array => ['GET', $item()($in), Invoke::listQuery(array_diff_key($in, ['id' => 1])), null],
-            ];
+            ] + ($guard === [] ? [] : ['guard' => true]);
         }
         if ($api['create'] ?? true) {
             $ops[] = $base + [
@@ -387,20 +393,21 @@ final class Register
         if ($api['update'] ?? true) {
             $ops[] = $base + [
                 'name' => "$app/$k-update", 'op' => 'update',
-                'label' => "Update in $name", 'description' => "Update one $name row of the $appLabel app: the given fields of `patch` change, the rest stay.",
-                'input' => JsonSchema::input(['id' => $pk, 'patch' => JsonSchema::patch($spec)], ['id', 'patch']),
+                'label' => "Update in $name", 'description' => "Update one $name row of the $appLabel app: the given fields of `patch` change, the rest stay."
+                    . ($guard === [] ? '' : ' Send the `_rev` of your read to refuse the update if the row changed since.'),
+                'input' => JsonSchema::input(['id' => $pk, 'patch' => JsonSchema::patch($spec)] + $guard, ['id', 'patch']),
                 'output' => $row, 'annotations' => [], 'rule' => [$rules['update'], 'update', "update $name rows"], 'dataShape' => $spec['columns'], 'data' => static fn (array $in): array => Invoke::object($in['patch'] ?? null) ?? throw new \InvalidArgumentException('patch'),
                 'call' => static fn (array $in): array => ['PATCH', $item()($in), [], Invoke::object($in['patch'] ?? false) ?? throw HttpError::invalidInput('patch must be an object', '/patch')],
-            ];
+            ] + ($guard === [] ? [] : ['guard' => true]);
         }
         if ($api['delete'] ?? true) {
             $ops[] = $base + [
                 'name' => "$app/$k-delete", 'op' => 'delete',
                 'label' => "Delete from $name", 'description' => "Delete one $name row of the $appLabel app; returns the deleted row.",
-                'input' => JsonSchema::input(['id' => $pk], ['id']), 'output' => $row,
+                'input' => JsonSchema::input(['id' => $pk] + $guard, ['id']), 'output' => $row,
                 'annotations' => ['destructive' => true], 'rule' => [$rules['delete'], 'delete', "delete $name rows"],
                 'call' => static fn (array $in): array => ['DELETE', $item()($in), [], null],
-            ];
+            ] + ($guard === [] ? [] : ['guard' => true]);
         }
         if ($spec['revisions'] ?? false) {
             $ops[] = $base + [
@@ -458,6 +465,7 @@ final class Register
             'id' => ['type' => 'integer'], 'at' => $when, 'promoteAt' => ['type' => ['string', 'null'], 'format' => 'date-time'],
             'by' => ['type' => ['object', 'null'], 'properties' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'string']]],
         ];
+        $record[\First\Wp\Rev::FIELD] = ['type' => 'string'];
         $version = ['type' => 'object', 'required' => ['id', 'row', 'fields'], 'properties' => ['row' => $row, 'fields' => ['type' => 'array', 'items' => ['type' => 'string']]] + $record];
         $id = static fn (array $in): int|string => is_int($in['id'] ?? null) || (is_string($in['id'] ?? null) && $in['id'] !== '') ? $in['id'] : throw HttpError::invalidInput('id is required', '/id');
         $op = static fn (string $suffix, string $kind, string $label, string $description, array $input, array $output, array $annotations, \Closure $run): array => $base + [
@@ -467,12 +475,16 @@ final class Register
         ];
         $one = JsonSchema::input(['id' => $pk], ['id']);
         $readonly = ['readonly' => true, 'idempotent' => true];
+        // Writes take the staged version's `_rev` and `takeover` ({@see \First\Wp\Rev}).
+        $guard = [\First\Wp\Rev::FIELD => ['type' => 'string'], \First\Wp\Rev::TAKEOVER => ['type' => 'boolean']];
+        $conditions = static fn (array $in): array => [$in[\First\Wp\Rev::FIELD] ?? null, ($in[\First\Wp\Rev::TAKEOVER] ?? false) === true];
 
         return [
             $op('stage', 'stage', "Stage a change to $name",
                 "Save changes to one $name row of the $appLabel app as its staged version: the given fields of `patch` are staged, and the live row stays as it is until the staged version is promoted.",
-                JsonSchema::input(['id' => $pk, 'patch' => JsonSchema::patch($spec)], ['id', 'patch']), $version, [],
-                static fn (int|string $id, array $in, \First\Viewer $viewer): array => \First\Wp\Staged::stage($name, $id, Invoke::object($in['patch'] ?? false) ?? throw HttpError::invalidInput('patch must be an object', '/patch'), $viewer)),
+                JsonSchema::input(['id' => $pk, 'patch' => JsonSchema::patch($spec)] + $guard, ['id', 'patch']), $version, [],
+                static fn (int|string $id, array $in, \First\Viewer $viewer): array => \First\Wp\Staged::stage($name, $id,
+                    (Invoke::object($in['patch'] ?? false) ?? throw HttpError::invalidInput('patch must be an object', '/patch')) + array_intersect_key($in, $guard), $viewer)),
             $op('staged-get', 'staged-get', "Staged version of $name",
                 "Read the staged version of one $name row of the $appLabel app: the row as it would be once promoted, and the fields that are staged.",
                 $one, $version, $readonly,
@@ -483,14 +495,14 @@ final class Register
                 static fn (int|string $id, array $in, \First\Viewer $viewer): array => \First\Wp\Staged::compare($name, $id, $viewer)),
             $op('staged-promote', 'staged-promote', "Promote staged $name",
                 "Make the staged version of one $name row of the $appLabel app live, as an update of the row. With `at` (a future time) the promote is scheduled instead; `at: null` cancels a scheduled promote.",
-                JsonSchema::input(['id' => $pk, 'at' => ['type' => ['string', 'null'], 'format' => 'date-time']], ['id']), [], [],
+                JsonSchema::input(['id' => $pk, 'at' => ['type' => ['string', 'null'], 'format' => 'date-time']] + $guard, ['id']), [], [],
                 static fn (int|string $id, array $in, \First\Viewer $viewer): array => array_key_exists('at', $in)
-                    ? \First\Wp\Staged::schedule($name, $id, $in['at'], $viewer)
-                    : \First\Wp\Staged::promote($name, $id, $viewer)),
+                    ? \First\Wp\Staged::schedule($name, $id, $in['at'], $viewer, ...$conditions($in))
+                    : \First\Wp\Rev::attach($name, \First\Wp\Staged::promote($name, $id, $viewer, ...$conditions($in)))),
             $op('staged-discard', 'staged-discard', "Discard staged $name",
                 "Discard the staged version of one $name row of the $appLabel app. The live row is untouched and the discarded version stays in the row's revisions.",
-                $one, ['type' => 'object', 'required' => ['revision'], 'properties' => ['revision' => ['type' => 'integer']]], ['idempotent' => false],
-                static fn (int|string $id, array $in, \First\Viewer $viewer): array => \First\Wp\Staged::discard($name, $id, $viewer)),
+                JsonSchema::input(['id' => $pk] + $guard, ['id']), ['type' => 'object', 'required' => ['revision'], 'properties' => ['revision' => ['type' => 'integer']]], ['idempotent' => false],
+                static fn (int|string $id, array $in, \First\Viewer $viewer): array => \First\Wp\Staged::discard($name, $id, $viewer, ...$conditions($in))),
             $op('staged-preview', 'staged-preview', "Preview link for staged $name",
                 "Create a signed link to the staged version of one $name row of the $appLabel app. It works without signing in until it expires (`ttl` seconds, an hour by default) or the staged version is promoted or discarded.",
                 JsonSchema::input(['id' => $pk, 'ttl' => ['type' => 'integer', 'minimum' => 60, 'maximum' => 86400]], ['id']),

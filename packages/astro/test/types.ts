@@ -11,3 +11,8 @@ const ok: Promise<boolean> = verifySignature("s", null, "{}");
 void [build, live, ok];
 // @ts-expect-error a kind is a string
 firstLoader(42);
+
+import { firstEmdash } from "@first/astro/emdash";
+import type { AstroIntegration } from "astro";
+const emdash: AstroIntegration = firstEmdash({ pagesAt: "/" });
+void emdash;

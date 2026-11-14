@@ -3,7 +3,7 @@
 // and the TypeError for a primitive right side. Every action runs under Node and as compiled PHP;
 // the JSON results must be byte-identical. `in-helpers.mjs` runs the same checks untyped.
 import { action, defineConfig } from "first";
-import { inUntyped } from "./in-helpers.mjs";
+import { inUntyped as inUntypedImpl } from "./in-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -88,19 +88,26 @@ function mutation(): boolean[] {
 
 const BUILD_TIME_IN = { own: own(), keys: keys(), shapes: [area({ kind: "circle", radius: 2 }), area({ kind: "square", side: 3 }), area({ kind: "dot" })] };
 
-export default defineConfig({
-  name: "language-in",
-  actions: {
-    inOwn: run(() => own()),
-    inClasses: run(() => classes()),
-    inNarrowing: run(() => [area({ kind: "circle", radius: 2 }), area({ kind: "square", side: 3 }), area({ kind: "dot" }), area({ kind: "dot", radius: 1 })]),
-    inKeys: run(() => keys()),
-    inUnknown: run(() => [fromUnknown(JSON.parse('{"error":"bad"}')), fromUnknown(JSON.parse("[1,2]")), fromUnknown(JSON.parse('{"ok":1}')), fromUnknown(JSON.parse('"text"')), fromUnknown(JSON.parse("null"))]),
-    inBuiltins: run(() => builtins()),
-    inPrimitives: run(() => primitives()),
-    inArguments: run(() => args("one", "two")),
-    inMutation: run(() => mutation()),
-    inBuildTime: run(() => BUILD_TIME_IN),
-    inUntyped: run(() => inUntyped(KEYS)),
-  },
-});
+export const inOwn = run(() => own());
+
+export const inClasses = run(() => classes());
+
+export const inNarrowing = run(() => [area({ kind: "circle", radius: 2 }), area({ kind: "square", side: 3 }), area({ kind: "dot" }), area({ kind: "dot", radius: 1 })]);
+
+export const inKeys = run(() => keys());
+
+export const inUnknown = run(() => [fromUnknown(JSON.parse('{"error":"bad"}')), fromUnknown(JSON.parse("[1,2]")), fromUnknown(JSON.parse('{"ok":1}')), fromUnknown(JSON.parse('"text"')), fromUnknown(JSON.parse("null"))]);
+
+export const inBuiltins = run(() => builtins());
+
+export const inPrimitives = run(() => primitives());
+
+export const inArguments = run(() => args("one", "two"));
+
+export const inMutation = run(() => mutation());
+
+export const inBuildTime = run(() => BUILD_TIME_IN);
+
+export const inUntyped = run(() => inUntypedImpl(KEYS));
+
+export default defineConfig({ name: "language-in" });

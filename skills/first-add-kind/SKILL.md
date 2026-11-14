@@ -1,7 +1,7 @@
 ---
 name: first-add-kind
 description: "Use when adding or changing data in a First project: a new kind (`collection()` or `table()`), a new field on a kind, a reference between kinds with `ref()`, an access rule, or a renamed or removed field."
-compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `first` CLI and Node.js 22+."
+compatibility: "Targets First 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `first` CLI and Node.js 22+."
 ---
 
 # Add a kind or a field

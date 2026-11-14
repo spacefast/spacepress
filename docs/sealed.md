@@ -183,14 +183,66 @@ The limits:
   `first check --json` reports the handlers that both read and send. That report
   works by handler; a hook that forwards the row it was handed isn't counted as
   a read. An `http` grant of `*` is any public host.
-- **Granted PHP functions and abilities do what they do.** A grant such as
-  `php: wordpress:update_option` allows that function with any arguments, and a
-  granted ability runs another plugin's PHP. Read those lines of the lock as you
-  would read the code.
+- **Granted PHP functions and abilities do what they do, within the guard.** A
+  grant such as `php: wordpress:update_option` allows that function with any
+  argument the guard below allows, and a granted ability runs another plugin's
+  PHP. Read those lines of the lock as you would read the code.
 - **A local build can widen the lock.** Without `--frozen` or `CI`, `first
   build` adds a newly needed capability to the lock and prints the change;
   committing the lock is the approval. Build in CI (or with `--frozen`) so
   nothing is granted without a reviewed commit.
+
+## The WordPress guard
+
+App code and plugin packages reach WordPress only through `php/wordpress`, and
+some of WordPress's settings would let that code past everything above: writing
+`active_plugins`, `template` or `stylesheet` loads PHP already on disk without
+going through `activate_plugin()`, and `users_can_register` with `default_role`
+set to `administrator` makes every signup an administrator. So, sealed or not,
+`get_option`, `update_option` and `delete_option` refuse the options listed in
+[`runtime/First/Wp/guard.json`](../runtime/First/Wp/guard.json), each with the
+reason it is there:
+
+- options that load code or pick what loads: `active_plugins`,
+  `active_sitewide_plugins`, `recently_activated`, `uninstall_plugins`,
+  `auto_update_plugins`, `auto_update_themes`, `template`, `stylesheet`,
+  `template_root`, `stylesheet_root`, `current_theme`, `allowedthemes`, `WPLANG`,
+  `cron`, `db_version`, `initial_db_version`, `jetpack_*` and transients
+  (`_transient_*`, `_site_transient_*`, which hold the plugin update packages);
+- options that move sign-in or mail: `siteurl`, `home`, `admin_email`,
+  `new_admin_email`, `upload_path`, `upload_url_path`;
+- options that decide roles: `users_can_register`, `default_role`,
+  `{prefix}user_roles`, `site_admins`, `comment_registration`, and the pending
+  confirmations a link applies: multisite invitations (`new_user_*`, which add
+  the stored user with the stored role) and `adminhash`;
+- options that route the site: `rewrite_rules`, `permalink_structure`,
+  `show_on_front`, `page_on_front`, `page_for_posts`, `blog_public`,
+  `fresh_site`;
+- First's own `first_*` options;
+- options that hold secrets, which can't be read either: the salts and keys
+  (`auth_key`, `secret_key`, ... `*_salt`), `recovery_keys`, `mailserver_pass`,
+  and any name containing `secret`, `token`, `private`, `password`, `passwd`,
+  `credential`, `api_key`, `apikey` or `access_key` (`jetpack_private_options`,
+  `jetpack_secrets`).
+
+Names compare as MySQL compares them: trimmed and case-insensitive, and a name
+with any character outside printable ASCII is refused. A literal name fails the
+build with `F4301`; a name built at runtime is refused with `403
+protected_option` before WordPress sees the call. `wp_insert_post`, which
+WordPress runs without a capability check, takes `post`, `page` or another
+plugin's public post type only, so a published `customize_changeset` can't apply
+settings and a First kind's post type can't skip its access rules. It takes only
+the fields its type declares (`post_title`, `post_content`, ...): `ID`,
+`import_id`, `meta_input`, `tax_input` and the rest are refused with `403
+protected_post_field`, whatever the value's type said at build time, so it can't
+overwrite an existing post.
+
+The catalog admits no function that activates plugins, switches themes, or
+changes roles, users, capabilities, user or post metadata, cron, or site
+options (`add_option`, `update_site_option`, ...); `guard.json` lists them under
+`neverAdmitted`, and a test fails if one is added to the catalog. An
+[`existingTable`](config-api.md#tables-first-didnt-create) can't bind
+WordPress's, First's or Action Scheduler's tables or another site's.
 
 ## What else stays open
 

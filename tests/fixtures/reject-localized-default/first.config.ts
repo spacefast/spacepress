@@ -1,3 +1,3 @@
 import { collection, text, email, integer, boolean, richText, slug, group, repeater, json, media, file, files, job, jobs, once, env, global, action, defineConfig, db, table } from "first";
-const notes = table({ x: text().localized().optional() });
-export default defineConfig({ tables: { notes }, locales: { default: "fr", all: ["en"] } });
+export const notes = table({ x: text().localized().optional() });
+export default defineConfig({ locales: { default: "fr", all: ["en"] } });

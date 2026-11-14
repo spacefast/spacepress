@@ -13,6 +13,7 @@ use First\JsObject;
  * compiler only emits calls to the catalog's allowlist (src/wordpress/catalog.json) with the
  * arguments the author may pass and the fixed ones the catalog adds; this converts values at the
  * boundary: JS values in as PHP arrays, results out as JS values or typed WP_Post/WP_User views.
+ * Guard refuses protected options and post types first, for names the build could not see.
  */
 final class Functions
 {
@@ -22,7 +23,9 @@ final class Functions
         if (in_array($function, ['is_user_logged_in', 'current_user_can', 'get_current_user_id'], true)) {
             \First\Render\Prebuilt::viewerCall($function);
         }
-        $result = self::tracked(static fn () => $function(...array_map(self::toPhp(...), $args)));
+        $args = array_map(self::toPhp(...), $args);
+        Guard::call($function, $args);
+        $result = self::tracked(static fn () => $function(...$args));
         if ($result instanceof \WP_Error) {
             // The error's own status when it carries one; otherwise WordPress refused the input.
             $data = $result->get_error_data();

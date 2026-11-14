@@ -17,7 +17,7 @@ import {
 	DEFAULT_SITE_NAME,
 } from '@first-admin/admin-toolkit';
 import { IconButton } from '@wordpress/ui';
-import { ThemeProvider } from '@first-admin/theme';
+import { ThemeProvider } from '@wordpress/theme';
 import { menu } from '@wordpress/icons';
 import {
 	__unstableMotion as motion,
@@ -217,7 +217,7 @@ function Root() {
 					isRoot
 					color={ {
 						...themeColorSettings.sidebar,
-						bg: '#f8f8f8',
+						background: '#f8f8f8',
 					} }
 				>
 					<NavigationProgressBar />

@@ -18,18 +18,24 @@ namespace First\Wp;
  *   `/llms.txt`, the sitemap index and the sitemap file that lists it, and each page
  *   URL's `.md` twin.
  * Older listing pages (`/page/7/`) fall back to the edge's `s-maxage` window. URLs are collected over
- * the request and announced once, after the outermost transaction commits (or at the end of the
- * request when there is none); a rolled-back transaction announces nothing.
+ * the request, with the `first/app/` pages the page cache's read index names (Render\Cache), and
+ * announced once, after the outermost transaction commits (or at the end of the request when there
+ * is none): one `first_purge_urls` call and one `Prebuilt::stale` with the same list. More than
+ * PURGE_LIMIT paths become `/*`, a whole-host purge. A rolled-back transaction announces nothing.
  */
 final class Purges
 {
     /** Listing pages purged after page 1. */
     public const LISTING_PAGES = 1;
+    /** Above this many paths, one announcement purges the whole host. */
+    public const PURGE_LIMIT = 200;
 
     /** @var array<string, true> paths this request's writes changed */
     private static array $paths = [];
     /** @var array<int, list<string>> post id → its URLs before this write */
     private static array $before = [];
+    /** @var array<int, true> saves EditorSave::end collected; their wp_after_insert_post callback skips */
+    private static array $collected = [];
     private static bool $scheduled = false;
 
     public static function register(Plugin $plugin): void
@@ -39,11 +45,11 @@ final class Purges
                 self::$before[$id] = self::postUrls(get_post($id));
             }
         }, 10, 1);
+        // A save EditorSave holds open (a wp-admin or core REST save of a First post) collects its URLs
+        // from EditorSave::end, before the commit, so they join the transaction's one announcement;
+        // by the time this runs that save is committed and collected. Every other save collects here.
         add_action('wp_after_insert_post', static function (int $id, \WP_Post $post) use ($plugin): void {
-            if (self::listening()) {
-                self::add($plugin, [...(self::$before[$id] ?? []), ...self::postUrls($post)]);
-                unset(self::$before[$id]);
-            }
+            self::saved($plugin, $id, $post);
         }, PHP_INT_MAX, 2);
         // Trash, delete and status changes that don't go through wp_insert_post (wp_publish_post, cron).
         add_action('transition_post_status', static function (string $new, string $old, \WP_Post $post) use ($plugin): void {
@@ -119,6 +125,35 @@ final class Purges
         return has_action('first_purge_urls') !== false || \First\Render\Prebuilt::active();
     }
 
+    /**
+     * A saved post's URLs, before and after the save: collected once per save, announced after its
+     * transaction commits (or at the end of the request when there is none).
+     */
+    public static function saved(Plugin $plugin, int $id, \WP_Post $post): void
+    {
+        if (isset(self::$collected[$id])) {
+            unset(self::$collected[$id]); // EditorSave::end collected this save before its commit
+            return;
+        }
+        if (!self::listening()) {
+            return;
+        }
+        $before = self::$before[$id] ?? [];
+        unset(self::$before[$id]);
+        self::add($plugin, [...$before, ...self::postUrls($post)]);
+    }
+
+    /** EditorSave::end: the save it holds open collects its URLs now, inside the transaction. */
+    public static function collect(int $id): void
+    {
+        $plugin = Plugin::instance();
+        $post = get_post($id);
+        if ($plugin !== null && $post instanceof \WP_Post) {
+            self::saved($plugin, $id, $post);
+            self::$collected[$id] = true;
+        }
+    }
+
     /** URLs a write changed that no post hook names (First's own writes): announced with the rest. */
     public static function announce(array $urls): void
     {
@@ -128,13 +163,29 @@ final class Purges
         }
     }
 
+    /**
+     * `first/app/` pages whose recorded reads a write changed (Render\Cache, inside the write's
+     * transaction): announced with the rest. `/llms.txt` lists content, not pages, and isn't added.
+     *
+     * @param list<string> $urls
+     */
+    public static function recorded(array $urls): void
+    {
+        $plugin = Plugin::instance();
+        if ($plugin !== null && self::listening()) {
+            self::add($plugin, $urls, false);
+        }
+    }
+
     /** @param list<string> $urls */
-    private static function add(Plugin $plugin, array $urls): void
+    private static function add(Plugin $plugin, array $urls, bool $content = true): void
     {
         if ($urls === []) {
             return;
         }
-        $urls[] = home_url('/llms.txt');
+        if ($content) {
+            $urls[] = home_url('/llms.txt');
+        }
         foreach (self::paths($urls) as $path) {
             self::$paths[$path] = true;
         }
@@ -163,6 +214,7 @@ final class Purges
         self::$paths = [];
         self::$scheduled = false;
         if ($paths !== [] && self::listening()) {
+            $paths = count($paths) > self::PURGE_LIMIT ? ['/*'] : $paths;
             \First\Render\Prebuilt::stale($paths);
             if (has_action('first_purge_urls') !== false) {
                 do_action('first_purge_urls', $paths);

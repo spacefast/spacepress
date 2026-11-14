@@ -212,7 +212,9 @@ final class AppRouter
             return $parse;
         }
         if (!isset($methods[$lookup])) {
-            if ($page && $method !== 'POST') {
+            // A page at the site root's catch-all serves its kind's items only; a form posting
+            // back to a WordPress Page there is WordPress's.
+            if ($page && ($method !== 'POST' || $this->rootKind($route))) {
                 return $parse;
             }
             $this->emit(405, ['Content-Type' => 'application/problem+json', 'Allow' => implode(', ', array_keys($methods + ($page ? ['GET' => true] : [])))], (string) Js::jsonStringify([
@@ -287,6 +289,15 @@ final class AppRouter
         if ($match['route']['pattern'] === '/' && !(is_front_page() || is_home())) {
             return;
         }
+        // A page serving a kind at the site root (`url: "/:path"`) takes a path only when it names
+        // one of that kind's items: any other path is WordPress's (a Page, a post, an archive),
+        // or the app's 404 when WordPress has nothing there either.
+        if ($this->rootKind($match['route']) && !$this->rootItemQueried($match['route'])) {
+            if (is_404()) {
+                $this->notFound();
+            }
+            return;
+        }
         $this->serving = true;
         // A static route's code Page ({@see RoutePages}) is the queried object while it renders,
         // as WordPress's own page template would have it: menus, SEO plugins and `the_ID()` see it.
@@ -303,6 +314,27 @@ final class AppRouter
             $this->notFound();
         }
         $this->serve($match['route'], $match['params'], $viewer, 200);
+    }
+
+    /** @param array<string, mixed> $route whether the route serves a kind whose url is the site root, `/:path` */
+    private function rootKind(array $route): bool
+    {
+        $name = $route['kind']['name'] ?? null;
+        return is_string($name) && ($this->plugin->schema->collection($name)['url'] ?? null) === '/:path';
+    }
+
+    /** @param array<string, mixed> $route whether WordPress resolved this request to an item of the root kind the route serves */
+    private function rootItemQueried(array $route): bool
+    {
+        $post = get_queried_object();
+        return is_singular() && $post instanceof \WP_Post && $post->post_type === $this->kindType($route);
+    }
+
+    /** @param array<string, mixed> $route the post type of the kind the route serves */
+    private function kindType(array $route): ?string
+    {
+        $name = $route['kind']['name'] ?? null;
+        return is_string($name) ? ($this->plugin->schema->collection($name)['wp']['postType'] ?? null) : null;
     }
 
     /** The main query as WordPress sets it for a singular Page: `is_page()`, `get_queried_object()`, `$post`. */
@@ -400,8 +432,9 @@ final class AppRouter
         // Cache policy and purges (rendering.md §6.1, §6.2): an anonymous visitor's render of a
         // page no layout guards is shared; what it read decides which writes purge its URL.
         $guarded = array_filter($layouts, static fn (array $l): bool => ($l['guard'] ?? null) !== null) !== [];
-        // A page a form came back to (`?_flash=`) shows that visitor's result or error: never shared.
-        [$this->cacheControl, $shared] = \First\Render\Cache::policy($status, $viewer->user === null && !\First\Render\Forms::marked(), $guarded);
+        // A page a form came back to (`?_flash=`), or one that ran a search, shows that visitor's
+        // result: never shared, never recorded for purges.
+        [$this->cacheControl, $shared] = \First\Render\Cache::policy($status, $viewer->user === null && !\First\Render\Forms::marked() && !\First\Render\SearchView::marked(), $guarded);
         if ($shared) {
             \First\Render\Cache::record((string) ($_SERVER['REQUEST_URI'] ?? '/'), $reads);
         }
@@ -583,7 +616,10 @@ final class AppRouter
                 if (($route['kind'] ?? null) !== null) {
                     $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $match['params']));
                     if ($item === null) {
-                        return null;
+                        // A kind at the site root has only its own items: WordPress's twin answers
+                        // the rest. When WordPress resolved the path to an item of this kind the
+                        // visitor may not read, the twin is a 404 like the page.
+                        return $this->rootKind($route) && !$this->rootItemQueried($route) ? ['wordpress' => true] : null;
                     }
                     $props->p['item'] = $item;
                 }
@@ -592,6 +628,10 @@ final class AppRouter
             }, $reads);
             if ($rendered === null) {
                 return [404, "# Not found\n\nNothing is published at this address.\n"];
+            }
+            if (isset($rendered['wordpress'])) {
+                $reads = [];
+                return null;
             }
             [$head, $body] = $rendered;
         } catch (Halt $halt) {
@@ -684,7 +724,7 @@ final class AppRouter
             throw new \First\HttpError(404, 'not_found', "The page at $path has no live region '$region'");
         }
 
-        return ['html' => $captured['html'], 'reads' => $captured['reads'], 'unseen' => $captured['unseen']];
+        return ['html' => $captured['html'], 'reads' => $captured['reads'], 'unseen' => $captured['unseen'], 'notices' => array_keys($captured['extra'] ?? [])];
     }
 
     /** A render error: logged, and the nearest `error.tsx` (or a plain message) with a 500. */
@@ -770,8 +810,9 @@ final class AppRouter
     }
 
     /**
-     * Metadata from the root layout down: later files override earlier ones, and the nearest
-     * layout's `title.template` wraps the page's own title.
+     * Metadata from the root layout down: later files override earlier ones field by field
+     * (`openGraph` and `twitter` too), `links` add up, and the nearest layout's `title.template`
+     * wraps the page's own title.
      *
      * @param list<array<string, mixed>> $metadata
      * @return array<string, mixed>
@@ -794,6 +835,21 @@ final class AppRouter
                     }
                     continue;
                 }
+                if ($key === 'scripts' && is_array($value)) {
+                    // Each layout's scripts and the page's all load, each once, layouts' first.
+                    $out['scripts'] = array_values(array_unique([...($out['scripts'] ?? []), ...array_values($value)]));
+                    continue;
+                }
+                if ($key === 'links' && is_array($value)) {
+                    // Each layout's links and the page's are all in the head, in that order.
+                    $out['links'] = [...($out['links'] ?? []), ...array_values($value)];
+                    continue;
+                }
+                if (($key === 'openGraph' || $key === 'twitter') && is_array($value)) {
+                    // A page sets only what it changes: its image, say, under the layout's type.
+                    $out[$key] = array_filter($value, static fn ($v) => $v !== null) + ($out[$key] ?? []);
+                    continue;
+                }
                 if ($value !== null) {
                     $out[$key] = $value;
                 }
@@ -804,6 +860,71 @@ final class AppRouter
         }
         unset($out['titleIsDefault']);
         $out['title'] = $title ?? get_bloginfo('name');
+        return $out;
+    }
+
+    /**
+     * `metadata.scripts`: script modules the page loads, through WordPress's script-module API so
+     * plugins that manage scripts see them. A path is on this site (a file in `public/`); the
+     * compiler accepts only such paths and https:// URLs, and a function's result is checked here.
+     *
+     * @param array<string, mixed> $head
+     */
+    private static function scripts(array $head): void
+    {
+        foreach (is_array($head['scripts'] ?? null) ? $head['scripts'] : [] as $src) {
+            if (!is_string($src) || !((str_starts_with($src, '/') && !str_starts_with($src, '//')) || str_starts_with($src, 'https://'))) {
+                continue;
+            }
+            $handle = 'first-app-script-' . substr(md5($src), 0, 12);
+            wp_register_script_module($handle, self::absolute($src), [], null);
+            wp_enqueue_script_module($handle);
+        }
+    }
+
+    /** A path on this site (`/og/a.png`) as an absolute URL; anything else as it is. */
+    private static function absolute(string $url): string
+    {
+        return str_starts_with($url, '/') && !str_starts_with($url, '//') ? home_url($url) : $url;
+    }
+
+    /**
+     * The head's Open Graph and Twitter card tags and its extra `<link>`s, from `metadata.openGraph`,
+     * `metadata.twitter` and `metadata.links`. Open Graph's title and description default to the
+     * page's own, and its URL is the canonical one; a path is made absolute, as the protocol wants.
+     *
+     * @param array<string, mixed> $head
+     */
+    public static function social(array $head): string
+    {
+        $out = '';
+        $graph = is_array($head['openGraph'] ?? null) ? $head['openGraph'] : null;
+        if ($graph !== null) {
+            $tags = [
+                'og:title' => $graph['title'] ?? $head['title'] ?? null,
+                'og:description' => $graph['description'] ?? $head['description'] ?? null,
+                'og:type' => $graph['type'] ?? 'website',
+                'og:url' => is_string($head['canonical'] ?? null) && $head['canonical'] !== '' ? self::absolute($head['canonical']) : null,
+                'og:image' => is_string($graph['image'] ?? null) && $graph['image'] !== '' ? self::absolute($graph['image']) : null,
+            ];
+            foreach ($tags as $property => $content) {
+                if (is_string($content) && $content !== '') {
+                    $url = $property === 'og:url' || $property === 'og:image';
+                    $out .= '<meta property="' . $property . '" content="' . ($url ? esc_url($content) : esc_attr($content)) . "\">\n";
+                }
+            }
+        }
+        $card = is_array($head['twitter'] ?? null) ? ($head['twitter']['card'] ?? null) : null;
+        if (is_string($card) && $card !== '') {
+            $out .= '<meta name="twitter:card" content="' . esc_attr($card) . "\">\n";
+        }
+        foreach (is_array($head['links'] ?? null) ? $head['links'] : [] as $link) {
+            if (!is_array($link) || !is_string($link['rel'] ?? null) || !is_string($link['href'] ?? null) || $link['rel'] === '' || $link['href'] === '') {
+                continue;
+            }
+            $type = is_string($link['type'] ?? null) && $link['type'] !== '' ? ' type="' . esc_attr($link['type']) . '"' : '';
+            $out .= '<link rel="' . esc_attr($link['rel']) . '" href="' . esc_url(self::absolute($link['href'])) . '"' . $type . ">\n";
+        }
         return $out;
     }
 
@@ -841,6 +962,11 @@ final class AppRouter
         remove_action('wp_head', '_block_template_render_title_tag', 1);
         remove_action('wp_head', 'rel_canonical');
         $robots = $head['robots'] ?? null;
+        if (\First\Render\SearchView::marked()) {
+            // A results page is no page to index: as the header and the meta tag.
+            $robots = ['index' => false] + (is_array($robots) ? $robots : []);
+            header('X-Robots-Tag: noindex');
+        }
         if (is_array($robots) || $status !== 200) {
             add_filter('wp_robots', static function (array $r) use ($robots, $status): array {
                 if ($status !== 200 || ($robots['index'] ?? true) === false) {
@@ -853,9 +979,11 @@ final class AppRouter
             });
         }
         \First\Assets::enqueue($this->styles);
+        \First\Render\Live::enqueue();
         Navigation::enqueue(plugins_url('first/Render/client/router.js', Runtime::file()));
         \First\Islands::registerClient();
         \First\Islands::enqueue();
+        self::scripts($head);
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'HEAD') {
             exit;
         }
@@ -866,9 +994,9 @@ final class AppRouter
             echo '<meta name="description" content="' . esc_attr($head['description']) . "\">\n";
         }
         if (is_string($head['canonical'] ?? null) && $head['canonical'] !== '') {
-            $canonical = str_starts_with($head['canonical'], '/') && !str_starts_with($head['canonical'], '//') ? home_url($head['canonical']) : $head['canonical'];
-            echo '<link rel="canonical" href="' . esc_url($canonical) . "\">\n";
+            echo '<link rel="canonical" href="' . esc_url(self::absolute($head['canonical'])) . "\">\n";
         }
+        echo self::social($head);
         wp_head();
         echo "</head>\n<body class=\"" . esc_attr(implode(' ', get_body_class('first-app'))) . "\">\n";
         wp_body_open();

@@ -44,6 +44,13 @@ export const posts = collection({
     update: (ctx) => ctx.user?.role === "admin" || ctx.user?.role === "editor" ? true : { authorId: { userId: ctx.user?.id ?? -1 } },
     delete: "editor",
   },
+}).on({
+  async beforeCreate(data, ctx) {
+    if (data.authorId == null && ctx.user) {
+      const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
+      if (author) data.authorId = author.id;
+    }
+  },
 });
 
 export const comments = table({
@@ -54,6 +61,12 @@ export const comments = table({
   createdAt: timestamp().defaultNow(),
 }, {
   access: { read: (ctx) => ctx.user ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
+}).on({
+  async afterCreate(row, ctx) {
+    if (ctx.user && ctx.user.role !== "subscriber") {
+      await db.update(comments).set({ approved: true }).where({ id: row.id });
+    }
+  },
 });
 
 export const collections = { authors, posts };
@@ -68,44 +81,25 @@ export const settings = global({
   social: repeater({ label: text().max(40), href: url() }).optional(),
 }, { label: "Site settings" });
 
+export const approveComment = action({
+  input: { id: integer() },
+  access: "editor",
+  async handler({ id }) {
+    const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
+    if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
+    return row;
+  },
+});
+
+export const publishedCount = action({
+  input: {},
+  access: "anyone",
+  async handler() {
+    const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
+    return { count: rows.length };
+  },
+});
+
 export default defineConfig({
   name: "blog",
-  collections, tables, users,
-  globals: { settings },
-  hooks: {
-    posts: {
-      async beforeCreate(data, ctx) {
-        if (data.authorId == null && ctx.user) {
-          const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
-          if (author) data.authorId = author.id;
-        }
-      },
-    },
-    comments: {
-      async afterCreate(row, ctx) {
-        if (ctx.user && ctx.user.role !== "subscriber") {
-          await db.update(comments).set({ approved: true }).where({ id: row.id });
-        }
-      },
-    },
-  },
-  actions: {
-    approveComment: action({
-      input: { id: integer() },
-      access: "editor",
-      async handler({ id }) {
-        const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
-        if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
-        return row;
-      },
-    }),
-    publishedCount: action({
-      input: {},
-      access: "anyone",
-      async handler() {
-        const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
-        return { count: rows.length };
-      },
-    }),
-  },
 });

@@ -164,7 +164,7 @@ pub fn identify(program: &Program, name: &str, span: Span) -> Result<Plugin> {
             )
             .code(Code::PluginIsolation)
             .help(
-                "publish the plugin as a package and `npm install` it, or register the app's own hooks in defineConfig",
+                "publish the plugin as a package and `npm install` it, or declare the app's own hooks with `.on({ ... })` on the kind",
             )
         })?;
     let manifest: Json = program

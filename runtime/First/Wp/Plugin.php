@@ -75,7 +75,12 @@ final class Plugin
         // Last, so no later callback (SCF's `_acf_changed` one returns false) can undo the refusal.
         add_filter('wp_insert_post_empty_content', fn ($empty, $post) => $empty || ($this->unavailable() !== null && $this->touchesCollection($post)), PHP_INT_MAX, 2);
         $refuseDelete = fn ($check, $post) => $this->unavailable() !== null && $post instanceof \WP_Post && $this->touchesCollection((array) $post) ? false : $check;
-        add_filter('pre_delete_post', $refuseDelete, PHP_INT_MAX, 2);
+        // WordPress empties its trash on a schedule (wp_scheduled_delete), with nobody there to read a
+        // refusal: a First item's before half runs here, where core still lets a delete be declined,
+        // so a refused item is skipped and logged and the run goes on.
+        add_filter('pre_delete_post', fn ($check, $post) => $refuseDelete($check, $post) ?? $this->prepareDelete($check, $post), PHP_INT_MAX, 2);
+        // The run's last prepared delete, if a later filter declined it, ends with the run.
+        add_action('wp_scheduled_delete', [EditorSave::class, 'abandonPrepared'], PHP_INT_MAX, 0);
         add_filter('pre_trash_post', $refuseDelete, PHP_INT_MAX, 2);
         // wp_untrash_post deletes the trash metadata before its update; refuse before that.
         add_filter('pre_untrash_post', fn ($check, $post) => $this->unavailable() !== null && $post instanceof \WP_Post && $this->touchesCollection((array) $post) ? false : $check, PHP_INT_MAX, 2);
@@ -123,7 +128,11 @@ final class Plugin
         SearchHandler::register($this);
         Purges::register($this);
         Staged::register($this);
-        Hooks::register($this);
+        add_filter('rest_pre_dispatch', [Rev::class, 'restLock'], 20, 3);
+        // A build mounted to inspect it (Loader::load `inspect`) runs none of the app's own code.
+        if (!(class_exists(\First\Loader\Loader::class, false) && \First\Loader\Loader::inspecting())) {
+            Hooks::register($this);
+        }
         add_action('admin_menu', [$this, 'adminMenu'], 9);
         // A plugin updated by copying files in has no activation; the first request of any kind
         // (REST, front end, cron, CLI, admin) applies its pending migrations before First serves it.
@@ -426,6 +435,9 @@ final class Plugin
             $migrations = (new Migrator($this->connection(), $this->dir . '/first/app/migrations', $this->schema, SchemaCheck::drops($drops)))->plan();
         } catch (SchemaRefused $refused) {
             array_push($refusals, ...$refused->refusals);
+        } catch (\First\HttpError $e) {
+            // An existingTable this site may not bind (First\Wp\Guard), refused before anything is read.
+            $refusals[] = ['code' => $e->errorCode, 'message' => $e->getMessage()];
         }
 
         return ['migrations' => $migrations, 'runtimeSchema' => $runtime === null ? null : array_diff_key($runtime, ['refusals' => true]), 'refusals' => $refusals];
@@ -586,6 +598,50 @@ final class Plugin
             }
             PostMeta::register($spec);
         }
+        $this->registerTaxonomies();
+    }
+
+    /**
+     * `taxonomy()` kinds (docs/decisions/2026-11-11-authoring-surface.md, ruling 25): `first_<name>` for
+     * the kinds with its terms field, served by core at `/wp/v2/first_<name>` ({@see TermsController}),
+     * its fields as term meta. Every capability is answered from the taxonomy's rules
+     * ({@see CoreAccess::mapMetaCap()}); a `url` makes it public, so core's sitemap and template
+     * hierarchy serve its terms ({@see KindUrls}).
+     */
+    private function registerTaxonomies(): void
+    {
+        foreach ($this->schema->taxonomies() as $name => $spec) {
+            $label = (string) ($spec['label'] ?? $name);
+            $taxonomy = (string) $spec['wp']['taxonomy'];
+            $types = array_values(array_map(fn (string $kind): string => (string) $this->schema->collection($kind)['wp']['postType'], $spec['wp']['on'] ?? []));
+            $public = is_string($spec['url'] ?? null);
+            register_taxonomy($taxonomy, $types, [
+                'label' => $label,
+                'labels' => ['name' => $label, 'singular_name' => $label, 'menu_name' => $label],
+                'public' => $public,
+                'publicly_queryable' => $public,
+                'show_ui' => true,
+                'show_in_menu' => true,
+                'show_in_nav_menus' => $public,
+                'show_admin_column' => true,
+                'show_in_rest' => true,
+                'rest_base' => $taxonomy,
+                'rest_controller_class' => TermsController::class,
+                'hierarchical' => (bool) ($spec['hierarchical'] ?? false),
+                'rewrite' => false,
+                'query_var' => false,
+                // An item's terms keep the order they were written in (ruling 28).
+                'sort' => true,
+                'args' => ['orderby' => 'term_order'],
+                'capabilities' => [
+                    'manage_terms' => "manage_$taxonomy",
+                    'edit_terms' => "edit_$taxonomy",
+                    'delete_terms' => "delete_$taxonomy",
+                    'assign_terms' => "assign_$taxonomy",
+                ],
+            ]);
+            TermMeta::register($spec);
+        }
     }
 
     public function registerFields(): void
@@ -621,41 +677,93 @@ final class Plugin
             return;
         }
         $post = get_post($postId);
+        // A trashed post is read too: its untrash is an update of a row that exists, never a create.
         $this->before[$postId] = $post instanceof \WP_Post && $post->post_status !== 'auto-draft'
-            ? $this->app()->db->editorRow($collection, $postId)
+            ? ($post->post_status === 'trash' ? $this->app()->db->editorRowIncludingTrash($collection, $postId) : $this->app()->db->editorRow($collection, $postId))
             : null;
+    }
+
+    /** Run $fn with trashed posts readable ({@see WpPostStore::withTrash()}): a move into the trash re-reads the row. */
+    private function withTrash(callable $fn): mixed
+    {
+        $store = $this->app()->db->store();
+
+        return $store instanceof CompositeStore ? $store->posts->withTrash($fn) : $fn();
     }
 
     public function afterEditorSave(int $postId, \WP_Post $post, bool $update, ?\WP_Post $before): void
     {
         $collection = $this->collectionOf($postId);
-        if ($collection === null || isset($this->promoting[$postId]) || $this->connection()->busy() || $this->unavailable() !== null || in_array($post->post_status, ['auto-draft', 'trash', 'inherit'], true)) {
+        if ($collection === null || isset($this->promoting[$postId]) || $this->connection()->busy() || $this->unavailable() !== null || in_array($post->post_status, ['auto-draft', 'inherit'], true)) {
             return;
         }
         $previous = $this->editorPrevious($postId, $before);
         unset($this->before[$postId]);
+        // WordPress's trash is not a delete: the row stays and an untrash brings it back. Into or out of
+        // the trash, the move is reported as the status change it is for visitors (a published item
+        // leaving or entering the published set, as an unpublish or a publish is), and is nothing to
+        // them otherwise. Delete hooks and referential actions run only on a permanent delete.
+        $trash = $post->post_status === 'trash' || $before?->post_status === 'trash';
+        if ($trash && ($before?->post_status === 'publish') === ($post->post_status === 'publish')) {
+            return;
+        }
         $app = $this->app();
         try {
-            $app->db->transaction(fn () => $app->db->afterEditorSave($collection, $postId, $previous, WpAuth::current()));
+            $save = fn () => $app->db->transaction(fn () => $app->db->afterEditorSave($collection, $postId, $previous, WpAuth::current()));
+            $trash ? $this->withTrash($save) : $save();
         } catch (\Throwable $e) {
             EditorSave::fail($e);
         }
     }
 
-    public function beforeEditorDelete(int $postId, ?\WP_Post $post = null): void
+    /**
+     * `pre_delete_post` in cron: open the item's own transaction and run its before half (referential
+     * actions, beforeDelete). Refused or thrown: that item rolls back, is logged, and core skips it
+     * (false). Passed: before_delete_post finds the half done and doesn't run it again.
+     */
+    private function prepareDelete(mixed $check, mixed $post): mixed
     {
+        if ($check !== null || !$post instanceof \WP_Post || !wp_doing_cron()) {
+            return $check;
+        }
+        $collection = $this->collectionOf($post->ID);
+        if ($collection === null || $this->connection()->busy() || $this->unavailable() !== null || !EditorSave::prepareDelete($collection, $post->ID)) {
+            return $check;
+        }
+        try {
+            $this->beforeEditorDelete($post->ID, $post, true);
+        } catch (\Throwable $e) {
+            EditorSave::abandonDelete();
+            $problem = App::problem($e);
+            error_log(sprintf('[first] %s #%d stays in the trash: %s: %s', $collection, $post->ID, $problem['code'] ?? 'error', $problem['detail'] ?? $e->getMessage()));
+
+            return false;
+        }
+
+        return $check;
+    }
+
+    public function beforeEditorDelete(int $postId, ?\WP_Post $post = null, bool $prepared = false): void
+    {
+        if (isset($this->deleting[$postId]) && !$prepared) {
+            return; // its before half ran at pre_delete_post
+        }
         $collection = $this->collectionOf($postId);
         if ($collection === null || $this->connection()->busy() || $this->unavailable() !== null) {
             return;
         }
         $db = $this->app()->db;
-        $row = $db->editorRow($collection, $postId);
+        // A post deleted from the trash is still the row it was: the delete runs its lifecycle here, once.
+        $row = $db->editorRowIncludingTrash($collection, $postId);
         if ($row !== null) {
             $this->deleting[$postId] = [$collection, $row];
             try {
                 $db->beforeEditorDelete($collection, $row, WpAuth::current());
             } catch (\Throwable $e) {
                 unset($this->deleting[$postId]);
+                if ($prepared) {
+                    throw $e;
+                }
                 EditorSave::fail($e);
             }
         }

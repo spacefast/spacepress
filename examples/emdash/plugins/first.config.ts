@@ -4,7 +4,7 @@ import {
 } from "first";
 
 // The four field-kit data shapes become native Secure Custom Fields controls.
-const entries = collection({
+export const entries = collection({
   title: text().min(1).max(160),
   body: richText().optional(),
   profile: group({ name: text().optional(), featured: boolean().optional() }).optional(),
@@ -16,33 +16,28 @@ const entries = collection({
 }, {
   title: "title", content: "body", label: "Plugin stories", comments: true,
   access: { read: "anyone", create: "editor", update: "editor", delete: "editor" },
-});
+}).on({ beforeCreate(data) { data.title = data.title.trim(); } });
 
-const records = table({
+export const records = table({
   externalId: text().max(120).unique(),
   state: select(["pending", "processing", "done"]).default("pending"),
   score: integer().default(0),
   payload: json().optional(),
 }, { access: { read: "editor", create: "editor", update: "editor", delete: "editor" } });
 
+export const echo = action({
+  access: "editor", input: { message: text().min(1).max(200) },
+  handler: ({ message }) => ({ message, length: message.length }),
+});
+
+export const advance = action({
+  access: "editor", input: { id: integer() },
+  handler: async ({ id }) => {
+    await db.update(records).set({ state: "processing" }).where({ id });
+    return await db.query.records.findFirst({ where: { id } });
+  },
+});
+
 export default defineConfig({
   name: "official-plugins",
-  collections: { entries },
-  tables: { records },
-  hooks: {
-    entries: { beforeCreate(data) { data.title = data.title.trim(); } },
-  },
-  actions: {
-    echo: action({
-      access: "editor", input: { message: text().min(1).max(200) },
-      handler: ({ message }) => ({ message, length: message.length }),
-    }),
-    advance: action({
-      access: "editor", input: { id: integer() },
-      handler: async ({ id }) => {
-        await db.update(records).set({ state: "processing" }).where({ id });
-        return await db.query.records.findFirst({ where: { id } });
-      },
-    }),
-  },
 });

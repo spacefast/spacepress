@@ -178,8 +178,10 @@ A client connects its transport only while something is subscribed. When the tra
 down to live, subscriptions refresh once to catch up. A notice only says which kinds to ask
 about: the data always comes from the visitor's own read.
 
-[Spacefast](spacefast-deploy.md#live-updates) registers its Cast transport
-automatically, so apps on Spacefast write no setup.
+Spacefast's Cast transport does not register for First builds yet: its engine still runs the 0.3.0
+compiler, and the names it uses are the 0.3.0 ones
+([host checklist](spacefast-host-checklist.md), item 7). Until that changes, subscriptions on
+Spacefast poll like on any other host.
 
 ## Server side: the subscription endpoint
 
@@ -237,6 +239,13 @@ schema key the client uses (`client.<key>`). A collection's `ids` becomes `null`
 when one transaction changes more than 100 of its rows, or any of its ids is longer
 than 191 characters. A transaction touching more than 64 collections is announced
 as several notices. Notices never carry row values.
+
+WordPress comments on a kind with `comments` report as `wp:comments`, with
+`ids: null`, when the approved thread changes: a comment approved, saved
+approved, edited while approved, unapproved, spammed, trashed or deleted. A
+comment held for moderation, or spam that was never approved, reports nothing.
+`wp:comments` is not a collection key; `<Live>` regions that show a
+`<Comments>` thread ask again on it.
 
 A host can register a transport in PHP instead of hooking the action:
 

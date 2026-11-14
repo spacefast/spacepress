@@ -78,8 +78,8 @@ final class Index
             add_action('first_runtime_tables_installed', static fn () => delete_option(self::SHAPE));
             // After every build and every runtime update, once storage matches the build: kinds whose
             // searchable fields changed since they were last indexed are rebuilt by a queued job. One
-            // cached option read when nothing changed.
-            add_action('wp_loaded', static fn () => self::reindexChanged());
+            // cached option read when nothing changed. A managed build does it from initialize.
+            add_action('wp_loaded', static fn () => \First\Wp\Runtime::managed() ? null : self::reindexChanged());
             // Users written outside First's pipeline (wp_insert_user, wp_update_user, the profile
             // form, identity's sign-up) report nothing: the member's entries follow core's user
             // hooks instead, re-read from the stored row. Inside a First write this repeats what
@@ -128,6 +128,9 @@ final class Index
     /** @return list<string> the kind's searchable fields: title, content, text and richText, never system ones */
     public static function fields(array $spec): array
     {
+        if ($spec['taxonomy'] ?? false) {
+            return []; // `search` on a taxonomy isn't built yet
+        }
         $out = [];
         foreach ($spec['columns'] as $name => $col) {
             $name = (string) $name;
@@ -307,6 +310,36 @@ final class Index
     }
 
     /**
+     * Whether {@see reindexChanged()} would write once storage matches the build: the stored search
+     * shape is not this build's. Read without writing (the app boots in memory to read its schema).
+     */
+    public static function shapeChanged(): bool
+    {
+        $plugin = \First\Wp\Plugin::instance();
+        if ($plugin === null) {
+            return false;
+        }
+        $plugin->app();
+        $previous = get_option(self::SHAPE, null);
+
+        return (is_array($previous) ? $previous : []) !== self::shape(db()->schema()->collections());
+    }
+
+    /** @return array<string, list<string>> each searchable kind's fields */
+    private static function shape(array $collections): array
+    {
+        $shape = [];
+        foreach ($collections as $name => $spec) {
+            $fields = self::fields($spec);
+            if ($fields !== []) {
+                $shape[(string) $name] = $fields;
+            }
+        }
+
+        return $shape;
+    }
+
+    /**
      * After a build (the plugin's first request on a new schema): each kind whose searchable fields
      * changed is rebuilt by a job, once. Nothing runs when nothing changed.
      */
@@ -320,13 +353,7 @@ final class Index
         if (!Storage::ready()) {
             return;
         }
-        $shape = [];
-        foreach (db()->schema()->collections() as $name => $spec) {
-            $fields = self::fields($spec);
-            if ($fields !== []) {
-                $shape[(string) $name] = $fields;
-            }
-        }
+        $shape = self::shape(db()->schema()->collections());
         $previous = get_option(self::SHAPE, null);
         $previous = is_array($previous) ? $previous : [];
         // Only on storage this build migrated: a kind's table may not exist before its migration (a

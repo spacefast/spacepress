@@ -30,22 +30,29 @@ const BUILD_TIME = {
   noArgs: Boolean(),
 };
 
-export default defineConfig({
-  name: "language-boolean",
-  actions: {
-    booleanBuildTime: run(() => BUILD_TIME),
-    booleanCalled: run(() => values().map((value) => Boolean(value))),
-    booleanMapped: run(() => values().map(Boolean)),
-    booleanFiltered: run(() => values().filter(Boolean).map((value) => typeof value)),
-    booleanSomeEvery: run(() => [values().some(Boolean), values().every(Boolean), ["0", "false", [], {}].every(Boolean), [0, "", null].some(Boolean)]),
-    booleanAlias: run(() => {
-      const truth = Boolean;
-      return [truth(0), truth("0"), truth([]), truth({}), truth(), truth === Boolean, values().map(truth)];
-    }),
-    booleanHigherOrder: run(() => applyEach(Boolean, values())),
-    booleanCaptured: run(() => [values().map(TRUTH), TRUTH(""), TRUTH("false"), values().filter(TRUTH).length]),
-    booleanGlobalThis: run(() => [values().map(globalThis.Boolean), typeof Boolean, Boolean()]),
-    booleanImportedValues: run(() => falsyAndTruthy().map(Boolean)),
-    booleanUntyped: run(() => untypedBoolean()),
-  },
+export const booleanBuildTime = run(() => BUILD_TIME);
+
+export const booleanCalled = run(() => values().map((value) => Boolean(value)));
+
+export const booleanMapped = run(() => values().map(Boolean));
+
+export const booleanFiltered = run(() => values().filter(Boolean).map((value) => typeof value));
+
+export const booleanSomeEvery = run(() => [values().some(Boolean), values().every(Boolean), ["0", "false", [], {}].every(Boolean), [0, "", null].some(Boolean)]);
+
+export const booleanAlias = run(() => {
+  const truth = Boolean;
+  return [truth(0), truth("0"), truth([]), truth({}), truth(), truth === Boolean, values().map(truth)];
 });
+
+export const booleanHigherOrder = run(() => applyEach(Boolean, values()));
+
+export const booleanCaptured = run(() => [values().map(TRUTH), TRUTH(""), TRUTH("false"), values().filter(TRUTH).length]);
+
+export const booleanGlobalThis = run(() => [values().map(globalThis.Boolean), typeof Boolean, Boolean()]);
+
+export const booleanImportedValues = run(() => falsyAndTruthy().map(Boolean));
+
+export const booleanUntyped = run(() => untypedBoolean());
+
+export default defineConfig({ name: "language-boolean" });

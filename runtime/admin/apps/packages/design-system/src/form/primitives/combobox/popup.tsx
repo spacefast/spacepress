@@ -1,7 +1,7 @@
 import { Combobox as _Combobox } from '@base-ui/react/combobox';
 import { forwardRef } from 'react';
 import clsx from 'clsx';
-import { ThemeProvider } from '@first-admin/theme';
+import { ThemeProvider } from '@wordpress/theme';
 import itemPopupStyles from '../../../utils/css/item-popup.module.css';
 import resetStyles from '../../../utils/css/resets.module.css';
 import styles from './style.module.css';

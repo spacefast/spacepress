@@ -6,14 +6,11 @@
 import { action, defineConfig } from "first";
 import { charCodes } from "./char-codes-helpers.mjs";
 
-function typed(): string[] {
+function typedImpl(): string[] {
   return [String.fromCharCode(72, 105), String.fromCharCode(0xd83d, 0xde00), String.fromCodePoint(0x1f600, 33), String.fromCharCode()];
 }
 
-export default defineConfig({
-  name: "language-char-codes",
-  actions: {
-    untyped: action({ input: {}, handler: () => charCodes() }),
-    typed: action({ input: {}, handler: () => typed() }),
-  },
-});
+export const untyped = action({ input: {}, handler: () => charCodes() });
+export const typed = action({ input: {}, handler: () => typedImpl() });
+
+export default defineConfig({ name: "language-char-codes" });

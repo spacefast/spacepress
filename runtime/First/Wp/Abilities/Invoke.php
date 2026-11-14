@@ -75,11 +75,27 @@ final class Invoke
             if (Register::queryString()) {
                 self::requireTyped($op, $input);
             }
+            $collection = (string) ($op['first']['collection'] ?? '');
+            $rev = null;
+            $takeover = false;
+            if (($op['guard'] ?? false) && in_array($op['op'], ['update', 'delete'], true)) {
+                // `_rev` and `takeover` are the write's conditions, not fields ({@see \First\Wp\Rev}).
+                [$input, $rev, $takeover] = \First\Wp\Rev::split($input);
+            }
             [$method, $path, $query, $body] = ($op['call'])($input);
             if ($body !== null) { $body = \First\Seam::inputToJs($body, $op['bodyShape']); }
-            $response = $app->invokeResponse($method, $path, $query, $body, self::viewer(), Register::headers($op['name']));
+            $dispatch = static fn () => $app->invokeResponse($method, $path, $query, $body, self::viewer(), Register::headers($op['name']));
+            $response = ($op['guard'] ?? false) && in_array($op['op'], ['update', 'delete'], true)
+                ? \First\Wp\Rev::guarded($collection, $input['id'] ?? '', $rev, $takeover, self::viewer(), $dispatch, $op['op'] === 'update' ? (self::object($input['patch'] ?? null) ?? []) : null)
+                : $dispatch();
             Register::responded($response->headers);
             $data = $response->data;
+            if ($op['guard'] ?? false) {
+                // Each row an agent reads or writes carries its `_rev`, as on the API.
+                $data = $op['op'] === 'list' && is_array($data)
+                    ? array_map(static fn (mixed $row): mixed => \First\Wp\Rev::attach($collection, $row), $data)
+                    : ($op['op'] === 'delete' ? $data : \First\Wp\Rev::attach($collection, $data));
+            }
 
             return \First\Seam::toWire(isset($op['result']) ? ($op['result'])($data) : $data);
         } catch (\Throwable $e) {

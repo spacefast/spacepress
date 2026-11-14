@@ -14,7 +14,7 @@ const ANY: [&str; 7] = ["object", "array", "string", "number", "integer", "boole
 
 /// `Schema::isRequired`: a create must receive the column (no default, not generated).
 pub fn required(c: &Column) -> bool {
-    c.not_null && c.default.is_none() && !c.auto_increment
+    !c.optional_on_insert()
 }
 
 fn number(n: f64) -> Value {
@@ -115,7 +115,13 @@ pub fn row(c: &Collection) -> Value {
         .filter(|col| !col.hidden)
         .map(|col| (col.name.clone(), column(col, true)))
         .collect();
-    json!({ "type": "object", "properties": props })
+    let mut row = json!({ "type": "object", "properties": props });
+    // A kind with staged versions: every row the API and abilities give out carries its `_rev`
+    // (docs/staged.md), as `Wp\Abilities\Register` declares it.
+    if c.editor && c.revisions && c.staged {
+        row["properties"]["_rev"] = json!({ "type": "string" });
+    }
+    row
 }
 
 /// The columns a write may set: on an update, not the primary key or the generated `uid`.
@@ -123,6 +129,7 @@ fn writable(c: &Collection, create: bool) -> impl Iterator<Item = &Column> {
     c.columns.values().filter(move |col| {
         !(col.hidden
             || col.derived
+            || col.read_only
             || col.auto_increment
             || !create && (col.primary_key || col.name == "uid" && col.system))
     })

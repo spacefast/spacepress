@@ -241,7 +241,8 @@ final class Module
                     // key, the names change notices use), so the browser subscribes with them as its
                     // dependencies: a notice or a write through the same client for one of them asks
                     // again at once. Kind names are in every notice already; this reveals nothing more.
-                    $data = ['html' => $data['html'], 'kinds' => self::keys($db, array_keys($data['reads']))];
+                    // Plus any notice key the render depends on that isn't a kind (`wp:comments`).
+                    $data = ['html' => $data['html'], 'kinds' => self::keys($db, array_keys($data['reads']), $data['notices'] ?? [])];
                 }
                 $json = Js::jsonStringify($data) ?? 'null';
                 // A private file's signed link carries its expiry: two reads a second apart differ
@@ -427,15 +428,17 @@ final class Module
     }
 
     /**
-     * The client's schema keys (`client.<key>`, the names notices use) of the collections $names, sorted.
+     * The client's schema keys (`client.<key>`, the names notices use) of the collections $names, with
+     * the other notice keys a render depends on, sorted.
      *
      * @param list<string> $names
+     * @param list<string> $notices
      * @return list<string>
      */
-    private static function keys(Db $db, array $names): array
+    private static function keys(Db $db, array $names, array $notices = []): array
     {
         $collections = $db->schema()->collections();
-        $out = array_values(array_unique(array_map(static fn (string $n): string => (string) ($collections[$n]['key'] ?? $n), $names)));
+        $out = array_values(array_unique([...array_map(static fn (string $n): string => (string) ($collections[$n]['key'] ?? $n), $names), ...$notices]));
         sort($out);
 
         return $out;

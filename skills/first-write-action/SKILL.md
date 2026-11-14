@@ -1,7 +1,7 @@
 ---
 name: first-write-action
 description: "Use when adding server logic to a First project: an `action()` a client or agent calls (a mutation, a computed read), or a `job()` that runs in the background after a request (send mail, recompute, call another service)."
-compatibility: "Targets First 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `first` CLI and Node.js 22+."
+compatibility: "Targets First 0.3 (WordPress 7.2-beta5+, PHP 8.2+). Requires the `first` CLI and Node.js 22+."
 ---
 
 # Write an action or a job

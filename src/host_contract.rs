@@ -133,8 +133,13 @@ pub const MOUNT: &[(&str, &str)] = &[
 /// Sealed mode (`sealed: true`, docs/sealed.md): what a host does with the allow-list.
 pub const SEALED: &str = "When the app sets `sealed: true`, the hosted manifest and the build manifest carry `sealed`: the plugin directory names that may load (First's own, the platform pins, and the plugins the config declares). The key is absent when the app isn't sealed. First itself only refuses new activations and reports what else is loaded, because WordPress loads drop-ins, must-use plugins and active plugins before First's app plugin. A host that wants the list enforced does it in its own early code (a must-use plugin of the host's, or `sunrise.php`): it filters `option_active_plugins` with `First\\Loader\\Loader::allowedPlugins($active, $sealed)`, keeps the hidden entries stored with `First\\Loader\\Loader::keepUnlisted($new, $stored, $sealed)` on `pre_update_option_active_plugins`, ships no must-use plugin or drop-in beyond its own, and defines `FIRST_SEALED_ENFORCED` so the app reports `enforced: \"host\"`. `allowedPlugins` never passes `vip-block-data-api` or `vip-decoupled-bundle`, whatever list it is given: each serves stored content around the app's read rules. Nothing changes for sites that don't serve a First app. docs/sealed.md has the example.";
 
+/// Prebuilt pages (`prerender = true` with `output: "server"`; docs/decisions/2026-11-13-static-output.md):
+/// who serves their files. Serving them before PHP is deferred to the engine work; the decision
+/// record lists what that design must meet.
+pub const PREBUILT: &str = "A build with prebuilt pages writes their HTML and Markdown below `wp-content/cache/first-prebuilt/` (moved by the `first_prebuilt_dir` filter), and PHP serves them: `First\\Render\\Prebuilt::serve()` answers at `plugins_loaded` when the request, its cookies, the site's visibility and the file's age allow it, and lets WordPress render otherwise. A host must not serve these files directly, from its web server or any cache of its own, and must not expose the folder over HTTP: deny requests to it as it does for other private paths. Whether a file may be served is decided per request, and only `serve()` decides it. A host's page cache stores and purges these answers as it does any other page. The rebuild runs as the `first_prebuild` Action Scheduler action, on the host's jobs worker like any other.";
+
 /// The table-prefix rule.
-pub const TABLE_PREFIX: &str = "First puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}first_<table>`, system tables `{prefix}first__<name>`, identity tables `{prefix}first_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads.";
+pub const TABLE_PREFIX: &str = "First puts every table under WordPress's `$wpdb->prefix` and never changes it. App tables are `{prefix}first_<table>`, system tables `{prefix}first__<name>`, identity tables `{prefix}first_identity_<name>`. The host owns the prefix: a host that binds several apps to one database gives each its own prefix before WordPress loads. An app's `existingTable` must be under that prefix (and not WordPress's, First's or Action Scheduler's own table, nor under another site's longer prefix, which need not end in `_`), or the Space's own Zero 0.8 table `sf_<space>_<table>_<10 hex>` with the converter's digest of that Space id and table name. The Space id comes from the host: `spacefast_content_space_id()` when it exists, else the `FIRST_SPACE_ID` constant defined before WordPress loads; on a `sfz_<24 hex>_` prefix it must also be the Space that prefix was made from. With neither, no 0.8 table binds.";
 
 /// The longest system name First adds after the prefix: `first_identity_recovery_codes` (29) and
 /// `first__services_submissions` (27). An app table adds `first_` to a name the app chose, so a
@@ -180,6 +185,7 @@ pub fn render_doc() -> String {
     }
     out.push_str(&format!("\n### Background work\n\n`{JOBS_COMMAND}`\n\n"));
     out.push_str(&format!("### Sealed mode\n\n{SEALED}\n\n"));
+    out.push_str(&format!("### Prebuilt pages\n\n{PREBUILT}\n\n"));
     out.push_str(&format!("### Table prefix\n\n{TABLE_PREFIX} The longest name First adds after it is {MAX_SUFFIX} characters, so a prefix may be at most {} characters.\n\n", 64 - MAX_SUFFIX));
     out.push_str("### Manifest `host` object\n\n```json\n");
     out.push_str(&serde_json::to_string_pretty(&manifest_host()).unwrap());

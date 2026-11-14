@@ -90,6 +90,44 @@ fn app_router_serves_pages_on_wordpress() {
     );
     assert_eq!(page("note").1, "Note hello · Field Notes");
     assert_eq!(seen["note canonical"], true);
+    // Open Graph and the Twitter card from the layout, the page's image over them; the
+    // layout's link and the page's (`metadata.links`).
+    let social = &seen["note social"];
+    let base = seen["base"].as_str().unwrap_or_default();
+    assert_eq!(
+        social["meta"],
+        serde_json::json!([
+            ["og:title", "Note hello · Field Notes"],
+            ["og:description", "Notes."],
+            ["og:type", "article"],
+            ["og:url", format!("{base}/notes/hello")],
+            ["og:image", format!("{base}/og/hello.png")],
+            ["twitter:card", "summary_large_image"]
+        ]),
+        "{social}"
+    );
+    assert!(
+        social["links"].as_array().unwrap().contains(&serde_json::json!([
+            "describedby",
+            format!("{base}/llms.txt"),
+            "text/plain"
+        ])),
+        "{social}"
+    );
+    assert!(
+        social["links"].as_array().unwrap().contains(&serde_json::json!([
+            "alternate",
+            format!("{base}/notes/hello.md"),
+            "text/markdown"
+        ])),
+        "{social}"
+    );
+    // `metadata.scripts`: script modules, a path made absolute.
+    assert_eq!(
+        social["scripts"],
+        serde_json::json!([format!("{base}/note.js"), "https://cdn.example/a.js"]),
+        "{social}"
+    );
     assert!(
         page("note as editor")
             .2
@@ -108,6 +146,34 @@ fn app_router_serves_pages_on_wordpress() {
     assert!(page("search").2.contains("page 3 q tea"));
     assert!(page("search defaults").2.contains("page 1 q none"));
     assert_eq!(seen["search noindex"], true);
+    // `<Pagination>`: numbered links that keep the page's other arguments (never a flash marker),
+    // page 1 without the argument, the current page marked and not a link, Previous and Next at
+    // the ends only, and long runs collapsed around the current page.
+    assert_eq!(
+        seen["pagination"],
+        serde_json::json!({
+            "label": "Pagination",
+            "items": [
+                "Previous /notes?q=tea&page=5 rel=prev",
+                "1 /notes?q=tea",
+                "…",
+                "4 /notes?q=tea&page=4",
+                "5 /notes?q=tea&page=5",
+                "6 current",
+                "7 /notes?q=tea&page=7",
+                "8 /notes?q=tea&page=8",
+                "…",
+                "12 /notes?q=tea&page=12",
+                "Next /notes?q=tea&page=7 rel=next",
+            ],
+        }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["pagination first"],
+        serde_json::json!(["1", "2", "3", "…", "12", "Next"]),
+        "{seen}"
+    );
     // A route group adds no segment; an optional catch-all matches its own folder and below.
     assert!(page("group").2.contains("<h1>About</h1>"));
     assert!(page("docs index").2.contains(r#"<p class="docs">index</p>"#));
@@ -882,6 +948,37 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         "`metadata.title` must be",
         "first/app/page.tsx",
     );
+    for (metadata, message) in [
+        (
+            "{ links: [{ rel: \"alternate\" }] }",
+            "`metadata.links` must be a list of { rel: string, href: string, type?: string }",
+        ),
+        (
+            "{ links: { rel: \"a\", href: \"/b\" } }",
+            "`metadata.links` must be a list of",
+        ),
+        (
+            "{ openGraph: { image: 1 } }",
+            "`metadata.openGraph` must be { title?, description?, image?, type? }",
+        ),
+        ("{ openGraph: { locale: \"en\" } }", "`metadata.openGraph` must be"),
+        ("{ twitter: {} }", "`metadata.twitter` must be { card: string }"),
+        (
+            "{ scripts: [\"//evil.example/a.js\"] }",
+            "`metadata.scripts` must be a list of script module URLs",
+        ),
+        ("{ scripts: \"/a.js\" }", "`metadata.scripts` must be a list of"),
+    ] {
+        rejects(
+            &dir,
+            &[(
+                "first/app/page.tsx",
+                &format!("export const metadata = {metadata};\nexport default function P() {{ return <p/>; }}\n"),
+            )],
+            message,
+            "first/app/page.tsx",
+        );
+    }
     rejects(
         &dir,
         &[(
@@ -1063,7 +1160,7 @@ fn prerender_and_static_params_reach_the_route_table() {
     };
     write(
         "first.config.ts",
-        "import { defineConfig, collection, text, slug } from \"first\";\nexport const notes = collection({ title: text(), slug: slug({ source: \"title\" }) }, { url: \"/notes/:slug\", access: { read: \"anyone\" } });\nexport default defineConfig({ name: \"hybrid\", collections: { notes } });\n",
+        "import { defineConfig, collection, text, slug } from \"first\";\nexport const notes = collection({ title: text(), slug: slug({ source: \"title\" }) }, { url: \"/notes/:slug\", access: { read: \"anyone\" } });\nexport { notes }; export default defineConfig({ name: \"hybrid\" });\n",
     );
     write("first/app/page.tsx", "export default function P() { return <p/>; }\n");
     write(
@@ -1225,6 +1322,10 @@ fn prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes() {
     // `Accept: text/markdown` on the HTML URL is never answered with the HTML file: the file lane
     // steps aside for the Markdown negotiation, which a host's engine runs.
     assert_eq!(seen["accept markdown"], json!([false, true]));
+    // More spellings of a prebuilt path that aren't its URL: `/notes//hello`, `/./about`, `/.md`.
+    assert_eq!(seen["spellings"], json!([false, false, false]));
+    // A render that began before forget() leaves no file behind.
+    assert_eq!(seen["forget race"], json!([false, false]));
 }
 
 /// One variant of tests/fixtures/frontend-modes, built and served: what each URL answers.
@@ -1247,11 +1348,18 @@ fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value 
         .unwrap();
     }
     build(&project);
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/frontend_modes.php"))
         .arg(project.join("first/dist/wp-content"))
         .env("FIRST_WP_THEMES", "1")
+        .env("FIRST_TEST_BROWSER", "1")
         .output()
         .unwrap();
     assert!(
@@ -1273,6 +1381,27 @@ fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value 
 #[test]
 fn frontend_modes_on_wordpress() {
     let theme = modes("theme", None, false);
+    let app = modes("app", None, true);
+    let off = modes("off", Some("false"), false);
+    let external = modes("external", Some(r#""https://front.example""#), false);
+    // In every mode wp-admin and sign-in work in a browser (spec §5): signed out, wp-admin is the
+    // login screen; signing in lands on First Admin, the default admin; classic wp-admin's dashboard
+    // and a list screen render beside it; wp-admin's REST nonce works; signing out ends the session.
+    for (mode, seen) in [("theme", &theme), ("app", &app), ("off", &off), ("external", &external)] {
+        assert_eq!(
+            seen["admin"],
+            serde_json::json!({
+                "signedOut": { "at": "/wp-login.php", "redirectTo": true },
+                "loginForm": 1,
+                "signedIn": "first admin",
+                "classic": { "at": "/wp-admin/index.php", "adminBar": 1, "menu": 1, "dashboard": 1 },
+                "pages": { "title": "Pages", "table": 1 },
+                "rest": { "status": 200, "role": "administrator" },
+                "signedOutAgain": "/wp-login.php",
+            }),
+            "{mode}"
+        );
+    }
     // With no first/app/, WordPress renders the whole site with its block theme: the home page,
     // core posts, kind URLs and its own 404 template. The app router adds nothing to any of them.
     let by_theme = |status: u64| serde_json::json!({ "status": status, "theme": true, "router": false });
@@ -1317,7 +1446,6 @@ fn frontend_modes_on_wordpress() {
     assert_eq!(theme["about"][0], 404);
     assert_eq!(theme["home"], 200);
 
-    let app = modes("app", None, true);
     // With first/app/, its page renders the note through the router; a kind URL without a page and
     // a core post keep the theme.
     assert_eq!(app["note rendered"]["router"], true, "{app}");
@@ -1344,13 +1472,11 @@ fn frontend_modes_on_wordpress() {
     // WordPress's own post URLs keep working.
     assert_eq!(app["post"], serde_json::json!([301, "/hello-world/"]));
 
-    let off = modes("off", Some("false"), false);
     for key in ["note status", "journal", "home", "draft"] {
         assert_eq!(off[key], 404, "{key}: {off}");
     }
     assert_eq!(off["permalink"], "/notes/hello-note/");
 
-    let external = modes("external", Some(r#""https://front.example""#), false);
     assert_eq!(
         external["permalink"], "https://front.example/notes/hello-note/",
         "{external}"
@@ -1577,6 +1703,16 @@ fn client_components_compile_to_interactivity_stores() {
     );
     // The server HTML carries the directives the store answers to.
     let functions = std::fs::read_to_string(plugin.join("first/app/functions.php")).unwrap();
+    // A server component a client component renders stays a server component: Badge (in a file
+    // that sorts before Switch.tsx) binds none of the Switch's state, though both have an `on`.
+    let badge = functions
+        .split("function component__components_badge__Badge(")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}\n").next())
+        .unwrap_or_else(|| panic!("no Badge in functions.php"));
+    assert!(!badge.contains("data-wp-"), "{badge}");
+    assert!(islands.get("clients/Badge").is_none(), "{islands}");
+    assert!(islands["clients/Switch"]["file"].is_string(), "{islands}");
     for directive in [
         "'data-wp-interactive' => 'clients/LikeButton'",
         "'data-wp-bind--disabled' => 'context.busy'",
@@ -1700,6 +1836,44 @@ fn refuses_client_code_outside_the_subset() {
             "first/components/A.tsx:3:",
         );
     }
+    // `useLive`: a query the server and the browser both have (props and literals), and no `seed`.
+    let live = |body: &str| {
+        component(&format!(
+            "import {{ useLive }} from \"first/client\";\nexport function A({{ n }}: {{ n: number }}) {{ {body} }}"
+        ))
+    };
+    rejects(
+        &dir,
+        &[
+            (
+                "first/schema.ts",
+                "import { table, text } from \"first\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+            ),
+            (
+                "first/components/A.tsx",
+                &live(
+                    "const [k, setK] = useState(5); const xs = useLive(\"notes\", { limit: k }); return <b onClick={() => setK(1)}>{xs.loading ? 1 : 0}</b>;",
+                ),
+            ),
+        ],
+        "a `useLive` query reads props and literals only",
+        "first/components/A.tsx:4:",
+    );
+    rejects(
+        &dir,
+        &[
+            (
+                "first/schema.ts",
+                "import { table, text } from \"first\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+            ),
+            (
+                "first/components/A.tsx",
+                &live("const xs = useLive(\"notes\", { limit: n }, { seed: 1 }); return <b>{xs.loading ? 1 : 0}</b>;"),
+            ),
+        ],
+        "`useLive` options are `{ enabled }`",
+        "first/components/A.tsx:4:",
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -1935,6 +2109,208 @@ fn comments_follow_the_kind_policy_on_every_path() {
         "{seen}"
     );
     assert_eq!(seen["memo"], 403, "a kind without comments takes none: {seen}");
+    // A cached page at another address that rendered the note's thread is purged too.
+    assert_eq!(
+        seen["featured cache"], "public, max-age=0, s-maxage=300, must-revalidate",
+        "{seen}"
+    );
+    assert_eq!(seen["featured purged"], serde_json::json!([true, true]), "{seen}");
+    // The page cache: a comment event that changes what visitors see of the thread purges the
+    // item's URL (under both spellings the router answers), its twin and its comments feed; a held
+    // or spam submission purges nothing.
+    let note = serde_json::json!([
+        "/notes/open-note/",
+        "/notes/open-note.md",
+        "/notes/open-note",
+        "/notes/open-note/feed/"
+    ]);
+    let none = serde_json::json!([]);
+    for (event, want) in [
+        ("held", &none),
+        ("spam", &none),
+        ("approved", &note),
+        ("edited", &note),
+        ("unapproved", &note),
+        ("edited while held", &none),
+        ("approved again", &note),
+        ("deleted", &note),
+        ("approved then spammed", &note),
+        ("approved then trashed", &note),
+        ("edited and approved at once", &note),
+        ("approved on insert", &note),
+    ] {
+        assert_eq!(&seen["purges"][event], want, "{event}: {seen}");
+    }
+}
+
+/// `<Search>` and `<SearchResults>` (docs/decisions/2026-11-14-search.md) on WordPress, fetched as a
+/// browser without JavaScript would: the bare form is cacheable; a page that searched is private,
+/// `noindex`, and recorded nowhere; results are what the visitor may read, linked to their kinds'
+/// URLs, paged by `<Pagination>`'s parameter, and grouped per kind site-wide.
+#[test]
+fn search_pages_answer_as_the_visitor() {
+    let project = fixture("search", "serve");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/search_pages.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    use serde_json::json;
+    let shared = "public, max-age=0, s-maxage=300, must-revalidate";
+    let private = "private, no-store, max-age=0";
+    // The bare form: a GET to the action, cacheable and indexable.
+    assert_eq!(
+        seen["form"],
+        json!({ "method": "get", "action": "/find", "cache": shared, "robots": null }),
+        "{seen}"
+    );
+    // No query (or only spaces): no read, no "no results", still shared.
+    for key in ["empty", "blank q"] {
+        assert_eq!(seen[key]["status"], 200, "{key}: {seen}");
+        assert_eq!(seen[key]["cache"], shared, "{key}: {seen}");
+        assert_eq!(seen[key]["count"], json!(null), "{key}: {seen}");
+        assert_eq!(seen[key]["robots meta"], false, "{key}: {seen}");
+    }
+    assert_eq!(seen["blank q"]["input"], json!(["q", "200", ""]), "{seen}");
+    // Site-wide: notes and guides (memos has no URL), two per kind, a link to the rest of notes.
+    let site = &seen["site"];
+    assert_eq!(
+        (
+            &site["status"],
+            &site["cache"],
+            &site["robots header"],
+            &site["robots meta"]
+        ),
+        (&json!(200), &json!(private), &json!("noindex"), &json!(true)),
+        "{seen}"
+    );
+    assert_eq!(site["count"], "4 results", "{seen}");
+    assert_eq!(site["groups"], json!(["Notes", "Guides"]), "{seen}");
+    assert_eq!(
+        site["results"],
+        json!([
+            "Tea ceremony /notes/tea-ceremony/",
+            "Tea gardens /notes/tea-gardens/",
+            "Tea guide /guides/tea-guide/"
+        ]),
+        "{seen}"
+    );
+    assert_eq!(site["more"], json!(["/find?q=tea&kind=notes"]), "{seen}");
+    assert_eq!(site["input"], json!(["q", "200", "tea"]), "{seen}");
+    // One kind, paged by `page`, links keeping `q`; the draft and the hidden-field match never count.
+    assert_eq!(seen["one kind"]["count"], "3 results", "{seen}");
+    assert_eq!(seen["one kind"]["results"].as_array().unwrap().len(), 2, "{seen}");
+    assert_eq!(
+        seen["one kind"]["pages"],
+        json!(["2 q=tea&page=2", "Next q=tea&page=2"]),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["page two"]["results"],
+        json!(["Tea history /notes/tea-history/"]),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["page two"]["pages"],
+        json!(["Previous q=tea", "1 q=tea"]),
+        "{seen}"
+    );
+    assert_eq!(seen["hidden field"]["count"], "No results.", "{seen}");
+    assert_eq!(seen["hidden field"]["results"], json!([]), "{seen}");
+    // `kind=` narrows the site-wide page; a kind it doesn't cover, or no kind at all, finds nothing.
+    assert_eq!(seen["narrowed"]["count"], "3 results", "{seen}");
+    assert_eq!(seen["narrowed"]["groups"], json!([]), "{seen}");
+    assert_eq!(
+        seen["narrowed"]["pages"],
+        json!(["2 q=tea&kind=notes&page=2", "Next q=tea&kind=notes&page=2"]),
+        "{seen}"
+    );
+    for key in ["narrowed to memos", "narrowed to nothing"] {
+        assert_eq!(
+            (&seen[key]["status"], &seen[key]["count"]),
+            (&json!(200), &json!("No results.")),
+            "{key}: {seen}"
+        );
+    }
+    // Longer than the input allows: a plain message, never an error page.
+    assert_eq!(seen["too long"]["status"], 200, "{seen}");
+    assert_eq!(
+        seen["too long"]["too long"], "Searches are at most 200 characters.",
+        "{seen}"
+    );
+    // Every search above, and three more: nothing in the page cache's read index.
+    assert_eq!(seen["recorded"], 0, "{seen}");
+    // A signed-in editor finds the draft and the hidden-field match, in a private response.
+    assert_eq!(seen["editor"]["cache"], private, "{seen}");
+    assert_eq!(seen["editor"]["count"], "4 results", "{seen}");
+    assert_eq!(
+        seen["editor"]["results"][0], "Draft about tea /notes/draft-about-tea/",
+        "{seen}"
+    );
+    assert_eq!(
+        seen["editor hidden"],
+        json!(["Plain note /notes/plain-note/"]),
+        "{seen}"
+    );
+}
+
+/// `<SearchResults kind>` names a kind with a url, literally; `<Search action>` is a literal path on
+/// this site. Anything else is a build error at the prop, with the fix.
+#[test]
+fn refuses_search_it_cannot_link() {
+    let dir = std::env::temp_dir().join(format!("first-search-reject-{}", std::process::id()));
+    let schema = (
+        "first/schema.ts",
+        "import { collection, text } from \"first\";\nexport const memos = collection({ title: text() }, { title: \"title\", access: { read: \"anyone\", create: \"editor\", update: \"editor\", delete: \"editor\" } });\n",
+    );
+    let page = |body: &str| {
+        format!(
+            "import {{ Search, SearchResults }} from \"first/app\";\nexport default function P() {{\n  return {body};\n}}\n"
+        )
+    };
+    rejects(
+        &dir,
+        &[
+            schema,
+            ("first/app/page.tsx", &page("<SearchResults kind=\"memos\" q=\"x\" />")),
+        ],
+        "`memos` has no url for a result to link to",
+        "first/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[
+            schema,
+            ("first/app/page.tsx", &page("<SearchResults kind=\"nope\" q=\"x\" />")),
+        ],
+        "there is no kind `nope` to search",
+        "first/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[
+            schema,
+            (
+                "first/app/page.tsx",
+                &page("<Search action=\"https://elsewhere.example/\" />"),
+            ),
+        ],
+        "`<Search action>` is a path on this site",
+        "first/app/page.tsx:3:",
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// `<Comments for>` on a kind without `comments`, or on something that isn't an item, is a build
@@ -2079,7 +2455,8 @@ fn live_regions_answer_page_reads() {
             "a GET records": true,
             // `<Live>` around `<Comments>`: core's comment query has no counter, so the page renders
             // on every poll and a new approved comment shows on the next one.
-            "comments": { "0": "changed", "1": false, "2": "changed", "3": true, "rendered": 1 },
+            // Its kinds name `wp:comments`, so a notice for a comment's approval asks again at once.
+            "comments": { "0": "changed", "1": false, "2": "changed", "3": true, "rendered": 1, "kinds": ["notes", "wp:comments"] },
             // The visitor key includes the post-password cookie: a protected note shows only with
             // it, and neither visitor's token is "not modified" for the other.
             "password": {
@@ -2088,9 +2465,128 @@ fn live_regions_answer_page_reads() {
                 "without token, with cookie": ["changed", true],
                 "with token, without cookie": ["changed", false],
             },
+            // A seed older than the counters' trust window (a cached page): rendered and compared, unchanged.
+            "aged seed": { "0": "unchanged", "rendered": 1 },
             // Same data, new build: the region renders again.
             "new build": ["changed", true],
         })
+    );
+}
+
+/// `<Live>` regions in Chromium (tests/differential/client/live-regions.mjs): after load exactly
+/// one request to the subscription endpoint, carrying the page's region and answered unchanged; another
+/// visitor's write shows on the next poll with no reload, and a client component's state, its node and
+/// an input's text inside the region survive the update. With a realtime transport live, a comment
+/// approved on the server shows at once on the `wp:comments` notice, not after the safety poll.
+#[test]
+fn live_regions_update_in_the_browser() {
+    assert!(
+        root()
+            .join("tests/differential/client/node_modules/playwright-core")
+            .is_dir(),
+        "run: npm ci --prefix tests/differential/client && npx --prefix tests/differential/client playwright-core install chromium-headless-shell"
+    );
+    let project = fixture("live-regions", "browser");
+    build(&project);
+    let mut server = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/serve_built.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .env("FIRST_WP_SCRIPT_DEBUG", "1")
+        .env(
+            "FIRST_SERVE_MU",
+            root().join("tests/differential/client/live-regions-mu.php"),
+        )
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(server.stdout.take().unwrap()), &mut line).unwrap();
+    let url = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_else(|_| panic!("serve: {line}"))["url"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let out = Command::new("node")
+        .arg(root().join("tests/differential/client/live-regions.mjs"))
+        .arg(&url)
+        .output()
+        .unwrap();
+    let _ = Command::new("kill").arg(server.id().to_string()).output();
+    let _ = server.wait();
+    let _ = std::fs::remove_dir_all(project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
+    // One first request, before any poll, answered unchanged by counter: no render ran for it.
+    assert_eq!(
+        seen["first"],
+        serde_json::json!({ "requests": 1, "regions": ["board"], "answer": ["unchanged"], "beforePoll": true, "rendered": 0 }),
+        "{seen}"
+    );
+    // A cached copy taken before a write: its first request brings the region current, no poll.
+    assert_eq!(
+        (&seen["stale"]["cachedHasAda"], &seen["stale"]["requests"]),
+        (&serde_json::json!(false), &serde_json::json!(1)),
+        "{seen}"
+    );
+    assert_eq!(
+        (&seen["write"], &seen["after"]),
+        (
+            &serde_json::json!(201),
+            &serde_json::json!({ "signatures": ["Grace"], "counter": "clicked 1", "sameCounterNode": "same node", "draft": "half a sentence", "reloaded": 1 })
+        ),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["answers"],
+        serde_json::json!([["unchanged"], ["changed"]]),
+        "an unchanged answer swaps nothing: {seen}"
+    );
+    // A background tab costs nothing until it is shown; then one request carries its region and a
+    // stale region updates.
+    assert_eq!(
+        seen["background"],
+        serde_json::json!({ "whileHidden": 0, "afterShown": 1, "regions": 1 }),
+        "{seen}"
+    );
+    // A prerendered page asks nothing until activated; a page restored from the back/forward cache
+    // (the old HTML, the old seed) asks once on `pageshow` and its stale region updates.
+    assert_eq!(
+        seen["prerendered"],
+        serde_json::json!({ "beforeActivation": 0, "afterActivation": 1, "regions": 1 }),
+        "{seen}"
+    );
+    assert_eq!(seen["restored"], serde_json::json!({ "asked": 1 }), "{seen}");
+    // Signing in through WordPress's login: the region is the signed-in visitor's (a draft only an
+    // editor reads), and its first ask is answered for that visitor.
+    assert_eq!(
+        (&seen["draft"], &seen["signIn"]["out"], &seen["signIn"]["in"]),
+        (
+            &serde_json::json!(204),
+            &serde_json::json!(false),
+            &serde_json::json!(true)
+        ),
+        "{seen}"
+    );
+    let transport = &seen["transport"];
+    assert_eq!(
+        (&transport["before"], &transport["after"], &transport["asked"]),
+        (
+            &serde_json::json!([]),
+            &serde_json::json!(["Approved live"]),
+            &serde_json::json!(1)
+        ),
+        "{seen}"
+    );
+    assert!(
+        transport["ms"].as_u64().unwrap() < 10_000,
+        "on the notice, not the 60 s safety poll: {seen}"
     );
 }
 
@@ -2111,6 +2607,39 @@ fn refuses_live_regions_it_cannot_name() {
         &dir,
         &[("first/app/page.tsx", &page("<Live id=\"Not Ok\"><p>x</p></Live>"))],
         "`<Live id>` is a literal id",
+        "first/app/page.tsx:3:",
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// `<Pagination>` without the numbers it needs, or with the wrong types, is a build error at the prop.
+#[test]
+fn refuses_pagination_without_its_numbers() {
+    let dir = std::env::temp_dir().join(format!("first-pagination-reject-{}", std::process::id()));
+    let page = |body: &str| {
+        format!(
+            "import {{ Pagination }} from \"first/app\";\nexport default function Home() {{\n  return {body};\n}}\n"
+        )
+    };
+    rejects(
+        &dir,
+        &[("first/app/page.tsx", &page("<Pagination page={1} />"))],
+        "`<Pagination>` needs `pages`",
+        "first/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[("first/app/page.tsx", &page("<Pagination page={\"2\"} pages={4} />"))],
+        "`<Pagination page>` takes a number",
+        "first/app/page.tsx:3:",
+    );
+    rejects(
+        &dir,
+        &[(
+            "first/app/page.tsx",
+            &page("<Pagination page={1} pages={4} href=\"/x\" />"),
+        )],
+        "`<Pagination>` has no prop `href`",
         "first/app/page.tsx:3:",
     );
     let _ = std::fs::remove_dir_all(dir);
@@ -2202,6 +2731,13 @@ fn client_components_hydrate_in_the_browser() {
         seen["kept"], true,
         "the server-rendered item is kept, not re-created: {seen}"
     );
+    // `useLive`: the server's answer is in the first render (not loading), and another visitor's
+    // write reaches the page by the typed client's poll, with no reload.
+    assert_eq!(
+        seen["live"],
+        serde_json::json!({ "before": ["Ada"], "loading": "no", "write": 201, "after": ["Ada", "Grace"], "polled": true }),
+        "{seen}"
+    );
     // The typed client is served from the app plugin as a module the browser imports as is.
     assert_eq!(
         seen["client"],
@@ -2270,12 +2806,17 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         .map(|v| v.as_str().unwrap().to_string())
         .collect();
     assert!(index.contains(&"notes * /".to_string()), "{index:?}");
+    // Recorded under the address WordPress links (`/notes/hello/`), though the visit had no slash.
     assert_eq!(
-        index.iter().filter(|r| r.ends_with(" /notes/hello")).count(),
+        index.iter().filter(|r| r.ends_with(" /notes/hello/")).count(),
         1,
         "{index:?}"
     );
-    assert!(!index.iter().any(|r| r.ends_with(" /about")), "{index:?}");
+    assert!(
+        !index.iter().any(|r| r.ends_with(" /about") || r.ends_with(" /about/")),
+        "{index:?}"
+    );
+    // The router answers the bare spelling too, so a host cache can hold both: both are purged.
     assert_eq!(
         seen["count reads"],
         serde_json::json!({ "notes": { "ids": [], "listed": true } }),
@@ -2283,7 +2824,7 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     );
     assert_eq!(
         seen["purged"],
-        serde_json::json!([["/", "/index.md", "/notes/hello", "/notes/hello.md"]])
+        serde_json::json!([["/", "/index.md", "/notes/hello/", "/notes/hello.md", "/notes/hello"]])
     );
     // The runtime's own listener cleared those paths in Batcache (keyed as `http://`, no query),
     // the VIP edge and Jetpack Boost; `/*` reaches Boost's clear-all.
@@ -2297,7 +2838,7 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     // Boost clears a URL recursively, so the home page goes to its home action instead.
     let mut want = vec!["boost home".to_string()];
     for cache in ["batcache", "boost", "vip"] {
-        for path in ["/", "/index.md", "/notes/hello", "/notes/hello.md"] {
+        for path in ["/", "/index.md", "/notes/hello/", "/notes/hello.md", "/notes/hello"] {
             if !(cache == "boost" && path == "/") {
                 want.push(format!("{cache} {path}"));
             }
@@ -2319,6 +2860,93 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     assert_eq!(
         seen["without batcache drop-in"],
         serde_json::json!(["vip /about", "boost /about"])
+    );
+}
+
+/// One committed write, one announcement (docs/runtime-contract.md, "Purges"): a kind with a `url` is
+/// purged from two sources, the post hooks and the page cache's read index, and a write names the
+/// union once on `first_purge_urls` and once to the prebuilt pages, under the address WordPress
+/// serves the page at, whichever spelling a visitor fetched. A row recorded under the old spelling
+/// still purges; a rolled-back write announces nothing; over the limit across both is one `/*`.
+#[test]
+fn one_write_announces_its_purges_once() {
+    let project = fixture("app-purges", "once");
+    build(&project);
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/app_purges.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stdout)));
+    use serde_json::json;
+    // The router answers both spellings itself (no canonical redirect): two host cache keys.
+    assert_eq!(
+        seen["spellings"],
+        json!({ "slash": [200, null], "bare": [200, null], "same html": true }),
+        "{seen}"
+    );
+    // Recorded once, under the address WordPress links: the bare fetch and the slashed one are one row.
+    assert_eq!(
+        seen["index"],
+        json!(["/", "/notes/hello.md", "/notes/hello/"]),
+        "{seen}"
+    );
+    let once = |key: &str| {
+        let calls = seen[key]["calls"].as_array().unwrap_or_else(|| panic!("{key}: {seen}"));
+        assert_eq!(calls.len(), 1, "{key}: one call per write: {seen}");
+        let paths: Vec<&str> = calls[0]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p.as_str().unwrap())
+            .collect();
+        let mut unique = paths.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), paths.len(), "{key}: each path once: {paths:?}");
+        // Sent after the commit, never from inside the write's transaction.
+        assert_eq!(seen[key]["in transaction"], serde_json::json!([false]), "{key}: {seen}");
+        // Prebuilt::stale ran once, with that list: one rebuild of the note's prebuilt page.
+        assert_eq!(seen[key]["rebuilds"], 1, "{key}: {seen}");
+        paths
+    };
+    for key in ["edit", "editor edit", "old row"] {
+        let paths = once(key);
+        // The item under both spellings, its twin once, its comments feed (the post hooks' part).
+        let mut item: Vec<&str> = paths
+            .iter()
+            .copied()
+            .filter(|p| p.starts_with("/notes/hello"))
+            .collect();
+        item.sort();
+        assert_eq!(
+            item,
+            ["/notes/hello", "/notes/hello.md", "/notes/hello/", "/notes/hello/feed/"],
+            "{key}: {paths:?}"
+        );
+        for want in ["/", "/index.md", "/llms.txt"] {
+            assert!(paths.contains(&want), "{key}: {want} in {paths:?}");
+        }
+    }
+    assert_eq!(
+        seen["rolled back"],
+        json!({ "calls": [], "in transaction": [], "rebuilds": 0 }),
+        "{seen}"
+    );
+    assert_eq!(
+        seen["limit"],
+        json!({ "index alone": true, "union over": true, "calls": [["/*"]], "in transaction": [false], "rebuilds": 0 }),
+        "{seen}"
     );
 }
 
@@ -2591,6 +3219,95 @@ fn api_reference_renders_openapi_as_pages() {
             "curl": "curl -g -X GET 'https://h.example/a'\\''b/x/{id}' \\\n  -H 'Accept: application/json'"
         })
     );
+}
+
+/// A hierarchical kind at the site root (`url: "/:path"`), rendered by `first/app/[...path]` beside the
+/// app's own pages, on WordPress over HTTP (tests/php/docs_root.php).
+#[test]
+fn docs_at_the_site_root() {
+    let project = fixture("docs-root", "serve");
+    build(&project);
+    let work = tempfile::tempdir().unwrap();
+    let (sources, compiled) = (work.path().join("sources"), work.path().join("compiled"));
+    for args in [
+        vec![
+            "sources".as_ref(),
+            project.as_os_str(),
+            "--out".as_ref(),
+            sources.as_os_str(),
+        ],
+        vec![
+            "compile-sources".as_ref(),
+            sources.as_os_str(),
+            compiled.as_os_str(),
+            project.as_os_str(),
+        ],
+    ] {
+        let out = first().args(&args).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+    let out = Command::new("php")
+        .args(["-d", "memory_limit=512M"])
+        .arg(root().join("tests/php/docs_root.php"))
+        .arg(project.join("first/dist/wp-content"))
+        .arg(compiled.join("seed"))
+        .env("FIRST_WP_THEMES", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&project);
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let page = |status: u16, h1: &str| serde_json::json!({ "status": status, "h1": h1, "location": null });
+    // Each published item at its path, parent by parent; the app's own pages beside them.
+    assert_eq!(seen["pages"]["/"], page(200, "Home"));
+    assert_eq!(seen["pages"]["/getting-started"], page(200, "Get started"));
+    assert_eq!(seen["pages"]["/reference"], page(200, "Reference"));
+    assert_eq!(seen["pages"]["/reference/config"], page(200, "Config API"));
+    assert_eq!(seen["pages"]["/playground"], page(200, "Playground"));
+    // A draft, a path with the wrong parent, the slug alone and an unknown path: the app's 404.
+    for path in ["/roadmap", "/reference/nothing", "/nothing", "/config"] {
+        assert_eq!(seen["pages"][path], page(404, "Not here"), "{path}");
+    }
+    // Links, the tree and the pager all use the root paths, as does WordPress's sitemap.
+    assert_eq!(seen["permalink"], "/reference/config/");
+    assert_eq!(seen["tree"], serde_json::json!(["/getting-started", "/reference"]));
+    assert_eq!(seen["next"], "/reference");
+    assert_eq!(
+        seen["sitemap"],
+        serde_json::json!(["/getting-started/", "/reference/", "/reference/config/"])
+    );
+    // WordPress's own addresses keep answering, and so do its Pages, posts and their twins: the kind
+    // takes a path only when one of its items is there.
+    assert_eq!(
+        seen["wordpress"],
+        serde_json::json!({ "/wp-login.php": 200, "/feed/": 200, "/llms.txt": 200, "/robots.txt": 200, "/getting-started.md": 200, "/reference/config.md": 200 })
+    );
+    assert_eq!(seen["twin"], true);
+    assert_eq!(
+        seen["wordpress pages"],
+        serde_json::json!({ "/about/": [200, true], "/news/": [200, true], "/about.md": [200, true], "/news.md": [200, true] })
+    );
+    // Nothing a signed-out visitor may not read reaches them: an item the read rule hides, an item
+    // under a draft, a draft, or any of them with its `/` written as %2F, as a page or a twin.
+    for (path, answer) in seen["hidden"].as_object().unwrap() {
+        assert_eq!(answer, &serde_json::json!([404, false]), "{path}");
+    }
+    assert_eq!(seen["hidden"].as_object().unwrap().len(), 10);
+    // An item under a first segment WordPress or First owns (`/auth`) has no URL of its own.
+    assert!(
+        seen["reserved permalink"].as_str().unwrap().contains("?post_type="),
+        "{seen}"
+    );
+    // A WordPress Page at an item's path keeps it; a form posting to a Page isn't refused.
+    assert_eq!(seen["page wins"], serde_json::json!([200, true, false]));
+    assert_eq!(seen["post to a page"], 200);
+    // Another case of the path redirects to the item's own.
+    assert_eq!(seen["case"], serde_json::json!([301, "/reference/config/"]));
 }
 
 /// The project's `public/` folder at the site root (spec §1: "static files, served as-is"), on
@@ -2959,7 +3676,7 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
     assert_eq!(code["plain spans"], 0);
     assert_eq!(code["stylesheet"], 1);
     assert_eq!(code["scripts"], serde_json::json!([]));
-    assert_eq!(seen["code css"], serde_json::json!([200, true, true]));
+    assert_eq!(seen["code css"], serde_json::json!([200, true, true, true]));
     // Written back, each fence keeps its title, marked lines and group.
     assert_eq!(
         seen["code back"],

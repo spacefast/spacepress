@@ -158,6 +158,108 @@ impl Compiler<'_, '_> {
         ))
     }
 
+    /// `<Search>` (the form) and `<SearchResults>` (the visitor's matches): docs/decisions/2026-11-14-search.md.
+    /// `kind` is a literal naming a collection with a URL to link results to; without it the search
+    /// is site-wide. Nothing about what is searchable is a prop: that is each kind's own fields.
+    fn search_component(&mut self, name: &str, named: &[(&str, &Expr)], span: Span) -> Result<Out> {
+        let get = |k: &str| named.iter().find(|(n, _)| *n == k).map(|(_, v)| *v);
+        let optional_string = Ty::union([Ty::Str, Ty::Null, Ty::Undefined]);
+        let value = |this: &mut Self, k: &str, want: &Ty| -> Result<String> {
+            match get(k) {
+                None => Ok("null".into()),
+                Some(v) => {
+                    let out = this.expr(v)?;
+                    let out = this.finish_value(out, v.span)?;
+                    if !assignable(&out.ty, want) {
+                        return err(
+                            v.span,
+                            format!("`<{name} {k}>` takes {}, not {}", want.describe(), out.ty.describe()),
+                        );
+                    }
+                    Ok(out.php)
+                }
+            }
+        };
+        if name == "Search" {
+            let action = match get("action") {
+                None => "null".to_string(),
+                Some(Expr {
+                    kind: ExprKind::Str(path),
+                    span: s,
+                }) => {
+                    if !path.starts_with('/') || path.starts_with("//") {
+                        return err_help(
+                            *s,
+                            "`<Search action>` is a path on this site",
+                            "write `action=\"/search\"`",
+                        );
+                    }
+                    php_str(path)
+                }
+                Some(other) => {
+                    return err_help(
+                        other.span,
+                        "`<Search action>` is a literal path",
+                        "write `action=\"/search\"`",
+                    );
+                }
+            };
+            let label = value(self, "label", &optional_string)?;
+            let placeholder = value(self, "placeholder", &optional_string)?;
+            let class = value(self, "className", &optional_string)?;
+            return Ok(Out::atom(
+                format!("\\First\\Render\\SearchView::form({action}, {label}, {placeholder}, {class})"),
+                Ty::Html,
+            ));
+        }
+        let kind = match get("kind") {
+            None => "null".to_string(),
+            Some(Expr {
+                kind: ExprKind::Str(k),
+                span: s,
+            }) => {
+                let Some((collection, c)) = self.schema.collections.iter().find(|(n, c)| *n == k || &c.key == k) else {
+                    return err_help(
+                        *s,
+                        format!("there is no kind `{k}` to search"),
+                        "name a collection the app exports",
+                    );
+                };
+                if c.url.is_none() {
+                    return err_help(
+                        *s,
+                        format!("`{k}` has no url for a result to link to"),
+                        "give the kind a url, or render the rows yourself with `kind.list({ search })`",
+                    );
+                }
+                php_str(collection)
+            }
+            Some(other) => {
+                return err_help(
+                    other.span,
+                    "`<SearchResults kind>` is a literal kind name",
+                    "write `kind=\"notes\"`, or leave it out to search every kind",
+                );
+            }
+        };
+        if get("q").is_none() {
+            return err_help(
+                span,
+                "`<SearchResults>` needs `q`",
+                "add `export const search = { q: text().optional() }` to the page, then pass `q={search.q}`",
+            );
+        }
+        let q = value(self, "q", &optional_string)?;
+        let number = Ty::union([Ty::Num, Ty::Null, Ty::Undefined]);
+        let page = value(self, "page", &number)?;
+        let per_page = value(self, "perPage", &number)?;
+        let class = value(self, "className", &optional_string)?;
+        Ok(Out::atom(
+            format!("\\First\\Render\\SearchView::results({kind}, {q}, {page}, {per_page}, {class})"),
+            Ty::Html,
+        ))
+    }
+
     /// `notFound()` and `redirect(url, status?)`: they never return.
     pub(super) fn app_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         match name {
@@ -247,6 +349,9 @@ impl Compiler<'_, '_> {
             "Content" | "Html" => &["value"],
             "Comments" => &["for", "className"],
             "Live" => &["id", "children"],
+            "Pagination" => &["page", "pages", "param", "className", "aria-label"],
+            "Search" => &["action", "label", "placeholder", "className"],
+            "SearchResults" => &["kind", "q", "page", "perPage", "className"],
             "Link" => &[
                 "href",
                 "children",
@@ -315,6 +420,43 @@ impl Compiler<'_, '_> {
                     Ty::Html,
                 ))
             }
+            "Pagination" => {
+                let mut arg = |k: &str, want: Ty, default: Option<&str>| -> Result<String> {
+                    let wanted = match &want {
+                        Ty::Num => "a number".to_string(),
+                        Ty::Str => "a string".to_string(),
+                        other => other.describe(),
+                    };
+                    match get(k) {
+                        None => default.map(str::to_string).ok_or_else(|| {
+                            crate::diag::Diag::new(span, format!("`<Pagination>` needs `{k}`"))
+                                .help("write `<Pagination page={search.page} pages={Math.ceil(total / 20)} />`")
+                        }),
+                        Some(v) => {
+                            let out = self.expr(v)?;
+                            let out = self.finish_value(out, v.span)?;
+                            if !assignable(&out.ty, &want) {
+                                return err(
+                                    v.span,
+                                    format!("`<Pagination {k}>` takes {wanted}, not {}", out.ty.describe()),
+                                );
+                            }
+                            Ok(out.php)
+                        }
+                    }
+                };
+                let page = arg("page", Ty::Num, None)?;
+                let pages = arg("pages", Ty::Num, None)?;
+                let param = arg("param", Ty::Str, Some("'page'"))?;
+                let optional = Ty::union([Ty::Str, Ty::Null, Ty::Undefined]);
+                let class = arg("className", optional.clone(), Some("null"))?;
+                let label = arg("aria-label", optional, Some("null"))?;
+                Ok(Out::atom(
+                    format!("\\First\\Render\\Pagination::render({page}, {pages}, {param}, {class}, {label})"),
+                    Ty::Html,
+                ))
+            }
+            "Search" | "SearchResults" => self.search_component(name, &named, span),
             "Content" | "Html" => {
                 let Some(value) = get("value") else {
                     return err_help(

@@ -56,36 +56,41 @@ class ClassDatabase {
   static allowed = true;
   async rows() { return await db.query.n.findMany(); }
 }
-const laneClasses = {
-  classesMutation: run(() => {
-    const c = new ClassDefault("child");
-    const alias = c;
-    const read = c.reader();
-    const result = c.inc(2);
-    return { result, read: read(), same: c === alias, distinct: c !== new ClassDefault("child"), c,
-      keys: Object.keys(c), copy: { ...c }, yes: c instanceof ClassCounter,
-      child: c instanceof ClassDouble, no: {} instanceof ClassCounter,
-      cloned: structuredClone(c) instanceof ClassCounter,
-      constructorType: typeof ClassCounter, instanceType: typeof c,
-      static: ClassDouble.bump(), baseStatic: ClassCounter.total,
-      staticSeed: ClassStaticSeed.first, staticEvaluations: classStaticBuild.count };
-  }),
-  classesWire: run(() => new ClassCounter("wire", 5)),
-  classesEffects: run(() => {
-    const c = new ClassEffects();
-    const value: { maybe: { n: number } | null } = { maybe: { n: 1 } };
-    const read = () => value.maybe;
-    if (value.maybe) c.mutate(value);
-    const constructorValue: { count: 0 | 1 } = { count: 0 };
-    new ClassConstructorEffect(constructorValue);
-    const virtual: { maybe: { n: number } | null } = { maybe: { n: 1 } };
-    if (virtual.maybe) classVirtual(new ClassVirtualChild(), virtual);
-    ClassStaticAlias.mutate();
-    return { count: c.count, readCount: c.read(), maybe: value.maybe, captured: read(), constructorValue: constructorValue.count,
-      virtual: virtual.maybe, staticCount: ClassStaticAlias.count, sharedCount: classShared.count };
-  }),
-  classesDefaultOrder: run(() => new ClassDefaultOrder()),
-  classesBaseArgument: run(() => classAsBase(new ClassDouble("base argument"))),
-};
 
-export default defineConfig({ name: "class-tests", tables: { n: table({  }, { access: { read: () => ClassDatabase.allowed } }) }, actions: laneClasses });
+export const n = table({  }, { access: { read: () => ClassDatabase.allowed } });
+
+export const classesMutation = run(() => {
+  const c = new ClassDefault("child");
+  const alias = c;
+  const read = c.reader();
+  const result = c.inc(2);
+  return { result, read: read(), same: c === alias, distinct: c !== new ClassDefault("child"), c,
+    keys: Object.keys(c), copy: { ...c }, yes: c instanceof ClassCounter,
+    child: c instanceof ClassDouble, no: {} instanceof ClassCounter,
+    cloned: structuredClone(c) instanceof ClassCounter,
+    constructorType: typeof ClassCounter, instanceType: typeof c,
+    static: ClassDouble.bump(), baseStatic: ClassCounter.total,
+    staticSeed: ClassStaticSeed.first, staticEvaluations: classStaticBuild.count };
+});
+
+export const classesWire = run(() => new ClassCounter("wire", 5));
+
+export const classesEffects = run(() => {
+  const c = new ClassEffects();
+  const value: { maybe: { n: number } | null } = { maybe: { n: 1 } };
+  const read = () => value.maybe;
+  if (value.maybe) c.mutate(value);
+  const constructorValue: { count: 0 | 1 } = { count: 0 };
+  new ClassConstructorEffect(constructorValue);
+  const virtual: { maybe: { n: number } | null } = { maybe: { n: 1 } };
+  if (virtual.maybe) classVirtual(new ClassVirtualChild(), virtual);
+  ClassStaticAlias.mutate();
+  return { count: c.count, readCount: c.read(), maybe: value.maybe, captured: read(), constructorValue: constructorValue.count,
+    virtual: virtual.maybe, staticCount: ClassStaticAlias.count, sharedCount: classShared.count };
+});
+
+export const classesDefaultOrder = run(() => new ClassDefaultOrder());
+
+export const classesBaseArgument = run(() => classAsBase(new ClassDouble("base argument")));
+
+export default defineConfig({ name: "class-tests" });

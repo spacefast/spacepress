@@ -14,7 +14,7 @@ Node 22.18+, npm, and TypeScript 5.9
 `target/release/first`.
 
 `first dev` uses pinned WordPress Studio CLI 2.2.0 through npm and needs no
-Docker or host PHP. It supplies WordPress 7.1.4, PHP 8.4 and SQLite Database
+Docker or host PHP. It supplies WordPress 7.2-beta5, PHP 8.4 and SQLite Database
 Integration 3.1.3. The host PHP requirements above are for the PHP suites.
 The reference WordPress/MariaDB suites and the separate
 showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
@@ -138,6 +138,22 @@ rebuild that must match the committed bundle, and a check that the prefixed
 PHP dependencies regenerate byte-for-byte (see
 [`docs/dependencies.md`](docs/dependencies.md)).
 
+### Kept sources: a PR that changes what the authoring surface accepts
+
+Two suites hold source that hosts keep and compile again later. A PR that changes what
+`first.config.ts` and `first/` accept runs both:
+
+- `cargo test --test zero_bundle`: source bundles the 0.3.0 compiler captured (before the rename to
+  First). They must keep compiling as 0.3.0 served them, with no new migration. Only
+  `src/zero_bundle.rs` reads their old forms.
+- `cargo test --test first_sources`: First source bundles captured at chosen commits
+  ([`tests/fixtures/first-sources/`](tests/fixtures/first-sources/README.md)). Each compiles with the
+  current compiler, plans exactly its committed plan against its own baseline, loses no data, and
+  stores what it stored when captured. Until the first release is tagged, a PR that deliberately
+  changes an authoring form recaptures them (`tests/fixtures/first-sources/capture.sh head`) and adds a
+  row to the README's table of breaks. From the first release on, a release's captures are never
+  recaptured: a release may not refuse source an earlier release accepted.
+
 Dev uses `first build --preserve-data <snapshot.json>` to check the candidate
 against its last applied schema before writing migrations. It also checks the
 accepted migration history. To apply field removals, changed types or constraints,
@@ -186,7 +202,9 @@ owner against an existing harness receipt (`FIRST_WP_HARNESS` selects another
 receipt). `FIRST_WP_PROJECT` and `FIRST_WP_PORT` isolate the Docker stack.
 `FIRST_WP_SKIP_BROWSER=1` is an explicit opt-out for PHP-only iteration; missing
 browser dependencies otherwise fail the lane. Screenshots and failure traces
-are written below the system temporary directory, or `FIRST_ADMIN_BROWSER_OUTPUT`.
+go to a fresh `first-admin-browser/run-*` folder (`subdirectory-*` for the
+subdirectory lane) below the system temporary directory, printed at the start
+of the run, or to `FIRST_ADMIN_BROWSER_OUTPUT`.
 The committed admin bundle is rebuilt on Linux; CI checks it byte-for-byte.
 
 ## Releases

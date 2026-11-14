@@ -194,6 +194,10 @@ test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSO
   await first.posts.promote(1, { at: null });
   await first.posts.promote(1);
   await first.posts.discard(1);
+  await first.posts.update(1, { title: "Yo", _rev: "r1", takeover: true });
+  await first.posts.delete(1, { _rev: "r2", takeover: true });
+  await first.posts.promote(1, { _rev: "r3" });
+  await first.posts.discard(1, { _rev: "r4" });
   await first.posts.previewLink(1, { ttl: 600 });
   await first.globals.settings.get();
   await first.globals.settings.update({ tagline: "x" });
@@ -202,12 +206,12 @@ test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSO
   await first.auth.me();
   await first.schema();
   assert.deepEqual(
-    seen.map((s) => `${s.method} ${s.path} ${s.body.toString()}`),
+    seen.map((s) => `${s.method} ${s.path}${s.query.size ? `?${s.query}` : ""} ${s.body.toString()}`),
     [
       'POST /__first/api/v1/posts {"title":"Hi"}',
       'PATCH /__first/api/v1/posts/1 {"title":"Yo"}',
       "DELETE /__first/api/v1/posts/1 ",
-      "GET /__first/api/v1/posts/1/revisions ",
+      "GET /__first/api/v1/posts/1/revisions?limit=100 ",
       "GET /__first/api/v1/posts/1/revisions/4 ",
       "POST /__first/api/v1/posts/1/revisions/4/restore ",
       'PATCH /__first/api/v1/posts/1/staged {"title":"Staged"}',
@@ -217,6 +221,10 @@ test("writes, revisions, globals, actions and auth hit the §4.8 routes with JSO
       'POST /__first/api/v1/posts/1/staged/promote {"at":null}',
       "POST /__first/api/v1/posts/1/staged/promote {}",
       "DELETE /__first/api/v1/posts/1/staged ",
+      'PATCH /__first/api/v1/posts/1 {"title":"Yo","_rev":"r1","takeover":true}',
+      "DELETE /__first/api/v1/posts/1?_rev=r2&takeover=1 ",
+      'POST /__first/api/v1/posts/1/staged/promote {"_rev":"r3"}',
+      "DELETE /__first/api/v1/posts/1/staged?_rev=r4 ",
       'POST /__first/api/v1/posts/1/staged/preview {"ttl":600}',
       "GET /__first/api/v1/settings ",
       'PATCH /__first/api/v1/settings {"tagline":"x"}',
@@ -1925,4 +1933,85 @@ test("useQuery keeps data through a network failure and drops it when the server
   handlers.onError!(new mod.FirstError({ type: "about:blank", title: "Unauthorized", status: 401, code: "unauthorized", detail: "signed out" }));
   assert.deepEqual([now().data, now().error.status], [undefined, 401], "a refusal drops the previous visitor's rows");
   assert.equal(changed, 4);
+});
+
+// pageRead: First's own `<Live>` regions (docs/decisions/2026-11-14-live-regions.md).
+
+test("pageRead: a page read is keyed apart from every kind read, and asks with { op: page, args: { url, region } }", async () => {
+  const server = liveServer((q) => (q.op === "page" ? { html: `<p>${q.args.region}</p>`, kinds: ["posts"] } : [q.kind]));
+  const client = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const page = mod.pageRead(client, "/", "notes", ["posts"]);
+  const list = client.posts.list();
+  assert.notEqual(page.key, list.key);
+  assert.notEqual(mod.pageRead(client, "/", "notes", []).key, mod.pageRead(client, "/", "other", []).key, "each region is its own read");
+  const got: unknown[] = [];
+  const stop = page.subscribe((d: unknown) => got.push(d));
+  await tick();
+  assert.deepEqual(server.requests[0], [{ op: "page", args: { url: "/", region: "notes" } }]);
+  assert.deepEqual(got, [{ html: "<p>notes</p>", kinds: ["posts"] }]);
+  stop();
+  assert.throws(() => mod.pageRead({}, "/", "notes", []), TypeError, "only a client from createClient()");
+});
+
+test("pageRead: its deps are what the caller passes, so a notice or a write naming one of them asks again", async () => {
+  let n = 0;
+  const server = liveServer((q) => (q.op === "page" ? { html: `<p>${n}</p>`, kinds: ["posts", "wp:comments"] } : { id: 1 }));
+  const transport = fakeTransport();
+  const client = mod.createClient({ url, realtime: { transport, pollMs: false, livePollMs: false } });
+  const got: any[] = [];
+  const stop = mod.pageRead(client, "/", "notes", ["posts", "wp:comments"]).subscribe((d: any) => got.push(d.html));
+  transport.set("live");
+  await tick();
+  const before = server.requests.length;
+  n = 1;
+  transport.push(notice("wp:comments", null));
+  await tick();
+  assert.equal(server.requests.length, before + 1, "a notice for a dep asks at once");
+  assert.equal(got.at(-1), "<p>1</p>");
+  transport.push(notice("shoppingList"));
+  await tick();
+  assert.equal(server.requests.length, before + 1, "a kind it doesn't depend on does not");
+  n = 2;
+  await client.posts.update(1, { title: "x" });
+  await tick();
+  assert.equal(server.requests.length, before + 2, "a write through the same client to a dep asks at once");
+  assert.equal(got.at(-1), "<p>2</p>");
+  stop();
+});
+
+test("pageRead: a seeded region sends its token with the first ask; resubscribing with new deps keeps one read", async () => {
+  const server = liveServer(() => ({ html: "<p>same</p>", kinds: ["posts"] }));
+  const client = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const seed = { html: "<p>same</p>", kinds: ["posts"] };
+  const got: unknown[] = [];
+  let stop = mod.pageRead(client, "/", "notes", ["posts"]).subscribe((d: unknown) => got.push(d), undefined, { token: JSON.stringify(seed), data: seed });
+  await tick();
+  assert.equal(server.requests[0][0].token, JSON.stringify(seed), "the seed's token goes with the first ask");
+  assert.equal(got.length, 1, "the seed is delivered once; the unchanged answer calls nothing");
+  // The region's page read other kinds this time: the browser module subscribes again with them.
+  stop();
+  stop = mod.pageRead(client, "/", "notes", ["posts", "authors"]).subscribe(() => {});
+  await tick();
+  assert.equal(server.requests.at(-1).length, 1, "one read per region");
+  stop();
+});
+
+test("pageRead: an answer `pending` (over the server's per-request cap of page reads) is asked again at once", async () => {
+  let calls = 0;
+  const state = { requests: [] as any[][] };
+  reply = (s) => {
+    const queries = JSON.parse(s.body.toString()).queries as any[];
+    state.requests.push(queries);
+    calls++;
+    const results = queries.map((q, i) => (calls === 1 && i >= 4 ? { pending: true } : { changed: true, token: `t${q.args.region}`, data: { html: q.args.region, kinds: [] } }));
+    return ok({ results, poll: { minMs: 2000, maxMs: 30000 } })();
+  };
+  const client = mod.createClient({ url, realtime: { transport: false, pollMs: false } });
+  const got = new Map<string, string>();
+  const stops = ["a", "b", "c", "d", "e"].map((r) => mod.pageRead(client, "/", r, []).subscribe((d: any) => got.set(r, d.html)));
+  await tick();
+  await tick();
+  assert.deepEqual(state.requests.map((q) => q.length), [5, 1], "the pending read is asked again at once, alone");
+  assert.deepEqual([...got.keys()].sort(), ["a", "b", "c", "d", "e"], "every region is filled");
+  for (const stop of stops) stop();
 });

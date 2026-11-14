@@ -121,9 +121,11 @@ screen's fields and actions are already in those shapes, so:
   `wp_update_entity_fields()` and `wp_unregister_entity_*()`; an action it adds
   without an `ability` is skipped by this screen, since it would need its own
   script module.
-- On WordPress 7.1 (First's floor) the declaration is the registry. The screen
-  is the same; `GET /wp-json/first-admin/v1/screens/<id>` says which one served
-  it in `registry`.
+- On a WordPress without them the declaration is the registry. First's floor,
+  7.2-beta5, has both, so the runtime never boots where this applies; the
+  fallback stays until First Admin moves onto core's registries. The screen is
+  the same; `GET /wp-json/first-admin/v1/screens/<id>` says which one served it
+  in `registry`.
 
 Actions keep `ability` and `input` next to core's properties (`id`, `label`,
 `isPrimary`, `supportsBulk`, `context`); core's action schema allows extra
@@ -131,7 +133,7 @@ properties. The Ability stays the thing that runs and checks permission.
 
 View layout (`view.layout`, `form.layout`) uses the same DataViews/DataForm
 shapes as core's view config (`wp_get_entity_view_config()`, the
-`get_entity_view_config_{kind}_{name}` filter, `GET /wp/v2/view-config`, in
+`get_entity_view_config_{kind}_{name}` filter, `GET /wp/v2/view-config`, since
 7.1). That endpoint serves `postType`, `taxonomy` and `root` entities; a
 screen's layout stays in the declaration until core takes arbitrary entities.
 

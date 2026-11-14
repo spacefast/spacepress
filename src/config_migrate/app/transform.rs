@@ -412,6 +412,7 @@ fn input_names(f: &Func, aliases: &BTreeMap<String, String>) -> ClientHandler {
         rest: f.params.last().is_some_and(|p| p.rest) && f.params.len() > 1,
         pagination: paginated.map(|i| names[i].clone()),
         inputs: names,
+        action: None,
     }
 }
 
@@ -424,6 +425,8 @@ pub(super) struct ClientHandler {
     pub rest: bool,
     /// The input `usePaginatedQuery`'s `{ numItems, cursor }` goes to.
     pub pagination: Option<String>,
+    /// The v2 action name when it isn't the 0.8 name (a handler named like a table).
+    pub action: Option<String>,
 }
 
 pub(super) fn app(
@@ -718,7 +721,7 @@ pub(super) fn app(
             v
         });
         match input.and_then(|v| translate::config(v, Source::Zero, entries)) {
-            Ok(code) => Some(format!("{code}\nexport {{ collections, tables }};\n")),
+            Ok(code) => Some(code),
             Err(e) => {
                 errors.push(e);
                 None
@@ -733,6 +736,8 @@ pub(super) fn app(
             .get("auth")
             .is_some_and(|auth| !matches!(literal(auth), Ok(Value::Bool(false))));
     let mut handlers = Vec::new();
+    // Each handler's 0.8 name, its group ("query", "mutation" or "action"), pointer and span.
+    let mut handler_names: Vec<(String, &'static str, String, Span)> = Vec::new();
     let mut client_handlers = Vec::new();
     let mut names = BTreeSet::new();
     // Helpers a handler may pass the context to: function declarations and `const f = (...) =>`.
@@ -796,10 +801,11 @@ pub(super) fn app(
                         name: name.clone(),
                         ..input_names(f, &aliases)
                     });
-                    Ok(converted)
+                    Ok((converted, expected))
                 })();
                 match result {
-                    Ok((h, generated, ctx_calls)) => {
+                    Ok(((h, generated, ctx_calls), kind)) => {
+                        handler_names.push((name.clone(), kind, at.clone(), e.span));
                         calls.extend(ctx_calls);
                         if generated.iter().any(|g| g.contains("__z08page_")) {
                             entries.push(entry(&at, "mapped", "paginate keeps 0.8's index order, numItems clamp and { page, isDone, continueCursor } result; cursors are new opaque strings, so clients restart from the first page after cutover"));
@@ -1135,9 +1141,6 @@ pub(super) fn app(
         prelude = prelude.replacen(&original, &replaced, 1);
     }
     config.push_str(&prelude);
-    if content_config.is_some() {
-        config.push_str("import * as __z08Content from \"./__z08-content\";\n");
-    }
     if let Some(posts) = native_posts.as_ref() {
         if tables.contains_key("posts") {
             errors.push(fail("/collections/posts", "posts collides with a schema table"));
@@ -1164,42 +1167,79 @@ pub(super) fn app(
     for code in &endpoints {
         config.push_str(code);
     }
-    config.push_str(&format!(
-        "export default __z08Config({{ name: {}, tables: {{ {} {} }},",
-        q(&name),
-        if content_config.is_some() {
-            "...__z08Content.tables,"
-        } else {
-            ""
-        },
-        tables
-            .keys()
-            .map(|n| format!("{}: __z08_{n}", q(n)))
-            .collect::<Vec<_>>()
-            .join(", ")
-    ));
-    if let Some(content) = &content_config {
-        config.push_str(if native_posts.is_some() {
-            "collections: {...__z08Content.collections, posts: __z08Posts},"
-        } else {
-            "collections: __z08Content.collections,"
-        });
-        if content.contains("  relations,\n") {
-            config.push_str("relations: __z08Content.relations,");
-        }
-    }
-    if content_config.is_none() && native_posts.is_some() {
-        config.push_str("collections: {posts: __z08Posts},");
+    // Every kind and action registers by its export name (docs/spec/spec.md §1.1). Generated
+    // bindings stay prefixed and are exported by specifier, so a helper in the copied 0.8 source
+    // named like a table can't collide with them. Content collections export themselves from
+    // server/__z08-content.ts.
+    let mut kinds: Vec<(String, String)> = tables.keys().map(|n| (n.clone(), format!("__z08_{n}"))).collect();
+    if native_posts.is_some() {
+        kinds.push(("posts".into(), "__z08Posts".into()));
     }
     if has_users {
-        config.push_str("users: {members: __z08Members},");
+        kinds.push(("members".into(), "__z08Members".into()));
         entries.push(entry(
             "/auth",
             "mapped",
             "Project WordPress users as members; migrate Spacefast accounts and sessions before activation.",
         ));
     }
-    config.push_str(&format!("actions: {{\n{}\n}} }});\n", handlers.join(",\n")));
+    let content_kinds: Vec<String> = root
+        .get("collections")
+        .and_then(|c| obj(c, "/collections").ok())
+        .map(|c| c.into_keys().filter(|k| k != "posts").collect())
+        .unwrap_or_default();
+    let mut taken: BTreeSet<String> = kinds.iter().map(|(n, _)| n.clone()).chain(content_kinds).collect();
+    let mut exports: Vec<String> = kinds.iter().map(|(name, local)| format!("{local} as {name}")).collect();
+    // 0.8 kept handlers and tables in separate namespaces; v2 has one. A handler named like a kind
+    // keeps the kind's name for the kind (its storage and ledger follow it) and is exported as
+    // `<name>Query`, `<name>Mutation` or `<name>Action`, which the converted client calls.
+    let handler_names_taken: BTreeSet<String> = handler_names.iter().map(|(n, ..)| n.clone()).collect();
+    for ((name, kind, at, span), code) in handler_names.iter().zip(&handlers) {
+        if name == "default" {
+            errors.push(
+                fail(
+                    at,
+                    "handler `default` has no v2 action name: an export can't be named default; rename the handler",
+                )
+                .spanned(*span, Path::new("")),
+            );
+            continue;
+        }
+        let export = if taken.contains(name) {
+            let suffix = match *kind {
+                "query" => "Query",
+                "mutation" => "Mutation",
+                _ => "Action",
+            };
+            let renamed = format!("{name}{suffix}");
+            if taken.contains(&renamed) || handler_names_taken.contains(&renamed) {
+                errors.push(
+                    fail(
+                        at,
+                        format!("handler `{name}` has no v2 action name: it names a table, and `{renamed}` is taken too; rename the handler"),
+                    )
+                    .spanned(*span, Path::new("")),
+                );
+                continue;
+            }
+            entries.push(entry(
+                at,
+                "review",
+                format!("`{name}` also names a table, and v2 names are one namespace: the action is `{renamed}`, served at /__first/api/v1/actions/{renamed}; the converted client calls it there, and other callers must change"),
+            ));
+            if let Some(h) = client_handlers.iter_mut().find(|h| h.name == *name) {
+                h.action = Some(renamed.clone());
+            }
+            renamed
+        } else {
+            name.clone()
+        };
+        taken.insert(export.clone());
+        config.push_str(&format!("const __z08Action_{name} = {code};\n"));
+        exports.push(format!("__z08Action_{name} as {export}"));
+    }
+    config.push_str(&format!("export {{ {} }};\n", exports.join(", ")));
+    config.push_str(&format!("export default __z08Config({{ name: {} }});\n", q(&name)));
     entries.push(if tables.values().any(|t| t.physical.is_none()) {
         entry("", "review", "Fresh tables: the candidate creates new, empty v2 tables and copies no 0.8 rows. Bind --space instead to adopt a published Space's tables. Sessions, client routes and deployment activation need separate validation. No deployment is performed.")
     } else {
@@ -1809,8 +1849,7 @@ fn handler(
         r.helpers.push(LOG.into());
     }
     let code = format!(
-        "{}: __z08Action({{ input: {{ {} }}, access: \"anyone\", agents: false, async handler(__z08input, __z08ctx) {{\n{gate}{subject}{bindings}{body}\n}} }})",
-        q(name),
+        "__z08Action({{ input: {{ {} }}, access: \"anyone\", agents: false, async handler(__z08input, __z08ctx) {{\n{gate}{subject}{bindings}{body}\n}} }})",
         input.join(", ")
     );
     Ok((code, r.helpers, r.calls))

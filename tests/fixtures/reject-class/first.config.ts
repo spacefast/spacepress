@@ -1,3 +1,5 @@
 import { defineConfig, table } from "first";
 abstract class Foo {}
-export default defineConfig({ tables: { a: table({  }) } });
+export const a = table({  });
+
+export default defineConfig({});

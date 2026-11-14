@@ -164,7 +164,7 @@ final class RoutePages
      * would change. Empty when the Pages match this build. A Page apply() would leave alone (another
      * Page holds the address) is no step.
      *
-     * @return list<array{step: string, route?: string, post?: int}>
+     * @return list<array{kind: string, id: string, state: string}>
      */
     public static function plan(): array
     {
@@ -186,12 +186,12 @@ final class RoutePages
             $wanted = ['post_status' => $route['status'], 'post_title' => $route['title'], 'post_content' => '',
                 'post_name' => $route['pattern'] === '/' ? 'first-home' : basename($route['pattern']), 'post_parent' => 0];
             if (!$post instanceof \WP_Post) {
-                $steps[] = ['step' => 'page.create', 'route' => (string) $id];
+                $steps[] = Runtime::step('page.create', 'route:' . $id);
             } elseif ($post->post_status === 'trash') {
-                $steps[] = ['step' => 'page.restore', 'route' => (string) $id, 'post' => $post->ID];
+                $steps[] = Runtime::step('page.restore', 'route:' . $id, ['post' => $post->ID]);
             } elseif (!isset($mapped[$id]) || get_post_meta($post->ID, self::OWNER, true) !== '1'
                 || array_diff_assoc(array_map('strval', $wanted), array_map('strval', array_intersect_key(get_object_vars($post), $wanted))) !== []) {
-                $steps[] = ['step' => 'page.update', 'route' => (string) $id, 'post' => $post->ID];
+                $steps[] = Runtime::step('page.update', 'route:' . $id, ['post' => $post->ID]);
             }
             if ($route['pattern'] === '/' && $route['status'] === 'publish') {
                 $root = $post?->ID ?? 0;
@@ -199,11 +199,11 @@ final class RoutePages
         }
         foreach ($mapped as $id => $post) {
             if (!isset($self->routes[$id]) && get_post($post) instanceof \WP_Post && get_post_status($post) !== 'trash') {
-                $steps[] = ['step' => 'page.trash', 'route' => (string) $id, 'post' => $post];
+                $steps[] = Runtime::step('page.trash', 'route:' . $id, ['post' => $post]);
             }
         }
         if ($root !== null && ($root === 0 || get_option('show_on_front') !== 'page' || (int) get_option('page_on_front') !== $root)) {
-            $steps[] = ['step' => 'front-page'];
+            $steps[] = Runtime::step('front-page', 'front-page');
         }
 
         return $steps;

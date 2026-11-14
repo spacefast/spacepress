@@ -57,6 +57,25 @@ final class ZeroNames
         }
     }
 
+    /**
+     * Where this site stands, read without writing, as {@see \First\Wp\ZeroNames::state()} says it:
+     * `done`, `pending` (zero-identity ran here and nothing moved yet), `started` (an interrupted run:
+     * some of its tables already under First's name beside its schema-version marker), or null where
+     * zero-identity never ran.
+     */
+    public static function state(\wpdb $wp): ?string
+    {
+        if ($wp->get_var($wp->prepare("SELECT 1 FROM `{$wp->options}` WHERE option_name = %s", self::DONE)) !== null) {
+            return 'done';
+        }
+        if ($wp->get_var($wp->prepare("SELECT 1 FROM `{$wp->options}` WHERE option_name = %s", 'zero_identity_schema_version')) === null) {
+            return null;
+        }
+        $moved = $wp->get_var($wp->prepare('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE %s LIMIT 1', $wp->esc_like($wp->prefix . 'first_identity_') . '%')) !== null;
+
+        return $moved ? 'started' : 'pending';
+    }
+
     /** @return array{tables: int} */
     private static function tables(\wpdb $wp): array
     {

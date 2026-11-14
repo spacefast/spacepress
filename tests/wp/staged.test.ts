@@ -4,7 +4,7 @@
 // Concurrent stagers and promoters run against one item at once; MariaDB row locks decide.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { api, core, harness, http, ok, run, first, sql, type Role } from "./env.ts";
+import { api, core, harness, http, ok, run, first, sql, wp, type Role } from "./env.ts";
 
 const site = harness.url;
 let mine = 0;
@@ -29,6 +29,7 @@ async function surfaces(as?: Role) {
   return {
     api: (await http("GET", `${api}/bulletins/${mine}`, opts)).json,
     list: (await http("GET", `${api}/bulletins?search=${run}`, opts)).json,
+    // MySQL's FULLTEXT path: staged text must never be found.
     search: (await http("GET", `${api}/bulletins?search=stagedword${run}`, opts)).json,
     markdown: await text(`${api}/bulletins/${mine}?format=md`),
     core: [item.title, item.content?.raw ?? item.content?.rendered, item.slug, item.modified_gmt, item._links?.["version-history"], item._links?.["predecessor-version"]],
@@ -127,7 +128,7 @@ test("a promote is an update: hooks, the new URL, search and the twin follow it"
   assert.match(JSON.stringify(logOf(mine).at(-1)), new RegExp(`Live ${run} -> Staged ${run}`));
   assert.equal((await fetch(`${site}/bulletins/staged-${run}/`)).status, 200);
   assert.match(await (await fetch(`${site}/bulletins/staged-${run}.md`)).text(), new RegExp(`stagedword${run}`));
-  assert.equal((await ok("GET", `/bulletins?search=stagedword${run}`)).length, 1);
+  assert.equal((await ok("GET", `/bulletins?search=stagedword${run}`)).length, 1, "the promoted text is found");
   const history = await ok("GET", `/bulletins/${mine}/revisions`, { as: "editor" });
   assert.ok(history.length >= 2, "the promoted version stays in the history");
 });
@@ -175,4 +176,40 @@ test("abilities: one per step, as each caller", async () => {
   const promoted = await runAbility("bulletins-staged-promote", { id: mine }, "editor");
   assert.deepEqual([promoted.status, promoted.json.summary], [200, `agent ${run}`]);
   assert.equal((await http("GET", `${abilities}/abilities/blog/fixed-notes-stage`, { as: "admin" })).status, 404, "staged: false has none");
+});
+
+test("_rev: two writers with the same read, at once: one wins, the other is told what changed", async () => {
+  const id = first("insert", "bulletins", JSON.stringify({ title: `Race ${run}`, slug: `race-${run}`, summary: "start", ownerId: authorId }))[0].id;
+  const read = await ok("GET", `/bulletins/${id}`, { as: "editor" });
+  assert.equal(typeof read._rev, "string");
+  const writes = await Promise.all(["author", "editor", "admin", "editor", "author"].map((as, i) =>
+    http("PATCH", `${api}/bulletins/${id}`, { as: as as Role, body: { summary: `writer ${i}`, _rev: read._rev } })));
+  const won = writes.filter((w) => w.status === 200);
+  assert.equal(won.length, 1, JSON.stringify(writes.map((w) => [w.status, w.json.code])));
+  for (const lost of writes.filter((w) => w.status !== 200)) {
+    assert.equal(lost.status, 409, JSON.stringify(lost.json));
+    assert.ok(["stale_revision", "conflict"].includes(lost.json.code), JSON.stringify(lost.json));
+    if (lost.json.code === "stale_revision") assert.deepEqual(lost.json.changed.fields, ["summary"]);
+  }
+  const after = await ok("GET", `/bulletins/${id}`, { as: "editor" });
+  assert.equal(after.summary, won[0].json.data.summary);
+  assert.equal(after._rev, won[0].json.data._rev, "the winner's answer carries the row's next _rev");
+});
+
+test("edit locks: the block editor's lock refuses other writers on the API, core REST and abilities; takeover takes it", async () => {
+  const id = first("insert", "bulletins", JSON.stringify({ title: `Locked ${run}`, slug: `locked-${run}`, ownerId: authorId }))[0].id;
+  // The admin has it open in the editor: core's own lock, set by core's own function.
+  wp("eval", `require_once ABSPATH . 'wp-admin/includes/post.php'; wp_set_current_user(${harness.users.admin.id}); wp_set_post_lock(${id});`);
+  const refused = await http("PATCH", `${api}/bulletins/${id}`, { as: "editor", body: { summary: "blocked" } });
+  assert.deepEqual([refused.status, refused.json.code, refused.json.holder?.id], [409, "locked", harness.users.admin.id]);
+  const core409 = await http("POST", `${core}/first_bulletins/${id}`, { as: "editor", body: { title: "blocked by core" } });
+  assert.deepEqual([core409.status, core409.json.code], [409, "first_locked"]);
+  const ability = await http("POST", `${site}/wp-json/wp-abilities/v1/abilities/blog/bulletins-update/run`, { as: "editor", body: { input: { id, patch: { summary: "blocked" } } } });
+  assert.equal(ability.status, 409, JSON.stringify(ability.json));
+  assert.equal((await http("PATCH", `${api}/bulletins/${id}`, { as: "subscriber", body: { summary: "x" } })).status, 404, "a reader learns of no lock");
+  const taken = await http("PATCH", `${api}/bulletins/${id}`, { as: "editor", body: { summary: "taken over", takeover: true } });
+  assert.deepEqual([taken.status, taken.json.data.summary], [200, "taken over"]);
+  const holder = sql(`SELECT meta_value FROM wp_postmeta WHERE post_id = ${id} AND meta_key = '_edit_lock'`)[0].meta_value;
+  assert.equal(holder.split(":")[1], String(harness.users.editor.id), "the lock is the taker's now, as the editor's Take over leaves it");
+  assert.equal((await http("PATCH", `${api}/bulletins/${id}`, { as: "admin", body: { summary: "back" } })).json.code, "locked");
 });

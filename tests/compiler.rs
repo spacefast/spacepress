@@ -38,6 +38,25 @@ fn rejects(fixture: &str, message: &str, at: &str) {
 }
 
 #[test]
+fn wordpress_secrets_are_refused_on_every_env_path() {
+    rejects(
+        "reject-process-env-host",
+        "`DB_PASSWORD` is a host setting",
+        "first.config.ts:3:",
+    );
+    rejects(
+        "reject-env-host-secret",
+        "`nonce_salt` is a host setting",
+        "first.config.ts:3:",
+    );
+    rejects(
+        "reject-hmac-host-secret",
+        "`AUTH_KEY` is a host setting",
+        "first.config.ts:4:",
+    );
+}
+
+#[test]
 fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     rejects(
         "reject-class",
@@ -112,6 +131,108 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
     );
 }
 
+/// The `defineConfig` registry keys are refused at the key, each with the export that replaces it
+/// (ruling 36); a key that differs from its binding names the key, so API and stored names stay.
+#[test]
+fn removed_registry_keys_name_the_export_that_replaces_them() {
+    for (key, message, help) in [
+        (
+            "collections",
+            "`collections` is gone: a kind registers by its export",
+            "`export const notes = collection({ ... })`",
+        ),
+        (
+            "tables",
+            "`tables` is gone: a table registers by its export",
+            "export it as `productVariants`, its name here: `export { variants as productVariants }`",
+        ),
+        (
+            "users",
+            "`users` is gone: the users kind registers by its export",
+            "`export const members = userProjection({ ... })`",
+        ),
+        (
+            "globals",
+            "`globals` is gone: a global registers by its export",
+            "`export const settings = global({ ... })`",
+        ),
+        (
+            "files",
+            "`files` is gone: a file bucket registers by its export",
+            "`file(decks)` takes the export",
+        ),
+        (
+            "actions",
+            "`actions` is gone: an action registers by its export",
+            "the client call is `first.like()`",
+        ),
+        (
+            "jobs",
+            "`jobs` is gone: a job registers by its export",
+            "`export const digest = job(...)`",
+        ),
+        (
+            "hooks",
+            "`hooks` is gone: hooks are declared on the kind",
+            "`export const notes = collection({ ... }).on({",
+        ),
+    ] {
+        let fixture = format!("reject-config-{key}");
+        rejects(&fixture, message, "first.config.ts:3:31");
+        rejects(&fixture, help, "first.config.ts:3:31");
+    }
+    // A kind built in app source without an export would have no name (ruling 37, F1222).
+    rejects(
+        "reject-unexported-kind",
+        "`hidden` is a table but isn't exported, so it has no name",
+        "first/schema.ts:4:16",
+    );
+    let out = first()
+        .args(["check", "--json"])
+        .arg(root().join("tests/fixtures/reject-unexported-kind"))
+        .output()
+        .unwrap();
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["diagnostics"][0]["code"], "F1222", "{report}");
+}
+
+/// `first.config.ts`'s own exports register like those of modules under first/ (spec §1.1), and
+/// `export { a as b }` registers `b`: the API name and the stored name are the export name.
+#[test]
+fn config_file_exports_register_under_their_export_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("first.config.ts"),
+        r#"import { action, defineConfig, table, text } from "first";
+const variants = table({ name: text() }, { access: { read: "anyone" } });
+export { variants as productVariants };
+export const ping = action({ input: {}, access: "anyone", handler: () => 1 });
+export default defineConfig({ name: "exported" });
+"#,
+    )
+    .unwrap();
+    let out = first().arg("build").arg(tmp.path()).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let snapshot: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(tmp.path().join("first/_generated/migrations/snapshot.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        snapshot["tables"].as_object().unwrap().keys().collect::<Vec<_>>(),
+        ["product_variants"]
+    );
+    let schema = Command::new("php")
+        .args(["-r", "echo json_encode(require $argv[1]);"])
+        .arg(
+            tmp.path()
+                .join("first/dist/wp-content/plugins/first-app-exported/first/app/schema.php"),
+        )
+        .output()
+        .unwrap();
+    let schema: serde_json::Value = serde_json::from_slice(&schema.stdout).unwrap();
+    assert_eq!(schema["collections"]["product_variants"]["key"], "productVariants");
+    assert!(schema["actions"]["ping"].is_object(), "{}", schema["actions"]);
+}
+
 /// The field forms the authoring surface replaced are refused where they're written, naming the
 /// replacement (docs/spec/spec.md §2.5, §8).
 #[test]
@@ -120,48 +241,48 @@ fn replaced_field_forms_name_their_replacement() {
         (
             "reject-not-null",
             "`.notNull()` is gone: fields are required by default",
-            "first.config.ts:2:37",
+            "first.config.ts:2:44",
         ),
         (
             "reject-id-builder",
             "`id()` is gone: every kind already has an integer `id`",
-            "first.config.ts:2:27",
+            "first.config.ts:2:34",
         ),
         (
             "reject-authored-id",
             "`id` is built in: every kind has an integer `id`",
-            "first.config.ts:2:27",
+            "first.config.ts:2:34",
         ),
-        ("reject-real", "`real()` is now `number()`", "first.config.ts:2:30"),
+        ("reject-real", "`real()` is now `number()`", "first.config.ts:2:37"),
         (
             "reject-type-annotation",
             "`json().$type<T>()` is now `json<T>()`",
-            "first.config.ts:2:36",
+            "first.config.ts:2:43",
         ),
         (
             "reject-function-default",
             "`.default()` takes a literal value, not a function",
-            "first.config.ts:2:46",
+            "first.config.ts:2:53",
         ),
         (
             "reject-select-options",
             "select() takes its options as an array",
-            "first.config.ts:2:29",
+            "first.config.ts:2:36",
         ),
         (
             "reject-text-enum",
             "`text({ enum })` is now `select([...])`",
-            "first.config.ts:2:42",
+            "first.config.ts:2:49",
         ),
         (
             "reject-group-wrapper",
             "group() takes its fields directly, without the `{ fields }` wrapper",
-            "first.config.ts:2:28",
+            "first.config.ts:2:35",
         ),
         (
             "reject-many-text",
             "`.many()` isn't valid on a text column",
-            "first.config.ts:2:37",
+            "first.config.ts:2:44",
         ),
         (
             "reject-define-relations",
@@ -186,12 +307,12 @@ fn replaced_field_forms_name_their_replacement() {
         (
             "reject-relations-key",
             "`relations` is gone: a reference is a field",
-            "first.config.ts:3:66",
+            "first.config.ts:3:42",
         ),
         (
             "reject-references",
             "`.references()` is gone: a reference is a `ref()` field",
-            "first.config.ts:3:40",
+            "first.config.ts:3:47",
         ),
         (
             "reject-ref-set-null",
@@ -236,7 +357,127 @@ fn replaced_field_forms_name_their_replacement() {
         (
             "reject-ref-many-input",
             "`ref()` isn't allowed on an action input (`ids`)",
-            "first.config.ts:3:88",
+            "first.config.ts:3:43",
+        ),
+    ] {
+        rejects(fixture, message, at);
+    }
+}
+
+/// `taxonomy()` and `terms()` refusals (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34
+/// and the deferred list): each a build error at its source.
+#[test]
+fn rejects_what_taxonomies_and_terms_do_not_build_yet() {
+    for (fixture, message, at) in [
+        (
+            "reject-taxonomy-hooks",
+            "hooks on the taxonomy `subjects` aren't built yet",
+            "first.config.ts:2:25",
+        ),
+        (
+            "reject-taxonomy-long",
+            "\"a_very_long_taxonomy_name_indeed\" is too long for a taxonomy: WordPress limits taxonomy names to 32 characters and First prefixes `first_`",
+            "first/schema.ts:2:44",
+        ),
+        (
+            "reject-taxonomy-on-clash",
+            "`topics`'s `on` gives `posts` a terms field named `topics`, which is already a field of `posts`",
+            "first/schema.ts:3:42",
+        ),
+        (
+            "reject-taxonomy-on-table",
+            "`on` lists the table `notes`; terms attach to collection() kinds only",
+            "first/schema.ts:3:42",
+        ),
+        (
+            "reject-taxonomy-option",
+            "`abilities` on a taxonomy isn't built yet",
+            "first/schema.ts:2:49",
+        ),
+        (
+            "reject-taxonomy-ref",
+            "`topic` refers to a taxonomy with `ref()`, which isn't built yet",
+            "first/schema.ts:3:57",
+        ),
+        (
+            "reject-taxonomy-reserved",
+            "`author` is built into every term; delete this field",
+            "first/schema.ts:2:42",
+        ),
+        (
+            "reject-taxonomy-richtext",
+            "richText() fields on a taxonomy aren't built yet (`body`)",
+            "first/schema.ts:2:40",
+        ),
+        (
+            "reject-taxonomy-sync",
+            "a taxonomy can't sync: `sync` is for collections and tables",
+            "first/schema.ts:2:44",
+        ),
+        (
+            "reject-taxonomy-translations",
+            "taxonomy translations aren't built yet; add `translations: false`",
+            "first/schema.ts:2:23",
+        ),
+        (
+            "reject-taxonomy-url",
+            "`:name` in \"/topics/:name\" isn't a term placeholder",
+            "first/schema.ts:2:43",
+        ),
+        (
+            "reject-taxonomy-was",
+            "`was` on a taxonomy isn't built yet: renaming one has to move its terms",
+            "first/schema.ts:2:43",
+        ),
+        (
+            "reject-terms-global",
+            "`terms()` isn't allowed on a global field (`featured`)",
+            "first.config.ts:4:44",
+        ),
+        (
+            "reject-terms-input",
+            "`terms()` isn't allowed on an action input (`ids`)",
+            "first.config.ts:3:43",
+        ),
+        (
+            "reject-terms-many",
+            "`.many()` isn't valid on a `terms()` field",
+            "first/schema.ts:3:72",
+        ),
+        (
+            "reject-terms-min",
+            "`.min()` isn't valid on a `terms()` field",
+            "first/schema.ts:3:72",
+        ),
+        (
+            "reject-terms-not-taxonomy",
+            "terms() takes a taxonomy() export, not a collection() kind",
+            "first/schema.ts:3:56",
+        ),
+        (
+            "reject-terms-reverse-clash",
+            "`topics` gives \"topics\" a reverse list named `posts`, which \"topics\" already has",
+            "first/schema.ts:3:58",
+        ),
+        (
+            "reject-terms-sub",
+            "`terms()` isn't allowed inside a group, repeater, or blocks field (`topics`)",
+            "first/schema.ts:3:72",
+        ),
+        (
+            "reject-terms-sync",
+            "`topics` holds terms, which sync can't carry yet",
+            "first/schema.ts:3:58",
+        ),
+        (
+            "reject-terms-table",
+            "`terms()` isn't available on a table() kind (`topics`)",
+            "first/schema.ts:3:52",
+        ),
+        (
+            "reject-terms-twice",
+            "`b` and `a` are both `terms()` of the same taxonomy",
+            "first/schema.ts:3:71",
         ),
     ] {
         rejects(fixture, message, at);
@@ -422,7 +663,7 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-hook-typo",
         "there's no hook called `beforeCreat`",
-        "first.config.ts:3:",
+        "first.config.ts:2:",
     );
     // Ruling 18: `.on()` belongs to the declaration; `afterPublish` to collections.
     rejects(
@@ -439,54 +680,54 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-modifier-kind",
         "`.max()` isn't valid on a boolean column",
-        "first.config.ts:2:35",
+        "first.config.ts:2:42",
     );
     // §1.3: sub-fields hold plain values.
     rejects(
         "reject-subfield-unique",
         "`.unique()` isn't allowed inside a group, repeater, or blocks field (`code`)",
-        "first.config.ts:2:46",
+        "first.config.ts:2:53",
     );
     // §1.4: what an editor (post-backed) collection needs, and the names WordPress can't hold.
     rejects(
         "reject-editor-no-title",
         "editor collection \"notes\" has no title",
-        "first.config.ts:2:15",
+        "first.config.ts:2:22",
     );
     // Storage is chosen only by the builder: a collection can't ask for a table.
     rejects(
         "reject-collection-editor-false",
         "collection() has no option `editor`",
-        "first.config.ts:2:60",
+        "first.config.ts:2:67",
     );
     rejects(
         "reject-collection-editor-false",
         "help: storage follows the builder: collection() is always WordPress posts; use table() for a SQL table",
-        "first.config.ts:2:60",
+        "first.config.ts:2:67",
     );
     // On table() the same option gets its own builder's name and fix.
     rejects(
         "reject-table-editor-false",
         "table() has no option `editor`",
-        "first.config.ts:2:55",
+        "first.config.ts:2:62",
     );
     rejects(
         "reject-table-editor-false",
         "help: storage follows the builder: table() is always a SQL table; remove the option",
-        "first.config.ts:2:55",
+        "first.config.ts:2:62",
     );
-    rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:15");
-    rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:15");
+    rejects("reject-reserved-name", "\"media\" is reserved", "first.config.ts:2:22");
+    rejects("reject-reserved-files", "\"files\" is reserved", "first.config.ts:2:22");
     // The client declares `Query<T>`: a global of that name would declare a second `Query` type.
     rejects(
         "reject-global-client-query",
         "\"query\" is reserved by generated client types",
-        "first.config.ts:2:15",
+        "first.config.ts:2:22",
     );
     rejects(
         "reject-reserved-search",
         "\"search\" is reserved",
-        "first.config.ts:2:16",
+        "first.config.ts:2:23",
     );
     rejects(
         "reject-post-type-length",
@@ -496,18 +737,18 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-unique-length",
         "unique text columns are limited to 191 characters on MySQL (`code`); add `.max(191)`",
-        "first.config.ts:2:32",
+        "first.config.ts:2:39",
     );
     rejects(
         "reject-drafts-reserved",
         "`status` is reserved: drafts add these",
-        "first.config.ts:2:51",
+        "first.config.ts:2:58",
     );
     // §1.5
     rejects(
         "reject-global-required",
         "a global field is required unless it has a default (`title`)",
-        "first.config.ts:3:30",
+        "first.config.ts:3:37",
     );
     // Literal defaults follow the strict ISO timestamp codec, inside structured columns too.
     rejects(
@@ -515,135 +756,139 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         "`when` defaults to a `at` value that isn't a real ISO 8601 date or timestamp",
         "first.config.ts:4:",
     );
-    // Each case owns a separate registry invariant, exercised through the compiler.
+    // Each case owns a separate schema invariant, exercised through the compiler: the kinds it
+    // declares (exported, as kinds register) and the defineConfig options beside them.
     let tmp = tempfile::tempdir().unwrap();
-    for (body, message) in [
+    for (declarations, options, message) in [
         (
-            "collections: { notes: table({ title: text() }) }",
-            "table() belongs in `tables`",
-        ),
-        (
-            "collections: { notes: collection({ title: text() }) }, tables: { notes: table({}) }",
-            "share the physical name `notes`",
-        ),
-        (
-            "collections: { stockItems: collection({ title: text() }) }, tables: { stock_items: table({}) }",
+            "export const stockItems = collection({ title: text() }); export const stock_items = table({});",
+            "",
             "share the physical name `stock_items`",
         ),
         (
-            "tables: { first: shared, second: shared }",
-            "a definition can only be registered once",
-        ),
-        (
-            "tables: { notes: table({}, { storageName: 'bad-name' }) }",
+            "export const notes = table({}, { storageName: 'bad-name' });",
+            "",
             "`storageName` must be an identifier",
         ),
         (
-            "tables: { notes: table({}, { storageName: 'media' }) }",
+            "export const notes = table({}, { storageName: 'media' });",
+            "",
             "\"media\" is reserved",
         ),
         (
-            "tables: { media: table({}, { storageName: 'assets' }) }",
+            "export const media = table({}, { storageName: 'assets' });",
+            "",
             "\"media\" is reserved",
         ),
         (
-            "collections: { services: collection({ title: text() }) }",
+            "export const services = collection({ title: text() });",
+            "",
             "\"services\" is reserved",
         ),
         (
-            "tables: { notes: table({}, { storageName: 'existing' }), other: table({}, { storageName: 'existing' }) }",
+            "export const notes = table({}, { storageName: 'existing' }); export const other = table({}, { storageName: 'existing' });",
+            "",
             "share the physical name `existing`",
         ),
         (
-            "collections: { notes: collection({ title: text() }) }, tables: { notes: table({}, { storageName: 'other' }) }",
-            "duplicate logical registration `notes`",
-        ),
-        (
-            "globals: { status: global({ label: text().default('Ready').optional() }) }",
+            "export const status = global({ label: text().default('Ready').optional() });",
+            "",
             "\"status\" is reserved by generated client types",
         ),
         (
-            "globals: { user: global({ label: text().default('Ready').optional() }) }",
+            "export const user = global({ label: text().default('Ready').optional() });",
+            "",
             "\"user\" is reserved by generated client types",
         ),
         (
-            "globals: { record: global({ label: text().default('Ready').optional() }) }",
+            "export const record = global({ label: text().default('Ready').optional() });",
+            "",
             "\"record\" is reserved by generated client types",
         ),
         (
-            "globals: { client: global({ label: text().default('Ready').optional() }) }",
+            "export const client = global({ label: text().default('Ready').optional() });",
+            "",
             "\"client\" is reserved by generated client types",
         ),
         (
-            "globals: { extract: global({ label: text().default('Ready').optional() }) }",
+            "export const extract = global({ label: text().default('Ready').optional() });",
+            "",
             "\"extract\" is reserved by generated client types",
         ),
-        ("tables: []", "`tables` must be an object"),
         (
-            "tables: { notes: table({}), notes: table({}) }",
-            "duplicate registration `tables.notes`",
-        ),
-        ("tables: {}, tables: {}", "duplicate `tables` registry"),
-        (
+            "",
             "uploads: { backend: 's3', bucket: 'uploads', credentials: { accessKeyId: 'literal', secretAccessKey: 'literal' } }",
             "must be env(",
         ),
         (
+            "",
             "uploads: { backend: 's3', bucket: 'uploads' }",
             "need runtime credentials",
         ),
-        ("uploads: { backend: 'local', bucket: 'uploads' }", "has no option"),
+        ("", "uploads: { backend: 'local', bucket: 'uploads' }", "has no option"),
         (
-            "collections: { notes: collection({ title: text() }, { revisions: false }) }",
+            "export const notes = collection({ title: text() }, { revisions: false });",
+            "",
             "collections always have native revisions",
         ),
         (
-            "tables: { notes: table({ title: text().optional() }, { comments: true }) }",
+            "export const notes = table({ title: text().optional() }, { comments: true });",
+            "",
             "only collection() kinds take comments",
         ),
         (
-            "tables: { notes: table({ title: text().optional() }, { staged: true }) }",
+            "export const notes = table({ title: text().optional() }, { staged: true });",
+            "",
             "only collection() kinds have staged versions",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { staged: 1 }) }",
+            "export const notes = collection({ title: text() }, { staged: 1 });",
+            "",
             "`staged` must be true or false",
         ),
         (
-            "collections: { notes: collection({ title: text() }), notesStaged: collection({ title: text() }) }",
+            "export const notes = collection({ title: text() }); export const notesStaged = collection({ title: text() });",
+            "",
             "ability kebab collision: notes-staged-get",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { comments: 'yes' }) }",
+            "export const notes = collection({ title: text() }, { comments: 'yes' });",
+            "",
             "`comments` is true, false or an options object",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { comments: { guest: true } }) }",
+            "export const notes = collection({ title: text() }, { comments: { guest: true } });",
+            "",
             "`comments` has no option `guest`",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { comments: { moderation: 'sometimes' } }) }",
+            "export const notes = collection({ title: text() }, { comments: { moderation: 'sometimes' } });",
+            "",
             "`comments.moderation` can't be \"sometimes\"",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { comments: { threaded: 11 } }) }",
+            "export const notes = collection({ title: text() }, { comments: { threaded: 11 } });",
+            "",
             "`comments.threaded` can't be",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { comments: { closeAfterDays: 0 } }) }",
+            "export const notes = collection({ title: text() }, { comments: { closeAfterDays: 0 } });",
+            "",
             "`comments.closeAfterDays` can't be",
         ),
         (
-            "collections: { notes: collection({ title: text() }, { comments: { types: ['review'] } }) }",
+            "export const notes = collection({ title: text() }, { comments: { types: ['review'] } });",
+            "",
             "comment types aren't built yet",
         ),
         (
-            "tables: { notes: table({ title: text().optional() }, { comments: { guests: true } }) }",
+            "export const notes = table({ title: text().optional() }, { comments: { guests: true } });",
+            "",
             "only collection() kinds take comments",
         ),
     ] {
         std::fs::write(tmp.path().join("first.config.ts"), format!(
-            "import {{ collection, table, global, text, defineConfig }} from 'first'; const shared = table({{}}); export default defineConfig({{ {body} }});"
+            "import {{ collection, table, global, text, defineConfig }} from 'first'; {declarations} export default defineConfig({{ {options} }});"
         )).unwrap();
         let checked = first().arg("check").arg(tmp.path()).output().unwrap();
         assert_eq!(checked.status.code(), Some(1));
@@ -661,45 +906,45 @@ fn rejects_hooks_that_would_misbehave_in_php() {
     rejects(
         "reject-filter-column",
         "\"a\" has no column or relation `nmae`",
-        "first.config.ts:5:",
+        "first.config.ts:2:",
     );
     rejects(
         "reject-ambiguous-plus",
         "`+` between number and unknown | null is ambiguous",
-        "first.config.ts:3:",
+        "first.config.ts:2:",
     );
     rejects(
         "reject-missing-await",
         "this database call never runs",
-        "first.config.ts:5:",
+        "first.config.ts:2:",
     );
     rejects(
         "reject-module-state",
         "hooks can't change `count`",
-        "first.config.ts:4:",
+        "first.config.ts:3:",
     );
     rejects(
         "reject-maybe-null",
         "can't read `length`: this might be null",
-        "first.config.ts:3:",
+        "first.config.ts:2:",
     );
     rejects(
         "reject-missing-insert-field",
         "missing required field `x`",
-        "first.config.ts:5:",
+        "first.config.ts:2:",
     );
     // §3.5: literal filters use the runtime's operator rules and its exact message.
     rejects(
         "reject-list-operator",
         "`in` isn't supported on list columns; use `has`",
-        "first.config.ts:5:",
+        "first.config.ts:2:",
     );
     // A structured field of a collection is spread over post meta and can't be compared. The fix
     // names table(), where the same filter compiles; storage is never an option of collection().
     rejects(
         "reject-collection-group-filter",
         "use isNull/isNotNull, or keep this data in a table()",
-        "first.config.ts:5:95",
+        "first.config.ts:2:188",
     );
     // db.globals is typed from the global's fields, like db.query from a collection's.
     rejects(
@@ -1108,7 +1353,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     // Neither camel-case names nor canonical names behind aliases may be silently replaced.
     let conflict = tmp.join("name-conflict");
     std::fs::create_dir_all(&conflict).unwrap();
-    std::fs::write(conflict.join("first.config.ts"), "import { table, defineConfig } from 'first'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
+    std::fs::write(conflict.join("first.config.ts"), "import { table, defineConfig } from 'first'; const __stockItems = table({}); export { __stockItems as stockItems }; export default defineConfig({});").unwrap();
     let built = first().arg("build").arg(&conflict).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     let ledger = conflict.join("first/_generated/migrations/snapshot.json");
@@ -1135,7 +1380,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
                 .count(),
             2
         );
-        std::fs::write(conflict.join("first.config.ts"), format!("import {{ table, defineConfig }} from 'first'; export default defineConfig({{ tables: {{ stockItems: table({{}}, {{ storageName: \"{stored_name}\" }}) }} }});")).unwrap();
+        std::fs::write(conflict.join("first.config.ts"), format!("import {{ table, defineConfig }} from 'first'; const __stockItems = table({{}}, {{ storageName: \"{stored_name}\" }}); export {{ __stockItems as stockItems }}; export default defineConfig({{}});")).unwrap();
         let preserved = first().arg("build").arg(&conflict).output().unwrap();
         assert!(
             preserved.status.success(),
@@ -1150,7 +1395,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
                 .count(),
             2
         );
-        std::fs::write(conflict.join("first.config.ts"), "import { table, defineConfig } from 'first'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
+        std::fs::write(conflict.join("first.config.ts"), "import { table, defineConfig } from 'first'; const __stockItems = table({}); export { __stockItems as stockItems }; export default defineConfig({});").unwrap();
     }
     // Physical-only siblings do not establish who owned the retained resource.
     let mut siblings = canonical.clone();
@@ -2062,9 +2307,10 @@ fn rejects_phase2_static_contracts() {
         ("reject-files-cover", "fit: cover requires height"),
         ("reject-files-size-name", "invalid media size name"),
         ("reject-files-size-count", "media supports at most 12 sizes"),
+        // An unexported bucket has no name, so it is refused where it is built (ruling 37).
         (
             "reject-files-bucket",
-            "file() refers to a files() bucket that isn't exported",
+            "`decks` is a file bucket but isn't exported, so it has no name",
         ),
         (
             "reject-files-global",
@@ -2323,7 +2569,7 @@ fn rejects_phase2_static_contracts() {
         ),
     ] {
         std::fs::write(tmp.join("first.config.ts"), format!(
-            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}).optional() }}); export default defineConfig({{ tables: {{ notes }} }});"
+            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -2373,7 +2619,7 @@ fn rejects_phase2_static_contracts() {
         ),
     ] {
         std::fs::write(tmp.join("first.config.ts"), format!(
-            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export default defineConfig({{ tables: {{ notes }} }});"
+            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -2397,7 +2643,7 @@ fn rejects_phase2_static_contracts() {
         "const objects = [{ write: writers[0]! }]; objects.forEach(({ write }) => write())",
     ] {
         std::fs::write(tmp.join("first.config.ts"), format!(
-            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export default defineConfig({{ tables: {{ notes }} }});"
+            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -2635,7 +2881,7 @@ fn kind_urls_and_the_frontend_mode_reach_the_schema() {
         r#"import { collection, defineConfig, text } from "first";
 export const notes = collection({ title: text() }, { url: "/notes/:year/:slug" });
 export const plain = collection({ title: text() });
-export default defineConfig({ name: "kindurls", collections: { notes, plain }, frontend: "https://www.example.com/" });
+export { notes }; export { plain }; export default defineConfig({ name: "kindurls", frontend: "https://www.example.com/" });
 "#,
     );
     assert_eq!(built["collections"]["notes"]["url"], "/notes/:year/:slug");
@@ -2647,7 +2893,7 @@ export default defineConfig({ name: "kindurls", collections: { notes, plain }, f
 export const posts = collection({ title: text() }, { comments: true });
 export const reviews = collection({ title: text() }, { comments: { guests: true, moderation: "all", threaded: false, closeAfterDays: 30 } });
 export const pages = collection({ title: text() });
-export default defineConfig({ name: "kindurls", collections: { posts, reviews, pages } });
+export { posts }; export { reviews }; export { pages }; export default defineConfig({ name: "kindurls" });
 "#,
     );
     let defaults = serde_json::json!({ "guests": false, "moderation": "first-time", "threaded": 3, "closeAfterDays": null, "types": [] });
@@ -2754,7 +3000,7 @@ export default defineConfig({ name: "kindurls", sealed: true, admin: true, local
         r#"import { collection, defineConfig, text } from "first";
 export const notes = collection({ title: text() });
 export const fixed = collection({ title: text() }, { staged: false });
-export default defineConfig({ name: "kindurls", collections: { notes, fixed } });
+export { notes }; export { fixed }; export default defineConfig({ name: "kindurls" });
 "#,
     );
     assert!(built["collections"]["notes"].get("staged").is_none(), "{built}");
@@ -3191,7 +3437,7 @@ fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
         tmp.path().join("first.config.ts"),
         r#"import { action, defineConfig, text } from "first";
 import { run } from "./first/run.mjs";
-export default defineConfig({ name: "p", actions: { a: action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }) } });
+const __a = action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }); export { __a as a }; export default defineConfig({ name: "p" });
 "#,
     )
     .unwrap();
@@ -3327,6 +3573,120 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
         dropped.trim_end(),
         "-- first-check {\"check\":\"drop\",\"name\":\"notes_related\",\"table\":\"{prefix}first_notes_related\",\"adopted\":false}\nDROP TABLE `{prefix}first_notes_related`;"
     );
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
+/// `taxonomy()` and `terms()` (docs/decisions/2026-11-11-authoring-surface.md, rulings 25-34): schema.php
+/// carries the taxonomy under `taxonomies` with its WordPress names, the item field and a relation each
+/// way through core's term relationships; db.d.ts types them; nothing enters the migration snapshot.
+#[test]
+fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways() {
+    let tmp = std::env::temp_dir().join(format!("first-taxonomy-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(tmp.join("first")).unwrap();
+    std::fs::write(
+        tmp.join("first.config.ts"),
+        "import { defineConfig } from \"first\";\nexport default defineConfig({ name: \"taxo\" });\n",
+    )
+    .unwrap();
+    let build = |schema: &str| {
+        std::fs::write(tmp.join("first/schema.ts"), schema).unwrap();
+        let out = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    };
+    let plain = "import { collection, text } from \"first\";\nexport const posts = collection({ title: text() });\n";
+    build(plain);
+    let snapshot = || std::fs::read_to_string(tmp.join("first/_generated/migrations/snapshot.json")).unwrap();
+    let before = snapshot();
+    build(
+        "import { collection, taxonomy, terms, text } from \"first\";\n\
+         export const tags = taxonomy({}, { url: \"/tags/:slug\" });\n\
+         export const posts = collection({ title: text(), labels: terms(tags).reverse(\"labelled\") });\n\
+         export const topics = taxonomy({ color: text().optional() }, { hierarchical: true, on: [posts], access: { create: \"author\" } });\n",
+    );
+    // No SQL: terms, term meta and links are core's.
+    assert_eq!(snapshot(), before);
+    let migrations: Vec<_> = std::fs::read_dir(tmp.join("first/_generated/migrations"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .filter(|f| f.ends_with(".sql"))
+        .collect();
+    assert_eq!(migrations, ["0001_init.sql"]);
+
+    let out = Command::new("php")
+        .args(["-r", "echo json_encode(require $argv[1]);"])
+        .arg(tmp.join("first/dist/wp-content/plugins/first-app-taxo/first/app/schema.php"))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let php: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(php["collections"].get("topics").is_none());
+    let topics = &php["taxonomies"]["topics"];
+    assert_eq!(
+        topics["wp"],
+        serde_json::json!({ "taxonomy": "first_topics", "groupKey": "group_first_topics", "metaPrefix": "first_", "fieldKeyPrefix": "field_first_topics_", "on": ["posts"] })
+    );
+    assert_eq!(topics["hierarchical"], true);
+    assert_eq!(
+        topics["columns"].as_object().unwrap().keys().collect::<Vec<_>>(),
+        ["id", "name", "slug", "description", "parent", "count", "url", "color"]
+    );
+    assert_eq!(topics["columns"]["count"]["readOnly"], true);
+    assert_eq!(topics["access"]["create"], serde_json::json!({ "role": "author" }));
+    assert!(php["taxonomies"]["tags"]["columns"].get("parent").is_none());
+    assert_eq!(php["taxonomies"]["tags"]["url"], "/tags/:slug");
+    let posts = &php["collections"]["posts"];
+    assert_eq!(posts["columns"]["topics"]["type"], "refList");
+    assert_eq!(posts["columns"]["topics"]["references"]["join"], "term:topics");
+    assert_eq!(posts["columns"]["labels"]["references"]["join"], "term:tags");
+    assert_eq!(
+        posts["relations"]["topics"],
+        serde_json::json!({ "kind": "many", "collection": "topics", "from": "id", "to": "id", "optional": false, "through": { "table": "term:topics", "from": "owner_id", "to": "target_id" } })
+    );
+    assert_eq!(
+        topics["relations"]["posts"]["through"],
+        serde_json::json!({ "table": "term:topics", "from": "target_id", "to": "owner_id" })
+    );
+    assert_eq!(
+        php["taxonomies"]["tags"]["relations"]["labelled"]["collection"],
+        "posts"
+    );
+
+    let dts = std::fs::read_to_string(tmp.join("first/_generated/db.d.ts")).unwrap();
+    assert!(dts.contains("'topics': Collection<'topics', {"), "{dts}");
+    assert!(dts.contains("}, false, 'taxonomy'>;"), "{dts}");
+    assert!(
+        dts.contains("'topics': ColumnBuilder<'refList', number[], true, true, false, false>;"),
+        "{dts}"
+    );
+    assert!(
+        dts.contains("'posts': Many<'posts'>;") && dts.contains("'topics': Many<'topics'>;"),
+        "{dts}"
+    );
+
+    // Removing the taxonomy again changes no stored schema either.
+    build(plain);
+    assert_eq!(snapshot(), before);
+    let _ = std::fs::remove_dir_all(tmp);
+}
+
+/// tests/php/taxonomy_test.php runs on tests/fixtures/taxonomy/schema.php and functions.php: they are
+/// what `first build` emits for that fixture's sources.
+#[test]
+fn the_taxonomy_suite_runs_on_what_the_compiler_emits() {
+    let tmp = std::env::temp_dir().join(format!("first-taxonomy-fixture-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    copy(&root().join("tests/fixtures/taxonomy"), &tmp);
+    let out = first().args(["build", "--quiet"]).arg(&tmp).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let built = tmp.join("first/dist/wp-content/plugins/first-app-taxo/first/app");
+    for file in ["schema.php", "functions.php"] {
+        assert_eq!(
+            std::fs::read_to_string(built.join(file)).unwrap(),
+            std::fs::read_to_string(root().join("tests/fixtures/taxonomy").join(file)).unwrap(),
+            "tests/fixtures/taxonomy/{file} drifted: copy {file} from a build of the fixture"
+        );
+    }
     let _ = std::fs::remove_dir_all(tmp);
 }
 
@@ -3923,7 +4283,7 @@ fn the_openapi_document_describes_what_the_api_answers() {
         );
         let promoted = check("POST", &format!("{path}/staged/promote"), Some("editor"), &[], b"", 200);
         assert_eq!(promoted["data"][field], value);
-        check(
+        let gone = check(
             "PATCH",
             &format!("{path}/staged"),
             Some("editor"),
@@ -3931,8 +4291,63 @@ fn the_openapi_document_describes_what_the_api_answers() {
             &json(json!({ field: "Gone" })),
             200,
         );
-        check("DELETE", &format!("{path}/staged"), Some("editor"), &[], b"", 200);
+        let token = gone["data"]["_rev"].as_str().unwrap().to_string();
+        check(
+            "PATCH",
+            &format!("{path}/staged"),
+            Some("editor"),
+            &[],
+            &json(json!({ field: "Gone again" })),
+            200,
+        );
+        // A token from before the last stage: `409 stale_revision`, with what changed.
+        let stale = check(
+            "DELETE",
+            &format!("{path}/staged?_rev={token}"),
+            Some("editor"),
+            &[],
+            b"",
+            409,
+        );
+        assert_eq!(
+            (stale["code"].as_str(), stale["changed"]["staged"].as_bool()),
+            (Some("stale_revision"), Some(true))
+        );
+        let current = check("GET", &format!("{path}/staged"), Some("editor"), &[], b"", 200)["data"]["_rev"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        check(
+            "DELETE",
+            &format!("{path}/staged?_rev={current}"),
+            Some("editor"),
+            &[],
+            b"",
+            200,
+        );
         check("DELETE", &format!("{path}/staged"), Some("editor"), &[], b"", 404);
+        // The row's own `_rev`: the update that names it writes, a second one with the same is refused.
+        let read = check("GET", &path, Some("editor"), &[], b"", 200)["data"]["_rev"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        check(
+            "PATCH",
+            &path,
+            Some("editor"),
+            &[],
+            &json(json!({ field: value, "_rev": read })),
+            200,
+        );
+        let refused = check(
+            "PATCH",
+            &path,
+            Some("editor"),
+            &[],
+            &json(json!({ field: value, "_rev": read })),
+            409,
+        );
+        assert_eq!(refused["code"], "stale_revision");
     }
     check(
         "GET",

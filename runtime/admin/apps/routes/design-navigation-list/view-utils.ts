@@ -24,6 +24,7 @@ export async function ensureView( search?: {
 	return loadView( {
 		kind: 'postType',
 		name: NAVIGATION_POST_TYPE,
+		slug: 'all',
 		defaultView,
 		queryParams: search,
 	} );

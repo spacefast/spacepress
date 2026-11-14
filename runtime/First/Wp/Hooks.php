@@ -48,7 +48,7 @@ final class Hooks
     {
         $class = is_object($value) ? $value::class : null;
         return match (true) {
-            isset($views[$class]) => new JsObject(array_combine($views[$class], array_map(
+            $class !== null && isset($views[$class]) => new JsObject(array_combine($views[$class], array_map(
                 static fn (string $f) => self::toJs($f === 'roles' ? array_values($value->roles) : $value->$f, $views),
                 $views[$class],
             ))),

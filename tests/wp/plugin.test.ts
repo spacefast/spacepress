@@ -706,3 +706,34 @@ test("runtime registrations extend system tables and every generated SCF field",
   `));
   assert.deepEqual(stream, [200, "application/octet-stream", 'attachment; filename="proof.bin"', true, "file\0bytes:committed"]);
 });
+
+test("the pinned Polylang has the language model First calls, as real methods", () => {
+  // PLL()->model->languages (WP_Syntex\Polylang\Model\Languages): get, add, update_default, public.
+  const seen = JSON.parse(wp("eval", `
+    $l = PLL()->model->languages;
+    echo wp_json_encode(array_map(fn ($m) => method_exists($l, $m) ? [(new ReflectionMethod($l, $m))->isPublic(), (new ReflectionMethod($l, $m))->getNumberOfRequiredParameters()] : null, ['get' => 'get', 'add' => 'add', 'update_default' => 'update_default']));`));
+  assert.deepEqual(seen, { get: [true, 1], add: [true, 1], update_default: [true, 1] });
+});
+
+test("a Polylang without the language model First calls is a platform problem, not a fatal", () => {
+  // First calls PLL()->model->languages (Polylang 3.7+); the older PLL()->model->get_language() names
+  // answer only through Polylang's compatibility forwarder. A Polylang that has neither form:
+  const seen = JSON.parse(wp("eval", `
+    $model = PLL()->model;
+    $saved = $model->languages;
+    $before = \\First\\Wp\\Platform::problems(true);
+    unset($model->languages);
+    try {
+      $after = \\First\\Wp\\Platform::problems(true);
+      $refused = null;
+      try { (new ReflectionMethod(\\First\\Wp\\Polylang::class, 'languages'))->invoke(null); } catch (\\First\\HttpError $e) { $refused = [$e->status, $e->errorCode]; }
+    } finally {
+      $model->languages = $saved;
+    }
+    echo wp_json_encode([$before, $after, $refused, \\First\\Wp\\Polylang::hasLanguageModel()]);`));
+  assert.deepEqual(seen[0], [], "the pinned Polylang has it");
+  assert.equal(seen[1].length, 1, JSON.stringify(seen[1]));
+  assert.match(seen[1][0], /^polylang 3\.9\+ with PLL\(\)->model->languages is required \(found 3\.9[^)]*\)$/);
+  assert.deepEqual(seen[2], [503, "platform"]);
+  assert.equal(seen[3], true, "restored");
+});

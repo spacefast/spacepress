@@ -466,7 +466,7 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
 }
 
 /** Metadata every collection carries alongside its column references. */
-export type StorageKind = "collection" | "table" | "userProjection";
+export type StorageKind = "collection" | "table" | "userProjection" | "taxonomy";
 
 export interface CollectionMeta<TName extends string, TCols extends ColumnsConfig, TAuth extends boolean = false, TStorage extends StorageKind = StorageKind> {
   readonly [collectionBrand]: { columns: TCols; auth: TAuth; storage: TStorage };
@@ -582,6 +582,51 @@ export declare function table<
 export declare function userProjection<TCols extends ColumnsConfig, TUid extends boolean = false>(fields: TCols,
   options?: NoInfer<CollectionOptions<Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">>> & { drafts?: false; revisions?: false; uid?: TUid },
 ): Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">;
+
+/** A term's own fields (docs/decisions/2026-11-11-authoring-surface.md, ruling 27). */
+type TermColumns<THierarchical extends boolean> = {
+  name: ColumnBuilder<"text", string, true, false>;
+  slug: ColumnBuilder<"slug", string, true, true>;
+  description: ColumnBuilder<"text", string, true, true>;
+  count: ColumnBuilder<"integer", number, true, true>;
+  url: ColumnBuilder<"text", string, false, true>;
+} & (THierarchical extends true ? { parent: ColumnBuilder<"integer", number, false, false> } : {});
+
+/** Field builders a term field takes in this release: no containers, rich text, files or lists of refs. */
+type TermFieldKind = Exclude<ColumnKind, "richText" | "file" | "group" | "repeater" | "blocks" | "slug" | "mediaList" | "refList">;
+type TermFields = Record<string, ColumnBuilder<TermFieldKind, any, boolean, boolean, false, boolean>>;
+
+/** `taxonomy()` options (rulings 25-32). */
+export interface TaxonomyOptions<T extends AnyCollection = AnyCollection, THierarchical extends boolean = boolean> {
+  /** Stored as `first_<storageName>`: at most 26 characters. Defaults to the export name in snake_case. */
+  storageName?: string;
+  /** Shown in wp-admin. */
+  label?: string;
+  /** Terms nest: adds `parent`, and `:path` in `url` is the chain of ancestor slugs. */
+  hierarchical?: THierarchical;
+  /** The term URL: `:slug`, `:id` and, hierarchical, `:path`. With one, core's sitemap lists the terms and a term has an archive. */
+  url?: `/${string}`;
+  /** The app's collections whose items carry these terms, in a field named after this export. */
+  on?: readonly AnyCollection[];
+  /** With `locales` set, `false` is required: one vocabulary shared by every locale. */
+  translations?: false;
+  /** Default: anyone reads, `editor` creates, updates and deletes. Assigning terms is a write to the item. */
+  access?: AccessConfig<T>;
+}
+
+/** A taxonomy: terms in WordPress's term tables, with term meta fields, attached to collections. */
+export declare function taxonomy<TFields extends TermFields = {}, THierarchical extends boolean = false>(
+  fields?: TFields,
+  options?: NoInfer<TaxonomyOptions<Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">>> & { hierarchical?: THierarchical },
+): Collection<string, WithId<TFields> & TermColumns<THierarchical>, false, "taxonomy">;
+
+/**
+ * An item's terms of `taxonomy`: the term ids in write order (`[]` when none), kept as WordPress's
+ * term relationships. `with: { field: true }` loads the term rows, and the taxonomy gets a list of the
+ * items named after this kind. The same field `on` adds, under another name or with `.access()`,
+ * `.ui()` or `.reverse()`; the build refuses any other modifier.
+ */
+export declare function terms(taxonomy: CollectionMeta<string, ColumnsConfig, false, "taxonomy"> | (() => CollectionMeta<string, ColumnsConfig, false, "taxonomy">)): ColumnBuilder<"refList", number[], true, true, false, false>;
 
 type ColumnsOf<T> = T extends { readonly [collectionBrand]: { columns: infer C } } ? C : never;
 
@@ -838,9 +883,9 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
  * }
  * ```
  *
- * `first build` emits the structural relation graph even without authored relations,
- * so the config can keep every declaration private. Config registration supplies
- * globals and jobs; localized projects also register their locale union.
+ * `first build` emits the kinds, globals and jobs structurally, with the relation graph, so
+ * nothing imports the sources that export them; localized projects also register their locale
+ * union.
  */
 export interface Register {}
 
@@ -904,7 +949,7 @@ export type QueryApi = [RegisteredSchema] extends [never]
       >;
     };
 
-type RegisteredGlobals = Register extends { config: { readonly [configBrand]: { globals: infer G } } } ? G : never;
+type RegisteredGlobals = Register extends { globals: infer G } ? G : never;
 
 /** `db.globals.<key>`: trusted reads and writes of one global. Never-written globals read as their defaults. */
 export interface GlobalApi<G extends AnyGlobal> {
@@ -1049,8 +1094,10 @@ export type GateRule<TData = Record<string, unknown>> = AccessShorthand | ((ctx:
 
 /**
  * Throwing from any hook aborts the request and rolls back its writes. Hooks are trusted: `db` calls
- * inside them skip access rules and see every status. On WordPress editor saves only the `after*`
- * hooks run.
+ * inside them skip access rules and see every status. The kind API (`posts.create`) runs as the caller
+ * only when the write came from an action or a route; on API, editor, CLI and job writes it is trusted
+ * too. On WordPress editor saves only the `after*` hooks run. Both rules change
+ * (docs/decisions/2026-11-14-api-direction.md, rulings 3 and 4).
  */
 export interface CollectionHooks<T extends AnyCollection> {
   /** Mutate `data` or return a replacement. */
@@ -1059,7 +1106,13 @@ export interface CollectionHooks<T extends AnyCollection> {
   /** Mutate `patch` or return a replacement. */
   beforeUpdate?: (patch: Patch<T>, existing: Row<T>, ctx: BeforeHookCtx<Patch<T>>) => Awaitable<Patch<T> | void>;
   afterUpdate?: (row: Row<T>, previous: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /**
+   * Before a permanent delete; a throw refuses it. Moving an item to WordPress's trash is not a
+   * delete (it is an unpublish and runs the update hooks); emptying the trash is. `ctx.user` can be
+   * null: WordPress empties its trash on a schedule, with nobody signed in.
+   */
   beforeDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  /** After a permanent delete, in its transaction. `ctx.user` can be null, as for `beforeDelete`. */
   afterDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
   /** A collection's item became published: created published, updated into it, or its scheduled time came. */
   afterPublish?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
@@ -1138,31 +1191,16 @@ export declare function global<TFields extends FieldsConfig>(
   },
 ): Global<string, TFields>;
 
-export interface ConfigInput<
-  TSchema extends Schema,
-  TRelations extends Relations<TSchema, any>,
-  TGlobals extends Record<string, AnyGlobal> = {},
-  TJobs extends Record<string, AnyJob> = {},
-  TLocales extends LocalesConfig = LocalesConfig,
-  TCollections extends Schema = Schema,
-  TTables extends Schema = Schema,
-  TUsers extends Schema = Schema,
-> {
+/**
+ * What `defineConfig` takes. Kinds, globals, file buckets, actions and jobs aren't listed here: each
+ * registers by its export, from `first.config.ts` or any file under `first/` (docs/spec/spec.md §1.1).
+ */
+export interface ConfigInput<TLocales extends LocalesConfig = LocalesConfig> {
   /** Project name: plugin slug (`first-<name>`), wp-admin menu, client docs. Default: the project directory name. */
   name?: string;
-  collections?: TCollections & Record<string, CollectionMeta<string, ColumnsConfig, false, "collection">>;
-  tables?: TTables & Record<string, CollectionMeta<string, ColumnsConfig, false, "table">>;
-  users?: TUsers & Record<string, CollectionMeta<string, ColumnsConfig, true, "userProjection">>;
-  /** Key = the name used in `db.globals.<key>` and `/globals/<key>`. */
-  globals?: TGlobals;
-  /** `NoInfer`: types come from the explicit registries, so unknown hook keys are errors. */
-  hooks?: NoInfer<Hooks<TSchema>>;
-  actions?: Record<string, AnyAction>;
-  jobs?: TJobs;
   webhooks?: Webhook[];
   /** Private native forms, queued mail, publication search and server-priced checkout. */
   services?: ServicesConfig;
-  files?: Record<string, AnyFileBucket>;
   uploads?: UploadsConfig;
   media?: { sizes?: Record<string, { width: number; height?: number; fit?: "cover" | "inside" }> };
   locales?: TLocales;
@@ -1210,23 +1248,13 @@ export interface ConfigInput<
   use?: readonly Plugin[];
 }
 
-export interface FirstConfig<
-  TSchema extends Schema = Schema,
-  TRelations extends Relations<TSchema, any> = Relations<TSchema, any>,
-  TGlobals extends Record<string, AnyGlobal> = Record<string, AnyGlobal>,
-  TJobs extends Record<string, AnyJob> = Record<string, AnyJob>,
-  TLocales extends LocalesConfig = LocalesConfig,
-> {
-  readonly [configBrand]: { schema: TSchema; relations: TRelations; globals: TGlobals; jobs: TJobs; locales: TLocales };
+export interface FirstConfig<TLocales extends LocalesConfig = LocalesConfig> {
+  readonly [configBrand]: { locales: TLocales };
 }
 
-export declare function defineConfig<
-  TCollections extends Schema = {}, TTables extends Schema = {}, TUsers extends Schema = {},
-  TRelations extends Relations<TCollections & TTables & TUsers, any> = Relations<TCollections & TTables & TUsers, {}>,
-  TGlobals extends Record<string, AnyGlobal> = {},
-  TJobs extends Record<string, AnyJob> = {},
-  const TLocales extends LocalesConfig = LocalesConfig,
->(config: ConfigInput<TCollections & TTables & TUsers, TRelations, TGlobals, TJobs, TLocales, TCollections, TTables, TUsers>): FirstConfig<TCollections & TTables & TUsers, TRelations, TGlobals, TJobs, TLocales>;
+export declare function defineConfig<const TLocales extends LocalesConfig = LocalesConfig>(
+  config: ConfigInput<TLocales>,
+): FirstConfig<TLocales>;
 
 declare const pluginBrand: unique symbol;
 /** A plugin package's definition: `export default (options) => definePlugin({ ... })`. */
@@ -1301,7 +1329,7 @@ export interface RouteResponse { status?: number; headers?: Record<string, strin
 export interface JobHandle<TInput> {
   enqueue(input: TInput, opts?: EnqueueOptions): Promise<{ id: string }>;
 }
-type RegisteredJobs = Register extends { config: { readonly [configBrand]: { jobs: infer J extends Record<string, AnyJob> } } } ? J : never;
+type RegisteredJobs = Register extends { jobs: infer J extends Record<string, AnyJob> } ? J : never;
 export type JobsApi = [RegisteredJobs] extends [never]
   ? Record<string, JobHandle<Record<string, unknown>>>
   : { readonly [K in keyof RegisteredJobs]: RegisteredJobs[K] extends Job<infer I> ? JobHandle<InsertShape<I>> : never };

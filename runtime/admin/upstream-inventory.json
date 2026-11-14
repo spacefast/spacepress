@@ -1666,7 +1666,7 @@
       "sha256": "0308da457c7ab432cdc10130fdb4292986b258aea5a58dcf53ea344523fb070d",
       "path": "apps/packages/admin-toolkit/package.json",
       "adaptation": "pinned dependency catalog and First module/route integration",
-      "adaptedSha256": "fcc6fe194241da3115942a9a7fdf9ef08a00d66a8f07cca2d134674b9959788e",
+      "adaptedSha256": "67822226f3e51128c84eaeae64db0136204e2a539fa959261f528819435c1b64",
       "normalizedSha256": "76f13522113e95a5ac5bf3f1e4390b3f76c73ac71c0e0aecc978654bb135db9a",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/admin-toolkit/package.json"
     },
@@ -1881,10 +1881,10 @@
       "source": "packages/admin-toolkit/src/components/site-icon-back-button/index.tsx",
       "sha256": "2cbcd492bc0d468da10348fd373812144c9812a3e89454bc883d7b3d768997b7",
       "path": "apps/packages/admin-toolkit/src/components/site-icon-back-button/index.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "f6155a02705944da70498f5a50fd801bb61d010bbd5144db92a7bf12113d5ed9",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "4e76075318cd884936f545c1796198305bf37874c1dbe16fb9c46c4363a05734",
       "normalizedSha256": "f6155a02705944da70498f5a50fd801bb61d010bbd5144db92a7bf12113d5ed9",
-      "retainedSourcePath": "apps/packages/admin-toolkit/src/components/site-icon-back-button/index.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/admin-toolkit/src/components/site-icon-back-button/index.tsx"
     },
     {
       "source": "packages/admin-toolkit/src/components/site-icon-back-button/style.scss",
@@ -1954,7 +1954,7 @@
       "sha256": "d45dbc57d2b2244349d52ff8649752017c087e20df62a4d9be591ed5dbf6a67f",
       "path": "apps/packages/admin-toolkit/src/hooks/use-color-preference.ts",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "a3ef53858212c6ae27b0c8196126665a63c69a69904180f18666e87474d98add",
+      "adaptedSha256": "0a9c988c70210389ce2c0e39f28f6419394f694fe4e16e106a12d03e2c830aa5",
       "normalizedSha256": "d45dbc57d2b2244349d52ff8649752017c087e20df62a4d9be591ed5dbf6a67f",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/admin-toolkit/src/hooks/use-color-preference.ts"
     },
@@ -2080,7 +2080,7 @@
       "sha256": "147704ef491d527bbf90f378b11b64b6bfc330816107b19650e661a55d2fdc51",
       "path": "apps/packages/ai-agent/package.json",
       "adaptation": "pinned dependency catalog and First module/route integration",
-      "adaptedSha256": "349693c15be158001394024c00fc2b669e76cad534f46be3128bec5828e2d012",
+      "adaptedSha256": "c157724434acf174bfff4eb4da17e9622c8ed222b7ff682dd2babba1ff5d7c91",
       "normalizedSha256": "d1d726a3395d7558763d862ef374608c06cbf6df5b100e25e201ed2e356880e6",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/ai-agent/package.json"
     },
@@ -2097,10 +2097,10 @@
       "source": "packages/ai-agent/src/index.tsx",
       "sha256": "99d95270e1c4ecde120d474539e2a8d2e417a055471821e344ede4472a62386f",
       "path": "apps/packages/ai-agent/src/index.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "c644108df50676f19d26447f07b2329dff1148f15a4542827d6d957413cc7771",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "72952aa24170da8a403854b12d6dec088495efb59e7b5284406cf380f9d49ff3",
       "normalizedSha256": "c644108df50676f19d26447f07b2329dff1148f15a4542827d6d957413cc7771",
-      "retainedSourcePath": "apps/packages/ai-agent/src/index.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/ai-agent/src/index.tsx"
     },
     {
       "source": "packages/ai-agent/src/store/actions.ts",
@@ -2188,7 +2188,7 @@
       "sha256": "d011461d07e359de94a0e18125df64adc8d0bbe16a2d0aff17000fad54138d42",
       "path": "apps/packages/boot/package.json",
       "adaptation": "pinned dependency catalog and First module/route integration",
-      "adaptedSha256": "bab05853b36b1309e94be99eff0c30d63ee3156b6ab634047be5972f96aab2e4",
+      "adaptedSha256": "5462dc2ff8accfa19160c802069f168d69c4eef2ad31e21276759b1bc2edfd40",
       "normalizedSha256": "842c357d057fbd80ac3a5de1941bc2dffb94c50c106ca7d168db0d81d91cb471",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/package.json"
     },
@@ -2278,7 +2278,7 @@
       "sha256": "8d3962bf334ac357c284ce28e132cca32f3c414fa6287dd39a7087f4afbc18f5",
       "path": "apps/packages/boot/src/components/app/router.tsx",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "61d821028ffdc6b6e7244e5bf5774ca318ae5795834a0e61d515d3a586bad68c",
+      "adaptedSha256": "ea8582a86f31344224336c3768ecf410080f8498344133fac0e1002eaa7199cd",
       "normalizedSha256": "69e10e515f9041fed26c21c5c4d117bb5a2b48d9a6c824645f509a4e21cc9f81",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/src/components/app/router.tsx"
     },
@@ -2476,7 +2476,7 @@
       "sha256": "af59e8540a2ea33fb080e9461ab05e4e111f136661519542a041752bcdcf9d89",
       "path": "apps/packages/boot/src/components/root/index.tsx",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "9c6be9acce19307f72db5fd9aca173e37df0933e1a8ac5211ff726e342a263c2",
+      "adaptedSha256": "c6cfbdadc3ae294fb8a4079476606b720d01f3063136dd4e6acfdcadaf9791df",
       "normalizedSha256": "78c93b1ebb98e6e9d17790b4ed00848a14a9aad08b5da4cb581133729495317f",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/boot/src/components/root/index.tsx"
     },
@@ -3358,7 +3358,7 @@
       "sha256": "ce1a197e39344b883f6dcff6e134323bba6d7fbc075c8a5325aeb0bf5c13035c",
       "path": "apps/packages/design-system/package.json",
       "adaptation": "pinned dependency catalog and First module/route integration",
-      "adaptedSha256": "4d54d0ee4f13ca35245dec93dd3dc1b1f917391cfddf0e2facc422b960362a15",
+      "adaptedSha256": "3cb5c11b46c4789c907fec169e77255ee7f69bb7addc41bc1914909eae7b3a2e",
       "normalizedSha256": "123b665fcb3f0b3433f37d9e2f5b66665d2acaf7236dba404d4f937d47814357",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/design-system/package.json"
     },
@@ -4023,10 +4023,10 @@
       "source": "packages/design-system/src/form/primitives/autocomplete/popup.tsx",
       "sha256": "6daea0d0266a9ce32278729b53ac2f9a0673523a7a4923807b0255d968006391",
       "path": "apps/packages/design-system/src/form/primitives/autocomplete/popup.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "1023f4a8caa76751f4f9b0015db2b973e21c274fc5065efb522e8d69c6316fb6",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "2dbf48a638f30373629a00e32c723ed33048e158e0759afdb91119dfdce9d9a6",
       "normalizedSha256": "1023f4a8caa76751f4f9b0015db2b973e21c274fc5065efb522e8d69c6316fb6",
-      "retainedSourcePath": "apps/packages/design-system/src/form/primitives/autocomplete/popup.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/design-system/src/form/primitives/autocomplete/popup.tsx"
     },
     {
       "source": "packages/design-system/src/form/primitives/autocomplete/root.tsx",
@@ -4311,10 +4311,10 @@
       "source": "packages/design-system/src/form/primitives/combobox/popup.tsx",
       "sha256": "fed0407396c0fa223839ca0b8fe091291d777fff682c715ac2f2bd67b05c7edf",
       "path": "apps/packages/design-system/src/form/primitives/combobox/popup.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "feeb862d768275ea0ae148962cf714d1a768de8dbc1c7f6df06552699a617744",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "bd8450b86d740e41a11f95a7391dc72d5c80739e900dd7260bed6bcb04f4a02c",
       "normalizedSha256": "feeb862d768275ea0ae148962cf714d1a768de8dbc1c7f6df06552699a617744",
-      "retainedSourcePath": "apps/packages/design-system/src/form/primitives/combobox/popup.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/design-system/src/form/primitives/combobox/popup.tsx"
     },
     {
       "source": "packages/design-system/src/form/primitives/combobox/root.tsx",
@@ -4932,10 +4932,10 @@
       "source": "packages/design-system/src/form/primitives/select/index.stories.tsx",
       "sha256": "e27f71ee5b26c67f7828e694cee731e8b464bf55ed4cdf598c1e9aa335499fda",
       "path": "apps/packages/design-system/src/form/primitives/select/index.stories.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "757d2ec3304a3e8c916971a47d9d3d1b0c184436443d3c3257c54dd89c96f9ad",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "d089c1db86cb3788702803ba75167506c51c9dba11c8d23d45580a0017010720",
       "normalizedSha256": "757d2ec3304a3e8c916971a47d9d3d1b0c184436443d3c3257c54dd89c96f9ad",
-      "retainedSourcePath": "apps/packages/design-system/src/form/primitives/select/index.stories.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/design-system/src/form/primitives/select/index.stories.tsx"
     },
     {
       "source": "packages/design-system/src/form/primitives/select/index.ts",
@@ -4959,10 +4959,10 @@
       "source": "packages/design-system/src/form/primitives/select/popup.tsx",
       "sha256": "1bf34f69854ae0f15a7d33f173e75ee7950f3d6d289545be76b84891d90377a0",
       "path": "apps/packages/design-system/src/form/primitives/select/popup.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "481aaf7b41cd98973f4846c6c429263b29816b45693fefc87c50a3ed115fd404",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "8f8e4a9f58efd40f2715dbd7b76e8d9f82f294cffb373d09f430ad60635f1b2d",
       "normalizedSha256": "481aaf7b41cd98973f4846c6c429263b29816b45693fefc87c50a3ed115fd404",
-      "retainedSourcePath": "apps/packages/design-system/src/form/primitives/select/popup.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/design-system/src/form/primitives/select/popup.tsx"
     },
     {
       "source": "packages/design-system/src/form/primitives/select/root.tsx",
@@ -5454,10 +5454,10 @@
       "source": "packages/design-system/src/form/tree-select-control/tree-select-control.tsx",
       "sha256": "c0d38b4cb5061084c74b7b914d37a0a94a7abe0b5bffb7bd3abe805927832841",
       "path": "apps/packages/design-system/src/form/tree-select-control/tree-select-control.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "bc6559a7e83062f767c7ba286e82e3cd8c933a08c5bc29a874d781b3c7b76073",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "c18db1dbc7bd4dfafe64c8710c5a6efe48170dc48e46c265a6deb5bf86e3f6eb",
       "normalizedSha256": "bc6559a7e83062f767c7ba286e82e3cd8c933a08c5bc29a874d781b3c7b76073",
-      "retainedSourcePath": "apps/packages/design-system/src/form/tree-select-control/tree-select-control.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/design-system/src/form/tree-select-control/tree-select-control.tsx"
     },
     {
       "source": "packages/design-system/src/form/tree-select-control/types.ts",
@@ -5841,10 +5841,10 @@
       "source": "packages/design-system/src/tooltip/index.stories.tsx",
       "sha256": "bc83cea918b110f15765ebbc4c1872a58bec0b6004e567411839f9ea5dfafae2",
       "path": "apps/packages/design-system/src/tooltip/index.stories.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "2595053347d141ba4a440f8c4b26a20e1d9c57d39704b7d6b3eb74a25c417be4",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "a50417d616c60c049507ea73542d4dbb641b4c0eacd9daab4566524ae98d0d23",
       "normalizedSha256": "2595053347d141ba4a440f8c4b26a20e1d9c57d39704b7d6b3eb74a25c417be4",
-      "retainedSourcePath": "apps/packages/design-system/src/tooltip/index.stories.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/design-system/src/tooltip/index.stories.tsx"
     },
     {
       "source": "packages/design-system/src/tooltip/index.ts",
@@ -5859,10 +5859,10 @@
       "source": "packages/design-system/src/tooltip/popup.tsx",
       "sha256": "656cc3ba70b881d688e1b3512e231568a5dc71ec7aff64385cf431016c161e8c",
       "path": "apps/packages/design-system/src/tooltip/popup.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "96383a6663f7a0e219a86097f4f4909f9fd85263bc6b2e88dda4cbcdb2cfecac",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "569d9b48230fa52c964d6950a919bf15779b34b1d3181be861226ea37b23d295",
       "normalizedSha256": "96383a6663f7a0e219a86097f4f4909f9fd85263bc6b2e88dda4cbcdb2cfecac",
-      "retainedSourcePath": "apps/packages/design-system/src/tooltip/popup.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/design-system/src/tooltip/popup.tsx"
     },
     {
       "source": "packages/design-system/src/tooltip/provider.tsx",
@@ -6427,7 +6427,7 @@
       "sha256": "694864103b1d2fd71be741bd8dcf2fdb47c7be146fd8a6c63b889f8dcc998e7a",
       "path": "apps/packages/lazy-editor/package.json",
       "adaptation": "pinned dependency catalog and First module/route integration",
-      "adaptedSha256": "4e955c8db1f3a05a49e3c1782c104090eb1702b806ac29b3ca27ec5d747b16f9",
+      "adaptedSha256": "442ee8bf3b80565b114e3260a0481143e04601892377097292cf22d44f356eed",
       "normalizedSha256": "f167726540c5c3f4df65ffaaeab4a8ad7dd960f9f7ddb6bc8e91905060747c44",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/lazy-editor/package.json"
     },
@@ -6454,7 +6454,7 @@
       "sha256": "d65cc24c8023e00a6ac0da9e987ae7d490e839965afb06a931c4c5c1d000c13a",
       "path": "apps/packages/lazy-editor/src/use-editor-settings.tsx",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "2ead5618396a8a37862aaef6711f4f99a91ed4e44fc9ba3b7beab27c7a7f855b",
+      "adaptedSha256": "6c10da169880d2d578559f3145f94640e5e6fd438166c3815213b3d2eccad1f4",
       "normalizedSha256": "e88b3194b68f6f01d3072a57ef662704ff5d3d857606abcefb66c07142a9526b",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/lazy-editor/src/use-editor-settings.tsx"
     },
@@ -6542,47 +6542,47 @@
     {
       "source": "packages/theme/README.md",
       "sha256": "95bd4ff91b354bf9cd58cdf53cc206c84bc355710886b6a49fbe28f08de1bfc2",
-      "path": "apps/packages/theme/README.md",
-      "adaptation": "namespace/privacy normalization only",
+      "path": "upstream-metadata/adapter-originals/packages/theme/README.md",
+      "adaptation": "replaced by the npm package @wordpress/theme; not in the active plugin",
       "adaptedSha256": "266b0b998f1a5be1b781b5a6a58ddff66c842057e3b6e76f1bbfa4d4767e2719",
       "normalizedSha256": "266b0b998f1a5be1b781b5a6a58ddff66c842057e3b6e76f1bbfa4d4767e2719",
-      "retainedSourcePath": "apps/packages/theme/README.md"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/theme/README.md"
     },
     {
       "source": "packages/theme/package.json",
       "sha256": "61d4f42c32cedc62fb3a83b84e7e99510c2c5a8510fe394956fabc2bfb986bda",
-      "path": "apps/packages/theme/package.json",
-      "adaptation": "pinned dependency catalog and First module/route integration",
-      "adaptedSha256": "ccac047eddd9e3f8cbfc2e293d8a137e91e26b2a783661cbdaccc19e0d4ec28e",
+      "path": "upstream-metadata/adapter-originals/packages/theme/package.json",
+      "adaptation": "replaced by the npm package @wordpress/theme; not in the active plugin",
+      "adaptedSha256": "fe0453ae447d9f0c8dcd8e64af39abae39a2a8da6799d211bcc6ad2b97012eaf",
       "normalizedSha256": "fe0453ae447d9f0c8dcd8e64af39abae39a2a8da6799d211bcc6ad2b97012eaf",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/theme/package.json"
     },
     {
       "source": "packages/theme/src/index.ts",
       "sha256": "3b7ae8c1ad975aef9c9f94c2c8a5f03d7b743813c3563e71d2c70ab5c5b4e3b1",
-      "path": "apps/packages/theme/src/index.ts",
-      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "a7936a400297218d0c56a12d8e9e255c2aaa82750d1c25ad78f250ff61cc4bce",
+      "path": "upstream-metadata/adapter-originals/packages/theme/src/index.ts",
+      "adaptation": "replaced by the npm package @wordpress/theme; not in the active plugin",
+      "adaptedSha256": "815b5ff390b43944c798269fed2b9b8b8c2a8acfabfa868d13203cf58286176f",
       "normalizedSha256": "815b5ff390b43944c798269fed2b9b8b8c2a8acfabfa868d13203cf58286176f",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/theme/src/index.ts"
     },
     {
       "source": "packages/theme/tsconfig.json",
       "sha256": "a883412fc537cbcdf8041eff5e4bc0dfcf00e5fc7e7c3f7cf0cbf2517ca4a035",
-      "path": "apps/packages/theme/tsconfig.json",
-      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "951a161d7090d235e7189884c4e800c7e7c1714c2939bb8c174a32ea5cae2c66",
+      "path": "upstream-metadata/adapter-originals/packages/theme/tsconfig.json",
+      "adaptation": "replaced by the npm package @wordpress/theme; not in the active plugin",
+      "adaptedSha256": "a883412fc537cbcdf8041eff5e4bc0dfcf00e5fc7e7c3f7cf0cbf2517ca4a035",
       "normalizedSha256": "a883412fc537cbcdf8041eff5e4bc0dfcf00e5fc7e7c3f7cf0cbf2517ca4a035",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/theme/tsconfig.json"
     },
     {
       "source": "packages/theme/types/css-modules.d.ts",
       "sha256": "c513d13698abdbc86933de35fe47e57635d4265893812870178382e39c88911e",
-      "path": "apps/packages/theme/types/css-modules.d.ts",
-      "adaptation": "namespace/privacy normalization only",
+      "path": "upstream-metadata/adapter-originals/packages/theme/types/css-modules.d.ts",
+      "adaptation": "replaced by the npm package @wordpress/theme; not in the active plugin",
       "adaptedSha256": "c513d13698abdbc86933de35fe47e57635d4265893812870178382e39c88911e",
       "normalizedSha256": "c513d13698abdbc86933de35fe47e57635d4265893812870178382e39c88911e",
-      "retainedSourcePath": "apps/packages/theme/types/css-modules.d.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/theme/types/css-modules.d.ts"
     },
     {
       "source": "packages/user-data/package.json",
@@ -6669,17 +6669,17 @@
       "source": "packages/views/README.md",
       "sha256": "a40b9d9e986abdf08bf5a1d36744d2f47ad5736572e3df22456f91c14fd1b6b7",
       "path": "apps/packages/views/README.md",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "8763b4d34ef9661e3ea2420defbd5cda03d8bee4ff8b8d51ab3756e21ff7e8f6",
+      "adaptation": "persistence keys describe @wordpress/views (per tab)",
+      "adaptedSha256": "46ee2a656954fac95acc84a466ac7c4b08d036650d34ee61d507459356729864",
       "normalizedSha256": "8763b4d34ef9661e3ea2420defbd5cda03d8bee4ff8b8d51ab3756e21ff7e8f6",
-      "retainedSourcePath": "apps/packages/views/README.md"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/views/README.md"
     },
     {
       "source": "packages/views/package.json",
       "sha256": "c07997b46b21f98b13b3f793c39b92aaecc2cc3c00fd19f1cb3f6d38300394df",
       "path": "apps/packages/views/package.json",
       "adaptation": "pinned dependency catalog and First module/route integration",
-      "adaptedSha256": "979f6e02475650b961ab8538fb97175aba1f1b98fe98777e88965342de65e9d1",
+      "adaptedSha256": "d7b07b3ea2934967c80e6cbc270a7c2483e9be52325b8ea981d054bf833cfedc",
       "normalizedSha256": "4d84befb863936951a012a8389d2391351e56a8ee4af65ac9c58e154c9671a56",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/views/package.json"
     },
@@ -6696,55 +6696,55 @@
       "source": "packages/views/src/index.ts",
       "sha256": "02e03b6a859c62b28b1355ca7ca578e1efd79914b5e1d43343689b11900075fb",
       "path": "apps/packages/views/src/index.ts",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "02e03b6a859c62b28b1355ca7ca578e1efd79914b5e1d43343689b11900075fb",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "cd07a22787f5fe428cce3dc38e754f701feb84594b016389ae5e3ae63f97cdbf",
       "normalizedSha256": "02e03b6a859c62b28b1355ca7ca578e1efd79914b5e1d43343689b11900075fb",
-      "retainedSourcePath": "apps/packages/views/src/index.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/views/src/index.ts"
     },
     {
       "source": "packages/views/src/is-view.ts",
       "sha256": "53ba153cd373d47621ff7a83056a41977c6e482db36fd9ba5603900ffa71439d",
-      "path": "apps/packages/views/src/is-view.ts",
-      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "53303de2433e86b855de697bad80a9dd6418eea648cfe51f5d60d37f73188e85",
+      "path": "upstream-metadata/adapter-originals/packages/views/src/is-view.ts",
+      "adaptation": "replaced by the npm package @wordpress/views; not in the active plugin",
+      "adaptedSha256": "99419629c91600245fc2ac2543e0fcce3df945150800f366e4f610f761c953ad",
       "normalizedSha256": "99419629c91600245fc2ac2543e0fcce3df945150800f366e4f610f761c953ad",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/views/src/is-view.ts"
     },
     {
       "source": "packages/views/src/load-view.ts",
       "sha256": "552ccc9fbc4405e34b79f944772d90fb314e519d6ef5e78916df4c20f2d44104",
-      "path": "apps/packages/views/src/load-view.ts",
-      "adaptation": "namespace/privacy normalization only",
+      "path": "upstream-metadata/adapter-originals/packages/views/src/load-view.ts",
+      "adaptation": "replaced by the npm package @wordpress/views; not in the active plugin",
       "adaptedSha256": "552ccc9fbc4405e34b79f944772d90fb314e519d6ef5e78916df4c20f2d44104",
       "normalizedSha256": "552ccc9fbc4405e34b79f944772d90fb314e519d6ef5e78916df4c20f2d44104",
-      "retainedSourcePath": "apps/packages/views/src/load-view.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/views/src/load-view.ts"
     },
     {
       "source": "packages/views/src/merge-view-filters.ts",
       "sha256": "cc510576826e7282c382d3c5b9dc41b40224f58fa4a101bac12fbcd2f5fb45e9",
-      "path": "apps/packages/views/src/merge-view-filters.ts",
-      "adaptation": "namespace/privacy normalization only",
+      "path": "upstream-metadata/adapter-originals/packages/views/src/merge-view-filters.ts",
+      "adaptation": "replaced by the npm package @wordpress/views; not in the active plugin",
       "adaptedSha256": "2b3cb1239278fdf0eaec1ec2a0b5df74db01590a8d714873ca83b9768baaa890",
       "normalizedSha256": "2b3cb1239278fdf0eaec1ec2a0b5df74db01590a8d714873ca83b9768baaa890",
-      "retainedSourcePath": "apps/packages/views/src/merge-view-filters.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/views/src/merge-view-filters.ts"
     },
     {
       "source": "packages/views/src/preference-keys.ts",
       "sha256": "3ae42dafb163c5cf73c3821c323f1a4581b37fbeff693fd72f69faf83690eefe",
-      "path": "apps/packages/views/src/preference-keys.ts",
-      "adaptation": "namespace/privacy normalization only",
+      "path": "upstream-metadata/adapter-originals/packages/views/src/preference-keys.ts",
+      "adaptation": "replaced by the npm package @wordpress/views; not in the active plugin",
       "adaptedSha256": "3ae42dafb163c5cf73c3821c323f1a4581b37fbeff693fd72f69faf83690eefe",
       "normalizedSha256": "3ae42dafb163c5cf73c3821c323f1a4581b37fbeff693fd72f69faf83690eefe",
-      "retainedSourcePath": "apps/packages/views/src/preference-keys.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/views/src/preference-keys.ts"
     },
     {
       "source": "packages/views/src/strip-tab-filters.ts",
       "sha256": "b83f03cfac0858005cb39ec4f0f3d0ee3224dba5c10be7d8fc2b00a8f58f0686",
-      "path": "apps/packages/views/src/strip-tab-filters.ts",
-      "adaptation": "namespace/privacy normalization only",
+      "path": "upstream-metadata/adapter-originals/packages/views/src/strip-tab-filters.ts",
+      "adaptation": "replaced by the npm package @wordpress/views; not in the active plugin",
       "adaptedSha256": "b38418ae65851d95f390071133c6482bbaeb46b11c064aa2ba65809b68ce045e",
       "normalizedSha256": "b38418ae65851d95f390071133c6482bbaeb46b11c064aa2ba65809b68ce045e",
-      "retainedSourcePath": "apps/packages/views/src/strip-tab-filters.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/views/src/strip-tab-filters.ts"
     },
     {
       "source": "packages/views/src/style.scss",
@@ -6758,11 +6758,11 @@
     {
       "source": "packages/views/src/types.ts",
       "sha256": "4dfb3f032daa41d9a75641bf52205523cf9a157e8016804522904bc33453f4ed",
-      "path": "apps/packages/views/src/types.ts",
-      "adaptation": "namespace/privacy normalization only",
+      "path": "upstream-metadata/adapter-originals/packages/views/src/types.ts",
+      "adaptation": "replaced by the npm package @wordpress/views; not in the active plugin",
       "adaptedSha256": "c376aeb9fab2d46259eb4cafd9a0c102c663daa8ead2778201243bfbddf9d3f4",
       "normalizedSha256": "c376aeb9fab2d46259eb4cafd9a0c102c663daa8ead2778201243bfbddf9d3f4",
-      "retainedSourcePath": "apps/packages/views/src/types.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/views/src/types.ts"
     },
     {
       "source": "packages/views/src/use-view-config.ts",
@@ -6776,11 +6776,11 @@
     {
       "source": "packages/views/src/use-view.ts",
       "sha256": "a5e36a92d56774bc9a01514a32285a77e03c2bbd1bb5e8dd27be8ca04df312f0",
-      "path": "apps/packages/views/src/use-view.ts",
-      "adaptation": "namespace/privacy normalization only",
+      "path": "upstream-metadata/adapter-originals/packages/views/src/use-view.ts",
+      "adaptation": "replaced by the npm package @wordpress/views; not in the active plugin",
       "adaptedSha256": "26cbd6c8d0c0195e31bf3708a15f05c4677121433dc872155d832eae09bac13b",
       "normalizedSha256": "26cbd6c8d0c0195e31bf3708a15f05c4677121433dc872155d832eae09bac13b",
-      "retainedSourcePath": "apps/packages/views/src/use-view.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/packages/views/src/use-view.ts"
     },
     {
       "source": "packages/wp-build/README.md",
@@ -6814,7 +6814,7 @@
       "sha256": "a762ef41916b38bd52e8c673289795a7040413a2e32a601962dae06a165d4623",
       "path": "apps/packages/wp-build/lib/config.js",
       "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "805265588514c51f69520e72fa598d55321b86517213ed56775f4c6c09abce3d",
+      "adaptedSha256": "cab42f7b53c95572d2175790d531e14424116cef75864aa13a4a80f39de6d0b3",
       "normalizedSha256": "c250008f6fdf20d9469c0e1ae9c5e703c7f38b4d59fac72fba9b8b497c5f6bfe",
       "retainedSourcePath": "upstream-metadata/adapter-originals/packages/wp-build/lib/config.js"
     },
@@ -7542,19 +7542,19 @@
       "source": "routes/design-navigation-list/stage.tsx",
       "sha256": "53d7d6fd4080bec1b0aa24e95203d28452f158acb2ad97aac5b79cde021c5b8c",
       "path": "apps/routes/design-navigation-list/stage.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "7bdd5525e799103b5e9c5c1c22d13cba4b7f8980c5dbfe4cbff8e7085619a583",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "129c8fe1bbfd15014b0f432bbe60bc2d4c42aae836e6e5fc0e66dacd895c8745",
       "normalizedSha256": "7bdd5525e799103b5e9c5c1c22d13cba4b7f8980c5dbfe4cbff8e7085619a583",
-      "retainedSourcePath": "apps/routes/design-navigation-list/stage.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/design-navigation-list/stage.tsx"
     },
     {
       "source": "routes/design-navigation-list/view-utils.ts",
       "sha256": "026af48352e2f2bc3df06f302755b47fc31e725e7cc2eca6058b46bf96e97010",
       "path": "apps/routes/design-navigation-list/view-utils.ts",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "422fb59e0263eb53cb4058a04cd00865cec363ef5d546bf300880e4313bf8c72",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "407aa7f58317f2cadda0ff5f22d02d53d9f1d5340a783e2cc18c66f08ef47d5a",
       "normalizedSha256": "422fb59e0263eb53cb4058a04cd00865cec363ef5d546bf300880e4313bf8c72",
-      "retainedSourcePath": "apps/routes/design-navigation-list/view-utils.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/design-navigation-list/view-utils.ts"
     },
     {
       "source": "routes/design-styles/global-styles-ui/README.md",
@@ -8784,10 +8784,10 @@
       "source": "routes/plugin-list/stage.tsx",
       "sha256": "ce10818f16a9e52f146ea16a59061b0f021fb4f2304483a02157a0ec9b2f4270",
       "path": "apps/routes/plugin-list/stage.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "392ad516a166e458e3126cc9ba40b13f21a4c9fbb977000249c834bace1a580e",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "d91424584a791f3a08dad7a269e9a0d1cf1a9ac89d91392263271bb5ff7e4a80",
       "normalizedSha256": "392ad516a166e458e3126cc9ba40b13f21a4c9fbb977000249c834bace1a580e",
-      "retainedSourcePath": "apps/routes/plugin-list/stage.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/plugin-list/stage.tsx"
     },
     {
       "source": "routes/plugin-list/style.scss",
@@ -8910,10 +8910,10 @@
       "source": "routes/post-list/stage.tsx",
       "sha256": "f5e17b87a86ff6c2bc8cbacebbea461256275bc1230bce78e8bf31749c958424",
       "path": "apps/routes/post-list/stage.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "384d57d707933fd87608188574a75a1b3dab83ad9570da3f9b6dbed87074c0a1",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "113039ba19d07a73325b91bf7d2a382bd2467a45487c9969a416872f8334759c",
       "normalizedSha256": "384d57d707933fd87608188574a75a1b3dab83ad9570da3f9b6dbed87074c0a1",
-      "retainedSourcePath": "apps/routes/post-list/stage.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/post-list/stage.tsx"
     },
     {
       "source": "routes/post-list/style.scss",
@@ -8928,10 +8928,10 @@
       "source": "routes/post-list/view-utils.ts",
       "sha256": "ece2266d4ef6dc5bd1548a499e8dc1024d420f5b44b1fa4971a5a692cfaf9db1",
       "path": "apps/routes/post-list/view-utils.ts",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "63e6af30dfc25dfb6edf538264ba6ff0e670767a71caff12c245f584b93e6034",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "72e66f626a8f8b506f0632c7c9a1eab1868b804cd88349cc5f3abfb50b28949f",
       "normalizedSha256": "63e6af30dfc25dfb6edf538264ba6ff0e670767a71caff12c245f584b93e6034",
-      "retainedSourcePath": "apps/routes/post-list/view-utils.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/post-list/view-utils.ts"
     },
     {
       "source": "routes/post-list-redirect/package.json",
@@ -9225,19 +9225,19 @@
       "source": "routes/term-list/route.tsx",
       "sha256": "df1bfcaad990e266d25366effed9343507395cdf6f657f0b1c25894e65602472",
       "path": "apps/routes/term-list/route.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "a449115b4ec9cfd6d3f54545dabf8163b9d1f091764dbc8197051e590af54cc2",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "9f157e2d23fd584fbc259b4d83a91251e947fdb11d09dee8323e8265e34ef0fa",
       "normalizedSha256": "a449115b4ec9cfd6d3f54545dabf8163b9d1f091764dbc8197051e590af54cc2",
-      "retainedSourcePath": "apps/routes/term-list/route.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/term-list/route.tsx"
     },
     {
       "source": "routes/term-list/stage.tsx",
       "sha256": "b62f603b6cc6f73769f3fe6d3f5ee8186a8f39be91efd706d2ee9bcb07e6be8a",
       "path": "apps/routes/term-list/stage.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "e2fe50fd7b4ac03f7144736fc8346926e88292799d9f4b1796434e80d847ede8",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "aeb5aa92056fc927dc02014a336104d51bb52c8cb15dd0a32a5aa2ec0fd6aaa8",
       "normalizedSha256": "e2fe50fd7b4ac03f7144736fc8346926e88292799d9f4b1796434e80d847ede8",
-      "retainedSourcePath": "apps/routes/term-list/stage.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/term-list/stage.tsx"
     },
     {
       "source": "routes/term-list/style.scss",
@@ -9360,19 +9360,19 @@
       "source": "routes/theme-list/route.tsx",
       "sha256": "1dfd904198007bf9dc118bc65b55092f56e78e0e28b80ae8ca4489e275073184",
       "path": "apps/routes/theme-list/route.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "830de250321292442290f668aedf29e1508bf5550c66a7660c15ceeaaa646de9",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "08e1f5b3ab55ed899993548542b07c7bbc14dba528d8cfbb740bbf45dc546804",
       "normalizedSha256": "830de250321292442290f668aedf29e1508bf5550c66a7660c15ceeaaa646de9",
-      "retainedSourcePath": "apps/routes/theme-list/route.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/theme-list/route.tsx"
     },
     {
       "source": "routes/theme-list/stage.tsx",
       "sha256": "addbd5ac38a9c6ac277450818312433617f92ff65595b397586c4a28203fc735",
       "path": "apps/routes/theme-list/stage.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "114083d39e2273ac3153397b6325dd0af28796a4065b572519eac1ada5a49865",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "cd7fad413aca96e740b82e9dc01e0dbef02d85be4e9af2c5be68dee4e6cae24f",
       "normalizedSha256": "114083d39e2273ac3153397b6325dd0af28796a4065b572519eac1ada5a49865",
-      "retainedSourcePath": "apps/routes/theme-list/stage.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/theme-list/stage.tsx"
     },
     {
       "source": "routes/theme-list/style.scss",
@@ -9639,10 +9639,10 @@
       "source": "routes/user-list/stage.tsx",
       "sha256": "2aea2c26bb3a0f8c3df1733ffae4435d1d678d6c14733d5986d615ccd1c92b92",
       "path": "apps/routes/user-list/stage.tsx",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "1b6adf86e62c1e57595c6e20af904de401b3760295206f57543e845980f2b4ca",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "8be2ce13f0f60000484848a506090f05b196ca119cfd6693f0851baff12442b0",
       "normalizedSha256": "1b6adf86e62c1e57595c6e20af904de401b3760295206f57543e845980f2b4ca",
-      "retainedSourcePath": "apps/routes/user-list/stage.tsx"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/user-list/stage.tsx"
     },
     {
       "source": "routes/user-list/style.scss",
@@ -9675,10 +9675,10 @@
       "source": "routes/user-list/view-utils.ts",
       "sha256": "92cf0e3db6a4fef19b616561a3e1138e2c3d8eef778199c12690b47133b5adcc",
       "path": "apps/routes/user-list/view-utils.ts",
-      "adaptation": "namespace/privacy normalization only",
-      "adaptedSha256": "706db4f37479873e69a651fd8228b8a11c71d7f526940dd9545da3d65a563926",
+      "adaptation": "First integration or pinned WordPress compatibility; review adapter patch",
+      "adaptedSha256": "3790820e1815022f28a8188e59dc9c65539bdfe2aadc2835858a2b45ab268939",
       "normalizedSha256": "706db4f37479873e69a651fd8228b8a11c71d7f526940dd9545da3d65a563926",
-      "retainedSourcePath": "apps/routes/user-list/view-utils.ts"
+      "retainedSourcePath": "upstream-metadata/adapter-originals/routes/user-list/view-utils.ts"
     },
     {
       "source": "routes/user-profile/package.json",
@@ -9859,6 +9859,7 @@
     "compatibility": "Pinned WordPress package types/controls/styles; PHP 8.2 theme lookup; null editor-preview links",
     "services": "No upstream telemetry transport; AI provider seam retained without hosted service; example widgets explicitly labeled",
     "privacy": "Private tracker and hosted-infrastructure references in documentation redacted",
-    "metadata": "Original root configuration and PHP test bootstrap retained for provenance; not the active standalone runner"
+    "metadata": "Original root configuration and PHP test bootstrap retained for provenance; not the active standalone runner",
+    "replaced": "packages/theme and most of packages/views are the npm packages @wordpress/theme and @wordpress/views (pinned in apps/pnpm-workspace.yaml); their inputs stay recorded here with their retained copies"
   }
 }

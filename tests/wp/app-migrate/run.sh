@@ -7,6 +7,8 @@ repo="$(cd "$wp/../.." && pwd)"
 cd "$repo"
 export FIRST_WP_PROJECT="${FIRST_WP_APP_MIGRATE_PROJECT:-first-wp-app-migrate}"
 export FIRST_WP_PORT="${FIRST_WP_APP_MIGRATE_PORT:-8798}"
+# The Space whose 0.8 tables the app binds (existingTable); First refuses any other Space's.
+export FIRST_WP_SPACE_ID=spc_migrate_test
 export FIRST_WP_PLUGIN_CACHE="${FIRST_WP_PLUGIN_CACHE:-$wp/cache}"
 work="$(mktemp -d "$here/.run.XXXXXX")"
 cleanup() {

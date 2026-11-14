@@ -66,7 +66,8 @@ pub fn snapshot(schema: &Schema) -> Json {
 /// SQL table's `queried` list: the columns that get an inferred index (spec §2.9).
 pub fn snapshot_with(schema: &Schema, queried: &std::collections::BTreeSet<(String, String)>) -> Json {
     let mut tables = serde_json::Map::new();
-    for c in schema.collections.values() {
+    // A taxonomy lives in core's term tables: nothing about it enters the snapshot (ruling 34).
+    for c in schema.collections.values().filter(|c| c.taxonomy.is_none()) {
         let mut t = table_snapshot(c, schema);
         let cols: Vec<String> = queried
             .iter()
@@ -85,10 +86,11 @@ pub fn snapshot_with(schema: &Schema, queried: &std::collections::BTreeSet<(Stri
         }
         tables.insert(c.table.clone(), t);
     }
-    for c in schema.collections.values() {
+    for c in schema.collections.values().filter(|c| c.taxonomy.is_none()) {
         for col in c.columns.values() {
             if let Some(r) = &col.references
                 && let Some(join) = &r.join
+                && !crate::schema::is_term_join(join)
             {
                 tables.insert(join.clone(), join_snapshot(c, r, schema));
             }
@@ -148,6 +150,10 @@ fn table_snapshot(c: &Collection, schema: &Schema) -> Json {
     }
     if let Some(old) = &c.was {
         table["was"] = old.clone().into();
+    }
+    // Only when it isn't the stored name: without `adoptedAs` the table was adopted under that.
+    if let Some(name) = c.adopted_as.as_ref().filter(|name| **name != c.table) {
+        table["adoptedAs"] = name.clone().into();
     }
     if c.auth {
         // WordPress keeps auth rows in wp_users/wp_usermeta (§6.2), so MySQL gets no table.
@@ -505,7 +511,10 @@ fn create_table(t: &str, def: &Json, tables: &Map) -> String {
                 "onUpdate": r["onUpdate"].as_str().unwrap_or("restrict").to_uppercase() }))
             })
             .collect();
-        let adoption = json!({ "table": def["existingTable"], "indexes": expected_indexes,
+        // `name`, the name it is adopted under, lets the runtime check this record on its own, even
+        // once a later migration drops the table's collection (a Zero 0.8 table's digest is over it).
+        let name = def["adoptedAs"].as_str().unwrap_or(t);
+        let adoption = json!({ "table": def["existingTable"], "name": name, "indexes": expected_indexes,
             "foreignKeys": foreign_keys, "integerColumns": integer_columns });
         return format!(
             "-- first-adopt {adoption}\nSELECT {} FROM {} LIMIT 0;",
@@ -934,10 +943,13 @@ pub fn plan(prev: &Json, next: &Json) -> Vec<String> {
         }
     }
     for t in prev_t.keys().filter(|t| !next_t.contains_key(*t)) {
-        out.push(checked(
-            json!({ "check": "drop", "name": t, "table": physical(t, &prev_t), "adopted": adopted(&prev_t[t]) }),
-            format!("DROP TABLE {};", table(t, &prev_t)),
-        ));
+        let mut check =
+            json!({ "check": "drop", "name": t, "table": physical(t, &prev_t), "adopted": adopted(&prev_t[t]) });
+        // The name a dropped binding was adopted under: the runtime checks the adoption again first.
+        if prev_t[t]["adoptedAs"].is_string() {
+            check["adoptedAs"] = prev_t[t]["adoptedAs"].clone();
+        }
+        out.push(checked(check, format!("DROP TABLE {};", table(t, &prev_t))));
     }
     out
 }

@@ -2593,6 +2593,9 @@
                   "null"
                 ],
                 "format": "date-time"
+              },
+              "_rev": {
+                "type": "string"
               }
             }
           }
@@ -2703,6 +2706,9 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -2827,6 +2833,9 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -2846,7 +2855,7 @@
   {
     "name": "blog/authors-update",
     "label": "Update in authors",
-    "description": "Update one authors row of the Blog app: the given fields of `patch` change, the rest stay.",
+    "description": "Update one authors row of the Blog app: the given fields of `patch` change, the rest stay. Send the `_rev` of your read to refuse the update if the row changed since.",
     "category": "blog",
     "input_schema": {
       "type": "object",
@@ -2901,6 +2910,12 @@
               ]
             }
           }
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -2956,6 +2971,9 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -2983,6 +3001,12 @@
       "properties": {
         "id": {
           "type": "integer"
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -3037,6 +3061,9 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -3183,6 +3210,12 @@
               ]
             }
           }
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -3246,6 +3279,9 @@
                 "null"
               ],
               "format": "date-time"
+            },
+            "_rev": {
+              "type": "string"
             }
           }
         },
@@ -3282,6 +3318,9 @@
               "type": "string"
             }
           }
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -3371,6 +3410,9 @@
                 "null"
               ],
               "format": "date-time"
+            },
+            "_rev": {
+              "type": "string"
             }
           }
         },
@@ -3407,6 +3449,9 @@
               "type": "string"
             }
           }
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -3491,6 +3536,9 @@
               "type": "string"
             }
           }
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -3528,6 +3576,12 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -3559,6 +3613,12 @@
       "properties": {
         "id": {
           "type": "integer"
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -7648,6 +7708,9 @@
                   "null"
                 ],
                 "format": "date-time"
+              },
+              "_rev": {
+                "type": "string"
               }
             }
           }
@@ -7923,6 +7986,9 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -8333,6 +8399,9 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -8352,7 +8421,7 @@
   {
     "name": "blog/posts-update",
     "label": "Update in posts",
-    "description": "Update one posts row of the Blog app: the given fields of `patch` change, the rest stay.",
+    "description": "Update one posts row of the Blog app: the given fields of `patch` change, the rest stay. Send the `_rev` of your read to refuse the update if the row changed since.",
     "category": "blog",
     "input_schema": {
       "type": "object",
@@ -8553,6 +8622,12 @@
               ]
             }
           }
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -8749,6 +8824,9 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -8776,6 +8854,12 @@
       "properties": {
         "id": {
           "type": "integer"
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -8971,6 +9055,9 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -9263,6 +9350,12 @@
               ]
             }
           }
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -9467,6 +9560,9 @@
                 "null"
               ],
               "format": "date-time"
+            },
+            "_rev": {
+              "type": "string"
             }
           }
         },
@@ -9503,6 +9599,9 @@
               "type": "string"
             }
           }
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -9733,6 +9832,9 @@
                 "null"
               ],
               "format": "date-time"
+            },
+            "_rev": {
+              "type": "string"
             }
           }
         },
@@ -9769,6 +9871,9 @@
               "type": "string"
             }
           }
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -9853,6 +9958,9 @@
               "type": "string"
             }
           }
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -9890,6 +9998,12 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -9921,6 +10035,12 @@
       "properties": {
         "id": {
           "type": "integer"
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -13299,6 +13419,9 @@
                   "null"
                 ],
                 "format": "date-time"
+              },
+              "_rev": {
+                "type": "string"
               }
             }
           }
@@ -13436,6 +13559,9 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -13625,6 +13751,9 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -13644,7 +13773,7 @@
   {
     "name": "blog/events-update",
     "label": "Update in events",
-    "description": "Update one events row of the Blog app: the given fields of `patch` change, the rest stay.",
+    "description": "Update one events row of the Blog app: the given fields of `patch` change, the rest stay. Send the `_rev` of your read to refuse the update if the row changed since.",
     "category": "blog",
     "input_schema": {
       "type": "object",
@@ -13732,6 +13861,12 @@
               ]
             }
           }
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -13820,6 +13955,9 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -13847,6 +13985,12 @@
       "properties": {
         "id": {
           "type": "integer"
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -13934,6 +14078,9 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -14113,6 +14260,12 @@
               ]
             }
           }
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -14209,6 +14362,9 @@
                 "null"
               ],
               "format": "date-time"
+            },
+            "_rev": {
+              "type": "string"
             }
           }
         },
@@ -14245,6 +14401,9 @@
               "type": "string"
             }
           }
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -14367,6 +14526,9 @@
                 "null"
               ],
               "format": "date-time"
+            },
+            "_rev": {
+              "type": "string"
             }
           }
         },
@@ -14403,6 +14565,9 @@
               "type": "string"
             }
           }
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -14487,6 +14652,9 @@
               "type": "string"
             }
           }
+        },
+        "_rev": {
+          "type": "string"
         }
       }
     },
@@ -14524,6 +14692,12 @@
             "null"
           ],
           "format": "date-time"
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -14555,6 +14729,12 @@
       "properties": {
         "id": {
           "type": "integer"
+        },
+        "_rev": {
+          "type": "string"
+        },
+        "takeover": {
+          "type": "boolean"
         }
       },
       "required": [

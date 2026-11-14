@@ -54,6 +54,10 @@ final class Migrator
             throw \First\HttpError::invalidInput('--mark-applied takes <migration id>:<statement number>, e.g. 0002_update:1', '/mark-applied');
         }
         [, $id, $n] = $m;
+        // Marking a step skips it, so the tables it would touch are checked as migrate() checks them.
+        $this->guardBindings();
+        ['migrations' => $migrations, 'done' => $done] = $this->read();
+        $this->guardAdoptions($migrations, $done);
         // Only a migration file of this app, named exactly as `pending()` names it (no paths).
         $files = array_map(static fn (string $f): string => basename($f, '.sql'), glob($this->dir . '/*.sql') ?: []);
         if (!in_array($id, $files, true)) {
@@ -87,8 +91,15 @@ final class Migrator
      */
     public function plan(): array
     {
+        $this->guardBindings();
         ['migrations' => $migrations, 'hashes' => $hashes, 'done' => $done] = $this->read();
         $this->check($migrations, $done);
+        try {
+            $this->preflightAdoptions($migrations, $done);
+        } catch (DbError $e) {
+            throw new SchemaRefused([['code' => 'adoption_mismatch', 'name' => 'existingTable', 'rows' => 0, 'message' => $e->getMessage(),
+                'fix' => "Make the existing table match the declaration's columns, indexes, keys and integer types, or change the declaration; nothing was changed."]]);
+        }
         $plan = [];
         foreach ($migrations as $id => $statements) {
             if (isset($done[$id])) {
@@ -147,33 +158,23 @@ final class Migrator
                 }
             }
         }
+        $this->guardAdoptions($migrations, $done);
         (new SchemaCheck($this->db, $this->drops))->check($pending, $applied);
     }
 
     /** @return list<string> ids applied by this call */
     public function migrate(): array
     {
+        $this->guardBindings();
         $this->requireCompatibleTables();
         $app = $this->schema->name();
         ['migrations' => $migrations, 'hashes' => $hashes, 'done' => $done] = $this->read();
         // The ledger is only converted below, once the check has passed.
         $this->check($migrations, $done);
-        // Check every pending adoption before any DDL or ledger writes, even across tables/files.
-        foreach ($migrations as $id => $statements) {
-            if (isset($done[$id])) {
-                continue;
-            }
-            foreach ($statements as $i => $statement) {
-                if (!str_starts_with($statement, '-- first-adopt ') || isset($done[$id . ':' . ($i + 1)])) {
-                    continue;
-                }
-                try {
-                    $this->validateAdoption($statement);
-                    $this->db->run($statement);
-                } catch (DbError $e) {
-                    throw new \RuntimeException("Migration $id failed at statement " . ($i + 1) . ': ' . $e->getMessage(), 0, $e);
-                }
-            }
+        try {
+            $this->preflightAdoptions($migrations, $done);
+        } catch (DbError $e) {
+            throw new \RuntimeException($e->getMessage(), 0, $e);
         }
         $ledger = $this->ledger();
         $done = array_flip($this->done());
@@ -250,13 +251,115 @@ final class Migrator
         }
     }
 
+    /** A table the app binds but didn't create must be this site's, before anything reads it. */
+    private function guardBindings(): void
+    {
+        foreach ($this->schema->collections() as $collection => $spec) {
+            if (isset($spec['existingTable'])) {
+                Guard::table((string) $spec['existingTable'], $this->db->prefix(), Guard::names((string) $collection, $spec));
+            }
+        }
+    }
+
+    /**
+     * Every pending adoption against the live table (declared indexes, foreign keys, integer types and
+     * a `SELECT <columns> LIMIT 0` probe), before any DDL or ledger write, even across tables and
+     * files. Reads only, so plan() runs it too.
+     *
+     * @param array<string, list<string>> $migrations
+     * @param array<string, int> $done
+     * @throws DbError naming the migration and statement
+     */
+    private function preflightAdoptions(array $migrations, array $done): void
+    {
+        foreach ($migrations as $id => $statements) {
+            foreach (isset($done[$id]) ? [] : $statements as $i => $statement) {
+                if (!str_starts_with($statement, '-- first-adopt ') || isset($done[$id . ':' . ($i + 1)])) {
+                    continue;
+                }
+                try {
+                    $this->validateAdoption($statement);
+                    $this->db->run($statement);
+                } catch (DbError $e) {
+                    throw new DbError("Migration $id failed at statement " . ($i + 1) . ': ' . $e->getMessage(), 0);
+                }
+            }
+        }
+    }
+
+    /**
+     * Guards (guardAdoption) every adoption record a pending step relies on: one still pending, and
+     * one already applied whose table a pending statement names, so a table adopted by an earlier
+     * runtime is checked again before a later statement alters or drops it, even once no collection
+     * binds it. Generated statements quote every table name.
+     *
+     * @param array<string, list<string>> $migrations
+     * @param array<string, int> $done
+     */
+    private function guardAdoptions(array $migrations, array $done): void
+    {
+        $pending = [];
+        foreach ($migrations as $id => $statements) {
+            foreach (isset($done[$id]) ? [] : $statements as $i => $statement) {
+                if (!isset($done[$id . ':' . ($i + 1)])) {
+                    $pending[] = $statement;
+                }
+            }
+        }
+        foreach ($migrations as $id => $statements) {
+            foreach ($statements as $i => $statement) {
+                if (!str_starts_with($statement, '-- first-adopt ')) {
+                    continue;
+                }
+                $applied = isset($done[$id]) || isset($done[$id . ':' . ($i + 1)]);
+                $quoted = '`' . str_replace('`', '``', (string) self::adoption($statement)['table']) . '`';
+                $touched = static fn (): bool => array_filter($pending, static fn (string $s): bool => $s !== $statement && str_contains($s, $quoted)) !== [];
+                if (!$applied || $touched()) {
+                    $this->guardAdoption($statement, $migrations);
+                }
+            }
+        }
+    }
+
+    /** The JSON of a `-- first-adopt` line. */
+    private static function adoption(string $statement): array
+    {
+        return json_decode(explode("\n", substr($statement, strlen('-- first-adopt ')), 2)[0], true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Refuses an adoption record's table unless this site may bind it, on the record's own terms: a
+     * later migration of the same deploy may drop the collection that binds it now. A Zero 0.8
+     * table's digest is over the name it was adopted under: the record's `name`, else (records from
+     * before it) a collection binding the table now or a later drop check of it.
+     *
+     * @param array<string, list<string>> $migrations every migration's statements, by id
+     */
+    private function guardAdoption(string $statement, array $migrations): void
+    {
+        $expected = self::adoption($statement);
+        $table = $expected['table'];
+        $names = is_string($expected['name'] ?? null) ? [$expected['name']] : [];
+        foreach ($this->schema->collections() as $collection => $spec) {
+            if (($spec['existingTable'] ?? null) === $table) {
+                $names = [...$names, ...Guard::names((string) $collection, $spec)];
+            }
+        }
+        foreach ($migrations as $statements) {
+            foreach ($statements as $later) {
+                $check = SchemaCheck::parse($later);
+                if (($check['check'] ?? null) === 'drop' && !isset($check['column']) && ($check['table'] ?? null) === $table) {
+                    $names = [...$names, ...array_filter([$check['adoptedAs'] ?? null, $check['name'] ?? null], 'is_string')];
+                }
+            }
+        }
+        Guard::table((string) $table, $this->db->prefix(), array_values(array_unique($names)));
+    }
+
     /** Adoption records compiler names in the snapshot; verify those names before recording the step. */
     private function validateAdoption(string $statement): void
     {
-        if (!str_starts_with($statement, '-- first-adopt ')) {
-            return;
-        }
-        $expected = json_decode(explode("\n", substr($statement, strlen('-- first-adopt ')), 2)[0], true, flags: JSON_THROW_ON_ERROR);
+        $expected = self::adoption($statement);
         $table = $expected['table'];
         $indexes = [];
         foreach ($this->db->run('SELECT INDEX_NAME AS n, NON_UNIQUE AS u, COLUMN_NAME AS c, SUB_PART AS p FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY INDEX_NAME, SEQ_IN_INDEX', [$table]) as $row) {

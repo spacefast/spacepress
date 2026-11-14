@@ -1,7 +1,7 @@
 import { collection, defineConfig, media, richText, text } from "first";
 
 // Native WordPress titles and blocks; the remaining fields are editable in SCF.
-const posts = collection({
+export const posts = collection({
   title: text(),
   body: richText().optional(),
   excerpt: text({ multiline: true }).optional(),
@@ -16,7 +16,7 @@ const posts = collection({
   },
 });
 
-const pages = collection({
+export const pages = collection({
   title: text(),
   body: richText().optional(),
   seoTitle: text().optional(),
@@ -33,5 +33,4 @@ export default defineConfig({
   name: "emdash-blog",
   // Keep WordPress's complete native admin, plugin and settings screens.
   admin: false,
-  collections: { posts, pages },
 });

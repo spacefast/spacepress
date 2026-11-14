@@ -56,6 +56,8 @@ final class Prebuilt
     public const COOKIE = 'wordpress_first_prerender';
     /** The option holding when a write last named each prebuilt path (`stale()`). */
     private const MARKS = 'first_prebuilt_stale';
+    /** The option holding when `forget()` last dropped every file. */
+    private const FORGOTTEN = 'first_prebuilt_forgotten';
 
     private static ?Plugin $plugin = null;
     /** @var ?string the viewer function this prerender request called, reported in REFUSED */
@@ -128,6 +130,9 @@ final class Prebuilt
         if (self::$plugin === null) {
             return;
         }
+        // Marked before the files go: a render already running in another process writes nothing,
+        // and a full build that began before now records nothing (write(), build()).
+        update_option(self::FORGOTTEN, microtime(true), false);
         if (is_dir(self::dir())) {
             self::remove(self::dir());
         }
@@ -470,7 +475,8 @@ final class Prebuilt
     /** This build's directory of prebuilt files; `first_prebuilt_dir` moves it. */
     public static function dir(): string
     {
-        return (string) apply_filters('first_prebuilt_dir', WP_CONTENT_DIR . '/cache/first-prebuilt') . '/' . substr(self::build_id(), 0, 16);
+        $root = (string) apply_filters('first_prebuilt_dir', WP_CONTENT_DIR . '/cache/first-prebuilt');
+        return $root . (is_multisite() ? '/sites/' . get_current_blog_id() : '') . '/' . substr(self::build_id(), 0, 16);
     }
 
     /**
@@ -501,11 +507,16 @@ final class Prebuilt
             return;
         }
         foreach (array_keys($_COOKIE) as $name) {
-            if (preg_match('/^(wordpress_logged_in_|wordpress_sec_|wp-postpass_|comment_author_|wp_lang$|zi_session|__Host-zi_session)/', (string) $name) === 1) {
+            if (preg_match('/^(wordpress_logged_in_|wordpress_sec_|wp-postpass_|comment_author_|wp_lang$|zi_session$|__Host-zi_session$)/', (string) $name) === 1) {
                 return;
             }
         }
-        $uri = (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
+        $request = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+        // `//x` is a scheme-relative URL to wp_parse_url(), not a path: not a prebuilt page's URL.
+        if (str_starts_with($request, '//')) {
+            return;
+        }
+        $uri = (string) (wp_parse_url($request, PHP_URL_PATH) ?? '/');
         $base = rtrim((string) (wp_parse_url(home_url('/'), PHP_URL_PATH) ?? '/'), '/');
         if ($base !== '' && $uri !== $base && !str_starts_with($uri, $base . '/')) {
             return;
@@ -515,15 +526,22 @@ final class Prebuilt
         if ($path === '/index' || $path === '/index/') {
             return;
         }
+        // `/.md` is not the home page twin's URL; `/index.md` is.
+        if ($path === '/.md') {
+            return;
+        }
         $markdown = str_ends_with($path, '.md');
         $html = $markdown ? (substr($path, 0, -3) === '/index' ? '/' : substr($path, 0, -3)) : $path;
         if ($html !== '/' && (str_ends_with($html, '/') || str_contains(rawurldecode($html), '..') || str_contains(rawurldecode($html), "\0") || str_contains(rawurldecode($html), '\\'))) {
             return;
         }
-        // Only the spelling the file was written under: `/%61bout` is not `/about`'s URL.
-        foreach (explode('/', trim($html, '/')) as $segment) {
-            if ($segment !== '' && rawurlencode(rawurldecode($segment)) !== $segment) {
-                return;
+        // Only the spelling the file was written under: `/%61bout` is not `/about`'s URL, and neither
+        // are `/a//b` or `/./about`.
+        if ($html !== '/') {
+            foreach (explode('/', substr($html, 1)) as $segment) {
+                if ($segment === '' || $segment === '.' || rawurlencode(rawurldecode($segment)) !== $segment) {
+                    return;
+                }
             }
         }
         $file = self::files($html)[$markdown ? 1 : 0];
@@ -574,6 +592,7 @@ final class Prebuilt
             return;
         }
         $all = $paths === [];
+        $began = microtime(true);
         $listed = array_column(self::urls($plugin)['urls'], 'path');
         if ($all) {
             self::sweep();
@@ -602,7 +621,9 @@ final class Prebuilt
                 return;
             }
         }
-        if ($all) {
+        // A forget() since this build began dropped its files and state: the next request schedules
+        // a full build again, so nothing is recorded.
+        if ($all && self::forgotten() < $began) {
             update_option(self::option(), ['state' => 'built', 'at' => time(), 'retry' => 60], false);
         }
     }
@@ -661,10 +682,10 @@ final class Prebuilt
         return true;
     }
 
-    /** Write by rename, so a reader sees the old file or the new one, never part of one. */
     /**
      * Write by rename, so a reader sees the old file or the new one, never part of one. Nothing is
-     * written when a write named the path after the render started: that render is older than it.
+     * written when a write named the path, or `forget()` ran, after the render started: that render
+     * is older than it.
      */
     private static function write(string $file, string $bytes, string $path, float $started): bool
     {
@@ -673,7 +694,7 @@ final class Prebuilt
             return false;
         }
         $tmp = $file . '.' . bin2hex(random_bytes(4)) . '.tmp';
-        if (file_put_contents($tmp, $bytes) !== strlen($bytes) || self::staleSince($path) >= $started) {
+        if (file_put_contents($tmp, $bytes) !== strlen($bytes) || max(self::staleSince($path), self::forgotten()) >= $started) {
             @unlink($tmp);
             return false;
         }
@@ -711,6 +732,13 @@ final class Prebuilt
         $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::MARKS));
         $marks = is_string($raw) ? maybe_unserialize($raw) : null;
         return is_array($marks) ? (float) ($marks[$path] ?? 0) : 0.0;
+    }
+
+    /** When `forget()` last ran, as a Unix time; 0 for never. Read from the database, as `staleSince()`. */
+    private static function forgotten(): float
+    {
+        global $wpdb;
+        return (float) $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::FORGOTTEN));
     }
 
     /** Removes other builds' directories: files from another build are never served, and are a cache. */

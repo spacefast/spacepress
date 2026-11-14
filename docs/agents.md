@@ -140,7 +140,7 @@ shell cannot do. Two things make it usable there:
 `.first/dev/state.json`, which `first dev` writes when the site is up:
 
 ```json
-{"state":"running","url":"http://localhost:8787","port":8787,"admin":"http://localhost:8787/wp-admin/","site":"/work/my-app/.first/dev/wordpress","watching":true,"pid":41822,"log":"/work/my-app/.first/dev/dev.log","wordpress":"7.1.4","php":"8.4"}
+{"state":"running","url":"http://localhost:8787","port":8787,"admin":"http://localhost:8787/wp-admin/","site":"/work/my-app/.first/dev/wordpress","watching":true,"pid":41822,"log":"/work/my-app/.first/dev/dev.log","wordpress":"7.2-beta5","php":"8.4"}
 ```
 
 `state` is `none`, `stopped` or `running`, checked against the port itself.

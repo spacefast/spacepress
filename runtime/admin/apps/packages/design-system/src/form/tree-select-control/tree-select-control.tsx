@@ -8,7 +8,7 @@ import {
 } from '@wordpress/element';
 import { useInstanceId } from '@wordpress/compose';
 import { Popover } from '@base-ui/react/popover';
-import { ThemeProvider } from '@first-admin/theme';
+import { ThemeProvider } from '@wordpress/theme';
 import { __ } from '@wordpress/i18n';
 import clsx from 'clsx';
 import { Field, Input, InputLayout } from '../..';

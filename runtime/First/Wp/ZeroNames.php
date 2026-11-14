@@ -121,6 +121,31 @@ final class ZeroNames
         });
     }
 
+    /**
+     * Where this site stands, read without writing: `done` once the upgrade recorded that it ran;
+     * `pending` on a site the 0.3 runtime ran on and nothing has moved yet; `started` when it began and
+     * did not finish (an interrupted run: some 0.3 names moved, its tables-version marker or its ledger
+     * still under the old name, or First's names already there); null on a site 0.3 never ran on, where
+     * the upgrade would only record that it checked.
+     */
+    public static function state(Connection $db): ?string
+    {
+        $options = $db->wpdb()->options;
+        if ($db->run("SELECT 1 FROM `$options` WHERE option_name = ?", [self::DONE]) !== []) {
+            return 'done';
+        }
+        if (!self::ranZero($db)) {
+            return null;
+        }
+        $prefix = $db->prefix();
+        // What a run renames first is the tables, then the options holding the 0.3 markers: a site where
+        // a First table already sits beside a 0.3 marker was part way through.
+        $moved = $db->run('SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE ? AND TABLE_NAME NOT LIKE ? LIMIT 1',
+            [$db->wpdb()->esc_like($prefix . 'first_') . '%', $db->wpdb()->esc_like($prefix . 'first_identity_') . '%']) !== [];
+
+        return $moved ? 'started' : 'pending';
+    }
+
     private static function ranZero(Connection $db): bool
     {
         $options = $db->wpdb()->options;

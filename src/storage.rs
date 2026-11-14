@@ -2,7 +2,8 @@
 //!
 //! Per kind and field: its stored type, its choices in order, its nested shape, whether it is
 //! required, its SQL default, and where it lives (a table and column, a post type and meta key, a
-//! user and meta key, or an option). Plus each SQL table's indexes and foreign keys. Access rules,
+//! user and meta key, or an option). Plus each SQL table's declared indexes, unique constraints and
+//! foreign keys; indexes inferred from queries are left out, they follow the code. Access rules,
 //! UI, hooks, actions, jobs and pages are left out: two builds with the same `storage.json` read
 //! and write the same stored values the same way.
 //!
@@ -25,6 +26,9 @@ pub fn bytes(schema: &Schema) -> Vec<u8> {
 }
 
 pub fn describe(schema: &Schema) -> Json {
+    // `migrate::snapshot`, not the build's `snapshot_with`: without the columns compiled queries name,
+    // so indexes the compiler infers from queries (`<field>_queried`) are not storage. They follow the
+    // code, like the page read index, and code that changes only its queries stores the same.
     let snapshot = crate::migrate::snapshot(schema);
     let mut kinds = Map::new();
     for c in schema.collections.values() {

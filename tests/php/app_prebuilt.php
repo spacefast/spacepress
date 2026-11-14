@@ -28,6 +28,8 @@ function fetch(string $url, array $headers = []): array
 {
     $ch = curl_init($url);
     $out = [];
+    // The path as written: curl would otherwise resolve `/./` and `/../` before sending.
+    curl_setopt($ch, CURLOPT_PATH_AS_IS, true);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_HTTPHEADER => $headers,
         CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$out): int {
@@ -194,6 +196,16 @@ do_action('init');
 $drain();
 $negotiated = fetch("$url/about", ['Accept: text/markdown']);
 $out['accept markdown'] = [$negotiated['prebuilt'], fetch("$url/about.md")['prebuilt']];
+// More spellings that aren't a prebuilt page's URL: an empty segment, a `.` segment, `/.md`.
+$out['spellings'] = [fetch("$url/notes//hello")['prebuilt'], fetch("$url/./about")['prebuilt'], fetch("$url/.md")['prebuilt']];
+// A render that began before a forget() writes no file, and a full build that began before it
+// records nothing, so the next request schedules the build again.
+do_action('init');
+$drain();
+$started = microtime(true) - 5;
+\First\Render\Prebuilt::forget();
+$m = new ReflectionMethod(\First\Render\Prebuilt::class, 'write');
+$out['forget race'] = [$m->invoke(null, \First\Render\Prebuilt::dir() . '/about.html', 'old', '/about', $started), is_file(\First\Render\Prebuilt::dir() . '/about.html')];
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";
 $site->destroy();

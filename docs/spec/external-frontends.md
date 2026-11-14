@@ -53,9 +53,10 @@ lets that one request read drafts. Each adapter ships the handler.
 
 ## Realtime
 
-The Spacefast engine client (`/__spacefast/client.js`) owns live updates. First
-writes a change feed in the same transaction as each write and the engine fans
-it out through Cast. For external frontends this is exposed as a resumable SSE
+The host's realtime transport owns live updates; on Spacefast that is Cast, not
+yet wired for First builds ([host checklist](../spacefast-host-checklist.md),
+item 7). First writes a change feed in the same transaction as each write and
+the host fans it out. For external frontends this is exposed as a resumable SSE
 stream of tags, which the TanStack DB collection and a `useZeroQuery` hook
 consume. No Postgres-style logical replication promised (WordPress is MySQL).
 
@@ -72,6 +73,8 @@ consume. No Postgres-style logical replication promised (WordPress is MySQL).
 
 1. Official EmDash `blog` Astro template running on `@first/astro` with no
    adapter code in the template (replaces `examples/emdash/official-sites` bridge).
+   Built: `firstEmdash()` from `@first/astro/emdash`; blank, starter and blog run
+   unchanged apart from `astro.config.mjs`, checked by `verify-upstream.mjs`.
 2. A Next.js 16 example: edit a post in wp-admin, the page updates without a
    redeploy; preview shows a draft.
 3. A TanStack Start example with a live list updated by another browser's write.

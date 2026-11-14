@@ -13,4 +13,4 @@ export const cheers = table({
   count: integer().default(0),
 }, { access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
-export default defineConfig({ name: "cms", collections: { notes }, tables: { cheers }, output: "static" });
+export default defineConfig({ name: "cms", output: "static" });

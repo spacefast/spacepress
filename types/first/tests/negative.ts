@@ -1,7 +1,7 @@
 // Negative checks: each @ts-expect-error must be consumed by a real mistake.
 import {
   action, blocks, boolean, collection, db, defineConfig, global, HttpError, integer, media, repeater, richText, select, text, url,
-  table, ref,
+  table, ref, taxonomy, terms,
 } from "first";
 import { authors, comments, items, locations, posts, entities, settings, shoppingList, UNITS } from "./schema";
 import type { AppRelations } from "./register";
@@ -81,57 +81,46 @@ integer().references(() => locations.name).optional();
 // @ts-expect-error integer columns have no `now`
 integer().defaultNow().optional();
 
-// Hook mistakes: one defineConfig per mistake, since tsc reports only the
-// first assignability failure inside a single argument.
-defineConfig({
-  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
-  hooks: {
-    items: {
-      // @ts-expect-error misspelled hook name
-      beforeCreated(data: unknown) {
-        void data;
-      },
-    },
+// Hook mistakes: one `.on()` per mistake, since tsc reports only the first assignability failure
+// inside a single argument.
+items.on({
+  // @ts-expect-error misspelled hook name
+  beforeCreated(data: unknown) {
+    void data;
   },
 });
 
-defineConfig({
-  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
-  // @ts-expect-error hooks are keyed by schema key, not table name
-  hooks: { shopping_list: {} },
-});
-
-defineConfig({
-  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
-  hooks: {
-    items: {
-      beforeUpdate(patch) {
-        // @ts-expect-error quantity is a number
-        patch.quantity = "lots";
-      },
-      // @ts-expect-error afterCreate receives a row, not a string
-      afterCreate(row: string) {
-        void row;
-      },
-    },
+items.on({
+  beforeUpdate(patch) {
+    // @ts-expect-error quantity is a number
+    patch.quantity = "lots";
+  },
+  // @ts-expect-error afterCreate receives a row, not a string
+  afterCreate(row: string) {
+    void row;
   },
 });
 
-defineConfig({
-  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
-  actions: {
-    consume: action({
-      input: { itemId: integer() },
-      handler({ itemId }) {
-        // @ts-expect-error itemId is a number
-        const s: string = itemId;
-        // @ts-expect-error HttpError takes (status, code, message)
-        if (!s) throw new HttpError(404, "not found");
-        return s;
-      },
-    }),
+action({
+  input: { itemId: integer() },
+  handler({ itemId }) {
+    // @ts-expect-error itemId is a number
+    const s: string = itemId;
+    // @ts-expect-error HttpError takes (status, code, message)
+    if (!s) throw new HttpError(404, "not found");
+    return s;
   },
 });
+
+// The registry keys are gone: kinds, globals, actions and jobs register by export (spec §1.1).
+// @ts-expect-error `tables` is not a defineConfig option
+defineConfig({ tables: { locations } });
+// @ts-expect-error `hooks` is not a defineConfig option
+defineConfig({ hooks: {} });
+// @ts-expect-error `actions` is not a defineConfig option
+defineConfig({ actions: {} });
+// @ts-expect-error `files` is not a defineConfig option
+defineConfig({ files: {} });
 
 // --- v1 additions (design §1) ---
 
@@ -189,46 +178,29 @@ async function v1Queries() {
 }
 
 // Hook ctx (§1.7)
-defineConfig({
-  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
-  hooks: {
-    posts: {
-      afterCreate(row, ctx) {
-        // @ts-expect-error ctx.user may be null (anonymous writers, trusted callers)
-        void ctx.user.id;
-        // @ts-expect-error there is no build target on ctx
-        void ctx.target;
-      },
-      // @ts-expect-error the trailing argument is HookCtx, not a user
-      beforeDelete(row, user: { role: string; email: string }) {
-        void row, user;
-      },
-    },
+posts.on({
+  afterCreate(row, ctx) {
+    // @ts-expect-error ctx.user may be null (anonymous writers, trusted callers)
+    void ctx.user.id;
+    // @ts-expect-error there is no build target on ctx
+    void ctx.target;
+  },
+  // @ts-expect-error the trailing argument is HookCtx, not a user
+  beforeDelete(row, user: { role: string; email: string }) {
+    void row, user;
   },
 });
 
-defineConfig({
-  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
-  actions: {
-    publish: action({
-      input: { id: integer() },
-      // @ts-expect-error action access is a gate: no filters
-      access: () => ({ id: 1 }),
-      handler: ({ id }, ctx) => ctx.user?.role === "admin" && id,
-    }),
-  },
+action({
+  input: { id: integer() },
+  // @ts-expect-error action access is a gate: no filters
+  access: () => ({ id: 1 }),
+  handler: ({ id }, ctx) => ctx.user?.role === "admin" && id,
 });
 
 defineConfig({
-  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
   // @ts-expect-error there is no build target option
   target: "wp",
-});
-
-defineConfig({
-  collections: { authors, posts }, tables: { locations, items, shoppingList, comments },
-  // @ts-expect-error globals are made with global()
-  globals: { settings: { siteTitle: "x" } },
 });
 
 // Globals (§1.5)
@@ -254,3 +226,9 @@ export { crypto } from "first";
 ref(locations).many().onDelete("setNull");
 // @ts-expect-error a many-ref takes no default
 ref(locations).many().default([1]);
+// @ts-expect-error a terms field is already a list
+terms(taxonomy()).many();
+// @ts-expect-error terms() takes a taxonomy
+terms(locations);
+// @ts-expect-error term fields take no richText yet
+taxonomy({ body: richText() });

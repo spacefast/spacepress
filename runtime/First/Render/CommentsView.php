@@ -37,6 +37,8 @@ final class CommentsView
         // The thread is core's comment query, which no First counter follows: a live region around
         // it is rendered and compared on every poll, so a new approved comment shows on the next one.
         Live::unseen();
+        // A live region around the thread asks again when a comment's approval changes (Comments::seen).
+        Live::reads(\First\Wp\Comments::NOTICE);
         $rows = Comments::thread($id, $userId);
         $depth = Comments::policy($collection)['threaded'];
         $byParent = [];

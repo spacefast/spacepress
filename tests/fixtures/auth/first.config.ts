@@ -23,6 +23,5 @@ export const users = { members };
 export const entities = { ...collections, ...tables, ...users };
 export default defineConfig({
   name: "club",
-  collections, tables, users,
   
 });

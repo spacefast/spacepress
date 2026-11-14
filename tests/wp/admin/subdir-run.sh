@@ -30,5 +30,6 @@ sed -i "s/{{firstVersion}}/$version/g; s/{{wpVersion}}/$wp_floor/g; s/{{phpVersi
 FIRST_WP_HARNESS="$wp/.harness-admin.json" node --test --test-concurrency=1 "$here/subdir.test.ts"
 
 FIRST_WP_HARNESS="$wp/.harness-admin.json" \
-FIRST_ADMIN_BROWSER_OUTPUT="${FIRST_ADMIN_BROWSER_OUTPUT:-${TMPDIR:-/tmp}/first-admin-browser}/subdirectory" \
+FIRST_ADMIN_BROWSER_OUTPUT="${FIRST_ADMIN_BROWSER_OUTPUT:+$FIRST_ADMIN_BROWSER_OUTPUT/subdirectory}" \
+FIRST_ADMIN_BROWSER_RUN=subdirectory \
 "$wp/admin/browser-run.sh"

@@ -26,6 +26,8 @@ final class WpPostStore implements Store
 
     /** @var array<string, Source> */
     private array $sources = [];
+    /** Trashed posts are read too ({@see withTrash()}). */
+    private bool $trashVisible = false;
     /** @var array<string, array> Request-local SQL visibility guards. */
     private array $visibility = [];
     private int $visibilityGeneration = -1;
@@ -64,7 +66,27 @@ final class WpPostStore implements Store
 
     public function source(string $collection): Source
     {
-        return $this->sources[$collection] ??= $this->buildSource($collection);
+        $source = $this->sources[$collection] ??= $this->buildSource($collection);
+        if (!$this->trashVisible) {
+            return $source;
+        }
+
+        return new Source($source->table, str_replace("NOT IN ('trash', ", 'NOT IN (', $source->baseWhere), $source->columns);
+    }
+
+    /**
+     * Run $fn with trashed posts readable: what wp-admin's own trash, untrash and permanent delete
+     * need to know of the row (its status reads as `draft`). Every other read leaves the trash out.
+     */
+    public function withTrash(callable $fn): mixed
+    {
+        $previous = $this->trashVisible;
+        $this->trashVisible = true;
+        try {
+            return $fn();
+        } finally {
+            $this->trashVisible = $previous;
+        }
     }
 
     public function readGuards(string $collection, \First\Viewer $viewer): array
@@ -284,7 +306,7 @@ final class WpPostStore implements Store
         return $rows;
     }
 
-    private static function serializedToJson(mixed $v, bool $ints): ?string
+    public static function serializedToJson(mixed $v, bool $ints): ?string
     {
         if ($v === null || $v === '') {
             return null;
@@ -768,21 +790,28 @@ final class WpPostStore implements Store
     {
         $read = function (string $lock) use ($pk): array {
             $posts = $this->db->wpdb()->posts;
+            $postmeta = $this->db->wpdb()->postmeta;
             $item = $this->db->run("SELECT * FROM `$posts` WHERE ID = ?$lock", [$pk]);
+            // The item's First fields live in its meta: a write of only those leaves the post row as it was.
+            $prefix = $this->db->wpdb()->esc_like($this->schema->collection((string) CoreAccess::collection((string) get_post_type($pk)))['wp']['metaPrefix'] ?? 'first_');
+            $itemMeta = $this->db->run(
+                "SELECT meta_id, meta_key, meta_value FROM `$postmeta` WHERE post_id = ? AND (meta_key LIKE ? OR meta_key LIKE ?) ORDER BY meta_id$lock",
+                [$pk, $prefix . '%', '\\_' . $prefix . '%'],
+            );
             $staged = $this->db->run("SELECT * FROM `$posts` WHERE post_parent = ? AND post_type = 'revision' AND post_name = ? ORDER BY ID$lock", [$pk, self::stagedName($pk)]);
             $meta = array_map(fn (array $row): array => $this->db->run(
-                'SELECT meta_id, meta_key, meta_value FROM `' . $this->db->wpdb()->postmeta . "` WHERE post_id = ? ORDER BY meta_id$lock",
+                "SELECT meta_id, meta_key, meta_value FROM `$postmeta` WHERE post_id = ? ORDER BY meta_id$lock",
                 [(int) $row['ID']],
             ), $staged);
 
-            return [$item, $staged, $meta];
+            return [$item, $itemMeta, $staged, $meta];
         };
         $seen = $read('');
         $now = $read(' FOR UPDATE');
         if (Js::jsonStringify($seen) !== Js::jsonStringify($now)) {
             throw new HttpError(409, 'conflict', 'This item changed while the request ran; read it again and retry');
         }
-        $last = end($now[1]);
+        $last = end($now[2]);
 
         return $last === false ? null : (int) $last['ID'];
     }

@@ -4,15 +4,14 @@
 // (`Object.prototype.toString.call(x) === '[object RegExp]'`) use at run time. Every action runs
 // under Node and as compiled PHP; the JSON results must be byte-identical.
 import { action, defineConfig } from "first";
-import { assigns, ownKeys, tags } from "./object-reflect-helpers.mjs";
+import { assigns as assignsImpl, ownKeys as ownKeysImpl, tags as tagsImpl } from "./object-reflect-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
-export default defineConfig({
-  name: "language-object-reflect",
-  actions: {
-    assigns: run(() => assigns()),
-    ownKeys: run(() => ownKeys()),
-    tags: run(() => tags()),
-  },
-});
+export const assigns = run(() => assignsImpl());
+
+export const ownKeys = run(() => ownKeysImpl());
+
+export const tags = run(() => tagsImpl());
+
+export default defineConfig({ name: "language-object-reflect" });

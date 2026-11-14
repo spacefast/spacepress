@@ -348,7 +348,8 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
         fields.extend(extra.iter().cloned());
         opt(&fields)
     };
-    for c in schema.collections.values() {
+    // Taxonomies have no abilities yet (docs/decisions/2026-11-11-authoring-surface.md, deferrals).
+    for c in schema.collections.values().filter(|c| c.taxonomy.is_none()) {
         // As Register::collection: `with` when there is something to load, `locale` when localized.
         let mut extra = Vec::new();
         if !c.relations.is_empty()
@@ -380,15 +381,30 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
         if c.api.create {
             out.push((format!("{app}/{k}-create"), (create_input(schema, c), row.clone())));
         }
+        // As Register::collection: a kind with staged versions takes `_rev` and `takeover` on its
+        // update and delete (docs/staged.md).
+        let staged = c.editor && c.revisions && c.staged;
+        let conditions = |mut fields: Vec<(&'static str, Ty, bool)>| {
+            if staged {
+                fields.extend([("_rev", Ty::Str, true), ("takeover", Ty::Bool, true)]);
+            }
+            opt(&fields)
+        };
         if c.api.update {
             let patch = types::partial(types::insert_with(schema, &c.table, &types::json_ty));
             out.push((
                 format!("{app}/{k}-update"),
-                (opt(&[("id", pk.clone(), false), ("patch", patch, false)]), row.clone()),
+                (
+                    conditions(vec![("id", pk.clone(), false), ("patch", patch, false)]),
+                    row.clone(),
+                ),
             ));
         }
         if c.api.delete {
-            out.push((format!("{app}/{k}-delete"), (id(), row.clone())));
+            out.push((
+                format!("{app}/{k}-delete"),
+                (conditions(vec![("id", pk.clone(), false)]), row.clone()),
+            ));
         }
         if c.revisions {
             let user = opt(&[("id", Ty::Num, false), ("name", Ty::Str, false)]).nullable();
@@ -407,6 +423,7 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
                 ("by", user, false),
                 ("at", Ty::Str, false),
                 ("promoteAt", Ty::Str.nullable(), false),
+                ("_rev", Ty::Str, false),
             ];
             let mut version = vec![
                 ("row", row.clone(), false),
@@ -425,7 +442,7 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
             out.push((
                 format!("{app}/{k}-stage"),
                 (
-                    opt(&[("id", pk.clone(), false), ("patch", patch, false)]),
+                    conditions(vec![("id", pk.clone(), false), ("patch", patch, false)]),
                     version.clone(),
                 ),
             ));
@@ -435,13 +452,16 @@ fn own(schema: &Schema) -> Vec<(String, (Ty, Ty))> {
             out.push((
                 format!("{app}/{k}-staged-promote"),
                 (
-                    opt(&[("id", pk.clone(), false), ("at", Ty::Str.nullable(), true)]),
+                    conditions(vec![("id", pk.clone(), false), ("at", Ty::Str.nullable(), true)]),
                     Ty::Unknown,
                 ),
             ));
             out.push((
                 format!("{app}/{k}-staged-discard"),
-                (id(), opt(&[("revision", Ty::Num, false)])),
+                (
+                    conditions(vec![("id", pk.clone(), false)]),
+                    opt(&[("revision", Ty::Num, false)]),
+                ),
             ));
             out.push((
                 format!("{app}/{k}-staged-preview"),

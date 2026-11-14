@@ -56,5 +56,7 @@ that list: `First\Render\Prebuilt::urls()` covers only pages that export `preren
 computes them on each call. `first export` writes its own `sitemap.xml`; the WordPress sitemap is
 unchanged.
 
-Term archives of First taxonomies are not added: `taxonomy()` kinds are not on main yet, and core's
-taxonomies provider will list them once they register as public taxonomies.
+Term archives of First taxonomies need nothing here: a `taxonomy()` with a `url` registers as a
+public taxonomy, so core's own taxonomies provider lists its terms, at the links its `term_link`
+filter builds (docs/decisions/2026-11-11-authoring-surface.md, ruling 30). One without a `url` is
+not public and is not listed.

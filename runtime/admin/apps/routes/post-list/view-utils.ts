@@ -42,6 +42,7 @@ export async function ensureView(
 	return loadView( {
 		kind: 'postType',
 		name: type,
+		slug: slug ?? 'all',
 		defaultView,
 		queryParams: search,
 	} );

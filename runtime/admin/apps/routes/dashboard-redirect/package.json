@@ -1,13 +1,13 @@
 {
-	"name": "@first-admin/route-collection-index",
+	"name": "@first-admin/dashboard-redirect",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
-		"path": "/"
+		"path": "/dashboard",
+		"beforeLoad": true
 	},
 	"license": "GPL-2.0-or-later",
 	"dependencies": {
-		"@first-admin/schema": "workspace:*",
 		"@wordpress/route": "catalog:"
 	}
 }

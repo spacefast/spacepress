@@ -21,9 +21,12 @@ async function login(page: Page, role: 'admin' | 'editor' | 'subscriber') {
 	await page.locator('#user_pass').fill(`first-test-${role}`);
 	await page.locator('#wp-submit').click();
 	await expect(page).toHaveURL(`${site}/wp-admin/new/`);
+	// The upstream home route: the dashboard.
 	await expect(
-		page.getByRole('heading', { name: 'Collections', exact: true })
+		page.getByRole('heading', { name: 'Dashboard', exact: true })
 	).toBeVisible();
+	// Collections opens the app's collections in the sidebar.
+	await page.locator('.first-admin-sidebar__content').getByRole('button', { name: 'Collections', exact: true }).click();
 	await expect(
 		page.getByRole('link', { name: 'Posts', exact: true }).last()
 	).toBeVisible();
@@ -35,7 +38,7 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	page.on('pageerror', (e) => errors.push(e.message));
 	await login(page, 'editor');
 	await page.screenshot({
-		path: test.info().outputPath('collections.png'),
+		path: test.info().outputPath('dashboard.png'),
 		animations: 'disabled',
 	});
 	// The app is a wp-admin page: WordPress's own admin session cookie signs it in.
@@ -71,11 +74,14 @@ test('normal WordPress login reaches the shipped admin and root navigation', asy
 	await page.screenshot({ path: test.info().outputPath('classic-admin.png'), animations: 'disabled' });
 	await wordpressMenu.getByRole('link', { name: 'First', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/new/`);
+	await sidebar.getByRole('button', { name: 'Collections', exact: true }).click();
 	await sidebar.getByRole('link', { name: 'Posts', exact: true }).click();
 	await expect(page).toHaveURL(`${site}/wp-admin/new/collections/posts`);
 	await expect(page.getByRole('heading', { name: 'Posts', exact: true })).toBeVisible();
 	await sidebar.getByRole('link', { name: 'All collections', exact: true }).click();
+	await expect(page).toHaveURL(`${site}/wp-admin/new/collections`);
 	await expect(page.getByRole('heading', { name: 'Collections', exact: true })).toBeVisible();
+	await page.screenshot({ path: test.info().outputPath('collections.png'), animations: 'disabled' });
 	await page.getByRole('button', { name: 'Open command palette', exact: true }).click();
 	await page.getByRole('combobox').fill('Classic admin');
 	await page.getByRole('option', { name: 'Go to Classic admin Action', exact: true }).click();
@@ -696,7 +702,9 @@ test('restored native WordPress routes persist settings and published content an
     await page.goto(`${site}/wp-admin/new/types/post/list/all`);
     await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('native-post-list.png') });
+    // The dashboard's earlier address, /dashboard, goes to the home route.
     await page.goto(`${site}/wp-admin/new/dashboard`);
+    await expect(page).toHaveURL(`${site}/wp-admin/new/`);
     await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Add widgets', exact: true }).click();
     await expect(page.getByRole('dialog').getByText('Quick Stats (example data)', { exact: true })).toBeVisible();

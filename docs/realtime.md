@@ -32,9 +32,13 @@ first.todos.get(42).subscribe((todo) => show(todo), (error) => error.status === 
   continues. A `get` whose row is missing, or which the visitor may not read, is a 404.
 - A write made through the same client (`create`, `update`, `delete`, an action) refreshes the
   subscriptions that read that kind as soon as it returns.
-- A sign-in or sign-out refreshes every subscription, as the new visitor.
-- A subscriber whose callback throws doesn't stop the others: the error is reported as uncaught
-  (`reportError`), and the subscription continues.
+- A sign-in or sign-out refreshes every subscription, as the new visitor, also when another client
+  on the same session storage made it. An answer to a request sent as the previous visitor is
+  dropped.
+- A subscriber whose callback (`onData` or `onError`) throws doesn't stop the others: the error is
+  reported as uncaught (`reportError`), and the subscription continues.
+- `paginate({ offset })` can be awaited but not subscribed to (`subscribe` throws): subscribe to a
+  page by `cursor`.
 - `first.todos.watch(query, onRows, onError?)` is `first.todos.list(query).subscribe(onRows, onError)`.
 
 For a read that isn't a kind query, such as an action's result or a global, use the exported
@@ -77,6 +81,9 @@ subscribed to the read.
 Without a transport the client asks on an interval that adapts: 2 seconds after a change, half as
 long again after each answer that changed nothing, up to 30 seconds, each wait jittered by 20%.
 Errors double the wait. A hidden tab does not ask at all, and asks once when it is shown again.
+That includes a page opened in a background tab or prerendered: a subscription made there sends
+nothing until the page is shown (a seed is shown at once). A page restored from the back/forward
+cache asks again, since it may have been frozen for a long time.
 
 This is not a socket. On hosting without a push transport, another visitor's write never shows in
 under about two seconds, and a quiet page can be 30 seconds behind. If you need updates faster
@@ -123,7 +130,8 @@ function Todos() {
 
 - **`useQuery(read, options?)`** subscribes to a read and returns `{ data, error, loading }`. Build
   the read inline: it is re-subscribed only when the call or its arguments change. `data` is kept
-  while a later refresh fails. Pass `null`, or `{ enabled: false }`, to subscribe to nothing.
+  while a later refresh fails on the network, and cleared when the server refuses the read (401,
+  403, 404), as after a sign-out. Pass `null`, or `{ enabled: false }`, to subscribe to nothing.
   `{ seed: { token, data } }` shows a server-rendered answer at once.
 - **`useMutation(write, options?)`** returns `{ mutate, pending, error, reset }`. `optimistic` runs
   before the write is sent; each `apply(read, update)` changes what subscribers of that read are

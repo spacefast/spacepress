@@ -49,25 +49,7 @@ export const items = table(
       delete: "editor",
     },
   },
-).on({
-  beforeCreate(data) {
-    data.name = data.name.trim();
-    if (!data.name)
-      throw new HttpError(422, "invalid_input", "Give this item a name.");
-  },
-  beforeUpdate(patch) {
-    if (patch.name !== undefined) {
-      const name = patch.name?.trim();
-      if (!name)
-        throw new HttpError(422, "invalid_input", "Give this item a name.");
-      patch.name = name;
-    }
-  },
-  afterCreate: async (item) => {
-    await syncShopping(item);
-  },
-  afterUpdate: syncShopping,
-});
+);
 
 export const shoppingList = table(
   {
@@ -109,6 +91,28 @@ async function syncShopping(item: Item, previous?: Item) {
     })
     .where({ id: entry.id });
 }
+
+// Declared after `Item` so the handlers' types don't depend on the call that types `items`;
+// `.on()` stays in this file, beside the declaration.
+items.on({
+  beforeCreate(data) {
+    data.name = data.name.trim();
+    if (!data.name)
+      throw new HttpError(422, "invalid_input", "Give this item a name.");
+  },
+  beforeUpdate(patch) {
+    if (patch.name !== undefined) {
+      const name = patch.name?.trim();
+      if (!name)
+        throw new HttpError(422, "invalid_input", "Give this item a name.");
+      patch.name = name;
+    }
+  },
+  afterCreate: async (item) => {
+    await syncShopping(item);
+  },
+  afterUpdate: syncShopping,
+});
 
 async function changeStock(itemId: number, amount: number, consuming: boolean) {
   const item = await db.query.items.findFirst({ where: { id: itemId } });

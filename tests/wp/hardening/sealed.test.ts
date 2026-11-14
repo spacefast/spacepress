@@ -116,7 +116,7 @@ test("the plugins the app runs on can't be deactivated from wp-admin or REST, so
 });
 
 test("First's admin is First's own: a sealed site activates it though the build doesn't ship it, and it saves through REST", async () => {
-  // Installed beside the build (sealed-run.sh), not declared, and `admin: true` isn't set.
+  // Installed beside the build (sealed-run.sh), not declared: the build sets `admin: false`.
   assert.equal(active().includes("first-admin"), false);
   const on = await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/first-admin/first-admin", { status: "active" });
   assert.equal(on.status, 200, await on.text());
@@ -141,10 +141,13 @@ test("First's admin is First's own: a sealed site activates it though the build 
     assert.equal((await viaApi.json()).data.mood, "steady");
     const global = await json(auth("admin"), "PATCH", "/__first/api/v1/banner", { motto: "From the admin" });
     assert.equal((await global.json()).data.motto, "From the admin");
-    // The admin's page is served.
-    const cookie = await loginCookie(site, "admin", `${site}/first-admin/`);
-    const page = await fetch(`${site}/first-admin/`, { headers: { cookie }, redirect: "manual" });
-    assert.equal(page.status, 200, String(page.headers.get("location")));
+    // The admin's page is served at its mount, /wp-admin/new/ (wp-admin's query form sends the
+    // visitor there once the rewrite rule is written).
+    const adminPage = `${site}/wp-admin/admin.php?page=first-admin`;
+    const cookie = await loginCookie(site, "admin", adminPage);
+    const page = await fetch(adminPage, { headers: { cookie } });
+    assert.equal(page.status, 200, page.url);
+    assert.ok((await page.text()).includes('id="first-admin-app"'), "the admin's app shell");
     // It isn't one of the plugins the site can't run without: it deactivates, classic wp-admin stays.
     const off = await json(auth("admin"), "POST", "/wp-json/wp/v2/plugins/first-admin/first-admin", { status: "inactive" });
     assert.equal(off.status, 200, await off.text());

@@ -1,0 +1,21 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Edge", "version": "1", "description": "Plain **text**.\n\n<!-- wp:latest-posts /-->\n\n<!-- wp:loginout /-->" },
+  "servers": [{ "url": "https://h.example/a'b" }],
+  "paths": {
+    "/x/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "operationId": "items.list", "tags": ["Ünïcode"], "summary": "First",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": { "allOf": [{ "$ref": "#/components/schemas/A" }, { "type": "object", "properties": { "kind": { "const": "fixed" } } }] } } } } }
+      },
+      "post": {
+        "operationId": "itemsList", "tags": ["Ünïcode"], "summary": "Second",
+        "requestBody": { "content": { "application/x-www-form-urlencoded": { "schema": { "type": "object" } }, "application/json": { "schema": { "type": "object", "required": ["note"], "properties": { "note": { "type": "string" } } } } } },
+        "responses": { "204": { "description": "none" } }
+      }
+    }
+  },
+  "components": { "schemas": { "A": { "type": "object", "required": ["count"], "properties": { "count": { "$ref": "#/components/schemas/Count" } } }, "Count": { "type": "integer", "minimum": 1 } } }
+}

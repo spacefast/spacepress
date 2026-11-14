@@ -113,6 +113,12 @@ final class Plugin
                     return self::refusal($e);
                 }
                 $account = $uid ? get_userdata($uid) : false;
+                // Core already checked this account's password: checking it again would make a
+                // wrong password for a known address slower than for an unknown one.
+                if ($account && is_wp_error($user) && $user->get_error_code() === "incorrect_password"
+                    && (int) (get_user_by("email", $login)->ID ?? 0) === $uid) {
+                    return $user;
+                }
                 return $account
                     ? wp_authenticate_username_password(
                         null,
@@ -151,7 +157,7 @@ final class Plugin
         );
         add_filter(
             "wp_authenticate_user",
-            static function ($user) {
+            static function ($user, $password) {
                 try {
                     if (
                         $user instanceof \WP_User &&
@@ -159,6 +165,11 @@ final class Plugin
                             (int) $user->ID,
                         )
                     ) {
+                        // Core runs this filter before it checks the password: only someone who
+                        // knows it learns that the account exists and has a second factor.
+                        if (!wp_check_password((string) $password, $user->user_pass, $user->ID)) {
+                            return new \WP_Error("incorrect_password", __("<strong>Error:</strong> Invalid username, email address or incorrect password."));
+                        }
                         return new \WP_Error(
                             "identity_mfa_required",
                             "Use the Identity sign-in page to complete multifactor authentication.",
@@ -170,6 +181,7 @@ final class Plugin
                 }
             },
             100,
+            2,
         );
         $rememberPassword = static function ($uid): void {
             $user = get_userdata((int) $uid);

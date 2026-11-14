@@ -1184,6 +1184,12 @@ export interface ConfigInput<
    */
   frontend?: false | `https://${string}` | `http://localhost${string}` | `http://127.0.0.1${string}`;
   /**
+   * `"server"` (the default): `first/app/` pages render on WordPress per request, and a page that
+   * exports `prerender = true` is prebuilt. `"static"`: every page is prebuilt, and `first export`
+   * writes a site that needs no WordPress to serve it.
+   */
+  output?: "server" | "static";
+  /**
    * Plugin packages, registered in order: `use: [seo({ ... })]`. Each one's capabilities are
    * inferred from its compiled code and granted by the committed `first/_generated/plugins.lock.json`.
    */

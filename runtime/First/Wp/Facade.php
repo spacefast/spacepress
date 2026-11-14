@@ -126,6 +126,10 @@ final class Facade
             }
             $auth = self::authenticate();
             if ($auth instanceof \WP_Error) {
+                // A form whose nonce has expired goes back to its page with the error, as a refused action does.
+                if (($form = self::formAction($method, $path)) !== null) {
+                    self::emit(...\First\Render\Forms::redirect($form, (string) file_get_contents('php://input'), null, \First\App::problem(self::fromWpError($auth, 401))));
+                }
                 self::problem($auth);
             }
             $query = self::query();
@@ -354,6 +358,9 @@ final class Facade
             return $plugin->app()->handle('POST', '/actions/' . rawurlencode($name), [], $body, self::headers());
         }
         \First\App::allow($method, ($action['readonly'] ?? false) ? ['GET', 'HEAD', 'POST'] : ['POST']);
+        if ($method === 'POST' && \First\Render\Forms::posted()) {
+            return self::form($plugin, $action, $name, $body);
+        }
         // No arguments is the empty object, not the empty list an empty PHP array encodes as.
         $given = $method === 'POST' ? [] : self::queryInput($query);
         $input = $method === 'POST' ? $body : ($given === [] ? '{}' : (string) Js::jsonStringify($given));
@@ -362,6 +369,42 @@ final class Facade
         [$status, $headers, $out] = self::json(200, ['data' => self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'")]);
 
         return [$status, self::$passed + $headers, $out];
+    }
+
+    /**
+     * A browser's form post to an action (`<form action={name}>`, rendering.md §4.2): the fields read
+     * as the action's input, the action run as a JSON call runs it, and `303 See Other` back to the
+     * page with the result or the error in a flash. Only a form on this site's own pages may post:
+     * a cross-site `Origin` is refused before anything runs.
+     *
+     * @return array{int, array<string, string>, string}
+     */
+    private static function form(Plugin $plugin, array $action, string $name, string $body): array
+    {
+        try {
+            $origin = $_SERVER['HTTP_ORIGIN'] ?? null;
+            $site = wp_parse_url(home_url('/'));
+            if (is_string($origin) && $origin !== 'null'
+                && strtolower($origin) !== strtolower(($site['scheme'] ?? 'https') . '://' . ($site['host'] ?? '') . (isset($site['port']) ? ':' . $site['port'] : ''))) {
+                throw new HttpError(403, 'forbidden', 'A form posts to an action only from this site\'s own pages');
+            }
+            $input = \First\Render\Forms::decode((array) ($action['input'] ?? []), $body);
+            self::$passed = [];
+            $data = self::ability($plugin, Abilities\Register::kebab($name), $input, "Unknown action '$name'");
+
+            return \First\Render\Forms::redirect($name, $body, $data, null);
+        } catch (HttpError | \First\JsError $e) {
+            return \First\Render\Forms::redirect($name, $body, null, \First\App::problem($e));
+        }
+    }
+
+    /** The action a browser's form post to `$path` names, if this request is one. */
+    private static function formAction(string $method, string $path): ?string
+    {
+        $segments = array_values(array_filter(explode('/', $path), static fn ($s) => $s !== ''));
+
+        return $method === 'POST' && count($segments) === 2 && $segments[0] === 'actions' && \First\Render\Forms::posted()
+            ? rawurldecode($segments[1]) : null;
     }
 
     /** `GET`/`PATCH /<global>` (spec §3a): the global's read and update Abilities through the run route. */
@@ -753,15 +796,23 @@ final class Facade
             throw HttpError::notFound('No such revisions route');
         }
         \First\App::allow($method, ['POST']);
-        $patch = [];
-        foreach ($spec['columns'] as $name => $col) {
-            if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !isset($col['onUpdate']) && array_key_exists($name, $row)) {
-                $patch[(string) $name] = $row[$name];
+        // The restore is First's update from the revision as stored, as the viewer (Db::restoreRevision):
+        // fields hidden from the viewer are restored too, and never returned to it. The answer is the
+        // row as core's item read gives it to this viewer, so it is masked like every other read.
+        // Core has no REST restore route; wp-admin restores with wp_restore_post_revision, and this
+        // write is wp_update_post too (WpPostStore), so WordPress's own save hooks fire as for it.
+        $db->transaction(static function () use ($db, $collection, $id, $rid, $viewer): void {
+            $previous = $db->actor();
+            $db->setActor($viewer->user);
+            try {
+                $db->restoreRevision($collection, $id, $rid, $viewer);
+            } finally {
+                $db->setActor($previous);
             }
-        }
-        $updated = self::dispatch('POST', "{$kind['route']}/" . rawurlencode((string) $id), self::context($kind), Kinds::input($kind, $patch));
+        });
+        $restored = self::dispatch('GET', "{$kind['route']}/" . rawurlencode((string) $id), self::context($kind));
 
-        return self::json(200, ['data' => Kinds::row($kind, $updated)]);
+        return self::json(200, ['data' => Kinds::row($kind, $restored)]);
     }
 
     private static function isoGmt(string $gmt): string

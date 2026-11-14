@@ -26,3 +26,24 @@ export function Styled({ color, on }: { color: string; on: boolean }) {
     </section>
   );
 }
+
+type Book = { id: number; title: string };
+
+// A reactive list and conditionals: the server renders the items and the shown branch, then the
+// `<template>`s the browser re-renders from, which parity sets aside.
+export function Shelf({ books: initial, open: shown }: { books: Book[]; open: boolean }) {
+  const [books, setBooks] = useState(initial);
+  const [open, setOpen] = useState(shown);
+  return (
+    <section>
+      <button onClick={() => setBooks(books.slice(1))}>fewer</button>
+      <button onClick={() => setOpen(!open)}>toggle</button>
+      {open && <p>open</p>}
+      {books.length === 0 ? <em>empty</em> : <strong>{books.length} books</strong>}
+      <ol>
+        {books.map((book) => <li key={book.id} data-id={book.id}>{book.title}<input type="checkbox" checked={open} readOnly /></li>)}
+      </ol>
+      <ul>{books.map((book) => <li key={book.id}><b>{book.title}</b></li>)}</ul>
+    </section>
+  );
+}

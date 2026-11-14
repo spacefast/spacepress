@@ -6,6 +6,11 @@
  * migrates to @wordpress/admin-ui upstream.
  */
 
+/* Hide Jetpack branding in First Admin */
+.first-admin-layout__surface .admin-ui-page .jetpack-logo {
+	display: none;
+}
+
 /* Match first-admin-page background (neutral instead of neutral-strong) */
 .first-admin-layout__surface .admin-ui-page {
 	margin: 0;

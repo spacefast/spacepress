@@ -28,7 +28,7 @@
 	font-size: variables.$font-size-small;
 
 	span {
-		font-weight: 400;
+		font-weight: var(--wpds-typography-font-weight-default, 400);
 	}
 }
 

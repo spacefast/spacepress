@@ -168,6 +168,12 @@ final class MarkdownTwins
         return $answer;
     }
 
+    /** Whether a Markdown negotiation (negotiate()) is running its main query in this process. */
+    public static function negotiating(): bool
+    {
+        return self::$negotiated !== false;
+    }
+
     /** `/llms.txt` (llmstxt.org): the site, then each public kind's newest entries and terms, linking twins. */
     public static function llms(): string
     {

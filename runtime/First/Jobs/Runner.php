@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace First\Jobs;
 
 use First\Js;
+use First\Wp\Jobs\ActionSchedulerQueue;
 
 use function First\db;
 
@@ -36,7 +37,7 @@ final class Runner
             if (Storage::changes() === 0) {
                 $later = Js::iso(Js::now() + 60_000);
                 Storage::run('UPDATE {jobs} SET "runAt" = ? WHERE "id" = ?', [$later, $id]);
-                Outbox::queue()->schedule($id, $later);
+                ActionSchedulerQueue::schedule($id, $later);
 
                 return null;
             }
@@ -108,7 +109,7 @@ final class Runner
                 [$attempt, $error, $dead ? Js::iso(Js::now()) : $runAt, $id],
             );
             if (!$dead) {
-                Outbox::queue()->schedule($id, $runAt);
+                ActionSchedulerQueue::schedule($id, $runAt);
             }
         });
 
@@ -125,26 +126,25 @@ final class Runner
     }
 
     /**
-     * Housekeeping, run by Action Scheduler's daily action: drain the outbox,
-     * re-queue jobs whose runner died mid-run, sweep receipts older than 7 days.
+     * Housekeeping, run by Action Scheduler's daily action: re-queue jobs whose runner died mid-run,
+     * sweep receipts older than 7 days.
      *
-     * @return array{dispatched: int, requeued: int, swept: int}
+     * @return array{requeued: int, swept: int}
      */
     public static function maintain(): array
     {
-        $dispatched = Outbox::dispatch();
         $now = Js::now();
 
-        return db()->transaction(static function () use ($dispatched, $now): array {
+        return db()->transaction(static function () use ($now): array {
             $stuck = Storage::run('SELECT "id" FROM {jobs} WHERE "state" = \'running\' AND "lockedAt" < ?' . Storage::forUpdate(), [Js::iso($now - self::STUCK_MS)]);
             foreach ($stuck as $row) {
                 Storage::run('UPDATE {jobs} SET "state" = \'pending\', "lockedAt" = NULL, "runAt" = ? WHERE "id" = ?', [Js::iso($now), $row['id']]);
-                Outbox::queue()->schedule((string) $row['id'], Js::iso($now));
+                ActionSchedulerQueue::schedule((string) $row['id'], Js::iso($now));
             }
             $old = Storage::run('SELECT COUNT(*) AS "n" FROM {receipts} WHERE "createdAt" < ?', [Js::iso($now - self::RECEIPT_TTL_MS)]);
             Storage::run('DELETE FROM {receipts} WHERE "createdAt" < ?', [Js::iso($now - self::RECEIPT_TTL_MS)]);
 
-            return ['dispatched' => $dispatched, 'requeued' => count($stuck), 'swept' => (int) $old[0]['n']];
+            return ['requeued' => count($stuck), 'swept' => (int) $old[0]['n']];
         });
     }
 }

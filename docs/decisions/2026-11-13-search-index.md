@@ -32,7 +32,7 @@ system table (`SystemTables`), created on the plugin's upgrade check like the jo
   doesn't go through the pipeline. The members kind's entries follow core's `user_register`,
   `profile_update` and `deleted_user` hooks, re-read from the stored user the same way.
 - A kind whose searchable fields change in a build is rebuilt by a runtime job, `first.search.reindex`,
-  through the existing outbox and Action Scheduler, a batch of rows per run. Nothing is polled; no
+  through the existing jobs runner and Action Scheduler, a batch of rows per run. Nothing is polled; no
   cron, tick or worker is added. The rebuild clears nothing first: each run re-indexes its batch, row
   by row under a lock, and the last run deletes the entries of rows that no longer exist and of fields
   that are no longer searchable. A run carries the build's field list as its generation, and a run of

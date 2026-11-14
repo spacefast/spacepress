@@ -6,14 +6,16 @@ namespace First\Wp;
 
 /**
  * The URLs a committed content write changed, announced on the host's `first_purge_urls` action
- * (docs/runtime-contract.md). Only a host that serves cached pages listens: off Spacefast nothing
- * does, and this does no work at all (`has_action`).
+ * (docs/runtime-contract.md). Only a host that serves cached pages listens, or the runtime itself
+ * where Batcache, the VIP edge cache or Jetpack Boost runs (PageCaches); with no listener this does
+ * no work at all (`has_action`).
  *
  * A write to a public post, page or term names, as root-relative paths with their query:
  * - the item's URL before and after the write (a slug, status or parent change moves or hides it);
  * - the home page, the posts page, and the post type's archive, with their first pages;
  * - the archives of every term the post had or has, and its author's archive;
- * - its feeds, `/llms.txt`, the sitemap index and the sitemap file that lists it, and each page
+ * - its feeds (the site's posts and comments feeds, the post's comments feed, each term's feed),
+ *   `/llms.txt`, the sitemap index and the sitemap file that lists it, and each page
  *   URL's `.md` twin.
  * Older listing pages (`/page/7/`) fall back to the edge's `s-maxage` window. URLs are collected over
  * the request and announced once, after the outermost transaction commits (or at the end of the
@@ -182,7 +184,9 @@ final class Purges
         if (!$type instanceof \WP_Post_Type || !($type->public || $type->publicly_queryable) || (!$wasPublic && !is_post_publicly_viewable($post))) {
             return [];
         }
-        $urls = [self::permalink($post), home_url('/'), get_feed_link()];
+        $permalink = self::permalink($post);
+        // The site's posts and comments feeds, and the post's own comments feed (VIP Cache Manager's set).
+        $urls = [$permalink, home_url('/'), get_feed_link(), get_feed_link('comments_' . get_default_feed()), self::commentsFeed($permalink)];
         if ($post->post_type === 'post') {
             $page = (int) get_option('page_for_posts');
             if ($page > 0) {
@@ -228,7 +232,7 @@ final class Purges
     }
 
     /**
-     * Archive URLs of terms in a public taxonomy, by term_taxonomy_id.
+     * Archive and feed URLs of terms in a public taxonomy, by term_taxonomy_id.
      *
      * @param list<int> $ttIds
      * @return list<string>
@@ -245,6 +249,10 @@ final class Purges
             $link = $term instanceof \WP_Term ? get_term_link($term) : null;
             if (is_string($link)) {
                 $urls[] = $link;
+                $feed = get_term_feed_link($term->term_id, $taxonomy);
+                if (is_string($feed) && $feed !== '') {
+                    $urls[] = $feed;
+                }
             }
         }
 
@@ -269,7 +277,18 @@ final class Purges
         return (string) get_permalink($published);
     }
 
-    /** Page $page of a listing URL, as WordPress links it. */
+    /** A post's comments feed, as get_post_comments_feed_link() spells it, from the URL it is published at. */
+    private static function commentsFeed(string $permalink): string
+    {
+        global $wp_rewrite;
+        if ($wp_rewrite instanceof \WP_Rewrite && $wp_rewrite->using_permalinks() && !str_contains($permalink, '?')) {
+            return trailingslashit($permalink) . user_trailingslashit('feed', 'single_feed');
+        }
+
+        return add_query_arg('feed', get_default_feed(), $permalink);
+    }
+
+        /** Page $page of a listing URL, as WordPress links it. */
     private static function paged(string $url, int $page): string
     {
         global $wp_rewrite;

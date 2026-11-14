@@ -1578,12 +1578,40 @@ fn html_runtime_drops_unsafe_attribute_names_from_any_source() {
     );
 }
 
-/// Server HTML with generator B's additions removed: every `data-wp-*` attribute, and the
-/// `<span data-wp-text="…">` wrappers it puts around dynamic text that shares its parent.
+/// Server HTML with generator B's additions removed: every `data-wp-*` attribute, the
+/// `<span data-wp-text="…">` wrappers it puts around dynamic text that shares its parent, and the
+/// `<template data-wp-each--…>` a reactive list or conditional re-renders from (templates nest
+/// when a list item holds a list).
 fn without_directives(html: &str) -> String {
+    let mut kept = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(at) = rest.find("<template data-wp-each") {
+        kept.push_str(&rest[..at]);
+        let mut depth = 0usize;
+        let mut i = at;
+        loop {
+            let open = rest[i..].find("<template").map(|o| o + i);
+            let close = rest[i..].find("</template>").map(|c| c + i).expect("closed template");
+            match open {
+                Some(o) if o < close => {
+                    depth += 1;
+                    i = o + 1;
+                }
+                _ => {
+                    depth -= 1;
+                    i = close + "</template>".len();
+                    if depth == 0 {
+                        break;
+                    }
+                }
+            }
+        }
+        rest = &rest[i..];
+    }
+    kept.push_str(rest);
     let attr = regex::Regex::new(r#" data-wp-[a-z0-9-]+="[^"]*""#).unwrap();
     let span = regex::Regex::new(r#"<span data-wp-text="[^"]*" data-first-text="">([^<]*)</span>"#).unwrap();
-    let html = span.replace_all(html, "$1");
+    let html = span.replace_all(&kept, "$1");
     attr.replace_all(&html, "").into_owned()
 }
 

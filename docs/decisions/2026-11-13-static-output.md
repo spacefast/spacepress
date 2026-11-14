@@ -1,0 +1,169 @@
+# Static output: prebuilt pages next to SSR pages, and a static export
+
+Date: 2026-11-13. Status: accepted. Spec: [rendering.md](../spec/rendering.md) §6.1 and §7,
+[spec.md](../spec/spec.md) §7 ("Pages with no request data, prerendered to HTML plus `.md` … served
+by the engine before WordPress boots"). Builds on the
+[cache policy per response](2026-11-12-cache-policy-per-response.md), which deferred prebuilt pages.
+
+## Problem
+
+First wants three ways to serve `first/app/`, side by side with Astro's:
+
+1. prebuilt pages next to server-rendered ones on the same WordPress (Astro's hybrid);
+2. a whole site exported to static files, with no WordPress at runtime, its content from
+   `first/content/` (Astro's `output: "static"`);
+3. the same export with WordPress as the CMS somewhere else: editors work on a hosted site, the
+   export reads it, and publishing triggers a rebuild (Astro with a headless CMS).
+
+The cache-policy record deferred (1) because the compiler can't prove a route is
+viewer-independent. Dynamic pages must stay server-rendered under that policy.
+
+## Decision
+
+### Words: Astro's
+
+- `defineConfig({ output: "server" | "static" })`, default `"server"`.
+- A page may export `prerender = true | false`. In `"server"`, `true` prebuilds the page. In
+  `"static"`, every page is prebuilt, and `prerender = false` is a build error that says to switch
+  `output` back.
+- A dynamic page that does not serve a kind's `url` exports
+  `async function staticParams(): Promise<StaticParams<"route/id">>`, one params object per page
+  to build. It is Astro's `getStaticPaths` and Next's `generateStaticParams`. We call it
+  `staticParams` because it returns params only: the page reads its own data as it does when
+  server-rendered, so there are no `props` to pass. Its return type is checked against the route's
+  folders at build time.
+- A page whose folders serve a kind's `url` (`notes/[slug]` for `url: "/notes/:slug"`) needs no
+  `staticParams`. It is built once per item of that kind that a signed-out visitor may read.
+
+### What a prebuilt page is
+
+**An anonymous visitor's render, through the real compiled renderer.** That is the render the cache
+policy already shares through Batcache and the edge. Every read in it is bound to the visitor
+(`Seam::asViewer`), so no proof that the page is viewer-independent is needed: the file is what any
+signed-out visitor would get.
+
+What the build refuses, each as an error at the page with the fix:
+
+| A prebuilt page that… | Why | Fix in the message |
+|---|---|---|
+| sits under a layout `guard` | one file can't be shown to some visitors and not others | move it out, or don't prebuild it |
+| exports `search` | a file has no query string | remove `search`, or don't prebuild it |
+| has a `[param]` and neither serves a kind's `url` nor exports `staticParams` | the build can't list its URLs | export `staticParams` |
+| exports `staticParams` without a parameter, without `prerender`, or while serving a kind's `url` | it would do nothing | remove it, or add `prerender` |
+| exports HTTP handlers, in `output: "static"` | a static site has no server | move the work into an action |
+
+What the export refuses when it renders, with the page's URL and route file:
+
+- a page that calls a viewer function (`is_user_logged_in`, `get_current_user_id`,
+  `current_user_can`): its file would show the signed-out answer to everyone;
+- a page whose render failed (a 500) or redirected;
+- a link to a URL on the same site that the export doesn't contain (a server-only page, the
+  WordPress sign-in or comment form): see "What a static page may do".
+
+### How pages are rendered: over HTTP, through the router
+
+Both the hybrid's regeneration and the export fetch each URL from a running WordPress with one
+extra request header, `X-First-Prerender`, whose value is an HMAC of the URL keyed by the site's
+runtime secret. The router answers such a request:
+
+- as a signed-out visitor, whatever cookies arrive;
+- bypassing the prebuilt-file lane and Batcache;
+- recording the rows the render read (the cache's `first__app_reads` index), whether or not a host
+  listens for purges, so a later write knows which prebuilt URLs it changed;
+- with `X-First-Prerender-Refused` naming a viewer function the render called.
+
+`GET /__first/api/v1/prerender` lists the URLs to build, as the site sees them now. Its answer
+holds:
+
+- each prebuilt route's URLs: a literal path, a kind route's items readable by a signed-out
+  visitor, and the params `staticParams` returns, run as a signed-out visitor;
+- the redirects from each listed item's old URLs (core's `_wp_old_slug`) to its current one;
+- the app's build hash.
+
+It needs the same credentials as `first sync` and `first pull`: an editor's application password
+(`FIRST_APP_PASSWORD`) or a token (`FIRST_TOKEN`).
+
+### (1) Prebuilt pages in `output: "server"` (the hybrid)
+
+- Files live in `wp-content/cache/first-prebuilt/<build hash>/` (filter `first_prebuilt_dir`):
+  `<path>.html` and `<path>.md`. Content is the site's, so the files are made on the site, not by
+  `first build`, which has no content.
+- After a build is initialized, a stock Action Scheduler action (`first_prebuild`) renders every
+  listed URL by loopback with the prerender header and writes its files. No cron, tick or worker of
+  First's own.
+- The runtime serves a file when the app plugin loads, before `init`, before rewrite rules, the
+  query and the theme. It does that only for a GET or HEAD with no query string and no signed-in,
+  comment-author or preview cookie, and with the cacheable policy's `Cache-Control`. Anything else
+  falls through to the router, as before. A host whose web server can serve files before PHP may
+  serve the same directory, since its layout is the URL's path.
+- **On-demand regeneration (ISR).** A committed write that would purge a prebuilt URL deletes that
+  URL's files at once and schedules `first_prebuild` for it. Such a write is a First write that
+  read the row or listed the kind, or a WordPress post or term write whose purge list names the URL.
+  Until the action has run, the URL falls through to SSR under the cache policy, so a visitor never
+  sees stale content after the write commits.
+- Markdown twins: the `.md` file is written with the HTML and served from the same lane, so
+  `/about.md` stays correct. The sitemap and `llms.txt` stay the router's: they list the same URLs
+  whether or not a page is prebuilt.
+- A new build hash starts an empty directory, so files from an older build are never served. The
+  first `first_prebuild` run under a new hash removes the other hashes' directories. These files
+  are a cache, not data.
+- Dynamic pages that don't say `prerender = true` are unchanged: SSR under the cache policy.
+
+### (2) and (3) The static export: `first export`
+
+`first export [dir] [--out dir] [--site url] [--base /path] [--site-url https://…]`, a command of its
+own. `first build` stays offline and needs no PHP; an export needs a WordPress and content. It
+needs `output: "static"`, and writes `first/dist/static/` by default:
+
+| File | From |
+|---|---|
+| `index.html`, `<path>.html` | each listed URL, rendered |
+| `index.md`, `<path>.md` | its Markdown twin (rendering.md §5) |
+| `404.html` | `not-found.tsx` (or WordPress's 404) |
+| `sitemap.xml`, `llms.txt`, `robots.txt` | the exported pages, with `--site-url` as their origin |
+| `_redirects` | kind-URL redirects, one `from to 301` line each (Netlify and Cloudflare Pages read it), plus an HTML page at each old URL whose `<meta http-equiv="refresh">` points on, for hosts with no redirect rules (GitHub Pages) |
+| `wp-content/…`, `wp-includes/…` | every stylesheet, script module, image and font the pages reference, at the path WordPress serves it from. That includes the Interactivity API runtime, the router and the compiled client-component stores, so they load from the export. App assets are content-hashed by name, and core's files by their `ver` |
+
+A page at `/docs/intro` is `docs/intro.html`, which GitHub Pages, Cloudflare Pages, Netlify and
+`serve`-style servers all answer at `/docs/intro`. The export keeps First's URLs without a trailing
+slash. Same-site URLs in the HTML become root-relative, under `--base` when the site is served below
+a path (a GitHub Pages project site). `<link rel="canonical">`, the sitemap and `llms.txt` use
+`--site-url` when it is given. WordPress's head links to things a static site doesn't have (feeds,
+the REST API, RSD, oEmbed, the shortlink, the generator tag) are left out of an exported page.
+
+**(a) Local content** (no `--site`): the export builds the project, starts a throwaway WordPress
+on SQLite through the same Studio runner `first dev` uses, and seeds it with `first/content/` the
+way a publish seeds a Space (`wp first seed`). It renders every listed URL and deletes the site.
+`page.md` pages are stored on the first request, as on any site.
+
+**(b) A hosted WordPress as the CMS** (`--site https://cms.example.com`): the export lists and
+renders the URLs on that site, with `FIRST_APP_PASSWORD` or `FIRST_TOKEN`. Editors' published
+content is what a signed-out visitor sees there now. The site must run the build this checkout
+makes: a different build hash is an error that says to deploy first. That keeps the exported pages
+the checkout's own code. The site's `webhooks` config fires on publish, and a CI job that runs
+`first export --site …` and uploads the folder is the rebuild.
+
+### What a static page may do
+
+| | (a) local | (b) `--site` |
+|---|---|---|
+| Links, `<Link>` navigation (the router region) | yes | yes |
+| A client component's local state | yes | yes |
+| A client component's action call | refused: no server | goes cross-origin to the site's action endpoint, `access: "anyone"` actions only. An action with any other access is refused, because the visitor isn't signed in there |
+| Comments, sign-in | refused: the export finds a link to a URL it doesn't contain | comment forms and sign-in links point to the hosted site. The visitor finishes there, on WordPress, signed in there |
+| Guarded pages | refused at build | refused at build: one file is the same for every visitor |
+
+Each refusal is an error with the page, the route file and the fix.
+
+## Alternatives not taken
+
+- **Prebuilding in `first build`.** The build has no content and no PHP. Rendering needs both, and
+  the hybrid's content changes after deploy anyway.
+- **Rendering the export in Rust.** Pages are compiled to PHP; a second renderer would drift from
+  the one visitors get.
+- **Pulling content into a local site for (b).** Only synced kinds travel through the sync API.
+  Media, menus, comments and non-synced kinds would not. Rendering on the hosted site uses all of
+  it, and the build-hash check keeps the code the checkout's.
+- **`first build` with `output: "static"` writing the export.** It would make `build` need
+  WordPress, Node and network access for every static app. It would also change what a build
+  writes depending on a config key the hosted pipeline also compiles.

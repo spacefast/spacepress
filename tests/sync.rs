@@ -108,7 +108,7 @@ const docs = collection({
   body: richText().optional(),
 }, { content: "body", hierarchical: true, sync: "content/docs/**/*.md", access: { read: "anyone" } });
 
-export default defineConfig({ name: "notes", collections: { docs }, tables: { people, notes, snippets, teams, players, steps, tops, mids, bottoms, eggs, chickens, vaults, safes, heads, rungs, dossiers } });
+export { docs }; export { people }; export { notes }; export { snippets }; export { teams }; export { players }; export { steps }; export { tops }; export { mids }; export { bottoms }; export { eggs }; export { chickens }; export { vaults }; export { safes }; export { heads }; export { rungs }; export { dossiers }; export default defineConfig({ name: "notes" });
 "#;
 
 struct Site {

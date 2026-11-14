@@ -7,7 +7,8 @@ import { pathToFileURL } from "node:url";
 register(new URL("./resolve-first.mjs", import.meta.url));
 const { transaction } = await import("./first-shim.mjs");
 const mod = await import(pathToFileURL(process.argv[2]).href);
-const config = mod.default;
+// Kinds and actions register by export name, as the compiler reads them (docs/spec/spec.md §1.1).
+const exported = (what) => Object.fromEntries(Object.entries(mod).filter(([, v]) => v?.$first === what));
 const out = {};
 const run = async (name, fn) => {
   try {
@@ -17,7 +18,7 @@ const run = async (name, fn) => {
   }
 };
 const hookCtx = { user: null };
-for (const [name, a] of Object.entries(config.actions ?? {})) {
+for (const [name, a] of Object.entries(exported("action"))) {
   await run(name, () => transaction(() => a.handler({}, hookCtx)));
 }
 function* columns(fields, prefix = [], dataPath = []) {
@@ -29,7 +30,7 @@ function* columns(fields, prefix = [], dataPath = []) {
     for (const [layout, children] of Object.entries(meta.layouts ?? {})) yield* columns(children, [...key, layout], [...path, 0]);
   }
 }
-for (const [name, c] of Object.entries({ ...config.collections, ...config.tables, ...config.users })) {
+for (const [name, c] of Object.entries(exported("kind"))) {
   for (const [op, rule] of Object.entries(c.options?.access ?? {})) {
     if (typeof rule !== "function") continue;
     for (const [i, ctx] of (mod.ACCESS_CTXS ?? []).entries()) {

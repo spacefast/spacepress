@@ -18,7 +18,7 @@ function show(values: number[]): string[] {
 const EDGE = [0, -0, 1, -1, 5, -5, 2.9, -2.9, 255, 2147483647, 2147483648, -2147483648, -2147483649, 4294967295, 4294967296, 4294967297, 9007199254740991, -9007199254740991, 1e21, -1e21, 2 ** 53 + 2, NaN, Infinity, -Infinity];
 const COUNTS = [0, 1, 4, 31, 32, 33, 63, 64, -1, -31, -32, -33, 2.7, NaN, 4294967296, 4294967297];
 
-function bitwiseTable(): Record<string, string[]> {
+function bitwiseTableImpl(): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   out.not = show(EDGE.map((x) => ~x));
   out.doubleNot = show(EDGE.map((x) => ~~x));
@@ -49,7 +49,7 @@ function hashes(codes: number[]): string[] {
   return [String(fnv >>> 0), String(djb), String(djb >>> 0)];
 }
 
-function bitwiseAssignments() {
+function bitwiseAssignmentsImpl() {
   let a = 0b1010;
   a &= 0b0110;
   let b = 1;
@@ -71,7 +71,7 @@ function bitwiseAssignments() {
 }
 
 /** Operand coercion: strings, booleans, null, and the order operands are read in. */
-function bitwiseCoercion(): string[] {
+function bitwiseCoercionImpl(): string[] {
   const order: string[] = [];
   const read = (label: string, value: number) => { order.push(label); return value; };
   const values: unknown[] = ["12", " 0x10 ", "", "abc", true, false, null, [7], ["8"], [], undefined];
@@ -81,15 +81,27 @@ function bitwiseCoercion(): string[] {
   return [...show(coerced), ...show(shifted), String(ordered), order.join(",")];
 }
 
-const BUILD_TIME_BITWISE = { table: bitwiseTable(), hashes: hashes([90, 101, 114, 111, 8594, 0xd83d, 0xde00]), assignments: bitwiseAssignments() };
+const BUILD_TIME_BITWISE = { table: bitwiseTableImpl(), hashes: hashes([90, 101, 114, 111, 8594, 0xd83d, 0xde00]), assignments: bitwiseAssignmentsImpl() };
 
 const bitwise = {
-  bitwiseTable: run(() => bitwiseTable()),
+  bitwiseTable: run(() => bitwiseTableImpl()),
   bitwiseHashes: run(() => [hashes([]), hashes([104, 101, 108, 108, 111]), hashes([196, 114, 116, 0xffff, 0x10000, -1, 2.5])]),
-  bitwiseAssignments: run(() => bitwiseAssignments()),
-  bitwiseCoercion: run(() => bitwiseCoercion()),
+  bitwiseAssignments: run(() => bitwiseAssignmentsImpl()),
+  bitwiseCoercion: run(() => bitwiseCoercionImpl()),
   bitwiseBuildTime: run(() => BUILD_TIME_BITWISE),
   bitwiseUntyped: run(() => untypedBitwise(EDGE, COUNTS)),
 };
 
-export default defineConfig({ name: "language-bitwise", actions: { ...bitwise } });
+export const bitwiseTable = run(() => bitwiseTableImpl());
+
+export const bitwiseHashes = run(() => [hashes([]), hashes([104, 101, 108, 108, 111]), hashes([196, 114, 116, 0xffff, 0x10000, -1, 2.5])]);
+
+export const bitwiseAssignments = run(() => bitwiseAssignmentsImpl());
+
+export const bitwiseCoercion = run(() => bitwiseCoercionImpl());
+
+export const bitwiseBuildTime = run(() => BUILD_TIME_BITWISE);
+
+export const bitwiseUntyped = run(() => untypedBitwise(EDGE, COUNTS));
+
+export default defineConfig({ name: "language-bitwise" });

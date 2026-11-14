@@ -3,7 +3,7 @@
 // compiled PHP; the JSON results must be byte-identical. `tagged-templates-helpers.mjs` runs the
 // same shapes untyped.
 import { action, defineConfig } from "first";
-import { taggedUntyped } from "./tagged-templates-helpers.mjs";
+import { taggedUntyped as taggedUntypedImpl } from "./tagged-templates-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -71,14 +71,16 @@ function order(): string[] {
   return log;
 }
 
-export default defineConfig({
-  name: "language-tagged-templates",
-  actions: {
-    taggedTags: run(() => tags()),
-    taggedRaw: run(() => raws()),
-    taggedIdentity: run(() => identity()),
-    taggedOrder: run(() => order()),
-    taggedFrozen: run(() => frozen()),
-    taggedUntyped: run(() => taggedUntyped()),
-  },
-});
+export const taggedTags = run(() => tags());
+
+export const taggedRaw = run(() => raws());
+
+export const taggedIdentity = run(() => identity());
+
+export const taggedOrder = run(() => order());
+
+export const taggedFrozen = run(() => frozen());
+
+export const taggedUntyped = run(() => taggedUntypedImpl());
+
+export default defineConfig({ name: "language-tagged-templates" });

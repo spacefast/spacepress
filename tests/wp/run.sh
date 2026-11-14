@@ -25,9 +25,10 @@ cleanup() {
 trap cleanup EXIT
 rsync -a --exclude '/first/_generated/' --exclude '/first/dist/' --exclude '/first/blog/' --exclude '/.first/' "$here/app/" "$build_app/"
 # The frozen blog the app extends lives in tests/fixtures/blog (the PHP suites' golden); the app
-# imports it from first/blog/, inside the First root.
+# imports it from first/blog/, inside the First root. The suites' extra post hooks go in the same
+# file, because hooks are declared beside the kind.
 mkdir -p "$build_app/first/blog"
-cp tests/fixtures/blog/first.config.ts "$build_app/first/blog/first.config.ts"
+cat tests/fixtures/blog/first.config.ts "$here/blog-test-hooks.ts" > "$build_app/first/blog/first.config.ts"
 if [[ ${FIRST_WP_S3:-0} == 1 ]]; then
   cp "$here/uploads.s3.ts" "$build_app/first/uploads.ts"
 fi

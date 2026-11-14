@@ -6,14 +6,16 @@ import { missing, nested, options, pair, rest, strings } from "./parameter-patte
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
-export default defineConfig({
-  name: "language-parameter-patterns",
-  actions: {
-    patternOptions: run(() => [options(1), options(2, { concurrency: 3 }), options(3, { backpressure: 1, preserveOrder: false }), options(4, { concurrency: undefined })]),
-    patternRest: run(() => [rest({ a: 1, b: 2, c: 3 }), rest({ b: 2 }), rest({})]),
-    patternArrays: run(() => [pair([4]), pair([4, 5], 6, 7), pair([])]),
-    patternNested: run(() => [nested({}), nested({ outer: { inner: "x" }, list: [1, 2, 3] }), nested({ outer: {} })]),
-    patternStrings: run(() => [strings("héllo"), strings("")]),
-    patternMissing: run(() => [missing({ field: 1 }), missing({}), missing(null), missing(undefined)]),
-  },
-});
+export const patternOptions = run(() => [options(1), options(2, { concurrency: 3 }), options(3, { backpressure: 1, preserveOrder: false }), options(4, { concurrency: undefined })]);
+
+export const patternRest = run(() => [rest({ a: 1, b: 2, c: 3 }), rest({ b: 2 }), rest({})]);
+
+export const patternArrays = run(() => [pair([4]), pair([4, 5], 6, 7), pair([])]);
+
+export const patternNested = run(() => [nested({}), nested({ outer: { inner: "x" }, list: [1, 2, 3] }), nested({ outer: {} })]);
+
+export const patternStrings = run(() => [strings("héllo"), strings("")]);
+
+export const patternMissing = run(() => [missing({ field: 1 }), missing({}), missing(null), missing(undefined)]);
+
+export default defineConfig({ name: "language-parameter-patterns" });

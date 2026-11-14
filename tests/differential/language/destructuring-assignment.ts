@@ -3,7 +3,7 @@
 // variables or object fields. Every action runs under Node and as compiled PHP; the JSON results
 // must be byte-identical. `destructuring-assignment-helpers.mjs` runs the same shapes untyped.
 import { action, defineConfig } from "first";
-import { destructuringUntyped } from "./destructuring-assignment-helpers.mjs";
+import { destructuringUntyped as destructuringUntypedImpl } from "./destructuring-assignment-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -107,18 +107,24 @@ function throws(): string[] {
 
 const BUILD_TIME_DESTRUCTURING = { swaps: swaps(), bounds: bounds([3, 1, 4]), arrays: arrays(), result: result() };
 
-export default defineConfig({
-  name: "language-destructuring-assignment",
-  actions: {
-    destructuringSwaps: run(() => swaps()),
-    destructuringBounds: run(() => [bounds([3, 1, 4, 1, 5]), bounds([])]),
-    destructuringArrays: run(() => arrays()),
-    destructuringObjects: run(() => [objects({ name: "Ada", tags: ["a"], extra: 1 }), objects({ name: "Bo", city: "Oslo", tags: [], extra: 2 })]),
-    destructuringResult: run(() => result()),
-    destructuringLive: run(() => live()),
-    destructuringOrder: run(() => order()),
-    destructuringThrows: run(() => throws()),
-    destructuringBuildTime: run(() => BUILD_TIME_DESTRUCTURING),
-    destructuringUntyped: run(() => destructuringUntyped()),
-  },
-});
+export const destructuringSwaps = run(() => swaps());
+
+export const destructuringBounds = run(() => [bounds([3, 1, 4, 1, 5]), bounds([])]);
+
+export const destructuringArrays = run(() => arrays());
+
+export const destructuringObjects = run(() => [objects({ name: "Ada", tags: ["a"], extra: 1 }), objects({ name: "Bo", city: "Oslo", tags: [], extra: 2 })]);
+
+export const destructuringResult = run(() => result());
+
+export const destructuringLive = run(() => live());
+
+export const destructuringOrder = run(() => order());
+
+export const destructuringThrows = run(() => throws());
+
+export const destructuringBuildTime = run(() => BUILD_TIME_DESTRUCTURING);
+
+export const destructuringUntyped = run(() => destructuringUntypedImpl());
+
+export default defineConfig({ name: "language-destructuring-assignment" });

@@ -14,14 +14,15 @@ const run = (handler: () => unknown) => action({ input: {}, handler });
 // Called while the config is evaluated.
 const BUILD_TIME = [safeRegex("a+b"), safeRegex("a+b+c+", { limit: 2 }), safeRegex.isRegExp(/x/), safeRegex.isRegExp("x")];
 
-export default defineConfig({
-  name: "language-commonjs-interop",
-  actions: {
-    interopReExports: run(() => ret.before),
-    interopFunctionExports: run(() => safeRegex.shape),
-    interopBuildTimeCalls: run(() => BUILD_TIME),
-    // The same functions compiled to PHP and called per request.
-    interopRunTimeCalls: run(() => [safeRegex("a+b"), safeRegex("a+b+c+", { limit: 2 }), safeRegex.safeRegex("x+")]),
-    descriptorSemantics: run(() => results),
-  },
-});
+export const interopReExports = run(() => ret.before);
+
+export const interopFunctionExports = run(() => safeRegex.shape);
+
+export const interopBuildTimeCalls = run(() => BUILD_TIME);
+
+// The same functions compiled to PHP and called per request.
+export const interopRunTimeCalls = run(() => [safeRegex("a+b"), safeRegex("a+b+c+", { limit: 2 }), safeRegex.safeRegex("x+")]);
+
+export const descriptorSemantics = run(() => results);
+
+export default defineConfig({ name: "language-commonjs-interop" });

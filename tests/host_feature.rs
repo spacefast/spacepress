@@ -110,7 +110,7 @@ fn host_capture_carries_markdown_pages() {
 fn synced_project(root: &Path) {
     fs::create_dir_all(root.join("content/posts")).unwrap();
     fs::create_dir_all(root.join("content/items")).unwrap();
-    fs::write(root.join("first.config.ts"), "import { defineConfig, collection, table, text, richText } from 'first'; const posts = collection({ title: text(), body: richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); const items = table({ title: text().optional() }, { sync: 'content/items/*.json' }); export default defineConfig({ collections: { posts }, tables: { items } });").unwrap();
+    fs::write(root.join("first.config.ts"), "import { defineConfig, collection, table, text, richText } from 'first'; const posts = collection({ title: text(), body: richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); const items = table({ title: text().optional() }, { sync: 'content/items/*.json' }); export { posts }; export { items }; export default defineConfig({});").unwrap();
     fs::write(
         root.join("content/posts/hello.md"),
         "---\ntitle: Hello\n---\nA **seed**.\n",

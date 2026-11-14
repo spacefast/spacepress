@@ -1063,7 +1063,7 @@ fn prerender_and_static_params_reach_the_route_table() {
     };
     write(
         "first.config.ts",
-        "import { defineConfig, collection, text, slug } from \"first\";\nexport const notes = collection({ title: text(), slug: slug({ source: \"title\" }) }, { url: \"/notes/:slug\", access: { read: \"anyone\" } });\nexport default defineConfig({ name: \"hybrid\", collections: { notes } });\n",
+        "import { defineConfig, collection, text, slug } from \"first\";\nexport const notes = collection({ title: text(), slug: slug({ source: \"title\" }) }, { url: \"/notes/:slug\", access: { read: \"anyone\" } });\nexport { notes }; export default defineConfig({ name: \"hybrid\" });\n",
     );
     write("first/app/page.tsx", "export default function P() { return <p/>; }\n");
     write(

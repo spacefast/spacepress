@@ -32,14 +32,16 @@ function typed(): unknown[] {
   return [values.map(classify), keys.map((key) => key in Files2.prototype)];
 }
 
-export default defineConfig({
-  name: "language-class-symbols",
-  actions: {
-    classSymbolMethods: run(() => symbolMethods()),
-    classSymbolKinds: run(() => symbolKinds()),
-    classHasInstance: run(() => hasInstance()),
-    classPrototypeBrands: run(() => prototypeBrands()),
-    classPrototypeMembers: run(() => prototypeMembers()),
-    classTyped: run(() => typed()),
-  },
-});
+export const classSymbolMethods = run(() => symbolMethods());
+
+export const classSymbolKinds = run(() => symbolKinds());
+
+export const classHasInstance = run(() => hasInstance());
+
+export const classPrototypeBrands = run(() => prototypeBrands());
+
+export const classPrototypeMembers = run(() => prototypeMembers());
+
+export const classTyped = run(() => typed());
+
+export default defineConfig({ name: "language-class-symbols" });

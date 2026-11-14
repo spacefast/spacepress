@@ -32,17 +32,22 @@ function typedSelfBound(): unknown[] {
   return [fact(6), fib(12), join(["a", "b", "c"]), shadow(1), depth(3), perIteration.map((f) => f(2))];
 }
 
-export default defineConfig({
-  name: "language-function-expressions",
-  actions: {
-    functionNamed: run(() => named()),
-    functionRecursiveLocal: run(() => recursiveLocal()),
-    functionTyped: run(() => typedRecursion()),
-    functionHoistedVar: run(() => hoistedVar()),
-    functionSelfBound: run(() => selfBound()),
-    functionSelfBoundReassigned: run(() => selfBoundReassigned()),
-    functionSelfBoundTyped: run(() => typedSelfBound()),
-    functionSelfBoundSuspending: action({ input: {}, handler: async () => await selfBoundSuspending() }),
-    functionFastpath: run(() => fastpath("*.ts")),
-  },
-});
+export const functionNamed = run(() => named());
+
+export const functionRecursiveLocal = run(() => recursiveLocal());
+
+export const functionTyped = run(() => typedRecursion());
+
+export const functionHoistedVar = run(() => hoistedVar());
+
+export const functionSelfBound = run(() => selfBound());
+
+export const functionSelfBoundReassigned = run(() => selfBoundReassigned());
+
+export const functionSelfBoundTyped = run(() => typedSelfBound());
+
+export const functionSelfBoundSuspending = action({ input: {}, handler: async () => await selfBoundSuspending() });
+
+export const functionFastpath = run(() => fastpath("*.ts"));
+
+export default defineConfig({ name: "language-function-expressions" });

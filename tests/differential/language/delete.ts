@@ -2,7 +2,7 @@
 // entries before storing or returning a record. Every action runs under Node and as compiled PHP;
 // the JSON results must be byte-identical. `delete-helpers.mjs` runs the same checks untyped.
 import { action, defineConfig } from "first";
-import { deleteUntyped } from "./delete-helpers.mjs";
+import { deleteUntyped as deleteUntypedImpl } from "./delete-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -78,16 +78,20 @@ function reads(): unknown[] {
 
 const BUILD_TIME_DELETE = { scrub: scrub({ title: "t", secret: "s", note: null }), maps: maps(), optional: optionalChain() };
 
-export default defineConfig({
-  name: "language-delete",
-  actions: {
-    deleteScrub: run(() => [scrub({ title: "t", secret: "s", note: null, tags: [] }), scrub({ title: "only" })]),
-    deleteMaps: run(() => maps()),
-    deleteOptionalChain: run(() => optionalChain()),
-    deleteNonConfigurable: run(() => nonConfigurable()),
-    deleteOrder: run(() => order()),
-    deleteReads: run(() => reads()),
-    deleteBuildTime: run(() => BUILD_TIME_DELETE),
-    deleteUntyped: run(() => deleteUntyped()),
-  },
-});
+export const deleteScrub = run(() => [scrub({ title: "t", secret: "s", note: null, tags: [] }), scrub({ title: "only" })]);
+
+export const deleteMaps = run(() => maps());
+
+export const deleteOptionalChain = run(() => optionalChain());
+
+export const deleteNonConfigurable = run(() => nonConfigurable());
+
+export const deleteOrder = run(() => order());
+
+export const deleteReads = run(() => reads());
+
+export const deleteBuildTime = run(() => BUILD_TIME_DELETE);
+
+export const deleteUntyped = run(() => deleteUntypedImpl());
+
+export default defineConfig({ name: "language-delete" });

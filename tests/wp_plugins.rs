@@ -143,7 +143,7 @@ impl Project {
             })
             .collect();
         let body = format!(
-            "import {{ defineConfig }} from 'first';\nexport default defineConfig({{ name: 'fixtures', collections: {{}}, plugins: {}{extra} }});\n",
+            "import {{ defineConfig }} from 'first';\n export default defineConfig({{ name: 'fixtures', plugins: {}{extra} }});\n",
             serde_json::to_string(&plugins).unwrap()
         );
         std::fs::write(self.root.join("first.config.ts"), body).unwrap();
@@ -449,7 +449,7 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
     p.rejects("check", "dependency cycle");
     std::fs::write(
         p.root.join("first.config.ts"),
-        "import {defineConfig} from 'first'; export default defineConfig({collections:{},plugins:[]});",
+        "import {defineConfig} from 'first';  export default defineConfig({ plugins:[] });",
     )
     .unwrap();
     p.rejects("check", "plugins must be a package map");
@@ -463,21 +463,21 @@ fn check_validates_the_declared_graph_and_subset_without_network() {
         "const plugins = Object.fromEntries([['alpha','1.0'],['alpha','2.0']]);",
     ] {
         std::fs::write(p.root.join("first.config.ts"), format!(
-            "import {{defineConfig}} from 'first'; {declarations} export default defineConfig({{collections:{{}},plugins}});"
+            "import {{defineConfig}} from 'first'; {declarations}  export default defineConfig({{ plugins }});"
         )).unwrap();
         p.rejects("check", "duplicate plugin declaration/property");
     }
     std::fs::write(p.root.join("first.config.ts"),
-        "import {defineConfig} from 'first'; export default defineConfig({collections:{},plugins:{alpha:'1.0'},plugins:{alpha:'2.0'}});"
+        "import {defineConfig} from 'first';  export default defineConfig({ plugins:{alpha:'1.0'},plugins:{alpha:'2.0'} });"
     ).unwrap();
     p.rejects("check", "duplicate plugins declaration");
     std::fs::write(p.root.join("first.config.ts"),
-        "import {defineConfig} from 'first'; const plugins = {}; plugins.alpha = plugins; export default defineConfig({collections:{},plugins});"
+        "import {defineConfig} from 'first'; const plugins = {}; plugins.alpha = plugins;  export default defineConfig({ plugins });"
     ).unwrap();
     p.rejects("check", "acyclic declarative data");
     // Overwrites in other build-time data retain ordinary JavaScript semantics.
     std::fs::write(p.root.join("first.config.ts"),
-        "import {defineConfig} from 'first'; const other = {value:'old',value:'new'}; export default defineConfig({collections:{},plugins:{alpha:'1.0'}});"
+        "import {defineConfig} from 'first'; const other = {value:'old',value:'new'};  export default defineConfig({ plugins:{alpha:'1.0'} });"
     ).unwrap();
     assert!(p.run("check", &[]).status.success());
 

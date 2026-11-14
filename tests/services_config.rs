@@ -114,7 +114,7 @@ fn invalid_service_definitions_report_the_authored_property() {
     ];
     for (services, message, property) in cases {
         let source = format!(
-            "import {{ collection, defineConfig, env, table, text, ServicesConfig }} from 'first';\nconst articles = collection({{ title: text() }}, {{ title: 'title', drafts: true }});\nconst unpublished = table({{ title: text() }});\nexport default defineConfig({{ collections: {{ articles }}, tables: {{ unpublished }}, services: {{ {services} }} satisfies ServicesConfig }});\n"
+            "import {{ collection, defineConfig, env, table, text, ServicesConfig }} from 'first';\nconst articles = collection({{ title: text() }}, {{ title: 'title', drafts: true }});\nconst unpublished = table({{ title: text() }});\nexport {{ articles }}; export {{ unpublished }}; export default defineConfig({{ services: {{ {services} }} satisfies ServicesConfig }});\n"
         );
         let entry = project.path().join("first.config.ts");
         std::fs::write(&entry, &source).unwrap();

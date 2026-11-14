@@ -10,7 +10,7 @@ production data and may be rotated with the stack.
 
 ```sh
 cargo build
-mkdir -p tests/wp/app/first/blog && cp tests/fixtures/blog/first.config.ts tests/wp/app/first/blog/
+mkdir -p tests/wp/app/first/blog && cat tests/fixtures/blog/first.config.ts tests/wp/blog-test-hooks.ts > tests/wp/app/first/blog/first.config.ts
 target/debug/first build tests/wp/app
 tests/wp/harness.sh up --wp-content "$PWD/tests/wp/app/first/dist/wp-content"
 tests/wp/harness.sh wp plugin list

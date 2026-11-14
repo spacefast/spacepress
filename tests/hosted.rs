@@ -15,7 +15,7 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     write(
         &project,
         "first.config.ts",
-        "import { defineConfig, action, global, text } from 'first'; import { message } from './first/message'; import { suffix } from 'shared'; export default defineConfig({ globals: { settings: global({ label: text().default('Ready') }) }, actions: { version: action({ access: 'anyone', handler() { return message + suffix; } }) } });",
+        "import { defineConfig, action, global, text } from 'first'; import { message } from './first/message'; import { suffix } from 'shared'; const __settings = global({ label: text().default('Ready') }); export { __settings as settings }; const __version = action({ access: 'anyone', handler() { return message + suffix; } }); export { __version as version }; export default defineConfig({});",
     );
     write(&project, "first/message.ts", "export const message = 'v1';");
     write(
@@ -215,7 +215,7 @@ fn a_bundle_captured_before_the_import_fence_still_compiles() {
     write(
         &project,
         "first.config.ts",
-        "import { defineConfig, action } from 'first'; import { message } from './first/message'; export default defineConfig({ actions: { hello: action({ access: 'anyone', handler() { return message; } }) } });",
+        "import { defineConfig, action } from 'first'; import { message } from './first/message'; export const hello = action({ access: 'anyone', handler() { return message; } }); export default defineConfig({});",
     );
     write(&project, "first/message.ts", "export const message = 'kept';");
     let bundle = work.path().join("bundle");

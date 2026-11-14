@@ -274,7 +274,7 @@ const notes = collection({
   content: blocks({ hero: { heading: text().ui({ label: "Heading" }).optional() } }).optional(),
   metadata: json().optional(),
 }, { title: "title" });
-export default defineConfig({ name: "presentation", collections: { notes } });"#;
+export { notes }; export default defineConfig({ name: "presentation" });"#;
     std::fs::write(tmp.path().join("first.config.ts"), config).unwrap();
     let content = build_wp(tmp.path());
     let schema = content.join("plugins/first-app-presentation/first/app/schema.php");
@@ -344,7 +344,7 @@ fn malformed_ui_is_rejected_including_unknown_keys_nulls_and_fractional_widths()
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("first.config.ts"), format!(
-            "import {{ collection, text, defineConfig }} from 'first'; const notes = collection({{ title: text().ui({ui}).optional() }}, {{ title: 'title' }}); export default defineConfig({{ collections: {{ notes }} }});"
+            "import {{ collection, text, defineConfig }} from 'first'; const notes = collection({{ title: text().ui({ui}).optional() }}, {{ title: 'title' }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{ui}: {report}");
@@ -366,7 +366,7 @@ import {{ collection, text, json, action, defineConfig }} from "first";
 const values = {values};
 const encoded = values.map(value => [encodeURI(value), encodeURIComponent(value)]);
 const notes = collection({{ title: text(), result: json().default(encoded).optional() }}, {{ title: "title" }});
-export default defineConfig({{ name: "uri", collections: {{ notes }}, actions: {{ encode: action({{ input: {{}}, handler: () => values.map(value => [encodeURI(value), encodeURIComponent(value)]) }}) }} }});
+export {{ notes }}; const __encode = action({{ input: {{}}, handler: () => values.map(value => [encodeURI(value), encodeURIComponent(value)]) }}); export {{ __encode as encode }}; export default defineConfig({{ name: "uri" }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
     let app = content.join("plugins/first-app-uri/first/app");
@@ -401,7 +401,7 @@ fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
         "export function pending(){ setTimeout(() => {}, 5); return 1; }\nexport function cleared(){ const h = setTimeout(() => {}, 5); clearTimeout(h); AbortSignal.timeout(5); return 2; }\nexport function late(){ const h = setTimeout(() => {}, 'x'); return typeof h; }",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {pending,cleared,late} from './first/timers.js';export default defineConfig({name:'timers',actions:{pending:action({handler:()=>pending()}),cleared:action({handler:()=>cleared()}),late:action({handler:()=>late()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {pending,cleared,late} from './first/timers.js';const __pending = action({handler:()=>pending()}); export { __pending as pending }; const __cleared = action({handler:()=>cleared()}); export { __cleared as cleared }; const __late = action({handler:()=>late()}); export { __late as late }; export default defineConfig({ name:'timers' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';
@@ -500,7 +500,7 @@ fn url_vectors_agree_in_node_and_generated_php() {
         tmp.path().join("first.config.ts"),
         r#"import { action, defineConfig } from "first";
 import { parseAll, searchParams, invalid } from "./first/url.js";
-export default defineConfig({ name: "url", actions: { probe: action({ input: {}, handler: () => [searchParams(), invalid()] }) } });
+const __probe = action({ input: {}, handler: () => [searchParams(), invalid()] }); export { __probe as probe }; export default defineConfig({ name: "url" });
 "#,
     )
     .unwrap();
@@ -638,7 +638,7 @@ fn uri_encoding_refuses_coercion_and_discarded_arguments() {
 import {{ collection, text, action, defineConfig }} from "first";
 const result = {invocation};
 const notes = collection({{ title: text() }}, {{ title: "title" }});
-export default defineConfig({{ collections: {{ notes }}, actions: {{ encode: action({{ input: {{}}, handler: {handler_body} }}) }} }});
+export {{ notes }}; const __encode = action({{ input: {{}}, handler: {handler_body} }}); export {{ __encode as encode }}; export default defineConfig({{}});
 "#, handler_body = if handler { "result".to_string() } else { "() => result".to_string() })).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
@@ -700,7 +700,7 @@ fn type_guards_validate_their_domains_and_boolean_returns() {
                 r#"
 import {{ action, defineConfig }} from "first";
 {helper}
-export default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => guard }}) }} }});
+const __probe = action({{ input: {{}}, handler: () => guard }}); export {{ __probe as probe }}; export default defineConfig({{}});
 "#
             ),
         )
@@ -809,11 +809,7 @@ import {{ action, defineConfig }} from 'first';
 import {{ combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects }} from './first/helpers.mjs';
 {mutation}
 function nullable(value: string | null) {{ return value.trim(); }}
-export default defineConfig({{ name: 'js-values', actions: {{
-  probe: action({{ input: {{}}, handler: () => {expression} }}),
-  dynamicError: action({{ input: {{}}, handler: () => {{ try {{ read(2); return false; }} catch {{ return true; }} }} }}),
-  nullableError: action({{ input: {{}}, handler: () => {{ try {{ nullable(null); return false; }} catch {{ return true; }} }} }})
-}} }});
+const __probe = action({{ input: {{}}, handler: () => {expression} }}); export {{ __probe as probe }}; const __dynamicError = action({{ input: {{}}, handler: () => {{ try {{ read(2); return false; }} catch {{ return true; }} }} }}); export {{ __dynamicError as dynamicError }}; const __nullableError = action({{ input: {{}}, handler: () => {{ try {{ nullable(null); return false; }} catch {{ return true; }} }} }}); export {{ __nullableError as nullableError }}; export default defineConfig({{ name: 'js-values' }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
     let actual = php(
@@ -840,12 +836,12 @@ echo \First\Js::jsonStringify($result);
         tmp.path().join("first.config.ts"),
         r#"
 import { action, defineConfig } from 'first';
-export default defineConfig({ actions: { probe: action({ input: {}, handler: (): string => {
+const __probe = action({ input: {}, handler: (): string => {
   const values = Array.from(['first']);
   const alias = values;
   alias.pop();
   return values[0];
-} }) } });
+} }); export { __probe as probe }; export default defineConfig({});
 "#,
     )
     .unwrap();
@@ -871,11 +867,11 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
         r#"
 import { action, defineConfig } from 'first';
 import { change } from './first/helpers.mjs';
-export default defineConfig({ actions: { probe: action({ input: {}, handler: (): number => {
+const __probe = action({ input: {}, handler: (): number => {
   const values: number[] = [1];
   change(values);
   return values.reduce((sum, value) => sum + value, 0);
-} }) } });
+} }); export { __probe as probe }; export default defineConfig({});
 "#,
     )
     .unwrap();
@@ -908,12 +904,12 @@ export default defineConfig({ actions: { probe: action({ input: {}, handler: ():
             r#"
 import { action, defineConfig } from 'first';
 import { change } from './first/helpers.mjs';
-export default defineConfig({ actions: { probe: action({ input: {}, handler: (): number => {
+const __probe = action({ input: {}, handler: (): number => {
   const object = { count: 1 };
   const values = [object, object];
   change(values);
   return object.count + 1;
-} }) } });
+} }); export { __probe as probe }; export default defineConfig({});
 "#,
         )
         .unwrap();
@@ -957,14 +953,13 @@ fn binary_data_matches_node_through_generated_php() {
     assert!(names.len() >= 14, "{expected}");
     let actions: Vec<String> = names
         .iter()
-        .map(|name| format!("{name}: action({{ input: {{}}, handler: async () => await {name}() }})"))
+        .map(|name| format!("export const {name} = action({{ input: {{}}, handler: async () => await cases.{name}() }});"))
         .collect();
     std::fs::write(
         tmp.path().join("first.config.ts"),
         format!(
-            "import {{ action, defineConfig }} from 'first';\nimport {{ {} }} from './first/binary.mjs';\nexport default defineConfig({{ name: 'binary-tests', actions: {{ {} }} }});\n",
-            names.iter().map(|name| name.as_str()).collect::<Vec<_>>().join(", "),
-            actions.join(", ")
+            "import {{ action, defineConfig }} from 'first';\nimport * as cases from './first/binary.mjs';\n{}\nexport default defineConfig({{ name: 'binary-tests' }});\n",
+            actions.join("\n")
         ),
     )
     .unwrap();
@@ -1062,7 +1057,7 @@ fn binary_globals_refuse_shared_memory_and_typed_code_with_fixes() {
         write_app(tmp.path().join("first").join(file), source).unwrap();
         std::fs::write(
             tmp.path().join("first.config.ts"),
-            format!("import {{ action, defineConfig }} from 'first';\nimport {{ make }} from './first/{file}';\nexport default defineConfig({{ actions: {{ probe: action({{ handler: () => {{ make(); return 1; }} }}) }} }});\n"),
+            format!("import {{ action, defineConfig }} from 'first';\nimport {{ make }} from './first/{file}';\nconst __probe = action({{ handler: () => {{ make(); return 1; }} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -1108,14 +1103,13 @@ fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let actions = cases
         .iter()
-        .map(|name| format!("  {name}: action({{ input: {{}}, handler: async () => await {name}() }}),"))
+        .map(|name| format!("export const {name} = action({{ input: {{}}, handler: async () => await cases.{name}() }});"))
         .collect::<Vec<_>>()
         .join("\n");
     std::fs::write(
         tmp.path().join("first.config.ts"),
         format!(
-            "import {{ action, defineConfig }} from 'first';\nimport {{ {} }} from './first/async.mjs';\nexport default defineConfig({{ name: 'async-diff', actions: {{\n{actions}\n}} }});\n",
-            cases.join(", ")
+            "import {{ action, defineConfig }} from 'first';\nimport * as cases from './first/async.mjs';\n{actions}\nexport default defineConfig({{ name: 'async-diff' }});\n"
         ),
     )
     .unwrap();
@@ -1149,7 +1143,7 @@ echo \First\Js::jsonStringify(new \First\JsArray($result));
     .unwrap();
     std::fs::write(
         tmp.path().join("first.config.ts"),
-        "import { action, defineConfig } from 'first';\nimport { lost, stuck } from './first/async.mjs';\nexport default defineConfig({ name: 'async-diff', actions: {\n  lost: action({ input: {}, handler: async () => await lost() }),\n  stuck: action({ input: {}, handler: async () => await stuck() }),\n} });\n",
+        "import { action, defineConfig } from 'first';\nimport * as cases from './first/async.mjs';\nexport const lost = action({ input: {}, handler: async () => await cases.lost() });\nexport const stuck = action({ input: {}, handler: async () => await cases.stuck() });\nexport default defineConfig({ name: 'async-diff' });\n",
     )
     .unwrap();
     let content = build_wp(tmp.path());
@@ -1197,7 +1191,7 @@ fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() 
 import {{ collection, text, json, action, defineConfig }} from "first";
 const measured = {expression};
 const notes = collection({{ title: text(), result: json().default(measured).optional() }}, {{ title: "title" }});
-export default defineConfig({{ name: "differences", collections: {{ notes }}, actions: {{ measure: action({{ input: {{}}, handler: () => {expression} }}) }} }});
+export {{ notes }}; const __measure = action({{ input: {{}}, handler: () => {expression} }}); export {{ __measure as measure }}; export default defineConfig({{ name: "differences" }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
     let result = php(
@@ -1296,7 +1290,7 @@ fn static_commonjs_packages_match_node_through_generated_php() {
         r#"
 import { action, defineConfig, text } from "first";
 import run from "./first/probe.cjs";
-export default defineConfig({ name: "commonjs", actions: { probe: action({ access: "anyone", input: { glob: text() }, handler: (input) => run(input.glob) }) } });
+const __probe = action({ access: "anyone", input: { glob: text() }, handler: (input) => run(input.glob) }); export { __probe as probe }; export default defineConfig({ name: "commonjs" });
 "#,
     )
     .unwrap();
@@ -1600,7 +1594,7 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         } else {
             "{}"
         };
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{ table, json, action, defineConfig }} from 'first';\n{declarations}\nexport default defineConfig({{ tables: {{ n: table({{}}) }}, actions: {{ test: action({{input: {input}, handler: () => {handler} }}) }} }});\n")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{ table, json, action, defineConfig }} from 'first';\n{declarations}\nconst __n = table({{}}); export {{ __n as n }}; const __test = action({{input: {input}, handler: () => {handler} }}); export {{ __test as test }}; export default defineConfig({{}});\n")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{message}: {report}");
         let diagnostic = report["diagnostics"]
@@ -1728,7 +1722,7 @@ fn check_reports_plugin_grants_and_read_to_send_flows() {
         r#"import { collection, defineConfig, text } from "first";
 import sync from "first-plugin-sync";
 const posts = collection({ title: text() }, { title: "title" });
-export default defineConfig({ name: "flows", collections: { posts }, use: [sync()] });"#,
+export { posts }; export default defineConfig({ name: "flows", use: [sync()] });"#,
     )
     .unwrap();
     std::fs::write(
@@ -1913,9 +1907,7 @@ export const describe = (shape: Shape): string => (shape.kind === "circle" ? `r=
         r#"
 import { action, defineConfig, text } from 'first';
 import { run } from 'typed-lib';
-export default defineConfig({ name: 'typed-lib', actions: {
-  probe: action({ input: { key: text() }, handler: (input) => run(input.key) }),
-} });
+const __probe = action({ input: { key: text() }, handler: (input) => run(input.key) }); export { __probe as probe }; export default defineConfig({ name: 'typed-lib' });
 "#,
     )
     .unwrap();
@@ -1956,7 +1948,7 @@ echo \First\Js::jsonStringify($fn($input, new \First\JsObject()));
         std::fs::write(
             tmp.path().join("first.config.ts"),
             format!(
-                "import {{ action, defineConfig, text }} from 'first'; {source} export default defineConfig({{ actions: {{ probe: action({{ input: {{ key: text() }}, handler: (input) => read(input.key) }}) }} }});"
+                "import {{ action, defineConfig, text }} from 'first'; {source} const __probe = action({{ input: {{ key: text() }}, handler: (input) => read(input.key) }}); export {{ __probe as probe }}; export default defineConfig({{}});"
             ),
         )
         .unwrap();
@@ -1995,7 +1987,7 @@ fn checked_javascript_reads_and_calls_inherited_class_methods_like_node() {
     "#,
     )
     .unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first'; import {test} from './first/helper.js'; export default defineConfig({name:'classboundary',actions:{test:action({input:{},handler:()=>test()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first'; import {test} from './first/helper.js'; const __test = action({input:{},handler:()=>test()}); export { __test as test }; export default defineConfig({ name:'classboundary' });").unwrap();
     let content = build_wp(tmp.path());
     let app = content.join("plugins/first-app-classboundary/first/app");
     let actual = php(
@@ -2085,7 +2077,7 @@ export function probe() {
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(
         tmp.path().join("first.config.ts"),
-        "import { action, defineConfig } from 'first'; import { probe, unmodeled } from './first/helpers.mjs'; export default defineConfig({ name: 'symbols', actions: { probe: action({ input: {}, handler: () => probe() }), unmodeled: action({ input: {}, handler: () => unmodeled() }) } });",
+        "import { action, defineConfig } from 'first'; import { probe, unmodeled } from './first/helpers.mjs'; const __probe = action({ input: {}, handler: () => probe() }); export { __probe as probe }; const __unmodeled = action({ input: {}, handler: () => unmodeled() }); export { __unmodeled as unmodeled }; export default defineConfig({ name: 'symbols' });",
     )
     .unwrap();
     let content = build_wp(tmp.path());
@@ -2111,19 +2103,19 @@ echo \First\Js::jsonStringify(new \First\JsArray([$run('probe'), $run('unmodeled
     // Authored TypeScript has no symbol type and no weak collections; both are located refusals.
     for (source, message) in [
         (
-            "const s = Symbol('x'); export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof s }) } });",
+            "const s = Symbol('x'); const __a = action({ input: {}, handler: () => typeof s }); export { __a as a }; export default defineConfig({});",
             "symbols aren't supported in TypeScript code yet",
         ),
         (
-            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof Symbol.for('x') }) } });",
+            "const __a = action({ input: {}, handler: () => typeof Symbol.for('x') }); export { __a as a }; export default defineConfig({});",
             "symbols aren't supported in TypeScript code yet",
         ),
         (
-            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => { const m = new WeakMap(); return 1; } }) } });",
+            "const __a = action({ input: {}, handler: () => { const m = new WeakMap(); return 1; } }); export { __a as a }; export default defineConfig({});",
             "`new WeakMap` isn't supported",
         ),
         (
-            "const m = new WeakMap(); export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof m }) } });",
+            "const m = new WeakMap(); const __a = action({ input: {}, handler: () => typeof m }); export { __a as a }; export default defineConfig({});",
             "which TypeScript code here can't use",
         ),
         (
@@ -2135,11 +2127,11 @@ echo \First\Js::jsonStringify(new \First\JsArray([$run('probe'), $run('unmodeled
             "symbol-keyed properties can't be created while the config is evaluated",
         ),
         (
-            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof globalThis.Buffer }) } });",
+            "const __a = action({ input: {}, handler: () => typeof globalThis.Buffer }); export { __a as a }; export default defineConfig({});",
             "`globalThis.Buffer` depends on the host",
         ),
         (
-            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => typeof globalThis.myPolyfill }) } });",
+            "const __a = action({ input: {}, handler: () => typeof globalThis.myPolyfill }); export { __a as a }; export default defineConfig({});",
             "`globalThis.myPolyfill` depends on the host",
         ),
         (
@@ -2147,7 +2139,7 @@ echo \First\Js::jsonStringify(new \First\JsArray([$run('probe'), $run('unmodeled
             "`globalThis.fetch` depends on the host",
         ),
         (
-            "export default defineConfig({ actions: { a: action({ input: {}, handler: () => globalThis.Bun() }) } });",
+            "const __a = action({ input: {}, handler: () => globalThis.Bun() }); export { __a as a }; export default defineConfig({});",
             "`globalThis.Bun` is undefined in First",
         ),
     ] {
@@ -2196,18 +2188,18 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
         } else {
             expression.to_string()
         };
-        actions.push(format!("{name}: action({{ input: {{}}, handler: () => ({body}) }})"));
+        actions.push(format!("export const {name} = action({{ input: {{}}, handler: () => ({body}) }});"));
         if v["fold"] == true {
-            declarations.push_str(&format!("const folded_{name} = {expression};\n"));
+            declarations.push_str(&format!("const folded_{name}_value = {expression};\n"));
             actions.push(format!(
-                "folded_{name}: action({{ input: {{}}, handler: () => folded_{name} }})"
+                "export const folded_{name} = action({{ input: {{}}, handler: () => folded_{name}_value }});"
             ));
         }
     }
     write_app(tmp.path().join("first/helper.js"), javascript).unwrap();
     // The app and its helper modules live under first/; the root config re-exports it.
     let entry = tmp.path().join("first/app.ts");
-    std::fs::write(&entry, format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nexport default defineConfig({{name: 'builtinparity', actions: {{{}}}}});", actions.join(",\n"))).unwrap();
+    std::fs::write(&entry, format!("import {{ action, defineConfig }} from 'first';\n{declarations}\n{}\nexport default defineConfig({{name: 'builtinparity'}});", actions.join("\n"))).unwrap();
     std::fs::write(
         tmp.path().join("first.config.ts"),
         "export { default } from './first/app.ts';\n",
@@ -2338,7 +2330,7 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
             } else {
                 (format!("const folded = {expression};"), "folded".into())
             };
-            std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\n{declaration}\nexport default defineConfig({{name:'refusal',actions:{{probe:action({{input:{{}},handler:()=>{result}}})}}}});")).unwrap();
+            std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\n{declaration}\nconst __probe = action({{input:{{}},handler:()=>{result}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'refusal' }});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}, handler={handler}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -2363,7 +2355,7 @@ fn javascript_invalid_regex_literals_receive_syntax_diagnostics() {
         assert!(!node.status.success(), "{expression}");
         assert!(String::from_utf8_lossy(&node.stderr).contains("SyntaxError"));
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';export default defineConfig({{actions:{{probe:action({{handler:()=>{expression}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';const __probe = action({{handler:()=>{expression}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2405,7 +2397,7 @@ fn unsupported_features_have_positions_and_actionable_help() {
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nexport default defineConfig({{name:'diagnostics',actions:{{probe:action({{input:{{}},handler:()=>{{ {source} }} }})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nconst __probe = action({{input:{{}},handler:()=>{{ {source} }} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'diagnostics' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2423,7 +2415,7 @@ fn configuration_refuses_unsupported_coercion_at_the_call_site() {
         "'a,b,c'.split(',', {valueOf: () => 2})",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nconst result = {expression};\nexport default defineConfig({{name:'coercion',actions:{{probe:action({{input:{{}},handler:()=>result}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nconst result = {expression};\nconst __probe = action({{input:{{}},handler:()=>result}}); export {{ __probe as probe }}; export default defineConfig({{ name:'coercion' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2437,7 +2429,7 @@ fn configuration_refuses_unsupported_coercion_at_the_call_site() {
 fn query_calls_refuse_extra_options_arguments_at_the_call_site() {
     for method in ["findMany", "findFirst"] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig, table, db}} from 'first';\nconst notes = table({{}});\nexport default defineConfig({{name:'queryarity',tables:{{notes}},actions:{{probe:action({{input:{{}},handler:async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig, table, db}} from 'first';\nconst notes = table({{}});\nexport {{ notes }}; const __probe = action({{input:{{}},handler:async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'queryarity' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2470,7 +2462,7 @@ fn database_builders_refuse_discarded_arguments_at_the_call_site() {
         "(n++, db.insert(notes).values({count: 1}))",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig, table, integer, db}} from 'first';\nconst notes=table({{count:integer().optional()}});\nexport default defineConfig({{name:'builderarity',tables:{{notes}},actions:{{probe:action({{input:{{}},handler:async()=>{{let n=0; await {expression}; return n;}}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig, table, integer, db}} from 'first';\nconst notes=table({{count:integer().optional()}});\nexport {{ notes }}; const __probe = action({{input:{{}},handler:async()=>{{let n=0; await {expression}; return n;}}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'builderarity' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2512,7 +2504,7 @@ fn configuration_validates_callbacks_before_empty_input_shortcuts() {
         "[].map(Math)",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nconst value = (() => {{try {{ {expression}; return 0; }} catch (e) {{ return 1; }} }})();\nexport default defineConfig({{actions:{{probe:action({{input:{{}},handler:()=>value}})}}}});" )).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nconst value = (() => {{try {{ {expression}; return 0; }} catch (e) {{ return 1; }} }})();\nconst __probe = action({{input:{{}},handler:()=>value}}); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2534,7 +2526,7 @@ fn schema_builders_refuse_discarded_arguments_at_the_call_site() {
         "new HttpError(400, 'bad', 'message')",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{text, json, select, action, defineConfig, HttpError}} from 'first';\nconst invalid = {expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>1}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{text, json, select, action, defineConfig, HttpError}} from 'first';\nconst invalid = {expression};\nconst __probe = action({{handler:()=>1}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2562,7 +2554,7 @@ fn configuration_refuses_calls_that_lose_an_extracted_method_receiver() {
         "const methods=[' abc '.trim]; const result=methods['0']();",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\n{source}\nexport default defineConfig({{actions:{{probe:action({{handler:()=>result}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\n{source}\nconst __probe = action({{handler:()=>result}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2595,7 +2587,7 @@ fn prototype_setter_literals_are_refused_in_configuration_and_handlers() {
         } else {
             format!("Object.hasOwn({expression}, '__proto__')")
         };
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\n{declaration}\nexport default defineConfig({{actions:{{probe:action({{handler:()=>{body}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\n{declaration}\nconst __probe = action({{handler:()=>{body}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2622,7 +2614,7 @@ fn unknown_configuration_builtin_properties_are_located_refusals() {
         "typeof [1, 2]['+1']",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nconst folded={expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nconst folded={expression};\nconst __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         assert!(
@@ -2640,7 +2632,7 @@ fn unknown_configuration_builtin_properties_are_located_refusals() {
 fn console_results_preserve_undefined_and_emit_the_log() {
     let tmp = tempfile::tempdir().unwrap();
     let entry = tmp.path().join("first.config.ts");
-    std::fs::write(&entry, "import {action,defineConfig} from 'first'; export default defineConfig({name:'logresult',actions:{probe:action({input:{},handler:()=>{const result=console.warn('builtin-return-marker');return [typeof result,result===undefined,result===null];}})}});").unwrap();
+    std::fs::write(&entry, "import {action,defineConfig} from 'first'; const __probe = action({input:{},handler:()=>{const result=console.warn('builtin-return-marker');return [typeof result,result===undefined,result===null];}}); export { __probe as probe }; export default defineConfig({ name:'logresult' });").unwrap();
     let node = Command::new("node")
         .arg(root().join("tests/differential/run-node.mjs"))
         .arg(&entry)
@@ -2663,7 +2655,7 @@ fn console_results_preserve_undefined_and_emit_the_log() {
 #[test]
 fn dynamic_engine_dependent_math_fails_explicitly() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); const log=(value:number)=>Math.log(value); const exp=(value:number)=>Math.exp(value); export default defineConfig({name:'powerrefusal',actions:{probe:action({handler:()=>{const out:string[]=[];try{power(3,35);}catch{out.push('power');}try{power(45.29,-1);}catch{out.push('reciprocal');}try{log(3);}catch{out.push('log');}try{exp(1);}catch{out.push('exp');}return out;}})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); const log=(value:number)=>Math.log(value); const exp=(value:number)=>Math.exp(value); const __probe = action({handler:()=>{const out:string[]=[];try{power(3,35);}catch{out.push('power');}try{power(45.29,-1);}catch{out.push('reciprocal');}try{log(3);}catch{out.push('log');}try{exp(1);}catch{out.push('exp');}return out;}}); export { __probe as probe }; export default defineConfig({ name:'powerrefusal' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\FirstApp\\'.$schema['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn());"#,
@@ -2685,7 +2677,7 @@ fn configuration_refuses_unmodeled_inherited_properties() {
         "typeof ({}).hasOwnProperty",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nconst folded={expression};\nexport default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nconst folded={expression};\nconst __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         assert!(
@@ -2708,7 +2700,7 @@ fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
         "Date",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{json,action,defineConfig}} from 'first';\nexport default defineConfig({{actions:{{probe:action({{input:{{values:json<{annotation}>()}},handler:(input)=>input.values}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{json,action,defineConfig}} from 'first';\nconst __probe = action({{input:{{values:json<{annotation}>()}},handler:(input)=>input.values}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2725,7 +2717,7 @@ fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
 fn action_results_refuse_implicit_typed_date_serialization() {
     for expression in ["new Date(0)", "({date: new Date(0)})", "[new Date(0)]"] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nexport default defineConfig({{actions:{{probe:action({{handler:()=>({expression})}})}}}});" )).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nconst __probe = action({{handler:()=>({expression})}}); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2746,7 +2738,7 @@ fn typed_date_coercion_requires_explicit_formatting() {
         "new Date(0) + ''",
         "''.concat(new Date(0))",
     ] {
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nexport default defineConfig({{actions:{{probe:action({{handler:()=>({expression})}})}}}});" )).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';\nconst __probe = action({{handler:()=>({expression})}}); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         assert_eq!(
@@ -2761,7 +2753,7 @@ fn typed_date_coercion_requires_explicit_formatting() {
 fn dynamic_array_prototype_writes_are_refused() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(tmp.path().join("first/helper.js"), "export function probe(){const key='__proto__';const a=[];try {a[key]=1;} catch(e) {return [e.name,Object.hasOwn(a,key)];} return ['accepted'];}").unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './first/helper.js';export default defineConfig({name:'prototyperefusal',actions:{probe:action({handler:()=>probe()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './first/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({ name:'prototyperefusal' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\FirstApp\\'.$s['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn(new \First\JsObject(), \First\Seam::ctx(['user'=>null])));"#,
@@ -2776,7 +2768,7 @@ fn dynamic_array_prototype_writes_are_refused() {
 #[test]
 fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';\nexport default defineConfig({actions:{probe:action({handler:()=>String(()=>1)})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';\nconst __probe = action({handler:()=>String(()=>1)}); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert_eq!(
@@ -2788,7 +2780,7 @@ fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
         "function convert(value){return String(value);} export function probe(){try{return convert(()=>1);}catch(e){return e.name;}}",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './first/helper.js';export default defineConfig({name:'functionrefusal',actions:{probe:action({handler:()=>probe()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './first/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({ name:'functionrefusal' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\FirstApp\\'.$s['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn(new \First\JsObject(),\First\Seam::ctx(['user'=>null])));"#,
@@ -2811,9 +2803,9 @@ fn non_iso_date_literals_are_refused_at_the_call() {
                     format!("export const probe=()=>new Date({text:?}).getTime();"),
                 )
                 .unwrap();
-                std::fs::write(tmp.path().join("first.config.ts"),"import {action,defineConfig} from 'first';import {probe} from './first/helper.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});").unwrap();
+                std::fs::write(tmp.path().join("first.config.ts"),"import {action,defineConfig} from 'first';import {probe} from './first/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});").unwrap();
             } else {
-                std::fs::write(tmp.path().join(name),format!("import {{action,defineConfig}} from 'first';export default defineConfig({{actions:{{probe:action({{handler:()=>new Date({text:?}).getTime()}})}}}});")).unwrap();
+                std::fs::write(tmp.path().join(name),format!("import {{action,defineConfig}} from 'first';const __probe = action({{handler:()=>new Date({text:?}).getTime()}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
             }
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{report}");
@@ -2830,7 +2822,7 @@ fn non_iso_date_literals_are_refused_at_the_call() {
 fn native_error_inspection_is_refused_during_configuration_evaluation() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(tmp.path().join("first/helper.js"), "export function probe(){try{arguments.callee;}catch(e){return [Object.hasOwn(e,'name'),Object.hasOwn(e,'message'),Object.keys(e)];}}").unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './first/helper.js';const folded=probe();export default defineConfig({actions:{probe:action({handler:()=>folded})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './first/helper.js';const folded=probe();const __probe = action({handler:()=>folded}); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert_eq!(
@@ -2852,7 +2844,7 @@ fn undefined_cannot_be_narrowed_through_a_null_annotation_or_conditional_var() {
         "try {if(true) throw Error('stop'); var x=1;} catch {} return String(x+1);",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';\nexport default defineConfig({{name:'undefinedflow',actions:{{probe:action({{input:{{}},handler:()=>{{{body}}}}})}}}});" )).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';\nconst __probe = action({{input:{{}},handler:()=>{{{body}}}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'undefinedflow' }});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{body}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2914,7 +2906,7 @@ fn engine_dependent_properties_and_unmodeled_flat_depths_are_located_refusals() 
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nexport default defineConfig({{name:'boundaries',actions:{{probe:action({{input:{{}},handler:()=>{{ {source} }} }})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\nconst __probe = action({{input:{{}},handler:()=>{{ {source} }} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'boundaries' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let d = &report["diagnostics"][0];
@@ -2945,7 +2937,7 @@ fn optional_chains_refuse_unguarded_continuations_at_source() {
             } else {
                 ""
             };
-            std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';{import}export default defineConfig({{actions:{{probe:action({{handler:{handler}}})}}}});")).unwrap();
+            std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';{import}const __probe = action({{handler:{handler}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -2981,7 +2973,7 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
         "function g(a:{x:number}|null){f(a?.['x']);}g(null);",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';export default defineConfig({{actions:{{probe:action({{handler:()=>{{function f(v:number|null){{return typeof Number(v);}}{source}return 0;}}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';const __probe = action({{handler:()=>{{function f(v:number|null){{return typeof Number(v);}}{source}return 0;}}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3001,7 +2993,7 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
 fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(tmp.path().join("first/helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'union'),read([],'copyWithin'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './first/helper.js';export default defineConfig({name:'nativeproperties',actions:{probe:action({handler:()=>probe()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {probe} from './first/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({ name:'nativeproperties' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\FirstApp\\'.$s['actions']['probe']['handler'];echo \First\Js::jsonStringify($fn(new \First\JsObject(), \First\Seam::ctx(['user'=>null])));"#,
@@ -3027,13 +3019,13 @@ fn typed_data_reads_refuse_unmodeled_inherited_values() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("first.config.ts"), r#"
 import {action,defineConfig} from 'first';
-export default defineConfig({name:'typeddatareads',actions:{probe:action({handler:()=>{
+const __probe = action({handler:()=>{
     const o:Record<string,undefined>={};
     const key='to'+'String';
     const optional:{toString?:undefined}={};
     const cases=[()=>typeof o.toString,()=>typeof o['valueOf'],()=>typeof o[key],()=>{const {toString}=o;return typeof toString;},()=>typeof optional.toString,()=>typeof optional['toString'],()=>{const n:Record<string,number>={};n.valueOf ||=1;return typeof 0;}];
     return cases.map(f=>{try{return ['accepted',f()];}catch(e){return [e.name,e.message];}});
-}})}});
+}}); export { __probe as probe }; export default defineConfig({ name:'typeddatareads' });
 "#).unwrap();
     let content = build_wp(tmp.path());
     let result = php(
@@ -3092,9 +3084,9 @@ fn parameter_default_scope_limits_are_located_refusals() {
                     format!("export function probe(){{{source}return 0;}}"),
                 )
                 .unwrap();
-                "import {probe} from './first/helper.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});".to_string()
+                "import {probe} from './first/helper.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});".to_string()
             } else {
-                format!("{source}export default defineConfig({{actions:{{probe:action({{handler:()=>0}})}}}});")
+                format!("{source}const __probe = action({{handler:()=>0}}); export {{ __probe as probe }}; export default defineConfig({{}});")
             };
             std::fs::write(
                 tmp.path().join("first.config.ts"),
@@ -3125,7 +3117,7 @@ fn missing_string_compound_reads_do_not_fabricate_a_string_result_type() {
         ("const o:string[]=[];", "o[0]"),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';export default defineConfig({{actions:{{probe:action({{handler:()=>{{{declaration}const v=({access}+=1);return [String(v),`${{v}}`];}}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';const __probe = action({{handler:()=>{{{declaration}const v=({access}+=1);return [String(v),`${{v}}`];}}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3168,9 +3160,9 @@ fn undefined_bindings_are_located_refusals_in_all_runtime_binding_forms() {
                     format!("{source}export function probe(){{return 0;}}"),
                 )
                 .unwrap();
-                "import {probe} from './first/binding-probe.js';export default defineConfig({actions:{probe:action({handler:()=>probe()})}});".to_string()
+                "import {probe} from './first/binding-probe.js';const __probe = action({handler:()=>probe()}); export { __probe as probe }; export default defineConfig({});".to_string()
             } else {
-                format!("{source}export default defineConfig({{actions:{{probe:action({{handler:()=>0}})}}}});")
+                format!("{source}const __probe = action({{handler:()=>0}}); export {{ __probe as probe }}; export default defineConfig({{}});")
             };
             std::fs::write(
                 tmp.path().join("first.config.ts"),
@@ -3220,7 +3212,7 @@ fn deferred_lexical_captures_and_missing_required_callback_slots_are_located_ref
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';export default defineConfig({{actions:{{probe:action({{handler:()=>{{{source}}}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"),format!("import {{action,defineConfig}} from 'first';const __probe = action({{handler:()=>{{{source}}}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3254,7 +3246,7 @@ fn lexical_initialization_refusals_cover_loop_sources_reads_and_assignments() {
             } else {
                 (format!("const folded=(()=>{{{body}}})();"), "folded".into())
             };
-            std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{declaration}export default defineConfig({{actions:{{probe:action({{handler:()=>{result}}})}}}});")).unwrap();
+            std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{declaration}const __probe = action({{handler:()=>{result}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{body}, handler={handler}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -3277,7 +3269,7 @@ fn lexical_initialization_refusals_cover_loop_sources_reads_and_assignments() {
 fn error_options_refuse_inherited_causes_in_typed_and_checked_javascript() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(tmp.path().join("first/helper.js"), "class Base {cause(){}} class Options extends Base {} export function read(){try{return Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){return [e.name,e.message];}}").unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {read} from './first/helper.js';class Base {cause(){}} class Options extends Base {} export default defineConfig({name:'errorcause',actions:{test:action({input:{},handler:()=>{let typed:string[]=[];try{Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){typed=[e.name,e.message];}return [typed,read()];}})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {read} from './first/helper.js';class Base {cause(){}} class Options extends Base {} const __test = action({input:{},handler:()=>{let typed:string[]=[];try{Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){typed=[e.name,e.message];}return [typed,read()];}}); export { __test as test }; export default defineConfig({ name:'errorcause' });").unwrap();
     let content = build_wp(tmp.path());
     let app = content.join("plugins/first-app-errorcause/first/app");
     let actual = php(
@@ -3323,7 +3315,7 @@ fn writes_to_named_exports_refuse_before_importers_can_go_stale() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         write_app(tmp.path().join(file), source).unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{import}inc();const folded=value;export default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{import}inc();const folded=value;const __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3347,7 +3339,7 @@ fn typed_array_calls_refuse_own_overrides_installed_by_javascript() {
         "export function installArrayOverrides(a,b){a.map=()=>[99];b.join=()=>'own';}",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {installArrayOverrides} from './first/array-overrides.js';export default defineConfig({name:'arraynative',actions:{test:action({input:{},handler:()=>{const a=[1,2],b=[1,2];installArrayOverrides(a,b);let mapped:string[]=[];let joined:string[]=[];try{a.map(x=>x+1);}catch(e){mapped=[e.name,e.message];}try{b.join('-');}catch(e){joined=[e.name,e.message];}return [mapped,joined];}})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';import {installArrayOverrides} from './first/array-overrides.js';const __test = action({input:{},handler:()=>{const a=[1,2],b=[1,2];installArrayOverrides(a,b);let mapped:string[]=[];let joined:string[]=[];try{a.map(x=>x+1);}catch(e){mapped=[e.name,e.message];}try{b.join('-');}catch(e){joined=[e.name,e.message];}return [mapped,joined];}}); export { __test as test }; export default defineConfig({ name:'arraynative' });").unwrap();
     let content = build_wp(tmp.path());
     let app = content.join("plugins/first-app-arraynative/first/app");
     let actual = php(
@@ -3376,7 +3368,7 @@ fn typed_array_calls_refuse_own_overrides_installed_by_javascript() {
 #[test]
 fn configuration_evaluation_refuses_destructured_var_loops_like_handlers() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';const folded=(()=>{for(var [x] of [[1]])return x;return 0;})();export default defineConfig({actions:{probe:action({handler:()=>folded})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';const folded=(()=>{for(var [x] of [[1]])return x;return 0;})();const __probe = action({handler:()=>folded}); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     let diagnostic = &report["diagnostics"][0];
@@ -3399,13 +3391,13 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
         "const x=7;const folded=()=> (function x(){return typeof x;})();",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{declaration}export default defineConfig({{actions:{{probe:action({{handler:()=>folded}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action,defineConfig}} from 'first';{declaration}const __probe = action({{handler:()=>folded}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(0), "{declaration}: {report}");
     }
     // Strict JavaScript throws on a write to the name, so it is refused where it is written.
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';\nconst f=function g(){ g = () => 1; return 1; };\nexport default defineConfig({actions:{probe:action({handler:()=>f()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';\nconst f=function g(){ g = () => 1; return 1; };\nconst __probe = action({handler:()=>f()}); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     let diagnostic = &report["diagnostics"][0];
@@ -3428,7 +3420,7 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
         "export const run = () => { const fn = function f(x = (f = () => 1)) { return x; }; return fn(); };\n",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';\nimport { run } from './first/h.mjs';\nexport default defineConfig({actions:{probe:action({handler:()=>run()})}});").unwrap();
+    std::fs::write(tmp.path().join("first.config.ts"), "import {action,defineConfig} from 'first';\nimport { run } from './first/h.mjs';\nconst __probe = action({handler:()=>run()}); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert!(
@@ -3799,7 +3791,7 @@ fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled(
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
             tmp.path().join("first.config.ts"),
-            format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: {handler} }}) }} }});\n"),
+            format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nconst __probe = action({{ input: {{}}, handler: {handler} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -3823,7 +3815,7 @@ fn a_method_replaced_by_a_later_property_is_not_callable() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
             tmp.path().join("first.config.ts"),
-            format!("import {{ action, defineConfig }} from 'first';\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => {body} }}) }} }});\n"),
+            format!("import {{ action, defineConfig }} from 'first';\nconst __probe = action({{ input: {{}}, handler: () => {body} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -3958,7 +3950,7 @@ fn effects_on_an_object_graph_stay_bounded_and_keep_php_equal_to_node() {
         tmp.path().join("first.config.ts"),
         r#"import { action, defineConfig, text } from "first";
 import { run } from "./first/run.mjs";
-export default defineConfig({ name: "graph", actions: { a: action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }) } });
+const __a = action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }); export { __a as a }; export default defineConfig({ name: "graph" });
 "#,
     )
     .unwrap();
@@ -4087,7 +4079,7 @@ fn widened_effects_are_deterministic_and_keep_php_equal_to_node() {
         tmp.path().join("first.config.ts"),
         r#"import { action, defineConfig, text } from "first";
 import { run } from "./first/run.mjs";
-export default defineConfig({ name: "tokens", actions: { a: action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }) } });
+const __a = action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }); export { __a as a }; export default defineConfig({ name: "tokens" });
 "#,
     )
     .unwrap();
@@ -4195,7 +4187,7 @@ fn language_construct_type_rules() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
             tmp.path().join("first.config.ts"),
-            format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nexport default defineConfig({{ name: 'rules', actions: {{ probe: action({{ input: {{}}, handler: () => {handler} }}) }} }});"),
+            format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nconst __probe = action({{ input: {{}}, handler: () => {handler} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'rules' }});"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -4253,7 +4245,7 @@ export default main;
 import {{ action, defineConfig }} from 'first';
 import match from './first/utils.mjs';
 import * as utils from './first/utils.mjs';
-export default defineConfig({{ name: 'namespaces', actions: {{ probe: action({{ input: {{}}, handler: () => {expression} }}) }} }});
+const __probe = action({{ input: {{}}, handler: () => {expression} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'namespaces' }});
 "#
         ),
     )
@@ -4340,7 +4332,7 @@ echo \First\Js::jsonStringify($fn(new \First\JsObject(), new \First\JsObject()))
             "build time only",
         ),
     ] {
-        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\n{declarations}\nexport default defineConfig({{name:'namespaces',actions:{{probe:action({{input:{{}},handler:()=>{handler}}})}}}});")).unwrap();
+        std::fs::write(tmp.path().join("first.config.ts"), format!("import {{action, defineConfig}} from 'first';\n{declarations}\nconst __probe = action({{input:{{}},handler:()=>{handler}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'namespaces' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -4390,7 +4382,7 @@ fn typed_for_await_accepts_only_settled_sync_iterables() {
         .unwrap();
         std::fs::write(
             tmp.path().join("first.config.ts"),
-            format!("import {{ action, defineConfig }} from 'first';\nimport {{ untyped }} from './first/h.mjs';\nexport default defineConfig({{ name: 'awaits', actions: {{ probe: action({{ input: {{}}, handler: async () => {{ {source} }} }}) }} }});"),
+            format!("import {{ action, defineConfig }} from 'first';\nimport {{ untyped }} from './first/h.mjs';\nconst __probe = action({{ input: {{}}, handler: async () => {{ {source} }} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'awaits' }});"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -4587,7 +4579,7 @@ fn language_refusals_carry_a_location_and_a_fix() {
         .unwrap();
         std::fs::write(
             tmp.path().join("first.config.ts"),
-            format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nexport default defineConfig({{ actions: {{ probe: action({{ input: {{}}, handler: () => {handler} }}) }} }});\n"),
+            format!("import {{ action, defineConfig }} from 'first';\n{declarations}\nconst __probe = action({{ input: {{}}, handler: () => {handler} }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -4626,22 +4618,22 @@ fn was_renames_only_what_a_table_stores() {
     let refused = |config: &str| build(config, None).err().unwrap_or_default();
     let head = "import { defineConfig, collection, table, text, group } from 'first';";
     assert!(
-        refused(&format!("{head} const posts = collection({{ title: text(), body: text().was('copy').optional() }}, {{ title: 'title' }}); export default defineConfig({{ collections: {{ posts }} }});"))
+        refused(&format!("{head} const posts = collection({{ title: text(), body: text().was('copy').optional() }}, {{ title: 'title' }}); export {{ posts }}; export default defineConfig({{}});"))
             .contains("`.was()` renames a column of a table()"),
     );
     assert!(
-        refused(&format!("{head} const notes = table({{ meta: group({{ tag: text().was('label').optional() }}).optional() }}); export default defineConfig({{ tables: {{ notes }} }});"))
+        refused(&format!("{head} const notes = table({{ meta: group({{ tag: text().was('label').optional() }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"))
             .contains("`.was()` renames a stored column"),
     );
     // A First-created table renamed onto an adopted one (or back) would alter a table First didn't create.
     let first = build(
-        &format!("{head} const notes = table({{}}); export default defineConfig({{ tables: {{ notes }} }});"),
+        &format!("{head} const notes = table({{}}); export {{ notes }}; export default defineConfig({{}});"),
         None,
     )
     .unwrap();
     let onto = build(
         &format!(
-            "{head} const memos = table({{}}, {{ was: 'notes', existingTable: 'sf_space_memos' }}); export default defineConfig({{ tables: {{ memos }} }});"
+            "{head} const memos = table({{}}, {{ was: 'notes', existingTable: 'sf_space_memos' }}); export {{ memos }}; export default defineConfig({{}});"
         ),
         Some(first.snapshot.clone()),
     );
@@ -4652,7 +4644,7 @@ fn was_renames_only_what_a_table_stores() {
     );
     // The same rename between two First-created tables plans a RENAME, not a drop and a create.
     let renamed = build(
-        &format!("{head} const memos = table({{}}, {{ was: 'notes' }}); export default defineConfig({{ tables: {{ memos }} }});"),
+        &format!("{head} const memos = table({{}}, {{ was: 'notes' }}); export {{ memos }}; export default defineConfig({{}});"),
         Some(first.snapshot),
     )
     .unwrap();

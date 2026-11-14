@@ -1108,7 +1108,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
     // Neither camel-case names nor canonical names behind aliases may be silently replaced.
     let conflict = tmp.join("name-conflict");
     std::fs::create_dir_all(&conflict).unwrap();
-    std::fs::write(conflict.join("first.config.ts"), "import { table, defineConfig } from 'first'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
+    std::fs::write(conflict.join("first.config.ts"), "import { table, defineConfig } from 'first'; const __stockItems = table({}); export { __stockItems as stockItems }; export default defineConfig({});").unwrap();
     let built = first().arg("build").arg(&conflict).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     let ledger = conflict.join("first/_generated/migrations/snapshot.json");
@@ -1135,7 +1135,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
                 .count(),
             2
         );
-        std::fs::write(conflict.join("first.config.ts"), format!("import {{ table, defineConfig }} from 'first'; export default defineConfig({{ tables: {{ stockItems: table({{}}, {{ storageName: \"{stored_name}\" }}) }} }});")).unwrap();
+        std::fs::write(conflict.join("first.config.ts"), format!("import {{ table, defineConfig }} from 'first'; const __stockItems = table({{}}, {{ storageName: \"{stored_name}\" }}); export {{ __stockItems as stockItems }}; export default defineConfig({{}});")).unwrap();
         let preserved = first().arg("build").arg(&conflict).output().unwrap();
         assert!(
             preserved.status.success(),
@@ -1150,7 +1150,7 @@ fn pantry_example_builds_and_its_hooks_run_in_php() {
                 .count(),
             2
         );
-        std::fs::write(conflict.join("first.config.ts"), "import { table, defineConfig } from 'first'; export default defineConfig({ tables: { stockItems: table({}) } });").unwrap();
+        std::fs::write(conflict.join("first.config.ts"), "import { table, defineConfig } from 'first'; const __stockItems = table({}); export { __stockItems as stockItems }; export default defineConfig({});").unwrap();
     }
     // Physical-only siblings do not establish who owned the retained resource.
     let mut siblings = canonical.clone();
@@ -2323,7 +2323,7 @@ fn rejects_phase2_static_contracts() {
         ),
     ] {
         std::fs::write(tmp.join("first.config.ts"), format!(
-            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}).optional() }}); export default defineConfig({{ tables: {{ notes }} }});"
+            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -2373,7 +2373,7 @@ fn rejects_phase2_static_contracts() {
         ),
     ] {
         std::fs::write(tmp.join("first.config.ts"), format!(
-            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export default defineConfig({{ tables: {{ notes }} }});"
+            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -2397,7 +2397,7 @@ fn rejects_phase2_static_contracts() {
         "const objects = [{ write: writers[0]! }]; objects.forEach(({ write }) => write())",
     ] {
         std::fs::write(tmp.join("first.config.ts"), format!(
-            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export default defineConfig({{ tables: {{ notes }} }});"
+            "import {{ collection, text, defineConfig , table}} from 'first'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -2635,7 +2635,7 @@ fn kind_urls_and_the_frontend_mode_reach_the_schema() {
         r#"import { collection, defineConfig, text } from "first";
 export const notes = collection({ title: text() }, { url: "/notes/:year/:slug" });
 export const plain = collection({ title: text() });
-export default defineConfig({ name: "kindurls", collections: { notes, plain }, frontend: "https://www.example.com/" });
+export { notes }; export { plain }; export default defineConfig({ name: "kindurls", frontend: "https://www.example.com/" });
 "#,
     );
     assert_eq!(built["collections"]["notes"]["url"], "/notes/:year/:slug");
@@ -2647,7 +2647,7 @@ export default defineConfig({ name: "kindurls", collections: { notes, plain }, f
 export const posts = collection({ title: text() }, { comments: true });
 export const reviews = collection({ title: text() }, { comments: { guests: true, moderation: "all", threaded: false, closeAfterDays: 30 } });
 export const pages = collection({ title: text() });
-export default defineConfig({ name: "kindurls", collections: { posts, reviews, pages } });
+export { posts }; export { reviews }; export { pages }; export default defineConfig({ name: "kindurls" });
 "#,
     );
     let defaults = serde_json::json!({ "guests": false, "moderation": "first-time", "threaded": 3, "closeAfterDays": null, "types": [] });
@@ -2754,7 +2754,7 @@ export default defineConfig({ name: "kindurls", sealed: true, admin: true, local
         r#"import { collection, defineConfig, text } from "first";
 export const notes = collection({ title: text() });
 export const fixed = collection({ title: text() }, { staged: false });
-export default defineConfig({ name: "kindurls", collections: { notes, fixed } });
+export { notes }; export { fixed }; export default defineConfig({ name: "kindurls" });
 "#,
     );
     assert!(built["collections"]["notes"].get("staged").is_none(), "{built}");
@@ -3191,7 +3191,7 @@ fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
         tmp.path().join("first.config.ts"),
         r#"import { action, defineConfig, text } from "first";
 import { run } from "./first/run.mjs";
-export default defineConfig({ name: "p", actions: { a: action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }) } });
+const __a = action({ access: "anyone", input: { s: text() }, async handler(input) { return { v: run(input.s) }; } }); export { __a as a }; export default defineConfig({ name: "p" });
 "#,
     )
     .unwrap();

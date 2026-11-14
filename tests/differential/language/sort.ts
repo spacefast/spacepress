@@ -8,7 +8,7 @@
 // Every action runs under Node and as compiled PHP; module-level constants run in the build-time
 // evaluator. `sort-helpers.mjs` runs the same checks untyped.
 import { action, defineConfig } from "first";
-import { sortObjects, sortUntyped, sortUntypedSequences } from "./sort-helpers.mjs";
+import { sortObjects as sortObjectsImpl, sortUntyped as sortUntypedImpl, sortUntypedSequences as sortUntypedSequencesImpl } from "./sort-helpers.mjs";
 
 const run = (handler: () => unknown) => action({ input: {}, handler });
 
@@ -149,22 +149,30 @@ function notFunctions(): string[] {
   return ["strcmp", "max", 5, {}, [1]].map(attempt);
 }
 
-const BUILD_TIME_SORT = { defaults: defaults(), comparators: comparators(), calls: calls(), sequences: sequences(), stability: stability(), mutation: mutation(), untyped: sortUntyped(), untypedSequences: sortUntypedSequences() };
+const BUILD_TIME_SORT = { defaults: defaults(), comparators: comparators(), calls: calls(), sequences: sequences(), stability: stability(), mutation: mutation(), untyped: sortUntypedImpl(), untypedSequences: sortUntypedSequencesImpl() };
 
-export default defineConfig({
-  name: "language-sort",
-  actions: {
-    sortDefaults: run(() => defaults()),
-    sortComparators: run(() => comparators()),
-    sortCalls: run(() => calls()),
-    sortThrowing: run(() => throwing()),
-    sortSequences: run(() => sequences()),
-    sortStability: run(() => stability()),
-    sortMutation: run(() => mutation()),
-    sortNotFunctions: run(() => notFunctions()),
-    sortBuildTime: run(() => BUILD_TIME_SORT),
-    sortUntyped: run(() => sortUntyped()),
-    sortUntypedSequences: run(() => sortUntypedSequences()),
-    sortObjects: run(() => sortObjects()),
-  },
-});
+export const sortDefaults = run(() => defaults());
+
+export const sortComparators = run(() => comparators());
+
+export const sortCalls = run(() => calls());
+
+export const sortThrowing = run(() => throwing());
+
+export const sortSequences = run(() => sequences());
+
+export const sortStability = run(() => stability());
+
+export const sortMutation = run(() => mutation());
+
+export const sortNotFunctions = run(() => notFunctions());
+
+export const sortBuildTime = run(() => BUILD_TIME_SORT);
+
+export const sortUntyped = run(() => sortUntypedImpl());
+
+export const sortUntypedSequences = run(() => sortUntypedSequencesImpl());
+
+export const sortObjects = run(() => sortObjectsImpl());
+
+export default defineConfig({ name: "language-sort" });

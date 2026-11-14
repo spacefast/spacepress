@@ -206,11 +206,7 @@ impl Drop for Served {
 
 const CONFIG: &str = r#"import { defineConfig, table, text, job, jobs, integer } from "first";
 const notes = table({ title: text() }, { access: { read: "anyone" } });
-export default defineConfig({
-  name: "clilane",
-  tables: { notes },
-  jobs: { stamp: job({ input: { n: integer().optional() }, handler: async () => {} }) },
-});
+export { notes }; export const stamp = job({ input: { n: integer().optional() }, handler: async () => {} }); export default defineConfig({ name: "clilane" });
 "#;
 
 /// `first <site cmd> --site @lane` and `wp @lane first <site cmd>` on one real WordPress: the same
@@ -1762,7 +1758,7 @@ fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
     std::fs::create_dir_all(&bare).unwrap();
     std::fs::write(
         bare.join("first.config.ts"),
-        "import { action, defineConfig } from \"first\";\nexport default defineConfig({ name: \"bare\", actions: { projects: action({ input: {}, async handler() { return 1; } }) } });\n",
+        "import { action, defineConfig } from \"first\";\nconst __projects = action({ input: {}, async handler() { return 1; } }); export { __projects as projects }; export default defineConfig({ name: \"bare\" });\n",
     )
     .unwrap();
     let state = tree(&bare);

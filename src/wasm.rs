@@ -584,7 +584,7 @@ mod tests {
     fn a_locked_ability_in_the_request_types_its_call() {
         let config = r#"import { action, defineConfig } from "first";
 import { abilities } from "php/wordpress";
-export default defineConfig({ actions: { a: action({ input: {}, access: "anyone", handler: () => abilities.call("acme/info", { field: "title" }) }) } });"#;
+const __a = action({ input: {}, access: "anyone", handler: () => abilities.call("acme/info", { field: "title" }) }); export { __a as a }; export default defineConfig({});"#;
         let lock = serde_json::json!({"version": 1, "abilities": [{"name": "acme/info",
             "input_schema": {"type": "object", "properties": {"field": {"enum": ["name"]}}, "required": ["field"]}, "output_schema": {}}]});
         let message = |files: serde_json::Value| {

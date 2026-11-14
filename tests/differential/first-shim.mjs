@@ -7,10 +7,11 @@ const chain = (meta = {}) =>
     apply: () => chain(meta),
   });
 const builder = () => chain();
-export const collection = (cols, options = {}) => ({ cols, options });
-export const table = (cols, options = {}) => ({ cols, options });
-export const userProjection = (cols, options = {}) => ({ cols, options });
-export const global = (name, fields, options = {}) => ({ name, fields, options });
+// Each registered value carries `$first`, so run-node.mjs finds a config's kinds and actions
+// among its exports, as the compiler registers them (docs/spec/spec.md §1.1).
+const kind = (cols, options = {}) => ({ $first: "kind", cols, options, on() { return this; } });
+export const collection = kind, table = kind, userProjection = kind;
+export const global = (fields, options = {}) => ({ $first: "global", fields, options });
 export const id = builder, integer = builder, real = builder, text = builder, boolean = builder;
 export const date = builder, timestamp = builder, json = builder, email = builder, url = builder;
 export const slug = builder, richText = builder, media = builder, select = builder;
@@ -19,8 +20,8 @@ export const repeater = ({ fields }) => chain({ kind: "repeater", fields });
 export const blocks = ({ layouts }) => chain({ kind: "blocks", layouts });
 export const defineRelations = () => ({});
 export const defineConfig = (c) => c;
-export const action = (a) => a;
-export const job = (j) => j;
+export const action = (a) => ({ ...a, $first: "action" });
+export const job = (j) => ({ ...j, $first: "job" });
 // Lane D: once() receipts and pending enqueue keys, in memory for one Node run.
 const receipts = new Map();
 let rollbackOnly = false;

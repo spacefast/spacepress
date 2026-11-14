@@ -128,15 +128,18 @@ function returns(values: number[]): number {
 
 const BUILD_TIME_CONTROL_FLOW = { doWhile: doWhile(), pair: findPair([1, 4, 6, 3], 9), rows: rows([[1, 0, 2], [3, -1, 4], [5]]), mixed: mixed() };
 
-export default defineConfig({
-  name: "language-control-flow",
-  actions: {
-    controlDoWhile: run(() => doWhile()),
-    controlBreakOuter: run(() => [findPair([1, 4, 6, 3], 9), findPair([1, 2], 10), findPair([], 0)]),
-    controlContinueOuter: run(() => rows([[1, 0, 2], [3, -1, 4], [5], []])),
-    controlMixed: run(() => mixed()),
-    controlReturns: run(() => [returns([1, 20]), returns([1, -5, 30]), returns([1, 2])]),
-    controlBuildTime: run(() => BUILD_TIME_CONTROL_FLOW),
-    controlUntyped: run(() => controlFlowUntyped()),
-  },
-});
+export const controlDoWhile = run(() => doWhile());
+
+export const controlBreakOuter = run(() => [findPair([1, 4, 6, 3], 9), findPair([1, 2], 10), findPair([], 0)]);
+
+export const controlContinueOuter = run(() => rows([[1, 0, 2], [3, -1, 4], [5], []]));
+
+export const controlMixed = run(() => mixed());
+
+export const controlReturns = run(() => [returns([1, 20]), returns([1, -5, 30]), returns([1, 2])]);
+
+export const controlBuildTime = run(() => BUILD_TIME_CONTROL_FLOW);
+
+export const controlUntyped = run(() => controlFlowUntyped());
+
+export default defineConfig({ name: "language-control-flow" });

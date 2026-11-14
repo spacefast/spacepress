@@ -38,6 +38,8 @@ $wp = wpSite('abilities', [
                 'execute_callback' => static fn () => new WP_Error('acme_teapot', 'I am a teapot', ['status' => 418]),
             ]);
         });
+        // Another plugin exposing every post type to core's content abilities (WordPress 7.2).
+        add_filter('register_post_type_args', static fn (array $args): array => ['show_in_abilities' => true] + $args, 99);
         PHP],
 ]);
 $problem = static function (callable $fn): string {
@@ -66,5 +68,25 @@ $created = Call::run('blog/posts-create', new JsObject(['title' => 'Through an a
 eq('the app\'s own ability runs First\'s pipeline', [$created->p['title'] ?? null, is_int($created->p['id'] ?? null)], ['Through an ability', true]);
 $wp->actAs(null);
 eq('and its own errors come back as First problems', $problem(static fn () => Call::run('blog/posts-create', new JsObject(['title' => 'x']))), '401 unauthenticated');
+
+// Core's content abilities read posts without a kind's access rules or field permissions, so a kind
+// is never exposed to them, whatever another plugin's register_post_type_args filter asks.
+eq('a kind\'s post type is not shown in abilities, a filter\'s show_in_abilities notwithstanding',
+    [get_post_type_object('first_posts')->show_in_abilities ?? null, get_post_type_object('first_authors')->show_in_abilities ?? null],
+    [false, false]);
+eq('the filter did run: a core post type it exposes keeps that', get_post_type_object('post')->show_in_abilities ?? null, true);
+if (wp_has_ability('core/content-query')) {
+    // WordPress 7.2+: the ability exists, lists only exposed types and refuses a kind.
+    $enum = wp_get_ability('core/content-query')->get_input_schema()['properties']['where']['properties']['type']['enum'] ?? [];
+    eq('core/content-query offers posts but no kind', [in_array('post', $enum, true), in_array('first_posts', $enum, true), in_array('first_authors', $enum, true)], [true, false, false]);
+    $wp->actAs('admin');
+    $posts = wp_get_ability('core/content-query')->execute(['where' => ['type' => 'post']]);
+    $refused = wp_get_ability('core/content-query')->execute(['where' => ['type' => 'first_posts']]);
+    check('even for an administrator, core/content-query reads posts but refuses a kind',
+        is_array($posts) && $refused instanceof WP_Error, [$posts, $refused]);
+    $wp->actAs(null);
+} else {
+    echo "  (WordPress " . get_bloginfo('version') . " has no core/content-query; checked the post type args only)\n";
+}
 
 finish('abilities');

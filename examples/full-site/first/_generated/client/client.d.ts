@@ -425,27 +425,55 @@ export type ListQuery<
 	offset?: number;
 	with?: W;
 } & StatusQuery<K> & LocaleQuery<K>;
+/**
+* A read. Await it for one answer, or `subscribe` to keep it current: the callback gets the result
+* now and again whenever it changes, always as this client's visitor reads it.
+*/
+export interface Query<T> extends Promise<T> {
+	/** The same for the same call with the same arguments: what a cache or a hook keys on. */
+	readonly key: string;
+	/**
+	* Calls `onData` with the result, and again each time it changes. `onError` gets the problem of a
+	* read the server refuses (a `get` whose row is missing or unreadable is a 404) and network
+	* failures; the subscription continues. `seed` is an answer rendered on the server
+	* (`First\Live\Module::evaluate`): its data is delivered at once and its token sent with the
+	* first request. Returns a function that ends the subscription.
+	*/
+	subscribe(onData: (data: T) => void, onError?: (error: FirstError) => void, seed?: {
+		token: string;
+		data: T;
+	}): () => void;
+	/**
+	* Shows subscribers `update(current)` at once, before the server has answered a write. Call
+	* `settle()` when the write succeeded (the change stays until the server's next answer replaces
+	* it) or `rollback()` when it failed (subscribers get the server's data back).
+	*/
+	optimistic(update: (current: T) => T): {
+		settle(): void;
+		rollback(): void;
+	};
+}
 export interface CollectionClient<K extends CollectionKey> {
-	list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Promise<RowWith<K, W>[]>;
+	list<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>>): Query<RowWith<K, W>[]>;
 	/** One page and the `cursor` of the next (null on the last page): pass it back as `cursor`. */
 	paginate<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q?: ListQuery<K, ExactWith<K, W>> & {
 		cursor?: string | null;
-	}): Promise<{
+	}): Query<{
 		rows: RowWith<K, W>[];
 		cursor: string | null;
 	}>;
 	/** With `locale`, the row of `id`'s translation group in that locale (or its fallback). */
 	get<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(id: IdOf<K>, q?: {
 		with?: ExactWith<K, W>;
-	} & LocaleQuery<K>): Promise<RowWith<K, W>>;
+	} & LocaleQuery<K>): Query<RowWith<K, W>>;
+	/** How many rows `list` with this filter would return without a limit. */
+	count(q?: {
+		where?: Collections[K]["filter"];
+	} & StatusQuery<K> & LocaleQuery<K>): Query<number>;
 	create(data: Collections[K]["insert"]): Promise<Row<K>>;
 	update(id: IdOf<K>, patch: Collections[K]["patch"]): Promise<Row<K>>;
 	delete(id: IdOf<K>): Promise<Row<K>>;
-	/**
-	* Runs `list(q)` now and again whenever this collection (or a collection loaded through `with`)
-	* changes. Every refresh is the normal access-checked read; change notices carry no rows.
-	* Returns a function that stops watching.
-	*/
+	/** `list(q).subscribe(onRows, onError)`. Returns a function that stops watching. */
 	watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(q: ListQuery<K, ExactWith<K, W>> | undefined, onRows: (rows: RowWith<K, W>[]) => void, onError?: (error: FirstError) => void): () => void;
 	revisions: {
 		/** Newest first. Needs `update` access on the row. */
@@ -614,8 +642,16 @@ export interface RealtimeTransport {
 export interface RealtimeOptions {
 	/** The transport. Default: the one a host registered with `registerRealtimeTransport`; `false` = polling only. */
 	transport?: RealtimeTransport | false;
-	/** Refresh watched reads this often while no transport is live. Default 30000; `false` turns polling off. */
-	pollMs?: number | false;
+	/**
+	* How often subscriptions ask the server while no transport is live. Default: adaptive, between
+	* the bounds the server gives (2 s after a change, growing by half up to 30 s while nothing
+	* changes, each wait jittered by 20%). `{ min, max }` sets the bounds, a number a fixed interval,
+	* and `false` turns polling off. A hidden tab doesn't poll; it asks once when it is shown again.
+	*/
+	pollMs?: number | false | {
+		min?: number;
+		max?: number;
+	};
 	/**
 	* A slow safety refresh while the transport is live, covering a notice the transport lost.
 	* Default 60000 with up to ±20% jitter per refresh; `false` turns it off.
@@ -634,7 +670,7 @@ export interface ClientOptions {
 	headers?: Record<string, string>;
 	/** Frontend sign-in (design §6.2). */
 	auth?: AuthOptions;
-	/** Live updates for `watch`. */
+	/** Live updates for `subscribe` and `watch`. */
 	realtime?: RealtimeOptions;
 }
 export interface AuthOptions {
@@ -671,8 +707,8 @@ export declare class FirstError extends Error {
 export declare function createClient(options?: ClientOptions): Client;
 /**
 * Runs `read` now and again whenever one of `collections` (schema keys) changes, while `client`'s
-* transport is live, or on its polling interval otherwise. For reads `watch` on a collection can't
-* express: an action's result, a `get`, a global. Returns a function that stops watching.
+* transport is live, or on its polling interval otherwise. For reads a `subscribe` can't express:
+* an action's result, a global. Returns a function that stops watching.
 */
 export declare function watch<T>(client: Client, collections: readonly CollectionKey[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: FirstError) => void): () => void;
 export {};

@@ -541,6 +541,12 @@ changes nothing. Core reads apply the read rule and field access; core writes
 and editor saves apply the create, update and field rules, and are authorized
 on the saved data before they commit.
 
+Core's own content abilities (`core/content-query`, WordPress 7.2) read a post
+type's posts without these rules, so they never see a kind: First registers its
+post types with `show_in_abilities` set to `false` and keeps it `false` when
+another plugin's `register_post_type_args` filter turns it on. Agents reach a
+kind through the app's own abilities, which apply the rules.
+
 Core `/wp/v2/<post type>` speaks First's fields and queries too:
 
 - Every field is registered post meta (`register_post_meta`, `show_in_rest`,
@@ -699,7 +705,9 @@ export default async function Doc({ item }: PageProps<"docs/[[...path]]">) {
 ```
 
 The tree is the published items the visitor may read, siblings by order then title, four levels
-deep. `headings()` gives the ids the page renders its headings with.
+deep. `headings()` gives the ids the page renders its headings with. An id follows GitHub's rule,
+as READMEs and most docs tools spell it: `## What's \`first/app/\`?` is `#whats-firstapp`, and a
+second `## Why` on the page is `#why-1`. A heading with its own id keeps it.
 
 ### Components in Markdown
 
@@ -1096,10 +1104,14 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   (`schema_reserved`); a removed name comes back only with the stored type it had, and a name
   that any build which ran on the site stores as another type keeps that type (`schema_retype`), so
   two builds the host serves at once never read one value two ways; a field stores its values under
-  keys no other field of its storage uses, sub-fields and repeater rows included (`seo_title` is
-  refused next to a group `seo` with a `title`, and so is a global `site_meta` with a field `title`
-  next to a global `site` with a field `meta_title`: both would be `first_global_site_meta_title`);
-  something a build declares is not removed at runtime (`schema_in_use`, or
+  keys no other field of its storage uses, sub-fields, repeater rows and a blocks field's layout
+  record (`_<field>_layout_meta`) included, and keys are compared without letter case, as MySQL
+  compares them (`seo_title` and `SEO_title` are refused next to a group `seo` with a `title`, and
+  so is a global `site_meta` with a field `title` next to a global `site` with a field
+  `meta_title`: both would be `first_global_site_meta_title`). The fields checked are every field
+  whose values may still be stored: the build's, hidden ones, removed ones, and those of every
+  build that ran on the site (whose sub-fields aren't recorded, so a group, repeater or blocks
+  field's whole `<field>_` prefix counts as its); something a build declares is not removed at runtime (`schema_in_use`, or
   `schema_build_only` when no runtime change added it). Every other operation (renaming, retyping,
   tables, hooks, actions, jobs, pages, taxonomies) is `schema_build_only`, with the source edit to
   make. Fields of a translated or synced collection are build-only for now.
@@ -1145,14 +1157,22 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   only when its name occurs nowhere. A field your code reads, or a required one, is
   `schema_in_use`. To remove it, delete it from your code and from the lock, build and deploy.
 - **Deploying.** A build that lacks the site's changes does not drop them: they stay active, with
-  their data, and `wp first migrate` lists them under `runtimeSchema.kept`. A build that declares
-  a runtime name, or a removed one, in a way that reads its stored values differently (another type,
-  other options, other sub-fields or layouts, or a `table()` named like a runtime collection) is
-  refused before any table changes, with the fix (usually: `first pull`, then build). A build that
-  only changes a runtime field's rules or presentation is listed under `runtimeSchema.changed`; its
-  declaration is used. Applying a change takes the same lock a deploy holds, so the two never
-  interleave; a change that waited for a deploy is refused with 409 `schema_build_changed` and is
-  proposed again on the new build.
+  their data, and `wp first migrate` lists them under `runtimeSchema.kept`. That includes the
+  fields of a kind the site added that the build declares without them. A build is refused before
+  any table changes, with the fix (usually: `first pull`, then build), when it declares a runtime
+  name, or a removed one, in a way that reads its stored values differently (another type, other
+  options, other sub-fields or layouts: `runtime_type_differs`), when one of its fields is stored
+  under a key a runtime field uses (`runtime_key_shared`), when it declares something other than a
+  collection under a runtime collection's name (a `table()`, a global, an action or a job:
+  `runtime_kind_differs`), and when it declares a runtime collection without the body the site
+  stored for it (`runtime_body_dropped`). The order of options, sub-fields and layouts changes no
+  stored value and is not refused. A build compiled without the lock that only changes a runtime
+  field's rules or presentation is listed under `runtimeSchema.changed`; its declaration is used.
+  (With the lock, `first build` already refuses a field the source declares differently.) Applying
+  a change takes the same lock a deploy holds, so the two never interleave; once it holds the lock,
+  apply checks that the build its request loaded is still the one the last deploy recorded, and a
+  change that waited for a deploy is refused with 409 `schema_build_changed` and is proposed again
+  on the new build.
 - **Moving a change into source.** Declare the field or kind there as the site stores it (the lock
   shows it). A kind the site added keeps building after you declare it: its title and body are the
   ones source declares.
@@ -1164,14 +1184,21 @@ A change set is `{ "format": 1, "changes": [ … ] }`. Each change is one of:
   next version. Read and propose run over GET, so `changes` may also be one JSON string there. All
   three are tools on the app's MCP server. Reading and proposing need `manage_options`. Applying
   needs `first_apply_schema`. The administrator role is given it once, the first time the app runs
-  with `runtimeSchema`, and from then on it is an ordinary capability: `wp cap remove administrator
-  first_apply_schema` or `wp user remove-cap <user> first_apply_schema` takes it away for good. To
-  stop one way of signing in without touching the user, list it in the option
+  with `runtimeSchema` (a role that already says `false` keeps it), and from then on it is an
+  ordinary capability: `wp cap remove administrator first_apply_schema` takes it away from the role
+  for good, and giving one administrator the capability as false (in PHP,
+  `(new WP_User($id))->add_cap('first_apply_schema', false)`) takes it from that user while the
+  role keeps it. (`wp user remove-cap` removes only a capability given to the user, not one the
+  role gives.) To stop one way of signing in without touching the user, list it in the option
   `first_<app>_schema_apply_denied`: `{ "user": <id>, "password": "<uuid>" }` for one application
-  password (a password it creates later is denied too), `{ "user": <id>, "credential":
-  "application-password" }` for all of that user's passwords, present and future, or `{ "user":
-  <id>, "credential": "bearer" }` for every First Identity access token they are issued. A wp-admin
-  session is not denied this way; take the capability instead. Each version records the user and,
+  password, `{ "user": <id>, "credential": "application-password" }` for all of that user's
+  passwords, present and future, or `{ "user": <id>, "credential": "bearer" }` for every First
+  Identity access token they are issued. A UUID on its own, the form the first release documented,
+  denies that password too. A password a denied credential creates, for its own user or another, is
+  denied as well. A deny is not a boundary for an administrator's unscoped password: such a
+  password can still create users or change their credentials through core, and so act as another
+  user; scope agent passwords, or take the capability. A wp-admin session is not denied this way;
+  take the capability instead. Each version records the user and,
   when one signed the request, the application password's UUID and name (never the secret). A
   credential scoped without personal data reads the versions without the login and the password's
   name.
@@ -1313,6 +1340,12 @@ Throwing anything aborts the request and rolls back every write in it.
 - `signature: { secret: env("NAME"), header, scheme: "first" | "hmac-sha256" }`:
   an inbound webhook. The HMAC over the raw body replaces the access rule;
   `first` also checks a timestamp so old deliveries are refused.
+  `hmac-sha256` takes the header as HMAC-SHA256 of the raw body in hex (any
+  case, optionally `sha256=`-prefixed, as GitHub sends it) or in standard base64
+  (as WooCommerce's `X-WC-Webhook-Signature` and Shopify's
+  `X-Shopify-Hmac-Sha256` send it). Both are compared in constant time against
+  the full 32-byte digest; a failure is 401 `invalid_signature`. It has no
+  timestamp, so make the handler idempotent on the provider's delivery id.
 - `agents: false` keeps it out of MCP and the abilities' public REST
   discovery; it stays callable over the app's own API.
 - `readonly: true` marks an action that only reads; `destructive: true` one

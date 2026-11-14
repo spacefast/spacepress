@@ -770,7 +770,7 @@ final class AppRouter
         wp_head();
         echo "</head>\n<body class=\"" . esc_attr(implode(' ', get_body_class('first-app'))) . "\">\n";
         wp_body_open();
-        echo '<div class="wp-site-blocks" data-wp-interactive="' . esc_attr(Navigation::NAMESPACE) . '" data-wp-router-region="' . esc_attr(Navigation::REGION) . '">' . $body . "</div>\n";
+        echo Navigation::region() . $body . "</div>\n";
         wp_footer();
         echo "</body>\n</html>\n";
         exit;

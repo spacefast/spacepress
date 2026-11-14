@@ -52,7 +52,7 @@ export async function cleanup(project) {
   await command(['dev', 'stop', project]);
   const status = JSON.parse(await command(['dev', 'status', project]));
   if (status.isOnline !== false) throw new Error('Owned site is still online.');
-  await execute('npx', ['--yes', '--package', 'wp-studio@2.1.1', '--', 'studio', 'delete', '--path', site, '--no-files'], { cwd: repository, timeout: 120000 });
+  await execute('npx', ['--yes', '--package', 'wp-studio@2.2.0', '--', 'studio', 'delete', '--path', site, '--no-files'], { cwd: repository, timeout: 120000 });
   await rm(project, { recursive: true });
   return { project, site, stopped: true, registrationDeleted: true, filesDeleted: true };
 }

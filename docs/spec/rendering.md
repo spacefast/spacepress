@@ -156,8 +156,8 @@ The TSX → directive mapping, which also defines what's supported:
 | `style={{ color }}` | `data-wp-style--color` |
 | `onClick`, `onInput`, … | `data-wp-on--click`, … (`withSyncEvent` for `preventDefault`) |
 | window/document listeners via `useEvent("resize", …)` | `data-wp-on-window--resize` |
-| `{cond && <X/>}`, `{a ? <X/> : <Y/>}` | `<template>` toggled by a derived boolean, or `data-wp-bind--hidden` for static subtrees |
-| `{list.map((x) => <li key={x.id}>…)}` | `<template data-wp-each--x="…" data-wp-each-key="…">` |
+| `{cond && <X/>}`, `{a ? <X/> : <Y/>}` | a `<template data-wp-each--first-shown>` per branch over a derived `[1]` or `[]`; a condition that reads nothing reactive renders once on the server |
+| `{list.map((x) => <li key={x.id}>…)}` | `<template data-wp-each--x="…" data-wp-each-key="…">`, after the server's items marked `data-wp-each-child` |
 | `useEffect(fn, [deps])` | `data-wp-watch` (cleanup returned) |
 | `useMount(fn)` | `data-wp-init` |
 | `useRef()` | `getElement().ref` |
@@ -193,6 +193,11 @@ The root layout marks the content region with `data-wp-router-region`. `<Link>`
 uses `actions.navigate()` from `@wordpress/interactivity-router`: it fetches the
 next page's HTML, swaps the region, and re-reads server state
 (`getServerState`/`getServerContext`). This mode is stable since WordPress 6.9.
+On a page with a `<Link>`, the region's wrapper goes through core's directive
+pass (`wp_interactivity_process_directives()`), so the page gets what a block
+theme's router region gets: `core/router`'s `state.url` from the server, the
+navigation animation styles and the loading bar. The page's own HTML is not
+processed again.
 Full-page navigation is still experimental in WordPress, so it stays off until
 core marks it stable. `<Link prefetch>` uses the router's `prefetch`.
 
@@ -252,6 +257,10 @@ TSX subset, so they are examples as well as product.
   rel="alternate"; type="text/markdown"` header and the `<link>` tag, and
   `Accept` negotiation is a convenience on top. Before relying on negotiation
   at the edge, verify whether it keys on `Accept`.
+- A site that also turns on WordPress/ai's Markdown Feeds experiment serves
+  Markdown twice (its `?output_format=markdown` and `/feed/markdown/` next to
+  the `.md` twins). The app plugin names itself on that plugin's
+  `wpai_markdown_feeds_conflicting_plugins` list, so its settings say so.
 - Items render to markdown from their stored content (`Markdown::fromBlocks`).
   Code pages render from their compiled output, as an anonymous visitor (built); prebuilt static
   twins wait for the build-time policy in §6.1.

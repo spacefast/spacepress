@@ -304,6 +304,10 @@ export function CheerButton({ noteId, count: initial }: { noteId: number; count:
   `useMount`, `useEvent`, `useRef` and `sharedState` come from `"first/client"`.
 - Calling an imported action posts to its endpoint with the REST nonce, as the
   visitor.
+- A list over state or props, `items.map((item) => <li key={item.id}>…</li>)`,
+  and a conditional over elements, `{open && <p>…</p>}` or
+  `{empty ? <em>…</em> : <b>…</b>}`, re-render in the browser from a
+  `<template>`. Each item and each branch is one element; each item has a `key`.
 - The component returns one element. React context, third-party React
   components, npm imports and `dangerouslySetInnerHTML` are refused at the line.
 

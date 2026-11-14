@@ -174,9 +174,23 @@ await first.auth.signOut();
 
 ## Live updates
 
-`first.posts.watch(query, onRows)` re-runs `list(query)` after every committed write to `posts`
-(or to a collection the query loads with `with`). It polls every 30 seconds until a host
-transport is registered with `registerRealtimeTransport`. See `docs/realtime.md` in the First repo.
+Every read is a `Query`: `await` it for one answer, or subscribe to keep it current.
+
+```ts
+const stop = first.posts.list({ where: { status: "published" }, limit: 10 }).subscribe(
+  (posts) => render(posts),   // now, and again whenever the result changes
+  (error) => report(error),   // a refused read or a network failure; the subscription continues
+);
+first.posts.count().subscribe((n) => badge(n));
+```
+
+All subscriptions of a client travel in one request, which the server answers with "not modified"
+or the fresh result, as this client's visitor reads it. Without a host transport the client asks
+every 2 to 30 seconds (sooner after a change, never while the tab is hidden); with one registered
+through `registerRealtimeTransport`, a change notice asks at once. A write through the same client
+refreshes its own subscriptions when it returns. `read.optimistic(update)` shows a write before
+the server answers; call `settle()` when it succeeded or `rollback()` when it failed.
+See `docs/realtime.md` in the First repo.
 
 Server to server, or from a logged-in page: `nonce` (from `wpApiSettings.nonce`) uses the
 WordPress cookie, or pass `headers: { Authorization: "Basic " + btoa("user:application password") }`.
